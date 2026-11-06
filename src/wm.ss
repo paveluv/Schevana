@@ -137,6 +137,7 @@
 
 (define (screen-w) *canvas-w*)
 (define (screen-h) *canvas-h*)
+(define (screen-scale) *scale*)   ; the screen's pixels to a logical one
 ;; A title's or a bar's height, key: the setting, grown to the room its
 ;; text needs (the setting min, named key-min) unless the style fixes
 ;; it, meaning its pixels; 0 is none. At the default fonts the text fits

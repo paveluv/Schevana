@@ -221,7 +221,8 @@
 ;;; What a worker thread runs. A worklet is a procedure compiled in the
 ;;; worklet environment, where only this is in reach: Scheme's pure core
 ;;; (no I/O, no eval), fixnums, flonums, bitwise operations, bytevectors,
-;;; fxvectors, boxes, raising and catching (but not reading a condition),
+;;; fxvectors, flvectors, boxes, raising and catching (but not reading a
+;;; condition),
 ;;; the clock (now-ns), the thread's id and the worklets defined so far.
 ;;; SDL, Cairo and the world's state are not: a worklet that names
 ;;; anything else is refused when it is defined, so all it touches is what
@@ -264,7 +265,10 @@
                                 add1 sub1 iota void
                                 box unbox set-box! box-cas!
                                 make-fxvector fxvector fxvector-length
-                                fxvector-ref fxvector-set! get-thread-id))
+                                fxvector-ref fxvector-set!
+                                make-flvector flvector flvector-length
+                                flvector-ref flvector-set! flvector-fill!
+                                get-thread-id))
             #t)])
     (define-top-level-syntax 'now-ns (forwarder-to #'now-ns) e)
     e))
@@ -276,8 +280,8 @@
 
 ;; What form refers to at the top level, as expand gives it: (ref . name)
 ;; or (set . name).
-(define (worklet-free-names form)
-  (let walk ([x (expand form *worklet-environment*)] [acc '()])
+(define (worklet-free-names form env)
+  (let walk ([x (expand form env)] [acc '()])
     (let ([op (and (pair? x) (pair? (car x)) (eq? (caar x) '$primitive)
                    (car (last-pair (car x))))])
       (cond
@@ -290,23 +294,24 @@
                      acc))]
         [else (walk (cdr x) (walk (car x) acc))]))))
 
-;; form, a lambda, compiled as the worklet who.
-(define (worklet-compile who form)
+;; form, a lambda, compiled in env as the worklet who.
+(define (worklet-compile who form env)
   (for-each (lambda (n)
               (cond [(eq? (car n) 'set)
                      (errorf who "a worklet sets no top-level name: ~s"
                              (cdr n))]
-                    [(not (top-level-bound? (cdr n) *worklet-environment*))
+                    [(not (top-level-bound? (cdr n) env))
                      (errorf who "~s is out of a worklet's reach" (cdr n))]))
-            (worklet-free-names form))
-  (let ([p (eval form *worklet-environment*)])
+            (worklet-free-names form env))
+  (let ([p (eval form env)])
     (hashtable-set! *worklets* p #t)
     p))
 
 (define-syntax worklet
   (syntax-rules ()
     [(_ formals body ...)
-     (worklet-compile 'worklet '(lambda formals body ...))]))
+     (worklet-compile 'worklet '(lambda formals body ...)
+                      *worklet-environment*)]))
 
 ;; (define-worklet (name . formals) body ...): a worklet, defined where the
 ;; form is, and forwarded to from the worklet environment before it
@@ -317,4 +322,5 @@
      (begin
        (define-top-level-syntax 'name (forwarder-to #'name)
                                 *worklet-environment*)
-       (define name (worklet-compile 'name '(lambda formals body ...))))]))
+       (define name (worklet-compile 'name '(lambda formals body ...)
+                                     *worklet-environment*)))]))

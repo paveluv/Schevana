@@ -210,9 +210,11 @@ afterwards; `(only …)` or `(prefix … acme:)` keep them apart.
 (tasks-tree)                               ; what waits for what, nested
 ; in a task's description, Ctrl+E opens it in a window of its own
 (tasks-list 'status 'doing 'assignee "Pavel")
+(life)                                     ; Maximize it, Cell size to 1 px,
+                                           ; Speed to every tick: see below
 (boids)                                    ; a flock, its rules beside it
 (repl "/apps/boids")                       ; a REPL in its sandbox; there,
-(define (boid-sees? b other fov) #t)       ; eyes all around; (reload!) undoes
+(define boids-step-ms 100)                 ; a slow flock; (reload!) undoes
 (define (draw-wallpaper w h) (fill-gradient 0 0 w h #x102030 #x301020))
 ; every window looks focused; (reload!) undoes it
 (define (draw-window win) (draw-window* win #t))
@@ -362,7 +364,7 @@ styles and palettes with the others, and the saved look may name them.
 An app of yours runs in a sandbox of its own, which holds only what it asks
 for, so not your kits, which are the world's. Its file is named after it, and
 its first form says what it needs, of the bundles `window`, `draw`, `ui`,
-`timers`, `toasts` and `launch`: the Counter above, in `counter.ss`, starts
+`timers`, `crew`, `toasts` and `launch`: the Counter above, in `counter.ss`, starts
 with `(app-requests window draw)`. The launcher asks you before its first
 run, and Settings, Permissions changes it later.
 `(apps)`, `(styles)`, `(palettes)`, `(wallpapers)` and
@@ -475,8 +477,8 @@ Decisions worth keeping in mind for the real design:
   world.
 - **Worker threads run worklets.** A worklet (`define-worklet`, or
   `worklet` like `lambda`) is compiled in an environment of its own:
-  Scheme's pure core, fixnums, flonums, bytevectors, fxvectors, boxes, the
-  clock and the other worklets, and nothing of the world. One that names a
+  Scheme's pure core, fixnums, flonums, bytevectors, fxvectors, flvectors,
+  boxes, the clock and the other worklets, and nothing of the world. One that names a
   world procedure, SDL, Cairo, `eval`, a `#%` primitive or a local of the
   code around it, or sets a top-level name, is refused when it is
   defined, so a worklet touches only what it is handed, by construction;
@@ -513,21 +515,23 @@ Decisions worth keeping in mind for the real design:
   `(app-requests window draw timers)` loads into `/apps/<name>`
   (`services/grant.ss`), on the confined base, holding of the world's
   names only its bundles: titled lists ("Draw in its windows": `fill-rect`
-  and 48 more). The tree's Boids, Clock and Life are approved by a table;
+  and 49 more). The tree's Boids, Clock and Life are approved by a table;
   Sketch, and every app of yours, asks the person, whose answers are kept in
   `~/.schevana.d/permissions.ss`. A bundle not allowed is there as stubs
   that raise, naming it ("Sketch needs Draw in its windows (fill-rect):
   denied"); a name in no bundle it requests is unbound. Its `define-app`
   registers that app alone, and what it defines stays in its sandbox
-  (Boids' `vec` is no name of the world's): only `(clock)` at the world's
+  (Boids' `boids-step` is no name of the world's): only `(clock)` at the world's
   REPL reaches in, to open Clock. Settings, Monitor, Tasks, the REPL and
   Environments request nothing and run in the world, which they tune.
 - **A crew of threads for loops.** `(crew-for start end worklet arg ...)`
   (`services/crew.ss`) calls `(worklet lo hi arg ...)` on disjoint slices
   of the range on worker threads, the caller among them, and returns when
-  all have: Life's step on a 1024×640 grid takes 0.90 ms on a crew of 8
-  against 6.86 ms on one thread. A call writes only its own slice and
-  allocates nothing (that stops every thread). An error in a call is
+  all have. A call writes only its own slice and allocates nothing (that
+  stops every thread), and should take 20 to 200 µs: `(crew-for* chunk
+  start end worklet arg ...)` gives each call at least chunk indices, and a
+  range of one chunk runs on the caller alone, so a small grid never wakes
+  the crew. An error in a call is
   raised in the caller; on main a runaway call is cancelled after 100 ms
   and the caller raises, as a runaway handler does; in a REPL evaluation
   the caller waits a millisecond at a time and the desktop runs on.
@@ -535,6 +539,43 @@ Decisions worth keeping in mind for the real design:
   at most 8 (`SCHEVANA_WORKERS` sets it, 0 for none). Everything else stays
   on the main thread; `(post-main! thunk)` hands work back to it from any
   thread.
+- **Apps use the crew through a bundle.** `crew`, "Compute on worker
+  threads", gives an app `crew-for`, `crew-for*`, `crew-map`, `crew-size`,
+  `crew-size-set!` (at most one thread short of the machine's), and
+  `define-worklet` and `worklet` of its own: they compile in an environment
+  its sandbox alone has, so an app's worklets reach nothing of the world's
+  or another app's, and none lands in `/worklets`. Not approved, they are
+  stubs like any other: the app loads, and the first use raises.
+- **Life and Boids run on the crew.** Life's grid is as many cells as its
+  window has room for: a new size keeps what fits and seeds the new ground.
+  Its panel sets the cell size (in the screen's own pixels: 1 px is one),
+  the speed (up to a generation every tick, or flat out, as many as 10 ms of
+  a tick hold) and the crew's threads, and shows what a generation and its
+  drawing take. Boids' flock is an flvector of four numbers a boid, stepped
+  by one worklet that allocates only its sums. Measured here, on 48 hardware
+  threads:
+
+  | | One thread | Crew of 8 | All 48 |
+  |---|---|---|---|
+  | Life, a generation, 1 px a cell, maximized on a 4K screen (7.4 M cells) | 69 ms | 9.6 ms | 4.2 ms |
+  | Boids, a step, 450 boids (16 ms before the crew) | 0.60 ms | 0.22 ms | |
+  | Boids, a step, 2,000 boids | 11.7 ms | 1.6 ms | |
+
+  The crew gains less per thread as it grows (a generation on 16 threads is
+  12 times as fast as on one, on 48, 17 times), and a tick has room for what
+  it has room for: at 4K a frame and its upload take 8 ms the crew does not
+  help with, so a generation every tick at 60 Hz wants about 10 to 16
+  threads, and more show only flat out. That upload is a stand-in's memcpy:
+  a real screen has not been measured. What fills the frame after that is
+  the drawing on the main thread, for both apps.
+- **A side panel hides and shows.** `(ui-side-panel ui id x y w h side width
+  least rest panel)` lays a panel along a side and the rest beside it;
+  hidden, or where the rest would be narrower than least, the rest has all
+  the room. `(ui-side-panel-button ui id x y w h side)` is its button, a
+  widget of its own that the app lays where it has room, never over its
+  work: Life's is at the end of its status line, which runs under both, so
+  it stays put as the panel comes and goes, and a second press undoes the
+  first. Its H key is `(ui-side-panel-toggle! ui id)`.
 - **Vats run jobs in the background.** A vat (`services/vat.ss`) is a
   thread, its mailbox and a sandbox only its thread evaluates in, so its
   state is its own: `(vat-eval! v '(define n 0) #f)` defines there, and
@@ -897,9 +938,14 @@ scheme --script tests/units.ss out
 This tests the drawing layer piece by piece: the measuring context,
 text cut to fit measuring no more of a long text than its width could
 show, cached shadows against the stacked ones, pixmaps, Life's
-generations against a plain reference (a step allocates nothing), its
-grid against one rectangle per cell, Boids in its sandbox, its flocking (the Niva
-version's tests, its first step to the last digit, the speed limits, a
+generations against a plain reference (a tick's allocates under 8 KB), on
+the crew too, its grid against one rectangle per cell and, at one pixel a
+cell, against the screen's own pixels at 100% and 200%, what a new size
+keeps, its speeds, its threads and its painting, the side panel and its
+button (where the app lays it, either side, by key, with no room), Boids in
+its sandbox, its
+flocking (the Niva version's tests, its steps to the last digit against
+the rules written out plainly, on the crew and off it, the speed limits, a
 flock carried over a reload) and its rules window (where it opens, its
 sliders, buttons and keys), and the invalidation calls; and, with no
 window, the edit kit (insertion, erasing, caret moves, words,
@@ -936,7 +982,8 @@ history's lengths, and the charts' colors in every style. And what runs
 apart: worklets and what they are refused, the crew, environments and what
 a child may do with its shares, the confined base, vats and their jobs,
 and apps in sandboxes (their bundles and stubs, a decision saved, read back
-and denied, an app of yours that requests nothing).
+and denied, an app of yours that requests nothing, an app's own worklets
+and what they are refused).
 
 ```bash
 scheme --script tests/frame.ss out
@@ -1018,8 +1065,10 @@ draws a screenful of text, and a jump within 2.5 times), the Tree there
 with the seed and with 2,000 tasks more in chains (a key, Space and the
 wheel, the least of three rounds: within 1.5 times the seed's), and
 prints how much of the main thread a busy REPL evaluation gets while 30
-Life windows animate at 200%, and what profiling costs: a step with it
-on and off (S30T at 100% and 200%, an idle step, a busy process).
+Life windows animate at 200%, what profiling costs: a step with it on and
+off (S30T at 100% and 200%, an idle step, a busy process), and the crew:
+Life at one pixel a cell, maximized on that 4K screen, and Boids at 150, 450
+and 2,000, on one thread and more.
 
 ## Conventions
 
@@ -1076,21 +1125,20 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
   every window it touches, so overlapping windows are drawn again with
   one another, and while a toast or a menu shows every frame is the
   whole screen. Windows whose extent reaches into the top bar, as tiled
-  ones do, are drawn again with the clock every second: with 30 tiled
-  Life windows, paused, that frame takes about 3.4 ms at 100% and 7.5 ms
-  at 200% (0.7 ms cascaded). With 30 animating Life windows a frame takes
-  about 4.8 ms at 100% and 11 ms at 200%; 30 overlapping windows at 200%
-  take about 43 ms a frame, and a keystroke in a REPL among four other
-  windows shows about 17 ms later at 200%. A REPL alone shows it 2.6 ms
-  later (2.9 ms on a 4K screen), and the clock's second on an empty 4K
+  ones do, are drawn again with the clock every second. With 30 animating
+  Life windows, tiled, a frame takes about 3.8 ms at 100% and 8 ms at 200%;
+  30 overlapping at 200%, each with its panel, take about 58 ms a frame,
+  and a keystroke in a REPL among four other windows shows about 16 ms
+  later at 200%. A REPL alone shows it 2.3 ms
+  later (2.8 ms on a 4K screen), and the clock's second on an empty 4K
   screen takes 0.1 ms (`tests/bench.ss`). Meanwhile a busy REPL
   evaluation runs only between frames: with 30 Life windows animating
   at 200% it gets about half of what it gets with them paused. Next on
   the compositor plan: each window drawn into an image of its own, only
   when it changes, and the images composed on the CPU, then on the GPU.
 - Every theme change paints the wallpaper again: a theme change takes
-  about 19 ms at 100% and 71 ms at 200% until its frame is drawn, so
-  dragging a color slider in Settings shows about 14 frames a second at
+  about 27 ms at 100% and 88 ms at 200% until its frame is drawn, so
+  dragging a color slider in Settings shows about 11 frames a second at
   200%.
 - The built-in styles change mostly the windows (Genera and the CADR
   every widget too, Interlisp its scroll bars), though everything is a

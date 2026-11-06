@@ -71,6 +71,7 @@
      alpha
      mix
      color->pixel
+     screen-scale
      linear-gradient
      radial-gradient
      pi
@@ -104,6 +105,11 @@
      ui-end!
      ui-handlers
      ui-tick
+     ui-area
+     ui-side-panel
+     ui-side-panel-button
+     ui-side-panel-open?
+     ui-side-panel-toggle!
      ui-pad
      ui-gap
      ui-control-height
@@ -123,6 +129,15 @@
      now-ms
      now-ns
      current-date)
+    (crew "Compute on worker threads"
+     define-worklet
+     worklet
+     crew-for
+     crew-for*
+     crew-map
+     crew-size
+     crew-size-set!
+     host-cpu-count)
     (toasts "Show notifications"
      notify)
     (launch "Open other apps"
@@ -145,9 +160,9 @@
 ;; tree app's requests against it, so a new request is a reviewed change.
 ;; Sketch is not here: the person approves it, as an app of their own.
 (define grant-tree-apps
-  '((boids window draw ui timers)
+  '((boids window draw ui timers crew)
     (clock window draw timers)
-    (life window draw timers)))
+    (life window draw ui timers crew)))
 
 ;;; ------------------------------------------------------------------ decisions
 ;;; The person's, kept in a file of plain data, one app a form:
@@ -283,8 +298,9 @@
   (let ([x (guard (c [#t #f]) (call-with-input-file path read))])
     (and (list? x) (pair? x) (eq? (car x) 'app-requests) (cdr x))))
 
-;; /apps: every name of a bundle's, shared from the world. Each app's
-;; sandbox is its child, shared from it those of its own bundles.
+;; /apps: every name of a bundle's, shared from the world, but for what an
+;; app is given of its own (grant-worklet-names). Each app's sandbox is its
+;; child, shared from it those of its own bundles.
 (defvar *grant-apps-env*
   (let ([e (env-child (env-root) 'apps 'confined)])
     (env-kind-set! e 'apps)
@@ -292,7 +308,11 @@
 
 (define (grant-apps-env) *grant-apps-env*)
 
-(env-share! *grant-apps-env* (apply append (map cddr grant-bundles)))
+(define grant-worklet-names '(define-worklet worklet))
+
+(env-share! *grant-apps-env*
+            (remp (lambda (n) (memq n grant-worklet-names))
+                  (apply append (map cddr grant-bundles))))
 
 ;; Loads path, a file of an apps folder, for src/system.ss: a tree app
 ;; that requests nothing into the world, any other into its sandbox,
@@ -331,13 +351,24 @@
 ;; and what every app holds.
 (define (grant-make-env app requests grants)
   (let-values ([(ok denied) (grant-of app)])
-    (let ([e (env-child (grant-apps-env) app 'confined)])
+    (let ([e (env-child (grant-apps-env) app 'confined)]
+          [worklets (worklet-base-environment)])
       (env-kind-set! e 'app)
       (for-each
        (lambda (b)
          (for-each
           (lambda (n)
-            (cond [(not (memq b grants))
+            (cond [(and (memq n grant-worklet-names) (memq b grants))
+                   (env-give-syntax! e n (grant-worklet-syntax n worklets)
+                                     "compiled among this app's own worklets")]
+                  [(memq n grant-worklet-names)
+                   (env-give-syntax! e n
+                                     (grant-worklet-stub
+                                      n (grant-stub app b n (memq b denied)))
+                                     (if (memq b denied)
+                                         "a stub: denied"
+                                         "a stub: not allowed yet"))]
+                  [(not (memq b grants))
                    (env-give! e n (grant-stub app b n (memq b denied))
                               (if (memq b denied)
                                   "a stub: denied"
@@ -360,7 +391,8 @@
       e)))
 
 ;; The world's name n, made for app, or #f: a window it opens is its own,
-;; or no app's where it says so (a secondary one), never another's.
+;; or no app's where it says so (a secondary one), never another's; the
+;; crew it sets is at most one thread short of the machine's.
 (define (grant-narrow app n)
   (case n
     [(open-window)
@@ -368,7 +400,44 @@
        (if (plist-ref opts 'app app)
            (apply open-window title 'app app opts)
            (apply open-window title opts)))]
+    [(crew-size-set!)
+     (lambda (k)
+       (crew-size-set! (max 0 (min k (- (host-cpu-count) 1)))))]
     [else #f]))
+
+;; An app's define-worklet (n) and worklet: compiled in env, an environment
+;; its sandbox alone has (the core base and its own worklets), so that they
+;; reach nothing of the world's or another app's, and no app's name lands
+;; in /worklets, where it would replace a worklet of the world's.
+(define (grant-worklet-syntax n env)
+  (case n
+    [(worklet)
+     (lambda (x)
+       (syntax-case x ()
+         [(_ formals body ...)
+          #`((quote #,(lambda (form) (worklet-compile 'worklet form env)))
+             '(lambda formals body ...))]))]
+    [else
+     (lambda (x)
+       (syntax-case x ()
+         [(_ (name . formals) body ...)
+          #`(define name
+              ((quote #,(lambda (form)
+                          (let ([who (syntax->datum #'name)])
+                            (define-top-level-syntax who (forwarder-to #'name)
+                                                     env)
+                            (worklet-compile who form env))))
+               '(lambda formals body ...)))]))]))
+
+;; While the crew bundle is not approved: the app still loads, and the
+;; stub raises at the first use, as any stub does.
+(define (grant-worklet-stub n stub)
+  (lambda (x)
+    (syntax-case x ()
+      [(_ (name . formals) body ...)
+       (eq? n 'define-worklet)
+       #`(define name (quote #,stub))]
+      [(_ formals body ...) #`(quote #,stub)])))
 
 (define (grant-define-app x app)
   (syntax-case x ()

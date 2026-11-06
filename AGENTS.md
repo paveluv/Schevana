@@ -104,8 +104,8 @@ before it:
 - Everything is top-level, in one shared namespace, so no plain common word
   (`part`, `rule`, `item`) names a global. Qualify a top-level name by its
   owner or subject: `theme-`, `style-`, `window-`. An app in a sandbox has a
-  namespace of its own, which stays there (`vec` in `apps/boids.ss`): the
-  world holds only its launcher (`tests/sources.ss`).
+  namespace of its own, which stays there (`boids-step` in `apps/boids.ss`):
+  the world holds only its launcher (`tests/sources.ss`).
 - In `kits/` and `services/`, every name starts with its file's: `ui-…` in
   `kits/ui.ss`, `profile-…` in `services/profile.ss`; a record of the
   file's own name may give `make-x` and `x?` (`tests/sources.ss`).

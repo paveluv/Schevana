@@ -30,7 +30,9 @@
 ;;; the description's editor, maximized, the Tree there with the seed and
 ;;; with 2,000 tasks more in chains, a busy process's share of the main
 ;;; thread while S30T animates at 200%, and the profiler's cost: a step
-;;; with profiling on and off (printed, not bounded). Fails
+;;; with profiling on and off (printed, not bounded), then the crew: Life
+;;; at one pixel a cell, maximized on that screen, and Boids at 150, 450
+;;; and 2,000, on one thread and more (printed, not bounded). Fails
 ;;; (exit 1) unless every measured step drew a frame, an idle step takes
 ;;; under 0.2 ms and uploads nothing (with Tasks open too), a keystroke in
 ;;; a long text keeps within its budget, a step of the Tree with 2,000
@@ -796,6 +798,78 @@
 (define (assert! name ok)
   (unless ok (set! failures (+ failures 1)))
   (printf "~a ~a\n" (if ok "ok  " "FAIL") name))
+
+;;; ------------------------------------------------------------------
+;;; the crew: Life at one pixel a cell, Boids at its largest
+
+;; Steps of Life, maximized on a 1920 × 1080 screen at 200% (a 4K one), one
+;; pixel a cell, a generation every tick, its controls hidden; of them, the
+;; tick's ms and the rest's (its frame and upload).
+(define (life-extreme workers n)
+  (clear-world!)
+  (crew-size-set! workers)
+  (let ([win (life)])
+    (toggle-maximize! win)
+    (steps 1 0)
+    (let* ([ui (window-ref win 'ui)]
+           [slide! (lambda (id frac)
+                     (let* ([r (ui-find ui id)]
+                            [x (+ (ui-region-x r) 8
+                                  (* frac (- (ui-region-w r) 16)))]
+                            [y (+ (ui-region-y r) (/ (ui-region-h r) 2))])
+                       (window-call win 'mouse-down x y 'left 1)
+                       (window-call win 'mouse-up x y 'left)))]
+           [speeds (top-level-value 'life-speeds
+                                    (env-environment (grant-env 'life)))])
+      (slide! 'cell 0)
+      (slide! 'speed (/ (- (length speeds) 2) (- (length speeds) 1)))
+      (window-call win 'key #\h '())
+      (steps 3 0)
+      (let ([tick-total 0] [real wm-tick!] [t0 (wall-ms)])
+        (fluid-let ([wm-tick! (lambda ()
+                                (let ([t (wall-ms)])
+                                  (real)
+                                  (set! tick-total
+                                        (+ tick-total (- (wall-ms) t)))))])
+          (steps n 0))
+        (let ([all (/ (- (wall-ms) t0) n)] [tick (/ tick-total n)])
+          (values tick (- all tick)))))))
+
+(let ([size (crew-size)])
+  (screen! 1920 1080 200)
+  (for-each
+   (lambda (workers n)
+     (let-values ([(tick rest) (life-extreme workers n)])
+       (printf "Life at one pixel a cell, maximized on 1920x1080 at 200%, \
+                on ~a thread~:p: a generation ~,1f ms, its frame and upload \
+                ~,1f ms\n" (+ workers 1) tick rest)))
+   '(0 8 47)
+   '(10 50 50))
+  (screen! 1280 800 100)
+  (clear-world!)
+  (crew-size-set! size))
+
+(let* ([box (env-environment (grant-env 'boids))]
+       [step-on (top-level-value 'boids-step-on box)]
+       [scatter (top-level-value 'boids-scatter box)]
+       [rules (top-level-value 'boids-default-rules box)]
+       [size (crew-size)])
+  (for-each
+   (lambda (n)
+     (let* ([flock (scatter n 1200 700)]
+            [time-it (lambda (workers k)
+                       (crew-size-set! workers)
+                       (step-on flock rules 1200 700)
+                       (let ([t0 (wall-ms)])
+                         (do ([i 0 (+ i 1)]) ((= i k))
+                           (step-on flock rules 1200 700))
+                         (/ (- (wall-ms) t0) k)))]
+            [one (time-it 0 10)]
+            [crew (time-it 8 50)])
+       (printf "Boids, ~a of them: a step ~,2f ms on one thread, ~,2f ms on \
+                nine\n" n one crew)))
+   '(150 450 2000))
+  (crew-size-set! size))
 
 (newline)
 (assert! "every measured step drew a frame"

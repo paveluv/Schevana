@@ -747,7 +747,8 @@
 ;; centered in the box; pin and undo (Settings' rows); minus (a
 ;; stepper's); globe folder box gear, in outline, and prompt, a REPL's
 ;; (the environments); home file drive and chevron-up (the file dialog);
-;; and a window's
+;; panel-right panel-left, a window with a pane along that side, filled in
+;; panel-right-shown panel-left-shown (a side panel's button); and a window's
 ;; buttons, close minimize maximize restore shade, filling a square box
 ;; in lines of 1 pixel. flags may hold (ink . color) and (width . w),
 ;; the line's.
@@ -792,6 +793,15 @@
       [(drive)   ; a disk's box, its light
        (line (p 0.1 0.32) (p 0.9 0.32) (p 0.9 0.72) (p 0.1 0.72) (p 0.1 0.32))
        (line (p 0.66 0.52) (p 0.76 0.52))]
+      [(panel-right panel-right-shown panel-left panel-left-shown)
+       (let ([edge (if (memq name '(panel-right panel-right-shown)) 0.6 0.4)])
+         (line (p 0.08 0.2) (p 0.92 0.2) (p 0.92 0.8) (p 0.08 0.8) (p 0.08 0.2))
+         (line (p edge 0.2) (p edge 0.8))
+         (when (memq name '(panel-right-shown panel-left-shown))
+           (let ([far (if (> edge 0.5) 0.92 0.08)])
+             (fill-polygon (list (p edge 0.2) (p far 0.2) (p far 0.8)
+                                 (p edge 0.8))
+                           ink))))]
       [(chevron-left) (line (p 0.62 0.25) (p 0.37 0.5) (p 0.62 0.75))]
       [(chevron-right) (line (p 0.38 0.25) (p 0.63 0.5) (p 0.38 0.75))]
       [(up sort-up) (triangle '(0.5 0.3) '(0.8 0.7) '(0.2 0.7))]
@@ -2057,6 +2067,58 @@
 (define-part (ui-draw-split x y h flags)
   (when (or (memq 'hover flags) (memq 'pressed flags))
     (px-fill (- x 1) y 2 h 'accent)))
+
+;;; ----------------------------------------------------------------- side panel
+;;; What an app shows beside its work, for those who want it: controls,
+;;; numbers, details. Its button hides it and shows it again; hidden, it
+;;; takes none of the room. The button is a widget of its own, laid where
+;;; the app has room for it (a toolbar, a status line), never over the work,
+;;; and best where it stays put as the pane comes and goes, so that a second
+;;; press undoes the first.
+;;;
+;;;   (ui-side-panel ui 'controls 0 0 w h 'right 240 200
+;;;     (lambda (x y w h) ...the rest...)
+;;;     (lambda (x y w h) ...the panel, its surface already there...))
+;;;   (ui-side-panel-button ui 'controls x y 24 20 'right)
+;;;   (ui-side-panel-toggle! ui 'controls)    for a key
+
+(define (ui-side-panel-open? ui id)
+  (not (ui-memo ui (list id 'hidden) #f)))
+
+;; A key's way to what the button does; the caller invalidates.
+(define (ui-side-panel-toggle! ui id)
+  (ui-memo! ui (list id 'hidden) (ui-side-panel-open? ui id)))
+
+;; In x y w h: rest, then panel, width wide at side (left or right), each
+;; called with its rectangle. Where the rest would be narrower than least
+;; there is no panel, and rest has it all.
+(define (ui-side-panel ui id x y w h side width least rest panel)
+  (let* ([fits? (>= w (+ width least))]
+         [room (if (and fits? (ui-side-panel-open? ui id)) width 0)]
+         [right? (eq? side 'right)])
+    (ui-memo! ui (list id 'fits) fits?)
+    (rest (if right? x (+ x room)) y (- w room) h)
+    (when (> room 0)
+      (let ([px (if right? (- (+ x w) room) x)])
+        (ui-draw-surface px y room h (if right? '(side) '(nav)))
+        (panel px y room h)))))
+
+;; The button of the panel id at side, in the rectangle given: its glyph a
+;; window with a pane there, filled while the panel shows. Off where the
+;; panel has no room.
+(define (ui-side-panel-button ui id x y w h side)
+  (let ([open? (ui-side-panel-open? ui id)]
+        [fits? (ui-memo ui (list id 'fits) #t)])
+    (ui-button ui (list id 'button) x y w h #f
+               (lambda () (ui-side-panel-toggle! ui id))
+               'glyph (if (eq? side 'right)
+                          (if open? 'panel-right-shown 'panel-right)
+                          (if open? 'panel-left-shown 'panel-left))
+               'quiet #t
+               'disabled (not fits?)
+               'tip (cond [(not fits?) "No room for the panel here"]
+                          [open? "Hide this panel"]
+                          [else "Show the panel"]))))
 
 ;;; ------------------------------------------------------------------ table
 

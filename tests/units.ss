@@ -698,7 +698,7 @@
     (let loop ([i 0] [g grid])
       (or (= i k)
           (let ([next (make-bytevector (* cols rows) 0)])
-            (life-step-rows! g next pix row-px dead cols rows 0 rows)
+            (life-step-rows! 0 rows g next pix row-px dead cols rows)
             (and (equal? next (life-reference g cols rows))
                  (for-all (lambda (c)
                             (= (bytevector-u32-native-ref pix (* 4 c))
@@ -716,7 +716,7 @@
       (if (= i k)
           g
           (let ([next (make-bytevector (* cols rows) 0)])
-            (life-step-rows! g next pix row-px 0 cols rows 0 rows)
+            (life-step-rows! 0 rows g next pix row-px 0 cols rows)
             (loop (+ i 1) next))))))
 
 (let ([block (life-grid "......" ".##..." ".##..." "......" "......")]
@@ -751,7 +751,7 @@
               [whole (life-reference g 72 44)]
               [part (make-bytevector (* 72 44) 9)]
               [pix (make-bytevector (* 4 72 44) 0)])
-         (life-step-rows! g part pix (life-row-pixels 44) 0 72 44 10 27)
+         (life-step-rows! 10 27 g part pix (life-row-pixels 44) 0 72 44)
          (for-all (lambda (i)
                     (= (bytevector-u8-ref part i)
                        (if (<= (* 10 72) i (- (* 27 72) 1))
@@ -766,10 +766,10 @@
        [pix (make-bytevector (* 4 72 44) 0)]
        [row-px (life-row-pixels 44)]
        [dead (color->pixel 'bg-0)])
-  (life-step-rows! g next pix row-px dead 72 44 0 44)
+  (life-step-rows! 0 44 g next pix row-px dead 72 44)
   (let ([b0 (bytes-total)])
     (do ([i 0 (fx+ i 1)]) ((fx= i 20))
-      (life-step-rows! g next pix row-px dead 72 44 0 44))
+      (life-step-rows! 0 44 g next pix row-px dead 72 44))
     (let ([b (- (bytes-total) b0)])
       ;; an 8-argument + made each generation allocate about 300 KB
       (check (format "Life's kernel allocates nothing (~a bytes in 20 \
@@ -819,14 +819,6 @@
     (check "Life's n key shows the next generation"
            (and (> (apply + (bytevector->u8-list shown)) 100)
                 (equal? (life-shown win) (life-reference shown 72 44)))))
-  (window-call win 'key #\n '())
-  (let ([b0 (bytes-total)])
-    (do ([i 0 (+ i 1)]) ((= i 20)) (window-call win 'key #\n '()))
-    (let ([kb (/ (- (bytes-total) b0) 20 1024.0)])
-      ;; the handler's call and (invalidate! win) take about 2.4 KB of it
-      (check (format "a step of Life (its n key) allocates under 8 KB: \
-                      ~,1f KB (about 300 KB before its kernel)" kb)
-             (< kb 8))))
   (close-window! win))
 
 ;; Life's draw handler into an image, next to the cells drawn the old way:
@@ -835,6 +827,7 @@
 (define (life-matches-rects? s content-w content-h)
   (canvas-create! 1280 800 s)
   (let ([win (life)])
+    (window-call win 'key #\h '())   ; the grid alone
     (resize-window! win content-w content-h)
     (let-values ([(cw ch) (window-content-size win)]
                  [(a seen) (life-drawn win s)])
@@ -868,6 +861,283 @@
 (check "Life's pixmap drawing equals per-cell rectangles at 200%"
        (and (life-matches-rects? 2 720 466) (life-matches-rects? 2 803 515)))
 
+;;; Its controls and the crew.
+
+;; What Life's status line says at a draw: (generation running? cols rows
+;; rate).
+(define (life-status win)
+  (let ([seen #f] [real (top-level-value 'life-status-text life-env)])
+    (dynamic-wind
+      (lambda ()
+        (set-top-level-value! 'life-status-text
+                              (lambda args
+                                (set! seen args)
+                                (apply real args))
+                              life-env))
+      (lambda ()
+        (let-values ([(a drawn) (life-drawn win 1)])
+          (cairo-surface-destroy a))
+        seen)
+      (lambda () (set-top-level-value! 'life-status-text real life-env)))))
+
+(define (life-generation win) (car (life-status win)))
+
+(define (life-size win)
+  (let ([st (life-status win)]) (list (caddr st) (cadddr st))))
+
+;; A press at frac of the track of win's slider id, as the mouse does it.
+(define (life-slide! win id frac)
+  (let ([r (ui-find (window-ref win 'ui) id)])
+    (let ([x (+ (ui-region-x r) 8 (* frac (- (ui-region-w r) 16)))]
+          [y (+ (ui-region-y r) (/ (ui-region-h r) 2))])
+      (window-call win 'mouse-down x y 'left 1)
+      (window-call win 'mouse-up x y 'left))))
+
+(define (life-paused!)
+  (let ([win (life)])
+    (window-call win 'key #\space '())
+    (life-size win)   ; a first draw: the panel's widgets are there
+    win))
+
+(define (life-speed! win label)
+  (let ([speeds (top-level-value 'life-speeds life-env)])
+    (life-slide! win 'speed
+                 (/ (list-index (lambda (s) (string=? (car s) label)) speeds)
+                    (- (length speeds) 1)))))
+
+(check "Life opens as many cells as ever, 72 × 44 of 10 pixels, beside its \
+        controls; H hides them and the grid has their room, and a press on \
+        the button in the status line shows them again; a window too narrow \
+        shows only the grid, the button off"
+       (let* ([win (life-paused!)] [ui (window-ref win 'ui)]
+              [press-button! (lambda ()
+                               (let* ([r (ui-find ui '(life-controls button))]
+                                      [x (+ (ui-region-x r)
+                                            (/ (ui-region-w r) 2))]
+                                      [y (+ (ui-region-y r)
+                                            (/ (ui-region-h r) 2))])
+                                 (window-call win 'mouse-down x y 'left 1)
+                                 (window-call win 'mouse-up x y 'left)))])
+         (let-values ([(w h) (window-content-size win)])
+           (let* ([opened (life-size win)] [panel? (ui-find ui 'cell)])
+             (window-call win 'key #\h '())
+             (let* ([hidden (life-size win)] [gone? (not (ui-find ui 'cell))])
+               (press-button!)
+               (let ([shown (life-size win)] [back? (ui-find ui 'cell)])
+                 (resize-window! win 300 h)
+                 (let* ([narrow (life-size win)]
+                        [none? (not (ui-find ui 'cell))])
+                   (press-button!)
+                   (life-size win)
+                   (unless (ui-side-panel-open? ui 'life-controls)
+                     (set! none? #f))
+                   (close-window! win)
+                   (and (equal? opened '(72 44)) panel? gone? back? none?
+                        (equal? shown opened)
+                        (equal? (car narrow) 30)
+                        (equal? (cadr hidden) 44)
+                        (equal? (car hidden) (quotient w 10))))))))))
+
+(check "Life: a new size keeps the cells that fit and seeds the new ground; \
+        the old size then gets back what it had"
+       (let* ([win (life-paused!)] [before (life-shown win)])
+         (let-values ([(w h) (window-content-size win)])
+           (resize-window! win (+ w 200) (+ h 100))
+           (let* ([size (life-size win)] [grown (life-shown win)]
+                  [cols (car size)] [rows (cadr size)]
+                  [kept? (for-all
+                          (lambda (y)
+                            (for-all
+                             (lambda (x)
+                               (= (bytevector-u8-ref grown (+ x (* y cols)))
+                                  (bytevector-u8-ref before (+ x (* y 72)))))
+                             (iota 72)))
+                          (iota 44))]
+                  [new (let loop ([i (* 45 cols)] [n 0])
+                         (if (= i (* cols rows))
+                             n
+                             (loop (+ i 1)
+                                   (+ n (bytevector-u8-ref grown i)))))])
+             (resize-window! win w h)
+             (let ([again (life-shown win)])
+               (close-window! win)
+               (and (equal? size '(92 54)) kept? (> new 50)
+                    (equal? again before)))))))
+
+;; Life maximized at the first stop of its cell size, its controls hidden,
+;; at scale s: the grid has the screen's own pixels, each cell one of them.
+(define (life-one-to-one? s)
+  (canvas-create! 1280 800 s)
+  (let ([win (life-paused!)])
+    (toggle-maximize! win)
+    (life-size win)
+    (life-slide! win 'cell 0)
+    (window-call win 'key #\h '())
+    (let*-values ([(cw ch) (window-content-size win)]
+                  [(size) (life-size win)]
+                  [(a seen) (life-drawn win s)])
+      (let* ([gh (- ch (life-bar-height))]
+             [ok (and (= (car size) (* s cw)) (= (cadr size) (* s gh))
+                      (apply
+                       (lambda (pixels cols rows cell ox oy)
+                         (let rows-loop ([y 0])
+                           (or (= y rows)
+                               (and (let cols-loop ([x 0])
+                                      (or (= x cols)
+                                          (and (= (pixel-at a x y)
+                                                  (pixmap-ref pixels x y))
+                                               (cols-loop (+ x 1)))))
+                                    (rows-loop (+ y 1))))))
+                       seen))])
+        (cairo-surface-destroy a)
+        (close-window! win)
+        (canvas-create! 1280 800 *host-scale*)
+        ok))))
+
+(check "Life: at the cell size's first stop, in a maximized window with its \
+        controls hidden, a cell is a pixel of the screen, at 100% and 200%"
+       (and (life-one-to-one? 1) (life-one-to-one? 2)))
+
+(check "Life: every tick is a generation each tick, though the clock stands \
+        still; flat out, several; at 12 a second, none till it is time"
+       (let ([win (life)])
+         (life-size win)
+         (fluid-let ([now-ms (let ([t (now-ms)]) (lambda () t))])
+           (window-call win 'tick)   ; maybe a generation: it was long ago
+           (let* ([ticks (lambda (k)
+                           (let ([g0 (life-generation win)])
+                             (do ([i 0 (+ i 1)]) ((= i k))
+                               (window-call win 'tick))
+                             (- (life-generation win) g0)))]
+                  [slow (ticks 3)]
+                  [every (begin (life-speed! win "every tick") (ticks 5))]
+                  [flat (begin (life-speed! win "flat out") (ticks 1))])
+             (close-window! win)
+             (printf "  ~a generations in a tick, flat out\n" flat)
+             (and (= slow 0) (= every 5) (> flat 1))))))
+
+(check "Life: a tick's generation allocates under 8 KB"
+       (let ([win (life)])
+         (life-size win)
+         (life-speed! win "every tick")
+         (window-call win 'tick)
+         (let ([b0 (bytes-total)])
+           (do ([i 0 (+ i 1)]) ((= i 20)) (window-call win 'tick))
+           (let ([kb (/ (- (bytes-total) b0) 20 1024.0)])
+             (close-window! win)
+             (printf "  ~,1f KB\n" kb)
+             (< kb 8)))))
+
+(check "Life: the threads slider sets the crew, from none to one thread short \
+        of the machine's"
+       (let* ([win (life-paused!)] [size (crew-size)])
+         (life-slide! win 'threads 0)
+         (let ([least (crew-size)])
+           (life-slide! win 'threads 1)
+           (let ([most (crew-size)])
+             (crew-size-set! size)
+             (close-window! win)
+             (and (= least 0) (= most (- (max 2 (host-cpu-count)) 1)))))))
+
+(check "Life's generation on the crew equals the reference, and its seeding \
+        is about 22% alive, no two rows alike"
+       (let* ([cols 400] [rows 300] [n (* cols rows)]
+              [g (make-bytevector n 0)] [next (make-bytevector n 0)]
+              [pix (make-bytevector (* 4 n) 0)]
+              [seeds (make-fxvector rows)]
+              [chunk ((top-level-value 'life-chunk-rows life-env) cols)])
+         (do ([y 0 (+ y 1)]) ((= y rows))
+           (fxvector-set! seeds y (random 4294967296)))
+         (crew-for* chunk 0 rows (top-level-value 'life-seed-rows! life-env)
+                    g seeds cols)
+         (let ([alive (apply + (bytevector->u8-list g))]
+               [row (lambda (y)
+                      (let ([r (make-bytevector cols)])
+                        (bytevector-copy! g (* y cols) r 0 cols)
+                        r))])
+           (crew-for* chunk 0 rows life-step-rows! g next pix
+                      (life-row-pixels rows) 0 cols rows)
+           (and (< 0.2 (/ alive n 1.0) 0.24)
+                (not (equal? (row 0) (row 1)))
+                (equal? next (life-reference g cols rows))))))
+
+(check "Life: a press draws a cell, or clears a live one, and a drag draws \
+        all the way, however far the pointer jumped"
+       (let* ([win (life-paused!)])
+         (window-call win 'key #\c '())
+         (window-call win 'mouse-down 25 25 'left 1)
+         (window-call win 'mouse-move 125 25)
+         (window-call win 'mouse-up 125 25 'left)
+         (let ([drawn (life-shown win)])
+           (window-call win 'mouse-down 25 25 'left 1)
+           (window-call win 'mouse-up 25 25 'left)
+           (let ([cleared (life-shown win)])
+             (close-window! win)
+             (and (= (apply + (bytevector->u8-list drawn)) 11)
+                  (for-all (lambda (x)
+                             (= 1 (bytevector-u8-ref drawn (+ x (* 2 72)))))
+                           '(2 3 4 5 6 7 8 9 10 11 12))
+                  (= 10 (apply + (bytevector->u8-list cleared))))))))
+
+;;; ----------------------------------------------------------------- side panel
+
+;; A side panel and its button, where it says, laid out in w × h: (values
+;; rest panel) as called, each its rectangle or #f.
+(define (side-panel-layout ui side w h)
+  (let* ([rest #f] [panel #f]
+         [drawn (image (exact w) (exact h) 1
+                       (lambda ()
+                         (ui-begin! ui)
+                         (ui-side-panel ui 'p 0 0 w (- h 20) side 100 80
+                                        (lambda r (set! rest r))
+                                        (lambda r (set! panel r)))
+                         (ui-side-panel-button ui 'p 7 (- h 20) 24 20 side)
+                         (ui-end! ui w h)))])
+    (cairo-surface-destroy drawn)
+    (values rest panel)))
+
+(let ([win (open-window "Sides" 'size '(400 . 300))])
+  (parameterize ([current-window win])
+    (let ([ui (make-ui)])
+      (define (button) (ui-find ui '(p button)))
+      (define (press-button!)
+        (let ([r (button)])
+          (ui-mouse-down ui (+ (ui-region-x r) 2) (+ (ui-region-y r) 2))
+          (ui-mouse-up ui)))
+      (let-values ([(rest panel) (side-panel-layout ui 'right 400 300)])
+        (check "a side panel opens at its side, the rest beside it, and its \
+                button is where the app laid it, over neither"
+               (and (equal? rest '(0 0 300 280))
+                    (equal? panel '(300 0 100 280))
+                    (= (ui-region-x (button)) 7) (= (ui-region-y (button)) 280)
+                    (ui-side-panel-open? ui 'p))))
+      (press-button!)
+      (let-values ([(rest panel) (side-panel-layout ui 'right 400 300)])
+        (check "a press on the button hides it and the rest has all the room; \
+                the button stays put"
+               (and (equal? rest '(0 0 400 280)) (not panel)
+                    (= (ui-region-x (button)) 7)
+                    (not (ui-side-panel-open? ui 'p)))))
+      (press-button!)
+      (let-values ([(rest panel) (side-panel-layout ui 'left 400 300)])
+        (check "a second press shows it again; on the left it all mirrors"
+               (and (equal? rest '(100 0 300 280))
+                    (equal? panel '(0 0 100 280)))))
+      (ui-side-panel-toggle! ui 'p)
+      (let-values ([(rest panel) (side-panel-layout ui 'left 400 300)])
+        (check "toggling by a key is what the button does; Tab reaches the \
+                button and Space presses it"
+               (and (equal? rest '(0 0 400 280)) (not panel)
+                    (begin (ui-focus! ui '(p button))
+                           (ui-key ui #\space '() (lambda args #f))
+                           (ui-side-panel-open? ui 'p)))))
+      (let-values ([(rest panel) (side-panel-layout ui 'right 150 300)])
+        (check "with too little room for both the rest has it all, and the \
+                button is off: a press leaves the panel as it was"
+               (and (equal? rest '(0 0 150 280)) (not panel)
+                    (begin (press-button!) (ui-side-panel-open? ui 'p)))))))
+  (close-window! win))
+
 ;;; ------------------------------------------------------------------ Boids
 ;;; The Niva version's tests (tests/flockTest.niva in boids-niva), and the
 ;;; screen's rules.
@@ -876,20 +1146,26 @@
 (define boids-box (grant-env 'boids))
 
 (check "Boids runs in its sandbox, holding its bundles, allowed by the table, \
-        and its names stay there: vec is none of the world's; its rules \
-        window is no app's"
+        and its names stay there, its worklets too; its rules window is no \
+        app's"
        (let* ([held (environment-symbols (env-environment boids-box))]
               [world (environment-symbols *world-env*)]
               [win (boids)]
               [rw (find-window "Boids — Rules")]
               [ok (and (equal? (env-path boids-box) "/apps/boids")
                        (equal? (grant-requested 'boids)
-                               '(window draw ui timers))
+                               '(window draw ui timers crew))
                        (null? (grant-undecided 'boids))
                        (memq 'ui-slider held) (not (memq 'notify held))
-                       (memq 'vec held) (memq 'boids-step held)
-                       (not (memq 'vec world)) (not (memq 'vec+ world))
+                       (memq 'boids-step held) (memq 'boids-steer! held)
                        (not (memq 'boids-step world))
+                       (not (memq 'boids-steer! world))
+                       (not (memq 'boids-steer!
+                                  (environment-symbols
+                                   *worklet-environment*)))
+                       (worklet? (top-level-value
+                                  'boids-steer!
+                                  (env-environment boids-box)))
                        (eq? (window-app win) 'boids)
                        (not (window-app rw)))])
          (close-window! win)
@@ -900,79 +1176,232 @@
 (for-each (lambda (n)
             (define-top-level-syntax n
               (forwarder-to (datum->syntax (env-anchor boids-box) n))))
-          '(make-vec vec? vec-x vec-y vec-dot make-boid boid? boid-position
-            boid-velocity boid-neighbors boid-sees? boid-step-aside
-            boid-back-off boids-step boids-demo boids-default-rules boids-rule
+          '(boid-x boid-y boid-vx boid-vy boids-size boids-steer!
+            boids-steering boids-step boids-demo boids-default-rules boids-rule
             boids-resize boids-scatter boids-step-on boids-random-rules
             boids-ranges boids-set-rule boids-slider-value boids-slider-t
             boids-draw-rules boids-max-count))
 
-(define (test-boid x y vx vy) (make-boid (make-vec x y) (make-vec vx vy)))
+;; A flock as a list of (x y vx vy), and the flocking the obvious way on
+;; such lists, rule by rule, the flonum operations in the Niva version's
+;; order: the reference, to the last digit. Its rules are plain procedures
+;; to read; the app's are one loop over flat numbers, for the crew.
+(define (ref-flock flock)
+  (let loop ([l (flvector->list flock)] [acc '()])
+    (if (null? l)
+        (reverse acc)
+        (loop (list-tail l 4) (cons (list-head l 4) acc)))))
+(define (ref-pos b) (cons (car b) (cadr b)))
+(define (ref-vel b) (cons (caddr b) (cadddr b)))
+(define ref-zero '(0.0 . 0.0))
+(define (ref+ a b) (cons (+ (car a) (car b)) (+ (cdr a) (cdr b))))
+(define (ref- a b) (cons (- (car a) (car b)) (- (cdr a) (cdr b))))
+(define (ref* v k) (cons (* (car v) k) (* (cdr v) k)))
+(define (ref/ v k) (cons (/ (car v) k) (/ (cdr v) k)))
+(define (ref-dot a b) (+ (* (car a) (car b)) (* (cdr a) (cdr b))))
+(define (ref-dist2 a b)
+  (let ([dx (- (car a) (car b))] [dy (- (cdr a) (cdr b))])
+    (+ (* dx dx) (* dy dy))))
+(define (ref-mean vs) (ref/ (fold-left ref+ ref-zero vs) (inexact (length vs))))
+(define (ref-sees? b other fov)
+  (let* ([v (ref-vel b)] [h2 (ref-dot v v)])
+    (or (= h2 0.0) (>= fov 360.0)
+        (let* ([to (ref- (ref-pos other) (ref-pos b))]
+               [lengths (sqrt (* h2 (ref-dot to to)))]
+               [half (/ (* (/ fov 2.0) pi) 180.0)])
+          (> (ref-dot v to) (* (cos half) lengths))))))
+(define (ref-neighbors b flock r fov)
+  (let ([r2 (* r r)])
+    (filter (lambda (o)
+              (let ([d2 (ref-dist2 (ref-pos b) (ref-pos o))])
+                (and (> d2 0.0) (< d2 r2) (ref-sees? b o fov))))
+            flock)))
+(define (ref-steer b flock rules)
+  (define (rule key) (boids-rule rules key))
+  (define (seen radius fov) (ref-neighbors b flock (rule radius) fov))
+  (define (push weight thunk)
+    (let ([w (rule weight)]) (if (= w 0.0) ref-zero (ref* (thunk) w))))
+  (define (mean-from vs own)
+    (if (null? vs) ref-zero (ref- (ref-mean vs) own)))
+  (let* ([p (ref-pos b)] [v (ref-vel b)] [fov (rule 'view-angle)]
+         [cone (min (rule 'blocker-cone) fov)]
+         [next
+          (fold-left
+           ref+ v
+           (list
+            (push 'cohesion
+                  (lambda ()
+                    (mean-from (map ref-pos (seen 'cohesion-radius fov)) p)))
+            (push 'alignment
+                  (lambda ()
+                    (mean-from (map ref-vel (seen 'alignment-radius fov)) v)))
+            (push 'separation
+                  (lambda ()
+                    (let ([r2 (* (rule 'separation-radius)
+                                 (rule 'separation-radius))])
+                      (fold-left
+                       (lambda (sum o)
+                         (let ([d2 (ref-dist2 p (ref-pos o))])
+                           (if (and (> d2 0.0) (< d2 r2))
+                               (ref+ sum (ref- p (ref-pos o)))
+                               sum)))
+                       ref-zero flock))))
+            (push 'clear-view
+                  (lambda ()
+                    (fold-left
+                     (lambda (sum o)
+                       (let* ([away (ref- p (ref-pos o))]
+                              [d (sqrt (ref-dot away away))]
+                              [turn (cons (- 0.0 (cdr away)) (car away))]
+                              [side (if (< (ref-dot v turn) 0.0)
+                                        (ref* turn -1.0)
+                                        turn)])
+                         (ref+ sum (ref/ side d))))
+                     ref-zero (seen 'blocker-radius cone))))
+            (push 'back-off
+                  (lambda ()
+                    (fold-left
+                     (lambda (sum o)
+                       (let* ([away (ref- p (ref-pos o))]
+                              [d (sqrt (ref-dot away away))])
+                         (ref+ sum (ref/ away d))))
+                     ref-zero (seen 'blocker-radius cone))))))]
+         [moved (ref+ p next)])
+    (list (car moved) (cdr moved) (car next) (cdr next))))
+(define (ref-step flock rules)
+  (map (lambda (b) (ref-steer b flock rules)) flock))
+;; A frame on a w × h screen: the speed limits, then the wrap.
+(define (ref-step-on flock rules w h)
+  (let ([lo (boids-rule rules 'min-speed)] [hi (boids-rule rules 'max-speed)])
+    (map (lambda (b)
+           (let* ([v (ref-vel b)] [s2 (ref-dot v v)]
+                  [v (if (and (> s2 0.0) (< s2 (* lo lo)))
+                         (ref* v (/ lo (sqrt s2)))
+                         v)]
+                  [s2 (ref-dot v v)]
+                  [v (if (> s2 (* hi hi)) (ref* v (/ hi (sqrt s2))) v)])
+             (list (mod (car b) w) (mod (cadr b) h) (car v) (cdr v))))
+         (ref-step flock rules))))
 
-(define (test-boid-numbers b)
-  (let ([p (boid-position b)] [v (boid-velocity b)])
-    (list (vec-x p) (vec-y p) (vec-x v) (vec-y v))))
+(define test-flock-of list->flvector)
+
+;; The default rules with some set: (test-rules 'cohesion 1.0 ...).
+(define (test-rules . sets)
+  (let loop ([rules boids-default-rules] [sets sets])
+    (if (null? sets)
+        rules
+        (loop (boids-set-rule rules (car sets) (cadr sets)) (cddr sets)))))
 
 ;; To the last digit, so any change to the rules shows. They are the Niva
 ;; version's numbers: the same flonum operations, in the same order.
 (check "Boids: the demo's first step is the Niva version's"
-       (equal? (map test-boid-numbers
-                    (boids-step boids-demo boids-default-rules))
-               '((0.9869999999999999 0.054 0.9869999999999999 0.054)
-                 (1.0 2.002 0.0 1.002)
-                 (3.003 0.999 1.003 0.999))))
+       (equal? (flvector->list (boids-step boids-demo boids-default-rules))
+               '(0.9869999999999999 0.054 0.9869999999999999 0.054
+                 1.0 2.002 0.0 1.002
+                 3.003 0.999 1.003 0.999)))
 
 (check "Boids: a step leaves the flock it steps as it was"
-       (let ([before (map test-boid-numbers boids-demo)])
+       (let ([before (flvector->list boids-demo)])
          (boids-step boids-demo boids-default-rules)
-         (equal? (map test-boid-numbers boids-demo) before)))
+         (equal? (flvector->list boids-demo) before)))
 
 (check "Boids: a boid is not its own neighbor"
-       (let ([b (test-boid 0.0 0.0 1.0 0.0)])
-         (null? (boid-neighbors b (list b) 50.0 360.0))))
+       (equal? (flvector->list
+                (boids-step (flvector 0.0 0.0 1.0 0.0)
+                            (test-rules 'cohesion 1.0 'alignment 1.0
+                                        'separation 1.0 'view-angle 360.0
+                                        'clear-view 1.0 'back-off 1.0)))
+               '(1.0 0.0 1.0 0.0)))
 
-;; Heading right, with one boid ahead, one to the side and one behind.
+;; Heading right, with one boid ahead, one to the side and one behind:
+;; whether a boid at (x, y) pulls it, with only cohesion on.
 (check "Boids: what the view angle lets a boid see"
-       (let ([b (test-boid 0.0 0.0 1.0 0.0)]
-             [ahead (test-boid 3.0 0.0 1.0 0.0)]
-             [side (test-boid 0.0 3.0 1.0 0.0)]
-             [behind (test-boid -3.0 0.0 1.0 0.0)])
-         (and (boid-sees? b ahead 180.0)
-              (not (boid-sees? b side 180.0))
-              (not (boid-sees? b behind 180.0))
-              (boid-sees? b side 270.0)
-              (not (boid-sees? b behind 270.0))
-              (boid-sees? b behind 360.0)
-              (boid-sees? b ahead 10.0))))
+       (let ([sees? (lambda (x y fov)
+                      (let ([next (boids-step
+                                   (flvector 0.0 0.0 1.0 0.0 x y 1.0 0.0)
+                                   (test-rules 'alignment 0.0 'separation 0.0
+                                               'cohesion 1.0 'view-angle fov))])
+                        (not (and (= (boid-vx next 0) 1.0)
+                                  (= (boid-vy next 0) 0.0)))))])
+         (and (sees? 3.0 0.0 180.0)
+              (not (sees? 0.0 3.0 180.0))
+              (not (sees? -3.0 0.0 180.0))
+              (sees? 0.0 3.0 270.0)
+              (not (sees? -3.0 0.0 270.0))
+              (sees? -3.0 0.0 360.0)
+              (sees? 3.0 0.0 10.0))))
 
-;; Heading right: of these, only the boid close and straight ahead.
+;; Heading right: of these, only the boid close and straight ahead. Back
+;; off, on alone, takes a unit of velocity straight back.
 (check "Boids: blockers are close and ahead"
-       (let* ([b (test-boid 0.0 0.0 1.0 0.0)]
-              [ahead (test-boid 10.0 0.0 1.0 0.0)]
-              [flock (list b ahead
-                           (test-boid 0.0 10.0 1.0 0.0)     ; to the side
-                           (test-boid -10.0 0.0 1.0 0.0)    ; behind
-                           (test-boid 50.0 0.0 1.0 0.0))])  ; too far
-         (equal? (boid-neighbors b flock 40.0 90.0) (list ahead))))
+       (let ([next (boids-step
+                    (flvector 0.0 0.0 1.0 0.0
+                              10.0 0.0 1.0 0.0      ; ahead
+                              0.0 10.0 1.0 0.0      ; to the side
+                              -10.0 0.0 1.0 0.0     ; behind
+                              50.0 0.0 1.0 0.0)     ; too far
+                    (test-rules 'cohesion 0.0 'alignment 0.0 'separation 0.0
+                                'back-off 1.0 'view-angle 360.0))])
+         (and (= (boid-vx next 0) 0.0) (= (boid-vy next 0) 0.0))))
 
 ;; One unit sideways, and one unit back. Heading a little upward, the
 ;; sideways step goes up too.
 (check "Boids: clear view steps aside, back off steps back"
-       (let ([b (test-boid 0.0 0.0 1.0 0.0)]
-             [climbing (test-boid 0.0 0.0 1.0 0.2)]
-             [ahead (list (test-boid 10.0 0.0 1.0 0.0))])
-         (let ([numbers (lambda (v) (list (vec-x v) (vec-y v)))])
-           (and (equal? (numbers (boid-step-aside b ahead)) '(0.0 -1.0))
-                (equal? (numbers (boid-back-off b ahead)) '(-1.0 0.0))
-                (> (vec-y (boid-step-aside climbing ahead)) 0.0)))))
+       (let ([quiet (lambda (key)
+                      (test-rules 'cohesion 0.0 'alignment 0.0 'separation 0.0
+                                  key 1.0))])
+         (let ([aside (boids-step (flvector 0.0 0.0 1.0 0.0 10.0 0.0 1.0 0.0)
+                                  (quiet 'clear-view))]
+               [back (boids-step (flvector 0.0 0.0 1.0 0.0 10.0 0.0 1.0 0.0)
+                                 (quiet 'back-off))]
+               [climbing (boids-step
+                          (flvector 0.0 0.0 1.0 0.2 10.0 0.0 1.0 0.0)
+                          (quiet 'clear-view))])
+           (and (= (boid-vx aside 0) 1.0) (= (boid-vy aside 0) -1.0)
+                (= (boid-vx back 0) 0.0) (= (boid-vy back 0) 0.0)
+                (> (boid-vy climbing 0) 0.2)))))
+
+(random-seed 2024)
+(check "Boids' steps are the reference's to the last digit, under the \
+        default rules and random ones, on the crew and on the caller alone"
+       (let ([size (crew-size)])
+         (define (agree? workers)
+           (crew-size-set! workers)
+           (for-all
+            (lambda (trial)
+              (let ([rules (if (= trial 0)
+                               boids-default-rules
+                               (boids-random-rules))]
+                    [flock (boids-scatter 300 400 300)])
+                (equal? (ref-flock (boids-step-on flock rules 400 300))
+                        (ref-step-on (ref-flock flock) rules 400.0 300.0))))
+            (iota 12)))
+         (let ([ok (and (agree? 8) (agree? 0))])
+           (crew-size-set! size)
+           ok)))
+
+(check "Boids: a step's worklet allocates only its sums"
+       (let* ([flock (boids-scatter 300 200 200)]
+              [next (make-flvector (flvector-length flock))]
+              [rules (boids-steering
+                      (test-rules 'separation 0.5 'clear-view 0.5 'back-off 0.5
+                                  'view-angle 300.0))])
+         (boids-steer! 0 300 flock next rules)
+         (let ([b0 (bytes-total)])
+           (do ([i 0 (fx+ i 1)]) ((fx= i 20))
+             (boids-steer! 0 300 flock next rules))
+           (let ([b (- (bytes-total) b0)])
+             (printf "  ~a bytes in 20 steps of 300 boids\n" b)
+             (< b 4096)))))
 
 (check "Boids: resizing a flock keeps the boids already there"
        (let ([fewer (boids-resize boids-demo 2 100 100)]
-             [more (boids-resize boids-demo 5 100 100)])
-         (and (= (length fewer) 2) (= (length more) 5)
-              (equal? fewer (list-head boids-demo 2))
-              (equal? (list-head more 3) boids-demo)
-              (equal? (boids-resize boids-demo 3 100 100) boids-demo))))
+             [more (boids-resize boids-demo 5 100 100)]
+             [first-numbers (lambda (f n) (list-head (flvector->list f) n))])
+         (and (= (boids-size fewer) 2) (= (boids-size more) 5)
+              (equal? (flvector->list fewer) (first-numbers boids-demo 8))
+              (equal? (first-numbers more 12) (flvector->list boids-demo))
+              (eq? (boids-resize boids-demo 3 100 100) boids-demo))))
 
 ;; 50 frames of 150 boids.
 (check "Boids: a frame keeps every boid on screen, within the speed limits"
@@ -982,22 +1411,20 @@
            (or (= i 50)
                (let ([next (boids-step-on flock boids-default-rules 900 600)])
                  (and (for-all
-                       (lambda (b)
-                         (let* ([p (boid-position b)] [v (boid-velocity b)]
-                                [s (sqrt (vec-dot v v))])
-                           (and (<= 0.0 (vec-x p) 900.0)
-                                (<= 0.0 (vec-y p) 600.0)
+                       (lambda (k)
+                         (let ([s (sqrt (+ (expt (boid-vx next k) 2)
+                                           (expt (boid-vy next k) 2)))])
+                           (and (<= 0.0 (boid-x next k) 900.0)
+                                (<= 0.0 (boid-y next k) 600.0)
                                 (<= (- lo 1e-9) s (+ hi 1e-9)))))
-                       next)
+                       (iota 150))
                       (loop next (+ i 1))))))))
 
-;; The record types are nongenerative: loading the file again keeps them,
-;; so a flock in flight still works with the new procedures.
-(check "Boids: boids made before the file loads again still work after"
-       (let ([b (car boids-demo)])
+;; A flock is plain numbers: loading the file again leaves it good.
+(check "Boids: a flock made before the file loads again still steps after"
+       (let ([flock boids-demo])
          (load-source "apps/boids.ss")
-         (and (boid? b) (vec? (boid-position b))
-              (= (length (boids-step (list b) boids-default-rules)) 1))))
+         (= (boids-size (boids-step flock boids-default-rules)) 3)))
 
 (check "Boids: random rules are the rules, each within its range"
        (let loop ([i 0])
@@ -1030,8 +1457,8 @@
   (check "Boids: S scatters as many boids anew"
          (let ([before (flock)])
            (key! #\s)
-           (and (= (length (flock)) (length before))
-                (not (exists eq? (flock) before)))))
+           (and (= (boids-size (flock)) (boids-size before))
+                (not (equal? (flock) before)))))
   (check "Boids: Space holds the flock still, and again sets it going"
          (let ([before (begin (key! #\space) (flock))])
            (tick-later!)
@@ -1120,7 +1547,7 @@
   (check "Boids: its count slider resizes the flock"
          (begin
            (press! (rules-win) 'count)
-           (= (length (window-ref win 'flock))
+           (= (boids-size (window-ref win 'flock))
               (round (+ 10 (/ (- boids-max-count 10) 2))))))
   (check "Boids: H closes the rules window and opens it again"
          (begin
@@ -7639,6 +8066,81 @@
                 (raises? (lambda () (app-launch! 'units-mine)))
                 (not (memq 'open-window
                            (environment-symbols (env-environment e))))))))
+
+;;; An app's worklets (services/grant.ss).
+
+(define (units-crew-env) (grant-env 'units-crew))
+
+(let ([dir (string-append out-dir "/apps")])
+  (call-with-output-file (string-append dir "/units-crew.ss")
+    (lambda (p)
+      (for-each
+       (lambda (form) (write form p) (newline p))
+       '((app-requests crew)
+         ;; a name of the world's worklets, and of nothing of this app's
+         (define-worklet (crew-map-chunk x) (fx* x 100))
+         (define-worklet (units-app-twice x) (fx* x 2))
+         (define-worklet (units-app-quad x)
+           (units-app-twice (units-app-twice x)))
+         (define-worklet (units-app-fact n)
+           (if (fx= n 0) 1 (fx* n (units-app-fact (fx- n 1)))))
+         (define (units-app-plain x) x)
+         (define-app (units-crew) "Crew" (void)))))
+    'replace)
+  (grant-load-app! (string-append dir "/units-crew.ss")))
+
+(check "an app not yet allowed the crew still loads, and its worklets and \
+        the crew raise at the first use, naming the bundle"
+       (let ([e (units-crew-env)]
+             [needs? (lambda (form)
+                       (guard (c [(grant-needed? c)
+                                  (eq? (grant-needed-bundle c) 'crew)])
+                         (env-eval (units-crew-env) form)
+                         #f))])
+         (and e (needs? '(units-app-quad 3)) (needs? '(crew-size))
+              (needs? '((worklet (x) x) 1)))))
+
+(grant-decide! 'units-crew '(crew) '())
+
+(check "an app's worklets are its own: compiled in its sandbox's environment, \
+        out of /worklets, shadowing none of the world's; each sees the \
+        others, itself and their redefinitions; the crew runs them"
+       (let ([e (units-crew-env)])
+         (let ([before (env-eval e '(units-app-quad 3))])
+           (env-eval e '(define-worklet (units-app-twice x) (fx* x 3)))
+           (and (= before 12)
+                (= (env-eval e '(units-app-quad 1)) 9)
+                (= (env-eval e '(units-app-fact 5)) 120)
+                (= (env-eval e '((worklet (x) (fx+ x 1)) 1)) 2)
+                (worklet? (env-eval e 'units-app-twice))
+                (equal? (env-eval e '(crew-map units-app-twice '(1 2 3)))
+                        '(3 6 9))
+                (not (memq 'units-app-quad
+                           (environment-symbols *worklet-environment*)))
+                (not (memq 'units-app-quad (environment-symbols *world-env*)))
+                (equal? (crew-map crew-test-square '(1 2 3)) '(1 4 9))))))
+
+(check "an app's worklet reaches only what any worklet does and its own: not \
+        the world's, not its sandbox's other names, not another app's; the \
+        crew refuses a plain procedure of it"
+       (let ([e (units-crew-env)])
+         (define (refused? form)
+           (raises? (lambda () (env-eval e form))))
+         (and (refused? '(worklet (x) (open-window x)))
+              (refused? '(worklet (x) (units-app-plain x)))
+              (refused? '(worklet (x) (life-step-rows! x)))
+              (refused? '(worklet (x) (set! units-app-twice x)))
+              (refused? '(define-worklet (units-app-bad)
+                           (set! units-app-gone 1)))
+              (refused? '(crew-for 0 10 (lambda (lo hi) #f)))
+              (refused? '(crew-map units-app-plain '(1))))))
+
+(check "an app sets the crew no bigger than one thread short of the machine"
+       (let ([size (crew-size)])
+         (env-eval (units-crew-env) '(crew-size-set! 100000))
+         (let ([most (crew-size)])
+           (crew-size-set! size)
+           (= most (- (host-cpu-count) 1)))))
 
 ;;; Vats (services/vat.ss): threads with a mailbox and a sandbox; jobs,
 ;;; their deliveries on main, and their kills.

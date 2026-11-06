@@ -9,9 +9,11 @@
 ;;; Computational Beauty of Nature" (MIT Press, 1998), written from his
 ;;; description, not copied from his (GPL) source.
 ;;;
-;;; The simulation is pure: a flock is a list of boids, and a step makes a
-;;; new one. The window keeps the flock and its rules, as plain data:
-;;; (boid-position (car (window-ref win 'flock))) => a vec
+;;; The simulation is pure: a flock is an flvector, four numbers a boid
+;;; (where it is, where it's heading), and a step makes a new one, on the
+;;; crew when the flock is big enough. The window keeps the flock and its
+;;; rules, as plain data:
+;;; (boid-x (window-ref win 'flock) 0)
 ;;; (window-set! win 'rules (boids-random-rules))
 ;;; R: random rules · D: the defaults · S: scatter · Space: pause
 ;;; H: the rules window, beside the flock (it closes with the flock)
@@ -19,111 +21,16 @@
 ;;; It runs in a sandbox (services/grant.ss), where the names above are: a
 ;;; REPL in /apps/boids has them.
 
-(app-requests window draw ui timers)
-
-;;; ------------------------------------------------------------------ vectors
-
-;; A 2D vector of flonums: a position, a velocity or a push.
-(define-record-type vec
-  (nongenerative schevana-boids-vec)
-  (fields x y))
-
-(define vec-zero (make-vec 0.0 0.0))
-
-(define (vec+ a b) (make-vec (+ (vec-x a) (vec-x b)) (+ (vec-y a) (vec-y b))))
-(define (vec- a b) (make-vec (- (vec-x a) (vec-x b)) (- (vec-y a) (vec-y b))))
-(define (vec* v k) (make-vec (* (vec-x v) k) (* (vec-y v) k)))
-(define (vec/ v k) (make-vec (/ (vec-x v) k) (/ (vec-y v) k)))
-
-(define (vec-dot a b) (+ (* (vec-x a) (vec-x b)) (* (vec-y a) (vec-y b))))
-
-;; The squared distance, so neighbor checks need no square root. Every
-;; pair of boids is checked, so it is worked out on the components, in
-;; flonums: a vec for the difference, and the flonums Chez boxes for it,
-;; were most of what a step allocated (99 MB at 500 boids).
-(define (vec-dist2 a b)
-  (let ([dx (fl- (vec-x a) (vec-x b))] [dy (fl- (vec-y a) (vec-y b))])
-    (fl+ (fl* dx dx) (fl* dy dy))))
-
-;; The centroid of a non-empty list of points.
-(define (vec-mean vs) (vec/ (fold-left vec+ vec-zero vs) (inexact (length vs))))
+(app-requests window draw ui timers crew)
 
 ;;; ------------------------------------------------------------------ boids
 
-;; One bird: where it is and where it's heading.
-(define-record-type boid
-  (nongenerative schevana-boids-boid)
-  (fields position velocity))
+(define (boids-size flock) (quotient (flvector-length flock) 4))
 
-;; Other is in b's field of view: fov degrees wide, centered on b's
-;; heading. A boid standing still sees everything.
-(define (boid-sees? b other fov)
-  (let* ([v (boid-velocity b)] [h2 (vec-dot v v)])
-    (or (= h2 0.0) (>= fov 360.0)
-        (let* ([to-other (vec- (boid-position other) (boid-position b))]
-               [lengths (sqrt (* h2 (vec-dot to-other to-other)))]
-               [half-angle (/ (* (/ fov 2.0) pi) 180.0)])
-          (> (vec-dot v to-other) (* (cos half-angle) lengths))))))
-
-;; The boids in flock that b can see closer than r, not counting itself.
-(define (boid-neighbors b flock r fov)
-  (let ([r2 (* r r)])
-    (filter (lambda (other)
-              (let ([d2 (vec-dist2 (boid-position b) (boid-position other))])
-                (and (> d2 0.0) (< d2 r2) (boid-sees? b other fov))))
-            flock)))
-
-;; The rules' raw pushes. boid-steer weighs them and adds them up.
-
-;; Toward the center of the neighbors.
-(define (boid-cohere b others)
-  (if (null? others)
-      vec-zero
-      (vec- (vec-mean (map boid-position others)) (boid-position b))))
-
-;; Toward the neighbors' average velocity.
-(define (boid-align b others)
-  (if (null? others)
-      vec-zero
-      (vec- (vec-mean (map boid-velocity others)) (boid-velocity b))))
-
-;; Away from every boid in flock closer than r, seen or not: you feel a
-;; bump from behind.
-(define (boid-separate b flock r)
-  (let ([p (boid-position b)] [r2 (* r r)])
-    (fold-left (lambda (sum other)
-                 (let ([d2 (vec-dist2 p (boid-position other))])
-                   (if (and (> d2 0.0) (< d2 r2))
-                       (vec+ sum (vec- p (boid-position other)))
-                       sum)))
-               vec-zero flock)))
-
-;; A unit step sideways out from behind each blocker: square to the line
-;; between them, on the side b is heading.
-(define (boid-step-aside b blockers)
-  (let ([p (boid-position b)] [v (boid-velocity b)])
-    (fold-left (lambda (sum other)
-                 (let* ([away (vec- p (boid-position other))]
-                        [d (sqrt (vec-dot away away))]
-                        [quarter-turn (make-vec (- 0.0 (vec-y away))
-                                                (vec-x away))]
-                        [side (if (< (vec-dot v quarter-turn) 0.0)
-                                  (vec* quarter-turn -1.0)
-                                  quarter-turn)])
-                   (vec+ sum (vec/ side d))))
-               vec-zero blockers)))
-
-;; A unit step straight away from each blocker.
-(define (boid-back-off b blockers)
-  (let ([p (boid-position b)])
-    (fold-left (lambda (sum other)
-                 (let* ([away (vec- p (boid-position other))]
-                        [d (sqrt (vec-dot away away))])
-                   (vec+ sum (vec/ away d))))
-               vec-zero blockers)))
-
-(define (boid-advance b velocity)
-  (make-boid (vec+ (boid-position b) velocity) velocity))
+(define (boid-x flock i) (flvector-ref flock (* 4 i)))
+(define (boid-y flock i) (flvector-ref flock (+ 1 (* 4 i))))
+(define (boid-vx flock i) (flvector-ref flock (+ 2 (* 4 i))))
+(define (boid-vy flock i) (flvector-ref flock (+ 3 (* 4 i))))
 
 ;;; ------------------------------------------------------------------ rules
 
@@ -214,87 +121,204 @@
 
 ;;; ------------------------------------------------------------------ flocks
 
-;; b's next state, given everyone's current state.
-(define (boid-steer b flock rules)
-  (define (rule key) (boids-rule rules key))
-  (define (seen radius fov) (boid-neighbors b flock (rule radius) fov))
-  ;; a rule's push times its weight, worked out only for a weight
-  (define (push weight thunk)
-    (let ([w (rule weight)]) (if (= w 0.0) vec-zero (vec* (thunk) w))))
-  (let* ([fov (rule 'view-angle)]
-         ;; blockers are in a cone ahead: a boid can't react to what it
-         ;; can't see
-         [cone (min (rule 'blocker-cone) fov)])
-    (boid-advance b
-      (fold-left vec+ (boid-velocity b)
-        (list (push 'cohesion
-                    (lambda () (boid-cohere b (seen 'cohesion-radius fov))))
-              (push 'alignment
-                    (lambda () (boid-align b (seen 'alignment-radius fov))))
-              (push 'separation
-                    (lambda ()
-                      (boid-separate b flock (rule 'separation-radius))))
-              (push 'clear-view
-                    (lambda ()
-                      (boid-step-aside b (seen 'blocker-radius cone))))
-              (push 'back-off
-                    (lambda ()
-                      (boid-back-off b (seen 'blocker-radius cone)))))))))
+;; The rules as a step reads them, worked out once: each rule's weight and
+;; reach, the squared radius, 0 for a rule without weight, so that nothing
+;; is in reach; the cosines of half a field of view and of half the
+;; blockers' cone, which is in view too: a boid can't react to what it
+;; can't see (all around, -inf: any heading beats it); and the longest
+;; reach.
+(define (boids-steering rules)
+  (define (rule key) (inexact (boids-rule rules key)))
+  (define (reach weight radius)
+    (if (= (rule weight) 0.0) 0.0 (* (rule radius) (rule radius))))
+  (define (half-cosine angle)
+    (if (>= angle 360.0) -inf.0 (cos (/ (* (/ angle 2.0) pi) 180.0))))
+  (let ([reaches (list (reach 'cohesion 'cohesion-radius)
+                       (reach 'alignment 'alignment-radius)
+                       (reach 'separation 'separation-radius)
+                       (reach 'clear-view 'blocker-radius)
+                       (reach 'back-off 'blocker-radius))]
+        [fov (rule 'view-angle)])
+    (apply flvector
+           (rule 'cohesion)
+           (rule 'alignment)
+           (rule 'separation)
+           (rule 'clear-view)
+           (rule 'back-off)
+           (half-cosine fov)
+           (half-cosine (min (rule 'blocker-cone) fov))
+           (apply max reaches)
+           reaches)))
+
+;; Boids [lo, hi) of flock steered into next, each by everyone's current
+;; state: its velocity plus each rule's push times its weight, and its
+;; position moved by that. Every pair of boids is looked at, so the loop
+;; over them keeps its flonums unboxed: nothing crosses a call or sits in
+;; a variable a loop closes over, and what adds up lives in sums, the one
+;; thing a call allocates.
+(define-worklet (boids-steer! lo hi flock next rules)
+  (define n (fxquotient (flvector-length flock) 4))
+  (define sums (make-flvector 12 0.0))
+  (define-syntax add!
+    (syntax-rules ()
+      [(_ k v) (flvector-set! sums k (fl+ (flvector-ref sums k) v))]))
+  (define-syntax sum (syntax-rules () [(_ k) (flvector-ref sums k)]))
+  (define-syntax rule (syntax-rules () [(_ k) (flvector-ref rules k)]))
+  ;; toward the mean of what is summed at k and k+1, over the count at c
+  (define-syntax toward
+    (syntax-rules ()
+      [(_ k c own weight)
+       (if (fl> (sum c) 0.0)
+           (fl* (fl- (fl/ (sum k) (sum c)) own) (rule weight))
+           0.0)]))
+  (do ([i lo (fx+ i 1)]) ((fx= i hi))
+    (flvector-fill! sums 0.0)
+    (let ([at (fx* 4 i)])
+      (do ([j 0 (fx+ j 1)]) ((fx= j n))
+        (let* ([o (fx* 4 j)]
+               [dx (fl- (flvector-ref flock o) (flvector-ref flock at))]
+               [dy (fl- (flvector-ref flock (fx+ o 1))
+                        (flvector-ref flock (fx+ at 1)))]
+               [d2 (fl+ (fl* dx dx) (fl* dy dy))])
+          ;; not itself, and in somebody's reach: most pairs stop here
+          (when (and (fl> d2 0.0) (fl< d2 (rule 7)))
+            (let* ([vx (flvector-ref flock (fx+ at 2))]
+                   [vy (flvector-ref flock (fx+ at 3))]
+                   [h2 (fl+ (fl* vx vx) (fl* vy vy))]
+                   [ahead (fl+ (fl* vx dx) (fl* vy dy))]
+                   [lengths (flsqrt (fl* h2 d2))]
+                   [away-x (fl- 0.0 dx)]
+                   [away-y (fl- 0.0 dy)])
+              ;; in the field of view whose half-cosine is rule k: a boid
+              ;; standing still sees everything
+              (let-syntax ([sees? (syntax-rules ()
+                                    [(_ k)
+                                     (or (fl= h2 0.0)
+                                         (fl> ahead (fl* (rule k) lengths)))])])
+                ;; toward the center of the neighbors
+                (when (and (fl< d2 (rule 8)) (sees? 5))
+                  (add! 0 (flvector-ref flock o))
+                  (add! 1 (flvector-ref flock (fx+ o 1)))
+                  (add! 2 1.0))
+                ;; toward their average velocity
+                (when (and (fl< d2 (rule 9)) (sees? 5))
+                  (add! 3 (flvector-ref flock (fx+ o 2)))
+                  (add! 4 (flvector-ref flock (fx+ o 3)))
+                  (add! 5 1.0))
+                ;; away from every boid this close, seen or not: you feel
+                ;; a bump from behind
+                (when (fl< d2 (rule 10))
+                  (add! 6 away-x)
+                  (add! 7 away-y))
+                ;; a unit step sideways out from behind each blocker:
+                ;; square to the line between them, on the side it heads
+                (when (and (fl< d2 (rule 11)) (sees? 6))
+                  (let* ([turn-x (fl- 0.0 away-y)]
+                         [side (if (fl< (fl+ (fl* vx turn-x) (fl* vy away-x))
+                                        0.0)
+                                   -1.0
+                                   1.0)]
+                         [d (flsqrt d2)])
+                    (add! 8 (fl/ (fl* turn-x side) d))
+                    (add! 9 (fl/ (fl* away-x side) d))))
+                ;; a unit step straight away from each blocker
+                (when (and (fl< d2 (rule 12)) (sees? 6))
+                  (let ([d (flsqrt d2)])
+                    (add! 10 (fl/ away-x d))
+                    (add! 11 (fl/ away-y d)))))))))
+      (let* ([x (flvector-ref flock at)]
+             [y (flvector-ref flock (fx+ at 1))]
+             [vx (flvector-ref flock (fx+ at 2))]
+             [vy (flvector-ref flock (fx+ at 3))]
+             [nvx (fl+ (fl+ (fl+ (fl+ (fl+ vx (toward 0 2 x 0))
+                                      (toward 3 5 vx 1))
+                                 (fl* (sum 6) (rule 2)))
+                            (fl* (sum 8) (rule 3)))
+                       (fl* (sum 10) (rule 4)))]
+             [nvy (fl+ (fl+ (fl+ (fl+ (fl+ vy (toward 1 2 y 0))
+                                      (toward 4 5 vy 1))
+                                 (fl* (sum 7) (rule 2)))
+                            (fl* (sum 9) (rule 3)))
+                       (fl* (sum 11) (rule 4)))])
+        (flvector-set! next at (fl+ x nvx))
+        (flvector-set! next (fx+ at 1) (fl+ y nvy))
+        (flvector-set! next (fx+ at 2) nvx)
+        (flvector-set! next (fx+ at 3) nvy)))))
+
+;; Boids a call of the crew: at least this many pairs, about 80 µs. So a
+;; small flock runs on the caller alone, where waking the crew would cost
+;; more than it gives.
+(define boids-chunk-pairs 24000)
+
+(define (boids-chunk n) (max 1 (quotient boids-chunk-pairs (max n 1))))
 
 ;; The next flock: every boid steered by the same current state.
 (define (boids-step flock rules)
-  (map (lambda (b) (boid-steer b flock rules)) flock))
+  (let ([next (make-flvector (flvector-length flock))]
+        [n (boids-size flock)])
+    (crew-for* (boids-chunk n) 0 n boids-steer! flock next
+               (boids-steering rules))
+    next))
 
 ;; Three boids close together, for the tests and the REPL:
 ;; (boids-step boids-demo boids-default-rules)
 (define boids-demo
-  (list (make-boid (make-vec 0.0 0.0) (make-vec 1.0 0.0))
-        (make-boid (make-vec 1.0 1.0) (make-vec 0.0 1.0))
-        (make-boid (make-vec 2.0 0.0) (make-vec 1.0 1.0))))
+  (flvector 0.0 0.0 1.0 0.0
+            1.0 1.0 0.0 1.0
+            2.0 0.0 1.0 1.0))
 
 ;;; ------------------------------------------------------------------ screen
 
-(define (boid-speed-at-least b lo)
-  (let* ([v (boid-velocity b)] [s2 (vec-dot v v)])
-    ;; standing still, it has no heading, so it stays put
-    (if (and (> s2 0.0) (< s2 (* lo lo)))
-        (make-boid (boid-position b) (vec* v (/ lo (sqrt s2))))
-        b)))
-
-(define (boid-speed-at-most b hi)
-  (let* ([v (boid-velocity b)] [s2 (vec-dot v v)])
-    (if (> s2 (* hi hi))
-        (make-boid (boid-position b) (vec* v (/ hi (sqrt s2))))
-        b)))
-
-;; Leaving one edge of a w × h screen brings b back on the opposite edge.
-(define (boid-wrap b w h)
-  (let ([p (boid-position b)])
-    (make-boid (make-vec (mod (vec-x p) w) (mod (vec-y p) h))
-               (boid-velocity b))))
+;; Leaving one edge of a w × h screen brings a boid back on the opposite
+;; edge, and its speed stays within the limits; standing still, it has no
+;; heading, so it stays put.
+(define (boids-keep-on-screen! flock lo hi w h)
+  (do ([at 0 (fx+ at 4)]) ((fx= at (flvector-length flock)))
+    (flvector-set! flock at (flmod (flvector-ref flock at) w))
+    (flvector-set! flock (fx+ at 1) (flmod (flvector-ref flock (fx+ at 1)) h))
+    (let* ([vx (flvector-ref flock (fx+ at 2))]
+           [vy (flvector-ref flock (fx+ at 3))]
+           [s2 (fl+ (fl* vx vx) (fl* vy vy))])
+      (when (and (fl> s2 0.0) (fl< s2 (fl* lo lo)))
+        (let ([k (fl/ lo (flsqrt s2))])
+          (flvector-set! flock (fx+ at 2) (fl* vx k))
+          (flvector-set! flock (fx+ at 3) (fl* vy k)))))
+    (let* ([vx (flvector-ref flock (fx+ at 2))]
+           [vy (flvector-ref flock (fx+ at 3))]
+           [s2 (fl+ (fl* vx vx) (fl* vy vy))])
+      (when (fl> s2 (fl* hi hi))
+        (let ([k (fl/ hi (flsqrt s2))])
+          (flvector-set! flock (fx+ at 2) (fl* vx k))
+          (flvector-set! flock (fx+ at 3) (fl* vy k)))))))
 
 ;; One frame on a w × h screen: a sim step, then the speed limits and
 ;; the wrap.
 (define (boids-step-on flock rules w h)
-  (let ([lo (boids-rule rules 'min-speed)] [hi (boids-rule rules 'max-speed)]
-        [w (inexact w)] [h (inexact h)])
-    (map (lambda (b)
-           (boid-wrap (boid-speed-at-most (boid-speed-at-least b lo) hi) w h))
-         (boids-step flock rules))))
+  (let ([next (boids-step flock rules)])
+    (boids-keep-on-screen! next
+                           (inexact (boids-rule rules 'min-speed))
+                           (inexact (boids-rule rules 'max-speed))
+                           (inexact w)
+                           (inexact h))
+    next))
 
 ;; n boids scattered over a w × h screen, moving in random directions.
 (define (boids-scatter n w h)
-  (map (lambda (i)
-         (make-boid (make-vec (random (inexact w)) (random (inexact h)))
-                    (make-vec (- (random 4.0) 2.0) (- (random 4.0) 2.0))))
-       (iota n)))
+  (let ([flock (make-flvector (* 4 n))] [w (inexact w)] [h (inexact h)])
+    (do ([at 0 (+ at 4)]) ((= at (* 4 n)) flock)
+      (flvector-set! flock at (random w))
+      (flvector-set! flock (+ at 1) (random h))
+      (flvector-set! flock (+ at 2) (- (random 4.0) 2.0))
+      (flvector-set! flock (+ at 3) (- (random 4.0) 2.0)))))
 
 ;; n boids: the first n of flock, or all of it and random newcomers.
 (define (boids-resize flock n w h)
-  (let ([have (length flock)])
-    (if (<= n have)
-        (list-head flock n)
-        (append flock (boids-scatter (- n have) w h)))))
+  (if (= n (boids-size flock))
+      flock
+      (let ([next (boids-scatter n w h)])
+        (do ([i 0 (+ i 1)])
+            ((= i (* 4 (min n (boids-size flock)))) next)
+          (flvector-set! next i (flvector-ref flock i))))))
 
 ;;; ------------------------------------------------------------------ the app
 
@@ -324,17 +348,20 @@
 (define (boids-scatter! win)
   (let-values ([(w h) (boids-field-size win)])
     (window-set! win 'flock
-      (boids-scatter (length (window-ref win 'flock)) w h))))
+      (boids-scatter (boids-size (window-ref win 'flock)) w h))))
 
 (define (boids-resize! win n)
   (let-values ([(w h) (boids-field-size win)])
     (window-set! win 'flock (boids-resize (window-ref win 'flock) n w h))))
 
 ;; A dot, with a line toward where it's heading.
-(define (draw-boid b)
-  (let* ([p (boid-position b)] [tip (vec+ p (vec* (boid-velocity b) 4.0))])
-    (draw-line (vec-x p) (vec-y p) (vec-x tip) (vec-y tip) 'red 2)
-    (fill-circle (vec-x p) (vec-y p) 3 'yellow)))
+(define (draw-boid flock i)
+  (let ([x (boid-x flock i)] [y (boid-y flock i)])
+    (draw-line x y
+               (+ x (* (boid-vx flock i) 4.0))
+               (+ y (* (boid-vy flock i) 4.0))
+               'red 2)
+    (fill-circle x y 3 'yellow)))
 
 (define-app (boids) "Boids"
   (let ([w 760] [h 520]
@@ -369,10 +396,11 @@
                      (let ([bar (boids-bar-height)]
                            [flock (window-ref win 'flock)])
                        (fill-rect 0 0 w (- h bar) 'bg-0)
-                       (for-each draw-boid flock)
+                       (do ([i 0 (+ i 1)]) ((= i (boids-size flock)))
+                         (draw-boid flock i))
                        (fill-rect 0 (- h bar) w bar 'bg-1)
                        (draw-text 10 (+ (- h bar) 5)
-                                  (boids-status-text (length flock) step-ms
+                                  (boids-status-text (boids-size flock) step-ms
                                                      running?)
                                   'text-faint 'ui-small)))
              'key (lambda (win key mods)
@@ -402,13 +430,13 @@
 ;;; reads and sets the flock window's properties, so it shows them as they
 ;;; are, whoever changed them: a key, a button or the REPL.
 
-;; A step's cost grows as the count squared. At 450, measured here, a
-;; step takes about 16 ms with the default rules (19 in the status line,
-;; among the frames' own work) and 38 with the heaviest (both blocker
-;; rules, 360°, radii of 200): about a 60 Hz frame, and two or three.
-;; Niva's slider stops at 500 for the same reason, where its steps took
-;; 12 and 17.
-(define boids-max-count 450)
+;; A step's cost grows as the count squared, a frame's as the count. At
+;; 2,000, measured here, a step takes 1.6 ms on the crew of 8 with the
+;; default rules and 2.7 with the heaviest (both blocker rules, 360°, radii
+;; of 200), a frame 9: well inside a 60 Hz frame. On a thread alone the
+;; heaviest takes 23 ms, about two frames. Past this the drawing, one line
+;; and one circle a boid on the main thread, is what fills the frame.
+(define boids-max-count 2000)
 
 ;; A rule's name as its row shows it: cohesion-radius as cohesion radius.
 (define (boids-setting-label key)
@@ -475,7 +503,7 @@
   (let* ([pad (ui-pad)] [gap (ui-gap)] [sh (ui-slider-height)]
          [lw (boids-label-width)] [rw (boids-readout-width)]
          [rules (window-ref flock-win 'rules)]
-         [n (length (window-ref flock-win 'flock))])
+         [n (boids-size (window-ref flock-win 'flock))])
     (define (row y id label t readout set)
       (ui-draw-label pad y lw sh '(dim) label)
       (ui-slider ui id (+ pad lw) y (- w pad lw rw pad) t 0.0 1.0 set)
@@ -518,7 +546,7 @@
         [shown #f])   ; the rules and the count it last drew
     (define (now-shown)
       (cons (window-ref flock-win 'rules)
-            (length (window-ref flock-win 'flock))))
+            (boids-size (window-ref flock-win 'flock))))
     (let-values ([(w h) (boids-rules-size)])
       (let ([win
              (apply open-window "Boids — Rules"
