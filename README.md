@@ -553,7 +553,7 @@ Decisions worth keeping in mind for the real design:
   Its panel sets the cell size (in the screen's own pixels: 1 px is one),
   the speed (up to a generation every tick, or flat out, as many as 10 ms of
   a tick hold) and the crew's threads, and shows what a generation and its
-  drawing take. Boids' flock is an flvector of four numbers a boid, stepped
+  drawing take, lying over the grid. Boids' flock is an flvector of four numbers a boid, stepped
   by one worklet that allocates only its sums. Measured here, on 48 hardware
   threads:
 
@@ -577,7 +577,10 @@ Decisions worth keeping in mind for the real design:
   widget of its own that the app lays where it has room, never over its
   work: Life's is at the end of its status line, which runs under both, so
   it stays put as the panel comes and goes, and a second press undoes the
-  first. Its H key is `(ui-side-panel-toggle! ui id)`.
+  first. Its H key is `(ui-side-panel-toggle! ui id)`. By default the panel
+  lies beside the rest, which gets its room when it hides. With `'floating #t`
+  it lies over the rest, showing it through where the style lets it, so the
+  rest never changes size: Life's grid, which a resize would have to rebuild.
 - **Vats run jobs in the background.** A vat (`services/vat.ss`) is a
   thread, its mailbox and a sandbox only its thread evaluates in, so its
   state is its own: `(vat-eval! v '(define n 0) #f)` defines there, and

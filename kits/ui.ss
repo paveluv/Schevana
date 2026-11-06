@@ -1354,13 +1354,15 @@
 ;; buttons), side (a line at the left), nav (a deeper column, a line at
 ;; the right: Settings' tabs), well.
 (define-part (ui-draw-surface x y w h flags)
+  (define (paper c)   ; over something, it shows through
+    (if (memq 'floating flags) (alpha c (theme 'floating-opacity)) c))
   (cond
     [(memq 'well flags) (fill-round-rect x y w h 8 'bg-0)]
     [(memq 'nav flags)
-     (fill-rect x y w h 'bg-0)
+     (fill-rect x y w h (paper 'bg-0))
      (fill-rect (+ x w -1) y 1 h 'window-border)]
     [else
-     (fill-rect x y w h 'bg-1)
+     (fill-rect x y w h (paper 'bg-1))
      (cond [(memq 'toolbar flags)
             (fill-rect x (- (+ y h) 1) w 1 'window-border)]
            [(memq 'footer flags) (fill-rect x y w 1 'window-border)]
@@ -2081,6 +2083,11 @@
 ;;;     (lambda (x y w h) ...the panel, its surface already there...))
 ;;;   (ui-side-panel-button ui 'controls x y 24 20 'right)
 ;;;   (ui-side-panel-toggle! ui 'controls)    for a key
+;;;
+;;; An app whose work shouldn't change size as the panel comes and goes gives
+;;; 'floating #t: the rest keeps all the room, and the panel lies over it.
+
+(theme-default! 'floating-opacity 0.8)   ; of a surface over what's under it
 
 (define (ui-side-panel-open? ui id)
   (not (ui-memo ui (list id 'hidden) #f)))
@@ -2091,16 +2098,22 @@
 
 ;; In x y w h: rest, then panel, width wide at side (left or right), each
 ;; called with its rectangle. Where the rest would be narrower than least
-;; there is no panel, and rest has it all.
-(define (ui-side-panel ui id x y w h side width least rest panel)
+;; there is no panel, and rest has it all. opts: 'floating, the panel over
+;; the rest, which keeps all the room; a press on it isn't the rest's.
+(define (ui-side-panel ui id x y w h side width least rest panel . opts)
   (let* ([fits? (>= w (+ width least))]
+         [floating? (plist-ref opts 'floating #f)]
          [room (if (and fits? (ui-side-panel-open? ui id)) width 0)]
+         [beside (if floating? 0 room)]
          [right? (eq? side 'right)])
     (ui-memo! ui (list id 'fits) fits?)
-    (rest (if right? x (+ x room)) y (- w room) h)
+    (rest (if right? x (+ x beside)) y (- w beside) h)
     (when (> room 0)
       (let ([px (if right? (- (+ x w) room) x)])
-        (ui-draw-surface px y room h (if right? '(side) '(nav)))
+        (when floating? (ui-region! ui (list id 'floating) px y room h))
+        (ui-draw-surface px y room h
+                         (append (if right? '(side) '(nav))
+                                 (if floating? '(floating) '())))
         (panel px y room h)))))
 
 ;; The button of the panel id at side, in the rectangle given: its glyph a

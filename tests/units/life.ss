@@ -266,9 +266,9 @@
                     (- (length speeds) 1)))))
 
 (check "Life opens as many cells as ever, 72 × 44 of 10 pixels, beside its \
-        controls; H hides them and the grid has their room, and a press on \
-        the button in the status line shows them again; a window too narrow \
-        shows only the grid, the button off"
+        controls, which lie over it; H hides them and the grid stays as it \
+        is, and a press on the button in the status line shows them again; a \
+        window too narrow shows only the grid, the button off"
        (let* ([win (life-paused!)] [ui (window-ref win 'ui)]
               [press-button! (lambda ()
                                (let* ([r (ui-find ui '(life-controls button))]
@@ -295,8 +295,8 @@
                    (and (equal? opened '(72 44)) panel? gone? back? none?
                         (equal? shown opened)
                         (equal? (car narrow) 30)
-                        (equal? (cadr hidden) 44)
-                        (equal? (car hidden) (quotient w 10))))))))))
+                        (equal? hidden opened)
+                        (= w 720)))))))))
 
 (check "Life: a new size keeps the cells that fit and seeds the new ground; \
         the old size then gets back what it had"

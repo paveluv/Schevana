@@ -2,15 +2,16 @@
 ;;; dates, trees, side panels.
 
 ;; A side panel and its button, where it says, laid out in w × h: (values
-;; rest panel) as called, each its rectangle or #f.
-(define (side-panel-layout ui side w h)
+;; rest panel) as called, each its rectangle or #f. opts: ui-side-panel's.
+(define (side-panel-layout ui side w h . opts)
   (let* ([rest #f] [panel #f]
          [drawn (image (exact w) (exact h) 1
                        (lambda ()
                          (ui-begin! ui)
-                         (ui-side-panel ui 'p 0 0 w (- h 20) side 100 80
-                                        (lambda r (set! rest r))
-                                        (lambda r (set! panel r)))
+                         (apply ui-side-panel ui 'p 0 0 w (- h 20) side 100 80
+                                (lambda r (set! rest r))
+                                (lambda r (set! panel r))
+                                opts)
                          (ui-side-panel-button ui 'p 7 (- h 20) 24 20 side)
                          (ui-end! ui w h)))])
     (cairo-surface-destroy drawn)
@@ -55,7 +56,52 @@
         (check "with too little room for both the rest has it all, and the \
                 button is off: a press leaves the panel as it was"
                (and (equal? rest '(0 0 150 280)) (not panel)
-                    (begin (press-button!) (ui-side-panel-open? ui 'p)))))))
+                    (begin (press-button!) (ui-side-panel-open? ui 'p)))))
+      (let-values ([(shown shown-panel)
+                    (side-panel-layout ui 'right 400 300 'floating #t)])
+        (press-button!)
+        (let-values ([(hidden hidden-panel)
+                      (side-panel-layout ui 'right 400 300 'floating #t)])
+          (press-button!)
+          (check "over the rest, a side panel leaves it all its room, shown \
+                  or hidden"
+                 (and (equal? shown '(0 0 400 280))
+                      (equal? shown-panel '(300 0 100 280))
+                      (equal? hidden shown) (not hidden-panel)))))
+      ;; what's under it, red, and a press on it
+      (let* ([pressed 0]
+             [pixel (lambda opts
+                      (let* ([a (image 400 300 1
+                                  (lambda ()
+                                    (ui-begin! ui)
+                                    (apply ui-side-panel ui 'p 0 0 400 280
+                                           'right 100 80
+                                           (lambda (x y w h)
+                                             (fill-rect x y w h #xff0000)
+                                             (ui-area ui 'under x y w h
+                                                      (lambda ()
+                                                        (set! pressed
+                                                          (+ pressed 1)))))
+                                           (lambda r #f)
+                                           opts)
+                                    (ui-end! ui 400 300)))]
+                             [p (pixel-at a 350 100)])
+                        (cairo-surface-destroy a)
+                        p))]
+             [beside (pixel)]
+             [over (pixel 'floating #t)]
+             [press! (lambda (x)
+                       (ui-mouse-down ui x 100)
+                       (ui-mouse-up ui))])
+        (press! 350)
+        (let ([on-panel pressed])
+          (press! 50)
+          (check "over the rest, a side panel shows it through and keeps \
+                  presses from it"
+                 (and (= beside (color->pixel 'bg-1))
+                      (not (= over beside))
+                      (not (= over (color->pixel #xff0000)))
+                      (= on-panel 0) (= pressed 1)))))))
   (close-window! win))
 
 (check "ui-flow places, wraps and centers"

@@ -182,7 +182,7 @@
        gap (* 3 (+ line (ui-slider-height) gap))
        gap (* 4 line) pad)))
 
-;; The least room for the grid beside the panel: narrower, it has it all.
+;; The least room for the grid to show beside the panel: narrower, no panel.
 (define life-grid-least 200)
 
 ;;; ------------------------------------------------------------------ the app
@@ -402,7 +402,7 @@
         (ui-side-panel-button ui 'life-controls bx (+ y 3) bw bh 'right)))
     (regrid! 72 44)
     (apply open-window "Life"
-      'size (cons (+ (* 10 cols) (life-panel-width))
+      'size (cons (* 10 cols)
                   (+ (life-bar-height) (max (* 10 rows) (life-panel-height))))
       'draw (lambda (win w h)
               (let* ([bar (life-bar-height)] [fh (max 1 (- h bar))])
@@ -410,7 +410,8 @@
                 (ui-side-panel ui 'life-controls 0 0 w fh 'right
                                (life-panel-width) life-grid-least
                                (lambda (x y w h) (draw-grid w h))
-                               (lambda (x y w h) (draw-panel x w h)))
+                               (lambda (x y w h) (draw-panel x w h))
+                               'floating #t)
                 (draw-status w fh bar)
                 (ui-end! ui w h)))
       (append
