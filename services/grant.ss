@@ -147,7 +147,8 @@
 (define grant-tree-apps
   '((boids window draw ui timers)
     (clock window draw timers)
-    (life window draw timers)))
+    (life window draw timers)
+    (springies window draw ui timers)))
 
 ;;; ------------------------------------------------------------------ decisions
 ;;; The person's, kept in a file of plain data, one app a form:

@@ -213,6 +213,9 @@ afterwards; `(only …)` or `(prefix … acme:)` keep them apart.
 (boids)                                    ; a flock, its rules beside it
 (repl "/apps/boids")                       ; a REPL in its sandbox; there,
 (define (boid-sees? b other fov) #t)       ; eyes all around; (reload!) undoes
+(springies)                                ; masses on springs, controls beside
+(repl "/apps/springies")                   ; in its sandbox; there, up is down:
+(define (springies-gravity settings) (make-pt 0.0 980.0))   ; (reload!) undoes
 (define (draw-wallpaper w h) (fill-gradient 0 0 w h #x102030 #x301020))
 ; every window looks focused; (reload!) undoes it
 (define (draw-window win) (draw-window* win #t))
@@ -373,6 +376,7 @@ run, and Settings, Permissions changes it later.
 ```
 apps/        in the world: repl  envs  monitor  settings  tasks
              each in a sandbox of its own: boids  clock  life  sketch
+             springies
 wallpapers/  desktop fills: gradient  flat  shade
 palettes/    named colors: catppuccin  crayons  forest  genera  gruvbox
              interlisp  neon  nord  paper  phosphor  sakura  sunset
@@ -513,15 +517,15 @@ Decisions worth keeping in mind for the real design:
   `(app-requests window draw timers)` loads into `/apps/<name>`
   (`services/grant.ss`), on the confined base, holding of the world's
   names only its bundles: titled lists ("Draw in its windows": `fill-rect`
-  and 48 more). The tree's Boids, Clock and Life are approved by a table;
-  Sketch, and every app of yours, asks the person, whose answers are kept in
-  `~/.schevana.d/permissions.ss`. A bundle not allowed is there as stubs
-  that raise, naming it ("Sketch needs Draw in its windows (fill-rect):
-  denied"); a name in no bundle it requests is unbound. Its `define-app`
-  registers that app alone, and what it defines stays in its sandbox
-  (Boids' `vec` is no name of the world's): only `(clock)` at the world's
-  REPL reaches in, to open Clock. Settings, Monitor, Tasks, the REPL and
-  Environments request nothing and run in the world, which they tune.
+  and 48 more). The tree's Boids, Clock, Life and Springies are approved by
+  a table; Sketch, and every app of yours, asks the person, whose answers
+  are kept in `~/.schevana.d/permissions.ss`. A bundle not allowed is there
+  as stubs that raise, naming it ("Sketch needs Draw in its windows
+  (fill-rect): denied"); a name in no bundle it requests is unbound. Its
+  `define-app` registers that app alone, and what it defines stays in its
+  sandbox (Boids' `vec` is no name of the world's): only `(clock)` at the
+  world's REPL reaches in, to open Clock. Settings, Monitor, Tasks, the REPL
+  and Environments request nothing and run in the world, which they tune.
 - **A crew of threads for loops.** `(crew-for start end worklet arg ...)`
   (`services/crew.ss`) calls `(worklet lo hi arg ...)` on disjoint slices
   of the range on worker threads, the caller among them, and returns when
@@ -901,8 +905,12 @@ generations against a plain reference (a step allocates nothing), its
 grid against one rectangle per cell, Boids in its sandbox, its flocking (the Niva
 version's tests, its first step to the last digit, the speed limits, a
 flock carried over a reload) and its rules window (where it opens, its
-sliders, buttons and keys), and the invalidation calls; and, with no
-window, the edit kit (insertion, erasing, caret moves, words,
+sliders, buttons and keys), Springies in its sandbox, its physics (the
+springs' pull and damping, gravity alike for any mass, momentum held, a
+fall that is the parabola to rounding, a spring's period, the walls),
+its models (their springs at rest, each staying in its box, whole), its
+keys, its pointer and its controls window, and the invalidation calls;
+and, with no window, the edit kit (insertion, erasing, caret moves, words,
 selection, pages, the most characters a text may hold, what an edit
 changed, wrapping against a plain rule with even and uneven widths and
 against breaking a character at a time, the rows a layout keeps and
@@ -1034,6 +1042,12 @@ Boids (`apps/boids.ss`) is ported from Eduardo Cavazos's
 blocker rules, clear view and back off, follow Gary William Flake's *The
 Computational Beauty of Nature* (MIT Press, 1998), written from his
 description.
+
+Springies (`apps/springies.ss`) is ported from Eduardo Cavazos's
+Springies in [Agave](https://github.com/dharmatech/agave) (Apache 2.0),
+which followed Douglas DeCarlo's XSpringies. Its physics is written
+from XSpringies' behavior, not its (GPL) source, and its models are
+made in code, not read from XSpringies' example files.
 
 The CADR's 5X5 font in `kits/px.ss` (the glyphs of `px-5x5`) is MIT's,
 decoded from System 99's `fonts/5x5.qfasl`:
