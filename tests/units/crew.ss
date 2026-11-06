@@ -145,3 +145,37 @@
          (printf "  ~a steps while it waited\n" steps0)
          (and done (> steps0 3) (pair? (unbox ids))
               (not (memv (get-thread-id) (unbox ids))))))
+
+;;; What the crew costs, itself: nothing a call, nothing idle.
+
+(define-worklet (crew-test-nothing lo hi) (void))
+(define-worklet (crew-test-six lo hi a b c d e f) (void))
+
+;; The least of a few runs: any one may share its time with a collection,
+;; whose copying the counters count.
+(let ([size (crew-size)])
+  (crew-size-set! (max 2 size))
+  (let* ([least-bytes
+          (lambda (thunk)
+            (thunk)
+            (let loop ([i 0] [least #f])
+              (if (= i 5)
+                  least
+                  (let ([b0 (bytes-total)])
+                    (thunk)
+                    (let ([b (- (bytes-total) b0)])
+                      (loop (+ i 1) (if least (min least b) b)))))))]
+         [none (least-bytes
+                (lambda () (crew-for* 1 0 20000 crew-test-nothing)))]
+         [six (least-bytes
+               (lambda () (crew-for* 1 0 20000 crew-test-six 1 2 3 4 5 6)))]
+         [idle (let ([wait (make-time 'time-duration 200000000 0)])
+                 (sleep wait)
+                 (let ([b0 (bytes-total)])
+                   (sleep wait)
+                   (- (bytes-total) b0)))])
+    (crew-size-set! size)
+    (check (format "the crew allocates nothing a call and nothing idle: a \
+                    region of 20,000 calls takes ~a bytes, with six arguments \
+                    ~a, 200 ms of idle workers ~a" none six idle)
+           (and (< none 2048) (< six 2048) (< idle 512)))))

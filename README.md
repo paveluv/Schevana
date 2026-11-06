@@ -528,7 +528,9 @@ Decisions worth keeping in mind for the real design:
   (`services/crew.ss`) calls `(worklet lo hi arg ...)` on disjoint slices
   of the range on worker threads, the caller among them, and returns when
   all have. A call writes only its own slice and allocates nothing (that
-  stops every thread), and should take 20 to 200 µs: `(crew-for* chunk
+  stops every thread), and the crew adds nothing to it: a call is one
+  `box-cas!`, a region a few hundred bytes, an idle worker nothing. It should
+  take 20 to 200 µs: `(crew-for* chunk
   start end worklet arg ...)` gives each call at least chunk indices, and a
   range of one chunk runs on the caller alone, so a small grid never wakes
   the crew. An error in a call is
