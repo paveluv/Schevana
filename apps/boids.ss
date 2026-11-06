@@ -426,17 +426,17 @@
 
 ;;; ------------------------------------------------------------------
 ;;; the rules window
-;;; A slider for the count and for each rule, and the keys' buttons. It
-;;; reads and sets the flock window's properties, so it shows them as they
-;;; are, whoever changed them: a key, a button or the REPL.
+;;; A slider for the count, for the crew's threads and for each rule, and the
+;;; keys' buttons. It reads and sets the flock window's properties, so it shows
+;;; them as they are, whoever changed them: a key, a button or the REPL.
 
 ;; A step's cost grows as the count squared, a frame's as the count. At
-;; 2,000, measured here, a step takes 1.6 ms on the crew of 8 with the
-;; default rules and 2.7 with the heaviest (both blocker rules, 360°, radii
-;; of 200), a frame 9: well inside a 60 Hz frame. On a thread alone the
-;; heaviest takes 23 ms, about two frames. Past this the drawing, one line
-;; and one circle a boid on the main thread, is what fills the frame.
-(define boids-max-count 2000)
+;; 5,000, measured here, a step takes 9 ms on the crew of 8 with the default
+;; rules and 16 with the heaviest (both blocker rules, 360°, radii of 200);
+;; on a thread alone, 72 and 127. What fills the frame then is the drawing,
+;; one line and one circle a boid on the main thread: 23 ms at 100%, about
+;; 50 at 200%.
+(define boids-max-count 5000)
 
 ;; A rule's name as its row shows it: cohesion-radius as cohesion radius.
 (define (boids-setting-label key)
@@ -467,12 +467,21 @@
               (format "~a" (exact (round v))))]))
 
 (define (boids-label-width)
-  (+ 12 (text-widest (cons "boids"
-                           (map (lambda (r) (boids-setting-label (car r)))
-                                boids-ranges))
+  (+ 12 (text-widest (cons* "boids" "threads"
+                            (map (lambda (r) (boids-setting-label (car r)))
+                                 boids-ranges))
                      'ui)))
 
-(define (boids-readout-width) (+ 12 (text-width "0.0000" 'ui)))
+(define (boids-readout-width)
+  (+ 12 (text-widest '("0.0000" "1 of 48") 'ui)))
+
+;; The threads a step of n boids uses, as its row shows them: one while a
+;; step is one call of the crew.
+(define (boids-threads-readout n)
+  (let ([threads (+ 1 (crew-size))])
+    (if (or (<= n (boids-chunk n)) (= threads 1))
+        (if (= threads 1) "1" (format "1 of ~a" threads))
+        (number->string threads))))
 
 (define boids-buttons
   '("Randomize (R)"
@@ -493,12 +502,12 @@
     (values (+ pad pad
                (max (+ (boids-label-width) 140 (boids-readout-width))
                     (+ (* 3 (boids-button-width)) (* 2 gap))))
-            (+ pad (+ sh gap) (+ (ui-control-height) (* 3 gap))
+            (+ pad (* 2 (+ sh gap)) (+ (ui-control-height) (* 3 gap))
                (* (length boids-ranges) (+ sh gap))
                gap (font-line-height 'ui-small) pad))))
 
-;; The rows, top to bottom: the count, the buttons, a slider for each
-;; rule, and a hint. Returns the y below them.
+;; The rows, top to bottom: the count, the threads, the buttons, a slider
+;; for each rule, and a hint. Returns the y below them.
 (define (boids-draw-rules ui flock-win w)
   (let* ([pad (ui-pad)] [gap (ui-gap)] [sh (ui-slider-height)]
          [lw (boids-label-width)] [rw (boids-readout-width)]
@@ -515,6 +524,12 @@
                    (lambda (t)
                      (boids-resize! flock-win
                        (exact (round (+ 10 (* t (- boids-max-count 10))))))))]
+           ;; the crew's, for every app; the caller makes one more
+           [y (let ([most (- (max 2 (host-cpu-count)) 1)])
+                (row y 'threads "threads"
+                     (/ (crew-size) (inexact most))
+                     (boids-threads-readout n)
+                     (lambda (t) (crew-size-set! (exact (round (* t most)))))))]
            [y (let ([bw (/ (- w pad pad gap gap) 3)] [ch (ui-control-height)])
                 (for-each (lambda (i label id act!)
                             (ui-button ui id (+ pad (* i (+ bw gap))) y bw ch
@@ -543,10 +558,11 @@
 ;; flock's.
 (define (boids-open-rules flock-win on-close)
   (let ([ui (make-ui)]
-        [shown #f])   ; the rules and the count it last drew
+        [shown #f])   ; the rules, the count and the threads it last drew
     (define (now-shown)
-      (cons (window-ref flock-win 'rules)
-            (boids-size (window-ref flock-win 'flock))))
+      (list (window-ref flock-win 'rules)
+            (boids-size (window-ref flock-win 'flock))
+            (crew-size)))
     (let-values ([(w h) (boids-rules-size)])
       (let ([win
              (apply open-window "Boids — Rules"

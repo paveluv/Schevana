@@ -31,8 +31,8 @@
 ;;; with 2,000 tasks more in chains, a busy process's share of the main
 ;;; thread while S30T animates at 200%, and the profiler's cost: a step
 ;;; with profiling on and off (printed, not bounded), then the crew: Life
-;;; at one pixel a cell, maximized on that screen, and Boids at 150, 450
-;;; and 2,000, on one thread and more (printed, not bounded). Fails
+;;; at one pixel a cell, maximized on that screen, and Boids at 150, 450,
+;;; 2,000 and 5,000, on one thread and more (printed, not bounded). Fails
 ;;; (exit 1) unless every measured step drew a frame, an idle step takes
 ;;; under 0.2 ms and uploads nothing (with Tasks open too), a keystroke in
 ;;; a long text keeps within its budget, a step of the Tree with 2,000
@@ -868,7 +868,7 @@
             [crew (time-it 8 50)])
        (printf "Boids, ~a of them: a step ~,2f ms on one thread, ~,2f ms on \
                 nine\n" n one crew)))
-   '(150 450 2000))
+   '(150 450 2000 5000))
   (crew-size-set! size))
 
 (newline)

@@ -553,7 +553,8 @@ Decisions worth keeping in mind for the real design:
   Its panel sets the cell size (in the screen's own pixels: 1 px is one),
   the speed (up to a generation every tick, or flat out, as many as 10 ms of
   a tick hold) and the crew's threads, and shows what a generation and its
-  drawing take, lying over the grid. Boids' flock is an flvector of four numbers a boid, stepped
+  drawing take, lying over the grid. Boids' rules window has the same threads
+  slider. Boids' flock is an flvector of four numbers a boid, stepped
   by one worklet that allocates only its sums. Measured here, on 48 hardware
   threads:
 
@@ -562,6 +563,7 @@ Decisions worth keeping in mind for the real design:
   | Life, a generation, 1 px a cell, maximized on a 4K screen (7.4 M cells) | 69 ms | 9.6 ms | 4.2 ms |
   | Boids, a step, 450 boids (16 ms before the crew) | 0.60 ms | 0.22 ms | |
   | Boids, a step, 2,000 boids | 11.7 ms | 1.6 ms | |
+  | Boids, a step, 5,000 boids | 72 ms | 9.3 ms | |
 
   The crew gains less per thread as it grows (a generation on 16 threads is
   12 times as fast as on one, on 48, 17 times), and a tick has room for what
@@ -1083,8 +1085,8 @@ wheel, the least of three rounds: within 1.5 times the seed's), and
 prints how much of the main thread a busy REPL evaluation gets while 30
 Life windows animate at 200%, what profiling costs: a step with it on and
 off (S30T at 100% and 200%, an idle step, a busy process), and the crew:
-Life at one pixel a cell, maximized on that 4K screen, and Boids at 150, 450
-and 2,000, on one thread and more.
+Life at one pixel a cell, maximized on that 4K screen, and Boids at 150, 450,
+2,000 and 5,000, on one thread and more.
 
 ## Conventions
 

@@ -42,7 +42,7 @@
             boids-steering boids-step boids-demo boids-default-rules boids-rule
             boids-resize boids-scatter boids-step-on boids-random-rules
             boids-ranges boids-set-rule boids-slider-value boids-slider-t
-            boids-draw-rules boids-max-count))
+            boids-draw-rules boids-max-count boids-threads-readout))
 
 ;; A flock as a list of (x y vx vy), and the flocking the obvious way on
 ;; such lists, rule by rule, the flonum operations in the Niva version's
@@ -411,6 +411,21 @@
            (press! (rules-win) 'count)
            (= (boids-size (window-ref win 'flock))
               (round (+ 10 (/ (- boids-max-count 10) 2))))))
+  (check "Boids: its threads slider sets the crew's size, and shows it; a \
+          small flock says it uses one"
+         (let* ([size (crew-size)] [most (- (max 2 (host-cpu-count)) 1)])
+           (press! (rules-win) 'threads)
+           (let ([set-to (crew-size)])
+             (crew-size-set! 8)
+             (let ([small (boids-threads-readout 10)]
+                   [big (boids-threads-readout 2000)])
+               (crew-size-set! 0)
+               (let ([alone (boids-threads-readout 2000)])
+                 (crew-size-set! size)
+                 (and (= set-to (exact (round (* 1/2 most))))
+                      (equal? small "1 of 9")
+                      (equal? big "9")
+                      (equal? alone "1")))))))
   (check "Boids: H closes the rules window and opens it again"
          (begin
            (window-call win 'key #\h '())
