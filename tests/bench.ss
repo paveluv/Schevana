@@ -111,7 +111,7 @@
 ;; Status segments that never change.
 (define (fixed-status!)
   (set! *status-segments* '())
-  (add-status-segment! 'a (lambda () "12.3 ms/frame"))
+  (add-status-segment! 'a (lambda () "12.3 ms/tick"))
   (add-status-segment! 'b (lambda () "Thu 29 Oct   12:00:00")))
 
 (define (clear-world!)

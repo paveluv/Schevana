@@ -271,7 +271,9 @@
 (define (host-show-texture!)
   (sdl-render-texture *sdl-renderer* *sdl-texture* 0 0)
   ;; with vsync on, this waits for the screen: a phase of the profiler's
-  (with-profile-span 'vsync-wait #f (sdl-render-present *sdl-renderer*)))
+  (let ([t (now-ns)])
+    (with-profile-span 'vsync-wait #f (sdl-render-present *sdl-renderer*))
+    (pacer-waited! t)))
 
 ;; How many threads this machine runs at once (logical cores).
 (define (host-cpu-count) (sdl-get-num-logical-cpu-cores))

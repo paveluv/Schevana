@@ -36,8 +36,9 @@
             (eq? (collect-request-handler) profile-collect)
             (pair? (profile-ticks))))
 
-(check "off, the hook is #f: no tick is kept, the clock is never read, \
-        Chez's own collect handler is back; on again, ticks are kept"
+(check "off, the hook is #f: no tick is kept, the clock is read only for the \
+        pacer's busy time, Chez's own collect handler is back; on again, \
+        ticks are kept"
        (let ([reads 0] [clock now-ns] [before (profile-ticks)])
          (profile-on! #f)
          (set! now-ns
@@ -45,7 +46,8 @@
          (steps 5)
          (set! now-ns clock)
          (let ([off (and (not (profile-on?)) (not *profile-span*)
-                         (equal? before (profile-ticks)) (= reads 0)
+                         (equal? before (profile-ticks))
+                         (<= reads (* 5 4))   ; a step's, only the pacer's
                          (eq? (collect-request-handler)
                               *profile-plain-collect*))])
            (profile-on! #t)

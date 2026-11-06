@@ -19,6 +19,10 @@
 (defvar *pacer-ticks* 0)
 (defvar *pacer-tick-ms* 0)
 (defvar *pacer-render* 0)
+(defvar *pacer-waits* 0)   ; this step's waits, ns
+(defvar *pacer-work* 0)    ; the work of the steps since the last tick, ns
+(defvar *pacer-busy* 0)    ; the last tick's work, ns
+(defvar *pacer-peak* 0)    ; the most of any tick since it was last asked, ns
 ;; this step is paced and came between ticks: the profiler sums it into
 ;; the next tick
 (defvar *pacer-between?* #f)
@@ -104,6 +108,15 @@
     [(eq? (car ev) 'quit) (quit!)]
     [else (set! *held-events* (cons ev *held-events*))]))
 
+;; One turn of the world, and what it took but its waits. Kept with
+;; profiling off too, at a few clock reads a step: it says whether a user
+;; of the desktop will see a tick missed.
+(define (schevana-step! wait-ms . paced)
+  (let ([start (now-ns)])
+    (set! *pacer-waits* 0)
+    (schevana-turn! wait-ms paced)
+    (pacer-step-done! (- (now-ns) start))))
+
 ;; One turn of the world: events, mail (post-main!), timers, a tick,
 ;; processes, and a frame if something asked for one: input's at once
 ;; while the screen's wait paces frames, else at the next tick. Paced (the
@@ -112,11 +125,11 @@
 ;; would have waited for the screen in present); else (a test's) it always
 ;; ticks, and its processes run 10 ms. The profiler sums the steps between
 ;; ticks into the next tick.
-(define (schevana-step! wait-ms . paced)
+(define (schevana-turn! wait-ms paced)
   (with-profile-span 'step #f
     (let* ([hold? (reload-holding?)]
            [evs (append (if hold? '() (reverse *held-events*))
-                        (host-events (if (pair? *injected*) 0 wait-ms))
+                        (pacer-host-events (if (pair? *injected*) 0 wait-ms))
                         *injected*)])
       (unless hold? (set! *held-events* '()))
       (set! *injected* '())
@@ -146,6 +159,34 @@
         (safely 'present host-present-damage!)))))
 
 ;;; ------------------------------------------------------------------ pacer
+
+;; The host's events, the wait for them no work.
+(define (pacer-host-events wait-ms)
+  (let* ([t (now-ns)] [events (host-events wait-ms)])
+    (pacer-waited! t)
+    events))
+
+;; What since now was a wait, for input or for the screen.
+(define (pacer-waited! since)
+  (set! *pacer-waits* (+ *pacer-waits* (- (now-ns) since))))
+
+;; A step ended, ns long: its work sums into the tick, which ends with it
+;; unless it came between ticks, as the profiler's do.
+(define (pacer-step-done! ns)
+  (set! *pacer-work* (+ *pacer-work* (- ns *pacer-waits*)))
+  (unless *pacer-between?*
+    (set! *pacer-busy* *pacer-work*)
+    (set! *pacer-peak* (max *pacer-peak* *pacer-work*))
+    (set! *pacer-work* 0)))
+
+;; What the last tick took but its waits: past a period, the next is late.
+(define (pacer-busy-ms) (/ *pacer-busy* 1e6))
+
+;; The most any tick took since the last call: one spike shows.
+(define (pacer-peak-ms!)
+  (let ([ms (/ *pacer-peak* 1e6)])
+    (set! *pacer-peak* 0)
+    ms))
 
 ;; (pacer-rate! 60): 60 ticks a second from now on; (pacer-rate! 'screen),
 ;; the default: a tick a refresh of the screen's. Apps that move by time

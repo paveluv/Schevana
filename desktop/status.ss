@@ -6,7 +6,7 @@
 ;; the defaults, until you change them (a reload keeps yours)
 (defvar *status-segments*
   (list (cons 'procs (lambda () (status-procs)))
-        (cons 'frame (lambda () (status-frame)))
+        (cons 'busy (lambda () (status-busy)))
         (cons 'memory (lambda () (status-memory)))
         (cons 'clock (lambda () (status-clock)))))
 
@@ -53,9 +53,34 @@
   (let ([n (length *procs*)])
     (and (> n 0) (format "⚙ ~a running" n))))
 
-(define (status-memory) (format "~,1f MB" (/ (bytes-allocated) 1048576.0)))
+;; The process's memory in RAM, bytes: the heap, and what Cairo and SDL hold
+;; outside it, which neither reports. #f where the system doesn't say: /proc
+;; is Linux's.
+(define (status-process-bytes)
+  (guard (c [#t #f])
+    (call-with-input-file "/proc/self/status"
+      (lambda (p)
+        (let loop ()
+          (let ([l (get-line p)])
+            (cond
+              [(eof-object? l) #f]
+              [(string-prefix? "VmRSS:" l)
+               (* 1024 (string->number
+                        (list->string (filter char-numeric?
+                                              (string->list l)))))]
+              [else (loop)])))))))
 
-(define (status-frame) (format "~,1f ms/frame" *frame-ms*))
+;; The heap, and the process's resident memory where the system says it.
+(define (status-memory)
+  (let ([heap (/ (bytes-allocated) 1048576.0)]
+        [process (status-process-bytes)])
+    (if process
+        (format "~,1f/~,1f MB" heap (/ process 1048576.0))
+        (format "~,1f MB" heap))))
+
+;; The most a tick took since the bar last looked, about a second, but its
+;; waits: past a period, a tick was late.
+(define (status-busy) (format "~,1f ms/tick" (pacer-peak-ms!)))
 
 (define day-names '#("Sun" "Mon" "Tue" "Wed" "Thu" "Fri" "Sat"))
 (define month-names

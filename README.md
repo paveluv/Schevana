@@ -235,8 +235,8 @@ Define a new app and it appears in the launcher immediately:
 
 `(monitor)`, or Monitor in the launcher, shows the world live, in two
 tabs. Its first, Overview, redrawn twice a second, has the World's
-facts in a grid (uptime, the screen, the ticks, the last frame, the
-heap, the style, apps, timers waiting, whether profiling is on, the
+facts in a grid (uptime, the screen, the ticks, the last tick, the last
+frame, the process's memory, the heap, the style, apps, timers waiting, whether profiling is on, the
 last error), then the windows in a table (a click focuses one, the
 focused one selected) and the processes in another, each with its
 state and a Kill button. Its second, Ticks, shows where the world's time
@@ -598,6 +598,14 @@ Decisions worth keeping in mind for the real design:
   calls `open-window` with a property list of handlers (`'draw`, `'key`,
   `'text`, `'mouse-down`, `'tick`, ...). Every other option becomes a
   window property (`window-ref` / `window-set!`).
+- **A tick's busy time is always kept.** What a tick took but its waits for
+  input and for the screen, profiling on or off: past a period, the next
+  tick is late. `(pacer-busy-ms)` is the last tick's, Monitor shows it, and
+  the top bar's `ms/tick` is the most any tick took since it last looked,
+  about a second, so that one spike shows. The bar's memory is the heap,
+  then the process's resident memory where the system says it (Linux):
+  `43.0/175.3 MB`. That holds what Cairo and SDL keep outside the heap, which
+  neither reports. Monitor shows both.
 - **A pacer gives the ticks.** Every window's, surface's and toast's
   `'tick` runs exactly once a period, whether it draws or not, while a
   tick's work and its frame fit in one: bookkeeping or a check on
@@ -854,8 +862,8 @@ Decisions worth keeping in mind for the real design:
   every frame the second buffer equals the screen, and a new canvas asks
   for the whole screen. A frame that changes nothing uploads and
   presents nothing. Monitor shows where each tick's time goes (above),
-  or, with profiling off, the last frame's time (drawing it and
-  comparing its rows) and the rows it uploaded. A process may be
+  and the last frame's time (drawing it and comparing its rows) and the
+  rows it uploaded. A process may be
   switched out at any call while frames go on, so typed in a REPL (or
   called by a handler) `(render-frame!)` only asks for a frame, asking
   for an area is atomic, and freeing the canvas or a cache of surfaces

@@ -245,8 +245,13 @@
                          (if (eq? (pacer-rate) 'screen) hz (pacer-rate))
                          (if (eq? (pacer-rate) 'screen) ", the screen's" "")
                          (monitor-count (pacer-ticks))))
+           (cons "Last tick" (format "~,1f ms busy" (pacer-busy-ms)))
            (cons "Last frame" (format "~,1f ms, ~a of ~a rows uploaded"
                                       *frame-ms* *frame-rows* *canvas-ph*))
+           (cons "Process" (let ([b (status-process-bytes)])
+                             (if b
+                                 (format "~,1f MB" (/ b 1048576.0))
+                                 "not known here")))
            (cons "Heap" (format "~,1f MB, ~a collections"
                                 (/ (bytes-allocated) 1048576.0)
                                 (monitor-count (collections))))

@@ -190,3 +190,69 @@
            (let ([screen (pacer-period)])
              (pacer-rate! rate)
              (and (= p30 33333333) (= screen (host-frame-ns)))))))
+
+;;; What a tick takes, but its waits: kept whether the profiler is on or not.
+
+;; thunk on a fake clock, far past any tick due, with a wait for events of
+;; pacer-test-wait ms and a present that waits 7 ms for the screen, as the
+;; host's does.
+(define pacer-test-t 1000000000000)
+(define pacer-test-wait 5)
+(define (pacer-test-advance! ms)
+  (set! pacer-test-t (+ pacer-test-t (* ms 1000000))))
+(define (pacer-test-on-fake-clock thunk)
+  (fluid-let ([now-ns (lambda () pacer-test-t)]
+              [host-events (lambda (wait-ms)
+                             (pacer-test-advance! pacer-test-wait)
+                             '())]
+              [sdl-render-texture (lambda args #f)]
+              [sdl-render-present (lambda (r) (pacer-test-advance! 7))]
+              [host-present-damage! (lambda () (host-show-texture!))])
+    (thunk)))
+
+(let ([win (open-window "Busy" 'size '(80 . 60)
+                        'tick (lambda (win) (pacer-test-advance! 3))
+                        'key (lambda (win k mods) (pacer-test-advance! 2)))])
+  (focus-window! win)
+  (let* ([on #f]
+         [profiled (profile-busy
+                    (car (profile-test-ticks
+                          (lambda ()
+                            (pacer-test-on-fake-clock
+                             (lambda ()
+                               (steps 1)
+                               (set! on (pacer-busy-ms))))))))]
+         [off (begin
+                (profile-on! #f)
+                (let ([ms (pacer-test-on-fake-clock
+                           (lambda () (steps 1) (pacer-busy-ms)))])
+                  (profile-on! #t)
+                  ms))])
+    (check (format "a tick's busy time is its work, not its waits for input \
+                    or the screen, profiling on (~a ms) or off (~a), and is \
+                    the profiler's own (~a)" on off profiled)
+           (and (= on 3.0) (= off 3.0) (= profiled 3.0))))
+  (check "steps between ticks sum into the tick they lead up to"
+         (pacer-test-on-fake-clock
+          (lambda ()
+            (schevana-step! 0 'paced)     ; a tick: the next is a period off
+            (fluid-let ([pacer-test-wait 0])
+              (inject! '(key-down #\a ()))
+              (schevana-step! 0 'paced)   ; between ticks: the key's 2 ms
+              (let ([between? *pacer-between?*] [before (pacer-busy-ms)])
+                (pacer-test-advance! 100)
+                (schevana-step! 0 'paced) ; a tick: its 3 ms, and the 2
+                (and between? (= before 3.0) (= (pacer-busy-ms) 5.0)))))))
+  (check "the peak is the most any tick took since it was last asked, and the \
+          top bar shows it"
+         (pacer-test-on-fake-clock
+          (lambda ()
+            (inject! '(key-down #\a ()))
+            (steps 1)                     ; 3 ms and the key's 2
+            (let* ([shown ((cdr (assq 'busy *status-segments*)))]
+                   [after (begin (steps 1) (pacer-peak-ms!))])
+              (and (not (assq 'frame *status-segments*))
+                   (equal? shown "5.0 ms/tick")
+                   (= after 3.0)
+                   (= (pacer-peak-ms!) 0.0))))))
+  (close-window! win))

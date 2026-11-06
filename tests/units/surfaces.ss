@@ -79,3 +79,22 @@
                                         (move dock #f)))
                       (equal? hover '(surface dock dock))
                       (= back 0))))))))
+
+(check "the top bar's memory is the heap's and the process's, or the heap's \
+        alone where the system doesn't say"
+       (let* ([process (status-process-bytes)]
+              [heap (bytes-allocated)]
+              [number (lambda (s)
+                        (string->number
+                         (car (string-split s #\space))))]
+              [heap-only (fluid-let ([status-process-bytes (lambda () #f)])
+                           (status-memory))]
+              [whole (fluid-let ([status-process-bytes (lambda () 1073741824)])
+                       (status-memory))])
+         (and (or (not process)       ; no /proc here
+                  (> process (* 1/2 heap)))
+              (assq 'memory *status-segments*)
+              (let ([parts (string-split whole #\/)])
+                (and (= 2 (length parts))
+                     (equal? (cadr parts) "1024.0 MB")))
+              (< (abs (- (number heap-only) (/ heap 1048576.0))) 20))))
