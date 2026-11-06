@@ -280,8 +280,8 @@ The Ticks tab has three parts:
   what its column means. A window's row opens to
   its handlers (`draw`, `tick`, `key`, ...) and its frame, the style's
   drawing around the content; a surface's to its draw and its tick. A
-  row selected shows its share of every bar. A window's name focuses
-  it, and a process's Kill kills it. Two windows of one title are told
+  row selected shows its share of every bar; a second press lets it go. A
+  window's name focuses it, and a process's Kill kills it. Two windows of one title are told
   apart by their ids (`Life (window 3)`); a window's row says once it
   is closed, a process's once it has ended.
 - **Memory:** the heap, the bytes allocated a second and the collector's

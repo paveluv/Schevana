@@ -3570,6 +3570,22 @@
                       (equal? (reverse by-name) by-name-down)
                       (equal? (order by-rate) (order by-name))
                       (equal? (order by-rate) (order (roots)))))))))
+  ;; The rows drawn selected, at a draw of Monitor's.
+  (let ([selected-rows
+         (lambda ()
+           (let ([n 0] [real ui-draw-highlight-over])
+             (fluid-let ([ui-draw-highlight-over
+                          (lambda args (set! n (+ n 1)) (apply real args))])
+               (invalidate! m)
+               (steps 1))
+             n))])
+    (click-ui! m '(consumers row 0))
+    (let ([chosen (selected-rows)])
+      (click-ui! m '(consumers row 0))
+      (let ([let-go (selected-rows)])
+        (check (format "a press selects a Consumers row, and a second lets it \
+                        go (~a, then ~a drawn selected)" chosen let-go)
+               (and (= chosen 1) (= let-go 0))))))
   (check "a Consumers heading says what its column means"
          (let ([r (ui-find ui '(consumers header avg))])
            (and r (string? (ui-region-tip r))

@@ -16,12 +16,13 @@
 ;;; the collector, by ms a second over the last 5 seconds, with the
 ;;; average and longest a tick, calls a second and the last minute; a
 ;;; window's row opens to its handlers and frame; a row selected shows
-;;; its share of every bar; a window's name focuses it, a process's Kill
-;;; kills it. Memory: the heap, the bytes allocated and the collector's
-;;; time a second, over the seconds kept. At the top: Profiling (on or
-;;; off for the whole world), Pause (this view only), Clear, and how long
-;;; the history is; with profiling off, how to turn it on. All of it is
-;;; drawn by the widget kit: its tabs, charts, tree, tables and labels.
+;;; its share of every bar, until a second press lets it go; a window's
+;;; name focuses it, a process's Kill kills it. Memory: the heap, the bytes
+;;; allocated and the collector's time a second, over the seconds kept. At
+;;; the top: Profiling (on or off for the whole world), Pause (this view
+;;; only), Clear, and how long the history is; with profiling off, how to
+;;; turn it on. All of it is drawn by the widget kit: its tabs, charts, tree,
+;;; tables and labels.
 
 ;; A bar's phases, all the profiler's (profile-phase-names), so that they
 ;; add up to the tick: (phase color . label), each a series of the kit's
@@ -729,7 +730,9 @@
                (ui-draw-sparkline (+ cx 4) (+ cy 4) (- cw 12) (- ch 8) flags
                                   (minute-of node))])))
         (ui-tree ui 'consumers x y w h columns (sorted roots) children selected
-                 (lambda (node) (set! selected node))
+                 ;; a press on the row selected lets it go
+                 (lambda (node)
+                   (set! selected (if (equal? node selected) #f node)))
                  cell
                  'sort order
                  ;; by a number, the most first; again, the other way
