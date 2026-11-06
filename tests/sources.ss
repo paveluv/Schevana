@@ -56,10 +56,16 @@
 ;;; ------------------------------------------------------------------
 ;;; 80 columns
 
+;; The sources directly in folder.
+(define (test-files folder)
+  (map (lambda (f) (string-append folder "/" f))
+       (filter (lambda (f) (string=? (path-extension f) "ss"))
+               (sort string<? (directory-list (source-path folder))))))
+
 (define line-files
   (append (source-files)
-          (map (lambda (f) (string-append "tests/" f))
-               (sort string<? (directory-list (source-path "tests"))))
+          (test-files "tests")
+          (test-files "tests/units")
           '("load.ss" "main.ss" "schevana")))
 
 (define (long-lines f)

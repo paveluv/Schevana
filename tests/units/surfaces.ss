@@ -1,0 +1,81 @@
+;;; tests/units/surfaces.ss — surfaces and strips.
+
+;;; surfaces and strips
+
+;; With no surface registered (no desktop layer) the world draws its
+;; windows on black, maximizes them to the whole screen, and a press,
+;; a key or the wheel where nothing is goes nowhere.
+(let* ([ss *surfaces*] [strips *strips*] [keys 0]
+       [w (open-window "Alone" 'size '(200 . 100) 'pos '(300 . 200)
+                       'draw (lambda (win cw ch)
+                               (fill-rect 0 0 cw ch #x336699))
+                       'key (lambda (win key mods) (set! keys (+ keys 1))))])
+  (set! *surfaces* '())
+  (set! *strips* '())
+  (invalidate!)
+  (steps 1)
+  (let-values ([(cx cy cw ch) (content-rect w)])
+    (let ([inside (canvas-pixel (+ cx 50) (+ cy 50))]
+          [around (map (lambda (p) (canvas-pixel (car p) (cdr p)))
+                       '((5 . 5) (640 . 790) (1270 . 400)))])
+      (inject! '(mouse-move 20 400) '(mouse-down 20 400 left 1)
+               '(mouse-up 20 400 left) '(wheel 0 1) '(key-down #\a ()))
+      (steps 1)
+      (maximize-window! w)
+      (let ([whole (list (window-x w) (window-y w) (window-w w) (window-h w))]
+            [hover *hover*])
+        (set! *surfaces* ss)
+        (set! *strips* strips)
+        (close-window! w)
+        (steps 1)
+        (check (format "with no surface registered the windows are drawn on \
+                        black (#x~x, ~s), maximize to the screen (~s), and \
+                        input where nothing is goes nowhere (~s; keys \
+                        to the window ~a)"
+                       inside around whole hover keys)
+               (and (= inside #xff336699)
+                    (equal? around '(#xff000000 #xff000000 #xff000000))
+                    (equal? whole (list 0 0 (screen-w) (screen-h)))
+                    (not hover) (= keys 1)))))))
+
+;; A surface of one's own with a strip on the left: it is drawn over the
+;; windows, takes the presses and releases on it, and maximized windows
+;; go beside it.
+(let* ([pressed '()]
+       [w (open-window "Beside" 'size '(200 . 100) 'pos '(300 . 200))])
+  (define-surface dock 15
+    'draw (lambda () (fill-rect 0 0 64 (screen-h) #xcc3300))
+    'box (lambda () (values 0 0 64 (screen-h)))
+    'at (lambda (x y) (and (< x 64) 'dock))
+    'mouse (lambda (kind what x y button clicks)
+             (set! pressed (cons (list kind what button) pressed))))
+  (define-strip dock 'left (lambda () 64))
+  (maximize-window! w)
+  (steps 1)
+  (let-values ([(dx dy dw dh) (desktop-rect)])
+    (let ([at (list (window-x w) (window-y w) (window-w w) (window-h w))]
+          [px (canvas-pixel 30 400)])
+      (inject! '(mouse-move 30 400) '(mouse-down 30 400 left 1)
+               '(mouse-up 30 400 left))
+      (steps 1)
+      (let ([hover *hover*])
+        (set! *surfaces* (remp (lambda (s) (eq? (surface-name s) 'dock))
+                               *surfaces*))
+        (set! *strips* (remp (lambda (s) (eq? (car s) 'dock)) *strips*))
+        (wm-screen-resized!)
+        (let ([back (window-x w)])
+          (close-window! w)
+          (steps 1)
+          (check (format "a surface with a strip on the left: maximized \
+                          windows beside it ~s, drawn over them (#x~x), \
+                          its presses ~s, hovered ~s; gone, they fill the \
+                          left again (~a)" at px pressed hover back)
+                 (and (equal? at (list 64 (topbar-height) (- (screen-w) 64)
+                                       (- (screen-h) (topbar-height)
+                                          (taskbar-height))))
+                      (equal? (list dx dy dw dh) at)
+                      (= px #xffcc3300)
+                      (equal? pressed '((up dock left) (down dock left)
+                                        (move dock #f)))
+                      (equal? hover '(surface dock dock))
+                      (= back 0))))))))

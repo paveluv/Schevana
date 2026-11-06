@@ -1,0 +1,231 @@
+;;; tests/units/ui.ss — the widget kit: flow, forms, suggestions, tables' keys,
+;;; dates, trees, side panels.
+
+;; A side panel and its button, where it says, laid out in w × h: (values
+;; rest panel) as called, each its rectangle or #f.
+(define (side-panel-layout ui side w h)
+  (let* ([rest #f] [panel #f]
+         [drawn (image (exact w) (exact h) 1
+                       (lambda ()
+                         (ui-begin! ui)
+                         (ui-side-panel ui 'p 0 0 w (- h 20) side 100 80
+                                        (lambda r (set! rest r))
+                                        (lambda r (set! panel r)))
+                         (ui-side-panel-button ui 'p 7 (- h 20) 24 20 side)
+                         (ui-end! ui w h)))])
+    (cairo-surface-destroy drawn)
+    (values rest panel)))
+
+(let ([win (open-window "Sides" 'size '(400 . 300))])
+  (parameterize ([current-window win])
+    (let ([ui (make-ui)])
+      (define (button) (ui-find ui '(p button)))
+      (define (press-button!)
+        (let ([r (button)])
+          (ui-mouse-down ui (+ (ui-region-x r) 2) (+ (ui-region-y r) 2))
+          (ui-mouse-up ui)))
+      (let-values ([(rest panel) (side-panel-layout ui 'right 400 300)])
+        (check "a side panel opens at its side, the rest beside it, and its \
+                button is where the app laid it, over neither"
+               (and (equal? rest '(0 0 300 280))
+                    (equal? panel '(300 0 100 280))
+                    (= (ui-region-x (button)) 7) (= (ui-region-y (button)) 280)
+                    (ui-side-panel-open? ui 'p))))
+      (press-button!)
+      (let-values ([(rest panel) (side-panel-layout ui 'right 400 300)])
+        (check "a press on the button hides it and the rest has all the room; \
+                the button stays put"
+               (and (equal? rest '(0 0 400 280)) (not panel)
+                    (= (ui-region-x (button)) 7)
+                    (not (ui-side-panel-open? ui 'p)))))
+      (press-button!)
+      (let-values ([(rest panel) (side-panel-layout ui 'left 400 300)])
+        (check "a second press shows it again; on the left it all mirrors"
+               (and (equal? rest '(100 0 300 280))
+                    (equal? panel '(0 0 100 280)))))
+      (ui-side-panel-toggle! ui 'p)
+      (let-values ([(rest panel) (side-panel-layout ui 'left 400 300)])
+        (check "toggling by a key is what the button does; Tab reaches the \
+                button and Space presses it"
+               (and (equal? rest '(0 0 400 280)) (not panel)
+                    (begin (ui-focus! ui '(p button))
+                           (ui-key ui #\space '() (lambda args #f))
+                           (ui-side-panel-open? ui 'p)))))
+      (let-values ([(rest panel) (side-panel-layout ui 'right 150 300)])
+        (check "with too little room for both the rest has it all, and the \
+                button is off: a press leaves the panel as it was"
+               (and (equal? rest '(0 0 150 280)) (not panel)
+                    (begin (press-button!) (ui-side-panel-open? ui 'p)))))))
+  (close-window! win))
+
+(check "ui-flow places, wraps and centers"
+       (and (equal? (call-with-values
+                      (lambda () (ui-flow 0 0 100 5 '((10 . 10) (20 . 20)
+                                                       (30 . 10))))
+                      list)
+                    '(((0 . 5) (15 . 0) (40 . 5)) 20))
+            (equal? (call-with-values
+                      (lambda () (ui-flow 0 0 40 5 '((10 . 10) (20 . 20)
+                                                      (30 . 10))))
+                      list)
+                    '(((0 . 5) (15 . 0) (0 . 25)) 35))))
+
+(check "ui-form puts a label beside its control, or over it where the \
+        control would be narrower than its least; a hint goes under the \
+        control, and a row without a label spans the form"
+       (let* ([gap (ui-gap)] [lh (font-line-height 'ui)]
+              [lw (+ (text-widest '("Name" "Kind") 'ui) gap gap)]
+              [none (lambda (x y w) #f)]
+              [rows (list (list "Name" 20 none)
+                          (list "Kind" 30 none 'hint "Why")
+                          (list #f (lambda (w) (quotient w 10)) none))]
+              [walk (lambda (w)
+                      (let* ([placed '()]
+                             [bottom (ui-form-walk
+                                      rows 0 0 w
+                                      (lambda (row inline? lx ly lw lh cx cy
+                                               cw ch hint hh)
+                                        (set! placed
+                                          (cons (list inline? cx cy cw ch)
+                                                placed)))
+                                      (lambda a #f))])
+                        (cons bottom (reverse placed))))]
+              [hh (let-values ([(w h) (ui-label-size '(hint wrap) "Why"
+                                                     (- 400 lw))])
+                    h)]
+              [wide (walk 400)]
+              [y2 (+ (max 20 lh) gap)]
+              [y3 (+ (max (+ y2 30 4 hh) (+ y2 lh)) gap)]
+              [narrow (walk (+ lw 100))])
+         (and (equal? (cdr wide)
+                      (list (list #t lw 0 (- 400 lw) 20)
+                            (list #t lw y2 (- 400 lw) 30)
+                            (list #f 0 y3 400 40)))
+              (= (car wide) (+ y3 40) (ui-form-height rows 400))
+              (equal? (cadr narrow) (list #f 0 (+ lh 4) (+ lw 100) 20)))))
+
+(check "ui-suggestions ranks by segments, an exact name first, at most n; \
+        none for nothing typed, nor the one that is what was typed"
+       (and (equal? (ui-suggestions "abc" '("abcd" "abc" "xyz") 5)
+                    '("abc" "abcd"))
+            (member "draw-text-centered"
+                    (ui-suggestions "dtc" '("draw-text-centered" "x") 5))
+            (= (length (ui-suggestions "d" '("da" "db" "dc") 2)) 2)
+            (null? (ui-suggestions "" '("a") 5))
+            (null? (ui-suggestions "abc" '("abc") 5))))
+
+(check "ui-table-fit gives the flexible column the rest, dropping \
+        columns in order while it would be narrower than the least, the \
+        others' flags kept"
+       (let ([cols '((a "A" 50) (name "Name" #f) (b "B" 40 right)
+                     (c "C" 30))])
+         (and (equal? (ui-table-fit 300 cols '(c b a) 100)
+                      '((a "A" 50) (name "Name" 180) (b "B" 40 right)
+                        (c "C" 30)))
+              (equal? (ui-table-fit 200 cols '(c b a) 100)
+                      '((a "A" 50) (name "Name" 110) (b "B" 40 right)))
+              (equal? (ui-table-fit 120 cols '(c b a) 100)
+                      '((name "Name" 120))))))
+
+(check "ui-table-step at both ends, by pages, from no row, with no rows"
+       (equal? (map (lambda (a) (apply ui-table-step a))
+                    '((0 5 2 up) (4 5 2 down) (#f 5 2 down) (#f 5 2 up)
+                      (1 5 2 page-down) (4 5 2 page-down) (3 5 2 page-up)
+                      (2 5 2 home) (2 5 2 end) (#f 0 2 down) (2 5 2 left)))
+               '(0 4 0 4 3 4 1 0 4 #f #f)))
+
+(check "dates: day numbers round-trip from 1970 to 2100; 2026-10-31 is a \
+        Saturday; February's lengths; months added clamp the day"
+       (and (let loop ([n 0])
+              (or (> n (ui-date->day '(2100 12 31)))
+                  (and (= n (ui-date->day (ui-day->date n))) (loop (+ n 1)))))
+            (equal? (ui-day->date 0) '(1970 1 1))
+            (= 5 (ui-week-day (ui-date->day '(2026 10 31))))
+            (equal? (map (lambda (y) (ui-days-in-month y 2))
+                         '(2024 2025 2100 2000))
+                    '(29 28 28 29))
+            (equal? (map (lambda (d k)
+                           (ui-day->date (ui-add-months (ui-date->day d) k)))
+                         '((2026 1 31) (2026 12 15) (2026 1 31)) '(1 1 -2))
+                    '((2026 2 28) (2027 1 15) (2025 11 30)))))
+
+(define tree-kids '((a b c) (b d) (c) (d)))
+(define (tree-rows expanded?)
+  (map (lambda (r) (list (ui-tree-row-node r) (ui-tree-row-depth r)
+                         (ui-tree-row-parent r) (ui-tree-row-kids? r)
+                         (ui-tree-row-expanded? r)))
+       (vector->list (ui-tree-rows '(a) (lambda (n) (cdr (assq n tree-kids)))
+                                   expanded?))))
+
+(check "a tree's rows: the expanded nodes' children, depth first, and only \
+        theirs asked for; a key's step: Up, Down, End and Page Down as a \
+        table's, Right expands or goes to the first child, Left collapses or \
+        goes to the parent, Space toggles, Return opens"
+       (let* ([asked '()]
+              [rows (ui-tree-rows '(a)
+                                  (lambda (n)
+                                    (set! asked (cons n asked))
+                                    (cdr (assq n tree-kids)))
+                                  (lambda (n) (not (eq? n 'b))))]
+              [all (ui-tree-rows '(a) (lambda (n) (cdr (assq n tree-kids)))
+                                 (lambda (n) #t))]
+              [step (lambda (i key) (ui-tree-step all i 2 key))])
+         (and (equal? (tree-rows (lambda (n) #t))
+                      '((a 0 #f #t #t) (b 1 0 #t #t) (d 2 1 #f #f)
+                        (c 1 0 #f #f)))
+              (equal? (tree-rows (lambda (n) #f)) '((a 0 #f #t #f)))
+              (= 3 (vector-length rows)) (not (memq 'd asked))
+              (equal? (map (lambda (a) (apply step a))
+                           '((0 down) (0 up) (#f down) (1 end) (0 page-down)
+                             (0 right) (1 right) (2 right) (0 left) (2 left)
+                             (3 left) (1 #\space) (2 #\space) (2 return)
+                             (#f right) (#f left)))
+                      '((select . 1) (select . 0) (select . 0) (select . 3)
+                        (select . 2) (select . 1) (select . 2) #f
+                        (collapse . 0) (select . 1) (select . 0)
+                        (collapse . 1) #f (open . 2) #f #f))
+              (equal? (ui-tree-step rows 1 2 'right) '(expand . 1))
+              (equal? (ui-tree-step rows 1 2 #\space) '(expand . 1))
+              (= 1 (ui-tree-index rows 'b)) (not (ui-tree-index rows 'd)))))
+
+(check "a row under another at any depth, and not under its siblings"
+       (let ([all (ui-tree-rows '(a) (lambda (n) (cdr (assq n tree-kids)))
+                                (lambda (n) #t))])   ; a b d c
+         (and (ui-tree-under? all 2 0) (ui-tree-under? all 2 1)
+              (ui-tree-under? all 3 0) (not (ui-tree-under? all 3 1))
+              (not (ui-tree-under? all 1 2)) (not (ui-tree-under? all 0 0))
+              (not (ui-tree-under? all #f 0)))))
+
+(check "a dimmed tree row shades its indentation and twisty as the cells \
+        shade themselves, and nothing of its cell; selected, it is not \
+        dimmed"
+       (let* ([cx (cadr (assq 'cell (ui-tree-areas 0 0 200 30 1)))]
+              [row (lambda (flags)
+                     (image 300 30 1
+                            (lambda ()
+                              (fill-rect 0 0 300 30 'bg-1)
+                              (ui-draw-tree-row 0 0 300 30 flags 200 1))))]
+              [cell (lambda (flags)
+                      (image 300 30 1
+                             (lambda ()
+                               (fill-rect 0 0 300 30 'bg-1)
+                               (ui-draw-dim 0 0 cx 30 flags))))]
+              [plain (row '(kids expanded))] [dim (row '(kids expanded dim))]
+              [picked (row '(kids expanded selected))]
+              [dim-picked (row '(kids expanded dim selected))]
+              [shade (cell '(dim))])
+         (and (> (max-diff plain dim (list cx 0 300 30)) 0)
+              (= 0 (max-diff plain dim (list 0 0 cx 30)))
+              (= 0 (max-diff picked dim-picked))
+              (= (pixel-at dim 2 2) (pixel-at shade 2 2))
+              (not (= (pixel-at dim 2 2) (pixel-at plain 2 2))))))
+
+(check "a deep row's indentation stops at half its column, so its cell \
+        keeps room"
+       (let* ([at (lambda (depth k)
+                    (cdr (assq k (ui-tree-areas 0 0 200 20 depth))))]
+              [twisty (at 1 'twisty)] [cell (at 1 'cell)] [deep (at 500 'cell)])
+         (and (< (car twisty) (car cell))
+              (= (+ (car cell) (caddr cell)) 200)
+              (>= (caddr deep) 80)
+              (equal? deep (at 1000 'cell)))))

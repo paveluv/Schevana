@@ -935,7 +935,10 @@ through the launcher and Settings, never touches your real
 scheme --script tests/units.ss out
 ```
 
-This tests the drawing layer piece by piece: the measuring context,
+This runs every file of `tests/units/`, a topic each, in a process of its
+own, so that none leans on what another left behind;
+`scheme --script tests/units.ss out life boids` runs those alone. Together
+they test the drawing layer piece by piece: the measuring context,
 text cut to fit measuring no more of a long text than its width could
 show, cached shadows against the stacked ones, pixmaps, Life's
 generations against a plain reference (a tick's allocates under 8 KB), on
