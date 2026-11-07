@@ -708,7 +708,8 @@
               (profile-tick-ns seq 'gcs)))
      (let ([p (inspect-pacer)])
        (list (format "the pacer: re-timed ~a times, left out ~a frames"
-                     (cdr (assq 'retimed p)) (cdr (assq 'skipped p)))))
+                     (cdr (assq 'retimed p)) (cdr (assq 'skipped p)))
+             (format "presenting by ~a" *gpu-present-mode*)))
      (if loaded (list (format "the machine's load: ~a" loaded)) '())
      (if (string=? wrong "")
          '()
@@ -906,9 +907,10 @@
 (define (profile-device-lines)
   (let ([of (lambda (k) (cdr (assq k (inspect-device))))])
     (list
-     (format "driver ~a, present modes offered ~a, ~a × ~a pixels"
-             (of 'driver) (of 'present-modes) (car (of 'pixels))
-             (cdr (of 'pixels)))
+     (format "driver ~a, presenting by ~a, present modes offered ~a, \
+              ~a × ~a pixels"
+             (of 'driver) (of 'present-mode) (of 'present-modes)
+             (car (of 'pixels)) (cdr (of 'pixels)))
      (let ([d (of 'display)])
        (if d
            (format "display ~a × ~a at ~a/~a Hz, density ~a" (car d) (cadr d)

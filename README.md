@@ -698,6 +698,13 @@ Decisions worth keeping in mind for the real design:
   (`'pacer-margin`, 300 ns, in Settings' Display tab), because a report can
   be a little too long: drifting early costs a frame nothing, where drifting
   late would show one a refresh late.
+  How a frame reaches the screen is `'present-mode`, in the same tab, or
+  `(override! 'present-mode 'mailbox)`; it changes live, at the next frame,
+  among what the window offers (`(inspect-device)`). With `vsync`, the
+  default, main can wait for the screen, and a frame that misses it shows as
+  a flag. With `mailbox` main seldom waits and a newer frame replaces one not
+  shown yet, which SDL doesn't report: no flag says so, and the pacer hardly
+  re-times, having few waits to go by.
 - **Kernel vs user space via engines.** Each app handler runs in a Chez
   engine with a fuel budget (`safe-call`). An error or an infinite loop
   "crashes" only that window, which then shows the condition and can be

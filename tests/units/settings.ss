@@ -40,6 +40,48 @@
                 (null? (settings-own-options))
                 (not (settings-option 'test-own-ink))))))
 
+(check "Settings' Display tab offers how frames are presented where the \
+        window has a choice: the choice holds in every style and saves, and \
+        the default drops it"
+       (let ()
+         (define (press! ui win id)
+           (let-values ([(cx cy cw ch) (content-rect win)])
+             (let* ([r (ui-find ui id)]
+                    [x (exact (round (+ cx (ui-region-x r)
+                                        (/ (ui-region-w r) 2))))]
+                    [y (exact (round (+ cy (ui-region-y r)
+                                        (/ (ui-region-h r) 2))))])
+               (inject! `(mouse-down ,x ,y left 1) `(mouse-up ,x ,y left))
+               (steps 3))))
+         (define (shown ui) (and (ui-find ui '(present-mode mailbox)) #t))
+         (let* ([win (settings)] [ui (window-ref win 'ui)])
+           (steps 3)
+           (press! ui win '(tab display))
+           (let ([no-window (shown ui)])
+             (fluid-let ([gpu-present-modes (lambda () '(vsync mailbox))]
+                         [sdl-set-swapchain-parameters (lambda args #t)])
+               (invalidate! win)
+               (steps 3)
+               (let ([offered (shown ui)])
+                 (press! ui win '(present-mode mailbox))
+                 (let ([chosen (theme 'present-mode)]
+                       [elsewhere (begin (set-style! 'genera)
+                                         (theme 'present-mode))])
+                   (set-style! 'mac)
+                   (theme-file-save!)
+                   (override! 'present-mode)
+                   (theme-file-load!)
+                   (let ([loaded (theme 'present-mode)])
+                     (steps 3)
+                     (press! ui win '(present-mode vsync))
+                     (let ([dropped (settings-pinned? 'present-mode)])
+                       (close-window! win)
+                       (steps 2)
+                       (and (not no-window) offered
+                            (eq? chosen 'mailbox) (eq? elsewhere 'mailbox)
+                            (eq? loaded 'mailbox) (not dropped)
+                            (eq? (theme 'present-mode) 'vsync)))))))))))
+
 (check "a detached window is a window in its style that is not on screen"
        (let ([w (detached-window "Away" 'size '(200 . 100)
                                  'window-style 'genera)])

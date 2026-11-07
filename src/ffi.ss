@@ -249,6 +249,8 @@
 (define-foreign sdl-gpu-driver "SDL_GetGPUDeviceDriver" (uptr) string)
 (define-foreign sdl-window-supports-present-mode
   "SDL_WindowSupportsGPUPresentMode" (uptr uptr int) bool)
+(define-foreign/collect-safe sdl-set-swapchain-parameters
+  "SDL_SetGPUSwapchainParameters" (uptr uptr int int) bool)
 (define-foreign/collect-safe sdl-wait-gpu-idle "SDL_WaitForGPUIdle" (uptr) bool)
 (define gpu-copy-in (foreign-procedure "SDL_memcpy" (uptr u8* size_t) uptr))
 (define gpu-copy-out (foreign-procedure "SDL_memcpy" (u8* uptr size_t) uptr))

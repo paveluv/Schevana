@@ -94,6 +94,7 @@
             taskbar-height 38
             shadow 14
             pacer-margin 300
+            present-mode vsync
             ui-font "sans-serif"
             ui-font-size 13
             mono-font "monospace"

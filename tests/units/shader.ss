@@ -121,6 +121,20 @@
            (gpu-buffer-release! colors)
            ok)))
 
+(check "a paint stays inside the rounded clip a square one lies in"
+       (let* ([colors (shader-test-buffer (list #xff102030))]
+              [img (image 20 20 1
+                          (lambda ()
+                            (fill-box 0 0 20 20 #x000000)
+                            (with-clip (0 0 20 20 8)
+                              (with-clip (0 0 20 20)
+                                (fill-shader 0 0 20 20 shader-test-half
+                                             colors 20 #x405060)))))]
+              [ok (and (= (pixel-at img 0 0) #xff000000)
+                       (= (pixel-at img 4 10) #xff102030))])
+         (gpu-buffer-release! colors)
+         ok))
+
 (check "drawing goes on as ever after a paint, in order"
        (let* ([colors (shader-test-buffer (list #xff102030))]
               [img (image 10 10 1

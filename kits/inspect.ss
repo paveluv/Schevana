@@ -66,7 +66,8 @@
 
 (define (inspect-pixels n) (fl/ (fixnum->flonum n) 256.0))
 
-;; A record's clip row, if it has one: (x0 y0 x1 y1 radius).
+;; A record's clip row, if it has one: (x0 y0 x1 y1 radius rx0 ry0 rx1 ry1), the
+;; radius being that of the rounded box it lies in.
 (define (inspect-clip l i)
   (let ([row (fxsrl (fxand (inspect-word l i 0) #xffffffff) 8)])
     (and (not (fx= row 0))
@@ -74,7 +75,7 @@
                 (inspect-pixels
                  (bytevector-s32-native-ref (vector-ref l 1)
                                             (fx* 4 (fx+ row k)))))
-              '(0 1 2 3 4)))))
+              '(0 1 2 3 4 6 7 8 9)))))
 
 (define (inspect-kind l i)
   (vector-ref inspect-kinds (fxand (inspect-word l i 0) 15)))
@@ -188,6 +189,7 @@
       (pixels ,*canvas-pw* . ,*canvas-ph*)
       (scale . ,*canvas-ratio*)
       (driver . ,(gpu-driver-name))
+      (present-mode . ,*gpu-present-mode*)
       (present-modes . ,(gpu-present-modes))
       (display . ,(host-display)))))
 

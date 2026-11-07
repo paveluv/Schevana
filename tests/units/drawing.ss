@@ -22,6 +22,40 @@
   (draw-shadow 100 100 300 200 9 14)
   (pixmap-draw (make-pixmap 2 2 #xff0000) 10 10 50 50))
 
+(check "a window's present mode follows 'present-mode at its next frame, \
+        asked once a change; a mode it doesn't offer, or that the swapchain \
+        refuses, leaves it as it is, and with no window there's none to change"
+       (let ([asked '()] [answer #t])
+         (define (frame!) (request-frame!) (schevana-step! 0))
+         (define (choose! mode)
+           (override! 'present-mode mode)
+           (frame!)
+           (frame!)
+           (cons *gpu-present-mode* (length asked)))
+         (let* ([results
+                 (fluid-let ([gpu-present-modes (lambda () '(vsync mailbox))]
+                             [sdl-set-swapchain-parameters
+                              (lambda (device window composition mode)
+                                (set! asked (cons mode asked))
+                                answer)])
+                   (let* ([mailbox (choose! 'mailbox)]
+                          [vsync (choose! 'vsync)]
+                          [not-offered (choose! 'immediate)]
+                          [refused (begin (set! answer #f)
+                                          (choose! 'mailbox))])
+                     (set! answer #t)
+                     (override! 'present-mode)
+                     (frame!)
+                     (list mailbox vsync not-offered refused)))]
+                [windowless (choose! 'mailbox)])
+           (override! 'present-mode)
+           (frame!)
+           (and (equal? results
+                        '((mailbox . 1) (vsync . 2) (vsync . 2) (vsync . 3)))
+                (equal? (reverse asked) '(2 0 2 0))
+                (equal? (car windowless) 'vsync)
+                (eq? (cdr (assq 'present-mode (inspect-device))) 'vsync)))))
+
 (check "stray drawing between frames leaves the screen untouched"
        (let ([before (canvas-bytes)])
          (stray-drawing!)

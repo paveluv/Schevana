@@ -41,6 +41,10 @@
 ;; How long the Consumers sum, in seconds.
 (define monitor-consumer-seconds 5)
 
+;; How long a consumer or a part stays listed since it last ran, in seconds:
+;; the last minute its line shows.
+(define monitor-listed-seconds 60)
+
 ;; A bar's width in the Ticks, pixels.
 (define monitor-bar-px 3)
 
@@ -251,6 +255,18 @@
         [(eq? subject 'gc) (format "during ~a" phase)]
         [(eq? phase 'render) "draw"]
         [else (symbol->string phase)]))
+
+;; What a row's node is: a window, a process, a surface or the collector; a
+;; part: a handler, a window's frame, or a phase.
+(define (monitor-node-type node)
+  (cond [(monitor-part? node)
+         (cond [(cadr node) "handler"]
+               [(monitor-window? (car node)) "frame"]
+               [else "phase"])]
+        [(monitor-window? node) "window"]
+        [(pair? node) "process"]
+        [(eq? node 'gc) "collector"]
+        [else "surface"]))
 
 ;; Where tick seq's time went, a bar's tooltip, a line each: when it
 ;; ended (zero, the ms of the day at the clock's 0), how long it took
@@ -470,6 +486,7 @@
         [selected #f]      ; the row selected: a subject, or (subject part
                            ; phase)
         [order '(rate . down)]   ; the Consumers' sort: (key . up|down)
+        [parts (make-hashtable equal-hash equal?)]   ; subject: (part . phase)s
         [shares (make-hashtable equal-hash equal?)]   ; (seq . selected): ns
         [tips (make-eqv-hashtable)]                   ; seq: text
         [drawn #f]         ; the Ticks as last drawn: (newest hover)
@@ -574,26 +591,33 @@
         (ui-draw-label x y w gh '(group) title)
         (ui-draw-label x y w gh '(dim right) words)
         (+ y gh 6)))
-    ;; The Consumers' rows over the last complete seconds (at most 5 of
-    ;; them): the totals, the subjects listed (those spent, then the live
-    ;; windows and processes) and their labels, and the seconds' span.
+    ;; The Consumers' rows: the totals over the last complete seconds (at
+    ;; most 5 of them), the subjects listed (those that ran in the last
+    ;; minute, then the live windows and processes) and their labels, and
+    ;; the seconds' span. A subject keeps the parts it last had several of,
+    ;; so that its row can't fold by itself.
     (define (consumers seconds)
+      (define (latest n)
+        (filter (lambda (t) (monitor-subject? (profile-total-what t)))
+                (profile-totals (list-head seconds
+                                           (min n (length seconds))))))
       (remember 'consumers
         (lambda ()
-          (let* ([recent (list-head seconds
-                                    (min monitor-consumer-seconds
-                                         (length seconds)))]
-                 [totals (filter (lambda (t)
-                                   (monitor-subject? (profile-total-what t)))
-                                 (profile-totals recent))]
-                 [spent (map profile-total-what totals)]
+          (let* ([listed (latest monitor-listed-seconds)]
+                 [spent (map profile-total-what listed)]
                  [roots (append spent
                                 (remp (lambda (s) (member s spent))
                                       (map profile-subject-of
                                            (append (reverse (windows))
                                                    (procs)))))])
-            (list totals roots (monitor-labels roots)
-                  (max 1 (length recent)))))))
+            (for-each (lambda (t)
+                        (when (> (length (profile-total-parts t)) 1)
+                          (hashtable-set! parts (profile-total-what t)
+                                          (map profile-total-what
+                                               (profile-total-parts t)))))
+                      listed)
+            (list (latest monitor-consumer-seconds) roots (monitor-labels roots)
+                  (max 1 (min monitor-consumer-seconds (length seconds))))))))
     (define (label-of s seconds)
       (let ([l (assoc s (caddr (consumers seconds)))])
         (if l (cdr l) (monitor-subject-label s))))
@@ -718,16 +742,24 @@
              [minute (remember 'minute
                        (lambda ()
                          (reverse (list-head seconds
-                                             (min 60 (length seconds))))))]
+                                             (min monitor-listed-seconds
+                                                  (length seconds))))))]
              [cw (font-char-width 'ui)]
+             [kind (+ (* 2 (ui-table-cell-inset)) (text-width "collector" 'ui))]
              [num (max (* 8 cw) (+ 28 (text-width "calls/s" 'ui-small)))]
              [spark (* 13 cw)]
              ;; each heading's tooltip says what its column means
              [columns
               `((name "Consumer"
-                      ,(max 120 (- (ui-table-room w) (* 4 num) spark))
-                      "A window, surface or process, or the collector; a \
-                       window's row opens to its handlers and frame")
+                      ,(max 120 (- (ui-table-room w) kind (* 4 num) spark))
+                      ,(format "What ran: a row of several parts opens to \
+                                them, and each stays listed ~a s since it \
+                                last ran"
+                               monitor-listed-seconds))
+                (type "Type" ,kind
+                      "A window, a process, a surface or the collector; \
+                       among a row's parts, a handler, a window's frame or \
+                       a phase")
                 (rate "ms/s" ,num right
                       ,(format "Milliseconds it spent a second, on average \
                                 over the last ~a s: its share of the main \
@@ -771,6 +803,7 @@
               [(name) (if (monitor-part? node)
                           (apply monitor-part-label node)
                           (label-of node seconds))]
+              [(type) (monitor-node-type node)]
               [(rate) (if t (/ (profile-total-ms t) span) 0)]
               [(avg) (if (and t (> (profile-total-ticks t) 0))
                          (/ (profile-total-ms t) (profile-total-ticks t))
@@ -781,20 +814,18 @@
         ;; siblings in the order order names, ties as they come
         (define (sorted nodes)
           (let ([key (car order)] [down? (eq? (cdr order) 'down)]
-                [less? (if (eq? (car order) 'name) string-ci<? <)])
+                [less? (if (memq (car order) '(name type)) string-ci<? <)])
             (list-sort (lambda (a b)
                          (let ([va (sort-value a key)] [vb (sort-value b key)])
                            (if down? (less? vb va) (less? va vb))))
                        nodes)))
-        ;; a subject's parts, (subject part phase), when it has more than one
+        ;; a subject's parts, (subject part phase), once it has had several
         (define (children node)
-          (let ([t (and (not (monitor-part? node)) (total-of node))])
-            (if (and t (> (length (profile-total-parts t)) 1))
-                (sorted (map (lambda (p)
-                               (let ([what (profile-total-what p)])
-                                 (list node (car what) (cdr what))))
-                             (profile-total-parts t)))
-                '())))
+          (if (monitor-part? node)
+              '()
+              (sorted (map (lambda (what)
+                             (list node (car what) (cdr what)))
+                           (hashtable-ref parts node '())))))
         (define (cell node key cx cy cw ch flags)
           (let ([t (total-of node)] [in (ui-table-cell-inset)])
             (define (number v) (ui-draw-cell cx cy cw ch '(right) v))
@@ -833,6 +864,8 @@
                               (lambda ()
                                 (let ([p (find-proc id)]) (when p (kill! p))))
                               'danger #t 'quiet #t)))]
+              [(type) (ui-draw-cell cx cy cw ch '(dim)
+                                    (monitor-node-type node))]
               [(rate) (number (monitor-ms (if t (/ (profile-total-ms t) span)
                                               0.0)))]
               [(avg) (number (if (and t (> (profile-total-ticks t) 0))
@@ -859,7 +892,7 @@
                  'on-sort (lambda (key)
                             (set! order
                                   (cond [(not (eq? key (car order)))
-                                         (cons key (if (eq? key 'name)
+                                         (cons key (if (memq key '(name type))
                                                        'up
                                                        'down))]
                                         [(eq? (cdr order) 'up)

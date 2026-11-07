@@ -17,6 +17,9 @@
   '((theme . "Theme") (colors . "Colors") (fonts . "Fonts")
     (display . "Display") (permissions . "Permissions")))
 
+;; How frames reach the screen, those the window offers shown.
+(define settings-present-choices '(("VSync" . vsync) ("Mailbox" . mailbox)))
+
 ;; Percentages for the display's scale; 0 follows the desktop.
 (define settings-scale-choices
   '(("Auto" . 0) ("100%" . 100) ("125%" . 125) ("150%" . 150) ("175%" . 175)
@@ -974,9 +977,9 @@
 (define (settings-display ui x y w)
   (let* ([y (+ 6 (settings-heading x y w "Display"
                    "How big everything is drawn, full screen, and how \
-                    frames are timed."))]
+                    frames are timed and shown."))]
          [label-w (settings-label-width '("Scale" "Full screen"
-                                          "Frame timing"))]
+                                          "Frame timing" "Presenting"))]
          [h (ui-control-height)]
          [segmented-w (lambda (choices)
                         (* (length choices)
@@ -1020,13 +1023,40 @@
                                                             nv)))))
                             (ui-draw-label (+ sx (- sw rw) 18) sy (- rw 18)
                                            (ui-slider-height) '(dim)
-                                           (format "~a ns" v))))])
-    (+ 22 (ui-draw-label x (+ y 10) w 0 '(hint wrap)
-                         "Ticks run this much shorter than the refresh the \
-                          display reports, so frames drift early, where they \
-                          only wait, and not late, where one would show a \
-                          refresh late. More keeps a wider margin; less makes \
-                          the screen pull them back less often."))))
+                                           (format "~a ns" v))))]
+         [y (+ 22 (ui-draw-label x (+ y 10) w 0 '(hint wrap)
+                                 "Ticks run this much shorter than the \
+                                  refresh the display reports, so frames \
+                                  drift early, where they only wait, and not \
+                                  late, where one would show a refresh late. \
+                                  More keeps a wider margin; less makes the \
+                                  screen pull them back less often."))]
+         [present-choices
+          (let ([offered (gpu-present-modes)])
+            (filter (lambda (c) (memq (cdr c) offered))
+                    settings-present-choices))])
+    (if (< (length present-choices) 2)
+        y
+        (let ([y (settings-row
+                  ui x y w label-w "Presenting" '(dim) h
+                  (if stack? (+ w 1) (segmented-w present-choices)) 0
+                  (lambda (sx sy sw)
+                    (ui-segmented
+                     ui 'present-mode sx sy
+                     (min (max 160 (segmented-w present-choices)) sw)
+                     h present-choices (theme 'present-mode)
+                     ;; the window's, whatever the style
+                     (lambda (v)
+                       (if (eq? v (theme-default 'present-mode))
+                           (override! 'present-mode)
+                           (override! 'present-mode v))))))])
+          (+ 22 (ui-draw-label x (+ y 10) w 0 '(hint wrap)
+                               "VSync: main waits its turn for the screen, \
+                                and a frame that misses it shows as a flag \
+                                in Monitor. Mailbox: main seldom waits, and \
+                                a newer frame replaces one not shown yet. \
+                                That leaves no trace here, so fewer flags \
+                                needn't mean fewer missed frames."))))))
 
 ;;; ------------------------------------------------------------------
 ;;; permissions

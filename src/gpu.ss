@@ -227,6 +227,8 @@
 (define (gpu-claim-window! window)
   (unless (sdl-claim-window (renderer-device *renderer*) window)
     (errorf 'gpu-claim-window! "~a" (sdl-get-error)))
+  (set! *gpu-present-mode* 'vsync)   ; as a claim leaves it
+  (set! *gpu-present-asked* 'vsync)
   (renderer-window-set! *renderer* window))
 
 ;; What frames draw to with no window: a texture w × h.
@@ -819,6 +821,9 @@
 ;; The driver's name, and how this window may present.
 (define (gpu-driver-name) (sdl-gpu-driver (renderer-device *renderer*)))
 
+(define gpu-present-codes '((vsync . 0) (immediate . 1) (mailbox . 2)))
+(define gpu-composition-sdr 0)   ; the one a claim gives: colors stay the same
+
 (define (gpu-present-modes)
   (let ([r *renderer*])
     (if (eqv? 0 (renderer-window r))
@@ -827,7 +832,24 @@
              (filter (lambda (m)
                        (sdl-window-supports-present-mode
                         (renderer-device r) (renderer-window r) (cdr m)))
-                     '((vsync . 0) (immediate . 1) (mailbox . 2)))))))
+                     gpu-present-codes)))))
+
+;; How this window presents, and what it was last asked to.
+(defvar *gpu-present-mode* 'vsync)
+(defvar *gpu-present-asked* 'vsync)
+
+;; Between frames, the window presents by mode from now on. A mode it doesn't
+;; offer leaves it as it is, and is asked once a change: a choice saved on
+;; another machine costs this one's frames nothing.
+(define (gpu-present-mode! mode)
+  (unless (eq? mode *gpu-present-asked*)
+    (set! *gpu-present-asked* mode)
+    (let ([r *renderer*])
+      (when (and (memq mode (gpu-present-modes))
+                 (sdl-set-swapchain-parameters
+                  (renderer-device r) (renderer-window r) gpu-composition-sdr
+                  (cdr (assq mode gpu-present-codes))))
+        (set! *gpu-present-mode* mode)))))
 
 ;; One frame: uploads, then the runs, to the window or the target. => #t if
 ;; it reached the screen; #f if the window had no room for it yet (a frame

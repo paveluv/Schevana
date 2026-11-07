@@ -170,8 +170,9 @@
 ;;; Paint kinds: solid; gradient, whose row is radial?, x0 y0 x1 y1, n and
 ;;; n colors; stipple, whose row is u v w h, ink and paper; image, whose row
 ;;; is its width and height.
-;;; The extras also hold clips: x0 y0 x1 y1 radius. Their word 0 is unused,
-;;; so that clip 0 is no clip.
+;;; The extras also hold clips: x0 y0 x1 y1, a radius, the clip it lies in, and
+;;; the box that radius rounds: rx0 ry0 rx1 ry1. What's drawn has to be inside
+;;; both boxes. Their word 0 is unused, so that clip 0 is no clip.
 
 (define rec-kind-box 0)
 (define rec-kind-segment 1)
@@ -691,15 +692,25 @@
     (let* ([clip (fxsrl (word 0) 8)]
            [m (if (fx= clip 0)
                   1.0
-                  (flmax 0.0
-                         (flmin 1.0
-                                (fl- 0.5
-                                     (box-distance
-                                      (pixels (extra clip))
-                                      (pixels (extra (fx+ clip 1)))
-                                      (pixels (extra (fx+ clip 2)))
-                                      (pixels (extra (fx+ clip 3)))
-                                      (pixels (extra (fx+ clip 4))))))))]
+                  (flmax
+                   0.0
+                   (flmin
+                    1.0
+                    (fl- 0.5
+                         (flmax
+                          (box-distance (pixels (extra clip))
+                                        (pixels (extra (fx+ clip 1)))
+                                        (pixels (extra (fx+ clip 2)))
+                                        (pixels (extra (fx+ clip 3)))
+                                        0.0)
+                          (if (fx= (extra (fx+ clip 4)) 0)
+                              -1.0
+                              (box-distance
+                               (pixels (extra (fx+ clip 6)))
+                               (pixels (extra (fx+ clip 7)))
+                               (pixels (extra (fx+ clip 8)))
+                               (pixels (extra (fx+ clip 9)))
+                               (pixels (extra (fx+ clip 4))))))))))]
            [,x (fx- (flonum->fixnum (flfloor px)) (fxsra (word 2) 8))]
            [,y (fx- (flonum->fixnum (flfloor py)) (fxsra (word 3) 8))]
            [c (let () ,@forms)]
@@ -762,8 +773,9 @@
 ;;; ------------------------------------------------------------------ state
 
 ;; What's drawn next is clipped to a box, rounded if r: nested clips intersect
-;; their boxes, and the innermost radius applies. A clip's row ends with the
-;; row of the one it lies in.
+;; their boxes, and a clip with no radius keeps the rounded box it lies in, so
+;; that a window's content stays inside the window's corners. Of two rounded
+;; ones, the innermost holds.
 (define (rec-clip-enter! x y w h r)
   (let* ([clip *rec-clip*]
          [ax (rec-snap (rec-device x *rec-ox*))]
@@ -774,13 +786,19 @@
          [y0 (if (fx= clip 0) ay (fxmax ay *rec-cy0*))]
          [x1 (fxmax x0 (if (fx= clip 0) bx (fxmin bx *rec-cx1*)))]
          [y1 (fxmax y0 (if (fx= clip 0) by (fxmin by *rec-cy1*)))]
+         [radius (rec-radius r w h)]
+         [own? (or (fx= clip 0) (not (eqv? radius 0)))]
          [row *rec-extra-at*])
     (rec-extra! x0)
     (rec-extra! y0)
     (rec-extra! x1)
     (rec-extra! y1)
-    (rec-extra! (rec-radius r w h))
+    (rec-extra! (if own? radius (rec-extra-ref clip 4)))
     (rec-extra! clip)
+    (rec-extra! (if own? ax (rec-extra-ref clip 6)))
+    (rec-extra! (if own? ay (rec-extra-ref clip 7)))
+    (rec-extra! (if own? bx (rec-extra-ref clip 8)))
+    (rec-extra! (if own? by (rec-extra-ref clip 9)))
     (set! *rec-clip* row)
     (set! *rec-cx0* x0)
     (set! *rec-cy0* y0)
@@ -1086,11 +1104,19 @@
               1.0
               (clamp01
                (fl- 0.5
-                    (box-distance (pixels (extra clip))
-                                  (pixels (extra (fx+ clip 1)))
-                                  (pixels (extra (fx+ clip 2)))
-                                  (pixels (extra (fx+ clip 3)))
-                                  (pixels (extra (fx+ clip 4)))))))]
+                    (flmax
+                     (box-distance (pixels (extra clip))
+                                   (pixels (extra (fx+ clip 1)))
+                                   (pixels (extra (fx+ clip 2)))
+                                   (pixels (extra (fx+ clip 3)))
+                                   0.0)
+                     (if (fx= (extra (fx+ clip 4)) 0)
+                         -1.0
+                         (box-distance (pixels (extra (fx+ clip 6)))
+                                       (pixels (extra (fx+ clip 7)))
+                                       (pixels (extra (fx+ clip 8)))
+                                       (pixels (extra (fx+ clip 9)))
+                                       (pixels (extra (fx+ clip 4)))))))))]
          [m (fl* cover clipping)]
          ;; a gradient: where the pixel falls between two of its colors
          [gradient? (fx= paint-kind 1)]
@@ -1192,6 +1218,7 @@
 ;; again.
 (define (rec-present!)
   (rec-run-end!)
+  (gpu-present-mode! (theme 'present-mode))
   (let ([table (rec-take-table!)]
         [pieces (rec-take-atlas-pieces!)]
         [runs (reverse *rec-runs*)]

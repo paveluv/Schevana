@@ -60,7 +60,21 @@
                 (equal? (list-head (pipeline-test-field r 'clip) 4)
                         (map (lambda (v) (* v *scale* 1.0))
                              '(15 25 20 30))))))
-  (check "paints read back by name; a segment and a polygon by kind"
+  (check "a square clip reads back the rounded box it lies in"
+       (let ([clip (pipeline-test-field
+                    (inspect-record
+                     (pipeline-test-list
+                      (lambda ()
+                        (with-clip (10 10 40 40 5)
+                          (with-clip (20 20 10 10)
+                            (fill-box 20 20 5 5 #x112233)))))
+                     0)
+                    'clip)])
+         (equal? clip
+                 (map (lambda (v) (* v *scale* 1.0))
+                      '(20 20 30 30 5 10 10 50 50)))))
+
+(check "paints read back by name; a segment and a polygon by kind"
          (and (eq? (pipeline-test-field (record 2) 'paint) 'gradient)
               (eq? (pipeline-test-field (record 3) 'paint) 'stipple)
               (eq? (pipeline-test-field (record 4) 'kind) 'segment)

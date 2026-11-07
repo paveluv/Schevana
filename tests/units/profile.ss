@@ -371,6 +371,68 @@
              (printf "  ~s ~s\n" end room)
              (and end (> (ui-scrollbar-inset 'right) 0) (<= end room))))))
 
+(check "Monitor's Consumers say each row's type, list a row for the minute \
+        since it last ran, and a row opened stays open as its parts go quiet"
+       (let* ([fake (expt 10 15)]
+              [busy? #t]
+              [q (open-window "Quiet"
+                              'size '(100 . 60)
+                              'tick (lambda (win)
+                                      (set! fake (+ fake 1000000))
+                                      (when busy? (invalidate! win)))
+                              'draw (lambda (win w h)
+                                      (set! fake (+ fake 1000000))))]
+              [m (monitor)] [ui (window-ref m 'ui)]
+              [subject (profile-subject-of q)]
+              [draw-part (list subject 'draw 'render)])
+         (define (run! seconds)   ; 500 ms a step
+           (do ([i 0 (+ i 1)]) ((= i (* 2 seconds)))
+             (set! fake (+ fake 500000000))
+             (schevana-step! 0)))
+         (define (rows)
+           (map ui-tree-row-node
+                (vector->list (ui-memo ui '(consumers rows) '#()))))
+         (fluid-let ([now-ns (lambda () fake)]
+                     [now-ms (lambda () (quotient fake 1000000))])
+           (profile-clear!)
+           (steps 3)
+           (let-values ([(cx cy cw ch) (content-rect m)])   ; its Ticks
+             (let* ([r (ui-find ui '(tab ticks))]
+                    [x (exact (round (+ cx (ui-region-x r)
+                                        (/ (ui-region-w r) 2))))]
+                    [y (exact (round (+ cy (ui-region-y r)
+                                        (/ (ui-region-h r) 2))))])
+               (inject! `(mouse-down ,x ,y left 1) `(mouse-up ,x ,y left))))
+           (run! 4)
+           (hashtable-set! (ui-tree-states ui 'consumers) subject #t)
+           (run! 4)
+           (let ([working (member draw-part (rows))]
+                 [column (ui-find ui '(consumers header type))])
+             (set! busy? #f)
+             (run! 10)   ; out of the 5 s the columns sum
+             (let ([quiet (member draw-part (rows))])
+               (run! 70)   ; out of the minute: only one part ran in it
+               (let ([kept (member draw-part (rows))])
+                 (close-window! q)
+                 (run! 10)
+                 (let ([closed (member subject (rows))])
+                   (run! 70)
+                   (let ([gone (not (member subject (rows)))])
+                     (close-window! m)
+                     (steps 1)
+                     (printf "  ~s\n"
+                             (list (and working #t) (and column #t)
+                                   (and quiet #t) (and kept #t)
+                                   (and closed #t) gone))
+                     (and working column quiet kept closed gone
+                          (equal? (map monitor-node-type
+                                       (list subject draw-part
+                                             (list subject #f 'render)
+                                             '(process . 3) 'gc 'wallpaper
+                                             '(gc #f tick)))
+                                  '("window" "handler" "frame" "process"
+                                    "collector" "surface" "phase")))))))))))
+
 ;;; Flags: a late tick kept with what explains it.
 
 ;; Ticks by hand on a clock only pass! moves (ms), a period 16 ms; thunk's
@@ -556,7 +618,8 @@
               (line? "the host window:")
               (has? "; the GPU" (cadr lines))
               (has? "=== a run" more)
-              (has? "present modes offered" more)
+              (has? "presenting by vsync, present modes offered" more)
+              (line? "presenting by vsync")
               (has? "the host said: focus-gained" more))))
 
 (check "main past its time in the wait for events: asleep if it ran little \

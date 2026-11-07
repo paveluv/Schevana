@@ -405,6 +405,36 @@
          (picture-free! img)
          (for-all (lambda (p) (memv p '(#xff000000 #xffffffff))) ps)))
 
+(check "a square clip inside a rounded one keeps its corners, however deep: \
+        a window's content stays inside the window's; a rounded clip within \
+        holds instead"
+       (let* ([draw (lambda (thunk)
+                      (image 40 40 1
+                             (lambda ()
+                               (fill-box 0 0 40 40 #xffffff)
+                               (thunk))))]
+              [paper #xffffffff] [ink #xff000000]
+              [square (draw (lambda ()
+                              (with-clip (0 0 40 40 12)
+                                (with-clip (0 0 40 40)
+                                  (with-clip (0 20 40 20)
+                                    (fill-box 0 0 40 40 #x000000))))))]
+              [rounded (draw (lambda ()
+                               (with-clip (0 0 40 40 12)
+                                 (with-clip (10 10 20 20 4)
+                                   (fill-box 0 0 40 40 #x000000)))))]
+              [ok (and (= (pixel-at square 1 38) paper)
+                       (= (pixel-at square 38 38) paper)
+                       (= (pixel-at square 20 38) ink)
+                       (= (pixel-at square 1 22) ink)
+                       (= (pixel-at square 20 18) paper)
+                       (= (pixel-at rounded 10 10) paper)
+                       (= (pixel-at rounded 12 12) ink)
+                       (= (pixel-at rounded 20 8) paper))])
+         (picture-free! square)
+         (picture-free! rounded)
+         ok))
+
 (check "Genera's square things at 150 % on whole device pixels: a Tasks \
         card's paper, Settings' font sample's box"
        (begin

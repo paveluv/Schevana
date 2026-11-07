@@ -130,6 +130,9 @@
            (cons "Showing on" (if (cdr (assq 'window? d))
                                   "a window, by its swapchain"
                                   "a texture, no window"))
+           (cons "Presenting"
+                 (format "by ~a, of ~a" (cdr (assq 'present-mode d))
+                         (cdr (assq 'present-modes d))))
            (cons "Pixels"
                  (format "~a × ~a at ~a%"
                          (cadr (assq 'pixels d)) (cddr (assq 'pixels d))
