@@ -171,3 +171,77 @@
               (= lw (+ (ui-legend-key-width "events") 12
                        (ui-legend-key-width "timers")))
               (equal? given (list '() keys)))))
+
+;;; Streams.
+
+(check "a stream draws a bar a moment, the newest at the right, its columns \
+        stacked as asked and its strips over them, on a row of numbers a moment"
+       (let* ([s (ui-stream-new 16 2 '((#f #x0000ff)))]
+              [word (lambda (seq j)
+                      (list-ref (if (= seq 0) '(10 5 1) '(0 20 0)) j))])
+         (ui-stream-send! s 0 1 word)
+         (let* ([areas (ui-stream-areas s 0 0 60 44 2 '())]
+                [p (image 60 44 1
+                          (lambda ()
+                            (ui-draw-stream 0 0 60 44 '() s areas 2 1 37 '()
+                                            '((0 . #xff0000) (1 . #x00ff00))
+                                            '() #f)))]
+                [red #xffff0000] [green #xff00ff00] [blue #xff0000ff]
+                [well (pixel-at p 20 20)]
+                [ok (and (= (pixel-at p 46 40) red)     ; moment 0, up from the
+                         (= (pixel-at p 46 31) green)   ; bottom
+                         (= (pixel-at p 46 20) well)
+                         (= (pixel-at p 46 5) blue)     ; its strip
+                         (= (pixel-at p 52 40) green)   ; moment 1, at the right
+                         (= (pixel-at p 52 25) green)
+                         (= (pixel-at p 52 20) well)
+                         (= (pixel-at p 52 5) well)     ; no strip
+                         (= (pixel-at p 55 40) well))]) ; what's clear of a bar
+           (picture-free! p)
+           (ui-stream-release! s)
+           ok)))
+
+(check "a stream sends only what's new, as much as it holds, and starts again \
+        when the history does; numbers stay what a paint can add up, and a \
+        strip's word says which of its colors, among all the strips'"
+       (let* ([s (ui-stream-new 16 1 '(("a" 1 2) ("b" 3)))]
+              [calls 0]
+              [word (lambda (seq j)
+                      (set! calls (+ calls 1))
+                      (case j
+                        [(0) (* 2 ui-stream-most)]
+                        [(1) 0]
+                        [else 1]))]
+              [sent (lambda (oldest newest)
+                      (set! calls 0)
+                      (ui-stream-send! s oldest newest word)
+                      calls)]
+              [words 3])
+         (let* ([two (sent 0 1)]
+                [none (sent 0 1)]
+                [one (sent 0 2)]
+                [most (sent 0 100)]
+                [row (ui-stream-row s 100)]
+                [behind (sent 5 6)]
+                [at (ui-stream-sent s)])
+           (ui-stream-release! s)
+           (and (= two (* 2 words))
+                (= none 0)
+                (= one words)
+                (= most (* 16 words))
+                (equal? row (list ui-stream-most 0 3))
+                (= behind (* 2 words))
+                (= at 6)
+                (not (ui-stream-buffer s))))))
+
+(check "a moment under a stream's x: the nearest of those shown, off either end"
+       (let* ([s (ui-stream-new 16 1 '())]
+              [areas (ui-stream-areas s 0 0 60 44 4 '())]
+              [plot (cdr (assq 'plot areas))]
+              [right (+ (car plot) (caddr plot))]
+              [bw (cadr (assq 'bar areas))]
+              [at (lambda (x) (ui-stream-seq-at areas x 100 4))])
+         (and (= (at (- right 1)) 100)
+              (= (at (- right bw 1)) 99)
+              (= (at (+ right 50)) 100)
+              (= (at -500) 97))))

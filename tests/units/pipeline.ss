@@ -139,6 +139,79 @@
            (inspect-preview-free! image)
            (and (= none #xff000000) (= one #xffff0000) (= two #xff0000ff)))))
 
+;;; The frames kept.
+
+(let* ([plain record-world!]
+       [draw! (lambda (thunk)
+                (set! record-world! thunk)
+                (request-frame!)
+                (steps 1))]
+       [box-of (lambda (color)
+                 (lambda ()
+                   (with-label ("one") (fill-box 0 0 10 10 color))))]
+       [red #xffff0000] [blue #xff0000ff]
+       [h (inspect-history-new 8)])
+  (draw! (box-of #xff0000))
+  (inspect-history-add! h)
+  (let* ([a (inspect-history-newest h)] [la (inspect-history-ref h a)]
+         [a-bytes (vector-ref la 0)]
+         [a-color (cdr (assq 'color (inspect-record la 0)))])
+    (inspect-history-add! h)
+    (check "a frame is kept once, with its records and who drew them"
+           (and la (= (inspect-history-newest h) a)
+                (= (inspect-list-frame la) a)
+                (= (inspect-list-count la) 1)
+                (equal? (inspect-list-labels la) '(("one" 0 1)))
+                (= a-color red)
+                (= (inspect-history-count h) 1)))
+    (draw! (box-of #x0000ff))
+    (inspect-history-add! h)
+    (check "the frames before it stay as they were"
+           (let ([lb (inspect-history-ref h (+ a 1))])
+             (and (= (cdr (assq 'color (inspect-record lb 0))) blue)
+                  (= (cdr (assq 'color (inspect-record la 0))) red))))
+    (let ([image (inspect-preview-image *canvas-pw* *canvas-ph*)])
+      (define (shown l count)
+        (inspect-preview-list! image l count)
+        (request-frame!)
+        (steps 1)
+        (pipeline-test-preview-pixel image 5 5))
+      (check "a frame kept draws again, as far as a record, the screen having \
+              moved on"
+             (let ([one (shown la 1)] [none (shown la 0)])
+               (and (= one red) (= none #xff000000))))
+      ;; an image gone by now, in a frame kept
+      (let ([gone (inspect-preview-image 4 4)])
+        (draw! (lambda ()
+                 (with-label ("one")
+                   (fill-box 0 0 10 10 #xff0000)
+                   (draw-image gone 0 0 10 10))))
+        (inspect-history-add! h)
+        (let ([l (inspect-history-ref h (inspect-history-newest h))])
+          (draw! (box-of #x0000ff))
+          (inspect-preview-free! gone)
+          (check "an image or a paint isn't kept with a frame: it's left out, \
+                  and says so, and one gone since can't hurt"
+                 (and (= (inspect-list-left-out l) 1)
+                      (= (inspect-list-left-out la) 0)
+                      (= (shown l (inspect-list-count l)) red)))))
+      (inspect-preview-free! image))
+    (do ([i 0 (+ i 1)]) ((= i 8))
+      (draw! (box-of #x0000ff))
+      (inspect-history-add! h))
+    (check "the ring goes round: the oldest goes, and its buffers are used \
+            again"
+           (and (not (inspect-history-ref h a))
+                (= (inspect-history-count h) 8)
+                (> (inspect-history-bytes h) 0)
+                (eq? (vector-ref (vector-ref (inspect-history-slots h)
+                                             (modulo a 8))
+                                 0)
+                     a-bytes))))
+  (set! record-world! plain)
+  (request-frame!)
+  (steps 1))
+
 ;;; The app.
 
 (let* ([w (pipeline)] [v (window-ref w 'state)] [ui (window-ref w 'ui)]
@@ -183,6 +256,97 @@
            (pipeline-look! v)
            (and (pipeline-view-held? v) (eq? held (pipeline-view-shown v)))))
   (press! '(pipeline hold))
+  ;; the River: a few ticks to go back through
+  (steps 6)
+  (let* ([history (pipeline-view-history v)]
+         [river (pipeline-view-river v)])
+    (check "the River flows while it's open: the frames are kept, the ticks \
+            sent, each with its lanes"
+           (let* ([seq (profile-newest-tick)]
+                  [row (and (ui-stream-buffer river)
+                            (ui-stream-row river (ui-stream-sent river)))])
+             (and row (> (inspect-history-count history) 3)
+                  (= (length row) (+ (length monitor-phases)
+                                      (length pipeline-draw-lanes)))
+                  (= ((pipeline-river-word (pacer-period)) seq
+                      (length monitor-phases))
+                     (if (profile-tick-late? seq (pacer-period)) 1 0)))))
+    (check "the River's lanes say all's well in the chart-ok color, and each \
+            label says what its colors mean, a bar's tooltip what they read"
+           (let ([seq (profile-newest-tick)])
+             (and (eq? (cadr (assoc "frame" pipeline-draw-lanes)) 'chart-ok)
+                  (eq? (cadr (assoc "GPU" pipeline-draw-lanes)) 'chart-ok)
+                  (= (length pipeline-lane-tips) (length pipeline-draw-lanes))
+                  (for-all (lambda (i)
+                             (ui-find ui (list 'pipeline-river 'strip i)))
+                           (iota (length pipeline-draw-lanes)))
+                  (string? (pipeline-tick-lanes seq)))))
+    (check "the River's collector lane is as bright as the tick's collecting \
+            took: faint however short, full from its most, in every style"
+           (let* ([full pipeline-collector-full-ns]
+                  [most pipeline-collector-levels]
+                  [colors (cdr (assoc "collector" pipeline-draw-lanes))]
+                  [opacity (lambda (c)
+                             (let-values ([(r g b a) (color-rgba c)]) a))]
+                  [j (+ (length monitor-phases) 3)]
+                  [seq (profile-newest-tick)]
+                  [word ((pipeline-river-word (pacer-period)) seq j)])
+             (and (= (pipeline-collector-level 0) 1)
+                  (= (pipeline-collector-level 1000) 1)
+                  (= (pipeline-collector-level (quotient full 2)) 4)
+                  (= (pipeline-collector-level full) most)
+                  (= (pipeline-collector-level (* 100 full)) most)
+                  (= (length colors) most)
+                  (= word (if (> (profile-tick-ns seq 'gcs) 0)
+                              (pipeline-collector-level
+                               (profile-tick-ns seq 'gc-ns))
+                              0))
+                  (for-all
+                   (lambda (s)
+                     (with-style (style-name s)
+                       (lambda ()
+                         (and (< (opacity (car colors))
+                                 (opacity (car (last-pair colors))))
+                              (for-all fixnum? (map color-word colors))))))
+                   *styles*))))
+    ;; a press on the bar before the newest
+    (let* ([r (ui-find ui '(pipeline-river))]
+           [right (+ (ui-region-x r) (ui-region-w r) -1)])
+      ((ui-region-on r) (list 'press (- right pipeline-bar-px) (ui-region-y r)
+                              'left 1))
+      (invalidate! w)
+      (steps 2))
+    (let* ([tick (pipeline-view-tick v)] [reach (pipeline-view-reach v)]
+           [frames (inspect-history-newest history)])
+      (check "a press on the River holds it and goes back to that tick's \
+              frame: the whole app shows it"
+             (and (pipeline-view-held? v) tick
+                  (= (inspect-list-frame (pipeline-view-shown v))
+                     (pipeline-tick-frame tick))
+                  (not (window-error w))))
+      (steps 3)
+      (check "held, nothing moves on: its bars or the frames kept"
+             (and (equal? reach (pipeline-view-reach v))
+                  (= frames (inspect-history-newest history))
+                  (not (window-error w))))
+      ;; a drag to its newest bar
+      (let* ([r (ui-find ui '(pipeline-river))]
+             [right (+ (ui-region-x r) (ui-region-w r) -1)])
+        ((ui-region-on r) (list 'drag right (ui-region-y r) 1))
+        (steps 2)
+        (check "a drag moves through them"
+               (and (= (pipeline-view-tick v) (car reach))
+                    (= (inspect-list-frame (pipeline-view-shown v))
+                       (pipeline-tick-frame (car reach)))
+                    (not (window-error w)))))
+      (press! '(pipeline hold))
+      (steps 3)
+      (check "letting go of Hold, it flows on from now"
+             (and (not (pipeline-view-held? v))
+                  (not (pipeline-view-tick v))
+                  (> (inspect-history-newest history) frames)
+                  (> (ui-stream-sent river) (car reach))
+                  (not (window-error w))))))
   (pipeline-view-stage-set! v 'screen)
   (invalidate! w)
   (steps 2)
@@ -190,7 +354,9 @@
   (pipeline-view-stage-set! v 'lists)
   (close-window! w)
   (steps 1)
-  (check "closed, it lets its image go" (not (pipeline-view-image v))))
+  (check "closed, it lets its image and its River go"
+         (and (not (pipeline-view-image v))
+              (not (ui-stream-buffer (pipeline-view-river v))))))
 
 ;;; Recording itself.
 
@@ -227,18 +393,20 @@
 ;;; Monitor's Ticks, by a paint: a tick is a row of numbers.
 
 (check "a new tick costs Monitor's Ticks a row on the GPU and one record"
-       (let* ([ring (make-gpu-buffer (* monitor-ring-rows monitor-ring-words))]
+       (let* ([ring (monitor-ticks-stream)]
               [was (profile-on?)])
          (profile-on! #t)
          (steps 3)
          (let* ([newest (profile-newest-tick)]
-                [sent (monitor-ring-send! ring -1 newest (pacer-period))]
-                [at (* monitor-ring-words (modulo newest monitor-ring-rows))]
-                [row (map (lambda (j) (gpu-buffer-ref ring (+ at j)))
-                          (iota (- monitor-ring-words 1)))]
+                [sent (begin
+                        (ui-stream-send! ring newest newest
+                                         (monitor-tick-word (pacer-period)))
+                        (ui-stream-sent ring))]
+                [row (list-head (ui-stream-row ring newest)
+                                (length monitor-phases))]
                 [want (map (lambda (j)
                              (quotient (monitor-tick-phase-ns newest j) 1000))
-                           (iota (- monitor-ring-words 1)))])
+                           (iota (length monitor-phases)))])
            (profile-on! was)
-           (gpu-buffer-release! ring)
+           (ui-stream-release! ring)
            (and (= sent newest) (equal? row want)))))

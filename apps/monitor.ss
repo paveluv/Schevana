@@ -60,80 +60,21 @@
 
 
 ;;; ------------------------------------------------------------------ bars
-;;; The Ticks' bars are a paint over a ring of ticks on the GPU: a new tick is
-;;; a row of numbers, and nothing is recorded for the rest, however many bars
-;;; flow past.
+;;; The Ticks' bars are a stream: a new tick is a row of numbers, and nothing
+;;; is recorded for the rest, however many bars flow past.
 
 (define monitor-ring-rows 2048)
-;; a tick's row: each phase's µs, as monitor-phases has them, then whether it
-;; came late
-(define monitor-ring-words (+ 1 (length monitor-phases)))
-;; the most µs a row keeps of a phase: main can be held for hours, no bar
-;; shows past its top, and the paint adds a row up in 32 bits
-(define monitor-ring-most 100000000)
 
-;; From the right, a bar a tick; up each, its phases as order stacks them.
-(define-paint (monitor-bars x y)
-  ([ticks fx-buffer]
-   [order fx-buffer]     ; bottom up: a phase's place in the row, its color
-   [phases fixnum]       ; how many of them
-   [rows fixnum]         ; the ring's
-   [row-words fixnum]
-   [newest fixnum]       ; the tick of the bar at the right
-   [shown fixnum]        ; how many ticks there are to show
-   [w fixnum]
-   [h fixnum]
-   [top fixnum]          ; the µs the top stands for
-   [bar flonum]          ; a bar's width, device pixels
-   [gap flonum]          ; what's clear of it, at its right
-   [flag-h fixnum]
-   [flag color])
-  (let* ([d (fl- (fl- (fixnum->flonum w) 0.5) (fixnum->flonum x))]
-         [col (flonum->fixnum (flfloor (fl/ d bar)))]
-         [within (fl- d (fl* (fixnum->flonum col) bar))]
-         [row (fx* (fxmod (fx- newest col) rows) row-words)])
-    (define (spent k)
-      (fx-ref ticks (fx+ row (fx-ref order (fx* k 2)))))
-    (if (or (fx>= col shown) (fl< within gap))
-        0
-        (if (and (fx< y flag-h)
-                 (fx= (fx-ref ticks (fx+ row (fx- row-words 1))) 1))
-            flag
-            (let ([at (fl* (fl/ (fl- (fixnum->flonum (fx- h y)) 0.5)
-                                (fixnum->flonum h))
-                           (fixnum->flonum top))])
-              (do-bounded 12
-                  ([k 0 (fx+ k 1)]
-                   [sum (spent 0) (fx+ sum (spent (fx+ k 1)))])
-                ((or (fx>= k phases) (fl> (fixnum->flonum sum) at))
-                 (if (fx>= k phases)
-                     0
-                     (fx-ref order (fx+ (fx* k 2) 1))))))))))
+(define (monitor-ticks-stream)
+  (ui-stream-new monitor-ring-rows (length monitor-phases) '((#f chart-flag))))
 
-;; The ring's rows of the ticks after sent, up to newest, the last it can
-;; hold. => newest
-(define (monitor-ring-send! ring sent newest period)
-  (let ([words monitor-ring-words])
-    (do ([seq (max (+ sent 1) (- newest monitor-ring-rows -1)
-                   (or (profile-oldest-tick) newest))
-              (+ seq 1)])
-        ((> seq newest) newest)
-      (let ([at (* words (modulo seq monitor-ring-rows))])
-        (do ([j 0 (+ j 1)]) ((= j (- words 1)))
-          (gpu-buffer-set! ring (+ at j)
-                           (min monitor-ring-most
-                                (quotient (monitor-tick-phase-ns seq j)
-                                          1000))))
-        (gpu-buffer-set! ring (+ at (- words 1))
-                         (if (profile-tick-late? seq period) 1 0))))))
-
-;; The order the bars stack in, and its colors, as the paint reads them.
-(define (monitor-order-send! buffer order)
-  (for-each (lambda (j k)
-              (gpu-buffer-set! buffer (* 2 k) j)
-              (gpu-buffer-set! buffer (+ 1 (* 2 k))
-                               (color-word (cadr (list-ref monitor-phases j)))))
-            order (iota (length order))))
+;; A tick's row: each phase's µs, as monitor-phases has them, then whether it
+;; came late.
+(define (monitor-tick-word period)
+  (lambda (seq j)
+    (if (< j (length monitor-phases))
+        (quotient (monitor-tick-phase-ns seq j) 1000)
+        (if (profile-tick-late? seq period) 1 0))))
 
 ;;; ------------------------------------------------------------------ data
 
@@ -492,9 +433,7 @@
         [drawn #f]         ; the Ticks as last drawn: (newest hover)
         [memos (make-hashtable equal-hash equal?)]   ; the view's figures
         [memo-view #f]
-        [ring #f]          ; the Ticks' on the GPU, made when first drawn
-        [ring-order #f]
-        [sent -1])         ; the newest tick the ring has
+        [ring (monitor-ticks-stream)])   ; the Ticks' bars
     (define (move-on!)
       (set! view (cons (profile-newest-tick) (profile-seconds)))
       (set! last (now-ms)))
@@ -630,16 +569,14 @@
       (let*-values
           ([(period) (pacer-period)]
            [(top) (* 2 period)]
-           [(rules) (list (cons period (monitor-ns-text period))
-                          (cons top (monitor-ns-text top)))]
+           ;; in the rows' numbers, µs
+           [(rules) (list (cons (quotient period 1000) (monitor-ns-text period))
+                          (cons (quotient top 1000) (monitor-ns-text top)))]
            [(newest) (newest-tick)]
            [(oldest) (profile-oldest-tick)]
            ;; as many bars as fit right of the scale
-           [(n) (quotient (caddr (cdr (assq 'plot
-                                            (ui-bar-chart-areas
-                                             x y w h 1 rules))))
-                          monitor-bar-px)]
-           [(count) (if newest (min n (+ 1 (- newest oldest))) 0)]
+           [(count) (ui-stream-count ring x y w h newest oldest rules
+                                     monitor-bar-px)]
            [(order) (remember
                      'order
                      (lambda ()
@@ -658,61 +595,36 @@
                                '()))]
            [(kw kh) (ui-legend-size keys)]
            [(gh) (- h kh 4)]
-           [(zero) (monitor-clock-zero)]
-           [(areas) (ui-bar-chart-areas x y w gh count rules)]
-           [(plot) (cdr (assq 'plot areas))]
-           [(px py pw ph) (apply values plot)]
-           [(under) (ui-bar-chart-under ui areas count)]
-           [(seq-of) (lambda (i) (+ newest (- i count -1)))]
-           [(hover) (and under newest (seq-of under))])
-        (ui-region! ui (list 'monitor-ticks under) px py pw ph
-                    'doc '((L . "Select"))
-                    'tip (and hover (profile-tick-kept? hover)
-                              (tip-of hover zero period))
-                    'on (lambda (ev)
-                          (and (eq? (car ev) 'press)
-                               (eq? (list-ref ev 3) 'left)
-                               hover
-                               (begin (pause! hover) #t))))
-        (ui-draw-surface x y w gh '(well))
-        (let ([mark! (lambda (seq)
-                       (let-values ([(bx bw)
-                                     (ui-bar-chart-bar
-                                      areas count (- count 1 (- newest seq)))])
-                         (when (>= bx px)
-                           (fill-box bx py bw ph 'chart-mark))))])
-          (when pinned (mark! pinned))
-          (when hover (mark! hover)))
+           [(zero) (monitor-clock-zero)])
         (when newest
-          (unless ring
-            (set! ring (make-gpu-buffer (* monitor-ring-rows
-                                           monitor-ring-words)))
-            (set! ring-order (make-gpu-buffer (* 2 (+ 1 (length
-                                                         monitor-phases))))))
-          (when (< newest sent) (set! sent -1))
-          (set! sent (monitor-ring-send! ring sent newest period))
-          (monitor-order-send! ring-order order)
-          (let* ([s (draw-scale)] [bw (cadr (assq 'bar areas))])
-            (fill-shader px py pw ph monitor-bars
-                         ring ring-order (length order)
-                         monitor-ring-rows monitor-ring-words
-                         (modulo newest monitor-ring-rows) count
-                         (exact (round (* s pw))) (exact (round (* s ph)))
-                         (quotient top 1000)
-                         (inexact (* s bw)) (if (>= bw 3) (inexact s) 0.0)
-                         (exact (round (* s 3))) 'chart-flag))
-          ;; the row selected's share, over the bars
-          (when selected
-            (do ([i 0 (+ i 1)]) ((= i count))
-              (let-values ([(bx bw) (ui-bar-chart-bar areas count i)])
-                (let* ([ns (share-of (seq-of i))]
-                       [high (div (* ph (min ns top)) top)])
-                  (when (and (>= bx px) (> high 0))
-                    (fill-box bx (- (+ py ph) high)
-                              (- bw (if (>= bw 3) 1 0)) high
-                              'chart-share)))))))
-        (ui-draw-bar-chart-rules x areas top rules)
-        (set! drawn (list newest hover))
+          (ui-stream-send! ring oldest newest (monitor-tick-word period)))
+        (let ([hover
+               (ui-stream
+                ui 'monitor-ticks ring x y w gh newest oldest
+                (quotient top 1000) rules
+                (map (lambda (j) (cons j (cadr (list-ref monitor-phases j))))
+                     order)
+                monitor-bar-px
+                'tip (lambda (seq)
+                       (and (profile-tick-kept? seq)
+                            (tip-of seq zero period)))
+                'on-pick (lambda (seq) (pause! seq))
+                'marked (if pinned (list pinned) '())
+                ;; the row selected's share, over the bars
+                'over
+                (lambda (areas count)
+                  (when (and selected newest)
+                    (let-values ([(px py pw ph)
+                                  (apply values (cdr (assq 'bars areas)))])
+                      (do ([i 0 (+ i 1)]) ((= i count))
+                        (let-values ([(bx bw) (ui-bar-chart-bar areas count i)])
+                          (let* ([ns (share-of (+ newest (- i count -1)))]
+                                 [high (div (* ph (min ns top)) top)])
+                            (when (and (>= bx px) (> high 0))
+                              (fill-box bx (- (+ py ph) high)
+                                        (- bw (if (>= bw 3) 1 0)) high
+                                        'chart-share)))))))))])
+          (set! drawn (list newest hover)))
         (ui-draw-legend x (+ y gh 4) w kh '() keys)))
     ;; Tick seq's tooltip, worked out once.
     (define (tip-of seq zero period)
@@ -1013,9 +925,7 @@
            'min-size '(420 . 360)
            'draw (lambda (win w h) (draw win w h))
            'close (lambda (win)
-                    (when ring
-                      (gpu-buffer-release! ring)
-                      (gpu-buffer-release! ring-order)))
+                    (ui-stream-release! ring))
            (append
             (ui-handlers ui)
             ;; the Ticks at every new tick, the rest twice a second

@@ -68,7 +68,7 @@
         add up in 32 bits"
        (let* ([real now-ns] [held 0]
               [m (monitor)] [ui (window-ref m 'ui)]
-              [ring (make-gpu-buffer (* monitor-ring-rows monitor-ring-words))])
+              [ring (monitor-ticks-stream)])
          (steps 3)
          (let-values ([(cx cy cw ch) (content-rect m)])   ; its Ticks
            (let* ([r (ui-find ui '(tab ticks))]
@@ -83,16 +83,15 @@
              (with-profile-span 'vsync-wait #f
                (set! held (* 8671932088 1000))))
            (let ([seq (profile-newest-tick)])
-             (monitor-ring-send! ring (- seq 1) seq (pacer-period))
-             (let* ([at (* monitor-ring-words (modulo seq monitor-ring-rows))]
-                    [row (map (lambda (j) (gpu-buffer-ref ring (+ at j)))
-                              (iota (- monitor-ring-words 1)))])
+             (ui-stream-send! ring seq seq (monitor-tick-word (pacer-period)))
+             (let ([row (list-head (ui-stream-row ring seq)
+                                   (length monitor-phases))])
                (steps 3)
                (let ([crashed (window-error m)])
-                 (gpu-buffer-release! ring)
+                 (ui-stream-release! ring)
                  (close-window! m)
                  (and (not crashed)
-                      (memv monitor-ring-most row)
+                      (memv ui-stream-most row)
                       (< (apply + row) (expt 2 31)))))))))
 
 (check "Monitor's Flags tab lists every late tick, the newest first, why it \
@@ -162,7 +161,7 @@
                              (string-prefix? "chart-" (symbol->string k)))
                            color-keys)]
              [listed (apply append (map cdr (theme 'color-groups)))])
-         (and (= (length keys) 14)
+         (and (= (length keys) 15)
               (for-all
                (lambda (s)
                  (with-style (style-name s)

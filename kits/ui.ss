@@ -2925,7 +2925,8 @@
 ;;; quiet ones, for what is not work (time waited, say): a flat gray and
 ;;; a lined one, apart by their texture in any palette. A mark behind a
 ;;; bar, a share of the bars, the reference lines and a flag over a bar
-;;; are chart-mark, chart-share, chart-rule and chart-flag.
+;;; are chart-mark, chart-share, chart-rule and chart-flag; a mark that says
+;;; all's well is chart-ok, quiet, so that a flag stands out from it.
 
 (color-default! 'chart-1 'yellow)
 (color-default! 'chart-2 'orange)
@@ -2942,6 +2943,7 @@
 (color-default! 'chart-share 'accent)
 (color-default! 'chart-rule 'text-faint)
 (color-default! 'chart-flag 'red)
+(color-default! 'chart-ok (alpha 'green 0.55))
 
 ;; A stacked bar chart, a bar a value (a step, say), the newest at the
 ;; right. bars, the oldest first: (segments . share), segments ((color .
@@ -3079,6 +3081,278 @@
                   (draw-text (+ x 6) (- ly (/ (font-line-height 'ui-small) 2))
                              (cdr r) 'text-faint 'ui-small)))
               rules)))
+
+;;; ------------------------------------------------------------------
+;;; streams: a chart of what keeps coming, a bar a moment, the newest at the
+;;; right. Its rows are on the GPU and a paint draws them, so a new moment
+;;; costs a row of numbers and the chart one record, however many bars flow
+;;; past. A moment is named by its seq, which only grows.
+;;;
+;;;   (define s (ui-stream-new 2048 columns '(("late" chart-flag))))
+;;;   (ui-stream-send! s oldest newest (lambda (seq j) ...))
+;;;   (ui-stream ui 'id s x y w h newest oldest top rules stack bar ...)
+;;;   (ui-stream-release! s)    when its window closes
+;;;
+;;; A row is its columns' numbers, then a word a strip. A strip is a thin lane
+;;; over the bars, (label color ...), the label #f for none: its word says
+;;; which of its colors a moment has, from 1, or 0 for none.
+
+(define-record-type ui-stream
+  (fields rows columns strips
+          (mutable buffer)      ; the rows, made when first sent
+          (mutable palette)     ; what the paint colors them with
+          (mutable sent)))      ; the newest moment the rows have
+
+(define (ui-stream-new rows columns strips)
+  (make-ui-stream rows columns strips #f #f -1))
+
+;; The most a column's number can be: the paint adds a row up in 32 bits.
+(define ui-stream-most 100000000)
+
+(define (ui-stream-words s)
+  (+ (ui-stream-columns s) (length (ui-stream-strips s))))
+
+(define (ui-stream-colors s)
+  (fold-left (lambda (n strip) (+ n (length (cdr strip)))) 0
+             (ui-stream-strips s)))
+
+(define (ui-stream-release! s)
+  (when (ui-stream-buffer s)
+    (gpu-buffer-release! (ui-stream-buffer s))
+    (gpu-buffer-release! (ui-stream-palette s))
+    (ui-stream-buffer-set! s #f)
+    (ui-stream-palette-set! s #f)
+    (ui-stream-sent-set! s -1)))
+
+;; The rows of the moments after those sent, up to newest, as many as it holds
+;; and none before oldest: (word-of seq j), j the row's word. A newest behind
+;; what was sent means the history began again.
+(define (ui-stream-send! s oldest newest word-of)
+  (unless (ui-stream-buffer s)
+    (ui-stream-buffer-set! s (make-gpu-buffer (* (ui-stream-rows s)
+                                                 (ui-stream-words s))))
+    (ui-stream-palette-set! s (make-gpu-buffer (+ 1 (* 2 (ui-stream-columns s))
+                                                  (ui-stream-colors s)))))
+  (when (< newest (ui-stream-sent s)) (ui-stream-sent-set! s -1))
+  (let ([rows (ui-stream-rows s)] [words (ui-stream-words s)]
+        [columns (ui-stream-columns s)] [buffer (ui-stream-buffer s)]
+        ;; what a strip's words start from, among the strips' colors
+        [bases (let loop ([ss (ui-stream-strips s)] [at 0])
+                 (if (null? ss)
+                     '()
+                     (cons at (loop (cdr ss) (+ at (length (cdar ss)))))))])
+    (do ([seq (max (+ (ui-stream-sent s) 1) (- newest rows -1) oldest)
+              (+ seq 1)])
+        ((> seq newest) (ui-stream-sent-set! s newest))
+      (let ([at (* words (modulo seq rows))])
+        (do ([j 0 (+ j 1)]) ((= j words))
+          (let ([v (word-of seq j)])
+            (gpu-buffer-set!
+             buffer (+ at j)
+             (cond [(< j columns) (max 0 (min ui-stream-most v))]
+                   [(eqv? v 0) 0]
+                   [else (+ v (list-ref bases (- j columns)))]))))))))
+
+;; What the rows hold of a moment, for reading: its words.
+(define (ui-stream-row s seq)
+  (let ([at (* (ui-stream-words s) (modulo seq (ui-stream-rows s)))])
+    (map (lambda (j) (gpu-buffer-ref (ui-stream-buffer s) (+ at j)))
+         (iota (ui-stream-words s)))))
+
+;; From the right, a bar a moment; up each, its columns as the palette stacks
+;; them; over them, the strips.
+(define-paint (ui-stream-bars x y)
+  ([moments fx-buffer]
+   [palette fx-buffer]   ; bottom up: a column's place, its color; after the
+                         ; columns' room, the strips' colors
+   [stacked fixnum]      ; how many the stack holds
+   [columns fixnum]      ; the numbers a row starts with
+   [rows fixnum]         ; the ring's
+   [row-words fixnum]
+   [newest fixnum]       ; the moment of the bar at the right
+   [shown fixnum]        ; how many moments there are to show
+   [w fixnum]
+   [h fixnum]
+   [top fixnum]          ; the number the bars' top stands for
+   [bar flonum]          ; a bar's width, device pixels
+   [gap flonum]          ; what's clear of it, at its right
+   [strips fixnum]
+   [strip-h fixnum]      ; a strip's height, its gap included
+   [strip-gap fixnum]
+   [bars-at fixnum])     ; where the bars' room starts, under the strips
+  (let* ([d (fl- (fl- (fixnum->flonum w) 0.5) (fixnum->flonum x))]
+         [col (flonum->fixnum (flfloor (fl/ d bar)))]
+         [within (fl- d (fl* (fixnum->flonum col) bar))]
+         [row (fx* (fxmod (fx- newest col) rows) row-words)]
+         [lanes (fx* strips strip-h)])
+    (define (spent k)
+      (fx-ref moments (fx+ row (fx-ref palette (fx* k 2)))))
+    (if (or (fx>= col shown) (fl< within gap))
+        0
+        (if (fx< y bars-at)
+            (if (fx< y lanes)
+                (let ([mark (fx-ref moments
+                                    (fx+ row
+                                         (fx+ columns
+                                              (fxquotient y strip-h))))])
+                  (if (or (fx= mark 0)
+                          (fx>= (fxmod y strip-h) (fx- strip-h strip-gap)))
+                      0
+                      (fx-ref palette (fx+ (fx* columns 2) (fx- mark 1)))))
+                0)
+            (let ([at (fl* (fl/ (fl- (fixnum->flonum (fx- h y)) 0.5)
+                                (fixnum->flonum (fx- h bars-at)))
+                           (fixnum->flonum top))])
+              (do-bounded 12
+                  ([k 0 (fx+ k 1)]
+                   [sum (spent 0) (fx+ sum (spent (fx+ k 1)))])
+                ((or (fx>= k stacked) (fl> (fixnum->flonum sum) at))
+                 (if (fx>= k stacked)
+                     0
+                     (fx-ref palette (fx+ (fx* k 2) 1))))))))))
+
+;; A strip's height and what's clear under it: a labeled one takes a line.
+(define-part (ui-stream-lane strips)
+  (if (exists car strips)
+      (values (font-line-height 'ui-small) 3)
+      (values 3 0)))
+
+;; How far down the bars' room starts: labeled strips leave half a line more,
+;; for the label of a rule at the bars' top.
+(define (ui-stream-room strips)
+  (let-values ([(lane-h lane-gap) (ui-stream-lane strips)])
+    (+ (* lane-h (length strips))
+       (if (exists car strips)
+           (quotient (font-line-height 'ui-small) 2)
+           0))))
+
+;; Its pieces: as a bar chart's, the room left for the strips' labels too, and
+;; the bars' part of the plot, under the strips. ((plot x y w h) (bar w)
+;; (bars x y w h) (lane h gap))
+(define-part (ui-stream-areas s x y w h n rules)
+  (let*-values
+      ([(strips) (ui-stream-strips s)]
+       [(lane-h lane-gap) (ui-stream-lane strips)]
+       [(areas) (ui-bar-chart-areas
+                 x y w h n
+                 (append rules
+                         (map (lambda (strip) (cons 0 (car strip)))
+                              (filter car strips))))]
+       [(plot) (cdr (assq 'plot areas))]
+       [(room) (ui-stream-room strips)])
+    (append areas
+            (list (list 'bars (car plot) (+ (cadr plot) room) (caddr plot)
+                        (max 0 (- (cadddr plot) room)))
+                  (list 'lane lane-h lane-gap)))))
+
+;; How many moments there are to show.
+(define (ui-stream-count s x y w h newest oldest rules bar)
+  (if newest
+      (max 0 (min (quotient (cadddr (assq 'plot (ui-stream-areas s x y w h 1
+                                                                 rules)))
+                            bar)
+                  (+ 1 (- newest oldest))))
+      0))
+
+;; The moment at x: the nearest of those shown, off either end.
+(define (ui-stream-seq-at areas x newest count)
+  (let ([plot (cdr (assq 'plot areas))] [bw (cadr (assq 'bar areas))])
+    (- newest
+       (max 0 (min (- count 1)
+                   (exact (floor (/ (- (+ (car plot) (caddr plot)) x) bw))))))))
+
+;; rules and top are in the columns' numbers; marked, the moments marked; over,
+;; (areas count) or #f, draws over the bars, under the rules.
+(define-part (ui-draw-stream x y w h flags s areas count newest top rules stack
+                             marked over)
+  (let*-values
+      ([(plot) (cdr (assq 'plot areas))]
+       [(px py pw ph) (apply values plot)]
+       [(bw) (cadr (assq 'bar areas))]
+       [(lane-h lane-gap) (apply values (cdr (assq 'lane areas)))]
+       [(strips) (ui-stream-strips s)]
+       [(columns) (ui-stream-columns s)])
+    (ui-draw-surface x y w h '(well))
+    (when newest
+      (for-each (lambda (seq)
+                  (let-values ([(bx bx-w)
+                                (ui-bar-chart-bar areas count
+                                                  (- count 1 (- newest seq)))])
+                    (when (>= bx px)
+                      (fill-box bx py bx-w ph 'chart-mark))))
+                marked))
+    (when (and newest (ui-stream-buffer s))
+      (let ([palette (ui-stream-palette s)] [scale (draw-scale)])
+        (for-each (lambda (entry k)
+                    (gpu-buffer-set! palette (* 2 k) (car entry))
+                    (gpu-buffer-set! palette (+ 1 (* 2 k))
+                                     (color-word (cdr entry))))
+                  stack (iota (length stack)))
+        (fold-left (lambda (at strip)
+                     (for-each (lambda (color i)
+                                 (gpu-buffer-set! palette (+ (* 2 columns) at i)
+                                                  (color-word color)))
+                               (cdr strip) (iota (length (cdr strip))))
+                     (+ at (length (cdr strip))))
+                   0 strips)
+        (fill-shader px py pw ph ui-stream-bars
+                     (ui-stream-buffer s) palette (length stack) columns
+                     (ui-stream-rows s) (ui-stream-words s)
+                     (modulo newest (ui-stream-rows s)) count
+                     (exact (round (* scale pw))) (exact (round (* scale ph)))
+                     top
+                     (inexact (* scale bw)) (if (>= bw 3) (inexact scale) 0.0)
+                     (length strips)
+                     (exact (round (* scale lane-h)))
+                     (exact (round (* scale lane-gap)))
+                     (exact (round (* scale (ui-stream-room strips)))))))
+    (when over (over areas count))
+    (ui-draw-bar-chart-rules x (list (cons 'plot (cdr (assq 'bars areas))))
+                             top rules)
+    (fold-left (lambda (ly strip)
+                 (when (car strip)
+                   (draw-text (+ x 6) ly (car strip) 'text-faint 'ui-small))
+                 (+ ly lane-h))
+               py strips)))
+
+;; stack: bottom up, (column . color); bar: a bar's width at least. opts: 'tip
+;; (seq), its tooltip or #f; 'on-pick (seq), on a left press and as it's
+;; dragged; 'marked, the moments marked; 'over, as the part's; 'doc;
+;; 'strip-tips, a tooltip for each strip's label. A bar under the pointer is
+;; marked too. => the moment under the pointer, or #f
+(define (ui-stream ui id s x y w h newest oldest top rules stack bar . opts)
+  (let* ([count (ui-stream-count s x y w h newest oldest rules bar)]
+         [areas (ui-stream-areas s x y w h count rules)]
+         [plot (cdr (assq 'plot areas))]
+         [under (ui-bar-chart-under ui areas count)]
+         [hover (and newest under (< under count)
+                     (+ newest (- under count -1)))]
+         [tip-of (plist-ref opts 'tip #f)]
+         [on-pick (plist-ref opts 'on-pick #f)]
+         [pick! (lambda (at)
+                  (and on-pick newest (> count 0)
+                       (begin (on-pick (ui-stream-seq-at areas at newest count))
+                              #t)))])
+    (ui-region! ui (list id) (car plot) (cadr plot) (caddr plot) (cadddr plot)
+      'doc (plist-ref opts 'doc '((L . "Select")))
+      'tip (and hover tip-of (tip-of hover))
+      'on (lambda (ev)
+            (case (car ev)
+              [(press) (and (eq? (list-ref ev 3) 'left) (pick! (cadr ev)))]
+              [(drag) (pick! (cadr ev))]
+              [else #f])))
+    (let-values ([(lane-h lane-gap) (ui-stream-lane (ui-stream-strips s))])
+      (for-each (lambda (tip i)
+                  (ui-region! ui (list id 'strip i)
+                              x (+ (cadr plot) (* i lane-h))
+                              (- (car plot) x) lane-h 'tip tip))
+                (plist-ref opts 'strip-tips '())
+                (iota (length (plist-ref opts 'strip-tips '())))))
+    (ui-draw-stream x y w h '() s areas count newest top rules stack
+                    (append (if hover (list hover) '())
+                            (plist-ref opts 'marked '()))
+                    (plist-ref opts 'over #f))
+    hover))
 
 ;; values, the oldest first, as points across x y w h rising to top (1
 ;; clear of the bottom). => ((x . y) ...)

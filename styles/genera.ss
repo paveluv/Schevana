@@ -798,6 +798,7 @@
   'chart-muted-2 (stipple 'text #f "#" "." "." ".")
   'chart-mark 'genera-gray
   'chart-flag 'text
+  'chart-ok (stipple 'text #f "#..." "...." "...." "....")
   ;; the feel
   'title-double-click 'none
   'bell 'screen

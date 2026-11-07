@@ -923,6 +923,17 @@
             (renderer-fence-set! r fence))
           shown?))))
 
+;; A list kept from earlier drawn on image, ahead of the next frame, which sends
+;; its own: its glyphs are all up already.
+(define (gpu-list-on-image! image recs recs-n extras extras-n runs)
+  (let* ([r *renderer*]
+         [d (renderer-device r)]
+         [cb (gpu-must 'gpu-list-on-image! (sdl-acquire-gpu-commands d))])
+    (gpu-upload! r cb recs recs-n extras extras-n #f 0 '() '())
+    (gpu-draw-runs! r cb (gpu-image-texture image) gpu-format-bgra8
+                    (gpu-image-w image) (gpu-image-h image) runs #f)
+    (sdl-submit-gpu cb)))
+
 ;; The same, drawn to a new texture w × h and read back: its pixels, row
 ;; after row, premultiplied BGRA. What tests, screenshots and icons see.
 (define (gpu-drawing->bytes recs recs-n extras extras-n table table-n

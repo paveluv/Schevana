@@ -30,23 +30,88 @@
 
 ;;; ---- lists
 
-;; A copy of the last frame's list: #(records extras labels count), labels
-;; ((label first-record count) ...) in draw order. Only one list so far: the
-;; root's.
-(define (inspect-list)
+;; A copy of the last frame's list: #(records extras labels count words row
+;; runs frame), labels ((label first-record count) ...) in draw order, row the
+;; frame's in inspect-frames, runs those that name no image or paint, frame its
+;; number. Only one list so far: the root's.
+(define (inspect-list) (inspect-list-read! (inspect-list-empty)))
+
+(define (inspect-list-empty)
+  (vector (make-bytevector 0) (make-bytevector 0) '() 0 0 #f '() -1))
+
+;; l holds the last frame's list from now on, in its own buffers when they're
+;; big enough: they stay where they are, and a collection needn't copy them.
+(define (inspect-list-read! l)
   (let* ([newest (inspect-frames 1)]
-         [count (if (null? newest) 0 (cadr (car newest)))]
-         [words (if (null? newest) 0 (caddr (car newest)))]
-         [records (make-bytevector (* 32 count))]
-         [extras (make-bytevector (* 4 words))])
-    (bytevector-copy! *rec-bytes* 0 records 0 (* 32 count))
-    (bytevector-copy! *rec-extras* 0 extras 0 (* 4 words))
-    (vector records extras (inspect-labels count) count)))
+         [row (and (pair? newest) (car newest))]
+         [count (if row (cadr row) 0)]
+         [words (if row (caddr row) 0)]
+         [fit! (lambda (slot n)
+                 (when (< (bytevector-length (vector-ref l slot)) n)
+                   (vector-set! l slot
+                                (make-immobile-bytevector
+                                 (+ n (quotient n 4))))))])
+    (fit! 0 (* 32 count))
+    (fit! 1 (* 4 words))
+    (bytevector-copy! *rec-bytes* 0 (vector-ref l 0) 0 (* 32 count))
+    (bytevector-copy! *rec-extras* 0 (vector-ref l 1) 0 (* 4 words))
+    (vector-set! l 2 (inspect-labels count))
+    (vector-set! l 3 count)
+    (vector-set! l 4 words)
+    (vector-set! l 5 row)
+    (vector-set! l 6 (filter (lambda (run) (not (cadr run)))
+                             (reverse *rec-runs*)))
+    (vector-set! l 7 (- *frame-ring-n* 1))
+    l))
 
 (define (inspect-list-count l) (vector-ref l 3))
 (define (inspect-list-labels l) (vector-ref l 2))
 (define (inspect-list-bytes l)
-  (+ (bytevector-length (vector-ref l 0)) (bytevector-length (vector-ref l 1))))
+  (+ (* 32 (vector-ref l 3)) (* 4 (vector-ref l 4))))
+(define (inspect-list-row l) (vector-ref l 5))
+(define (inspect-list-runs l) (vector-ref l 6))
+(define (inspect-list-frame l) (vector-ref l 7))
+
+;; How many of its runs showed an image or a paint, which aren't kept.
+(define (inspect-list-left-out l)
+  (let ([row (inspect-list-row l)])
+    (if row (- (cadddr row) (length (inspect-list-runs l))) 0)))
+
+;;; ---- the frames kept
+
+;; The last frames' lists, as many as it was made for, by frame number: a ring
+;; its caller holds, whose slots' buffers are used again.
+(define-record-type inspect-history
+  (fields slots (mutable newest)))
+
+(define (inspect-history-new n) (make-inspect-history (make-vector n #f) -1))
+
+;; Keeps the frame drawn last, unless it's kept already.
+(define (inspect-history-add! h)
+  (let ([frame (- *frame-ring-n* 1)] [slots (inspect-history-slots h)])
+    (when (> frame (inspect-history-newest h))
+      (let ([i (modulo frame (vector-length slots))])
+        (vector-set! slots i
+                     (inspect-list-read! (or (vector-ref slots i)
+                                             (inspect-list-empty))))
+        (inspect-history-newest-set! h frame)))))
+
+;; Frame n's list, while it's kept; or #f.
+(define (inspect-history-ref h n)
+  (let* ([slots (inspect-history-slots h)]
+         [l (and (>= n 0) (vector-ref slots (modulo n (vector-length slots))))])
+    (and l (= (inspect-list-frame l) n) l)))
+
+;; How many frames are kept, and the bytes they hold now.
+(define (inspect-history-count h)
+  (length (filter values (vector->list (inspect-history-slots h)))))
+(define (inspect-history-bytes h)
+  (fold-left (lambda (n l)
+               (if l
+                   (+ n (bytevector-length (vector-ref l 0))
+                      (bytevector-length (vector-ref l 1)))
+                   n))
+             0 (vector->list (inspect-history-slots h))))
 
 ;; The labels' spans of the first count records: a label holds until the
 ;; next, and a span of none, or of no label, is left out.
@@ -230,3 +295,9 @@
 
 ;; With the next frame, its first count records drawn on image.
 (define (inspect-preview! image count) (rec-preview! image count))
+
+;; Ahead of the next frame, a kept list's first count records drawn on image.
+(define (inspect-preview-list! image l count)
+  (rec-past! image (vector-ref l 0) (* 32 (inspect-list-count l))
+             (vector-ref l 1) (* 4 (vector-ref l 4))
+             (rec-runs-upto (inspect-list-runs l) count image)))

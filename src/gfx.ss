@@ -1219,6 +1219,9 @@
 (define (rec-present!)
   (rec-run-end!)
   (gpu-present-mode! (theme 'present-mode))
+  (when *rec-past*
+    (apply gpu-list-on-image! *rec-past*)
+    (set! *rec-past* #f))
   (let ([table (rec-take-table!)]
         [pieces (rec-take-atlas-pieces!)]
         [runs (reverse *rec-runs*)]
@@ -1235,6 +1238,13 @@
 ;; the screen, for the Pipeline.
 (defvar *rec-preview* #f)
 (define (rec-preview! image count) (set! *rec-preview* (cons image count)))
+
+;; Ahead of the next frame, a list kept from earlier drawn on image: (image recs
+;; recs-n extras extras-n runs), its runs naming no image or paint, which may be
+;; gone by now.
+(defvar *rec-past* #f)
+(define (rec-past! image recs recs-n extras extras-n runs)
+  (set! *rec-past* (list image recs recs-n extras extras-n runs)))
 
 ;; The runs as far as record n, but those that show image, which is being
 ;; drawn on.
