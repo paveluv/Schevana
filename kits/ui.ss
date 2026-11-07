@@ -3185,6 +3185,10 @@
   (fold-left (lambda (n strip) (+ n (length (cdr strip)))) 0
              (ui-stream-strips s)))
 
+;; The moments begin again: the next send sends all it's given, whatever was
+;; sent before.
+(define (ui-stream-restart! s) (ui-stream-sent-set! s -1))
+
 (define (ui-stream-release! s)
   (when (ui-stream-buffer s)
     (gpu-buffer-release! (ui-stream-buffer s))
@@ -3322,14 +3326,29 @@
                         (max 0 (- (cadddr plot) room)))
                   (list 'lane lane-h lane-gap)))))
 
-;; How many moments there are to show.
+;; How many moments there are to show: as many bars bar wide as fit, or with
+;; no bar, all the rows hold.
 (define (ui-stream-count s x y w h newest oldest rules bar)
   (if newest
-      (max 0 (min (quotient (cadddr (assq 'plot (ui-stream-areas s x y w h 1
-                                                                 rules)))
-                            bar)
+      (max 0 (min (if bar
+                      (quotient (cadddr (assq 'plot (ui-stream-areas s x y w h 1
+                                                                     rules)))
+                                bar)
+                      (ui-stream-rows s))
                   (+ 1 (- newest oldest))))
       0))
+
+;; (values count areas): fit, every moment across the width, its bars as
+;; narrow as that takes.
+(define (ui-stream-layout s x y w h newest oldest rules bar fit?)
+  (let* ([count (ui-stream-count s x y w h newest oldest rules
+                                 (and (not fit?) bar))]
+         [areas (ui-stream-areas s x y w h count rules)])
+    (values count
+            (if fit?
+                (cons (list 'bar (/ (cadddr (assq 'plot areas)) (max count 1)))
+                      areas)
+                areas))))
 
 ;; The moment at x: the nearest of those shown, off either end.
 (define (ui-stream-seq-at areas x newest count)
@@ -3399,41 +3418,44 @@
 ;; stack: bottom up, (column . color); bar: a bar's width at least. opts: 'tip
 ;; (seq), its tooltip or #f; 'on-pick (seq), on a left press and as it's
 ;; dragged; 'marked, the moments marked; 'over, as the part's; 'doc;
-;; 'strip-tips, a tooltip for each strip's label. A bar under the pointer is
-;; marked too. => the moment under the pointer, or #f
+;; 'strip-tips, a tooltip for each strip's label; 'fit, true for every moment
+;; from oldest to newest across the width, bar or no. A bar under the pointer
+;; is marked too. => the moment under the pointer, or #f
 (define (ui-stream ui id s x y w h newest oldest top rules stack bar . opts)
-  (let* ([count (ui-stream-count s x y w h newest oldest rules bar)]
-         [areas (ui-stream-areas s x y w h count rules)]
-         [plot (cdr (assq 'plot areas))]
-         [under (ui-bar-chart-under ui areas count)]
-         [hover (and newest under (< under count)
-                     (+ newest (- under count -1)))]
-         [tip-of (plist-ref opts 'tip #f)]
-         [on-pick (plist-ref opts 'on-pick #f)]
-         [pick! (lambda (at)
-                  (and on-pick newest (> count 0)
-                       (begin (on-pick (ui-stream-seq-at areas at newest count))
-                              #t)))])
-    (ui-region! ui (list id) (car plot) (cadr plot) (caddr plot) (cadddr plot)
-      'doc (plist-ref opts 'doc '((L . "Select")))
-      'tip (and hover tip-of (tip-of hover))
-      'on (lambda (ev)
-            (case (car ev)
-              [(press) (and (eq? (list-ref ev 3) 'left) (pick! (cadr ev)))]
-              [(drag) (pick! (cadr ev))]
-              [else #f])))
-    (let-values ([(lane-h lane-gap) (ui-stream-lane (ui-stream-strips s))])
-      (for-each (lambda (tip i)
-                  (ui-region! ui (list id 'strip i)
-                              x (+ (cadr plot) (* i lane-h))
-                              (- (car plot) x) lane-h 'tip tip))
-                (plist-ref opts 'strip-tips '())
-                (iota (length (plist-ref opts 'strip-tips '())))))
-    (ui-draw-stream x y w h '() s areas count newest top rules stack
-                    (append (if hover (list hover) '())
-                            (plist-ref opts 'marked '()))
-                    (plist-ref opts 'over #f))
-    hover))
+  (let-values ([(count areas)
+                (ui-stream-layout s x y w h newest oldest rules bar
+                                  (plist-ref opts 'fit #f))])
+    (let* ([plot (cdr (assq 'plot areas))]
+           [under (ui-bar-chart-under ui areas count)]
+           [hover (and newest under (< under count)
+                       (+ newest (- under count -1)))]
+           [tip-of (plist-ref opts 'tip #f)]
+           [on-pick (plist-ref opts 'on-pick #f)]
+           [pick! (lambda (at)
+                    (and on-pick newest (> count 0)
+                         (begin
+                           (on-pick (ui-stream-seq-at areas at newest count))
+                           #t)))])
+      (ui-region! ui (list id) (car plot) (cadr plot) (caddr plot) (cadddr plot)
+        'doc (plist-ref opts 'doc '((L . "Select")))
+        'tip (and hover tip-of (tip-of hover))
+        'on (lambda (ev)
+              (case (car ev)
+                [(press) (and (eq? (list-ref ev 3) 'left) (pick! (cadr ev)))]
+                [(drag) (pick! (cadr ev))]
+                [else #f])))
+      (let-values ([(lane-h lane-gap) (ui-stream-lane (ui-stream-strips s))])
+        (for-each (lambda (tip i)
+                    (ui-region! ui (list id 'strip i)
+                                x (+ (cadr plot) (* i lane-h))
+                                (- (car plot) x) lane-h 'tip tip))
+                  (plist-ref opts 'strip-tips '())
+                  (iota (length (plist-ref opts 'strip-tips '())))))
+      (ui-draw-stream x y w h '() s areas count newest top rules stack
+                      (append (if hover (list hover) '())
+                              (plist-ref opts 'marked '()))
+                      (plist-ref opts 'over #f))
+      hover)))
 
 ;; values, the oldest first, as points across x y w h rising to top (1
 ;; clear of the bottom). => ((x . y) ...)

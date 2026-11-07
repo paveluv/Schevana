@@ -201,6 +201,35 @@
            (ui-stream-release! s)
            ok)))
 
+;; Fit, all of a stream's moments go across its width, a bar narrower than a
+;; pixel if it takes that.
+(check "a stream fitted shows every moment from oldest to newest, the oldest \
+        at the left"
+       (let ([s (ui-stream-new 2048 1 '())])
+         (let-values ([(count areas)
+                       (ui-stream-layout s 0 0 300 60 1999 0 '() 3 #t)]
+                      [(narrow narrow-areas)
+                       (ui-stream-layout s 0 0 300 60 1999 0 '() 3 #f)])
+           (let ([plot (cdr (assq 'plot areas))])
+             (and (= count 2000)
+                  (< (cadr (assq 'bar areas)) 1)
+                  (= (ui-stream-seq-at areas (+ (car plot) 0.1) 1999 count) 0)
+                  (= (ui-stream-seq-at areas (+ (car plot) (caddr plot) -0.1)
+                                       1999 count)
+                     1999)
+                  (< narrow 2000))))))
+
+(check "restarted, a stream sends again all it's given"
+       (let* ([s (ui-stream-new 16 1 '())] [calls 0]
+              [word (lambda (seq j) (set! calls (+ calls 1)) seq)])
+         (ui-stream-send! s 0 9 word)
+         (ui-stream-send! s 0 9 word)
+         (let ([once calls])
+           (ui-stream-restart! s)
+           (ui-stream-send! s 0 9 word)
+           (ui-stream-release! s)
+           (and (= once 10) (= calls 20)))))
+
 (check "a stream sends only what's new, as much as it holds, and starts again \
         when the history does; numbers stay what a paint can add up, and a \
         strip's word says which of its colors, among all the strips'"

@@ -994,9 +994,12 @@ Decisions worth keeping in mind for the real design:
   each record decoded in draw order and a run of glyphs as its text, the
   screen small, drawn again every tick unless told otherwise and showing
   itself in its own box, a tick older each time round, with what's selected
-  outlined, a press there listing what may touch that pixel, and a slider
-  drawing the list as far as a record. Under
-  them the River flows, a bar a tick: what main did, and in lanes over it
+  outlined, and a press there listing what may touch that pixel. Under them
+  the Tape: a mark a record in draw order, as tall as what it may cover, and
+  in lanes who drew it and its kind; a press or its stepper holds the frame
+  and draws it as far as that record, Play draws it record by record over a
+  few seconds, and what's selected in the list, or at a pixel, is marked on
+  it. Below, the River flows, a bar a tick: what main did, and in lanes over it
   whether the tick came late, the frame it sent, where the GPU stood, the
   collector, as bright as it took long, and input, green where all's well, a
   label's tooltip saying what its colors mean. A press holds it and goes back

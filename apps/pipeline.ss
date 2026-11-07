@@ -6,10 +6,14 @@
 ;;;           in draw order, a run of glyphs as its text
 ;;;   Screen  what draws, and what it holds on the GPU
 ;;; Right, the screen small, the selected record outlined: a press there
-;;; lists the records that may touch that pixel, and the slider draws the
-;;; list as far as a record. It draws again every tick, or as seldom as it's
-;;; told, and it's on the screen it shows: so it's in itself, a tick older each
-;;; time round.
+;;; lists the records that may touch that pixel. It draws again every tick, or
+;;; as seldom as it's told, and it's on the screen it shows: so it's in itself,
+;;; a tick older each time round.
+;;; Under them, the Tape: a mark a record in draw order, as tall as what it may
+;;; cover, and in lanes who drew it and its kind. A press there, or its
+;;; stepper, holds the frame and draws it as far as that record, the record
+;;; selected; Play draws it record by record. What's selected in the list, or
+;;; at a pixel, is marked on it.
 ;;; Below, the River: a bar a tick as it flows, what main did, and in lanes
 ;;; over them what else happened. A press holds it and goes back to that
 ;;; tick's frame, the whole app showing it; a drag moves through them. Frames
@@ -36,7 +40,11 @@
           (mutable order)      ; how the River's bars stack: columns
           (mutable own)        ; what it takes itself, ms a tick
           (mutable tip)        ; the last bar's tooltip: (seq . text)
-          (mutable every)))    ; the small screen draws every this many frames
+          (mutable every)      ; the small screen draws every this many frames
+          (mutable tape)       ; the Tape, a stream a record
+          (mutable tape-of)    ; the list it holds
+          (mutable playing)    ; while it plays, how far it has: a number
+          (mutable play-secs))) ; how long it plays the whole frame
 
 (define pipeline-period-ms 250)
 
@@ -127,6 +135,7 @@
   (pipeline-view-held?-set! v #f)
   (pipeline-view-tick-set! v #f)
   (pipeline-view-traced-set! v #f)
+  (pipeline-view-playing-set! v #f)
   (pipeline-look! v)
   (pipeline-preview! v))
 
@@ -323,6 +332,197 @@
                                                  (pipeline-view-tick v))))))
     (ui-draw-legend x (+ sy sh 4) w kh '() keys)))
 
+;;; ---- the Tape
+
+;; A record's mark: as tall as the log of the pixels it may cover, 100 a
+;; doubling, to 16M; in lanes, who drew it, and its kind.
+(define pipeline-tape-top 2400)
+(define pipeline-tape-rules '((1000 . "1K px") (2000 . "1M px")))
+(define pipeline-tape-kinds '(box segment polygon glyph shadow))
+(define pipeline-draw-tape-who
+  '(chart-1 chart-2 chart-3 chart-4 chart-5 chart-6 chart-7 chart-8))
+(define pipeline-draw-tape-lanes
+  `(("who" ,@pipeline-draw-tape-who)
+    ;; box segment polygon glyph shadow
+    ("kind" text-faint chart-4 chart-5 text chart-muted-1)))
+(define pipeline-draw-tape-stack '((0 . chart-share)))
+(define pipeline-tape-lane-tips
+  '("Who drew the record: the legend under the Tape says whose each color is."
+    "The record's kind: text for a glyph, faint for a box, gray for a shadow, \
+     a color for a line or a polygon."))
+
+;; A Tape holding n records, its rows a power of two.
+(define (pipeline-tape-new n)
+  (ui-stream-new (let loop ([rows 2048]) (if (< rows n) (loop (* 2 rows)) rows))
+                 1 pipeline-draw-tape-lanes))
+
+;; The Tape's rows of list l, a vector a record: (reach who kind), who and kind
+;; each its lane's color, from 1, or 0.
+(define (pipeline-tape-rows l)
+  (let* ([n (inspect-list-count l)]
+         [who (make-vector n 0)]
+         [colors (length pipeline-draw-tape-who)]
+         [kinds (length pipeline-tape-kinds)])
+    (for-each (lambda (span i)
+                (do ([k (cadr span) (+ k 1)])
+                    ((>= k (min n (+ (cadr span) (caddr span)))))
+                  (vector-set! who k (+ 1 (modulo i colors)))))
+              (inspect-list-labels l) (iota (length (inspect-list-labels l))))
+    (let ([rows (make-vector n)])
+      (do ([i 0 (+ i 1)]) ((= i n) rows)
+        (let* ([r (inspect-reach l i)]
+               [area (max 1 (* (- (caddr r) (car r)) (- (cadddr r) (cadr r))))]
+               [kind (memq (inspect-kind l i) pipeline-tape-kinds)])
+          (vector-set! rows i
+                       (vector (exact (round (* 100 (log area 2))))
+                               (vector-ref who i)
+                               (if kind (+ 1 (- kinds (length kind))) 0))))))))
+
+;; The Tape holds the list on view: sent again when that's another.
+(define (pipeline-tape-send! v)
+  (let ([l (pipeline-view-shown v)])
+    (unless (eq? l (pipeline-view-tape-of v))
+      (let ([n (inspect-list-count l)])
+        (when (> n (ui-stream-rows (pipeline-view-tape v)))
+          (ui-stream-release! (pipeline-view-tape v))
+          (pipeline-view-tape-set! v (pipeline-tape-new n)))
+        (let ([tape (pipeline-view-tape v)])
+          (ui-stream-restart! tape)
+          (when (> n 0)
+            (let ([rows (pipeline-tape-rows l)])
+              (ui-stream-send! tape 0 (- n 1)
+                               (lambda (seq j)
+                                 (vector-ref (vector-ref rows seq) j))))))
+        (pipeline-view-tape-of-set! v l)))))
+
+(define (pipeline-tape-tip l i)
+  (let ([label (inspect-label-at l i)])
+    (format "record ~a, a ~a: ~a~a" i (inspect-kind l i) (inspect-what l i)
+            (if label (format "\ndrawn by ~a" label) ""))))
+
+;; The records marked: what's selected, and those at the pixel traced.
+(define (pipeline-tape-marked v)
+  (let ([n (inspect-list-count (pipeline-view-shown v))]
+        [selected (pipeline-view-selected v)]
+        [traced (pipeline-view-traced v)])
+    (append
+     (if (and selected (< (pipeline-node-first selected) n))
+         (let ([first (pipeline-node-first selected)])
+           (map (lambda (k) (+ first k))
+                (iota (min (pipeline-node-count selected) (- n first)))))
+         '())
+     (if traced
+         (filter (lambda (i) (< i n)) (map pipeline-node-first (caddr traced)))
+         '()))))
+
+;; The small screen draws as far as k records, the last of them selected.
+(define (pipeline-draw-upto! v k)
+  (let* ([l (pipeline-view-shown v)] [n (inspect-list-count l)]
+         [k (max 0 (min k n))])
+    (pipeline-view-upto-set! v (and (< k n) k))
+    (when (> k 0)
+      (pipeline-view-selected-set! v (car (inspect-rows l (- k 1) 1))))
+    (pipeline-preview! v)))
+
+;; A press on the Tape, or its stepper: the frame stays, drawn as far as there.
+(define (pipeline-tape-go! v k)
+  (pipeline-hold! v)
+  (pipeline-view-playing-set! v #f)
+  (pipeline-draw-upto! v k))
+
+(define (pipeline-play-toggle! v)
+  (if (pipeline-view-playing v)
+      (pipeline-view-playing-set! v #f)
+      (let ([n (inspect-list-count (pipeline-view-shown v))]
+            [upto (pipeline-view-upto v)])
+        (pipeline-hold! v)
+        (pipeline-view-playing-set! v (if (and upto (< upto n)) upto 0))
+        (pipeline-draw-upto! v (pipeline-view-playing v)))))
+
+;; A tick of Play: on, by the share of the frame a tick of play-secs is.
+(define (pipeline-play-tick! v)
+  (let* ([n (inspect-list-count (pipeline-view-shown v))]
+         [at (+ (pipeline-view-playing v)
+                (/ (* n (pacer-period))
+                   (* (pipeline-view-play-secs v) 1000000000)))])
+    (if (>= at n)
+        (begin (pipeline-view-playing-set! v #f)
+               (pipeline-draw-upto! v n))
+        (begin (pipeline-view-playing-set! v at)
+               (pipeline-draw-upto! v (exact (floor at)))))))
+
+;; Where the drawing stops: a line after the last record drawn.
+(define (pipeline-draw-tape-at areas count upto)
+  (let-values ([(bx bw) (ui-bar-chart-bar areas count (max 0 (- upto 1)))])
+    (let ([plot (cdr (assq 'plot areas))])
+      (fill-box (- (if (> upto 0) (+ bx bw) bx) 1) (cadr plot) 2 (cadddr plot)
+                'accent))))
+
+(define (pipeline-tape-keys v)
+  (map (lambda (span i)
+         (cons (list-ref pipeline-draw-tape-who
+                         (modulo i (length pipeline-draw-tape-who)))
+               (pipeline-node-name span)))
+       (pipeline-view-groups v) (iota (length (pipeline-view-groups v)))))
+
+(define (pipeline-tape-height v w)
+  (let-values ([(kw kh) (ui-legend-size (pipeline-tape-keys v))])
+    (+ (ui-control-height) 4 (ui-stream-room pipeline-draw-tape-lanes) 40 4
+       kh)))
+
+;; Its heading and what plays it, the Tape, its legend.
+(define (pipeline-tape-pane v x y w h)
+  (let*-values
+      ([(ui) (pipeline-view-ui v)]
+       [(l) (pipeline-view-shown v)]
+       [(n) (inspect-list-count l)]
+       [(upto) (pipeline-view-upto v)]
+       [(ch) (ui-control-height)]
+       [(keys) (pipeline-tape-keys v)]
+       [(kw kh) (ui-legend-size keys)]
+       [(gw gh) (ui-label-size '(group) "Tape" w)]
+       [(sy) (+ y ch 4)]
+       [(sh) (- h ch 4 4 kh)]
+       [(label!) (lambda (lx text)
+                   (let ([tw (+ 8 (text-width text 'ui))])
+                     (ui-draw-label lx y tw ch '(dim) text)
+                     (+ lx tw)))])
+    (pipeline-tape-send! v)
+    (ui-draw-label x y gw ch '(group) "Tape")
+    (let* ([px (+ x gw 16)]
+           [pw (max 64 (+ 24 (text-width "Pause" 'ui)))]
+           [lx (label! (+ px pw 12) "Drawn")]
+           [sw (ui-stepper ui '(pipeline drawn) lx y (or upto n) 0 n
+                           (lambda (k) (pipeline-tape-go! v k))
+                           'tip "How many of the frame's records the small \
+                                 screen draws, in their order: an arrow steps \
+                                 one record")]
+           [lx (label! (+ lx sw 8) (format "of ~a records, played in" n))]
+           [sw (ui-stepper ui '(pipeline play-secs) lx y
+                           (pipeline-view-play-secs v) 1 60
+                           (lambda (s) (pipeline-view-play-secs-set! v s))
+                           'tip "How long Play takes over the whole frame")]
+           [lx (label! (+ lx sw 8) "s")])
+      (ui-button ui '(pipeline play) px y pw ch
+                 (if (pipeline-view-playing v) "Pause" "Play")
+                 (lambda () (pipeline-play-toggle! v))
+                 'tip "Draw the frame on the small screen record by record, \
+                       holding it")
+      (ui-draw-label lx y (max 0 (- (+ x w) lx)) ch '(dim right)
+                     "a mark a record, in draw order"))
+    (ui-stream ui 'pipeline-tape (pipeline-view-tape v) x sy w sh
+               (and (> n 0) (- n 1)) 0 pipeline-tape-top pipeline-tape-rules
+               pipeline-draw-tape-stack 1
+               'fit #t
+               'doc '((L . "Draw as far as this record"))
+               'strip-tips pipeline-tape-lane-tips
+               'tip (lambda (i) (and (< i n) (pipeline-tape-tip l i)))
+               'on-pick (lambda (i) (pipeline-tape-go! v (+ i 1)))
+               'marked (pipeline-tape-marked v)
+               'over (lambda (areas count)
+                       (when upto (pipeline-draw-tape-at areas count upto))))
+    (ui-draw-legend x (+ sy sh 4) w kh '() keys)))
+
 ;;; ---- what the tree holds
 
 ;; A node is a label's span, (label first count), or a row of it (a vector).
@@ -495,11 +695,12 @@
          [lh (font-line-height 'ui)]
          [card-h (+ 12 (* 3 lh))]
          [river-h (pipeline-river-height v (- w pad pad))]
+         [tape-h (pipeline-tape-height v (- w pad pad))]
          [side (min 360 (quotient w 2))]
          [screen-w (- side pad)]
          [screen-h (exact (round (* screen-w (/ *canvas-ph* *canvas-pw*))))]
          [top (+ pad card-h gap)]
-         [bottom (- h pad river-h gap)]
+         [bottom (max top (- h pad river-h gap tape-h gap))]
          [l (pipeline-view-shown v)]
          [selected (pipeline-view-selected v)]
          [ch (ui-control-height)])
@@ -519,12 +720,11 @@
         (if (eq? (pipeline-view-stage v) 'lists)
             (pipeline-lists-pane v pad top pane-w (- bottom top))
             (pipeline-screen-pane v pad top pane-w (- bottom top))))
-      ;; the small screen, the slider and Hold under it
+      ;; the small screen, and Hold under it
       (let* ([sx (+ pad pane-w gap)]
              [k (/ *canvas-pw* screen-w)]
              [image (pipeline-image! v)]
              [n (inspect-list-count l)]
-             [upto (or (pipeline-view-upto v) n)]
              [sy (+ top screen-h gap)])
         (ui-area ui '(pipeline screen) sx top screen-w screen-h
                  #f
@@ -537,21 +737,11 @@
               (< (pipeline-node-first selected) n)
               (inspect-reach l (pipeline-node-first selected)))
          k)
-        (ui-draw-label sx sy screen-w lh '(dim)
-                       (if (pipeline-view-upto v)
-                           (format "As far as record ~a of ~a" upto n)
-                           (format "All ~a records" n)))
-        (ui-slider ui '(pipeline upto) sx (+ sy lh 2) screen-w
-                   (if (> n 0) (/ upto n) 1) 0 1
-                   (lambda (f)
-                     (pipeline-view-upto-set!
-                      v (and (< f 1) (exact (floor (* f n)))))
-                     (when (pipeline-view-held? v) (pipeline-preview! v))))
-        (ui-checkbox ui '(pipeline hold) sx (+ sy lh 2 (ui-slider-height) gap)
+        (ui-checkbox ui '(pipeline hold) sx sy
                      screen-w ch "Hold this frame" (pipeline-view-held? v)
                      (lambda (on?)
                        (if on? (pipeline-hold! v) (pipeline-resume! v))))
-        (let* ([ey (+ sy lh 2 (ui-slider-height) gap ch gap)]
+        (let* ([ey (+ sy ch gap)]
                [every (pipeline-view-every v)]
                [label "Draw it every"]
                [lw (+ 8 (text-width label 'ui))])
@@ -566,10 +756,11 @@
                            '(dim) (if (= every 1) "tick" "ticks"))))
         ;; what a frame kept can't show
         (when (and (pipeline-view-held? v) (> (inspect-list-left-out l) 0))
-          (ui-draw-label sx (+ sy lh 2 (ui-slider-height) gap ch gap ch gap)
+          (ui-draw-label sx (+ sy ch gap ch gap)
                          screen-w 0 '(hint wrap)
                          "Images and paints aren't kept with a frame, so \
                           they're left out of it here."))))
+    (pipeline-tape-pane v pad (+ bottom gap) (- w pad pad) tape-h)
     (pipeline-river-pane v pad (- h pad river-h) (- w pad pad) river-h)
     (ui-end! ui w h)))
 
@@ -577,6 +768,9 @@
 ;; the small screen with it as often as it's told.
 (define (pipeline-tick! v win)
   (ui-tick (pipeline-view-ui v) win)
+  (when (pipeline-view-playing v)
+    (pipeline-play-tick! v)
+    (invalidate! win))
   (unless (pipeline-view-held? v)
     (pipeline-flip! v)
     (let ([history (pipeline-view-history v)])
@@ -602,11 +796,12 @@
                [v (make-pipeline-view ui (inspect-history-new
                                           pipeline-frames-kept)
                                       river 'lists (inspect-list) #f 0 '() #f #f
-                                      #f #f #f #f #f #f '() 0.0 #f 1)])
+                                      #f #f #f #f #f #f '() 0.0 #f 1
+                                      (pipeline-tape-new 0) #f #f 5)])
           (pipeline-look! v)
           (apply open-window "Pipeline"
-                 'size '(1100 . 760)
-                 'min-size '(640 . 420)
+                 'size '(1100 . 860)
+                 'min-size '(640 . 560)
                  'state v
                  'draw (lambda (win w h) (pipeline-draw v win w h))
                  'close (lambda (win)
@@ -616,7 +811,8 @@
                               (inspect-preview-free! (pipeline-view-back v)))
                             (pipeline-view-image-set! v #f)
                             (pipeline-view-back-set! v #f))
-                          (ui-stream-release! river))
+                          (ui-stream-release! river)
+                          (ui-stream-release! (pipeline-view-tape v)))
                  (append
                   (ui-handlers ui)
                   (list 'tick (lambda (win) (pipeline-tick! v win)))))))))

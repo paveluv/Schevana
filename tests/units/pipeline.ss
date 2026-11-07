@@ -422,6 +422,70 @@
                 (<= 1 (drawn 8) 3)))
     (pipeline-view-every-set! v 1)
     (steps 1))
+  ;; the Tape
+  (pipeline-look! v)
+  (steps 2)
+  (let* ([l (pipeline-view-shown v)] [n (inspect-list-count l)]
+         [tape (pipeline-view-tape v)]
+         [who-base 0]
+         [kind-base (length pipeline-draw-tape-who)])
+    (check "the Tape holds a mark a record of the frame on view: how much it \
+            may cover, who drew it, its kind"
+           (and (> n 0)
+                (eq? (pipeline-view-tape-of v) l)
+                (= (ui-stream-sent tape) (- n 1))
+                (let ([row (ui-stream-row tape 0)])
+                  ;; record 0, the desktop's: as big as the screen
+                  (and (> (car row) 1500)
+                       (> (cadr row) who-base)
+                       (= (caddr row)
+                          (+ kind-base 1
+                             (- (length pipeline-tape-kinds)
+                                (length (memq (inspect-kind l 0)
+                                              pipeline-tape-kinds)))))))))
+    (press! '(pipeline-tape))
+    (check "a press on the Tape holds the frame and draws it as far as that \
+            record, which is selected"
+           (let ([upto (pipeline-view-upto v)])
+             (and (pipeline-view-held? v)
+                  upto (< 0 upto n)
+                  (= (pipeline-node-first (pipeline-view-selected v))
+                     (- upto 1))
+                  (memv (- upto 1) (pipeline-tape-marked v)))))
+    (let ([before (pipeline-view-upto v)])
+      (press! '((pipeline drawn) down))
+      (check "its stepper takes it a record at a time"
+             (= (pipeline-view-upto v) (- before 1))))
+    (pipeline-view-play-secs-set! v 1)
+    (pipeline-tape-go! v 0)
+    (press! '(pipeline play))
+    (check "Play draws the frame record by record, from the start"
+           (and (pipeline-view-playing v)
+                (< 0 (pipeline-view-upto v) n)))
+    (steps 90)
+    (check "and stops at its end, all of it drawn"
+           (and (not (pipeline-view-playing v))
+                (not (pipeline-view-upto v))))
+    (let ([span (car (pipeline-view-groups v))])
+      (pipeline-view-selected-set! v span)
+      (check "what's selected is marked, a span of records whole"
+             (equal? (list-head (pipeline-tape-marked v) (caddr span))
+                     (map (lambda (k) (+ (cadr span) k))
+                          (iota (caddr span))))))
+    (pipeline-view-selected-set! v #f)
+    (pipeline-trace! v 5 5)
+    (check "and so are the records at a pixel traced"
+           (let ([traced (map pipeline-node-first
+                              (caddr (pipeline-view-traced v)))])
+             (and (pair? traced)
+                  (for-all (lambda (i) (memv i (pipeline-tape-marked v)))
+                           traced))))
+    (pipeline-view-traced-set! v #f)
+    (press! '(pipeline hold))
+    (steps 2)
+    (check "and with Hold let go, it flows on, a mark a record of what's new"
+           (and (not (pipeline-view-held? v))
+                (eq? (pipeline-view-tape-of v) (pipeline-view-shown v)))))
   ;; the small screen in the small screen: a flat box if it's left out, in a
   ;; list read since the selection's outline went
   (pipeline-view-selected-set! v #f)
