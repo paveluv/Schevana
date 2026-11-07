@@ -193,8 +193,10 @@
         (when (and (pair? ready) (< (now-ms) deadline))
           (for-each
            (lambda (p)
-             (let ([until (+ (now-ms) (/ (- deadline (now-ms))
-                                         (length ready)))])
+             ;; the clock read once: a ms turning between two reads would end
+             ;; a lone process's turn a ms short, and give it a second
+             (let* ([now (now-ms)]
+                    [until (+ now (/ (- deadline now) (length ready)))])
                (with-profile-span (proc-id p) #t
                  (let turn ()
                    (when (and (memq p *procs*) (proc-may-run? p))

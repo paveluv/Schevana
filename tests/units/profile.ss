@@ -13,14 +13,16 @@
 
 ;; thunk's result, on a clock that moves ns a read: what a span holds is what it
 ;; reads, whatever else the machine is doing. The real one catches up after it,
-;; so that ticks stay in order.
+;; so that ticks stay in order. Set and put back, not fluid-let: an engine keeps
+;; the dynamic context of its first run, so a process first run inside would
+;; wind this clock back in at each of its turns after.
 (define (profile-test-on-clock ns thunk)
-  (let* ([real now-ns] [t (real)])
-    (let ([result (fluid-let ([now-ns (lambda () (set! t (+ t ns)) t)]
-                              [now-ms (lambda ()
-                                        (set! t (+ t ns))
-                                        (quotient t 1000000))])
-                    (thunk))])
+  (let* ([real now-ns] [real-ms now-ms] [t (real)]
+         [put-back! (lambda () (set! now-ns real) (set! now-ms real-ms))])
+    (set! now-ns (lambda () (set! t (+ t ns)) t))
+    (set! now-ms (lambda () (set! t (+ t ns)) (quotient t 1000000)))
+    (let ([result (guard (c [#t (put-back!) (raise c)]) (thunk))])
+      (put-back!)
       (let catch-up () (when (< (real) t) (catch-up)))
       result)))
 
@@ -158,18 +160,25 @@
 
 (let ([p (spawn "profile-test-busy" (lambda () (let loop () (loop))))])
   (check "a busy process shows its share: most of the processes' phase, in \
-          one turn a step"
+          one turn a step, wherever in its ms the step begins"
          ;; the shares on a clock of their own, as a machine's other work would
-         ;; shift them; the real steps only have to run it
+         ;; shift them, 100 µs a read, each step a read further into its ms
+         ;; than the last: in one of them the ms turns between any two reads.
+         ;; 20 ms a step, of which run-procs!'s and the collector's own reads
+         ;; are a small part, as on a real clock. The real steps only have to
+         ;; run it.
          (let* ([ss (profile-test-on-clock
                      100000
                      (lambda ()
                        (profile-test-ticks
                         (lambda ()
                           (do ([i 0 (+ i 1)]) ((= i 10))
+                            (let ([ms (now-ms)])
+                              (let wait () (when (= (now-ms) ms) (wait))))
+                            (do ([j 0 (+ j 1)]) ((= j i)) (now-ns))
                             (with-profile-span 'step #f
                               (with-profile-span 'procs #f
-                                (run-procs! 5))))))))]
+                                (run-procs! 20))))))))]
                 [real (profile-test-ticks (lambda () (steps 10)))])
            (kill! p)
            (and (= (length ss) 10)
