@@ -506,3 +506,105 @@
   (if (eq? *host* 'sdl)
       (sdl-set-clipboard-text s)
       (set! *host-clipboard* s)))
+
+;;; ------------------------------------------------------------------
+;;; local sockets
+
+;;; For what talks to the world from outside. Nothing here waits: a read or a
+;;; write asks poll first and does no more than will go at once. A socket is
+;;; its file descriptor.
+
+;; sockaddr_un, as Linux and macOS share it: on macOS the first byte is the
+;; length and the second the family, which family below folds into one.
+(define-ftype host-sockaddr
+  (struct [family unsigned-16] [path (array 104 unsigned-8)]))
+(define-ftype host-pollfd (struct [fd int] [events short] [revents short]))
+(defvar *host-socket-memory*
+  (foreign-alloc (+ (ftype-sizeof host-sockaddr)
+                    (ftype-sizeof host-pollfd))))
+(define host-sockaddr* (make-ftype-pointer host-sockaddr *host-socket-memory*))
+(define host-pollfd*
+  (make-ftype-pointer host-pollfd
+                      (+ *host-socket-memory*
+                         (ftype-sizeof host-sockaddr))))
+;; a write's most at once: poll's "writable" means this much goes unblocked
+(define host-socket-chunk 2048)
+(defvar *host-socket-chunk* (make-bytevector host-socket-chunk))
+
+;; The address of path, in the memory above. => its length
+(define (host-socket-address! path)
+  (let* ([bytes (string->utf8 path)] [n (bytevector-length bytes)]
+         [length (+ n 3)] [a host-sockaddr*])
+    (unless (< n 104) (errorf 'host-socket "too long a path: ~a" path))
+    (ftype-set! host-sockaddr (family) a
+                (if (string-contains-ci? (symbol->string (machine-type)) "osx")
+                    (+ 256 length)
+                    1))
+    (do ([i 0 (+ i 1)]) ((= i n))
+      (ftype-set! host-sockaddr (path i) a (bytevector-u8-ref bytes i)))
+    (ftype-set! host-sockaddr (path n) a 0)
+    length))
+
+;; A socket listening at path, which only this user can reach; what was there
+;; before goes, unless it's a plain file. A client that goes away must fail a
+;; write, not end the world: SIGPIPE is ignored from now on.
+(define (host-socket-listen path)
+  (c-signal 13 1)
+  (when (file-exists? path)
+    (when (file-regular? path)
+      (errorf 'host-socket-listen "there's a file at ~a" path))
+    (delete-file path))
+  (let ([fd (c-socket 1 1 0)]   ; AF_UNIX, SOCK_STREAM
+        [length (host-socket-address! path)])
+    (when (< fd 0) (errorf 'host-socket-listen "no socket"))
+    (unless (and (zero? (c-bind fd (ftype-pointer-address host-sockaddr*)
+                                length))
+                 (begin (chmod path #o600) (zero? (c-listen fd 8))))
+      (c-close fd)
+      (errorf 'host-socket-listen "can't listen at ~a" path))
+    fd))
+
+;; A socket connected to path, or #f.
+(define (host-socket-connect path)
+  (let* ([length (host-socket-address! path)] [fd (c-socket 1 1 0)])
+    (if (and (>= fd 0)
+             (zero? (c-connect fd (ftype-pointer-address host-sockaddr*)
+                               length)))
+        fd
+        (begin (when (>= fd 0) (c-close fd)) #f))))
+
+;; Would events (poll's: 1, in; 4, out) go at once, or has it ended?
+(define (host-socket-ready? fd events)
+  (let ([p host-pollfd*])
+    (ftype-set! host-pollfd (fd) p fd)
+    (ftype-set! host-pollfd (events) p events)
+    (ftype-set! host-pollfd (revents) p 0)
+    (and (> (c-poll (ftype-pointer-address p) 1 0) 0)
+         (not (zero? (ftype-ref host-pollfd (revents) p))))))
+
+;; A client waiting at listening socket fd, as a socket of its own, or #f.
+(define (host-socket-accept fd)
+  (and (host-socket-ready? fd 1)
+       (let ([c (c-accept fd 0 0)]) (and (>= c 0) c))))
+
+;; What's there into bytes: how many; 0, it has ended; #f, nothing yet.
+(define (host-socket-read fd bytes)
+  (and (host-socket-ready? fd 1)
+       (max 0 (c-recv fd bytes (bytevector-length bytes) 0))))
+
+;; bytes from at on, as much as goes now. => where that leaves it, or #f once
+;; the other end has gone
+(define (host-socket-write fd bytes at)
+  (let loop ([at at] [left 32])
+    (if (or (= at (bytevector-length bytes)) (= left 0)
+            (not (host-socket-ready? fd 4)))
+        at
+        (let ([n (min host-socket-chunk (- (bytevector-length bytes) at))])
+          (bytevector-copy! bytes at *host-socket-chunk* 0 n)
+          (let ([sent (c-send fd *host-socket-chunk* n 0)])
+            (and (> sent 0) (loop (+ at sent) (- left 1))))))))
+
+;; No more will be written to fd: the other end reads to its end.
+(define (host-socket-end-writing fd) (c-shutdown fd 1))
+
+(define (host-socket-close fd) (c-close fd))

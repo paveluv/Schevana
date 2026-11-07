@@ -213,6 +213,7 @@
 ;; how often the screen has re-timed it and frames were left out for it.
 (define (inspect-pacer)
   `((period . ,(pacer-period))
+    (margin . ,(theme 'pacer-margin))
     (due . ,*pacer-due*)
     (retimed . ,*pacer-retimed*)
     (skipped . ,*pacer-skipped*)))

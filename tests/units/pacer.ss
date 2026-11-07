@@ -259,8 +259,8 @@
 
 (check "the pacer times frames from the screen: past a cutoff once, a frame \
         keeps the screen's refresh from then on, no frame shown late, no \
-        wait for an image, a quarter of a period clear of the cutoff or \
-        more, however its ticks vary; every tick \
+        wait for an image, 4 ms clear of the cutoff or more, however its \
+        ticks vary; every tick \
         goes on; left to itself, it goes on missing"
        (let* ([timed (pacer-test-screen 4000)]
               [untimed (fluid-let ([pacer-image-waited! (lambda (t) (void))])
@@ -276,8 +276,65 @@
          (and (>= (car timed) (- (quotient 4000000000 period) 4))
               (= (car after) 0)
               (= (cadr after) 0)
-              (> (caddr after) (quotient period 4))
+              (> (caddr after) 4000000)
               (> (+ (car without) (cadr without)) 0))))
+
+(check "a lone wait for an image moves nothing, for moving the frames is what \
+        makes the next one wait; three among the last eight frames re-time \
+        the pacer and leave one out; one far too long isn't this"
+       (let* ([t (* 1000 1000000000)] [due 123456789]
+              [wait! (lambda (ms)
+                       (set! t (+ t 20000000))
+                       (pacer-image-waited! (- t (* ms 1000000))))]
+              [still? (lambda ()
+                        (and (= *pacer-due* due) (not *pacer-skip?*)))]
+              [retimed *pacer-retimed*])
+         (fluid-let ([now-ns (lambda () t)])
+           (pacer-rate! 'screen)
+           (set! *pacer-holds* 0)
+           (set! *pacer-due* due)
+           (wait! 7)
+           (let ([lone (still?)])
+             (do ([i 0 (+ i 1)]) ((= i 7)) (wait! 0))
+             (wait! 7)
+             (let ([two-apart (still?)])
+               (wait! 0)
+               (wait! 500)
+               (wait! 500)
+               (wait! 500)
+               (let ([too-long (still?)])
+                 (wait! 7)
+                 (wait! 0)
+                 (let ([still-two (still?)])
+                   (wait! 7)
+                   (let ([moved (and (not (= *pacer-due* due)) *pacer-skip?*)]
+                         [count (- *pacer-retimed* retimed)])
+                     (pacer-frame-skipped!)
+                     (set! *pacer-holds* 0)
+                     (pacer-rate! 'screen)
+                     (printf "  ~a\n" (list lone two-apart too-long still-two
+                                            moved count))
+                     (and lone two-apart too-long still-two moved
+                          (= count 1)
+                          (not *pacer-skip?*))))))))))
+
+(check "the screen's ticks run 'pacer-margin shorter than its refresh, and a \
+        fixed rate doesn't"
+       (let ([margin (theme 'pacer-margin)] [rate (pacer-rate)])
+         (pacer-rate! 'screen)
+         (let ([by-default (- (host-frame-ns) (pacer-period))])
+           (set-theme! 'pacer-margin 1000)
+           (let ([wider (- (host-frame-ns) (pacer-period))])
+             (set-theme! 'pacer-margin 0)
+             (let ([none (- (host-frame-ns) (pacer-period))])
+               (set-theme! 'pacer-margin margin)
+               (pacer-rate! 30)
+               (let ([fixed (pacer-period)])
+                 (pacer-rate! rate)
+                 (and (= by-default margin 300)
+                      (= wider 1000)
+                      (= none 0)
+                      (= fixed (quotient 1000000000 30)))))))))
 
 (check "(pacer-rate! 30) halves the ticks in real time, and 'screen brings \
         the screen's back"
@@ -287,7 +344,8 @@
            (pacer-rate! 'screen)
            (let ([screen (pacer-period)])
              (pacer-rate! rate)
-             (and (= p30 33333333) (= screen (host-frame-ns)))))))
+             (and (= p30 33333333)
+                  (= screen (- (host-frame-ns) (theme 'pacer-margin))))))))
 
 ;;; What a tick takes, but its waits: kept whether the profiler is on or not.
 

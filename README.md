@@ -210,6 +210,7 @@ afterwards; `(only …)` or `(prefix … acme:)` keep them apart.
 (profile-history! 60 30)                   ; a minute of ticks, 30 of seconds
 (profile-totals (profile-seconds))         ; what each window, ... spent
 (profile-flag-report)                      ; every late tick, and why
+(debug-repl)                               ; a socket for what's outside
 (tasks)                                    ; a task manager; tasks are data
 (add-task! "Fix the menu" 'priority 'high 'tags '("ui"))   ; shows at once
 (set-task! "Fix the" 'status 'review)      ; by title, id (27) or "TASK-27"
@@ -350,6 +351,33 @@ settings `chart-1` to `chart-8`, from the palette's hues,
 its share, its reference lines and a flag over a bar: Genera and the CADR, which have no color, give them as
 stipples of ink.
 
+
+### The Debug REPL
+
+`(debug-repl)` opens a window that lets something outside Schevana, a debugger
+or an agent, evaluate Scheme in the running world, and shows every request and
+answer as they come. Nobody types in it. The window is the switch: the socket
+exists only while it's open, at `$XDG_RUNTIME_DIR/schevana-debug.sock`, for its
+owner alone; closing it stops whatever was running.
+
+One connection, one request: send the forms as text and stop writing. The
+answer comes back as one datum, and the connection closes:
+
+```
+(ok "what it printed" ("a value, as text" ...) ms)
+(error "what went wrong" "what it printed" ms)
+(killed "what it printed" ms)
+```
+
+```bash
+printf '(+ 1 2)' | nc -UN "$XDG_RUNTIME_DIR/schevana-debug.sock"
+```
+
+A request runs as a process, so a long one doesn't hold the world up, and one
+past 10 seconds is stopped. It has all the power of the world's own REPL. It's
+drawn by `kits/transcript.ss`, the REPL's transcript, which is there for other
+apps to derive from.
+
 ## Your own apps, styles, palettes and wallpapers
 
 Styles, palettes (named colors) and wallpapers (desktop fills) have definers
@@ -400,7 +428,7 @@ run, and Settings, Permissions changes it later.
 ## Architecture
 
 ```
-apps/        in the world: repl  envs  monitor  settings  tasks
+apps/        in the world: repl  debug-repl  envs  monitor  settings  tasks
              each in a sandbox of its own: boids  clock  life  sketch
 wallpapers/  desktop fills: gradient  flat  shade
 palettes/    named colors: catppuccin  crayons  forest  genera  gruvbox
@@ -660,11 +688,16 @@ Decisions worth keeping in mind for the real design:
   It also keeps frames off the screen's cutoff: a frame sent a little too
   close to a refresh shows a refresh late, and the screen shows the last
   one again. The pacer can't see that cutoff, but a wait for the screen's
-  next image ends about there, so it then re-times itself to send each
-  frame half a period later; if the next frame has to wait too, one is
-  left out, so that what's queued drains while the world ticks on.
-  `(inspect-pacer)` says how often. Between waits it runs on its own
-  clock, and can drift until the next one.
+  next image ends about there. So when three of the last eight frames have
+  waited, it re-times itself to send each frame half a period after that moment,
+  and leaves one out, so that what's queued drains while the world ticks
+  on. A lone wait moves nothing: reacting to it is what makes the next
+  frame wait. `(inspect-pacer)` says how often. Between waits it runs on
+  its own clock, and can drift until the next one.
+  Its period is a little shorter than the refresh the display reports
+  (`'pacer-margin`, 300 ns, in Settings' Display tab), because a report can
+  be a little too long: drifting early costs a frame nothing, where drifting
+  late would show one a refresh late.
 - **Kernel vs user space via engines.** Each app handler runs in a Chez
   engine with a fuel budget (`safe-call`). An error or an infinite loop
   "crashes" only that window, which then shows the condition and can be

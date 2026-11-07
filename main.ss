@@ -20,6 +20,8 @@
 (load-user-folders!)
 ;; What you allowed apps in sandboxes (services/grant.ss).
 (grant-file-load!)
+;; Where the Debug REPL listens, while it's open (apps/debug-repl.ss).
+(debug-repl-path! (debug-repl-default-path))
 ;; A checkout's private folder, if it has one, keeps every late tick, for
 ;; whoever is looking into them.
 (let ([dir (string-append *schevana-root* "/.work")])

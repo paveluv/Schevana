@@ -512,7 +512,7 @@
                  (exists (lambda (p) (string-prefix? p (symbol->string name)))
                          '("ui-draw-" "complete-draw-" "tasks-draw-"
                            "settings-draw-" "envs-draw-" "pipeline-draw-"
-                           "text-draw-"))))
+                           "text-draw-" "transcript-draw-"))))
         (and (pair? form)
              (memq (car form) '(define-part theme-default! color-default!))
              #t))))

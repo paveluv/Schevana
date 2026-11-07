@@ -25,16 +25,13 @@
 ;;; stops it. Inputs entered meanwhile wait under it, and run in turn.
 
 (define-record-type repl
-  (nongenerative schevana-repl-4)
-  (fields (mutable lines)      ; transcript, newest first: ((style . text) ...)
-          (mutable count)
-          (mutable open?)      ; is the newest line unterminated output?
+  (nongenerative schevana-repl-5)
+  (fields transcript           ; what it has said (kits/transcript.ss)
           (mutable input)      ; the text being edited
           (mutable point)      ; cursor index into input
           (mutable history)    ; previous inputs, newest first
           (mutable hist-pos)   ; -1 while editing fresh input
           (mutable saved)      ; fresh input stashed while browsing history
-          (mutable scroll)     ; visual rows scrolled back from the bottom
           (mutable proc)       ; the running evaluation (a process, or a
                                ; vat's job), or #f
           (mutable pending)    ; output from the process, newest first
@@ -120,46 +117,26 @@
 
 (define (repl-environment r) (env-environment (repl-env r)))
 
-(define repl-max-lines 4000)
 (define repl-prompt "λ> ")
 (define repl-waiting "↳  ")   ; before an input that waits its turn
 (define repl-cont   "   ")
 
-(define repl-keywords
-  '(define lambda let let* letrec letrec* if cond case when unless begin set! do
-    quote quasiquote and or define-syntax syntax-rules syntax-case let-values
-    let*-values define-record-type guard parameterize case-lambda define-app
-    else import library export fluid-let delay define-values with-syntax))
-
 ;;; ------------------------------------------------------------------
 ;;; transcript
 
-(define (repl-push-line! r style text)
-  (repl-lines-set! r (cons (cons style text) (repl-lines r)))
-  (repl-count-set! r (+ 1 (repl-count r)))
-  (when (> (repl-count r) (+ repl-max-lines 500))
-    (repl-lines-set! r (list-head (repl-lines r) repl-max-lines))
-    (repl-count-set! r repl-max-lines)))
+;; Its transcript's, as the rest of this file reads them.
+(define (repl-lines r) (transcript-lines (repl-transcript r)))
+(define (repl-scroll r) (transcript-scroll (repl-transcript r)))
+(define (repl-scroll-set! r n) (transcript-scroll-set! (repl-transcript r) n))
 
-;; Append text that may contain newlines; output can arrive in pieces.
+;; Output arrives in pieces: text that may hold newlines, on the line it left
+;; open.
 (define (repl-append! r style str)
-  (let loop ([pieces (string-split str #\newline)] [first? #t])
-    (unless (null? pieces)
-      (let ([p (car pieces)] [last? (null? (cdr pieces))])
-        (cond
-          [(and first? (repl-open? r) (eq? (caar (repl-lines r)) style))
-           (set-cdr! (car (repl-lines r))
-                     (string-append (cdar (repl-lines r)) p))]
-          [(and last? (string=? p "")) (void)]
-          [else (repl-push-line! r style p)])
-        (when last? (repl-open?-set! r (not (string=? p ""))))
-        (loop (cdr pieces) #f)))))
+  (transcript-append! (repl-transcript r) style str))
 
 ;; Add complete lines, starting on a fresh line.
 (define (repl-add! r style str)
-  (repl-open?-set! r #f)
-  (repl-append! r style (string-append str "\n"))
-  (repl-scroll-set! r 0)
+  (transcript-add! (repl-transcript r) style str)
   (repl-invalidate! r))
 
 ;; The window showing r, or #f (before it opens).
@@ -1116,9 +1093,7 @@
                   (repl-input-set! r "")
                   (repl-point-set! r 0)))]
       [(and ctrl? (eqv? key #\l))
-       (repl-lines-set! r '())
-       (repl-count-set! r 0)
-       (repl-open?-set! r #f)]
+       (transcript-clear! (repl-transcript r))]
       [(and ctrl? (eqv? key #\a)) (repl-point-set! r (line-start s p))]
       [(and ctrl? (eqv? key #\e)) (repl-point-set! r (line-end s p))]
       [(and ctrl? (eqv? key #\k))
@@ -1173,86 +1148,8 @@
 
 ;;; ------------------------------------------------------------------ drawing
 
-(define (style-color style)
-  (case style
-    [(input) 'text]
-    [(output) 'text-dim]
-    [(result) 'teal]
-    [(error) 'red]
-    [(banner) 'accent]
-    [(info) 'text-faint]
-    [else 'text]))
-
-;; A color key per character, for the Scheme text in s (from index `from`).
-(define (scheme-colors s from)
-  (let* ([n (string-length s)] [v (make-vector n 'text)])
-    (define (fill! a b color)
-      (do ([i a (+ i 1)]) ((>= i (min b n))) (vector-set! v i color)))
-    (define (delimiter? c)
-      (or (char-whitespace? c) (memv c '(#\( #\) #\[ #\] #\" #\;))))
-    (let loop ([i from] [after-open? #f])
-      (when (< i n)
-        (let ([c (string-ref s i)])
-          (cond
-            [(char=? c #\;) (fill! i n 'text-faint)]
-            [(char=? c #\")
-             (let str ([j (+ i 1)])
-               (cond
-                 [(>= j n) (fill! i n 'green) (loop n #f)]
-                 [(char=? (string-ref s j) #\\) (str (+ j 2))]
-                 [(char=? (string-ref s j) #\")
-                  (fill! i (+ j 1) 'green)
-                  (loop (+ j 1) #f)]
-                 [else (str (+ j 1))]))]
-            [(memv c '(#\( #\[ #\) #\]))
-             (fill! i (+ i 1) 'repl-paren)
-             (loop (+ i 1) (memv c '(#\( #\[)))]
-            [(memv c '(#\' #\` #\,)) (fill! i (+ i 1) 'cyan) (loop (+ i 1) #f)]
-            [(char-whitespace? c) (loop (+ i 1) after-open?)]
-            [(and (char=? c #\#) (< (+ i 1) n)
-                  (char=? (string-ref s (+ i 1)) #\\))
-             (let tok ([j (+ i 3)])
-               (if (and (< j n) (not (delimiter? (string-ref s j))))
-                   (tok (+ j 1))
-                   (begin (fill! i j 'green) (loop j #f))))]
-            [else
-             (let tok ([j i])
-               (if (and (< j n) (not (delimiter? (string-ref s j))))
-                   (tok (+ j 1))
-                   (let ([t (substring s i j)])
-                     (fill! i j
-                            (cond
-                              [(string->number t) 'orange]
-                              [(member t '("#t" "#f" "#true" "#false")) 'orange]
-                              [(memq (string->symbol t) repl-keywords)
-                               'accent-2]
-                              [after-open? 'accent]
-                              [else 'text]))
-                     (loop j #f))))]))))
-    v))
-
-;; Draws the visual rows [row0, row1) of one wrapped logical line.
-(define (draw-repl-line x y text colors cols row0 row1 cw lh)
-  (let ([n (string-length text)])
-    (do ([row row0 (+ row 1)] [yy y (+ yy lh)]) ((>= row row1))
-      (let ([a (* row cols)] [b (min n (* (+ row 1) cols))])
-        (if (symbol? colors)
-            (when (< a b) (draw-text x yy (substring text a b) colors 'mono))
-            (let run ([i a])
-              (when (< i b)
-                (let ([c (vector-ref colors i)])
-                  (let end ([j (+ i 1)])
-                    (if (and (< j b) (eq? (vector-ref colors j) c))
-                        (end (+ j 1))
-                        (begin
-                          (draw-text (+ x (* cw (- i a))) yy
-                                     (substring text i j) c 'mono)
-                          (run j))))))))))))
-
-(define (rows-for len cols) (max 1 (quotient (+ len cols -1) cols)))
-
-(define repl-pad 10)
-(define (repl-line-height) (+ 3 (font-line-height 'mono)))
+(define repl-pad transcript-pad)
+(define (repl-line-height) (transcript-line-height))
 
 ;; How far below a row's top what marks a character (the cursor, a
 ;; matching paren) starts, th high: centered on the ink of parentheses,
@@ -1330,10 +1227,12 @@
                              (and m (list p m))))))]
          [total
           (+ (fold-left (lambda (acc e)
-                          (+ acc (rows-for (string-length (cadr e)) cols)))
+                          (+ acc (transcript-rows (string-length (cadr e))
+                                                  cols)))
                         0 input-entries)
              (fold-left (lambda (acc l)
-                          (+ acc (rows-for (string-length (cdr l)) cols)))
+                          (+ acc (transcript-rows (string-length (cdr l))
+                                                  cols)))
                         0 (append waiting (repl-lines r))))]
          [caret #f]   ; where the cursor was drawn: (x . y)
          [mark #f])   ; where the running input's prompt was drawn: (x . y)
@@ -1349,7 +1248,7 @@
         (let* ([e (car entries)]
                [edit? (and (pair? e) (eq? (car e) 'edit))]
                [text (if edit? (cadr e) (cdr e))]
-               [k (rows-for (string-length text) cols)]
+               [k (transcript-rows (string-length text) cols)]
                [shown (- k (min skip k))])
           (if (= shown 0)
               (loop (cdr entries) bottom (- skip k))
@@ -1357,8 +1256,8 @@
                 (cond
                   [edit?
                    (let* ([start (caddr e)]
-                          [colors (scheme-colors text 3)])
-                     (vector-fill-range! colors 0 3 (car (repl-look r)))
+                          [colors (transcript-draw-scheme text 3)])
+                     (transcript-fill-colors! colors 0 3 (car (repl-look r)))
                      (when paren
                        (for-each
                         (lambda (i)
@@ -1372,7 +1271,8 @@
                                             'repl-paren-mark 3)))
                               (vector-set! colors j 'yellow))))
                         paren))
-                     (draw-repl-line pad top text colors cols 0 shown cw lh)
+                     (transcript-draw-line pad top text colors cols 0 shown cw
+                                           lh)
                      ;; the cursor
                      (let ([p (repl-point r)]
                            [end (+ start (- (string-length text) 3))])
@@ -1393,29 +1293,22 @@
                                                   (+ top (* row lh) mark-top)
                                                   cw th)]))))))]
                   [(eq? (car e) 'input)
-                   (let ([colors (scheme-colors text 3)])
-                     (vector-fill-range! colors 0 3 'text-faint)
+                   (let ([colors (transcript-draw-scheme text 3)])
+                     (transcript-fill-colors! colors 0 3 'text-faint)
                      (when (eq? e marked)
-                       (vector-fill-range! colors 0 3 (repl-background r))
+                       (transcript-fill-colors! colors 0 3 (repl-background r))
                        (set! mark (cons pad top)))
-                     (draw-repl-line pad top text colors cols 0 shown cw lh))]
+                     (transcript-draw-line pad top text colors cols 0 shown cw
+                                           lh))]
                   [(eq? (car e) 'wait)
-                   (draw-repl-line pad top text 'text-faint cols 0 shown cw
-                                   lh)]
+                   (transcript-draw-line pad top text 'text-faint cols 0 shown
+                                         cw lh)]
                   [else
-                   (draw-repl-line pad top text (style-color (car e))
-                                   cols 0 shown cw lh)])
+                   (transcript-draw-line pad top text
+                                         (transcript-draw-style-color (car e))
+                                         cols 0 shown cw lh)])
                 (loop (cdr entries) top 0))))))
-    ;; the kit's scroll bar when scrolled back, on the style's side, no
-    ;; wider than the text's inset (Interlisp's bars are 24)
-    (when (> (repl-scroll r) 0)
-      (let ([size (/ rows (max rows total))]
-            [bw (min (ui-scrollbar-width) pad)])
-        (ui-draw-scrollbar (if (eq? (theme 'scrollbar-side) 'left) 0 (- w bw))
-                           4 bw (- h 8) '()
-                           (* (- 1 size)
-                              (- 1 (/ (repl-scroll r) (max 1 (- total rows)))))
-                           size)))
+    (transcript-draw-scrollbar (repl-transcript r) w h rows total)
     (repl-draw-busy r win mark cw th mark-top)
     (let ([c (complete-of r)] [e (repl-env r)])
       (when c
@@ -1467,10 +1360,6 @@
 
 ;; Parentheses: as quiet as faint text, but code, not a hint, so a style's
 ;; faint-text font (Genera's italic) leaves them as the rest of the code.
-(color-default! 'repl-paren (theme-rule (theme 'text-faint)))
-
-(define (vector-fill-range! v a b x)
-  (do ([i a (+ i 1)]) ((>= i (min b (vector-length v)))) (vector-set! v i x)))
 
 ;;; ------------------------------------------------------------------ the app
 
@@ -1540,7 +1429,7 @@ here"))]
 ;; A REPL in what (see repl-environment-of): the world's by default.
 (define (open-repl what)
   (let-values ([(e own?) (repl-environment-of what)])
-    (let ([r (make-repl '() 0 #f "" 0 '() -1 #f 0 #f '() #f #t (now-ms)
+    (let ([r (make-repl (transcript-new) "" 0 '() -1 #f #f '() #f #t (now-ms)
                         repl-initial-cols repl-initial-rows '() e own? #f #f
                         #f #f)])
       (repl-port-set! r (make-repl-port r))

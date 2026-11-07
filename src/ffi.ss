@@ -34,6 +34,9 @@
    '("libfontconfig.so.1" "libfontconfig.so" "libfontconfig.1.dylib"
      "libfontconfig.dylib" "fontconfig.dll")))
 
+;; The C library's sockets come with what's loaded: only src/host.ss uses them,
+;; and it declares them below, after the macro.
+
 ;; Like foreign-procedure, but `double` arguments accept any real number,
 ;; and `bool` is C's one-byte bool (SDL3's) as #t or #f: Chez's boolean is
 ;; an int, whose upper bytes a C bool leaves undefined. Only the main
@@ -69,6 +72,18 @@
   (syntax-rules () [(_ . spec) (define-foreign-as plain . spec)]))
 (define-syntax define-foreign/collect-safe
   (syntax-rules () [(_ . spec) (define-foreign-as collect-safe . spec)]))
+
+(define-foreign c-socket "socket" (int int int) int)
+(define-foreign c-bind "bind" (int uptr unsigned-32) int)
+(define-foreign c-listen "listen" (int int) int)
+(define-foreign c-accept "accept" (int uptr uptr) int)
+(define-foreign c-connect "connect" (int uptr unsigned-32) int)
+(define-foreign c-shutdown "shutdown" (int int) int)
+(define-foreign c-recv "recv" (int u8* size_t int) ssize_t)
+(define-foreign c-send "send" (int u8* size_t int) ssize_t)
+(define-foreign c-close "close" (int) int)
+(define-foreign c-poll "poll" (uptr unsigned-long int) int)
+(define-foreign c-signal "signal" (int uptr) uptr)
 
 (define (c-string->string ptr)
   (if (= ptr 0)

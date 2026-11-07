@@ -934,14 +934,14 @@
 
 ;; Text in the interface fonts and code in the REPL's colors.
 (define (settings-draw-font-sample x y w)
-  (let* ([cw (font-char-width 'mono)] [lh (repl-line-height)]
+  (let* ([cw (font-char-width 'mono)] [lh (transcript-line-height)]
          [code-y (round (+ 14 (* 2 (font-line-height 'ui)) 8 22))]
          [ph (max 190 (+ code-y (* 3 lh) 14))])
     (define (code-line i text)
-      (let ([colors (scheme-colors text 3)])
-        (vector-fill-range! colors 0 3 'accent)
-        (draw-repl-line (+ x 18) (+ y code-y (* i lh))
-                        text colors 999 0 1 cw lh)))
+      (let ([colors (transcript-draw-scheme text 3)])
+        (transcript-fill-colors! colors 0 3 'accent)
+        (transcript-draw-line (+ x 18) (+ y code-y (* i lh))
+                              text colors 999 0 1 cw lh)))
     (if (<= (theme 'corner-radius) 0)   ; square: on whole device pixels
         (begin (fill-box x y w ph 'bg-0) (stroke-box x y w ph 'window-border))
         (begin (fill-box x y w ph 'bg-0 8)
@@ -973,8 +973,10 @@
 
 (define (settings-display ui x y w)
   (let* ([y (+ 6 (settings-heading x y w "Display"
-                   "How big everything is drawn, and full screen."))]
-         [label-w (settings-label-width '("Scale" "Full screen"))]
+                   "How big everything is drawn, full screen, and how \
+                    frames are timed."))]
+         [label-w (settings-label-width '("Scale" "Full screen"
+                                          "Frame timing"))]
          [h (ui-control-height)]
          [segmented-w (lambda (choices)
                         (* (length choices)
@@ -994,14 +996,37 @@
                                           crispest at whole multiples like \
                                           200%."
                                          (system-scale-percent))))]
-         [fs-choices '(("Off" . #f) ("On" . #t))])
-    (settings-row ui x y w label-w "Full screen" '(dim) h
-                  (if stack? (+ w 1) (segmented-w fs-choices)) 0
-                  (lambda (sx sy sw)
-                    (ui-segmented ui 'fullscreen sx sy
-                                  (min (max 160 (segmented-w fs-choices)) sw)
-                                  h fs-choices (fullscreen?)
-                                  (lambda (v) (set-fullscreen! v)))))))
+         [fs-choices '(("Off" . #f) ("On" . #t))]
+         [y (settings-row ui x y w label-w "Full screen" '(dim) h
+                          (if stack? (+ w 1) (segmented-w fs-choices)) 0
+                          (lambda (sx sy sw)
+                            (ui-segmented
+                             ui 'fullscreen sx sy
+                             (min (max 160 (segmented-w fs-choices)) sw)
+                             h fs-choices (fullscreen?)
+                             (lambda (v) (set-fullscreen! v)))))]
+         [v (theme 'pacer-margin)]
+         [rw (max (settings-readout-width)
+                  (+ 24 (text-width "1000 ns" 'ui)))]
+         [y (settings-row ui x (+ y 18) w label-w "Frame timing" '(dim)
+                          (ui-slider-height) (+ w 1) 0
+                          (lambda (sx sy sw)
+                            (ui-slider ui '(option pacer-margin) sx sy
+                                       (- sw rw) v 0 1000
+                                       (lambda (nv)
+                                         (let ([nv (exact (round nv))])
+                                           (unless (= nv v)
+                                             (settings-set! 'pacer-margin
+                                                            nv)))))
+                            (ui-draw-label (+ sx (- sw rw) 18) sy (- rw 18)
+                                           (ui-slider-height) '(dim)
+                                           (format "~a ns" v))))])
+    (+ 22 (ui-draw-label x (+ y 10) w 0 '(hint wrap)
+                         "Ticks run this much shorter than the refresh the \
+                          display reports, so frames drift early, where they \
+                          only wait, and not late, where one would show a \
+                          refresh late. More keeps a wider margin; less makes \
+                          the screen pull them back less often."))))
 
 ;;; ------------------------------------------------------------------
 ;;; permissions
