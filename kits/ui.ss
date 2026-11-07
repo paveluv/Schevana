@@ -943,24 +943,60 @@
                            'selected (equal? current (cdr c))))
               choices (iota (length choices)))))
 
-;; A whole number from lo to hi: − and + buttons either side of it, each
-;; a step of 1. opts: 'tip. => its width
+;; A whole number from lo to hi: a field that takes only digits, an arrow either
+;; side a step of 1, as Up and Down are. What's typed counts at once if it's in
+;; range; if not, Return brings it in range, and the field losing the keyboard
+;; forgets it. opts: 'tip. => its width
 (define (ui-stepper ui id x y value lo hi on-change . opts)
   (let-values ([(w h) (ui-stepper-size lo hi)])
-    (let ([b (ui-control-height)] [tip (plist-ref opts 'tip #f)])
-      (ui-button ui (list id 'down) x y b b #f
-                 (lambda () (on-change (max lo (- value 1))))
-                 'glyph 'minus 'disabled (<= value lo) 'tip tip)
-      (ui-draw-label (+ x b) y (- w b b) h '(center) (number->string value))
+    (let* ([b (ui-control-height)] [tip (plist-ref opts 'tip #f)]
+           [field (list id 'field)] [typed (list id 'typed)]
+           [step! (lambda (n)
+                    (ui-memo! ui typed #f)
+                    (on-change (clamp n lo hi)))])
+      (unless (equal? (ui-focused ui) field) (ui-memo! ui typed #f))
+      (ui-button ui (list id 'down) x y b b #f (lambda () (step! (- value 1)))
+                 'glyph 'chevron-left 'disabled (<= value lo) 'tip tip)
+      (ui-text-field ui field (+ x b) y (- w b b) h
+                     (or (ui-memo ui typed #f) (number->string value))
+                     (lambda (text)
+                       (when (ui-stepper-text? text lo)
+                         (ui-memo! ui typed text)
+                         (let ([n (string->number text)])
+                           (when (and n (<= lo n hi)) (on-change n)))))
+                     'tip tip
+                     'max (apply max (map (lambda (n)
+                                            (string-length (number->string n)))
+                                          (list lo hi)))
+                     'on-enter (lambda ()
+                                 (let ([n (string->number
+                                           (or (ui-memo ui typed #f) ""))])
+                                   (if n
+                                       (step! n)
+                                       (ui-memo! ui typed #f))))
+                     'on-key (lambda (key mods text)
+                               (and (null? mods) (memq key '(up down))
+                                    (begin
+                                      (step! (+ value (if (eq? key 'up) 1 -1)))
+                                      #t))))
       (ui-button ui (list id 'up) (- (+ x w) b) y b b #f
-                 (lambda () (on-change (min hi (+ value 1))))
-                 'glyph 'plus 'disabled (>= value hi) 'tip tip)
+                 (lambda () (step! (+ value 1)))
+                 'glyph 'chevron-right 'disabled (>= value hi) 'tip tip)
       w)))
 
-;; Its two buttons, and room for the widest number between them.
+;; Can text become a number here, as it's typed? Digits, after a minus sign
+;; where the numbers go below 0.
+(define (ui-stepper-text? text lo)
+  (let ([chars (string->list text)])
+    (for-all char-numeric?
+             (if (and (< lo 0) (pair? chars) (char=? (car chars) #\-))
+                 (cdr chars)
+                 chars))))
+
+;; Its two buttons, and a field that holds the widest number.
 (define (ui-stepper-size lo hi)
   (let ([b (ui-control-height)])
-    (values (+ b b 16 (text-widest (map number->string (list lo hi)) 'ui))
+    (values (+ b b 20 (text-widest (map number->string (list lo hi)) 'ui))
             b)))
 
 ;; A path as crumbs: labels, the oldest first, each a quiet button that

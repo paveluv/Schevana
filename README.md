@@ -953,8 +953,9 @@ Decisions worth keeping in mind for the real design:
   draw to the screen on one screen, reading through `kits/inspect.ss`, plain
   data that a REPL or a test can read too: the frame's list by who drew it,
   each record decoded in draw order and a run of glyphs as its text, the
-  screen small with what's selected outlined, a press there listing what may
-  touch that pixel, and a slider drawing the list as far as a record. Under
+  screen small, drawn again every tick unless told otherwise, with what's
+  selected outlined, a press there listing what may touch that pixel, and a
+  slider drawing the list as far as a record. Under
   them the River flows, a bar a tick: what main did, and in lanes over it
   whether the tick came late, the frame it sent, where the GPU stood, the
   collector, as bright as it took long, and input, green where all's well, a

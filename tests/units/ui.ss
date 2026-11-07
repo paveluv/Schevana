@@ -275,3 +275,77 @@
               (= (+ (car cell) (caddr cell)) 200)
               (>= (caddr deep) 80)
               (equal? deep (at 1000 'cell)))))
+
+;;; The stepper: a field of digits between two arrows.
+
+(let ([win (open-window "Stepper" 'size '(300 . 100))])
+  (parameterize ([current-window win])
+    (let* ([ui (make-ui)] [value 5] [changes 0]
+           [draw! (lambda ()
+                    (picture-free!
+                     (image 300 100 1
+                            (lambda ()
+                              (ui-begin! ui)
+                              (ui-stepper ui 's 10 10 value 1 60
+                                          (lambda (n)
+                                            (set! changes (+ changes 1))
+                                            (set! value n)))
+                              (ui-end! ui 300 100)))))]
+           [press! (lambda (id)
+                     (let ([r (ui-find ui id)])
+                       (ui-mouse-down ui (+ (ui-region-x r) 2)
+                                      (+ (ui-region-y r) 2))
+                       (ui-mouse-up ui))
+                     (draw!))]
+           [type! (lambda (text) (ui-text ui text (lambda args #f)) (draw!))]
+           [key! (lambda (key)
+                   (ui-key ui key '() (lambda args #f))
+                   (draw!))]
+           [erase! (lambda ()
+                     (key! 'end)
+                     (key! 'backspace)
+                     (key! 'backspace))])
+      (draw!)
+      (press! '(s up))
+      (check "an arrow each side steps the number"
+             (let ([up value])
+               (press! '(s down))
+               (and (= up 6) (= value 5))))
+      (press! '(s field))
+      (erase!)
+      (check "a field emptied changes nothing yet"
+             (= value 5))
+      (type! "1")
+      (type! "x")
+      (type! "2")
+      (check "the field takes only digits, and what's in range counts at once"
+             (= value 12))
+      (type! "7")
+      (check "no more digits than the range's largest"
+             (= value 12))
+      (key! 'up)
+      (check "Up and Down step it too"
+             (let ([up value])
+               (key! 'down)
+               (and (= up 13) (= value 12))))
+      (erase!)
+      (let ([before value])
+        (type! "99")
+        (check "out of range waits"
+               (= value before))
+        (key! 'return)
+        (check "and Return brings it in range"
+               (= value 60)))
+      (erase!)
+      (let ([before value])
+        (type! "0")
+        (ui-focus! ui #f)
+        (draw!)
+        (check "the field losing the keyboard forgets what didn't count"
+               (and (not (ui-memo ui '(s typed) #f)) (= value before))))
+      (set! value 60)
+      (draw!)
+      (press! '(s up))
+      (check "at its limit an arrow goes no further"
+             (= value 60))))
+  (close-window! win))

@@ -347,6 +347,25 @@
                   (> (inspect-history-newest history) frames)
                   (> (ui-stream-sent river) (car reach))
                   (not (window-error w))))))
+  ;; how often the small screen draws
+  (let ([drawn (lambda (n)
+                 (let ([calls 0] [plain inspect-preview!])
+                   (fluid-let ([inspect-preview!
+                                (lambda (image count)
+                                  (set! calls (+ calls 1))
+                                  (plain image count))])
+                     (steps n))
+                   calls))])
+    (check "the small screen draws every frame by default"
+           (and (= (pipeline-view-every v) 1) (= (drawn 8) 8)))
+    (press! '((pipeline every) up))
+    (press! '((pipeline every) up))
+    (press! '((pipeline every) up))
+    (check "its control makes that as seldom as it's told"
+           (and (= (pipeline-view-every v) 4)
+                (<= 1 (drawn 8) 3)))
+    (pipeline-view-every-set! v 1)
+    (steps 1))
   (pipeline-view-stage-set! v 'screen)
   (invalidate! w)
   (steps 2)

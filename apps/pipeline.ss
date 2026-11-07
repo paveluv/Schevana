@@ -7,7 +7,8 @@
 ;;;   Screen  what draws, and what it holds on the GPU
 ;;; Right, the screen small, the selected record outlined: a press there
 ;;; lists the records that may touch that pixel, and the slider draws the
-;;; list as far as a record.
+;;; list as far as a record. It draws again every tick, or as seldom as it's
+;;; told.
 ;;; Below, the River: a bar a tick as it flows, what main did, and in lanes
 ;;; over them what else happened. A press holds it and goes back to that
 ;;; tick's frame, the whole app showing it; a drag moves through them. Frames
@@ -31,7 +32,8 @@
           (mutable tick)       ; the tick picked, or #f
           (mutable order)      ; how the River's bars stack: columns
           (mutable own)        ; what it takes itself, ms a tick
-          (mutable tip)))      ; the last bar's tooltip: (seq . text)
+          (mutable tip)        ; the last bar's tooltip: (seq . text)
+          (mutable every)))    ; the small screen draws every this many frames
 
 (define pipeline-period-ms 250)
 
@@ -73,15 +75,15 @@
                            newest))))))
   (pipeline-view-looked-set! v (now-ms)))
 
-;; The small screen shows what's on view. Live, it's drawn with the next frame;
-;; held, what's kept of the frame is.
+;; The small screen shows what's on view. Live, it's drawn with the next frame,
+;; as far as the slider says; held, what's kept of the frame is.
 (define (pipeline-preview! v)
-  (let ([image (pipeline-view-image v)] [l (pipeline-view-shown v)])
+  (let ([image (pipeline-view-image v)] [l (pipeline-view-shown v)]
+        [upto (pipeline-view-upto v)])
     (when image
-      (let ([count (or (pipeline-view-upto v) (inspect-list-count l))])
-        (if (pipeline-view-held? v)
-            (inspect-preview-list! image l count)
-            (inspect-preview! image count))))))
+      (if (pipeline-view-held? v)
+          (inspect-preview-list! image l (or upto (inspect-list-count l)))
+          (inspect-preview! image (or upto (most-positive-fixnum)))))))
 
 ;;; ---- going back
 
@@ -514,27 +516,44 @@
                      screen-w ch "Hold this frame" (pipeline-view-held? v)
                      (lambda (on?)
                        (if on? (pipeline-hold! v) (pipeline-resume! v))))
+        (let* ([ey (+ sy lh 2 (ui-slider-height) gap ch gap)]
+               [every (pipeline-view-every v)]
+               [label "Draw it every"]
+               [lw (+ 8 (text-width label 'ui))])
+          (ui-draw-label sx ey lw ch '(dim) label)
+          (let ([sw (ui-stepper
+                     ui '(pipeline every) (+ sx lw) ey every 1 60
+                     (lambda (n) (pipeline-view-every-set! v n))
+                     'tip "How often the small screen draws again, in frames: \
+                           each time, the GPU goes over the whole frame once \
+                           more")])
+            (ui-draw-label (+ sx lw sw 8) ey (max 0 (- screen-w lw sw 8)) ch
+                           '(dim) (if (= every 1) "tick" "ticks"))))
         ;; what a frame kept can't show
         (when (and (pipeline-view-held? v) (> (inspect-list-left-out l) 0))
-          (ui-draw-label sx (+ sy lh 2 (ui-slider-height) gap ch gap) screen-w
-                         0 '(hint wrap)
+          (ui-draw-label sx (+ sy lh 2 (ui-slider-height) gap ch gap ch gap)
+                         screen-w 0 '(hint wrap)
                          "Images and paints aren't kept with a frame, so \
                           they're left out of it here."))))
     (pipeline-river-pane v pad (- h pad river-h) (- w pad pad) river-h)
     (ui-end! ui w h)))
 
-;; Each tick while it flows: the frame just drawn is kept, and a new bar drawn.
+;; Each tick while it flows: the frame just drawn is kept, a new bar drawn, and
+;; the small screen with it as often as it's told.
 (define (pipeline-tick! v win)
   (ui-tick (pipeline-view-ui v) win)
   (unless (pipeline-view-held? v)
-    (inspect-history-add! (pipeline-view-history v))
+    (let ([history (pipeline-view-history v)])
+      (inspect-history-add! history)
+      (when (zero? (modulo (inspect-history-newest history)
+                           (pipeline-view-every v)))
+        (pipeline-preview! v)))
     (let ([newest (profile-newest-tick)])
       (when (and newest
                  (not (eqv? newest (ui-stream-sent (pipeline-view-river v)))))
         (invalidate! win)))
     (when (> (- (now-ms) (pipeline-view-looked v)) pipeline-period-ms)
       (pipeline-look! v)
-      (pipeline-preview! v)
       (invalidate! win))))
 
 (define-app (pipeline) "Pipeline"
@@ -547,7 +566,7 @@
                [v (make-pipeline-view ui (inspect-history-new
                                           pipeline-frames-kept)
                                       river 'lists (inspect-list) #f 0 '() #f #f
-                                      #f #f #f #f '() 0.0 #f)])
+                                      #f #f #f #f '() 0.0 #f 1)])
           (pipeline-look! v)
           (apply open-window "Pipeline"
                  'size '(1100 . 760)
