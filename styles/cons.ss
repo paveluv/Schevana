@@ -365,9 +365,11 @@
                      [else m])]
          [right (cond [(memq 'search flags) g]
                       [(memq 'lines flags) (+ bw m)]
-                      [else m])])
-    (list (list 'edit (+ x left) (+ y g) (max 0 (- w left right))
-                (max 0 (- h g g)) (if (memq 'large flags) 'heading 'ui))
+                      [else m])]
+         [font (if (memq 'large flags) 'heading 'ui)]
+         [top (ui-text-box-top h flags font g)])
+    (list (list 'edit (+ x left) (+ y top) (max 0 (- w left right))
+                (max 0 (- h top top)) font)
           (list 'bar (- (+ x w) bw) y bw h))))
 
 ;; A dropdown is a pair whose car holds the current value and whose
@@ -580,8 +582,11 @@
 ;; pointer head; the words where a table's text is (ui-table-cell-inset).
 (define (cons-table-header x y w h flags label dir)
   (let* ([sh (font-line-height 'ui-small)] [g (ui-small-glyph-size)]
-         [tx (+ x (* 2 (cons-space)))]
+         [in (* 2 (cons-space))]
          [s (text-fit label (max 0 (- w (* 3 (cons-space)) g)) 'ui-small)]
+         ;; over a right column, its numbers' edge
+         [right? (memq 'right flags)]
+         [tx (if right? (- (+ x w) in (text-width s 'ui-small)) (+ x in))]
          [ty (+ y (/ (- h sh) 2))]
          [end (draw-text tx ty s (if (or dir (memq 'hover flags)) 'text
                                      'text-faint)
@@ -589,7 +594,8 @@
     (when (> (string-length s) 0)
       (fill-box tx (- (+ y h) (cons-space)) (- end tx) 1 'text-faint))
     (when dir
-      (ui-draw-glyph (+ end 4) (+ y (/ (- h g) 2)) g g '((ink . cons-ink))
+      (ui-draw-glyph (if right? (- tx 4 g) (+ end 4)) (+ y (/ (- h g) 2)) g g
+                     '((ink . cons-ink))
                      dir))))
 
 ;; Rows are the list's elements, a faint line under each, g in from the

@@ -127,26 +127,34 @@
                     (cons (list label first (- end first)) acc)))))))
 
 (define (inspect-word l i k)
-  (bytevector-s32-native-ref (vector-ref l 0) (fx* 4 (fx+ (fx* 8 i) k))))
+  (bytevector-s32-native-ref (vector-ref l 0)
+                             (fx* 4 (fx+ (fx* rec-row-words i) k))))
 
 (define (inspect-pixels n) (fl/ (fixnum->flonum n) 256.0))
 
 ;; A record's clip row, if it has one: (x0 y0 x1 y1 radius rx0 ry0 rx1 ry1), the
 ;; radius being that of the rounded box it lies in.
 (define (inspect-clip l i)
-  (let ([row (fxsrl (fxand (inspect-word l i 0) #xffffffff) 8)])
+  (let ([row (fxsrl (fxand (inspect-word l i rec-row-head) #xffffffff) 8)])
     (and (not (fx= row 0))
          (map (lambda (k)
                 (inspect-pixels
                  (bytevector-s32-native-ref (vector-ref l 1)
                                             (fx* 4 (fx+ row k)))))
-              '(0 1 2 3 4 6 7 8 9)))))
+              (list clip-row-x0 clip-row-y0 clip-row-x1 clip-row-y1
+                    clip-row-radius
+                    clip-row-rx0 clip-row-ry0 clip-row-rx1 clip-row-ry1)))))
+
+;; The character of record i, a glyph's.
+(define (inspect-glyph-char l i)
+  (glyph-row-ref (inspect-word l i rec-glyph-number) glyph-row-character))
 
 (define (inspect-kind l i)
-  (vector-ref inspect-kinds (fxand (inspect-word l i 0) 15)))
+  (vector-ref inspect-kinds (fxand (inspect-word l i rec-row-head) 15)))
 
 (define (inspect-paint l i)
-  (vector-ref inspect-paints (fxand (fxsrl (inspect-word l i 0) 4) 15)))
+  (vector-ref inspect-paints
+              (fxand (fxsrl (inspect-word l i rec-row-head) 4) 15)))
 
 ;; (x0 y0 x1 y1): what a record may touch, its clip left out.
 (define (inspect-reach l i)
@@ -154,19 +162,23 @@
         [px (lambda (k) (inspect-pixels (inspect-word l i k)))])
     (case (inspect-kind l i)
       [(glyph)
-       (let* ([n (word 4)]
-              [x (fx+ (word 2) (glyph-row-ref n 4))]
-              [y (fx- (word 3) (glyph-row-ref n 5))])
-         (map fixnum->flonum (list x y (fx+ x (glyph-row-ref n 2))
-                                   (fx+ y (glyph-row-ref n 3)))))]
-      [(segment)
-       (let ([d (fl/ (px 6) 2.0)])
-         (list (fl- (flmin (px 2) (px 4)) d) (fl- (flmin (px 3) (px 5)) d)
-               (fl+ (flmax (px 2) (px 4)) d) (fl+ (flmax (px 3) (px 5)) d)))]
-      [(shadow)
-       (let ([d (px 7)])
-         (list (fl- (px 2) d) (fl- (px 3) d) (fl+ (px 4) d) (fl+ (px 5) d)))]
-      [else (list (px 2) (px 3) (px 4) (px 5))])))
+       (let* ([n (word rec-glyph-number)]
+              [x (fx+ (word rec-glyph-pen-x) (glyph-row-ref n glyph-row-left))]
+              [y (fx- (word rec-glyph-pen-y) (glyph-row-ref n glyph-row-top))])
+         (map fixnum->flonum (list x y (fx+ x (glyph-row-ref n glyph-row-w))
+                                   (fx+ y (glyph-row-ref n glyph-row-h)))))]
+      [else
+       (let ([x0 (px rec-row-x0)] [y0 (px rec-row-y0)]
+             [x1 (px rec-row-x1)] [y1 (px rec-row-y1)])
+         (case (inspect-kind l i)
+           [(segment)
+            (let ([d (fl/ (px rec-segment-width) 2.0)])
+              (list (fl- (flmin x0 x1) d) (fl- (flmin y0 y1) d)
+                    (fl+ (flmax x0 x1) d) (fl+ (flmax y0 y1) d)))]
+           [(shadow)
+            (let ([d (px rec-shadow-size)])
+              (list (fl- x0 d) (fl- y0 d) (fl+ x1 d) (fl+ y1 d)))]
+           [else (list x0 y0 x1 y1)]))])))
 
 ;; A record, for reading: ((kind . box) (paint . solid) (color . #xff112233)
 ;; (reach x0 y0 x1 y1) (clip x0 y0 x1 y1 radius)), with more by kind: a box's
@@ -176,16 +188,15 @@
     `((kind . ,kind)
       (paint . ,paint)
       ,@(if (eq? paint 'solid)
-            `((color . ,(fxand (inspect-word l i 1) #xffffffff)))
+            `((color . ,(fxand (inspect-word l i rec-row-paint) #xffffffff)))
             '())
       (reach ,@(inspect-reach l i))
       (clip . ,(inspect-clip l i))
       ,@(case kind
           [(box)
-           `((radius . ,(inspect-pixels (inspect-word l i 6)))
-             (line . ,(inspect-pixels (inspect-word l i 7))))]
-          [(glyph)
-           `((char . ,(integer->char (glyph-row-ref (inspect-word l i 4) 6))))]
+           `((radius . ,(inspect-pixels (inspect-word l i rec-box-radius)))
+             (line . ,(inspect-pixels (inspect-word l i rec-box-line))))]
+          [(glyph) `((char . ,(integer->char (inspect-glyph-char l i))))]
           [else '()]))))
 
 ;; The records first .. first + count - 1 as rows for reading: #(first count
@@ -197,11 +208,13 @@
       [(>= i end) (reverse acc)]
       [(eq? (inspect-kind l i) 'glyph)
        (let run ([j (+ i 1)]
-                 [chars (list (glyph-row-ref (inspect-word l i 4) 6))])
+                 [chars (list (inspect-glyph-char l i))])
          (if (and (< j end) (eq? (inspect-kind l j) 'glyph)
-                  (= (inspect-word l j 3) (inspect-word l i 3))
-                  (= (inspect-word l j 1) (inspect-word l i 1)))
-             (run (+ j 1) (cons (glyph-row-ref (inspect-word l j 4) 6) chars))
+                  (= (inspect-word l j rec-glyph-pen-y)
+                     (inspect-word l i rec-glyph-pen-y))
+                  (= (inspect-word l j rec-row-paint)
+                     (inspect-word l i rec-row-paint)))
+             (run (+ j 1) (cons (inspect-glyph-char l j) chars))
              (loop j end
                    (cons (vector i (- j i) 'text
                                  (list->string
@@ -218,7 +231,8 @@
             (exact (round (- (caddr r) (car r))))
             (exact (round (- (cadddr r) (cadr r))))
             (if (eq? paint 'solid)
-                (format "#~8,'0x" (fxand (inspect-word l i 1) #xffffffff))
+                (format "#~8,'0x"
+                        (fxand (inspect-word l i rec-row-paint) #xffffffff))
                 paint))))
 
 ;; Does record i touch the device pixel x, y, as far as its reach and clip
@@ -285,6 +299,31 @@
     (retimed . ,*pacer-retimed*)
     (skipped . ,*pacer-skipped*)))
 
+;;; ---- what shaders share
+
+;; The constants a shader can name, by name: ((name . value) ...).
+(define (inspect-shader-constants)
+  (let-values ([(names numbers) (hashtable-entries *shader-constants*)])
+    (sort (lambda (a b)
+            (string<? (symbol->string (car a)) (symbol->string (car b))))
+          (map cons (vector->list names) (vector->list numbers)))))
+
+;; The sets of helpers, by name: ((set function ...) ...).
+(define (inspect-shader-helpers)
+  (let-values ([(names sets) (hashtable-entries *shader-helpers*)])
+    (sort (lambda (a b)
+            (string<? (symbol->string (car a)) (symbol->string (car b))))
+          (map (lambda (name forms)
+                 (cons name (map caadr forms)))
+               (vector->list names) (vector->list sets)))))
+
+;; A layout's fields, by name: ((field reader . offset) ...).
+(define (inspect-shader-fields)
+  (let-values ([(names rows) (hashtable-entries *shader-fields*)])
+    (sort (lambda (a b)
+            (string<? (symbol->string (car a)) (symbol->string (car b))))
+          (map cons (vector->list names) (vector->list rows)))))
+
 ;;; ---- the preview
 
 ;; An image w × h for inspect-preview!, and letting go of it.
@@ -292,6 +331,14 @@
 (define (inspect-preview-w image) (gpu-image-w image))
 (define (inspect-preview-h image) (gpu-image-h image))
 (define (inspect-preview-free! image) (gpu-image-release! image))
+
+;; What it holds on the GPU, its levels with it.
+(define (inspect-preview-bytes image)
+  (let loop ([level 0] [w (gpu-image-w image)] [h (gpu-image-h image)] [n 0])
+    (if (= level (gpu-image-levels image))
+        n
+        (loop (+ level 1) (max 1 (quotient w 2)) (max 1 (quotient h 2))
+              (+ n (* 4 w h))))))
 
 ;; With the next frame, its first count records drawn on image.
 (define (inspect-preview! image count) (rec-preview! image count))

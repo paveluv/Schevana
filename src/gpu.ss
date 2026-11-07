@@ -193,16 +193,20 @@
     (let ([d (sdl-create-gpu-device gpu-shader-format #f 0)])
       (and (not (eqv? d 0)) d))))
 
-(define (gpu-make-texture device format usage w h)
-  (let ([p gpu-texture-info*])
-    (gpu-zero! p (ftype-sizeof gpu-texture-info))
-    (ftype-set! gpu-texture-info (format) p format)
-    (ftype-set! gpu-texture-info (usage) p usage)
-    (ftype-set! gpu-texture-info (width) p w)
-    (ftype-set! gpu-texture-info (height) p h)
-    (ftype-set! gpu-texture-info (layers) p 1)
-    (ftype-set! gpu-texture-info (levels) p 1)
-    (gpu-must 'gpu-make-texture (sdl-create-gpu-texture device (gpu-at p)))))
+(define gpu-make-texture
+  (case-lambda
+    [(device format usage w h) (gpu-make-texture device format usage w h 1)]
+    [(device format usage w h levels)
+     (let ([p gpu-texture-info*])
+       (gpu-zero! p (ftype-sizeof gpu-texture-info))
+       (ftype-set! gpu-texture-info (format) p format)
+       (ftype-set! gpu-texture-info (usage) p usage)
+       (ftype-set! gpu-texture-info (width) p w)
+       (ftype-set! gpu-texture-info (height) p h)
+       (ftype-set! gpu-texture-info (layers) p 1)
+       (ftype-set! gpu-texture-info (levels) p levels)
+       (gpu-must 'gpu-make-texture
+                 (sdl-create-gpu-texture device (gpu-at p))))]))
 
 (define (gpu-make-sampler device)
   (let ([p gpu-sampler-info*])
@@ -387,19 +391,27 @@
 
 (define-record-type gpu-image
   (nongenerative schevana-gpu-image-1)
-  (fields texture w h (mutable pending)))
+  (fields texture w h levels (mutable pending)))
 
 (define gpu-image-make
   (case-lambda
-    [(w h) (gpu-image-make w h gpu-usage-sampler)]
-    [(w h usage)
+    [(w h) (gpu-image-make w h gpu-usage-sampler 1)]
+    [(w h usage levels)
      (make-gpu-image
-      (gpu-make-texture (renderer-device *renderer*) gpu-format-bgra8 usage w h)
-      w h #f)]))
+      (gpu-make-texture (renderer-device *renderer*) gpu-format-bgra8 usage w h
+                        levels)
+      w h levels #f)]))
 
-;; An image that can also be drawn on.
+;; An image that can also be drawn on. It has a chain of levels, each half the
+;; last down to a pixel, so that it can be shown smaller: a third more memory.
 (define (gpu-image-make-target w h)
-  (gpu-image-make w h (fxior gpu-usage-sampler gpu-usage-target)))
+  (gpu-image-make w h (fxior gpu-usage-sampler gpu-usage-target)
+                  (fxlength (max w h))))
+
+;; What's just been drawn on image goes down its chain.
+(define (gpu-image-fill-levels! cb image)
+  (when (> (gpu-image-levels image) 1)
+    (sdl-generate-gpu-mipmaps cb (gpu-image-texture image))))
 
 ;; The pixels to go up with the next frame: 4·w·h bytes.
 (define (gpu-image-write! image bytes)
@@ -877,7 +889,8 @@
     (when preview
       (gpu-draw-runs! r cb (gpu-image-texture (car preview)) gpu-format-bgra8
                       (gpu-image-w (car preview)) (gpu-image-h (car preview))
-                      (cdr preview) #f))
+                      (cdr preview) #f)
+      (gpu-image-fill-levels! cb (car preview)))
     (if (eqv? 0 (renderer-window r))
         (begin
           (gpu-draw-runs! r cb (renderer-target r) gpu-format-bgra8
@@ -932,6 +945,7 @@
     (gpu-upload! r cb recs recs-n extras extras-n #f 0 '() '())
     (gpu-draw-runs! r cb (gpu-image-texture image) gpu-format-bgra8
                     (gpu-image-w image) (gpu-image-h image) runs #f)
+    (gpu-image-fill-levels! cb image)
     (sdl-submit-gpu cb)))
 
 ;; The same, drawn to a new texture w × h and read back: its pixels, row

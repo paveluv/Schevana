@@ -8,7 +8,8 @@
 ;;; Right, the screen small, the selected record outlined: a press there
 ;;; lists the records that may touch that pixel, and the slider draws the
 ;;; list as far as a record. It draws again every tick, or as seldom as it's
-;;; told.
+;;; told, and it's on the screen it shows: so it's in itself, a tick older each
+;;; time round.
 ;;; Below, the River: a bar a tick as it flows, what main did, and in lanes
 ;;; over them what else happened. A press holds it and goes back to that
 ;;; tick's frame, the whole app showing it; a drag moves through them. Frames
@@ -26,7 +27,9 @@
           (mutable selected)   ; a tree node
           (mutable traced)     ; the records at a pixel, or #f: (x y n ...)
           (mutable upto)       ; the slider's record, or #f: all of them
-          (mutable image)      ; the small screen, or #f
+          (mutable image)      ; the small screen on view, or #f
+          (mutable back)       ; what its next picture is drawn on, or #f
+          (mutable flip?)      ; back has a newer picture than image
           (mutable reach)      ; while held, where the River stops: (newest
                                ; . oldest)
           (mutable tick)       ; the tick picked, or #f
@@ -75,15 +78,34 @@
                            newest))))))
   (pipeline-view-looked-set! v (now-ms)))
 
-;; The small screen shows what's on view. Live, it's drawn with the next frame,
-;; as far as the slider says; held, what's kept of the frame is.
+;; What's on view, drawn on image. Live, it's drawn with the next frame, as far
+;; as the slider says; held, what's kept of the frame is.
+(define (pipeline-preview-on! v image)
+  (let ([l (pipeline-view-shown v)] [upto (pipeline-view-upto v)])
+    (if (pipeline-view-held? v)
+        (inspect-preview-list! image l (or upto (inspect-list-count l)))
+        (inspect-preview! image (or upto (most-positive-fixnum))))))
+
+;; At once, on the image that frame shows. An image can't show itself as it's
+;; drawn on, so its own box stays empty.
 (define (pipeline-preview! v)
-  (let ([image (pipeline-view-image v)] [l (pipeline-view-shown v)]
-        [upto (pipeline-view-upto v)])
-    (when image
-      (if (pipeline-view-held? v)
-          (inspect-preview-list! image l (or upto (inspect-list-count l)))
-          (inspect-preview! image (or upto (most-positive-fixnum)))))))
+  (let ([image (pipeline-view-image v)])
+    (when image (pipeline-preview-on! v image))))
+
+;; A tick's, on the other image, so the frame showing the one on view is drawn
+;; whole. It comes on view at the next tick: pipeline-flip!.
+(define (pipeline-preview-back! v)
+  (let ([back (pipeline-view-back v)])
+    (when back
+      (pipeline-preview-on! v back)
+      (pipeline-view-flip?-set! v #t))))
+
+(define (pipeline-flip! v)
+  (when (pipeline-view-flip? v)
+    (let ([image (pipeline-view-image v)])
+      (pipeline-view-image-set! v (pipeline-view-back v))
+      (pipeline-view-back-set! v image)
+      (pipeline-view-flip?-set! v #f))))
 
 ;;; ---- going back
 
@@ -95,6 +117,7 @@
   (unless (pipeline-view-held? v)
     (inspect-history-add! (pipeline-view-history v))
     (pipeline-view-held?-set! v #t)
+    (pipeline-view-flip?-set! v #f)
     (pipeline-view-tick-set! v (profile-newest-tick))
     (pipeline-view-reach-set! v (cons (profile-newest-tick)
                                       (profile-oldest-tick)))
@@ -374,9 +397,10 @@
              (format "last frame ~,1f ms" *frame-ms*)))]))
 
 ;; Screen's pane: one fact a line.
-(define (pipeline-screen-facts)
+(define (pipeline-screen-facts v)
   (let ([d (inspect-device)] [g (inspect-glyphs)]
-        [frames (inspect-frames frame-ring-rows)])
+        [frames (inspect-frames frame-ring-rows)]
+        [image (pipeline-view-image v)])
     (append
      (list (cons "Renderer" (if (eq? (cdr (assq 'renderer d)) 'cpu)
                                 "lavapipe, on the CPU"
@@ -402,16 +426,22 @@
      (map (lambda (o)
             (cons (format "~a" (car o))
                   (format "~a, ~a KB" (cadr o) (quotient (cddr o) 1024))))
-          (inspect-gpu-objects)))))
+          (inspect-gpu-objects))
+     (if image
+         (list (cons "small screen"
+                     (format "2 textures, ~a KB"
+                             (quotient (* 2 (inspect-preview-bytes image))
+                                       1024))))
+         '()))))
 
 (define (pipeline-lists-pane v x y w h)
   (let* ([ui (pipeline-view-ui v)] [traced (pipeline-view-traced v)]
          [columns `((name "Who" 170)
                     (first "Record" 72 right)
                     (count "Count" 64 right)
-                    (what "What" ,(max 80 (- w 170 72 64 24))))]
+                    (what "What" ,(max 80 (- (ui-table-room w) 170 72 64))))]
          [cell (lambda (node key cx cy cw ch flags)
-                 (ui-draw-label
+                 (ui-draw-cell
                   cx cy cw ch flags
                   (case key
                     [(name) (pipeline-node-name node)]
@@ -439,20 +469,25 @@
                 (let ([ly (+ y (* i (+ lh 4)))])
                   (ui-draw-label x ly 120 lh '(dim) (car fact))
                   (ui-draw-label (+ x 124) ly (- w 124) lh '() (cdr fact))))
-              (pipeline-screen-facts)
-              (iota (length (pipeline-screen-facts))))))
+              (pipeline-screen-facts v)
+              (iota (length (pipeline-screen-facts v))))))
 
-;; The small screen's image, as big as the screen: the shader draws on real
-;; pixels. Made again when the screen's size changes.
+;; The small screen's images, as big as the screen: the shader draws on real
+;; pixels. Made again when the screen's size changes: a draw still waiting names
+;; the old ones, so the new one's first picture takes its place.
 (define (pipeline-image! v)
   (let ([image (pipeline-view-image v)] [pw *canvas-pw*] [ph *canvas-ph*])
     (if (and image (= (inspect-preview-w image) pw)
              (= (inspect-preview-h image) ph))
         image
         (begin
-          (when image (inspect-preview-free! image))
+          (when image
+            (inspect-preview-free! image)
+            (inspect-preview-free! (pipeline-view-back v)))
           (pipeline-view-image-set! v (inspect-preview-image pw ph))
-          (when (pipeline-view-held? v) (pipeline-preview! v))
+          (pipeline-view-back-set! v (inspect-preview-image pw ph))
+          (pipeline-view-flip?-set! v #f)
+          (pipeline-preview! v)
           (pipeline-view-image v)))))
 
 (define (pipeline-draw v win w h)
@@ -543,11 +578,12 @@
 (define (pipeline-tick! v win)
   (ui-tick (pipeline-view-ui v) win)
   (unless (pipeline-view-held? v)
+    (pipeline-flip! v)
     (let ([history (pipeline-view-history v)])
       (inspect-history-add! history)
       (when (zero? (modulo (inspect-history-newest history)
                            (pipeline-view-every v)))
-        (pipeline-preview! v)))
+        (pipeline-preview-back! v)))
     (let ([newest (profile-newest-tick)])
       (when (and newest
                  (not (eqv? newest (ui-stream-sent (pipeline-view-river v)))))
@@ -566,7 +602,7 @@
                [v (make-pipeline-view ui (inspect-history-new
                                           pipeline-frames-kept)
                                       river 'lists (inspect-list) #f 0 '() #f #f
-                                      #f #f #f #f '() 0.0 #f 1)])
+                                      #f #f #f #f #f #f '() 0.0 #f 1)])
           (pipeline-look! v)
           (apply open-window "Pipeline"
                  'size '(1100 . 760)
@@ -575,8 +611,11 @@
                  'draw (lambda (win w h) (pipeline-draw v win w h))
                  'close (lambda (win)
                           (let ([image (pipeline-view-image v)])
-                            (when image (inspect-preview-free! image))
-                            (pipeline-view-image-set! v #f))
+                            (when image
+                              (inspect-preview-free! image)
+                              (inspect-preview-free! (pipeline-view-back v)))
+                            (pipeline-view-image-set! v #f)
+                            (pipeline-view-back-set! v #f))
                           (ui-stream-release! river))
                  (append
                   (ui-handlers ui)

@@ -294,7 +294,7 @@
          ;; text's baseline, wherever the font's size puts it
          (let ([r (list (probe 'genera "" 0 25 '(30))
                         (probe 'mac "" 0 25 '(30))
-                        (probe 'genera "MMMM" #t 26 '(35 36 37 38 39 40)))])
+                        (probe 'genera "MMMM" #t 26 '(40 41 42 43 44 45 46)))])
            (set-style! 'mac)
            (equal? r '(#t #f #t)))))
 

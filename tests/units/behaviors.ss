@@ -688,20 +688,39 @@
         (picture-free! img)
         (cons (apply min xs) (apply max xs))))))
 
-(check "a heading starts 10 pixels from its left, its sort arrow after \
-        it, whether its column's cells are right-aligned (right) or not: \
-        the kit's, Genera's and Cons's"
+(define (cell-ink style flags)
+  (with-style style
+    (lambda ()
+      (let* ([img (image 200 30 1
+                         (lambda ()
+                           (fill-box 0 0 200 30 'bg-1)
+                           (ui-draw-cell 0 0 200 30 flags "ms/s")))]
+             [bg (pixel-at img 199 2)]
+             [xs (filter (lambda (x)
+                           (exists (lambda (y) (not (= (pixel-at img x y) bg)))
+                                   (iota 30)))
+                         (iota 200))])
+        (picture-free! img)
+        (cons (apply min xs) (apply max xs))))))
+
+(check "a heading lines up with its column's cells: from the left, its sort \
+        arrow after it; over right-aligned ones (right), at the right, its \
+        arrow before it: the kit's, Genera's and Cons's"
        (for-all
         (lambda (style)
           (let ([left (heading-ink style '() #f)]
                 [left-sorted (heading-ink style '() 'down)]
                 [right (heading-ink style '(right) #f)]
-                [right-sorted (heading-ink style '(right) 'down)])
-            (and (<= 9 (car left) 12) (< (cdr left) 100)
+                [right-sorted (heading-ink style '(right) 'down)]
+                [cells (cell-ink style '())]
+                [right-cells (cell-ink style '(right))])
+            (and (<= (abs (- (car left) (car cells))) 2) (< (cdr left) 100)
                  (= (car left-sorted) (car left))
                  (> (cdr left-sorted) (cdr left))
-                 (equal? right left)
-                 (equal? right-sorted left-sorted))))
+                 (<= (abs (- (cdr right) (cdr right-cells))) 2)
+                 (> (car right) 100)
+                 (= (cdr right-sorted) (cdr right))
+                 (< (car right-sorted) (car right)))))
         '(mac genera cons)))
 
 (check "a tree's headings: with 'on-sort a press on one calls it with its \

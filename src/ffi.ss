@@ -240,6 +240,8 @@
   (uptr unsigned-32 u8* unsigned-32) void)
 (define-foreign sdl-dispatch-compute "SDL_DispatchGPUCompute"
   (uptr unsigned-32 unsigned-32 unsigned-32) void)
+(define-foreign sdl-generate-gpu-mipmaps "SDL_GenerateMipmapsForGPUTexture"
+  (uptr uptr) void)
 (define-foreign sdl-submit-gpu "SDL_SubmitGPUCommandBuffer" (uptr) bool)
 (define-foreign sdl-submit-gpu-fence
   "SDL_SubmitGPUCommandBufferAndAcquireFence" (uptr) uptr)

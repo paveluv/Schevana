@@ -121,6 +121,12 @@
                                    w (inspect-preview-h image))])
     (bytevector-u32-native-ref bytes (* 4 (+ x (* y w))))))
 
+(check "the preview says what it holds on the GPU, its levels with it"
+       (let* ([image (inspect-preview-image 4 4)]
+              [bytes (inspect-preview-bytes image)])
+         (inspect-preview-free! image)
+         (= bytes (+ 64 16 4))))
+
 (check "the preview draws the list as far as a record: the same draw, cut"
        (let* ([image (inspect-preview-image *canvas-pw* *canvas-ph*)]
               [plain record-world!]
@@ -238,6 +244,14 @@
                 [rows (pipeline-children v group)])
            (and (pair? rows)
                 (= (apply + (map pipeline-node-count rows)) (caddr group)))))
+  (let ([drawn '()] [plain ui-draw-cell])
+    (fluid-let ([ui-draw-cell (lambda (x y w h flags text)
+                                (set! drawn (cons text drawn))
+                                (plain x y w h flags text))])
+      (steps 2))
+    (check "its cells are the kit's, so that they line up under their headings \
+            and clear of each other"
+           (member "Pipeline" drawn)))
   (press! '(pipeline screen))
   (check "a press on the small screen lists the records at that pixel, the \
           top one selected"
@@ -366,6 +380,62 @@
                 (<= 1 (drawn 8) 3)))
     (pipeline-view-every-set! v 1)
     (steps 1))
+  ;; the small screen in the small screen: a flat box if it's left out, in a
+  ;; list read since the selection's outline went
+  (pipeline-view-selected-set! v #f)
+  (steps 4)
+  (pipeline-look! v)
+  (let ([colors
+         (lambda ()
+           (let* ([image (pipeline-view-image v)]
+                  [pw (inspect-preview-w image)]
+                  [r *renderer*]
+                  [cb (sdl-acquire-gpu-commands (renderer-device r))]
+                  [bytes (gpu-read-texture! r cb (gpu-image-texture image)
+                                            pw (inspect-preview-h image))]
+                  [box (ui-find ui '(pipeline screen))])
+             (let-values ([(cx cy cw ch) (content-rect w)])
+               (let ([x0 (exact (ceiling (* *canvas-ratio*
+                                            (+ cx (ui-region-x box) 2))))]
+                     [y0 (exact (ceiling (* *canvas-ratio*
+                                            (+ cy (ui-region-y box) 2))))]
+                     [n (exact (floor (* *canvas-ratio*
+                                         (- (ui-region-w box) 4))))]
+                     [m (exact (floor (* *canvas-ratio*
+                                         (- (ui-region-h box) 4))))]
+                     [seen (make-eqv-hashtable)])
+                 (do ([y y0 (+ y 1)]) ((= y (+ y0 m)))
+                   (do ([x x0 (+ x 1)]) ((= x (+ x0 n)))
+                     (hashtable-set!
+                      seen
+                      (bytevector-u32-native-ref bytes (* 4 (+ x (* y pw))))
+                      #t)))
+                 (hashtable-size seen)))))])
+    (check "the small screen shows itself, in the box it's drawn in"
+           (> (colors) 8))
+    (press! '(pipeline hold))
+    (steps 2)
+    (check "a frame kept can't, as it can't show any image"
+           (= (colors) 1))
+    (press! '(pipeline hold))
+    (steps 3)
+    (check "and letting go of Hold it does again"
+           (> (colors) 8)))
+  ;; the screen's size changes while a tick's draw waits
+  (let ([front (pipeline-view-image v)]
+        [waiting (begin (steps 1) (pipeline-tick! v w) *rec-preview*)])
+    (fluid-let ([*canvas-pw* (+ *canvas-pw* 2)])
+      (pipeline-image! v))
+    (check "a new size draws on what's new, not on what's let go of"
+           (and waiting
+                (not (eq? (pipeline-view-image v) front))
+                (eq? (car *rec-preview*) (pipeline-view-image v))
+                (= (inspect-preview-w (pipeline-view-image v))
+                   (+ *canvas-pw* 2))))
+    (steps 2)
+    (check "and comes back to the screen's own"
+           (and (= (inspect-preview-w (pipeline-view-image v)) *canvas-pw*)
+                (not (window-error w)))))
   (pipeline-view-stage-set! v 'screen)
   (invalidate! w)
   (steps 2)
@@ -373,8 +443,9 @@
   (pipeline-view-stage-set! v 'lists)
   (close-window! w)
   (steps 1)
-  (check "closed, it lets its image and its River go"
+  (check "closed, it lets its images and its River go"
          (and (not (pipeline-view-image v))
+              (not (pipeline-view-back v))
               (not (ui-stream-buffer (pipeline-view-river v))))))
 
 ;;; Recording itself.

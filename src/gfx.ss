@@ -165,25 +165,39 @@
 ;;;   polygon  where its points are in the extras, how many; words 2 to 5
 ;;;            hold a box around them
 ;;;   glyph    pen and baseline, whole pixels; the glyph's number in word 4;
-;;;            word 6 is 3 if turned a quarter counterclockwise
+;;;            word 6 is rec-glyph-turned if turned a quarter counterclockwise
 ;;;   shadow   radius, size; the box casting it
-;;; Paint kinds: solid; gradient, whose row is radial?, x0 y0 x1 y1, n and
-;;; n colors; stipple, whose row is u v w h, ink and paper; image, whose row
-;;; is its width and height.
-;;; The extras also hold clips: x0 y0 x1 y1, a radius, the clip it lies in, and
-;;; the box that radius rounds: rx0 ry0 rx1 ry1. What's drawn has to be inside
-;;; both boxes. Their word 0 is unused, so that clip 0 is no clip.
+;;; Paint kinds: solid; gradient, stipple and image, each with a row in the
+;;; extras. The extras also hold clips: what's drawn has to be inside both a
+;;; clip's boxes. Their word 0 is unused, so that clip 0 is no clip.
 
-(define rec-kind-box 0)
-(define rec-kind-segment 1)
-(define rec-kind-polygon 2)
-(define rec-kind-glyph 3)
-(define rec-kind-shadow 4)
-(define rec-paint-solid 0)
-(define rec-paint-gradient 1)
-(define rec-paint-stipple 2)
-(define rec-paint-image 3)
-(define rec-paint-shader 4)
+(define-shader-constant rec-kind-box 0)
+(define-shader-constant rec-kind-segment 1)
+(define-shader-constant rec-kind-polygon 2)
+(define-shader-constant rec-kind-glyph 3)
+(define-shader-constant rec-kind-shadow 4)
+(define-shader-constant rec-paint-solid 0)
+(define-shader-constant rec-paint-gradient 1)
+(define-shader-constant rec-paint-stipple 2)
+(define-shader-constant rec-paint-image 3)
+(define-shader-constant rec-paint-shader 4)
+(define-shader-constant rec-glyph-turned 3)     ; a glyph's word 6
+(define-shader-constant rec-gradient-radial 1)  ; a gradient row's first word
+
+(define-shader-layout rec-row word (head paint x0 y0 x1 y1 a b))
+(define-shader-layout rec-box word (head paint x0 y0 x1 y1 radius line))
+(define-shader-layout rec-segment word (head paint x0 y0 x1 y1 width))
+(define-shader-layout rec-polygon word (head paint x0 y0 x1 y1 points count))
+(define-shader-layout rec-glyph word (head paint pen-x pen-y number pad turn))
+(define-shader-layout rec-shadow word (head paint x0 y0 x1 y1 radius size))
+;; a radial one's center is x0 y0 and its radius x1; stops colors from color0
+(define-shader-layout gradient-row extra
+  (kind x0 y0 x1 y1 stops color0 color1))
+(define-shader-layout stipple-row extra (u v w h ink paper))
+(define-shader-layout image-row extra (w h level))
+;; its rect; the clip around it; the rounded box it lies in, its radius first
+(define-shader-layout clip-row extra
+  (x0 y0 x1 y1 radius parent rx0 ry0 rx1 ry1))
 (define rec-most-points 256)
 
 (defvar *rec-bytes* (make-immobile-bytevector (* 32 16384) 0))
@@ -358,7 +372,7 @@
          [n (length colors)]
          [words (map color-word colors)]
          [row *rec-extra-at*])
-    (rec-extra! (if radial? 1 0))
+    (rec-extra! (if radial? rec-gradient-radial 0))
     (if radial?
         (apply (lambda (cx cy r)
                  (rec-extra! (rec-device cx *rec-ox*))
@@ -608,8 +622,9 @@
                     [g (font-glyph f pages num den c phase)])
                (when (fx> g 0)
                  (if turned?
-                     (rec-put! head paint base-x px g 0 3 0)
-                     (let ([gh (glyph-row-ref g 3)] [top (glyph-row-ref g 5)])
+                     (rec-put! head paint base-x px g 0 rec-glyph-turned 0)
+                     (let ([gh (glyph-row-ref g glyph-row-h)]
+                           [top (glyph-row-ref g glyph-row-top)])
                        (unless (and (not (fx= *rec-clip* 0))
                                     (or (fx>= (fxsll px 8) *rec-cx1*)
                                         (fx>= (fxsll (fx- base-y top) 8)
@@ -647,18 +662,32 @@
       (gpu-image-write! image bytes)
       (draw-image image x y w h))))
 
-;; An image on the GPU, scaled to w × h at (x, y), each pixel a sharp block.
+;; The level of image's chain to show it w × h in device pixels: the last at
+;; least that big. Two of its pixels blended cover more than a step between
+;; them, so that nothing is skipped.
+(define (rec-image-level image w h)
+  (let loop ([level 0]
+             [iw (quotient (gpu-image-w image) 2)]
+             [ih (quotient (gpu-image-h image) 2)])
+    (if (and (< (+ level 1) (gpu-image-levels image)) (>= iw w) (>= ih h))
+        (loop (+ level 1) (quotient iw 2) (quotient ih 2))
+        level)))
+
+;; An image on the GPU, scaled to w × h at (x, y). At its size or bigger, each
+;; pixel a sharp block; smaller, blended, from a level of its chain if it has
+;; one.
 (define (draw-image image x y w h)
-  (let ([row *rec-extra-at*])
+  (let ([row *rec-extra-at*]
+        [x0 (rec-snap (rec-device x *rec-ox*))]
+        [y0 (rec-snap (rec-device y *rec-oy*))]
+        [x1 (rec-snap (rec-device (+ x w) *rec-ox*))]
+        [y1 (rec-snap (rec-device (+ y h) *rec-oy*))])
     (rec-extra! (gpu-image-w image))
     (rec-extra! (gpu-image-h image))
+    (rec-extra! (rec-image-level image (fxsra (- x1 x0) 8) (fxsra (- y1 y0) 8)))
     (rec-run! 0 image)
-    (let* ([x0 (rec-snap (rec-device x *rec-ox*))]
-           [y0 (rec-snap (rec-device y *rec-oy*))]
-           [x1 (rec-snap (rec-device (+ x w) *rec-ox*))]
-           [y1 (rec-snap (rec-device (+ y h) *rec-oy*))])
-      (set! *rec-paint-kind* rec-paint-image)
-      (rec-put! (rec-head rec-kind-box) row x0 y0 x1 y1 0 0))
+    (set! *rec-paint-kind* rec-paint-image)
+    (rec-put! (rec-head rec-kind-box) row x0 y0 x1 y1 0 0)
     (rec-run! 0 #f)))
 
 ;;; ------------------------------------------------------------------ paints
@@ -673,46 +702,53 @@
   (fields shader params))   ; params: as it was given them, colors and all
 
 ;; The core's clip, then the body; the source the compiler is given.
+(define-shader-helpers gfx-helpers
+  (define (word k) (fx-ref records (fx+ (fx* id rec-row-words) k)))
+  (define (extra k) (fx-ref extras k))
+  (define (pixels n) (fl/ (fixnum->flonum n) 256.0))
+  (define (clamp01 x) (flmax 0.0 (flmin 1.0 x)))
+  (define (mixed a b t) (fl+ a (fl* t (fl- b a))))
+  ;; a channel of a color's word, 0 to 1
+  (define (channel w shift)
+    (fl/ (fixnum->flonum (fxand (fxsrl w shift) 255)) 255.0))
+  ;; how far outside a rounded box the pixel's center is; inside, negative
+  (define (box-distance x0 y0 x1 y1 r)
+    (let* ([qx (fl- (flabs (fl- px (fl* 0.5 (fl+ x0 x1))))
+                    (fl- (fl* 0.5 (fl- x1 x0)) r))]
+           [qy (fl- (flabs (fl- py (fl* 0.5 (fl+ y0 y1))))
+                    (fl- (fl* 0.5 (fl- y1 y0)) r))]
+           [ox (flmax qx 0.0)]
+           [oy (flmax qy 0.0)])
+      (fl- (fl+ (flsqrt (fl+ (fl* ox ox) (fl* oy oy)))
+                (flmin (flmax qx qy) 0.0))
+           r)))
+  ;; how much of the pixel a clip's row leaves: its rect, and the rounded box
+  ;; that rect lies in
+  (define (clip-coverage clip)
+    (if (fx= clip 0)
+        1.0
+        (clamp01
+         (fl- 0.5
+              (flmax
+               (box-distance (pixels (clip-row-x0 clip))
+                             (pixels (clip-row-y0 clip))
+                             (pixels (clip-row-x1 clip))
+                             (pixels (clip-row-y1 clip))
+                             0.0)
+               (if (fx= (clip-row-radius clip) 0)
+                   -1.0
+                   (box-distance (pixels (clip-row-rx0 clip))
+                                 (pixels (clip-row-ry0 clip))
+                                 (pixels (clip-row-rx1 clip))
+                                 (pixels (clip-row-ry1 clip))
+                                 (pixels (clip-row-radius clip))))))))))
+
 (define (gfx-paint-source x y forms)
-  `((define (word k) (fx-ref records (fx+ (fx* id 8) k)))
-    (define (extra k) (fx-ref extras k))
-    (define (pixels n) (fl/ (fixnum->flonum n) 256.0))
-    (define (box-distance x0 y0 x1 y1 r)
-      (let* ([qx (fl- (flabs (fl- px (fl* 0.5 (fl+ x0 x1))))
-                      (fl- (fl* 0.5 (fl- x1 x0)) r))]
-             [qy (fl- (flabs (fl- py (fl* 0.5 (fl+ y0 y1))))
-                      (fl- (fl* 0.5 (fl- y1 y0)) r))]
-             [ox (flmax qx 0.0)]
-             [oy (flmax qy 0.0)])
-        (fl- (fl+ (flsqrt (fl+ (fl* ox ox) (fl* oy oy)))
-                  (flmin (flmax qx qy) 0.0))
-             r)))
-    (define (channel w shift)
-      (fl/ (fixnum->flonum (fxand (fxsrl w shift) 255)) 255.0))
-    (let* ([clip (fxsrl (word 0) 8)]
-           [m (if (fx= clip 0)
-                  1.0
-                  (flmax
-                   0.0
-                   (flmin
-                    1.0
-                    (fl- 0.5
-                         (flmax
-                          (box-distance (pixels (extra clip))
-                                        (pixels (extra (fx+ clip 1)))
-                                        (pixels (extra (fx+ clip 2)))
-                                        (pixels (extra (fx+ clip 3)))
-                                        0.0)
-                          (if (fx= (extra (fx+ clip 4)) 0)
-                              -1.0
-                              (box-distance
-                               (pixels (extra (fx+ clip 6)))
-                               (pixels (extra (fx+ clip 7)))
-                               (pixels (extra (fx+ clip 8)))
-                               (pixels (extra (fx+ clip 9)))
-                               (pixels (extra (fx+ clip 4))))))))))]
-           [,x (fx- (flonum->fixnum (flfloor px)) (fxsra (word 2) 8))]
-           [,y (fx- (flonum->fixnum (flfloor py)) (fxsra (word 3) 8))]
+  `((use-shader-helpers gfx-helpers)
+    (let* ([clip (fxsrl (rec-row-head) 8)]
+           [m (clip-coverage clip)]
+           [,x (fx- (flonum->fixnum (flfloor px)) (fxsra (rec-row-x0) 8))]
+           [,y (fx- (flonum->fixnum (flfloor py)) (fxsra (rec-row-y0) 8))]
            [c (let () ,@forms)]
            [a (fl* m (channel c 24))])
       (emit-color (fl* a (channel c 16))
@@ -793,12 +829,12 @@
     (rec-extra! y0)
     (rec-extra! x1)
     (rec-extra! y1)
-    (rec-extra! (if own? radius (rec-extra-ref clip 4)))
+    (rec-extra! (if own? radius (rec-extra-ref clip clip-row-radius)))
     (rec-extra! clip)
-    (rec-extra! (if own? ax (rec-extra-ref clip 6)))
-    (rec-extra! (if own? ay (rec-extra-ref clip 7)))
-    (rec-extra! (if own? bx (rec-extra-ref clip 8)))
-    (rec-extra! (if own? by (rec-extra-ref clip 9)))
+    (rec-extra! (if own? ax (rec-extra-ref clip clip-row-rx0)))
+    (rec-extra! (if own? ay (rec-extra-ref clip clip-row-ry0)))
+    (rec-extra! (if own? bx (rec-extra-ref clip clip-row-rx1)))
+    (rec-extra! (if own? by (rec-extra-ref clip clip-row-ry1)))
     (set! *rec-clip* row)
     (set! *rec-cx0* x0)
     (set! *rec-cy0* y0)
@@ -809,13 +845,13 @@
   (bytevector-s32-native-ref *rec-extras* (fx* 4 (fx+ row k))))
 
 (define (rec-clip-leave!)
-  (let ([clip (rec-extra-ref *rec-clip* 5)])
+  (let ([clip (rec-extra-ref *rec-clip* clip-row-parent)])
     (set! *rec-clip* clip)
     (unless (fx= clip 0)
-      (set! *rec-cx0* (rec-extra-ref clip 0))
-      (set! *rec-cy0* (rec-extra-ref clip 1))
-      (set! *rec-cx1* (rec-extra-ref clip 2))
-      (set! *rec-cy1* (rec-extra-ref clip 3)))))
+      (set! *rec-cx0* (rec-extra-ref clip clip-row-x0))
+      (set! *rec-cy0* (rec-extra-ref clip clip-row-y0))
+      (set! *rec-cx1* (rec-extra-ref clip clip-row-x1))
+      (set! *rec-cy1* (rec-extra-ref clip clip-row-y1)))))
 
 ;; These are forms, not procedures taking a thunk: no closure a call, and a
 ;; draw that raises leaves nothing to unwind (record-world! resets the state).
@@ -912,62 +948,68 @@
    [tw flonum]
    [th flonum]
    [first fixnum])
-  (define (word k) (fx-ref records (fx+ (fx* (fx+ i first) 8) k)))
-  (define (pixels n) (fl/ (fixnum->flonum n) 256.0))
   (define (whole n) (fixnum->flonum n))
-  (let* ([head (word 0)]
-         [kind (fxand head 15)]
-         [clip (fxsrl head 8)]
-         [glyph? (fx= kind 3)]
-         [row (fx* (word 4) 7)]
-         [gw (if glyph? (whole (fx-ref glyphs (fx+ row 2))) 0.0)]
-         [gh (if glyph? (whole (fx-ref glyphs (fx+ row 3))) 0.0)]
-         [gl (if glyph? (whole (fx-ref glyphs (fx+ row 4))) 0.0)]
-         [gt (if glyph? (whole (fx-ref glyphs (fx+ row 5))) 0.0)]
-         [pen-x (whole (word 2))]
-         [pen-y (whole (word 3))]
-         [turned? (fx= (word 6) 3)]
-         [grow (if (fx= kind 0)
-                   (if (and (fx= (word 6) 0) (fx= (word 7) 0)) 0.0 1.0)
-                   (if (fx= kind 1)
-                       (fl+ 1.0 (fl* 0.5 (pixels (word 6))))
-                       (if (fx= kind 2)
-                           1.0
-                           (fl+ 1.0 (pixels (word 7))))))]
-         [x0 (if glyph?
-                 (if turned? (fl- pen-x gt) (fl+ pen-x gl))
-                 (fl- (flmin (pixels (word 2)) (pixels (word 4))) grow))]
-         [y0 (if glyph?
-                 (if turned? (fl- (fl- pen-y gl) gw) (fl- pen-y gt))
-                 (fl- (flmin (pixels (word 3)) (pixels (word 5))) grow))]
-         [x1 (if glyph?
-                 (if turned? (fl+ (fl- pen-x gt) gh) (fl+ (fl+ pen-x gl) gw))
-                 (fl+ (flmax (pixels (word 2)) (pixels (word 4))) grow))]
-         [y1 (if glyph?
-                 (if turned? (fl- pen-y gl) (fl+ (fl- pen-y gt) gh))
-                 (fl+ (flmax (pixels (word 3)) (pixels (word 5))) grow))]
-         [clipped? (not (fx= clip 0))]
-         [left (flfloor (if clipped?
-                            (flmax x0 (pixels (fx-ref extras clip)))
-                            x0))]
-         [top (flfloor (if clipped?
-                           (flmax y0 (pixels (fx-ref extras (fx+ clip 1))))
-                           y0))]
-         [right (flmax left
-                       (flceiling
-                        (if clipped?
-                            (flmin x1 (pixels (fx-ref extras (fx+ clip 2))))
-                            x1)))]
-         [bottom (flmax top
-                        (flceiling
-                         (if clipped?
-                             (flmin y1 (pixels (fx-ref extras (fx+ clip 3))))
-                             y1)))]
-         [px (if (or (fx= v 1) (fx= v 3) (fx= v 5)) right left)]
-         [py (if (or (fx= v 2) (fx= v 4) (fx= v 5)) bottom top)])
-    (emit-position (fl- (fl/ (fl* 2.0 px) tw) 1.0)
-                   (fl- 1.0 (fl/ (fl* 2.0 py) th))
-                   (fx+ i first))))
+  (let ([id (fx+ i first)])
+    (use-shader-helpers gfx-helpers)
+    (let* ([head (rec-row-head)]
+           [kind (fxand head 15)]
+           [clip (fxsrl head 8)]
+           [glyph? (fx= kind rec-kind-glyph)]
+           [row (fx* (rec-glyph-number) glyph-row-words)]
+           [gw (if glyph? (whole (glyph-row-w row)) 0.0)]
+           [gh (if glyph? (whole (glyph-row-h row)) 0.0)]
+           [gl (if glyph? (whole (glyph-row-left row)) 0.0)]
+           [gt (if glyph? (whole (glyph-row-top row)) 0.0)]
+           [pen-x (whole (rec-glyph-pen-x))]
+           [pen-y (whole (rec-glyph-pen-y))]
+           [turned? (fx= (rec-glyph-turn) rec-glyph-turned)]
+           [grow (case kind
+                   [(rec-kind-box)
+                    (if (and (fx= (rec-box-radius) 0) (fx= (rec-box-line) 0))
+                        0.0
+                        1.0)]
+                   [(rec-kind-segment)
+                    (fl+ 1.0 (fl* 0.5 (pixels (rec-segment-width))))]
+                   [(rec-kind-polygon) 1.0]
+                   [else (fl+ 1.0 (pixels (rec-shadow-size)))])]
+           [x0 (if glyph?
+                   (if turned? (fl- pen-x gt) (fl+ pen-x gl))
+                   (fl- (flmin (pixels (rec-row-x0)) (pixels (rec-row-x1)))
+                        grow))]
+           [y0 (if glyph?
+                   (if turned? (fl- (fl- pen-y gl) gw) (fl- pen-y gt))
+                   (fl- (flmin (pixels (rec-row-y0)) (pixels (rec-row-y1)))
+                        grow))]
+           [x1 (if glyph?
+                   (if turned? (fl+ (fl- pen-x gt) gh) (fl+ (fl+ pen-x gl) gw))
+                   (fl+ (flmax (pixels (rec-row-x0)) (pixels (rec-row-x1)))
+                        grow))]
+           [y1 (if glyph?
+                   (if turned? (fl- pen-y gl) (fl+ (fl- pen-y gt) gh))
+                   (fl+ (flmax (pixels (rec-row-y0)) (pixels (rec-row-y1)))
+                        grow))]
+           [clipped? (not (fx= clip 0))]
+           [left (flfloor (if clipped?
+                              (flmax x0 (pixels (clip-row-x0 clip)))
+                              x0))]
+           [top (flfloor (if clipped?
+                             (flmax y0 (pixels (clip-row-y0 clip)))
+                             y0))]
+           [right (flmax left
+                         (flceiling
+                          (if clipped?
+                              (flmin x1 (pixels (clip-row-x1 clip)))
+                              x1)))]
+           [bottom (flmax top
+                          (flceiling
+                           (if clipped?
+                               (flmin y1 (pixels (clip-row-y1 clip)))
+                               y1)))]
+           [px (if (or (fx= v 1) (fx= v 3) (fx= v 5)) right left)]
+           [py (if (or (fx= v 2) (fx= v 4) (fx= v 5)) bottom top)])
+      (emit-position (fl- (fl/ (fl* 2.0 px) tw) 1.0)
+                     (fl- 1.0 (fl/ (fl* 2.0 py) th))
+                     id))))
 
 (define-fragment-shader (gfx-fragment px py id)
   ([atlas texture]
@@ -975,157 +1017,142 @@
    [records fx-buffer]
    [extras fx-buffer]
    [glyphs fx-buffer])
-  (define (word k) (fx-ref records (fx+ (fx* id 8) k)))
-  (define (pixels n) (fl/ (fixnum->flonum n) 256.0))
-  (define (extra k) (fx-ref extras k))
-  (define (clamp01 x) (flmax 0.0 (flmin 1.0 x)))
-  ;; how far outside a rounded box the pixel's center is; inside, negative
-  (define (box-distance x0 y0 x1 y1 r)
-    (let* ([qx (fl- (flabs (fl- px (fl* 0.5 (fl+ x0 x1))))
-                    (fl- (fl* 0.5 (fl- x1 x0)) r))]
-           [qy (fl- (flabs (fl- py (fl* 0.5 (fl+ y0 y1))))
-                    (fl- (fl* 0.5 (fl- y1 y0)) r))]
-           [ox (flmax qx 0.0)]
-           [oy (flmax qy 0.0)])
-      (fl- (fl+ (flsqrt (fl+ (fl* ox ox) (fl* oy oy)))
-                (flmin (flmax qx qy) 0.0))
-           r)))
-  ;; a channel of a color's word, 0 to 1
-  (define (channel w shift)
-    (fl/ (fixnum->flonum (fxand (fxsrl w shift) 255)) 255.0))
+  (use-shader-helpers gfx-helpers)
+  ;; where p falls on an image n wide drawn from p0 to p1, in a level's pixels:
+  ;; whole at their centers
+  (define (image-at p p0 p1 n level)
+    (fl- (fl/ (fl/ (fl* (fl- p p0) (fixnum->flonum n)) (fl- p1 p0))
+              (fixnum->flonum (fxsll 1 level)))
+         0.5))
+  ;; the level's pixel after the one at b, or the last
+  (define (image-next b n level)
+    (flonum->fixnum
+     (flmax 0.0 (flmin (fl+ (flfloor b) 1.0)
+                       (fixnum->flonum (fx- (fxsrl n level) 1))))))
   ;; premultiplied: alpha is shift 24
   (define (premultiplied w shift)
     (if (fx= shift 24)
         (channel w 24)
         (fl* (channel w shift) (channel w 24))))
-  (let* ([head (word 0)]
+  (let* ([head (rec-row-head)]
          [kind (fxand head 15)]
          [paint-kind (fxand (fxsrl head 4) 15)]
          [clip (fxsrl head 8)]
-         [w1 (word 1)]
-         [x0 (pixels (word 2))]
-         [y0 (pixels (word 3))]
-         [x1 (pixels (word 4))]
-         [y1 (pixels (word 5))]
-         [a (pixels (word 6))]
-         [b (pixels (word 7))]
+         [w1 (rec-row-paint)]
+         [x0 (pixels (rec-row-x0))]
+         [y0 (pixels (rec-row-y0))]
+         [x1 (pixels (rec-row-x1))]
+         [y1 (pixels (rec-row-y1))]
+         ;; a box's radius and line, a segment's width, a shadow's radius and
+         ;; size: read once, for all of them
+         [a (pixels (rec-row-a))]
+         [b (pixels (rec-row-b))]
          [ipx (flonum->fixnum (flfloor px))]
          [ipy (flonum->fixnum (flfloor py))]
          [cover
-          (if (fx= kind 0)
-              ;; box: rect, round rect, circle; a line inside it if b
-              (let ([d (box-distance x0 y0 x1 y1 a)])
-                (clamp01
-                 (fl- 0.5
-                      (if (fl> b 0.0)
-                          (fl- (flabs (fl+ d (fl* 0.5 b))) (fl* 0.5 b))
-                          d))))
-              (if (fx= kind 1)
-                  ;; segment
-                  (let* ([ax (fl- px x0)]
-                         [ay (fl- py y0)]
-                         [bx (fl- x1 x0)]
-                         [by (fl- y1 y0)]
-                         [len2 (fl+ (fl* bx bx) (fl* by by))]
-                         [h (if (fl> len2 0.0)
-                                (clamp01 (fl/ (fl+ (fl* ax bx) (fl* ay by))
-                                              len2))
-                                0.0)]
-                         [dx (fl- ax (fl* bx h))]
-                         [dy (fl- ay (fl* by h))])
-                    (clamp01
-                     (fl- 0.5 (fl- (flsqrt (fl+ (fl* dx dx) (fl* dy dy)))
-                                   (fl* 0.5 a)))))
-                  (if (fx= kind 2)
-                      ;; polygon: distance to its edges, sign by crossings
-                      (let ([o (word 6)] [n (word 7)])
-                        (define (vx k) (pixels (extra (fx+ o (fx* 2 k)))))
-                        (define (vy k)
-                          (pixels (extra (fx+ o (fx+ 1 (fx* 2 k))))))
-                        (define (edge2 k j)
-                          (let* ([ex (fl- (vx j) (vx k))]
-                                 [ey (fl- (vy j) (vy k))]
-                                 [wx (fl- px (vx k))]
-                                 [wy (fl- py (vy k))]
-                                 [len (fl+ (fl* ex ex) (fl* ey ey))]
-                                 [t (if (fl> len 0.0)
-                                        (clamp01
-                                         (fl/ (fl+ (fl* wx ex) (fl* wy ey))
-                                              len))
-                                        0.0)]
-                                 [qx (fl- wx (fl* ex t))]
-                                 [qy (fl- wy (fl* ey t))])
-                            (fl+ (fl* qx qx) (fl* qy qy))))
-                        (define (crosses? k j)
-                          (let* ([ex (fl- (vx j) (vx k))]
-                                 [ey (fl- (vy j) (vy k))]
-                                 [wx (fl- px (vx k))]
-                                 [wy (fl- py (vy k))]
-                                 [c1 (fl>= py (vy k))]
-                                 [c2 (fl< py (vy j))]
-                                 [c3 (fl> (fl* ex wy) (fl* ey wx))])
-                            (if c1
-                                (and c2 c3)
-                                (and (not c2) (not c3)))))
-                        (clamp01
-                         (fl- 0.5
-                              (do-bounded 256
-                                  ([k 0 (fx+ k 1)]
-                                   [j (fx- n 1) k]
-                                   [d2 1.0e12 (flmin d2 (edge2 k j))]
-                                   [s 1.0 (if (crosses? k j) (fl- s) s)])
-                                ((fx>= k n) (fl* s (flsqrt d2)))))))
-                      (if (fx= kind 3)
-                          ;; glyph: its place from the table
-                          (let* ([row (fx* (word 4) 7)]
-                                 [u (fx-ref glyphs row)]
-                                 [v (fx-ref glyphs (fx+ row 1))]
-                                 [gw (fx-ref glyphs (fx+ row 2))]
-                                 [left (fx-ref glyphs (fx+ row 4))]
-                                 [top (fx-ref glyphs (fx+ row 5))]
-                                 [pen-x (word 2)]
-                                 [pen-y (word 3)])
-                            (if (fx= (word 6) 3)
-                                (texture-ref
-                                 atlas
-                                 (fx+ u (fx- (fx- (fx- pen-y left) 1) ipy))
-                                 (fx+ v (fx- ipx (fx- pen-x top)))
-                                 0)
-                                (texture-ref
-                                 atlas
-                                 (fx+ u (fx- ipx (fx+ pen-x left)))
-                                 (fx+ v (fx- ipy (fx- pen-y top)))
-                                 0)))
-                          ;; shadow: fading out over its size
-                          (let ([d (box-distance x0 y0 x1 y1 a)])
-                            (clamp01 (fl- 1.0 (fl/ d (flmax b 1.0)))))))))]
-         [clipping
-          (if (fx= clip 0)
-              1.0
-              (clamp01
-               (fl- 0.5
-                    (flmax
-                     (box-distance (pixels (extra clip))
-                                   (pixels (extra (fx+ clip 1)))
-                                   (pixels (extra (fx+ clip 2)))
-                                   (pixels (extra (fx+ clip 3)))
-                                   0.0)
-                     (if (fx= (extra (fx+ clip 4)) 0)
-                         -1.0
-                         (box-distance (pixels (extra (fx+ clip 6)))
-                                       (pixels (extra (fx+ clip 7)))
-                                       (pixels (extra (fx+ clip 8)))
-                                       (pixels (extra (fx+ clip 9)))
-                                       (pixels (extra (fx+ clip 4)))))))))]
-         [m (fl* cover clipping)]
+          (case kind
+            ;; box: rect, round rect, circle; a line inside it, if it has one
+            [(rec-kind-box)
+             (let* ([radius a]
+                    [line b]
+                    [d (box-distance x0 y0 x1 y1 radius)])
+               (clamp01
+                (fl- 0.5
+                     (if (fl> line 0.0)
+                         (fl- (flabs (fl+ d (fl* 0.5 line))) (fl* 0.5 line))
+                         d))))]
+            ;; segment
+            [(rec-kind-segment)
+             (let* ([width a]
+                    [ax (fl- px x0)]
+                    [ay (fl- py y0)]
+                    [bx (fl- x1 x0)]
+                    [by (fl- y1 y0)]
+                    [len2 (fl+ (fl* bx bx) (fl* by by))]
+                    [h (if (fl> len2 0.0)
+                           (clamp01 (fl/ (fl+ (fl* ax bx) (fl* ay by))
+                                         len2))
+                           0.0)]
+                    [dx (fl- ax (fl* bx h))]
+                    [dy (fl- ay (fl* by h))])
+               (clamp01
+                (fl- 0.5 (fl- (flsqrt (fl+ (fl* dx dx) (fl* dy dy)))
+                              (fl* 0.5 width)))))]
+            ;; polygon: distance to its edges, sign by crossings
+            [(rec-kind-polygon)
+             (let ([o (rec-polygon-points)] [n (rec-polygon-count)])
+               (define (vx k) (pixels (extra (fx+ o (fx* 2 k)))))
+               (define (vy k)
+                 (pixels (extra (fx+ o (fx+ 1 (fx* 2 k))))))
+               (define (edge2 k j)
+                 (let* ([ex (fl- (vx j) (vx k))]
+                        [ey (fl- (vy j) (vy k))]
+                        [wx (fl- px (vx k))]
+                        [wy (fl- py (vy k))]
+                        [len (fl+ (fl* ex ex) (fl* ey ey))]
+                        [t (if (fl> len 0.0)
+                               (clamp01
+                                (fl/ (fl+ (fl* wx ex) (fl* wy ey))
+                                     len))
+                               0.0)]
+                        [qx (fl- wx (fl* ex t))]
+                        [qy (fl- wy (fl* ey t))])
+                   (fl+ (fl* qx qx) (fl* qy qy))))
+               (define (crosses? k j)
+                 (let* ([ex (fl- (vx j) (vx k))]
+                        [ey (fl- (vy j) (vy k))]
+                        [wx (fl- px (vx k))]
+                        [wy (fl- py (vy k))]
+                        [c1 (fl>= py (vy k))]
+                        [c2 (fl< py (vy j))]
+                        [c3 (fl> (fl* ex wy) (fl* ey wx))])
+                   (if c1
+                       (and c2 c3)
+                       (and (not c2) (not c3)))))
+               (clamp01
+                (fl- 0.5
+                     (do-bounded 256
+                         ([k 0 (fx+ k 1)]
+                          [j (fx- n 1) k]
+                          [d2 1.0e12 (flmin d2 (edge2 k j))]
+                          [s 1.0 (if (crosses? k j) (fl- s) s)])
+                       ((fx>= k n) (fl* s (flsqrt d2)))))))]
+            ;; glyph: its place from the table
+            [(rec-kind-glyph)
+             (let* ([row (fx* (rec-glyph-number) glyph-row-words)]
+                    [u (glyph-row-u row)]
+                    [v (glyph-row-v row)]
+                    [gw (glyph-row-w row)]
+                    [left (glyph-row-left row)]
+                    [top (glyph-row-top row)]
+                    [pen-x (rec-glyph-pen-x)]
+                    [pen-y (rec-glyph-pen-y)])
+               (if (fx= (rec-glyph-turn) rec-glyph-turned)
+                   (texture-ref
+                    atlas
+                    (fx+ u (fx- (fx- (fx- pen-y left) 1) ipy))
+                    (fx+ v (fx- ipx (fx- pen-x top)))
+                    0)
+                   (texture-ref
+                    atlas
+                    (fx+ u (fx- ipx (fx+ pen-x left)))
+                    (fx+ v (fx- ipy (fx- pen-y top)))
+                    0)))]
+            ;; shadow: fading out over its size
+            [else
+             (let* ([radius a]
+                    [size b]
+                    [d (box-distance x0 y0 x1 y1 radius)])
+               (clamp01 (fl- 1.0 (fl/ d (flmax size 1.0)))))])]
+         [m (fl* cover (clip-coverage clip))]
          ;; a gradient: where the pixel falls between two of its colors
-         [gradient? (fx= paint-kind 1)]
+         [gradient? (fx= paint-kind rec-paint-gradient)]
          [t (if gradient?
-                (let ([ax (pixels (extra (fx+ w1 1)))]
-                      [ay (pixels (extra (fx+ w1 2)))]
-                      [bx (pixels (extra (fx+ w1 3)))]
-                      [by (pixels (extra (fx+ w1 4)))])
-                  (if (fx= (extra w1) 1)
+                (let ([ax (pixels (gradient-row-x0 w1))]
+                      [ay (pixels (gradient-row-y0 w1))]
+                      [bx (pixels (gradient-row-x1 w1))]
+                      [by (pixels (gradient-row-y1 w1))])
+                  (if (fx= (gradient-row-kind w1) rec-gradient-radial)
                       (let ([dx (fl- px ax)] [dy (fl- py ay)])
                         (clamp01 (fl/ (flsqrt (fl+ (fl* dx dx) (fl* dy dy)))
                                       (flmax bx 1.0))))
@@ -1136,7 +1163,7 @@
                                            (fl* (fl- py ay) ey))
                                       len)))))
                 0.0)]
-         [stops (if gradient? (fx- (extra (fx+ w1 5)) 1) 0)]
+         [stops (if gradient? (fx- (gradient-row-stops w1) 1) 0)]
          [place (fl* t (fixnum->flonum stops))]
          [low (flonum->fixnum place)]
          [low (if (fx>= low stops) (fx- stops 1) low)]
@@ -1151,49 +1178,77 @@
                      0.0)]
          ;; a stipple: ink or paper, by its tile
          [solid-word
-          (if (fx= paint-kind 2)
-              (let* ([tu (extra w1)]
-                     [tv (extra (fx+ w1 1))]
-                     [tw (extra (fx+ w1 2))]
-                     [th (extra (fx+ w1 3))])
+          (if (fx= paint-kind rec-paint-stipple)
+              (let* ([tu (stipple-row-u w1)]
+                     [tv (stipple-row-v w1)]
+                     [tw (stipple-row-w w1)]
+                     [th (stipple-row-h w1)])
                 (if (fl> (texture-ref atlas
                                       (fx+ tu (fxmod ipx tw))
                                       (fx+ tv (fxmod ipy th))
                                       0)
                          0.5)
-                    (extra (fx+ w1 4))
-                    (extra (fx+ w1 5))))
+                    (stipple-row-ink w1)
+                    (stipple-row-paper w1)))
               w1)]
-         [image? (fx= paint-kind 3)]
-         [iu (if image?
-                 (flonum->fixnum
-                  (fl/ (fl* (fl- (fixnum->flonum ipx) x0)
-                            (fixnum->flonum (extra w1)))
-                       (fl- x1 x0)))
-                 0)]
-         [iv (if image?
-                 (flonum->fixnum
-                  (fl/ (fl* (fl- (fixnum->flonum ipy) y0)
-                            (fixnum->flonum (extra (fx+ w1 1))))
-                       (fl- y1 y0)))
-                 0)])
+         [image? (fx= paint-kind rec-paint-image)]
+         [iw (if image? (image-row-w w1) 0)]
+         [ih (if image? (image-row-h w1) 0)]
+         [level (if image? (image-row-level w1) 0)]
+         [blend? (and image?
+                      (or (fl< (fl- x1 x0) (fixnum->flonum iw))
+                          (fl< (fl- y1 y0) (fixnum->flonum ih))))]
+         ;; where the pixel's center falls, in the level's pixels' centers
+         [bu (if blend? (image-at px x0 x1 iw level) 0.0)]
+         [bv (if blend? (image-at py y0 y1 ih level) 0.0)]
+         [fu (fl- bu (flfloor bu))]
+         [fv (fl- bv (flfloor bv))]
+         [iu (cond
+               [blend? (flonum->fixnum (flmax (flfloor bu) 0.0))]
+               [image? (flonum->fixnum
+                        (fl/ (fl* (fl- (fixnum->flonum ipx) x0)
+                                  (fixnum->flonum iw))
+                             (fl- x1 x0)))]
+               [else 0])]
+         [iv (cond
+               [blend? (flonum->fixnum (flmax (flfloor bv) 0.0))]
+               [image? (flonum->fixnum
+                        (fl/ (fl* (fl- (fixnum->flonum ipy) y0)
+                                  (fixnum->flonum ih))
+                             (fl- y1 y0)))]
+               [else 0])]
+         [iu1 (if blend? (image-next bu iw level) iu)]
+         [iv1 (if blend? (image-next bv ih level) iv)])
+    ;; a channel of the image at this pixel
+    (define (image-channel c)
+      (cond
+        [blend?
+         (mixed (mixed (texture-ref image iu iv c level)
+                       (texture-ref image iu1 iv c level)
+                       fu)
+                (mixed (texture-ref image iu iv1 c level)
+                       (texture-ref image iu1 iv1 c level)
+                       fu)
+                fv)]
+        [image? (texture-ref image iu iv c 0)]
+        [else 0.0]))
     (define (paint shift from-image)
       (fl* m
-           (if image?
-               from-image
-               (if gradient?
-                   (let ([c0 (premultiplied (extra (fx+ (fx+ w1 6) low))
-                                            shift)]
-                         [c1 (premultiplied
-                              (extra (fx+ (fx+ w1 7) low)) shift)])
-                     (fl+ (fl+ c0 (fl* between (fl- c1 c0)))
-                          (if (fx= shift 24) 0.0 dither)))
-                   (premultiplied solid-word shift)))))
+           (cond
+             [image? from-image]
+             [gradient?
+              (let ([c0 (premultiplied
+                         (extra (fx+ (fx+ w1 gradient-row-color0) low)) shift)]
+                    [c1 (premultiplied
+                         (extra (fx+ (fx+ w1 gradient-row-color1) low)) shift)])
+                (fl+ (fl+ c0 (fl* between (fl- c1 c0)))
+                     (if (fx= shift 24) 0.0 dither)))]
+             [else (premultiplied solid-word shift)])))
     (emit-color
-     (paint 16 (if image? (texture-ref image iu iv 0) 0.0))
-     (paint 8 (if image? (texture-ref image iu iv 1) 0.0))
-     (paint 0 (if image? (texture-ref image iu iv 2) 0.0))
-     (paint 24 (if image? (texture-ref image iu iv 3) 0.0)))))
+     (paint 16 (image-channel 0))
+     (paint 8 (image-channel 1))
+     (paint 0 (image-channel 2))
+     (paint 24 (image-channel 3)))))
 
 ;; A reload may bring new shaders.
 (gpu-forget-pipelines!)

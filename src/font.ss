@@ -300,7 +300,8 @@
 ;;; One texture of coverage, filled by shelves. Its rows' table holds, for a
 ;;; glyph's number: u v w h left top, in device pixels.
 
-(define glyph-row-words 7)   ; u v w h left top, and its character for readers
+;; character is for readers: no shader needs it
+(define-shader-layout glyph-row glyphs (u v w h left top character))
 (defvar *glyph-table* (make-immobile-bytevector (* 4 glyph-row-words 4096) 0))
 (defvar *glyph-count* 1)         ; numbers from 1: 0 is a glyph not made yet
 (defvar *glyph-table-dirty?* #t)
@@ -348,14 +349,16 @@
 (define (glyph-row-set! n u v w h left top char)
   (when (>= (* 4 glyph-row-words (+ n 1)) (bytevector-length *glyph-table*))
     (glyph-table-grow!))
-  (let ([at (* 4 glyph-row-words n)] [t *glyph-table*])
-    (bytevector-s32-native-set! t at u)
-    (bytevector-s32-native-set! t (+ at 4) v)
-    (bytevector-s32-native-set! t (+ at 8) w)
-    (bytevector-s32-native-set! t (+ at 12) h)
-    (bytevector-s32-native-set! t (+ at 16) left)
-    (bytevector-s32-native-set! t (+ at 20) top)
-    (bytevector-s32-native-set! t (+ at 24) char))
+  (let ([at (* glyph-row-words n)] [t *glyph-table*])
+    (define (put! field v)
+      (bytevector-s32-native-set! t (* 4 (+ at field)) v))
+    (put! glyph-row-u u)
+    (put! glyph-row-v v)
+    (put! glyph-row-w w)
+    (put! glyph-row-h h)
+    (put! glyph-row-left left)
+    (put! glyph-row-top top)
+    (put! glyph-row-character char))
   (set! *glyph-table-dirty?* #t))
 
 ;; Whether the glyph has this row: for clipping before a record is written.

@@ -843,8 +843,10 @@ Decisions worth keeping in mind for the real design:
   pattern, inverted where it shows), `add-box`, `with-turn` (Spine's title),
   `draw-scale` (how many device pixels a logical one is where we draw:
   Curses draws in whole ones, under `with-scale`), `draw-pixels` (raw pixels,
-  which the pixmap kit's `pixmap-draw` draws) and `png-write-drawing` (the app
-  icon's file). `kits/px.ss` draws pictures of boxes: `px-bevel` (Motif's
+  which the pixmap kit's `pixmap-draw` draws; bigger than they are each is a
+  sharp block, smaller they blend, an image that's drawn on from a chain of
+  half-size copies of itself) and `png-write-drawing` (the app icon's file).
+  `kits/px.ss` draws pictures of boxes: `px-bevel` (Motif's
   corners or the Mac's), `px-bits` for small pictures,
   `px-invert` (reverse video: ink and paper swap, in any palette),
   `px-bitmap-text` (a bitmap font's text, the CADR's 5X5 among them)
@@ -937,8 +939,15 @@ Decisions worth keeping in mind for the real design:
   expanded: its body runs for each pixel of a box and gives a color, and
   `fill-shader` fills one, its arguments numbers, colors and GPU buffers
   (`make-gpu-buffer`, `gpu-buffer-set!`), so what changes is a few numbers and
-  nothing is recorded again: Monitor's Ticks are one. `define-shader` is the
-  same language for compute. `kits/twin.ss` gives any shader as a Scheme
+  nothing is recorded again: Monitor's Ticks are one. `define-compute-shader` is the
+  same language for compute: a small Scheme, branching with `if`, `cond`,
+  `case`, `when` and `unless`. `define-shader-constant` names a number for
+  shaders and Scheme alike, and `define-shader-helpers` a set of functions a
+  shader takes with `use-shader-helpers`; a paint starts with `gfx-helpers`
+  (`word`, `extra`, `pixels`, `clamp01`, `mixed`, `channel`, `box-distance`,
+  `clip-coverage`). `define-shader-layout` names a table row's words: each
+  field is its offset to Scheme and to shaders, and in a shader
+  `(glyph-row-left row)` reads it. `kits/twin.ss` gives any shader as a Scheme
   procedure, to call for one pixel at a REPL; the conformance test holds the
   device and the twin together, whatever the driver. Life and Boids stay on
   the crew's worklets for now, by choice.
@@ -953,9 +962,10 @@ Decisions worth keeping in mind for the real design:
   draw to the screen on one screen, reading through `kits/inspect.ss`, plain
   data that a REPL or a test can read too: the frame's list by who drew it,
   each record decoded in draw order and a run of glyphs as its text, the
-  screen small, drawn again every tick unless told otherwise, with what's
-  selected outlined, a press there listing what may touch that pixel, and a
-  slider drawing the list as far as a record. Under
+  screen small, drawn again every tick unless told otherwise and showing
+  itself in its own box, a tick older each time round, with what's selected
+  outlined, a press there listing what may touch that pixel, and a slider
+  drawing the list as far as a record. Under
   them the River flows, a bar a tick: what main did, and in lanes over it
   whether the tick came late, the frame it sent, where the GPU stood, the
   collector, as bright as it took long, and input, green where all's well, a

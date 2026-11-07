@@ -347,5 +347,129 @@
       (draw!)
       (press! '(s up))
       (check "at its limit an arrow goes no further"
-             (= value 60))))
+             (= value 60))
+      ;; its digits at the right: a click goes by where they're drawn
+      (set! value 5)
+      (draw!)
+      (ui-focus! ui #f)
+      (draw!)
+      (let ([r (ui-find ui '(s field))])
+        (ui-mouse-down ui (- (+ (ui-region-x r) (ui-region-w r)) 3)
+                       (+ (ui-region-y r) 2))
+        (ui-mouse-up ui)
+        (draw!)
+        (type! "1")
+        (check "a press to the digit's right puts the caret after it"
+               (= value 51))
+        (erase!)
+        (type! "5")
+        (ui-focus! ui #f)
+        (draw!)
+        (ui-mouse-down ui (+ (ui-region-x r) 3) (+ (ui-region-y r) 2))
+        (ui-mouse-up ui)
+        (draw!)
+        (type! "1")
+        (check "and one to its left before it"
+               (= value 15)))))
   (close-window! win))
+
+;; What's inked in a picture's device rect, by how far it is from its corner's
+;; color: (left right top bottom).
+(define (ui-test-ink img x0 y0 w h)
+  (let* ([channel (lambda (p shift) (logand (ash p shift) 255))]
+         [bg (pixel-at img x0 y0)]
+         [inked? (lambda (x y)
+                   (let ([p (pixel-at img x y)])
+                     (> (apply + (map (lambda (shift)
+                                        (abs (- (channel p shift)
+                                                (channel bg shift))))
+                                      '(0 -8 -16)))
+                        90)))]
+         [xs (filter (lambda (x)
+                       (exists (lambda (y) (inked? x y))
+                               (map (lambda (i) (+ y0 i)) (iota h))))
+                     (map (lambda (i) (+ x0 i)) (iota w)))]
+         [ys (filter (lambda (y)
+                       (exists (lambda (x) (inked? x y))
+                               (map (lambda (i) (+ x0 i)) (iota w))))
+                     (map (lambda (i) (+ y0 i)) (iota h)))])
+    (list (apply min xs) (apply max xs) (apply min ys) (apply max ys))))
+
+;; A stepper at 5 with a label's 5 beside it, the two read from a picture at
+;; scale s: (the digit's ink, the label's, where the field's text starts and
+;; how wide it may be, device pixels).
+(define (ui-test-stepper-ink style s)
+  (with-style style
+    (lambda ()
+      (let* ([win (open-window "Ink" 'size '(300 . 100))]
+             [result
+              (parameterize ([current-window win])
+                (let* ([ui (make-ui)] [ch (ui-control-height)]
+                       [device (lambda (n) (exact (round (* s n))))]
+                       [img (image (device 300) (device 60) s
+                                   (lambda ()
+                                     (fill-box 0 0 300 60 'bg-1)
+                                     (ui-begin! ui)
+                                     (let ([w (ui-stepper ui 's 10 10 5 1 60
+                                                          (lambda (n) n))])
+                                       (ui-draw-label (+ 10 w 10) 10 30 ch '()
+                                                      "5"))
+                                     (ui-end! ui 300 60)))]
+                       [r (ui-find ui '(s field))]
+                       ;; where its text goes: a style's marks are outside it
+                       [a (car (with-place 'field
+                                 (lambda ()
+                                   (ui-text-box-areas (ui-region-x r)
+                                                      (ui-region-y r)
+                                                      (ui-region-w r)
+                                                      (ui-region-h r)
+                                                      '(field)))))]
+                       [tx (device (list-ref a 1))]
+                       [ty (device (list-ref a 2))]
+                       [tw (device (list-ref a 3))]
+                       [th (device (list-ref a 4))]
+                       [digit (ui-test-ink img tx ty tw th)]
+                       [up (ui-find ui '(s up))]
+                       [label (ui-test-ink
+                               img
+                               (device (+ (ui-region-x up) (ui-region-w up) 4))
+                               ty (device 40) th)])
+                  (picture-free! img)
+                  (list digit label tx tw)))])
+        (close-window! win)
+        result))))
+
+(check "a stepper's digits stand on the line a label beside them does, at any \
+        scale, in every kind of style"
+       (for-all
+        (lambda (style)
+          (for-all
+           (lambda (s)
+             (let* ([ink (ui-test-stepper-ink style s)]
+                    [digit (car ink)] [label (cadr ink)])
+               (equal? (cddr digit) (cddr label))))
+           '(1 7/4 2)))
+        '(mac genera cons)))
+
+(check "an area's rows start at the top, however tall it is, a field's one \
+        in the middle"
+       (with-place 'field
+         (lambda ()
+           (let ([top (lambda (flags)
+                        (list-ref (car (ui-text-box-areas 0 0 200 100 flags))
+                                  2))]
+                 [lh (font-line-height 'ui)])
+             (and (< (top '(lines)) 10)
+                  (< (top '(single)) 10)
+                  (= (top '(field)) (/ (- 100 lh) 2)))))))
+
+(check "and they're at the field's right, as a table's numbers are"
+       (for-all
+        (lambda (style)
+          (let* ([ink (ui-test-stepper-ink style 2)]
+                 [digit (car ink)]
+                 [tx (caddr ink)] [tw (cadddr ink)]
+                 [gap-left (- (car digit) tx)]
+                 [gap-right (- (+ tx tw) (cadr digit))])
+            (and (> gap-left gap-right) (<= gap-right 4))))
+        '(mac genera cons)))

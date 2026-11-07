@@ -1,6 +1,7 @@
 ;;; kits/twin.ss — a shader as a Scheme procedure, its tree's second back end:
 ;;; slow and exact. Call a shader at the REPL for one pixel and see what it
-;;; gives. Buffers are bytevectors, a texture a procedure of u, v and channel.
+;;; gives. Buffers are bytevectors, a texture a procedure of u, v, channel and
+;;; level.
 
 (define (twin-wrap v)
   (let ([x (logand v #xffffffff)])
@@ -97,7 +98,7 @@
          ,(cadr t) ,(twin-form (caddr t)) ,(twin-form v)))]
     [(fetch)
      `(,(cadr t) ,(twin-form (caddr t)) ,(twin-form (cadddr t))
-       ,(car (cddddr t)))]
+       ,(car (cddddr t)) ,(twin-form (list-ref t 5)))]
     [(emit-position)
      `(set! shader-out (list ,@(map twin-form (cdr t))))]
     [(emit-color)

@@ -4,8 +4,8 @@
 ;;; It defines its own meaning (ints are 32 bits and wrap; fxmod floors;
 ;;; dividing by 0 gives 0; a shift's count is taken mod 32), and asks only
 ;;; for what every GPU API has: three stages, scalars, buffers of 4-byte
-;;; elements by index, a 2D texture by integer fetch, a uniform block of
-;;; scalars, if and bounded loops. No structs, pointers, recursion or
+;;; elements by index, a 2D texture by integer fetch at a level, a uniform
+;;; block of scalars, if and bounded loops. No structs, pointers, recursion or
 ;;; shared memory; a buffer is read or written in a run, never both.
 ;;;
 ;;; The front end checks types, inlines local functions, prices the shader
@@ -14,8 +14,11 @@
 ;;;   (let id init body)  (seq form ...)  (if type test yes no)
 ;;;   (loop type most ((id type init step) ...) test result)
 ;;;   (load type buffer index)  (store buffer index value)
-;;;   (fetch texture u v channel)  (emit-position x y id)
+;;;   (fetch texture u v channel level)  (emit-position x y id)
 ;;;   (emit-color r g b a)  (nothing)
+;;; cond, case, when and unless are only ways to write if, a constant is its
+;;; number, helpers are local functions and a layout's field an index: all gone
+;;; by the tree, and no back end knows of them.
 ;;; A back end is a table from those to its target and a walk over the
 ;;; tree. SPIR-V's and MSL's are here; the twin (kits/twin.ss), the same tree
 ;;; as a Scheme procedure, is another, so that nothing one target alone can do
@@ -38,7 +41,90 @@
 (define shader-fx-compares '(fx= fx< fx> fx<= fx>=))
 (define shader-fl-compares '(fl= fl< fl> fl<= fl>=))
 
-(define (shader-error . args) (apply errorf 'define-shader args))
+(define (shader-error . args) (apply errorf 'shader args))
+
+;; What shaders share, by name. A constant is one definition for shaders and
+;; Scheme alike, so that what writes a number and what reads it can't disagree.
+(defvar *shader-constants* (make-eq-hashtable))
+(define-syntax define-shader-constant
+  (syntax-rules ()
+    [(_ name value)
+     (begin
+       (define name value)
+       (hashtable-set! *shader-constants* 'name name))]))
+
+;; A set of local functions, which a shader takes with
+;; (use-shader-helpers name) where a define could go. They see what's in scope
+;; there, and what isn't called costs nothing.
+(defvar *shader-helpers* (make-eq-hashtable))
+(define-syntax define-shader-helpers
+  (syntax-rules ()
+    [(_ name form ...)
+     (hashtable-set! *shader-helpers* 'name '(form ...))]))
+
+;; Names for a row's words, so that what writes a table and what reads it can't
+;; disagree. (define-shader-layout glyph-row glyphs (u v)) gives
+;; glyph-row-words, and glyph-row-u and glyph-row-v, each its offset to Scheme
+;; and to shaders.
+;; In a shader, (glyph-row-v row) reads that word through the reader, a buffer
+;; or a function in scope there; with no row, the reader takes the offset alone.
+(defvar *shader-fields* (make-eq-hashtable))
+(define-syntax define-shader-layout
+  (lambda (x)
+    (syntax-case x ()
+      [(k name reader (field ...))
+       (let ([named (lambda (s)
+                      (datum->syntax
+                       #'k (string->symbol (format "~a-~a" (datum name) s))))]
+             [fields (datum (field ...))])
+         (with-syntax ([words (named 'words)]
+                       [n (length fields)]
+                       [(full ...) (map named fields)]
+                       [(at ...) (iota (length fields))])
+           #'(begin
+               (define-shader-constant words n)
+               (begin
+                 (define-shader-constant full at)
+                 (hashtable-set! *shader-fields* 'full '(reader . at)))
+               ...)))])))
+
+;; cond as ifs. With no else, it has no value: what wants one refuses it.
+(define (shader-cond-form clauses form)
+  (cond
+    [(null? clauses) '(begin)]
+    [(not (and (pair? (car clauses)) (pair? (cdar clauses))))
+     (shader-error "~s: a clause wants a test and a body" form)]
+    [(eq? (caar clauses) 'else)
+     (unless (null? (cdr clauses))
+       (shader-error "~s: else comes last" form))
+     (cons 'begin (cdar clauses))]
+    [else
+     `(if ,(caar clauses)
+          (begin ,@(cdar clauses))
+          ,(shader-cond-form (cdr clauses) form))]))
+
+;; A fixnum, or a constant's name that's one.
+(define (shader-case-datum? d)
+  (or (fixnum? d) (fixnum? (hashtable-ref *shader-constants* d #f))))
+
+;; case as a cond: its key read once, each clause's fixnums by fx=.
+(define (shader-case-form key clauses form)
+  (let ([k (gensym)])
+    `(let ([,k ,key])
+       (cond
+         ,@(map (lambda (clause)
+                  (unless (and (pair? clause)
+                               (or (eq? (car clause) 'else)
+                                   (and (pair? (car clause))
+                                        (for-all shader-case-datum?
+                                                 (car clause)))))
+                    (shader-error "~s: a clause wants fixnums, or else" form))
+                  (if (eq? (car clause) 'else)
+                      clause
+                      (cons (cons 'or (map (lambda (d) `(fx= ,k ,d))
+                                           (car clause)))
+                            (cdr clause))))
+                clauses)))))
 
 ;; A node's type.
 (define (shader-type t)
@@ -75,9 +161,12 @@
       [(boolean? form) (list 'const 'boolean form)]
       [(symbol? form)
        (let ([b (lookup form env)])
-         (unless (and b (eq? (car b) 'value))
-           (shader-error "~a: not a value this shader was handed" form))
-         (cdr b))]
+         (cond
+           [(and b (eq? (car b) 'value)) (cdr b)]
+           [(and (not b) (hashtable-ref *shader-constants* form #f))
+            => (lambda (v) (lower v env))]
+           [else
+            (shader-error "~a: not a value this shader was handed" form)]))]
       [(pair? form) (lower-call (car form) (cdr form) env form)]
       [else (shader-error "~s: not an expression" form)]))
   (define (fold-op type name args env form)
@@ -147,6 +236,10 @@
            [(null? acc) shader-nothing]
            [(null? (cdr acc)) (car acc)]
            [else (cons 'seq (reverse acc))])]
+        [(and (pair? (car forms)) (eq? (caar forms) 'use-shader-helpers))
+         (let ([helpers (hashtable-ref *shader-helpers* (cadr (car forms)) #f)])
+           (unless helpers (shader-error "~s: no such helpers" (car forms)))
+           (loop (append helpers (cdr forms)) env acc))]
         [(and (pair? (car forms)) (eq? (caar forms) 'define))
          (let ([head (cadr (car forms))])
            ;; its env holds what came before it, not itself: no recursion
@@ -221,10 +314,27 @@
               (map (lambda (id i s) (list id (shader-type i) i s))
                    ids inits steps)
               test result))))
+  ;; A layout's field read: (reader offset), or at a row, (reader row + offset).
+  (define (lower-field f args env form)
+    (let* ([reader (car f)]
+           [offset (cdr f)]
+           [b (lookup reader env)]
+           [index (cond [(null? args) offset]
+                        [(pair? (cdr args))
+                         (shader-error "~s: wants at most a row" form)]
+                        [(eqv? offset 0) (car args)]
+                        [else `(fx+ ,(car args) ,offset)])])
+      (unless b (shader-error "~s: ~a isn't in scope" form reader))
+      (lower (if (eq? (car b) 'fn)
+                 `(,reader ,index)
+                 `(fx-ref ,reader ,index))
+             env)))
   (define (lower-call head args env form)
     (let ([b (lookup head env)])
       (cond
         [(and b (eq? (car b) 'fn)) (lower-inline (cdr b) args env form)]
+        [(hashtable-ref *shader-fields* head #f)
+         => (lambda (f) (lower-field f args env form))]
         [(memq head shader-fx-folds)
          (fold-op 'fixnum head args env form)]
         [(memq head shader-fl-folds)
@@ -259,6 +369,12 @@
             (lower-if (car args) (cadr args)
                       (if (null? (cddr args)) '(begin) (caddr args))
                       env form)]
+           [(cond) (lower (shader-cond-form args form) env)]
+           [(case) (lower (shader-case-form (car args) (cdr args) form) env)]
+           [(when)
+            (lower-if (car args) (cons 'begin (cdr args)) '(begin) env form)]
+           [(unless)
+            (lower-if (car args) '(begin) (cons 'begin (cdr args)) env form)]
            [(and)
             (if (null? (cdr args))
                 (lower (car args) env)
@@ -287,12 +403,17 @@
               (unless (and t (eq? (car t) 'texture))
                 (shader-error "~a: not a texture this shader was handed"
                               (car args)))
-              (unless (and (fixnum? (cadddr args)) (<= 0 (cadddr args) 3))
-                (shader-error "~s: wants a channel, 0 to 3" form))
+              (let ([c (lower (cadddr args) env)])
+                (unless (and (eq? (car c) 'const) (fixnum? (caddr c))
+                             (<= 0 (caddr c) 3))
+                  (shader-error "~s: wants a channel, 0 to 3" form)))
               (list 'fetch (car args)
                     (want 'fixnum (lower (cadr args) env) form)
                     (want 'fixnum (lower (caddr args) env) form)
-                    (cadddr args)))]
+                    (caddr (lower (cadddr args) env))
+                    (if (null? (cddddr args))
+                        '(const fixnum 0)
+                        (want 'fixnum (lower (car (cddddr args)) env) form))))]
            [(emit-position)
             (list 'emit-position
                   (want 'flonum (lower (car args) env) form)
@@ -369,7 +490,8 @@
           (shader-tree-price (cadr (cddddr t)))))]
     [(load) (+ 2 (shader-tree-price (cadddr t)))]
     [(store) (+ 2 (shader-tree-price (caddr t)) (shader-tree-price (cadddr t)))]
-    [(fetch) (+ 8 (shader-tree-price (caddr t)) (shader-tree-price (cadddr t)))]
+    [(fetch) (+ 8 (shader-tree-price (caddr t)) (shader-tree-price (cadddr t))
+                (shader-tree-price (list-ref t 5)))]
     [(emit-position emit-color) (+ 1 (sum (cdr t)))]
     [else 0]))
 
@@ -505,11 +627,12 @@
       [(fetch)
        (let* ([u (value (caddr t))]
               [v (value (cadddr t))]
+              [level (value (list-ref t 5))]
               [s (op! 61 t-sampled (hashtable-ref textures (cadr t) #f))]
               [i (op! 100 t-image s)]
               [c (op! 80 t-ivec2 u v)]
-              ;; Lod, operand mask 2, level 0
-              [p (op! 95 t-vec4 i c 2 (int-const 0))])
+              ;; Lod, operand mask 2
+              [p (op! 95 t-vec4 i c 2 level)])
          (op! 81 t-float p (car (cddddr t))))]
       [(emit-position)
        (let* ([x (value (cadr t))]
@@ -824,10 +947,11 @@
          (line (name-of (cadr t)) "[" i "] = " v ";")
          "")]
       [(fetch)
-       (let* ([u (value (caddr t))] [v (value (cadddr t))])
+       (let* ([u (value (caddr t))] [v (value (cadddr t))]
+              [level (value (list-ref t 5))])
          (assign! 'flonum
-                  (format "~a.read(uint2(uint(~a), uint(~a)), 0u)[~a]"
-                          (name-of (cadr t)) u v (car (cddddr t)))))]
+                  (format "~a.read(uint2(uint(~a), uint(~a)), uint(~a))[~a]"
+                          (name-of (cadr t)) u v level (car (cddddr t)))))]
       [(emit-position)
        (let* ([x (value (cadr t))] [y (value (caddr t))]
               [i (value (cadddr t))])
@@ -991,7 +1115,7 @@
                (make-shader 'name 'stage 'coords 'params '(form ...)
                             'code price))))])))
 
-(define-syntax define-shader
+(define-syntax define-compute-shader
   (syntax-rules ()
     [(_ head params form ...) (shader-define compute head params form ...)]))
 (define-syntax define-vertex-shader

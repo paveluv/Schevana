@@ -307,9 +307,11 @@
   (let* ([bw (ui-scrollbar-width)]
          [left (cond [(memq 'lines flags) (+ bw 4)]
                      [(memq 'search flags) (+ (ui-glyph-size) 14)]
-                     [else 2])])
-    (list (list 'edit (+ x left) (+ y 3) (max 0 (- w left 3))
-                (max 0 (- h 6)) (if (memq 'large flags) 'heading 'ui))
+                     [else 2])]
+         [font (if (memq 'large flags) 'heading 'ui)]
+         [top (ui-text-box-top h flags font 3)])
+    (list (list 'edit (+ x left) (+ y top) (max 0 (- w left 3))
+                (max 0 (- h top top)) font)
           (list 'bar (+ x 2) (+ y 2) bw (max 0 (- h 4))))))
 
 (define (genera-text-box-size flags w rows)
@@ -411,15 +413,21 @@
 
 ;; A column's heading: Peek's plain line (peek.lisp:270-273), or the
 ;; PUI's italic underlined (genera-heading-underline, PUI p.1886); the
-;; sort as the character set's arrow after it.
+;; sort as the character set's arrow after it, or before it over a right
+;; column, which it lines up with.
 (define (genera-table-header x y w h flags label dir)
   (let* ([f (theme 'genera-heading-font)]
          [mark (case dir [(up) "↑"] [(down) "↓"] [else #f])]
          [arrow (if mark (string-append " " mark) "")]
          [label (text-fit label (max 0 (- w 14 (text-width arrow f))) f)]
-         [s (string-append label arrow)]
+         [right? (memq 'right flags)]
+         [s (cond [(not mark) label]
+                  [right? (string-append mark " " label)]
+                  [else (string-append label arrow)])]
          [ty (genera-text-y y h f)]
-         [tx (+ x (ui-table-cell-inset))]
+         [tx (if right?
+                 (- (+ x w) (ui-table-cell-inset) (text-width s f))
+                 (+ x (ui-table-cell-inset)))]
          [end (draw-text tx ty s 'text f)])
     (when (and (theme 'genera-heading-underline) (> (string-length s) 0))
       (fill-box tx (+ ty (font-ascent f) 1) (- end tx) 1 'text))

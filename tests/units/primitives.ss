@@ -347,6 +347,65 @@
                             '(1 1) '(2 2) '(3 1) '(4 2) '(5 1) '(6 1))
                  '(#xffff0000 #xffff0000 #xff0000ff #xff0000ff 0 0))))
 
+;; Stripes a pixel wide on an image that's drawn on: white, black, white...
+(define (primitives-stripes n)
+  (let ([target (gpu-image-make-target n n)] [plain record-world!])
+    (set! record-world!
+      (lambda ()
+        (fill-box 0 0 n n #x000000)
+        (do ([x 0 (+ x 2)]) ((>= x n)) (fill-box x 0 1 n #xffffff))))
+    (rec-preview! target (most-positive-fixnum))
+    (request-frame!)
+    (steps 1)
+    (set! record-world! plain)
+    (request-frame!)
+    (steps 1)
+    target))
+
+(let* ([stripes (primitives-stripes 64)]
+       [white #xffffffff]
+       [black #xff000000]
+       [shown (lambda (n . xs)
+                (apply pixels-of n n 1
+                       (lambda () (draw-image stripes 0 0 n n))
+                       (map (lambda (x) (list x (quotient n 2))) xs)))]
+       ;; every pixel across, all channels within a level or so of half
+       [even? (lambda (n)
+                (for-all
+                 (lambda (p)
+                   (and (= (logand p #xff000000) #xff000000)
+                        (for-all (lambda (shift)
+                                   (<= 124 (logand (ash p shift) 255) 131))
+                                 '(0 -8 -16))))
+                 (apply shown n (iota n))))])
+  (check "an image drawn on has a chain of levels, and is shown from the last \
+          at least as big as it's drawn"
+         (and (= (gpu-image-levels stripes) 7)
+              (= (rec-image-level stripes 100 100) 0)
+              (= (rec-image-level stripes 64 64) 0)
+              (= (rec-image-level stripes 32 32) 1)
+              (= (rec-image-level stripes 13 13) 2)
+              (= (rec-image-level stripes 8 8) 3)
+              (= (rec-image-level stripes 1 1) 6)
+              (= (rec-image-level stripes 13 40) 0)))
+  (check "at its own size it's exact, and bigger each pixel is a sharp block"
+         (and (equal? (shown 64 0 1 2 3) (list white black white black))
+              (equal? (shown 128 0 1 2 3 4)
+                      (list white white black black white))))
+  (check "smaller, no pixel of it is skipped: stripes are an even gray, at \
+          any size"
+         (for-all even? '(32 20 13 8 5)))
+  (gpu-image-release! stripes))
+
+(check "pixels with no chain, shown smaller, blend what they have"
+       (let ([bv (make-bytevector 8 0)])
+         (bytevector-u32-native-set! bv 0 #xffff0000)
+         (bytevector-u32-native-set! bv 4 #xff0000ff)
+         (let ([p (car (pixels-of 1 1 1 (lambda () (draw-pixels bv 2 1 0 0 1 1))
+                                  '(0 0)))])
+           (and (<= 126 (logand (ash p -16) 255) 129)
+                (<= 126 (logand p 255) 129)))))
+
 ;; A PNG file of stored blocks read back: (w h . the first row's bytes).
 (define (png-file-rows path)
   (let* ([bv (call-with-port (open-file-input-port path) get-bytevector-all)]

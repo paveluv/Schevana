@@ -943,10 +943,11 @@
                            'selected (equal? current (cdr c))))
               choices (iota (length choices)))))
 
-;; A whole number from lo to hi: a field that takes only digits, an arrow either
-;; side a step of 1, as Up and Down are. What's typed counts at once if it's in
-;; range; if not, Return brings it in range, and the field losing the keyboard
-;; forgets it. opts: 'tip. => its width
+;; A whole number from lo to hi: a field that takes only digits, at its right
+;; as a table's numbers are, an arrow either side a step of 1, as Up and Down
+;; are. What's typed counts at once if it's in range; if not, Return brings it
+;; in range, and the field losing the keyboard forgets it. opts: 'tip. => its
+;; width
 (define (ui-stepper ui id x y value lo hi on-change . opts)
   (let-values ([(w h) (ui-stepper-size lo hi)])
     (let* ([b (ui-control-height)] [tip (plist-ref opts 'tip #f)]
@@ -965,6 +966,7 @@
                          (let ([n (string->number text)])
                            (when (and n (<= lo n hi)) (on-change n)))))
                      'tip tip
+                     'right #t
                      'max (apply max (map (lambda (n)
                                             (string-length (number->string n)))
                                           (list lo hi)))
@@ -1415,14 +1417,23 @@
 ;;; ------------------------------------------------------------------
 ;;; text field and text area: one box, a row or wrapped rows
 
+;; How far down a box h high its text starts: a field's one row, where a label
+;; beside it has its own; an area's rows, however many, from margin down.
+(define (ui-text-box-top h flags font margin)
+  (if (memq 'field flags)
+      (max 0 (/ (- h (font-line-height font)) 2))
+      margin))
+
 ;; The box's inner rect and font, and where an area's scroll bar goes:
 ;; over its right padding, its thumb a pixel clear of a full row's end.
 ;; ((edit tx ty tw th font) (bar x y w h))
 (define-part (ui-text-box-areas x y w h flags)
-  (let ([left (if (memq 'search flags) (+ (ui-glyph-size) 14) 8)]
-        [bw (ui-scrollbar-width)])
-    (list (list 'edit (+ x left) (+ y 6) (max 0 (- w left 8)) (max 0 (- h 12))
-                (if (memq 'large flags) 'heading 'ui))
+  (let* ([left (if (memq 'search flags) (+ (ui-glyph-size) 14) 8)]
+         [bw (ui-scrollbar-width)]
+         [font (if (memq 'large flags) 'heading 'ui)]
+         [top (ui-text-box-top h flags font 6)])
+    (list (list 'edit (+ x left) (+ y top) (max 0 (- w left 8))
+                (max 0 (- h top top)) font)
           (list 'bar (+ x w 1 (- bw)) (+ y 3) bw (max 0 (- h 6))))))
 
 ;; How far in from the box's left edge its text starts: a bare box set that
@@ -1501,8 +1512,9 @@
 ;; 'on-enter (a thunk for Return), 'on-key ((lambda (key mods text) ...),
 ;; true when it acted), 'suggest and 'on-pick (below), and the flags
 ;; 'large 'bare 'search 'single (an area whose Return is not a newline)
-;; 'inner (inside another widget's box: never a box of its own). An area
-;; of lines taller than its box has a scroll bar.
+;; 'inner (inside another widget's box: never a box of its own) 'right (a
+;; field's text at its right, while it fits). An area of lines taller than
+;; its box has a scroll bar.
 ;;
 ;; Suggestions: (suggest text) gives what the text may become, best first
 ;; (ui-suggestions ranks them); while the box has the keyboard, up to 8
@@ -1510,7 +1522,9 @@
 ;; click picks it, Escape closes the list until the text changes. A pick
 ;; calls (on-pick s), by default making s the text.
 (define (ui-text-box ui id x y w h text on-change area? opts)
-  (let* ([own (append (ui-opt-flags opts '(large bare search single inner))
+  (let* ([own (append (ui-opt-flags opts
+                                    '(large bare search single inner right))
+                      (if area? '() '(field))
                       ;; an area of lines: a box of its own, not a field
                       (if (and area? (not (plist-ref opts 'single #f)))
                           '(lines)
@@ -1535,9 +1549,14 @@
          [chosen (let ([c (car (ui-memo ui sid '(#f . #f)))])
                    (and shown c (< c (length shown)) c))]
          [page (max 1 (exact (floor (/ th lh))))]
-         [dx (if (and e (not area?))
-                 (max 0 (- (edit-caret-x lay (edit-caret e)) tw))
-                 0)]
+         ;; a text at the right is a text scrolled back past its start
+         [room (if (and (memq 'right own) (not area?))
+                   (- tw (edit-caret-x lay (string-length text)))
+                   0)]
+         [dx (cond [(> room 0) (- room)]
+                   [(and e (not area?))
+                    (max 0 (- (edit-caret-x lay (edit-caret e)) tw))]
+                   [else 0])]
          [dy (if area?
                  (let* ([off (ui-memo ui id 0)]
                         [c (and e (edit-caret e))]
@@ -2418,17 +2437,21 @@
   (let ([in (ui-table-cell-inset)])
     (ui-draw-label (+ x in) y (max 0 (- w in in)) h flags text)))
 
-;; dir: up, down or #f (not sorted by it). A heading starts at the left,
-;; whatever its column's cells do (flags right: numbers).
+;; dir: up, down or #f (not sorted by it). A heading lines up with its
+;; column's cells: from the inset at the left, or to it at the right (flags
+;; right: numbers), its sort arrow on its other side.
 (define-part (ui-draw-table-header x y w h flags label dir)
-  (let* ([sh (font-line-height 'ui-small)] [g (ui-small-glyph-size)]
+  (let* ([in (ui-table-cell-inset)]
+         [sh (font-line-height 'ui-small)] [g (ui-small-glyph-size)]
          [s (text-fit label (max 0 (- w 16 g)) 'ui-small)]
          [color (if (or dir (memq 'hover flags)) 'text 'text-faint)]
-         [end (draw-text (+ x (ui-table-cell-inset)) (+ y (/ (- h sh) 2)) s
-                         color 'ui-small)])
+         [right? (memq 'right flags)]
+         [tx (if right? (- (+ x w) in (text-width s 'ui-small)) (+ x in))]
+         [end (draw-text tx (+ y (/ (- h sh) 2)) s color 'ui-small)])
     (fill-box x (- (+ y h) 1) w 1 'window-border)
     (when dir
-      (ui-draw-glyph (+ end 4) (+ y (/ (- h g) 2)) g g '(hover) dir))))
+      (ui-draw-glyph (if right? (- tx 4 g) (+ end 4)) (+ y (/ (- h g) 2)) g g
+                     '(hover) dir))))
 
 ;; The line between two headings at x, where a drag resizes the column on
 ;; its left: faint where the style shows it at rest (table-dividers),
@@ -3167,8 +3190,10 @@
   (unless (ui-stream-buffer s)
     (ui-stream-buffer-set! s (make-gpu-buffer (* (ui-stream-rows s)
                                                  (ui-stream-words s))))
-    (ui-stream-palette-set! s (make-gpu-buffer (+ 1 (* 2 (ui-stream-columns s))
-                                                  (ui-stream-colors s)))))
+    (ui-stream-palette-set! s (make-gpu-buffer
+                               (+ 1 (* ui-stream-stack-words
+                                       (ui-stream-columns s))
+                                  (ui-stream-colors s)))))
   (when (< newest (ui-stream-sent s)) (ui-stream-sent-set! s -1))
   (let ([rows (ui-stream-rows s)] [words (ui-stream-words s)]
         [columns (ui-stream-columns s)] [buffer (ui-stream-buffer s)]
@@ -3197,10 +3222,13 @@
 
 ;; From the right, a bar a moment; up each, its columns as the palette stacks
 ;; them; over them, the strips.
+;; The palette's first rows, the stack bottom up: which column, its color.
+(define-shader-layout ui-stream-stack palette (column color))
+
 (define-paint (ui-stream-bars x y)
   ([moments fx-buffer]
-   [palette fx-buffer]   ; bottom up: a column's place, its color; after the
-                         ; columns' room, the strips' colors
+   [palette fx-buffer]   ; ui-stream-stack's rows, with room for every column;
+                         ; after them, the strips' colors
    [stacked fixnum]      ; how many the stack holds
    [columns fixnum]      ; the numbers a row starts with
    [rows fixnum]         ; the ring's
@@ -3222,30 +3250,33 @@
          [row (fx* (fxmod (fx- newest col) rows) row-words)]
          [lanes (fx* strips strip-h)])
     (define (spent k)
-      (fx-ref moments (fx+ row (fx-ref palette (fx* k 2)))))
-    (if (or (fx>= col shown) (fl< within gap))
-        0
-        (if (fx< y bars-at)
-            (if (fx< y lanes)
-                (let ([mark (fx-ref moments
-                                    (fx+ row
-                                         (fx+ columns
-                                              (fxquotient y strip-h))))])
-                  (if (or (fx= mark 0)
-                          (fx>= (fxmod y strip-h) (fx- strip-h strip-gap)))
-                      0
-                      (fx-ref palette (fx+ (fx* columns 2) (fx- mark 1)))))
-                0)
-            (let ([at (fl* (fl/ (fl- (fixnum->flonum (fx- h y)) 0.5)
-                                (fixnum->flonum (fx- h bars-at)))
-                           (fixnum->flonum top))])
-              (do-bounded 12
-                  ([k 0 (fx+ k 1)]
-                   [sum (spent 0) (fx+ sum (spent (fx+ k 1)))])
-                ((or (fx>= k stacked) (fl> (fixnum->flonum sum) at))
-                 (if (fx>= k stacked)
-                     0
-                     (fx-ref palette (fx+ (fx* k 2) 1))))))))))
+      (fx-ref moments
+              (fx+ row (ui-stream-stack-column (fx* k ui-stream-stack-words)))))
+    (cond
+      [(or (fx>= col shown) (fl< within gap)) 0]
+      [(fx< y bars-at)
+       (if (fx< y lanes)
+           (let ([mark (fx-ref moments
+                               (fx+ row
+                                    (fx+ columns (fxquotient y strip-h))))])
+             (if (or (fx= mark 0)
+                     (fx>= (fxmod y strip-h) (fx- strip-h strip-gap)))
+                 0
+                 (fx-ref palette
+                         (fx+ (fx* columns ui-stream-stack-words)
+                              (fx- mark 1)))))
+           0)]
+      [else
+       (let ([at (fl* (fl/ (fl- (fixnum->flonum (fx- h y)) 0.5)
+                           (fixnum->flonum (fx- h bars-at)))
+                      (fixnum->flonum top))])
+         (do-bounded 12
+             ([k 0 (fx+ k 1)]
+              [sum (spent 0) (fx+ sum (spent (fx+ k 1)))])
+           ((or (fx>= k stacked) (fl> (fixnum->flonum sum) at))
+            (if (fx>= k stacked)
+                0
+                (ui-stream-stack-color (fx* k ui-stream-stack-words))))))])))
 
 ;; A strip's height and what's clear under it: a labeled one takes a line.
 (define-part (ui-stream-lane strips)
@@ -3320,14 +3351,18 @@
     (when (and newest (ui-stream-buffer s))
       (let ([palette (ui-stream-palette s)] [scale (draw-scale)])
         (for-each (lambda (entry k)
-                    (gpu-buffer-set! palette (* 2 k) (car entry))
-                    (gpu-buffer-set! palette (+ 1 (* 2 k))
-                                     (color-word (cdr entry))))
+                    (let ([row (* k ui-stream-stack-words)])
+                      (gpu-buffer-set! palette (+ row ui-stream-stack-column)
+                                       (car entry))
+                      (gpu-buffer-set! palette (+ row ui-stream-stack-color)
+                                       (color-word (cdr entry)))))
                   stack (iota (length stack)))
         (fold-left (lambda (at strip)
                      (for-each (lambda (color i)
-                                 (gpu-buffer-set! palette (+ (* 2 columns) at i)
-                                                  (color-word color)))
+                                 (gpu-buffer-set!
+                                  palette
+                                  (+ (* ui-stream-stack-words columns) at i)
+                                  (color-word color)))
                                (cdr strip) (iota (length (cdr strip))))
                      (+ at (length (cdr strip))))
                    0 strips)
