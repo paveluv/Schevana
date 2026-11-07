@@ -182,14 +182,17 @@
 ;; The characters text-width is given while thunk runs.
 (define (characters-measured thunk)
   (let ([n 0] [plain text-width])
-    (dynamic-wind
-      (lambda ()
-        (set! text-width
-              (case-lambda
-                [(s) (set! n (+ n (string-length s))) (plain s)]
-                [(s f) (set! n (+ n (string-length s))) (plain s f)])))
-      thunk
-      (lambda () (set! text-width plain)))
+    ;; none of the top bar's status: its ms/tick and its memory change length
+    ;; as they please, and would count
+    (fluid-let ([*status-segments* '()] [*status-shown* '()])
+      (dynamic-wind
+        (lambda ()
+          (set! text-width
+                (case-lambda
+                  [(s) (set! n (+ n (string-length s))) (plain s)]
+                  [(s f) (set! n (+ n (string-length s))) (plain s f)])))
+        thunk
+        (lambda () (set! text-width plain))))
     n))
 
 ;; words, then spaces, to n characters: "words words wo".

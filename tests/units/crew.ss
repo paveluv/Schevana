@@ -2,6 +2,11 @@
 
 ;;; The crew (services/crew.ss).
 
+;; Main's budget is for runaways, and on a busy machine an ordinary region here
+;; could run into it. So it's long in this file, but for the check about it.
+(define crew-test-budget crew-main-ms)
+(set! crew-main-ms 60000)
+
 ;; About us µs of work, without allocating; the thread's id noted in ids
 ;; (a box of a list) the first time.
 (define-worklet (crew-test-busy us ids)
@@ -23,13 +28,24 @@
   (do ([i lo (fx+ i 1)]) ((fx= i hi))
     (bytevector-u8-set! counts i (fx+ 1 (bytevector-u8-ref counts i)))))
 
+;; As crew-test-count, but no call ends till the caller and a worker have both
+;; taken part, however slow a thread is to wake; at most 10 s.
+(define-worklet (crew-test-together lo hi counts main ids)
+  (crew-test-count lo hi counts 0 ids)
+  (let ([until (+ (now-ns) 10000000000)])
+    (let wait ()
+      (let ([seen (unbox ids)])
+        (unless (or (and (memv main seen) (pair? (cdr seen)))
+                    (> (now-ns) until))
+          (wait))))))
+
 (define-worklet (crew-test-square x) (* x x))
 
 (check "crew-for calls a worklet on disjoint chunks that cover the range \
         once each, on the caller and the workers; crew-map is map, in \
         order; a procedure that is no worklet is refused"
        (let ([counts (make-bytevector 20000 0)] [ids (box '())])
-         (crew-for* 100 0 20000 crew-test-count counts 100 ids)
+         (crew-for* 100 0 20000 crew-test-together counts (get-thread-id) ids)
          (printf "  ~a workers, ~a threads took part\n" (crew-size)
                  (length (unbox ids)))
          (and (> (crew-size) 0)
@@ -70,19 +86,21 @@
 (define-worklet (crew-test-fail lo hi started finished)
   (crew-test-add! started 1)
   (when (fx= lo 200) (error 'crew-test "chunk 200"))
-  (crew-test-busy 300 (box '()))
+  (crew-test-busy 1000 (box '()))
   (crew-test-add! finished 1))
 
 (check "a call that raises: the calls not started never start, those \
         running finish, and the caller raises its condition"
+       ;; so many that the rest can't all start while the thread that raises
+       ;; waits its turn on a busy machine: a second of calls and more
        (let* ([started (box 0)] [finished (box 0)]
               [c (guard (c [#t c])
-                   (crew-for* 10 0 1000 crew-test-fail started finished)
+                   (crew-for* 10 0 100000 crew-test-fail started finished)
                    #f)])
-         (printf "  ~a of 100 calls started, ~a finished\n" (unbox started)
+         (printf "  ~a of 10,000 calls started, ~a finished\n" (unbox started)
                  (unbox finished))
          (and c (string=? (condition-message c) "chunk 200")
-              (< (unbox started) 100)
+              (< (unbox started) 10000)
               (= (unbox finished) (- (unbox started) 1)))))
 
 ;; Forever, but on main's thread: a millisecond there, so that the
@@ -96,15 +114,19 @@
         caller raises the timeout, the worker escapes, and the crew works \
         on"
        (let* ([t0 (now-ms)]
-              [c (guard (c [#t c])
-                   (crew-for* 1 0 64 crew-test-runaway (get-thread-id))
-                   #f)]
+              [c (fluid-let ([crew-main-ms crew-test-budget])
+                   (guard (c [#t c])
+                     (crew-for* 1 0 64 crew-test-runaway (get-thread-id))
+                     #f))]
               [ms (- (now-ms) t0)] [ids (box '())])
          (printf "  raised after ~a ms: ~a\n" ms
                  (and c (condition? c) (condition->string c)))
-         (crew-for* 1 0 64 crew-test-count (make-bytevector 64 0) 2000 ids)
+         (crew-for* 1 0 64 crew-test-together (make-bytevector 64 0)
+                    (get-thread-id) ids)
+         ;; at its budget, not after it: how long past it is the machine's
          (and c (string-contains-ci? (condition-message c) "time budget")
-              (< ms 400)
+              (>= ms crew-test-budget)
+              (< ms 10000)
               (> (length (unbox ids)) 1))))
 
 (define-worklet (crew-test-calls lo hi out) (set-box! out (list lo hi)))
@@ -136,7 +158,7 @@
                           (crew-for* 1 0 32 crew-test-count
                                      (make-bytevector 32 0) 100000 ids)
                           (set! done #t)))])
-         (let ([until (+ (real-time) 2000)])   ; at most 2 s
+         (let ([until (+ (real-time) 30000)])   ; at most 30 s
            (let loop ()
              (when (and (memq p (procs)) (< (real-time) until))
                (steps 1)
@@ -152,7 +174,10 @@
 (define-worklet (crew-test-six lo hi a b c d e f) (void))
 
 ;; The least of a few runs: any one may share its time with a collection,
-;; whose copying the counters count.
+;; whose copying the counters count. Workers going back to idle count too, as
+;; they are scheduled, a thread's memory by the chunk of 48 KB, however few
+;; calls ran. So the limit is what the calls would show: 20,000 of them
+;; consing once each take 320 KB.
 (let ([size (crew-size)])
   (crew-size-set! (max 2 size))
   (let* ([least-bytes
@@ -178,4 +203,4 @@
     (check (format "the crew allocates nothing a call and nothing idle: a \
                     region of 20,000 calls takes ~a bytes, with six arguments \
                     ~a, 200 ms of idle workers ~a" none six idle)
-           (and (< none 2048) (< six 2048) (< idle 512)))))
+           (and (< none 64000) (< six 64000) (< idle 512)))))

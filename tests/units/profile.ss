@@ -11,6 +11,19 @@
     (let loop ()
       (when (< (- (now-ns) t0) (* ms 1000000)) (loop)))))
 
+;; thunk's result, on a clock that moves ns a read: what a span holds is what it
+;; reads, whatever else the machine is doing. The real one catches up after it,
+;; so that ticks stay in order.
+(define (profile-test-on-clock ns thunk)
+  (let* ([real now-ns] [t (real)])
+    (let ([result (fluid-let ([now-ns (lambda () (set! t (+ t ns)) t)]
+                              [now-ms (lambda ()
+                                        (set! t (+ t ns))
+                                        (quotient t 1000000))])
+                    (thunk))])
+      (let catch-up () (when (< (real) t) (catch-up)))
+      result)))
+
 ;; A tick's uses of x: a window's or a process's subject, or a key.
 (define (profile-test-uses tick x)
   (filter (lambda (u) (equal? (profile-use-subject u) (profile-subject-of x)))
@@ -73,14 +86,17 @@
 
 (check "spans nest: each keeps its self time, the phases and the uses add \
         up to the step, idle is the step's own"
-       (let* ([s (car (profile-test-ticks
+       (let* ([s (car (profile-test-on-clock
+                       1000
                        (lambda ()
-                         (with-profile-span 'step #f
-                           (profile-test-busy 1)
-                           (with-profile-span 'render #f
-                             (profile-test-busy 2)
-                             (with-profile-span 'profile-test-inner #f
-                               (profile-test-busy 3)))))))]
+                         (profile-test-ticks
+                          (lambda ()
+                            (with-profile-span 'step #f
+                              (profile-test-busy 1)
+                              (with-profile-span 'render #f
+                                (profile-test-busy 2)
+                                (with-profile-span 'profile-test-inner #f
+                                  (profile-test-busy 3)))))))))]
               [use (lambda (k) (profile-use-ms
                                 (car (profile-test-uses s k))))])
          (and (< 0.5 (profile-tick-phase-ms s 'input-wait) 1.5)
@@ -143,16 +159,29 @@
 (let ([p (spawn "profile-test-busy" (lambda () (let loop () (loop))))])
   (check "a busy process shows its share: most of the processes' phase, in \
           one turn a step"
-         (let ([ss (profile-test-ticks (lambda () (steps 10)))])
+         ;; the shares on a clock of their own, as a machine's other work would
+         ;; shift them; the real steps only have to run it
+         (let* ([ss (profile-test-on-clock
+                     100000
+                     (lambda ()
+                       (profile-test-ticks
+                        (lambda ()
+                          (do ([i 0 (+ i 1)]) ((= i 10))
+                            (with-profile-span 'step #f
+                              (with-profile-span 'procs #f
+                                (run-procs! 5))))))))]
+                [real (profile-test-ticks (lambda () (steps 10)))])
            (kill! p)
-           (for-all
-            (lambda (s)
-              (let ([u (profile-test-uses s p)])
-                (and (= (length u) 1)
-                     (= (profile-use-calls (car u)) 1)
-                     (> (profile-use-ms (car u))
-                        (* 0.8 (profile-tick-phase-ms s 'procs))))))
-            ss))))
+           (and (= (length ss) 10)
+                (for-all
+                 (lambda (s)
+                   (let ([u (profile-test-uses s p)])
+                     (and (= (length u) 1)
+                          (= (profile-use-calls (car u)) 1)
+                          (> (profile-use-ms (car u))
+                             (* 0.8 (profile-tick-phase-ms s 'procs))))))
+                 ss)
+                (exists (lambda (s) (pair? (profile-test-uses s p))) real)))))
 
 (check "a (collect) shows in the memory numbers, and so does the heap; a \
         collection requested on the main loop is a span of its own, gc"
@@ -231,16 +260,19 @@
 (check "a raise out of a span, caught in its parent, leaves it open: the \
         ends after it close a span each, the innermost, the step's end the \
         rest, and the step's phases still add up to it"
-       (let ([s (car (profile-test-ticks
+       (let ([s (car (profile-test-on-clock
+                      1000
                       (lambda ()
-                        (with-profile-span 'step #f
-                          (with-profile-span 'render #f
-                            (guard (e [#t 'caught])
-                              (with-profile-span 'profile-test-raiser #f
-                                (profile-test-busy 2)
-                                (raise 'oops)))
-                            (with-profile-span 'profile-test-after #f
-                              (profile-test-busy 3)))))))]
+                        (profile-test-ticks
+                         (lambda ()
+                           (with-profile-span 'step #f
+                             (with-profile-span 'render #f
+                               (guard (e [#t 'caught])
+                                 (with-profile-span 'profile-test-raiser #f
+                                   (profile-test-busy 2)
+                                   (raise 'oops)))
+                               (with-profile-span 'profile-test-after #f
+                                 (profile-test-busy 3)))))))))]
              [ms (lambda (s k)
                    (apply + (map profile-use-ms (profile-test-uses s k))))])
          (and (profile-test-near? (apply + (profile-test-phases s))
