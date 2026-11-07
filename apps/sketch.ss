@@ -22,14 +22,14 @@
       'mouse-doc '((L . "Draw"))
       'strokes '()
       'draw (lambda (win w h)
-              (fill-rect 0 0 w h 'bg-1)
+              (fill-box 0 0 w h 'bg-1)
               (for-each (lambda (s) (draw-polyline (cddr s) (car s) (cadr s)))
                         (reverse (strokes win)))
               (when current
                 (draw-polyline (cddr current) (car current) (cadr current)))
               (let* ([bar-h (sketch-toolbar-height)] [cy (/ bar-h 2)]
                      [hint "drag to draw · c clears · 1-9 width"])
-                (fill-rect 0 0 w bar-h 'bg-2)
+                (fill-box 0 0 w bar-h 'bg-2)
                 (let loop ([cs sketch-palette] [x 10])
                   (unless (null? cs)
                     (fill-circle (+ x 12) cy 9 (car cs))

@@ -17,7 +17,7 @@
       (define (hand angle len color width)
         (draw-line cx cy (+ cx (* len (sin angle))) (- cy (* len (cos angle)))
                    color width))
-      (fill-rect 0 0 w h 'bg-1)
+      (fill-box 0 0 w h 'bg-1)
       (fill-glow cx cy (* r 1.6) (alpha 'accent 0.10))
       (fill-circle cx cy (+ r 8) 'bg-2)
       (stroke-circle cx cy (+ r 8) 'window-border 2)

@@ -1,7 +1,8 @@
 ;;; host.ss — the host window that the whole world lives in.
 ;;;
-;;; 'sdl      : a real resizable window (SDL3 renderer + streaming texture)
-;;; 'headless : no window at all, just the canvas (for tests and screenshots)
+;;; 'sdl      : a real resizable window, on the GPU
+;;; 'headless : no window at all, on the CPU's Vulkan driver (for tests and
+;;;             screenshots)
 ;;;
 ;;; Host events are translated into plain Scheme lists:
 ;;;   (mouse-move x y) (mouse-down x y button clicks) (mouse-up x y button)
@@ -11,11 +12,15 @@
 
 (defvar *host* 'none)
 (defvar *sdl-window* 0)
-(defvar *sdl-renderer* 0)
-(defvar *sdl-texture* 0)
 (defvar *sdl-event* (foreign-alloc 128))   ; an SDL_Event
-(defvar *host-scratch* (foreign-alloc 16))
+;; what SDL says of the window's size: a place for it, a pointer made once
+(define-ftype host-size (struct [w int] [h int]))
+(defvar *host-scratch* (foreign-alloc (ftype-sizeof host-size)))
+(define host-size* (make-ftype-pointer host-size *host-scratch*))
 (defvar *host-clipboard* "")
+;; told of every event the host sends, by its number, whether it means
+;; anything to the world or not
+(defvar *host-event-seen* void)
 (defvar *cursors* (make-eq-hashtable))
 (defvar *current-cursor* #f)
 (defvar *host-fullscreen* #f)   ; what headless mode pretends
@@ -75,18 +80,18 @@
     [(headless)
      (set! *headless-size* (cons w h))
      (set! *host-scale* (wanted-scale))
+     (host-sdl-init! "offscreen")
+     (unless *renderer* (gpu-open! 'cpu))
      (canvas-create! w h *host-scale*)]
     [(sdl)
      (sdl-set-hint "SDL_VIDEO_X11_NET_WM_BYPASS_COMPOSITOR" "0")
      (sdl-set-hint "SDL_MOUSE_FOCUS_CLICKTHROUGH" "1")
      (sdl-set-hint "SDL_APP_ID" host-app-id)
-     (sdl-set-hint "SDL_RENDER_VSYNC" "1")
-     (unless (sdl-init SDL_INIT_VIDEO)
-       (errorf 'host-init! "SDL_Init failed: ~a" (sdl-get-error)))
+     (host-sdl-init! #f)
      ;; w × h are logical pixels. How many physical pixels a window unit
-     ;; holds, and the desktop's scale, are known once the window has a
-     ;; renderer, so it opens hidden, a unit per logical pixel, and is sized
-     ;; and centered before it is shown.
+     ;; holds, and the desktop's scale, are known once the window is there,
+     ;; so it opens hidden, a unit per logical pixel, and is sized and
+     ;; centered before it is shown.
      (set! *sdl-window*
        (sdl-create-window "Schevana" w h
                           (fxior SDL_WINDOW_RESIZABLE
@@ -97,10 +102,8 @@
                                      0))))
      (when (= 0 *sdl-window*)
        (errorf 'host-init! "SDL_CreateWindow failed: ~a" (sdl-get-error)))
-     (set! *sdl-renderer* (sdl-create-renderer *sdl-window* #f))
-     (set! *host-vsync?* #t)   ; by the hint, till host-present-damage!
-     (when (= 0 *sdl-renderer*)
-       (errorf 'host-init! "SDL_CreateRenderer failed: ~a" (sdl-get-error)))
+     (unless *renderer* (gpu-open! 'gpu))
+     (gpu-claim-window! *sdl-window*)
      (let*-values ([(uw uh pw ph) (host-read-sizes)]
                    [(nw nh)
                     (host-window-size w h (wanted-scale) *pixel-ratio*)])
@@ -113,17 +116,20 @@
      (host-sync-size!)]
     [else (errorf 'host-init! "unknown host mode ~s" mode)]))
 
+;; Once for all: video, the driver named if one is.
+(define (host-sdl-init! driver)
+  (when driver (sdl-set-hint "SDL_VIDEO_DRIVER" driver))
+  (unless (sdl-init SDL_INIT_VIDEO)
+    (errorf 'host-init! "SDL_Init failed: ~a" (sdl-get-error))))
+
 (define (host-shutdown!)
   (when (eq? *host* 'sdl)
-    (sdl-destroy-texture *sdl-texture*)
-    (sdl-destroy-renderer *sdl-renderer*)
+    (sdl-wait-gpu-idle (renderer-device *renderer*))
+    (sdl-release-window (renderer-device *renderer*) *sdl-window*)
     (sdl-destroy-window *sdl-window*)
     (sdl-quit)
-    (set! *sdl-texture* 0)
+    (set! *renderer* #f)
     (set! *host* 'none)))
-
-(define (host-set-title! title)
-  (when (eq? *host* 'sdl) (sdl-set-window-title *sdl-window* title)))
 
 ;;; ------------------------------------------------------------------
 ;;; full screen
@@ -150,65 +156,56 @@
 ;; The host window's icon, which the desktop's taskbar or dock shows (under
 ;; X11, and Wayland compositors with the xdg-toplevel-icon protocol; GNOME
 ;; takes icons from .desktop files instead, and SDL's call fails there).
-;; draw is called with *cr* on a size × size transparent image.
+;; draw is called on a clear size × size image.
 (define (host-set-icon! size draw)
   (when (eq? *host* 'sdl)
-    (let* ([surface (cairo-image-surface-create CAIRO_FORMAT_ARGB32 size size)]
-           [cr (cairo-create surface)])
-      (fluid-let ([*cr* cr]) (draw size))
-      (cairo-destroy cr)
-      (cairo-surface-flush surface)
-      (let ([data (cairo-image-surface-get-data surface)]
-            [stride (cairo-image-surface-get-stride surface)])
-        (unpremultiply! data stride size size)
-        (let ([icon (sdl-create-surface-from size size
-                                             SDL_PIXELFORMAT_ARGB8888
-                                             data stride)])
-          (unless (= icon 0)
-            (sdl-set-window-icon *sdl-window* icon)   ; SDL copies the pixels
-            (sdl-destroy-surface icon))))
-      (cairo-surface-destroy surface))))
+    (let ([bytes (drawing->bytes size size 1 (lambda () (draw size)))])
+      (unpremultiply! bytes)
+      (let ([icon (sdl-create-surface-from size size SDL_PIXELFORMAT_ARGB8888
+                                           (object->reference-address bytes)
+                                           (* 4 size))])
+        (unless (= icon 0)
+          (sdl-set-window-icon *sdl-window* icon)   ; SDL copies the pixels
+          (sdl-destroy-surface icon))))))
 
-;; Cairo keeps color premultiplied by alpha; SDL wants it straight.
-(define (unpremultiply! data stride w h)
-  (do ([y 0 (+ y 1)]) ((= y h))
-    (do ([x 0 (+ x 1)]) ((= x w))
-      (let* ([i (+ (* y stride) (* 4 x))]
-             [p (foreign-ref 'unsigned-32 data i)]
-             [a (fxsrl p 24)])
-        (when (fx< 0 a 255)
-          (let ([un (lambda (c)
-                      (fxmin 255 (fxquotient (fx+ (fx* c 255) (fxquotient a 2))
-                                             a)))])
-            (foreign-set! 'unsigned-32 data i
-                          (fxior (fxsll a 24)
-                                 (fxsll (un (fxand (fxsrl p 16) 255)) 16)
-                                 (fxsll (un (fxand (fxsrl p 8) 255)) 8)
-                                 (un (fxand p 255))))))))))
+;; Pixels premultiplied, as images keep them, made straight.
+(define (unpremultiply! bytes)
+  (do ([i 0 (+ i 4)]) ((>= i (bytevector-length bytes)))
+    (let ([a (bytevector-u8-ref bytes (+ i 3))])
+      (when (fx< 0 a 255)
+        (do ([k 0 (+ k 1)]) ((= k 3))
+          (bytevector-u8-set!
+           bytes (+ i k)
+           (fxmin 255 (fxquotient (fx+ (fx* (bytevector-u8-ref bytes (+ i k))
+                                            255)
+                                       (fxquotient a 2))
+                                  a))))))))
 
-;; The window's size in window units and its renderer's in physical
-;; pixels, (values w h pw ph); sets *pixel-ratio* from them.
+;; The window's size in window units and in physical pixels, (values w h pw
+;; ph); sets *pixel-ratio* from them.
 (define (host-read-sizes)
-  (sdl-get-window-size *sdl-window* *host-scratch* (+ *host-scratch* 4))
-  (let ([w (foreign-ref 'integer-32 *host-scratch* 0)]
-        [h (foreign-ref 'integer-32 *host-scratch* 4)])
-    (sdl-get-current-render-output-size *sdl-renderer* *host-scratch*
-                                        (+ *host-scratch* 4))
-    (let ([pw (foreign-ref 'integer-32 *host-scratch* 0)]
-          [ph (foreign-ref 'integer-32 *host-scratch* 4)])
-      (set! *pixel-ratio* (/ pw (max w 1)))
-      (values w h pw ph))))
+  (let*-values ([(w h) (host-size-from sdl-get-window-size)]
+                [(pw ph) (host-size-from sdl-get-window-size-in-pixels)])
+    (set! *pixel-ratio* (/ pw (max w 1)))
+    (values w h pw ph)))
 
-;; Re-reads the window's pixel size and the scale; recreates canvas and
-;; texture when either changed. Returns #t if they did.
+;; The size get, one of SDL's, says: (values w h).
+(define (host-size-from get)
+  (get *sdl-window*
+       (ftype-pointer-address (ftype-&ref host-size (w) host-size*))
+       (ftype-pointer-address (ftype-&ref host-size (h) host-size*)))
+  (values (ftype-ref host-size (w) host-size*)
+          (ftype-ref host-size (h) host-size*)))
+
+;; Re-reads the window's pixel size and the scale; the canvas follows when
+;; either changed. Returns #t if they did.
 (define (host-sync-size!)
   (case *host*
     [(sdl)
      (let-values ([(w h pw ph) (host-read-sizes)])
        (let ([scale (wanted-scale)])
          (if (and (= pw (canvas-pixel-width)) (= ph (canvas-pixel-height))
-                  (= scale *host-scale*)
-                  (not (= 0 *sdl-texture*)))
+                  (= scale *host-scale*))
              #f
              (begin
                (set! *host-scale* scale)
@@ -224,7 +221,6 @@
                  (unless (equal? m *host-min-size*)
                    (sdl-set-window-minimum-size *sdl-window* (car m) (cdr m))
                    (set! *host-min-size* (and (not (fullscreen?)) m))))
-               (host-recreate-texture!)
                #t))))]
     [(headless)
      (let ([scale (wanted-scale)])
@@ -235,111 +231,133 @@
               #t)))]
     [else #f]))
 
-;; A streaming texture the canvas's size; its pixels are undefined until
-;; the next (full) upload. It is shown 1:1, so it is not filtered (SDL3's
-;; default would).
-(define (host-recreate-texture!)
-  (when (eq? *host* 'sdl)
-    (unless (= 0 *sdl-texture*) (sdl-destroy-texture *sdl-texture*))
-    (set! *sdl-texture*
-      (sdl-create-texture *sdl-renderer* SDL_PIXELFORMAT_ARGB8888
-                          SDL_TEXTUREACCESS_STREAMING
-                          (canvas-pixel-width) (canvas-pixel-height)))
-    (sdl-set-texture-scale-mode *sdl-texture* SDL_SCALEMODE_NEAREST))
-  (set! *full-upload?* #t))
-
-;;; ------------------------------------------------------------------ upload
-;;; A step that drew a frame uploads the rows it changed, each run of them
-;;; as one full-width rectangle, and shows the texture. A step that changed
-;;; no row neither uploads nor presents (nor waits for vsync).
-
-;; rows the canvas changed since the last upload, ((y0 . y1) ...)
-(defvar *upload-rows* '())
-;; the texture must be refreshed whole (it was just made, say)
-(defvar *full-upload?* #t)
-;; show the texture again, unchanged (the host window was exposed)
-(defvar *present-only?* #f)
-(defvar *upload-bytes* 0)      ; bytes uploaded so far (counted headless too)
-(defvar *host-rect* (foreign-alloc 16))   ; an SDL_Rect
-
-;; The whole texture afresh, whatever the frame changed.
-(define (invalidate-screen!)
-  (set! *full-upload?* #t)
-  (request-frame!))
-
-;; Back buffers are undefined after a present: the whole texture each time.
-(define (host-show-texture!)
-  (sdl-render-texture *sdl-renderer* *sdl-texture* 0 0)
-  ;; with vsync on, this waits for the screen: a phase of the profiler's
-  (let ([t (now-ns)])
-    (with-profile-span 'vsync-wait #f (sdl-render-present *sdl-renderer*))
-    (pacer-waited! t)))
+;; With vsync on, thunk may wait for the screen: a phase of the profiler's,
+;; part saying in which call, and no work. => thunk's value.
+(define (host-screen-wait part thunk)
+  (let* ([t (now-ns)]
+         [v (with-profile-span 'vsync-wait part (thunk))])
+    (pacer-waited! t)
+    (when (eq? part 'acquire) (pacer-image-waited! t))
+    v))
 
 ;; How many threads this machine runs at once (logical cores).
 (define (host-cpu-count) (sdl-get-num-logical-cpu-cores))
 
-;; How long the screen shows a frame, ns: by its display's refresh rate
-;; (SDL_DisplayMode's numerator and denominator, at 24 and 28), or 60 Hz
-;; when SDL does not say (headless, say).
+;; SDL_DisplayMode (SDL_video.h).
+(define-ftype sdl-display-mode
+  (struct [display unsigned-32] [format unsigned-32] [w int] [h int]
+          [density float] [refresh float] [numerator int] [denominator int]))
+
+;; The window's display's mode, or #f when SDL does not say (headless, say).
+(define (host-display-mode)
+  (let ([m (if (eq? *host* 'sdl)
+               (sdl-get-current-display-mode
+                (sdl-get-display-for-window *sdl-window*))
+               0)])
+    (and (not (= m 0)) (make-ftype-pointer sdl-display-mode m))))
+
+;; How long the screen shows a frame, ns: by its display's refresh rate, or
+;; 60 Hz when SDL does not say.
 (define (host-frame-ns)
-  (let* ([m (if (eq? *host* 'sdl)
-                (sdl-get-current-display-mode
-                 (sdl-get-display-for-window *sdl-window*))
-                0)]
-         [hz (if (= m 0) 0 (foreign-ref 'int m 24))]
-         [per (if (= m 0) 0 (foreign-ref 'int m 28))])
+  (let* ([m (host-display-mode)]
+         [hz (if m (ftype-ref sdl-display-mode (numerator) m) 0)]
+         [per (if m (ftype-ref sdl-display-mode (denominator) m) 0)])
     (if (and (> hz 0) (> per 0))
         (quotient (* 1000000000 per) hz)
         (quotient 1000000000 60))))
 
-;; Hidden, minimized or covered, the host window shows nothing: no upload
-;; nor present (whose wait for the screen would hold the pacer's ticks
-;; back), and the whole texture again once it shows. Without the focus it
-;; does not wait for the screen either: the desktop may let a window it
-;; hardly shows present seldom, whatever its flags say.
-(defvar *host-vsync?* #t)
-(define (host-present-damage!)
-  (let* ([flags (if (eq? *host* 'sdl) (sdl-get-window-flags *sdl-window*) 0)]
-         [focus? (logtest flags SDL_WINDOW_INPUT_FOCUS)])
-    (unless (or (not (eq? *host* 'sdl)) (eq? focus? *host-vsync?*))
-      (set! *host-vsync?* focus?)
-      (sdl-set-render-vsync *sdl-renderer* (if focus? 1 0)))
-    ;; SDL_WINDOW_OCCLUDED, _HIDDEN and _MINIMIZED
-    (if (logtest flags #x4c)
-        (begin
-          (set! *upload-rows* '())
-          (set! *full-upload?* #t)
-          (set! *present-only?* #f))
-        (host-upload-damage!))))
+;; The display as a person reads it: (w h refresh-numerator denominator
+;; density), or #f.
+(define (host-display)
+  (let ([m (host-display-mode)])
+    (and m
+         (list (ftype-ref sdl-display-mode (w) m)
+               (ftype-ref sdl-display-mode (h) m)
+               (ftype-ref sdl-display-mode (numerator) m)
+               (ftype-ref sdl-display-mode (denominator) m)
+               (ftype-ref sdl-display-mode (density) m)))))
 
-(define (host-upload-damage!)
-  (let ([runs (cond [(eqv? *canvas* 0) '()]
-                    [*full-upload?* (list (cons 0 *canvas-ph*))]
-                    [else *upload-rows*])])
-    (for-each (lambda (r)
-                (set! *upload-bytes*
-                      (+ *upload-bytes* (* 4 *canvas-pw* (- (cdr r) (car r))))))
-              runs)
-    (when (eq? *host* 'sdl)
-      (cond
-        [(pair? runs)
-         (let ([data (cairo-image-surface-get-data *canvas*)]
-               [stride (cairo-image-surface-get-stride *canvas*)])
-           (cairo-surface-flush *canvas*)
-           (for-each (lambda (r)
-                       (foreign-set! 'integer-32 *host-rect* 0 0)
-                       (foreign-set! 'integer-32 *host-rect* 4 (car r))
-                       (foreign-set! 'integer-32 *host-rect* 8 *canvas-pw*)
-                       (foreign-set! 'integer-32 *host-rect* 12
-                                     (- (cdr r) (car r)))
-                       (sdl-update-texture *sdl-texture* *host-rect*
-                                           (+ data (* stride (car r))) stride))
-                     runs))
-         (host-show-texture!)]
-        [*present-only?* (host-show-texture!)]))
-    (set! *upload-rows* '())
-    (set! *full-upload?* #f)
-    (set! *present-only?* #f)))
+;; What SDL says of the host window and last went wrong with it. It's all
+;; for whoever is looking into a late tick.
+(define (host-flags)
+  (if (eq? *host* 'sdl) (sdl-get-window-flags *sdl-window*) 0))
+
+(define (host-flag-names flags)
+  (map cdr
+       (filter (lambda (bit) (logtest flags (car bit)))
+               '((#x1 . fullscreen)
+                 (#x4 . occluded)
+                 (#x8 . hidden)
+                 (#x40 . minimized)
+                 (#x80 . maximized)
+                 (#x200 . input-focus)
+                 (#x400 . mouse-focus)))))
+
+(define (host-error-text) (sdl-get-error))
+
+;; An event's name, by its number (SDL_events.h); or the number.
+(define (host-event-name type)
+  (cond
+    [(assv type
+           '((#x100 . quit)
+             (#x101 . terminating)
+             (#x102 . low-memory)
+             (#x103 . will-enter-background)
+             (#x104 . did-enter-background)
+             (#x105 . will-enter-foreground)
+             (#x106 . did-enter-foreground)
+             (#x107 . locale-changed)
+             (#x108 . system-theme-changed)
+             (#x151 . display-orientation)
+             (#x152 . display-added)
+             (#x153 . display-removed)
+             (#x154 . display-moved)
+             (#x155 . display-desktop-mode-changed)
+             (#x156 . display-current-mode-changed)
+             (#x157 . display-content-scale-changed)
+             (#x202 . window-shown)
+             (#x203 . window-hidden)
+             (#x204 . window-exposed)
+             (#x205 . window-moved)
+             (#x206 . window-resized)
+             (#x207 . window-pixel-size-changed)
+             (#x209 . window-minimized)
+             (#x20A . window-maximized)
+             (#x20B . window-restored)
+             (#x20C . mouse-enter)
+             (#x20D . mouse-leave)
+             (#x20E . focus-gained)
+             (#x20F . focus-lost)
+             (#x210 . close-requested)
+             (#x212 . window-icc-profile-changed)
+             (#x213 . window-display-changed)
+             (#x214 . window-display-scale-changed)
+             (#x215 . window-safe-area-changed)
+             (#x216 . window-occluded)
+             (#x217 . window-enter-fullscreen)
+             (#x218 . window-leave-fullscreen)
+             (#x219 . window-destroyed)
+             (#x21A . window-hdr-state-changed)
+             (#x300 . key-down)
+             (#x301 . key-up)
+             (#x302 . text-editing)
+             (#x303 . text-input)
+             (#x304 . keymap-changed)
+             (#x400 . mouse-motion)
+             (#x401 . mouse-down)
+             (#x402 . mouse-up)
+             (#x403 . mouse-wheel)
+             (#x404 . mouse-added)
+             (#x405 . mouse-removed)
+             (#x900 . clipboard-update)))
+     => cdr]
+    [else type]))
+
+;; Hidden, minimized or covered, the host window shows nothing: no frames,
+;; which wait until it shows.
+(define (host-hidden?)
+  ;; SDL_WINDOW_OCCLUDED, _HIDDEN and _MINIMIZED
+  (and (eq? *host* 'sdl) (logtest (sdl-get-window-flags *sdl-window*) #x4c)))
 
 ;;; ------------------------------------------------------------------ events
 
@@ -377,40 +395,54 @@
 (define (sdl-button->symbol b)
   (case b [(1) 'left] [(2) 'middle] [(3) 'right] [else b]))
 
-;; The offsets are into SDL3's event structs (SDL_events.h).
+;; SDL3's events (SDL_events.h), as far as the world reads them: a head, then
+;; a kind's own. A mouse's motion and buttons lie alike from x on; motion's
+;; state, unread, lies where a button's bytes do.
+(define-ftype sdl-event-head
+  (struct [type unsigned-32] [reserved unsigned-32] [timestamp unsigned-64]
+          [window unsigned-32] [which unsigned-32]))
+(define-ftype sdl-event
+  (union
+   [head sdl-event-head]
+   [key (struct [head sdl-event-head] [scancode unsigned-32] [key unsigned-32]
+                [mods unsigned-16])]
+   [text (struct [head sdl-event-head] [text void*])]
+   [mouse (struct [head sdl-event-head] [button unsigned-8] [down unsigned-8]
+                  [clicks unsigned-8] [x float] [y float])]
+   [wheel (struct [head sdl-event-head] [x float] [y float]
+                  [direction unsigned-32])]))
+
+(define (sdl-mouse-x e) (host->world (ftype-ref sdl-event (mouse x) e)))
+(define (sdl-mouse-y e) (host->world (ftype-ref sdl-event (mouse y) e)))
+
+;; An SDL_Event at address buf, as the world's.
 (define (sdl-event->list buf)
-  (let ([type (foreign-ref 'unsigned-32 buf 0)])
+  (let* ([e (make-ftype-pointer sdl-event buf)]
+         [type (ftype-ref sdl-event (head type) e)])
+    (*host-event-seen* type)
     (cond
       [(= type SDL_EVENT_QUIT) '(quit)]
       [(= type SDL_EVENT_KEY_DOWN)
-       (list 'key-down (sdl-key->key (foreign-ref 'unsigned-32 buf 28))
-             (sdl-mods->list (foreign-ref 'unsigned-16 buf 32)))]
+       (list 'key-down (sdl-key->key (ftype-ref sdl-event (key key) e))
+             (sdl-mods->list (ftype-ref sdl-event (key mods) e)))]
       [(= type SDL_EVENT_TEXT_INPUT)
-       (list 'text (c-string->string (foreign-ref 'uptr buf 24)))]
+       (list 'text (c-string->string (ftype-ref sdl-event (text text) e)))]
       [(= type SDL_EVENT_MOUSE_MOTION)
-       (list 'mouse-move
-             (host->world (foreign-ref 'float buf 28))
-             (host->world (foreign-ref 'float buf 32)))]
+       (list 'mouse-move (sdl-mouse-x e) (sdl-mouse-y e))]
       [(= type SDL_EVENT_MOUSE_BUTTON_DOWN)
-       (list 'mouse-down
-             (host->world (foreign-ref 'float buf 28))
-             (host->world (foreign-ref 'float buf 32))
-             (sdl-button->symbol (foreign-ref 'unsigned-8 buf 24))
-             (foreign-ref 'unsigned-8 buf 26))]
+       (list 'mouse-down (sdl-mouse-x e) (sdl-mouse-y e)
+             (sdl-button->symbol (ftype-ref sdl-event (mouse button) e))
+             (ftype-ref sdl-event (mouse clicks) e))]
       [(= type SDL_EVENT_MOUSE_BUTTON_UP)
-       (list 'mouse-up
-             (host->world (foreign-ref 'float buf 28))
-             (host->world (foreign-ref 'float buf 32))
-             (sdl-button->symbol (foreign-ref 'unsigned-8 buf 24)))]
-      [(= type SDL_EVENT_MOUSE_WHEEL) (sdl-wheel->list buf)]
+       (list 'mouse-up (sdl-mouse-x e) (sdl-mouse-y e)
+             (sdl-button->symbol (ftype-ref sdl-event (mouse button) e)))]
+      [(= type SDL_EVENT_MOUSE_WHEEL) (sdl-wheel->list e)]
       [(or (= type SDL_EVENT_WINDOW_RESIZED)
            (= type SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED)
            (= type SDL_EVENT_WINDOW_DISPLAY_SCALE_CHANGED))
        (and (host-sync-size!) (list 'resize *canvas-w* *canvas-h*))]
       [(= type SDL_EVENT_WINDOW_EXPOSED) '(expose)]
       [(= type SDL_EVENT_WINDOW_MOUSE_LEAVE) '(mouse-leave)]
-      [(= type SDL_EVENT_RENDER_TARGETS_RESET) '(render-reset)]
-      [(= type SDL_EVENT_RENDER_DEVICE_RESET) '(device-reset)]
       [else #f])))
 
 (defvar *wheel-rest* '(0 . 0))   ; wheel travel not passed on yet, x . y
@@ -421,28 +453,22 @@
 ;; A leftover is dropped when the wheel turns the other way, as in SDL2.
 (define (sdl-wheel-add rest d) (+ (if (negative? (* rest d)) 0 rest) d))
 
-(define (sdl-wheel->list buf)
-  (let* ([flip (if (= 1 (foreign-ref 'unsigned-32 buf 32)) -1 1)]
+(define (sdl-wheel->list e)
+  (let* ([flip (if (= 1 (ftype-ref sdl-event (wheel direction) e)) -1 1)]
          [x (sdl-wheel-add (car *wheel-rest*)
-                           (* flip (exact (foreign-ref 'float buf 24))))]
+                           (* flip (exact (ftype-ref sdl-event (wheel x) e))))]
          [y (sdl-wheel-add (cdr *wheel-rest*)
-                           (* flip (exact (foreign-ref 'float buf 28))))]
+                           (* flip (exact (ftype-ref sdl-event (wheel y) e))))]
          [dx (truncate x)]
          [dy (truncate y)])
     (set! *wheel-rest* (cons (- x dx) (- y dy)))
     (and (not (= 0 dx dy)) (list 'wheel dx dy))))
 
 ;; Waits up to wait-ms for the first event, then drains the queue.
-;; Without the screen's wait, frames come only with ticks, and so does
-;; input: it sleeps the whole wait, a step a tick and not one an event.
 (define (host-events wait-ms)
   (if (eq? *host* 'sdl)
       (let ([buf *sdl-event*])
-        (unless (or *host-vsync?* (<= wait-ms 0))
-          (sleep (make-time 'time-duration
-                            (* 1000000 (remainder wait-ms 1000))
-                            (quotient wait-ms 1000))))
-        (let loop ([more? (if (and *host-vsync?* (> wait-ms 0))
+        (let loop ([more? (if (> wait-ms 0)
                               (sdl-wait-event-timeout buf wait-ms)
                               (sdl-poll-event buf))]
                    [acc '()])

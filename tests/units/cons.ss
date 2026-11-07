@@ -38,7 +38,7 @@
                                        links)
                               (assq 'todo columns)
                               (assq 'done columns))])
-                (cairo-surface-destroy img)
+                (picture-free! img)
                 (close-window! win)
                 (steps 1)
                 (equal? r (list #t #t '(todo #t) '(done #f)))))))))
@@ -122,11 +122,11 @@
                                                    (exact (floor v)))
                                                  p)))
                                    ps)])
-                      (cairo-surface-destroy img)
+                      (picture-free! img)
                       r))))]
              [box (lambda (flags)
                     (lambda ()
-                      (fill-rect 0 0 120 40 'window-bg)
+                      (fill-box 0 0 120 40 'window-bg)
                       (ui-draw-checkbox 10 5 100 30 flags "On")))]
              [bg (with-style 'cons (lambda () (color->pixel 'window-bg)))]
              [ink (with-style 'cons (lambda () (color->pixel 'cons-ink)))])
@@ -138,7 +138,7 @@
                        [(cx) (- tw (* 2 (cons-arrow)))]
                        [(tab) (lambda (flags)
                                 (lambda ()
-                                  (fill-rect 0 0 tw 28 'window-bg)
+                                  (fill-box 0 0 tw 28 'window-bg)
                                   (ui-draw-tab 0 0 tw 28 flags "Tree")))])
            (dynamic-wind
              (lambda ()
@@ -186,15 +186,15 @@
                     [at (lambda (flags)
                           (let* ([img (image (+ w 4) (+ h 4) 1
                                              (lambda ()
-                                               (fill-rect 0 0 (+ w 4) (+ h 4)
-                                                          'window-bg)
+                                               (fill-box 0 0 (+ w 4) (+ h 4)
+                                                         'window-bg)
                                                (ui-draw-chip 0 0 w h flags
                                                              "tag")))]
                                  [ps (list (pixel-at img 2 2)
                                            (pixel-at img (+ bx 1) (+ by 1))
                                            (pixel-at img (- bx 1)
                                                      (quotient h 2)))])
-                            (cairo-surface-destroy img)
+                            (picture-free! img)
                             ps))]
                     [bg (color->pixel 'window-bg)]
                     [rest (at '(removable last))]

@@ -92,7 +92,7 @@
             corner-radius 9
             topbar-height 28
             taskbar-height 38
-            shadow 14   ; shadow
+            shadow 14
             ui-font "sans-serif"
             ui-font-size 13
             mono-font "monospace"
@@ -128,7 +128,7 @@
     (mono-font-size "Code size" 9 36)
     (corner-radius "Corner radius" 0 20)
     (title-height "Title bar" 22 44 title-height-min)
-    (shadow "Window shadow" 0 32)   ; shadow
+    (shadow "Window shadow" 0 32)
     (topbar-height "Top bar" 22 40 topbar-height-min)
     (taskbar-height "Taskbar" 28 56 taskbar-height-min)))
 
@@ -428,7 +428,7 @@
 ;;; add your own there, in ~/.schevana.d/styles/, or from the REPL:
 ;;;
 ;;;   (define (bare-under win x y w h focused? hover pressed)
-;;;     (fill-rect x y w (title-height) (if focused? 'accent 'bg-3)))
+;;;     (fill-box x y w (title-height) (if focused? 'accent 'bg-3)))
 ;;;   (define-style bare "Bare" 'frame-under 'bare-under)
 ;;;   (set-style! 'bare)
 ;;;   (open-window "Odd one out" 'window-style 'windows)   ; one window's

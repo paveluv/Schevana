@@ -26,8 +26,7 @@
                     (let ([x (vector-ref b 0)] [y (vector-ref b 1)]
                           [tw (vector-ref b 2)] [h (vector-ref b 3)])
                       (ui-draw-panel x y tw h '(toast))
-                      (fill-round-rect (+ x 8) (+ y 9) 4 (- h 18) 2
-                                       (vector-ref b 5))
+                      (fill-box (+ x 8) (+ y 9) 4 (- h 18) (vector-ref b 5) 2)
                       (draw-text (+ x 22) (+ y (/ (- h lh) 2))
                                  (vector-ref b 4) 'text 'ui)))
                   (toast-boxes))))))

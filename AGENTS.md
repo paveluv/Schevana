@@ -25,7 +25,11 @@ scheme --script tests/sources.ss
   `~/.schevana.ss` or `~/.schevana.d`. Point `*theme-file-path*` and
   `*grant-file-path*` at scratch files, as the suites do, or run with
   `HOME` set to a scratch folder.
-- Nothing opens a real window: the suites run headless.
+- Nothing opens a real window: the suites run headless, on lavapipe, the
+  Vulkan driver on the CPU (`mesa-vulkan-drivers`).
+- A new internal structure isn't finished until an `inspect-…` procedure in
+  `kits/inspect.ss` reads it: what the Pipeline shows, a REPL and a test can
+  read.
 
 ## Simplicity first
 
@@ -46,7 +50,7 @@ before it:
 
 | Layer | What goes there |
 |---|---|
-| `src/` | The core: the world (windows, focus, the theme's layers, processes, timers, the canvas, the host), its registries, the hooks later layers fill, and the caches its own procedures need. |
+| `src/` | The core: the world (windows, focus, the theme's layers, processes, timers, the host), the shader compiler, the GPU layer, the recorder and fonts, its registries, the hooks later layers fill, and the caches its own procedures need. |
 | `kits/` | Libraries, pure or almost. |
 | `services/` | Long-lived state with an API and no surface: the crew of worker threads, the tree of environments, the apps' sandboxes and what they are allowed, vats and their jobs, the profiler, the saved look. |
 | `desktop/` | The screen's own surfaces and the desktop's behavior: wallpaper, bars, menu, toasts, keys, arranging windows. |
@@ -56,13 +60,20 @@ before it:
 - **The core never depends on a later layer.** It reaches them only
   through registries, parts and settings they fill, and hooks they set
   (`*profile-span*`, `*theme-saver*`, `*window-gone*`, `*app-loader*`).
-- **The core has a budget**, 14,200 tokens (atoms as read; comments,
+- **The core has a budget**, 25,000 tokens (atoms as read; comments,
   whitespace and names' lengths are free), in `tests/sources.ss`. Don't
   join lines or shorten names to fit it. Code the core doesn't need moves
   out to the next layer, kits first; the budget is raised only on purpose.
-- **Only the core calls C.** No SDL or Cairo binding, `foreign-…`
-  procedure, `*cr*` or `*scratch*` outside `src/`: the core grows a
-  primitive instead (`tests/sources.ss`).
+- **Only the core calls C.** No SDL, FreeType or fontconfig binding, or
+  `foreign-…` procedure, outside `src/`: the core grows a primitive instead
+  (`tests/sources.ss`).
+- **The GPU layer speaks the world's terms.** Above `src/gpu.ss`, in the core
+  too, nothing names SDL's GPU, Vulkan or SPIR-V, so that another back end or
+  raw Vulkan stays its business alone (`tests/sources.ss`; the host keeps
+  SDL's windows).
+- **The shader language is the contract.** What a back end can't do doesn't
+  get in: the twin (`kits/twin.ss`) is a second back end from the start, and
+  `tests/units/shader.ss` holds it and the device together.
 - **A file in a folder registers what it defines** (`tests/sources.ss`).
 - **An app in a sandbox requests what the table approves**
   (`grant-tree-apps` in `services/grant.ss`, `tests/sources.ss`): a new
@@ -88,7 +99,7 @@ before it:
   writes it. The exceptions are a service's own structures that threads
   share, changed only by `box-cas!` (the main thread's mail, the crew's
   loops, a vat's mailbox). A worker runs only worklets (`define-worklet`):
-  procedures compiled where SDL, Cairo and the world's state are out of
+  procedures compiled where SDL and the world's state are out of
   reach, which touch only what they are handed; or, in a vat, code
   compiled in the vat's own sandbox, which its thread alone evaluates in.
   The crew and the vats refuse to hand them any procedure but worklets,
@@ -134,6 +145,8 @@ before it:
 - A color is a theme key (`'accent`, `'text-dim`) or a mix of them; a look
   that differs by style is a part or a setting a style gives, never a test
   of which style is on.
+- Everything drawn is a record; a form like `with-clip` allocates no closure,
+  and recording whole numbers allocates nothing (`tests/units/pipeline.ss`).
 - **Mimicked styles** (Mac, Windows, Genera, the CADR, Interlisp, and in
   future CDE and Platinum) use the original's widgets. Where the original
   has none, make what its designers would have made. **Our own styles**
@@ -144,9 +157,6 @@ before it:
     references; copy no code, pixmaps, icons, fonts or backdrops.
   - MIT's CADR sources (BSD) and Medley Interlisp (MIT): use, and attribute.
   - Genera's sources: never. Its manuals and screenshots only.
-- **Shadows are on probation.** Their code lives in `src/shadows.ss` and in
-  blocks marked `;; shadow{` … `;; shadow}` or lines ending in `; shadow`.
-  Nothing else may depend on them.
 
 ## Formatting
 

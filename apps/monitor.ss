@@ -33,7 +33,6 @@
     (procs chart-3 . "processes")
     (tick chart-4 . "ticks")
     (render chart-5 . "render")
-    (present chart-6 . "present")
     (gc chart-7 . "collector")
     (other chart-8 . "other")
     (input-wait chart-muted-1 . "waiting for input")
@@ -55,6 +54,82 @@
 (define (monitor-ms ms)
   (if (< ms 9.995) (format "~,2f" ms) (format "~,1f" ms)))
 
+
+;;; ------------------------------------------------------------------ bars
+;;; The Ticks' bars are a paint over a ring of ticks on the GPU: a new tick is
+;;; a row of numbers, and nothing is recorded for the rest, however many bars
+;;; flow past.
+
+(define monitor-ring-rows 2048)
+;; a tick's row: each phase's µs, as monitor-phases has them, then whether it
+;; came late
+(define monitor-ring-words (+ 1 (length monitor-phases)))
+;; the most µs a row keeps of a phase: main can be held for hours, no bar
+;; shows past its top, and the paint adds a row up in 32 bits
+(define monitor-ring-most 100000000)
+
+;; From the right, a bar a tick; up each, its phases as order stacks them.
+(define-paint (monitor-bars x y)
+  ([ticks fx-buffer]
+   [order fx-buffer]     ; bottom up: a phase's place in the row, its color
+   [phases fixnum]       ; how many of them
+   [rows fixnum]         ; the ring's
+   [row-words fixnum]
+   [newest fixnum]       ; the tick of the bar at the right
+   [shown fixnum]        ; how many ticks there are to show
+   [w fixnum]
+   [h fixnum]
+   [top fixnum]          ; the µs the top stands for
+   [bar flonum]          ; a bar's width, device pixels
+   [gap flonum]          ; what's clear of it, at its right
+   [flag-h fixnum]
+   [flag color])
+  (let* ([d (fl- (fl- (fixnum->flonum w) 0.5) (fixnum->flonum x))]
+         [col (flonum->fixnum (flfloor (fl/ d bar)))]
+         [within (fl- d (fl* (fixnum->flonum col) bar))]
+         [row (fx* (fxmod (fx- newest col) rows) row-words)])
+    (define (spent k)
+      (fx-ref ticks (fx+ row (fx-ref order (fx* k 2)))))
+    (if (or (fx>= col shown) (fl< within gap))
+        0
+        (if (and (fx< y flag-h)
+                 (fx= (fx-ref ticks (fx+ row (fx- row-words 1))) 1))
+            flag
+            (let ([at (fl* (fl/ (fl- (fixnum->flonum (fx- h y)) 0.5)
+                                (fixnum->flonum h))
+                           (fixnum->flonum top))])
+              (do-bounded 12
+                  ([k 0 (fx+ k 1)]
+                   [sum (spent 0) (fx+ sum (spent (fx+ k 1)))])
+                ((or (fx>= k phases) (fl> (fixnum->flonum sum) at))
+                 (if (fx>= k phases)
+                     0
+                     (fx-ref order (fx+ (fx* k 2) 1))))))))))
+
+;; The ring's rows of the ticks after sent, up to newest, the last it can
+;; hold. => newest
+(define (monitor-ring-send! ring sent newest period)
+  (let ([words monitor-ring-words])
+    (do ([seq (max (+ sent 1) (- newest monitor-ring-rows -1)
+                   (or (profile-oldest-tick) newest))
+              (+ seq 1)])
+        ((> seq newest) newest)
+      (let ([at (* words (modulo seq monitor-ring-rows))])
+        (do ([j 0 (+ j 1)]) ((= j (- words 1)))
+          (gpu-buffer-set! ring (+ at j)
+                           (min monitor-ring-most
+                                (quotient (monitor-tick-phase-ns seq j)
+                                          1000))))
+        (gpu-buffer-set! ring (+ at (- words 1))
+                         (if (profile-tick-late? seq period) 1 0))))))
+
+;; The order the bars stack in, and its colors, as the paint reads them.
+(define (monitor-order-send! buffer order)
+  (for-each (lambda (j k)
+              (gpu-buffer-set! buffer (* 2 k) j)
+              (gpu-buffer-set! buffer (+ 1 (* 2 k))
+                               (color-word (cadr (list-ref monitor-phases j)))))
+            order (iota (length order))))
 
 ;;; ------------------------------------------------------------------ data
 
@@ -200,6 +275,9 @@
      (format "~a, ~a (a tick is ~a)" (monitor-ns-text ns)
              (if (profile-tick-late? seq period) "late" "in time")
              (monitor-ns-text period))
+     (if (profile-tick-late? seq period)
+         (format "\n~a" (profile-why-text (profile-tick-why seq period)))
+         "")
      (list-of (map (lambda (p)
                      (cons (cddr (assq (car p) monitor-phases))
                            (monitor-ns-text (cdr p))))
@@ -247,8 +325,7 @@
                          (if (eq? (pacer-rate) 'screen) ", the screen's" "")
                          (monitor-count (pacer-ticks))))
            (cons "Last tick" (format "~,1f ms busy" (pacer-busy-ms)))
-           (cons "Last frame" (format "~,1f ms, ~a of ~a rows uploaded"
-                                      *frame-ms* *frame-rows* *canvas-ph*))
+           (cons "Last frame" (format "~,1f ms" *frame-ms*))
            (cons "Process" (let ([b (status-process-bytes)])
                              (if b
                                  (format "~,1f MB" (/ b 1048576.0))
@@ -384,7 +461,7 @@
 
 (define-app (monitor) "Monitor"
   (let ([ui (make-ui)]
-        [tab 'overview]    ; the tab shown: overview or ticks
+        [tab 'overview]    ; the tab shown: overview, ticks or flags
         [view #f]          ; the history shown: (newest tick . seconds)
         [last 0]           ; when it moved on (now-ms): twice a second
         [paused? #f]
@@ -397,7 +474,10 @@
         [tips (make-eqv-hashtable)]                   ; seq: text
         [drawn #f]         ; the Ticks as last drawn: (newest hover)
         [memos (make-hashtable equal-hash equal?)]   ; the view's figures
-        [memo-view #f])
+        [memo-view #f]
+        [ring #f]          ; the Ticks' on the GPU, made when first drawn
+        [ring-order #f]
+        [sent -1])         ; the newest tick the ring has
     (define (move-on!)
       (set! view (cons (profile-newest-tick) (profile-seconds)))
       (set! last (now-ms)))
@@ -431,14 +511,15 @@
            [(pw ph) (ui-button-size "Resume" #f)]
            [(cw ch) (ui-button-size "Clear" #f)]
            [(dw dh) (ui-dropdown-size (list ticks-label minutes-label))]
-           [(tw th) (ui-tabs-size '("Overview" "Ticks"))]
+           [(tw th) (ui-tabs-size '("Overview" "Ticks" "Flags"))]
            [(none?) (not (car (history)))]   ; no tick yet
            [(items)   ; the tabs, then the Ticks' own controls
             (list
              (list tw th
                    (lambda (x y w h)
                      (ui-tabs ui 'tab x y h
-                              '(("Overview" . overview) ("Ticks" . ticks))
+                              '(("Overview" . overview) ("Ticks" . ticks)
+                                ("Flags" . flags))
                               tab
                               (lambda (t) (set! tab t)))))
              (list kw kh
@@ -482,7 +563,10 @@
                                   'label minutes-label
                                   'tip "How long each second's sums are \
                                         kept"))))]
-           [(items) (if (eq? tab 'overview) (list (car items)) items)])
+           [(items) (case tab
+                      [(overview) (list (car items))]
+                      [(flags) (list (car items) (cadddr items))]
+                      [else items])])
         (ui-toolbar 0 0 w items)))
     ;; A group's heading at y, and words at its right; the y below.
     (define (section x y w title words)
@@ -525,16 +609,20 @@
            [(rules) (list (cons period (monitor-ns-text period))
                           (cons top (monitor-ns-text top)))]
            [(newest) (newest-tick)]
+           [(oldest) (profile-oldest-tick)]
            ;; as many bars as fit right of the scale
            [(n) (quotient (caddr (cdr (assq 'plot
                                             (ui-bar-chart-areas
                                              x y w h 1 rules))))
                           monitor-bar-px)]
-           [(seqs) (if newest
-                       (filter profile-tick-kept?
-                               (monitor-range (- newest n -1) newest))
-                       '())]
-           [(order) (monitor-bars-order seqs)]
+           [(count) (if newest (min n (+ 1 (- newest oldest))) 0)]
+           [(order) (remember
+                     'order
+                     (lambda ()
+                       (monitor-bars-order
+                        (if newest
+                            (monitor-range (- newest count -1) newest)
+                            '()))))]
            [(keys) (append (map (lambda (j) (cdr (list-ref monitor-phases j)))
                                 order)
                            (if selected
@@ -547,27 +635,59 @@
            [(kw kh) (ui-legend-size keys)]
            [(gh) (- h kh 4)]
            [(zero) (monitor-clock-zero)]
-           [(hover)
-            (ui-bar-chart ui 'monitor-ticks x y w gh
-                          (map (lambda (seq)
-                                 (cons (map (lambda (j)
-                                              (cons (cadr (list-ref
-                                                           monitor-phases j))
-                                                    (monitor-tick-phase-ns
-                                                     seq j)))
-                                            order)
-                                       (and selected (share-of seq))))
-                               seqs)
-                          top rules
-                          (and pinned (list-index (lambda (s) (eqv? s pinned))
-                                                  seqs))
-                          (lambda (i) (pause! (list-ref seqs i)))
-                          'tip (lambda (i)
-                                 (tip-of (list-ref seqs i) zero period))
-                          'flagged (let ([v (list->vector seqs)])
-                                     (lambda (i)
-                                       (profile-tick-late? (vector-ref v i)
-                                                           period))))])
+           [(areas) (ui-bar-chart-areas x y w gh count rules)]
+           [(plot) (cdr (assq 'plot areas))]
+           [(px py pw ph) (apply values plot)]
+           [(under) (ui-bar-chart-under ui areas count)]
+           [(seq-of) (lambda (i) (+ newest (- i count -1)))]
+           [(hover) (and under newest (seq-of under))])
+        (ui-region! ui (list 'monitor-ticks under) px py pw ph
+                    'doc '((L . "Select"))
+                    'tip (and hover (profile-tick-kept? hover)
+                              (tip-of hover zero period))
+                    'on (lambda (ev)
+                          (and (eq? (car ev) 'press)
+                               (eq? (list-ref ev 3) 'left)
+                               hover
+                               (begin (pause! hover) #t))))
+        (ui-draw-surface x y w gh '(well))
+        (let ([mark! (lambda (seq)
+                       (let-values ([(bx bw)
+                                     (ui-bar-chart-bar
+                                      areas count (- count 1 (- newest seq)))])
+                         (when (>= bx px)
+                           (fill-box bx py bw ph 'chart-mark))))])
+          (when pinned (mark! pinned))
+          (when hover (mark! hover)))
+        (when newest
+          (unless ring
+            (set! ring (make-gpu-buffer (* monitor-ring-rows
+                                           monitor-ring-words)))
+            (set! ring-order (make-gpu-buffer (* 2 (+ 1 (length
+                                                         monitor-phases))))))
+          (when (< newest sent) (set! sent -1))
+          (set! sent (monitor-ring-send! ring sent newest period))
+          (monitor-order-send! ring-order order)
+          (let* ([s (draw-scale)] [bw (cadr (assq 'bar areas))])
+            (fill-shader px py pw ph monitor-bars
+                         ring ring-order (length order)
+                         monitor-ring-rows monitor-ring-words
+                         (modulo newest monitor-ring-rows) count
+                         (exact (round (* s pw))) (exact (round (* s ph)))
+                         (quotient top 1000)
+                         (inexact (* s bw)) (if (>= bw 3) (inexact s) 0.0)
+                         (exact (round (* s 3))) 'chart-flag))
+          ;; the row selected's share, over the bars
+          (when selected
+            (do ([i 0 (+ i 1)]) ((= i count))
+              (let-values ([(bx bw) (ui-bar-chart-bar areas count i)])
+                (let* ([ns (share-of (seq-of i))]
+                       [high (div (* ph (min ns top)) top)])
+                  (when (and (>= bx px) (> high 0))
+                    (fill-box bx (- (+ py ph) high)
+                              (- bw (if (>= bw 3) 1 0)) high
+                              'chart-share)))))))
+        (ui-draw-bar-chart-rules x areas top rules)
         (set! drawn (list newest hover))
         (ui-draw-legend x (+ y gh 4) w kh '() keys)))
     ;; Tick seq's tooltip, worked out once.
@@ -778,6 +898,33 @@
                      (cons 'chart-7
                            (map (lambda (s) (at s 'gc-ms)) shown)))))))
         (ui-draw-legend x (+ y gh 6) w kh '() keys)))
+    ;; Every flag kept, the newest first: when, what it took, what made it
+    ;; late and the ticks about it; a row's tooltip says all that's known.
+    (define (draw-flags x y w h flags)
+      (if (null? flags)
+          (ui-draw-label x y w 0 '(hint wrap)
+                         (if (profile-on?)
+                             "No tick has come late since the history was \
+                              cleared."
+                             "Profiling is off: no tick is timed."))
+          (ui-table ui 'monitor-flags x y w h
+                    (let ([w (ui-table-room w)])
+                      `((when "When" ,(* w 0.10)) (took "Took" ,(* w 0.06))
+                        (why "Why" ,(* w 0.46))
+                        (before "Before it" ,(* w 0.16))
+                        (ticks "Ticks about it, ms" ,(* w 0.22))))
+                    flags #f (lambda (f) #f)
+                    (lambda (f key cx cy cw ch cell-flags)
+                      (ui-draw-cell
+                       cx cy cw ch '()
+                       (case key
+                         [(when) (profile-flag-clock f)]
+                         [(took) (profile-ns-text (profile-flag-ns f))]
+                         [(why) (profile-flag-why-text f)]
+                         [(before) (profile-flag-before-text f)]
+                         [else (profile-flag-ticks-text f)])))
+                    'tip (lambda (f)
+                           (string-join (profile-flag-lines f) "\n")))))
     (define (draw win w h)
       (ui-begin! ui)
       (ui-draw-surface 0 0 w h '(page))
@@ -785,6 +932,10 @@
         (cond
           [(eq? tab 'overview)
            (monitor-draw-overview ui pad (+ y 12) (- w pad pad))]
+          [(eq? tab 'flags)
+           (let* ([cw (- w pad pad)]
+                  [y (section pad (+ y 4) cw "Flags" (profile-flag-summary))])
+             (draw-flags pad y cw (- h y pad) (profile-flags)))]
           [(profile-on?)
            (let* ([h* (history)] [seconds (cdr h*)]
                   [x pad] [cw (- w pad pad)]
@@ -828,6 +979,10 @@
                        (max 600 (* 21 (ui-table-row-height))))
            'min-size '(420 . 360)
            'draw (lambda (win w h) (draw win w h))
+           'close (lambda (win)
+                    (when ring
+                      (gpu-buffer-release! ring)
+                      (gpu-buffer-release! ring-order)))
            (append
             (ui-handlers ui)
             ;; the Ticks at every new tick, the rest twice a second

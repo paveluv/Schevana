@@ -13,7 +13,7 @@
               [ok (and (equal? (env-path c) "/apps/clock")
                        (eq? (env-kind c) 'app) (eq? (env-base c) 'confined)
                        (eq? (env-eval c 'now-ms) now-ms)
-                       (eq? (env-eval c 'fill-rect) fill-rect)
+                       (eq? (env-eval c 'fill-box) fill-box)
                        (not (memq 'notify held)) (not (memq 'windows held))
                        (not (memq 'draw-clock-face
                                   (environment-symbols *world-env*)))
@@ -58,7 +58,7 @@
          (let* ([after (grant-env 'sketch)]
                 [saved (call-with-input-file *grant-file-path* get-string-all)]
                 [denied (guard (c [(grant-needed? c) (condition-message c)])
-                          (env-eval after '(fill-rect 0 0 1 1 'red)) #f)])
+                          (env-eval after '(fill-box 0 0 1 1 'red)) #f)])
            (hashtable-clear! *grant-decisions*)
            (grant-file-load!)
            (let ([ok (and (equal? asked '(window draw))
@@ -87,7 +87,7 @@
                         (envs-names-text e 'shared (assq n rows) key))]
                 [ok (and (eq? (grant-state 'sketch 'draw) 'denied)
                          (eq? (grant-state 'clock 'timers) 'allowed)
-                         (eq? (grant-bundle-of 'fill-rect) 'draw)
+                         (eq? (grant-bundle-of 'fill-box) 'draw)
                          (not (grant-bundle-of 'define-app))
                          (eq? (grant-app-in e) 'sketch)
                          (not (grant-app-in (grant-apps-env)))
@@ -99,9 +99,9 @@
                                  "Show notifications · 1")
                          (equal? (text 'close-window! 'bundle) "Open windows")
                          (equal? (text 'close-window! 'held) "the world's")
-                         (equal? (text 'fill-rect 'bundle)
+                         (equal? (text 'fill-box 'bundle)
                                  "Draw in its windows")
-                         (equal? (text 'fill-rect 'held) "a stub: denied")
+                         (equal? (text 'fill-box 'held) "a stub: denied")
                          (equal? (text 'define-app 'bundle) "Every app's")
                          (equal? (map car (envs-names-columns e 'shared 300))
                                  '(name bundle held))

@@ -5,7 +5,7 @@
 
 (define-part (draw-crash-panel win w h)
   (let ([err (window-error win)])
-    (fill-rect 0 0 w h (mix 'bg-1 'red 0.10))
+    (fill-box 0 0 w h (mix 'bg-1 'red 0.10))
     (let* ([y1 (round (+ 14 (font-line-height 'ui-bold) 5))]
            [y2 (round (+ y1 (font-line-height 'ui) 9))]
            [hint-h (round (+ (font-line-height 'ui-small) 13))]

@@ -24,10 +24,9 @@
 ;; (a symbol, or a window's or a process's id) and part (a window
 ;; handler's kind, or #f; #t for a process's turn); (end outer?) closes
 ;; the span open innermost, or with outer? true (the step's end) the
-;; outermost, and any a raise left open. Six places run their work in
+;; outermost, and any a raise left open. Five places run their work in
 ;; with-profile-span: the step, safely, a window's handler (window-call)
-;; and drawing (draw-window-clipped), a process's turn (run-procs!), and
-;; the wait for the screen (host-show-texture!).
+;; and drawing (record-world!), and a process's turn (run-procs!).
 ;; Off, each costs a variable read and a branch; key and part are
 ;; computed only while the hook is set; nothing is allocated either way,
 ;; and nothing is kept across the work (a value live across an engine's
@@ -224,7 +223,7 @@
 ;;; fxvectors, flvectors, boxes, raising and catching (but not reading a
 ;;; condition),
 ;;; the clock (now-ns), the thread's id and the worklets defined so far.
-;;; SDL, Cairo and the world's state are not: a worklet that names
+;;; SDL and the world's state are not: a worklet that names
 ;;; anything else is refused when it is defined, so all it touches is what
 ;;; it is handed. Of that, it can open only pairs, vectors and boxes. The
 ;;; clock and the worklets are there as forwarders to the world's own

@@ -270,7 +270,7 @@
 
 ;; Before an event that needs the regions: when an event handled since the
 ;; last draw may have changed them, lay the window out again. Its draw
-;; runs on the measuring context (between frames *cr* draws nowhere).
+;; only records (what's recorded between frames goes nowhere).
 (define (ui-fresh! ui)
   (let ([win (current-window)])
     (unless (or (ui-state-fresh? ui) (not win))
@@ -729,17 +729,16 @@
 
 ;; The ring of a widget that has the keyboard from Tab.
 (define-part (ui-draw-focus x y w h flags r)
-  (stroke-round-rect (- x 3) (- y 3) (+ w 6) (+ h 6) (+ r 3)
-                     (alpha 'accent 0.7) 2))
+  (stroke-box (- x 3) (- y 3) (+ w 6) (+ h 6) (alpha 'accent 0.7) 2 (+ r 3)))
 
 ;; The box of what takes typing (a text box, a chip input): an accent
 ;; border while it has the keyboard.
 (define-part (ui-draw-field x y w h flags)
-  (fill-round-rect x y w h 6 'bg-0)
+  (fill-box x y w h 'bg-0 6)
   (if (memq 'focused flags)
-      (stroke-round-rect x y w h 6 'accent 1.5)
-      (stroke-round-rect x y w h 6
-                         (if (memq 'hover flags) 'text-faint 'window-border))))
+      (stroke-box x y w h 'accent 1.5 6)
+      (stroke-box x y w h (if (memq 'hover flags) 'text-faint 'window-border) 1
+                  6)))
 
 ;; Vector glyphs, no font: check cross plus chevron-down chevron-left
 ;; chevron-right search expand, the triangles up down left right (sort
@@ -810,13 +809,13 @@
       [(right) (triangle '(0.7 0.5) '(0.3 0.2) '(0.3 0.8))]
       [(close) (draw-line ox oy (+ ox s) (+ oy s) ink t)
                (draw-line (+ ox s) oy ox (+ oy s) ink t)]
-      [(minimize) (fill-rect ox (+ oy (ceiling (/ (- s t) 2))) s t ink)]
-      [(maximize) (stroke-rect ox oy s s ink t)]
+      [(minimize) (fill-box ox (+ oy (ceiling (/ (- s t) 2))) s t ink)]
+      [(maximize) (stroke-box ox oy s s ink t)]
       [(restore)   ; a sheet in front of another
-       (stroke-rect ox (+ oy 2) (- s 2) (- s 2) ink)
-       (fill-rect (+ ox 2) oy (- s 2) 1 ink)
-       (fill-rect (+ ox s -1) oy 1 (- s 2) ink)]
-      [(shade) (stroke-rect ox oy s (ceiling (/ s 3)) ink t)]   ; a title
+       (stroke-box ox (+ oy 2) (- s 2) (- s 2) ink)
+       (fill-box (+ ox 2) oy (- s 2) 1 ink)
+       (fill-box (+ ox s -1) oy 1 (- s 2) ink)]
+      [(shade) (stroke-box ox oy s (ceiling (/ s 3)) ink t)]   ; a title
       [(pin)   ; a pushpin from the side: its head, its collar, its point
        (fill-circle (+ ox (* 0.5 s)) (+ oy (* 0.3 s)) (* 0.25 s) ink)
        (line (p 0.22 0.56) (p 0.78 0.56))
@@ -919,8 +918,8 @@
          [label (and label (text-fit label (- w 12 gw) 'ui))]
          [cw (if label (+ gw (text-width label 'ui)) g)]
          [x0 (+ x (/ (- w cw) 2))])
-    (when fill (fill-round-rect x y w h 6 (ink fill)))
-    (when stroke (stroke-round-rect x y w h 6 (ink stroke)))
+    (when fill (fill-box x y w h (ink fill) 6))
+    (when stroke (stroke-box x y w h (ink stroke) 1 6))
     (when glyph (ui-draw-glyph x0 (+ y (/ (- h g) 2)) g g flags glyph))
     (when label
       (draw-text (+ x0 gw) (+ y (/ (- h lh) 2)) label (ink color) 'ui))
@@ -1043,7 +1042,7 @@
       (ui-draw-highlight-over x y w h '())
       ;; its mark after that, so a style that inverts the row keeps it
       ;; whole (in ink on ink)
-      (fill-round-rect x (+ y (/ h 2) -8) 3 16 1.5 'accent))
+      (fill-box x (+ y (/ h 2) -8) 3 16 'accent 1.5))
     (when (memq 'focused flags) (ui-draw-focus x y w h flags 5))))
 
 ;;; ------------------------------------------------------------------ slider
@@ -1071,11 +1070,10 @@
   (let* ([cy (+ y (/ h 2))] [kx (+ x (* frac w))]
          [r (if (or (memq 'hover flags) (memq 'pressed flags)) 8 7)])
     (if paint
-        (call-with-round-clip x (- cy 4) w 8 4
-                              (lambda () (paint x (- cy 4) w 8)))
+        (with-clip (x (- cy 4) w 8 4) (paint x (- cy 4) w 8))
         (begin
-          (fill-round-rect x (- cy 3) w 6 3 'bg-3)
-          (fill-round-rect x (- cy 3) (max 6 (- kx x)) 6 3 'accent)))
+          (fill-box x (- cy 3) w 6 'bg-3 3)
+          (fill-box x (- cy 3) (max 6 (- kx x)) 6 'accent 3)))
     (fill-circle kx cy r #xf2f2f5)
     (stroke-circle kx cy r (alpha #x000000 0.35) 1)))
 
@@ -1114,13 +1112,16 @@
          [off? (memq 'disabled flags)]
          [flags (if off? (remq 'hover flags) flags)])
     (if checked?
-        (begin (fill-round-rect x by b b 4 (if off? (alpha 'accent 0.45)
-                                               'accent))
+        (begin (fill-box x by b b
+                         (if off? (alpha 'accent 0.45) 'accent)
+                         4)
                (ui-draw-glyph x by b b '(primary) 'check))
-        (begin (fill-round-rect x by b b 4 'bg-0)
-               (stroke-round-rect x by b b 4 (if (memq 'hover flags)
-                                                 'accent
-                                                 'text-faint))))
+        (begin (fill-box x by b b 'bg-0 4)
+               (stroke-box x by b b
+                           (if (memq 'hover flags)
+                               'accent
+                               'text-faint)
+                           1 4)))
     (when label
       (draw-text (+ x b 8) (+ y (/ (- h lh) 2))
                  (text-fit label (- w b 8) 'ui)
@@ -1140,9 +1141,10 @@
                 [(on? r) (values (memq 'checked flags) (- (/ th 2) 2))]
                 [(kx) (if on? (+ x tw (- (/ th 2))) (+ x (/ th 2)))]
                 [(lh) (font-line-height 'ui)])
-    (fill-round-rect x ty tw th (/ th 2)
-                     (cond [on? 'accent] [(memq 'hover flags) 'text-faint]
-                           [else 'bg-3]))
+    (fill-box x ty tw th
+              (cond [on? 'accent] [(memq 'hover flags) 'text-faint]
+                    [else 'bg-3])
+              (/ th 2))
     (fill-circle kx (+ ty (/ th 2)) r #xf2f2f5)
     (stroke-circle kx (+ ty (/ th 2)) r (alpha #x000000 0.35) 1)
     (when label
@@ -1248,7 +1250,7 @@
                         (if (or selected? (memq 'hover flags)) 'text 'text-dim)
                         'ui-bold)
     (when selected?
-      (fill-round-rect (+ x 10) (+ y (/ (+ h lh) 2) 3) (- w 20) 2 1 'accent))
+      (fill-box (+ x 10) (+ y (/ (+ h lh) 2) 3) (- w 20) 2 'accent 1))
     (when (memq 'focused flags) (ui-draw-focus x y w h flags 6))))
 
 ;; Each tab is its label in 'ui-bold plus 24.
@@ -1357,16 +1359,16 @@
   (define (paper c)   ; over something, it shows through
     (if (memq 'floating flags) (alpha c (theme 'floating-opacity)) c))
   (cond
-    [(memq 'well flags) (fill-round-rect x y w h 8 'bg-0)]
+    [(memq 'well flags) (fill-box x y w h 'bg-0 8)]
     [(memq 'nav flags)
-     (fill-rect x y w h (paper 'bg-0))
-     (fill-rect (+ x w -1) y 1 h 'window-border)]
+     (fill-box x y w h (paper 'bg-0))
+     (fill-box (+ x w -1) y 1 h 'window-border)]
     [else
-     (fill-rect x y w h (paper 'bg-1))
+     (fill-box x y w h (paper 'bg-1))
      (cond [(memq 'toolbar flags)
-            (fill-rect x (- (+ y h) 1) w 1 'window-border)]
-           [(memq 'footer flags) (fill-rect x y w 1 'window-border)]
-           [(memq 'side flags) (fill-rect x y 1 h 'window-border)])]))
+            (fill-box x (- (+ y h) 1) w 1 'window-border)]
+           [(memq 'footer flags) (fill-box x y w 1 'window-border)]
+           [(memq 'side flags) (fill-box x y 1 h 'window-border)])]))
 
 ;; How wide a well's ring is, if its style draws one (Genera's 1-pixel
 ;; box): a view that scrolls in the well stops short of it, so that what
@@ -1679,50 +1681,49 @@
     ;; The edit rect, and 2 px either side for the caret: a scrolled row
     ;; never shows in the padding. Scrolled sideways, the caret is at the
     ;; right, so the left margin goes.
-    (call-with-clip (if (> dx 0) tx (- tx 2)) ty (+ tw (if (> dx 0) 2 4)) th
-      (lambda ()
-        (if (memq 'placeholder flags)
-            (when placeholder
-              (draw-text tx ty (text-fit placeholder tw font) 'text-faint font))
-            ;; only the rows in view
-            (let loop ([r (max 0 (- (exact (floor (/ dy lh))) 1))])
-              (let ([ry (- (+ ty (* r lh)) dy)] [rx (- tx dx)])
-                (when (and (< r (edit-layout-count lay)) (< (+ ry 1) (+ ty th)))
-                  ;; a row a float's width in shows only its descenders' tips
-                  (when (> (+ ry lh) (+ ty 1))
-                    (let-values ([(s e) (edit-row lay r)])
-                      (when (and (< lo hi) (< lo (max e (+ s 1))) (> hi s))
-                        (let* ([x0 (measure (substring text s (max s lo)))]
-                               [x1 (if (> hi e)
-                                       (+ (measure (substring text s e)) 4)
-                                       (measure (substring text s hi)))])
-                          (if (eq? (theme 'text-selection) 'underline)
-                              (px-fill (+ rx x0) (+ ry lh -1) (- x1 x0) 1
-                                       'text)
-                              (fill-rect (+ rx x0) ry (- x1 x0) lh
-                                         'selection))))
-                      ;; unfocused at its start, the last row in view says
-                      ;; that more follows
-                      (draw-text rx ry
-                                 (if (and (not focused?) (= dy 0)
-                                          (or (< (+ r 1)
-                                                 (edit-layout-count lay))
-                                              (not (edit-layout-done? lay)))
-                                          (> (+ ry lh lh) (+ ty th 1)))
-                                     (text-fit
-                                      (string-append
-                                       (substring text s (edit-row-last lay r))
-                                       "…")
-                                      tw font)
-                                     (substring text s e))
-                                 'text font)))
-                  (loop (+ r 1))))))
-        (when (memq 'caret flags)
-          (let ([cx (+ (- tx dx) (edit-caret-x lay caret))]
-                [cy (- (+ ty (* lh (edit-row-at lay caret))) dy)])
-            (if (eq? (theme 'text-caret) 'block)
-                (px-invert cx cy (ui-caret-block-width text caret font) lh)
-                (fill-rect (- cx 1) cy 2 lh 'accent))))))))
+    (with-clip ((if (> dx 0) tx (- tx 2)) ty (+ tw (if (> dx 0) 2 4)) th)
+      (if (memq 'placeholder flags)
+          (when placeholder
+            (draw-text tx ty (text-fit placeholder tw font) 'text-faint font))
+          ;; only the rows in view
+          (let loop ([r (max 0 (- (exact (floor (/ dy lh))) 1))])
+            (let ([ry (- (+ ty (* r lh)) dy)] [rx (- tx dx)])
+              (when (and (< r (edit-layout-count lay)) (< (+ ry 1) (+ ty th)))
+                ;; a row a float's width in shows only its descenders' tips
+                (when (> (+ ry lh) (+ ty 1))
+                  (let-values ([(s e) (edit-row lay r)])
+                    (when (and (< lo hi) (< lo (max e (+ s 1))) (> hi s))
+                      (let* ([x0 (measure (substring text s (max s lo)))]
+                             [x1 (if (> hi e)
+                                     (+ (measure (substring text s e)) 4)
+                                     (measure (substring text s hi)))])
+                        (if (eq? (theme 'text-selection) 'underline)
+                            (fill-box (+ rx x0) (+ ry lh -1) (- x1 x0) 1
+                                      'text)
+                            (fill-box (+ rx x0) ry (- x1 x0) lh
+                                      'selection))))
+                    ;; unfocused at its start, the last row in view says
+                    ;; that more follows
+                    (draw-text rx ry
+                               (if (and (not focused?) (= dy 0)
+                                        (or (< (+ r 1)
+                                               (edit-layout-count lay))
+                                            (not (edit-layout-done? lay)))
+                                        (> (+ ry lh lh) (+ ty th 1)))
+                                   (text-fit
+                                    (string-append
+                                     (substring text s (edit-row-last lay r))
+                                     "…")
+                                    tw font)
+                                   (substring text s e))
+                               'text font)))
+                (loop (+ r 1))))))
+      (when (memq 'caret flags)
+        (let ([cx (+ (- tx dx) (edit-caret-x lay caret))]
+              [cy (- (+ ty (* lh (edit-row-at lay caret))) dy)])
+          (if (eq? (theme 'text-caret) 'block)
+              (px-invert cx cy (ui-caret-block-width text caret font) lh)
+              (fill-box (- cx 1) cy 2 lh 'accent)))))))
 
 ;; How the text's caret and selection show: a bar and a fill, or as the
 ;; Lisp machines showed them, a block in reverse video over the character
@@ -1809,8 +1810,7 @@
       (ui-state-clip-set! ui (call-with-values
                                (lambda () (ui-cut x y w h clip))
                                list))
-      (let* ([bottom (ui-call-with-pixel-clip x y w h
-                                              (lambda () (body (- y off))))]
+      (let* ([bottom (with-clip (x y w h) (body (- y off)))]
              [content (- bottom (- y off))]
              [most (max 0 (- content h))]
              [now (car (ui-memo ui id '(0 . 0)))]
@@ -1865,13 +1865,6 @@
                 (hashtable-set! (window-props win) 'scrollbar
                                 (list bx by bw bh (ui-flags ui bid)
                                       (/ new content) (/ h content)))))))))))
-
-;; thunk drawn clipped to x y w h, its edges on whole device pixels, so
-;; that what it cuts ends in a crisp edge at any scale: every scroll
-;; view's clip, the kit's and an app's own.
-(define (ui-call-with-pixel-clip x y w h thunk)
-  (let-values ([(x0 y0) (px-snap x y)] [(x1 y1) (px-snap (+ x w) (+ y h))])
-    (call-with-clip x0 y0 (- x1 x0) (- y1 y0) thunk)))
 
 ;; A scroll bar at x y w h, for a view h high showing content from off on:
 ;; pressing it, on its thumb or beside it, and dragging set the offset by
@@ -1959,10 +1952,11 @@
 
 (define-part (ui-draw-scrollbar x y w h flags start size)
   (let ([t (cdr (assq 'thumb (ui-scrollbar-areas x y w h start size)))])
-    (fill-round-rect (+ x 2) (+ (cadr t) 2) (- w 5) (- (cadddr t) 4) 2.5
-                     (alpha 'text (if (or (memq 'hover flags)
-                                          (memq 'pressed flags))
-                                      0.4 0.2)))))
+    (fill-box (+ x 2) (+ (cadr t) 2) (- w 5) (- (cadddr t) 4)
+              (alpha 'text (if (or (memq 'hover flags) (memq 'pressed flags))
+                               0.4
+                               0.2))
+              2.5)))
 
 ;;; ------------------------------------------------------------------
 ;;; what a window's app says of it, each style showing it as it will
@@ -2068,7 +2062,7 @@
 ;; own edges show it.
 (define-part (ui-draw-split x y h flags)
   (when (or (memq 'hover flags) (memq 'pressed flags))
-    (px-fill (- x 1) y 2 h 'accent)))
+    (fill-box (- x 1) y 2 h 'accent)))
 
 ;;; ----------------------------------------------------------------- side panel
 ;;; What an app shows beside its work, for those who want it: controls,
@@ -2367,7 +2361,7 @@
     (ui-state-clip-set! ui (call-with-values
                              (lambda () (ui-cut x y w h clip))
                              list))
-    (ui-call-with-pixel-clip x y w h thunk)
+    (with-clip (x y w h) (thunk))
     (ui-state-clip-set! ui clip)))
 
 (theme-default! 'table-header-height
@@ -2396,7 +2390,7 @@
          [color (if (or dir (memq 'hover flags)) 'text 'text-faint)]
          [end (draw-text (+ x (ui-table-cell-inset)) (+ y (/ (- h sh) 2)) s
                          color 'ui-small)])
-    (fill-rect x (- (+ y h) 1) w 1 'window-border)
+    (fill-box x (- (+ y h) 1) w 1 'window-border)
     (when dir
       (ui-draw-glyph (+ end 4) (+ y (/ (- h g) 2)) g g '(hover) dir))))
 
@@ -2405,13 +2399,13 @@
 ;; stronger under the pointer or while dragged (flags hover, pressed).
 (define-part (ui-draw-table-divider x y h flags)
   (if (or (memq 'hover flags) (memq 'pressed flags))
-      (px-fill (- x 1) y 2 h 'accent)
-      (px-fill x (+ y 5) 1 (- h 10) 'window-border)))
+      (fill-box (- x 1) y 2 h 'accent)
+      (fill-box x (+ y 5) 1 (- h 10) 'window-border)))
 
 (define-part (ui-draw-table-row x y w h flags)
-  (cond [(memq 'selected flags) (fill-rect x y w h 'selection)]
-        [(memq 'hover flags) (fill-rect x y w h 'bg-2)])
-  (fill-rect x (- (+ y h) 1) w 1 (alpha 'window-border 0.6)))
+  (cond [(memq 'selected flags) (fill-box x y w h 'selection)]
+        [(memq 'hover flags) (fill-box x y w h 'bg-2)])
+  (fill-box x (- (+ y h) 1) w 1 (alpha 'window-border 0.6)))
 
 ;;; ------------------------------------------------------------------ tree
 ;;; A tree of the app's values (nodes): its roots and a children
@@ -2661,7 +2655,7 @@
 ;; or a part of it, x y w h: shaded, unless it is selected.
 (define-part (ui-draw-dim x y w h flags)
   (when (and (memq 'dim flags) (not (memq 'selected flags)))
-    (fill-rect x y w h (alpha 'bg-0 0.6))))
+    (fill-box x y w h (alpha 'bg-0 0.6))))
 
 ;;; ------------------------------------------------------------------ chips
 
@@ -2671,7 +2665,7 @@
   (let* ([sh (font-line-height 'ui-small)] [r (/ h 2)]
          [g (ui-small-glyph-size)] [removable? (memq 'removable flags)]
          [hue (app-color (string->symbol label))])
-    (fill-round-rect x y w h r (alpha hue 0.18))
+    (fill-box x y w h (alpha hue 0.18) r)
     (draw-text (+ x 8) (+ y (/ (- h sh) 2))
                (text-fit label (- w 16 (if removable? (+ g 4) 0)) 'ui-small)
                'text 'ui-small)
@@ -2914,10 +2908,10 @@
 ;;; progress, tooltip
 
 (define-part (ui-draw-progress x y w h flags frac)
-  (fill-round-rect x y w h (/ h 2) 'bg-3)
+  (fill-box x y w h 'bg-3 (/ h 2))
   (when (> frac 0)
-    (fill-round-rect x y (max h (* w (min 1 frac))) h (/ h 2)
-                     (if (>= frac 1) 'green 'accent))))
+    (fill-box x y (max h (* w (min 1 frac))) h (if (>= frac 1) 'green 'accent)
+              (/ h 2))))
 
 (theme-default! 'progress-height
                 (theme-rule (max 4 (round (* (font-line-height 'ui) 0.4)))))
@@ -2961,23 +2955,22 @@
 ;; under the pointer), or #f; 'flagged, one of a bar's index, true for a
 ;; bar to flag at the chart's top (a step late, say). => the index of the
 ;; bar under the pointer, or #f
+;; The bar of n the pointer is over, by where the bars are, or #f.
+(define (ui-bar-chart-under ui areas n)
+  (let ([plot (cdr (assq 'plot areas))] [win (current-window)]
+        [mx (ui-state-mx ui)] [my (ui-state-my ui)])
+    (and win (eq? (window-hover win) 'content)
+         (point-in? mx my (car plot) (cadr plot) (caddr plot) (cadddr plot))
+         (let ([i (- n 1 (exact (floor (/ (- (+ (car plot) (caddr plot)) mx)
+                                          (cadr (assq 'bar areas))))))])
+           (and (<= 0 i) i)))))
+
 (define (ui-bar-chart ui id x y w h bars top rules marked on-press . opts)
   (let* ([n (length bars)] [areas (ui-bar-chart-areas x y w h n rules)]
          [plot (cdr (assq 'plot areas))] [win (current-window)]
          [tip-of (plist-ref opts 'tip #f)]
          [flagged? (plist-ref opts 'flagged (lambda (i) #f))]
-         [mx (ui-state-mx ui)] [my (ui-state-my ui)]
-         ;; the bar the pointer is over, by where the bars are
-         [under (and tip-of win (eq? (window-hover win) 'content)
-                     (point-in? mx my (car plot) (cadr plot) (caddr plot)
-                                (cadddr plot))
-                     (let ([bw (cadr (assq 'bar areas))])
-                       (let ([i (- n 1 (exact (floor
-                                               (/ (- (+ (car plot)
-                                                        (caddr plot))
-                                                     mx)
-                                                  bw))))])
-                         (and (<= 0 i) i))))])
+         [under (and tip-of (ui-bar-chart-under ui areas n))])
     (for-each (lambda (i)
                 (let-values ([(bx bw) (ui-bar-chart-bar areas n i)])
                   (when (>= bx (car plot))
@@ -3065,11 +3058,23 @@
     ;; the marks under the series, the share and the flags over them
     (for-each (lambda (c)
                 (let ([rs (hashtable-ref rects c '())])
-                  (when (pair? rs) (fill-rects rs c))))
+                  (for-each (lambda (r)
+                              (fill-box (car r) (cadr r) (caddr r) (cadddr r)
+                                        c))
+                            rs)))
               (append '(chart-mark) (reverse colors)
                       '(chart-share chart-flag)))
+    (ui-draw-bar-chart-rules x areas top rules)))
+
+;; A chart's reference lines, over its bars, and their labels in its scale.
+(define (ui-draw-bar-chart-rules x areas top rules)
+  (let* ([plot (cdr (assq 'plot areas))] [px (car plot)] [pw (caddr plot)]
+         [ph (cadddr plot)] [bottom (+ (cadr plot) ph)])
     (for-each (lambda (r)
-                (let ([ly (+ (- bottom (high (car r))) 0.5)])
+                (let ([ly (+ (- bottom (if (> top 0)
+                                           (div (* ph (min (car r) top)) top)
+                                           0))
+                             0.5)])
                   (draw-line px ly (+ px pw) ly 'chart-rule)
                   (draw-text (+ x 6) (- ly (/ (font-line-height 'ui-small) 2))
                              (cdr r) 'text-faint 'ui-small)))
@@ -3113,8 +3118,8 @@
                    (if (> (+ lx kw) end)
                        lx
                        (begin
-                         (fill-rect lx (+ y (/ (- h lh) 2) 2) (- lh 4) (- lh 4)
-                                    (car k))
+                         (fill-box lx (+ y (/ (- h lh) 2) 2) (- lh 4) (- lh 4)
+                                   (car k))
                          (draw-text (+ lx lh) (+ y (/ (- h lh) 2)) (cdr k)
                                     'text-dim 'ui-small)
                          (+ lx kw 12)))))
@@ -3141,12 +3146,14 @@
   (let* ([on? (lambda (f) (memq f flags))]
          [r (cond [(on? 'dialog) 10] [(on? 'tooltip) 5] [else 8])]
          [edge (cond [(on? 'menu) 12] [(on? 'toast) 10] [else 0])])
-    (draw-shadow x y w h r edge)   ; shadow
-    (fill-round-rect x y w h r (if (on? 'tooltip) (alpha 'panel 0.96) 'bg-2))
+    (draw-shadow x y w h r edge)
+    (fill-box x y w h (if (on? 'tooltip) (alpha 'panel 0.96) 'bg-2) r)
     (unless (on? 'tooltip)
-      (stroke-round-rect x y w h r (if (on? 'toast)
-                                       'window-border
-                                       'window-border-focus)))))
+      (stroke-box x y w h
+                  (if (on? 'toast)
+                      'window-border
+                      'window-border-focus)
+                  1 r))))
 
 ;; The entry chosen in a menu or a list; with outline (a menu's
 ;; menu-hover), a 1-pixel box, and pressed, filled: inverted. With hover,
@@ -3156,12 +3163,12 @@
 (define-part (ui-draw-highlight x y w h flags)
   (cond [(memq 'hover flags)
          (if (memq 'popup flags)
-             (stroke-round-rect x y w h 5 'text-faint)
-             (fill-round-rect x y w h 5 'bg-2))]
+             (stroke-box x y w h 'text-faint 1 5)
+             (fill-box x y w h 'bg-2 5))]
         [(not (memq 'outline flags))
-         (fill-round-rect x y w h 5 (alpha 'accent 0.22))]
-        [(memq 'pressed flags) (px-fill x y w h 'text)]
-        [else (px-ring x y w h 'text)]))
+         (fill-box x y w h (alpha 'accent 0.22) 5)]
+        [(memq 'pressed flags) (fill-box x y w h 'text)]
+        [else (stroke-box x y w h 'text)]))
 
 ;; The chosen entry or row again, after what is drawn on it: nothing
 ;; here; a style that inverts what is chosen does it now (Genera's
@@ -3176,11 +3183,11 @@
 ;; dragged), hover.
 (define-part (ui-draw-card x y w h flags)
   (let ([selected? (memq 'selected flags)])
-    (stroke-round-rect x y w h 8
-                       (cond [(or selected? (memq 'floating flags)) 'accent]
-                             [(memq 'hover flags) 'text-faint]
-                             [else 'window-border])
-                       (if selected? 2 1))))
+    (stroke-box x y w h
+                (cond [(or selected? (memq 'floating flags)) 'accent]
+                      [(memq 'hover flags) 'text-faint]
+                      [else 'window-border])
+                (if selected? 2 1) 8)))
 
 ;; A tooltip's lines: wrapped at 280, at most 6.
 ;; A tooltip's lines: its text wrapped at 280, each of its own lines (a
@@ -3234,9 +3241,9 @@
 (define-part (ui-draw-dropdown x y w h flags label)
   (let ([lh (font-line-height 'ui)] [hot? (memq 'hover flags)]
         [set? (memq 'set flags)] [s (+ (ui-glyph-size) 2)])
-    (fill-round-rect x y w h 6 (if hot? 'bg-3 'bg-2))
-    (stroke-round-rect x y w h 6
-                       (if (or set? (memq 'open flags)) 'accent 'window-border))
+    (fill-box x y w h (if hot? 'bg-3 'bg-2) 6)
+    (stroke-box x y w h
+                (if (or set? (memq 'open flags)) 'accent 'window-border) 1 6)
     (draw-text (+ x 10) (+ y (/ (- h lh) 2)) (text-fit label (- w 22 s) 'ui)
                (cond [set? 'accent] [(memq 'placeholder flags) 'text-faint]
                      [hot? 'text] [else 'text-dim])
@@ -3392,12 +3399,12 @@
 (define-part (ui-draw-day x y w h flags label)
   (let* ([on? (lambda (f) (memq f flags))] [s (- (min w h) 4)]
          [cx (+ x (/ (- w s) 2))] [cy (+ y (/ (- h s) 2))])
-    (cond [(on? 'selected) (fill-round-rect cx cy s s 6 'accent)]
-          [(on? 'hover) (fill-round-rect cx cy s s 6 'bg-3)])
+    (cond [(on? 'selected) (fill-box cx cy s s 'accent 6)]
+          [(on? 'hover) (fill-box cx cy s s 'bg-3 6)])
     (when (on? 'today)
-      (stroke-round-rect cx cy s s 6 (if (on? 'selected) 'text 'accent) 1.5))
-    (when (on? 'cursor) (stroke-round-rect (- cx 1) (- cy 1) (+ s 2) (+ s 2) 7
-                                           'text 1))
+      (stroke-box cx cy s s (if (on? 'selected) 'text 'accent) 1.5 6))
+    (when (on? 'cursor)
+      (stroke-box (- cx 1) (- cy 1) (+ s 2) (+ s 2) 'text 1 7))
     (text-draw-centered x y w h label
                         (cond [(on? 'selected) (color-readable-on 'accent)]
                               [(on? 'outside) 'text-faint]
@@ -3593,7 +3600,7 @@
                     (loop (cdr ws) (+ bx (car ws) gap))))))))
 
 (define-part (ui-draw-scrim x y w h flags)
-  (fill-rect x y w h (alpha 'bg-0 0.55)))
+  (fill-box x y w h (alpha 'bg-0 0.55)))
 
 (define-part (ui-draw-dialog x y w h flags title message)
   (let* ([areas (ui-dialog-areas x y w h '())] [t (cdr (assq 'title areas))]

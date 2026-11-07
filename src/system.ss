@@ -12,17 +12,24 @@
 ;; The pacer: the world's ticks come from it, exactly one a period while
 ;; a tick's work and its frame fit in one. Its rate: screen (a tick a
 ;; refresh of the screen's) or ticks a second; when the next tick is due
-;; (now-ns); the ticks so far, and when the last began (now-ms); and how
-;; long the last frame took to draw, ns.
+;; (now-ns); the ticks so far, and when the last began (now-ms).
 (defvar *pacer-rate* 'screen)
 (defvar *pacer-due* 0)
 (defvar *pacer-ticks* 0)
 (defvar *pacer-tick-ms* 0)
-(defvar *pacer-render* 0)
 (defvar *pacer-waits* 0)   ; this step's waits, ns
 (defvar *pacer-work* 0)    ; the work of the steps since the last tick, ns
 (defvar *pacer-busy* 0)    ; the last tick's work, ns
 (defvar *pacer-peak* 0)    ; the most of any tick since it was last asked, ns
+(defvar *pacer-began* 0)   ; when the last tick began, ns
+;; the last frame had to wait for its image; the next one isn't drawn; the
+;; tick that last happened at; how many times the screen re-timed the pacer,
+;; and how many frames that left out
+(defvar *pacer-held?* #f)
+(defvar *pacer-skip?* #f)
+(defvar *pacer-skipped-at* 0)
+(defvar *pacer-retimed* 0)
+(defvar *pacer-skipped* 0)
 ;; this step is paced and came between ticks: the profiler sums it into
 ;; the next tick
 (defvar *pacer-between?* #f)
@@ -78,9 +85,7 @@
     [(key-down) (apply wm-key-down (cdr ev))]
     [(text) (wm-text (cadr ev))]
     [(resize) (wm-screen-resized!)]
-    [(expose) (set! *present-only?* #t)]   ; the texture still holds the screen
-    [(render-reset) (invalidate-screen!)]   ; the texture's pixels were lost
-    [(device-reset) (host-recreate-texture!) (invalidate-screen!)]
+    [(expose) (request-frame!)]
     [(mouse-leave) (set! *hover* #f) (request-frame!)]
     [(quit) (quit!)]))
 
@@ -118,13 +123,11 @@
     (pacer-step-done! (- (now-ns) start))))
 
 ;; One turn of the world: events, mail (post-main!), timers, a tick,
-;; processes, and a frame if something asked for one: input's at once
-;; while the screen's wait paces frames, else at the next tick. Paced (the
+;; processes, and on a tick a frame if something asked for one. Paced (the
 ;; main loop's), it ticks only when the pacer's tick is due, and its
-;; processes run until the frame must be drawn for the next tick (what it
-;; would have waited for the screen in present); else (a test's) it always
-;; ticks, and its processes run 10 ms. The profiler sums the steps between
-;; ticks into the next tick.
+;; processes run until the frame must be drawn for the next tick; else (a
+;; test's) it always ticks, and its processes run 10 ms. The profiler sums
+;; the steps between ticks into the next tick.
 (define (schevana-turn! wait-ms paced)
   (with-profile-span 'step #f
     (let* ([hold? (reload-holding?)]
@@ -148,15 +151,16 @@
                     (and (or (not now) (>= now (pacer-start)))
                          (begin (pacer-tick! now) #t)))))])
       (set! *pacer-between?* (and (pair? paced) (not ticked?)))
+      (when ticked? (collector-tick!))
       (safely 'procs
               (lambda () (run-procs! (if (null? paced) 10 (pacer-procs-ms)))))
-      ;; frames are paced by the screen's wait, or without it by the ticks
-      (unless (or (reload-holding?) (not (or ticked? *host-vsync?*)))
-        (let ([damage *dirty*] [t0 (and (pair? paced) (now-ns))])
-          (set! *dirty* #f)
-          (safely 'render (lambda () (render-frame! damage)))
-          (when (and t0 damage) (set! *pacer-render* (- (now-ns) t0))))
-        (safely 'present host-present-damage!)))))
+      ;; a frame a tick at most
+      (when (and ticked? (not (reload-holding?)))
+        (if (and *pacer-skip?* (pair? paced))
+            (pacer-frame-skipped!)
+            (let ([damage *dirty*])
+              (set! *dirty* #f)
+              (safely 'render (lambda () (render-frame! damage)))))))))
 
 ;;; ------------------------------------------------------------------ pacer
 
@@ -215,18 +219,57 @@
 ;; too long), a period from now: the world slows down, no tick skipped.
 (define (pacer-tick! now)
   (when now
+    (set! *pacer-began* now)
     (let ([next (+ *pacer-due* (pacer-period))])
       (set! *pacer-due* (if (> next now) next (+ now (pacer-period))))))
   (set! *pacer-ticks* (+ *pacer-ticks* 1))
   (set! *pacer-tick-ms* (now-ms))
   (safely 'tick wm-tick!))
 
+;;; The screen takes a frame only up to a cutoff before each refresh; a frame
+;;; a little past it shows a refresh late, and the screen shows the last one
+;;; again. The pacer can't see that cutoff, but when main has waited for an
+;;; image, the wait ends about there. So it re-times itself then, to send
+;;; each frame half a period from that moment, as far as it can be from the
+;;; next cutoff on either side. The screen's own rate may differ from the one
+;;; it reports by a little, and the pacer drifts until it's held again. A wait
+;;; far longer than a frame isn't this: the screen isn't showing the window.
+
+(define pacer-hold-least 2000000)   ; ns: shorter than this is no wait
+(define pacer-skip-every 16)        ; ticks: at most one frame left out
+
+;; The screen held main for its next image from t until now. Held again
+;; right after that, a frame more is waiting than the screen will show: the
+;; next isn't drawn, and it shows what's waiting while the world ticks on.
+(define (pacer-image-waited! t)
+  (let* ([now (now-ns)] [held (- now t)] [period (pacer-period)])
+    (if (and (eq? *pacer-rate* 'screen)
+             (>= held pacer-hold-least)
+             (< held (* 3 period)))
+        (begin
+          ;; what the tick takes to get here is before its frame goes
+          (set! *pacer-due*
+            (+ now 2000000
+               (mod (- (quotient period 2) (- t *pacer-began*)) period)))
+          (set! *pacer-retimed* (+ *pacer-retimed* 1))
+          (when (and *pacer-held?*
+                     (> (- *pacer-ticks* *pacer-skipped-at*) pacer-skip-every))
+            (set! *pacer-skip?* #t))
+          (set! *pacer-held?* #t))
+        (set! *pacer-held?* #f))))
+
+(define (pacer-frame-skipped!)
+  (set! *pacer-skip?* #f)
+  (set! *pacer-held?* #f)
+  (set! *pacer-skipped-at* *pacer-ticks*)
+  (set! *pacer-skipped* (+ *pacer-skipped* 1)))
+
 ;; How long processes may run: until the next tick may begin, less what
 ;; the last frame took to draw, at most 10 ms, and at least 1 ms, so that
 ;; they run however full the frames are (that 1 ms is a frame's work too).
 (define (pacer-procs-ms)
-  (max 1 (min 10 (quotient (- (pacer-start) *pacer-render* (now-ns))
-                           1000000))))
+  (max 1 (min 10 (exact (floor (- (/ (- (pacer-start) (now-ns)) 1e6)
+                                  *frame-ms*))))))
 
 ;; How long a paced step may wait for host events (input ends the wait at
 ;; once): until the next tick may begin, or the first timer's time; not
@@ -285,7 +328,65 @@
 ;; (schevana-boot! 'sdl 1280 800 #t) starts full screen.
 (define (schevana-boot! mode w h . fullscreen?)
   (apply host-init! mode w h fullscreen?)
-  (invalidate!))
+  (invalidate!)
+  (collector-settle!))
+
+;;; ------------------------------------------------------------------ collector
+;;; A pause is what survived since the last one, whatever the heap holds:
+;;; whoever asks, only the young generation is collected, and the world
+;;; waits in the oldest. Older ones are collected when main decides, while
+;;; nobody is typing or, past a limit on their growth, anyway.
+
+(define collector-young-quiet (* 8 1024 1024))
+(define collector-young-limit (* 64 1024 1024))
+(define collector-old-quiet (* 64 1024 1024))
+(define collector-old-limit (* 512 1024 1024))
+
+;; What the next rendezvous collects, (generation . target); #f, the young.
+(defvar *collector-pass* #f)
+(defvar *collector-check-ms* 0)
+(defvar *collector-input-ms* 0)
+;; generations 2 and 3 when last collected
+(defvar *collector-old-kept* 0)
+
+(define (collector-collect!)
+  (let ([pass *collector-pass*])
+    (set! *collector-pass* #f)
+    (if pass (collect (car pass) (cdr pass)) (collect 0 1))))
+
+(defvar *collector-handler*
+  (let ([handler (lambda () (collector-collect!))])
+    (collect-trip-bytes (* 2 1024 1024))
+    (collect-request-handler handler)
+    handler))
+
+(define (collector-pass! generation target)
+  (set! *collector-pass* (cons generation target))
+  (collect-rendezvous))
+
+(define (collector-old) (+ (bytes-allocated 2) (bytes-allocated 3)))
+
+;; The world into the oldest generation, at boot and after a reload. Not
+;; static: each reload would then leak the world it replaced.
+(define (collector-settle!)
+  (collector-pass! 4 4)
+  (set! *collector-old-kept* 0))
+
+;; On a tick: twice a second, an older generation if it has grown enough.
+(define (collector-tick!)
+  (let ([now (now-ms)])
+    (when *input-step?* (set! *collector-input-ms* now))
+    (when (>= now *collector-check-ms*)
+      (set! *collector-check-ms* (+ now 500))
+      (let ([quiet? (>= (- now *collector-input-ms*) 1000)])
+        (cond
+          [(>= (- (collector-old) *collector-old-kept*)
+               (if quiet? collector-old-quiet collector-old-limit))
+           (collector-pass! 3 3)
+           (set! *collector-old-kept* (collector-old))]
+          [(>= (bytes-allocated 1)
+               (if quiet? collector-young-quiet collector-young-limit))
+           (collector-pass! 1 2)])))))
 
 ;;; ------------------------------------------------------------------ sources
 ;;; The core is load.ss's list. After it come the folders, one definition
@@ -416,11 +517,8 @@
     (set! *schevana-sources* files)
     (load-sources! files))
   (invalidate!)
+  (collector-settle!)
   (notify "Sources reloaded" 'green))
-
-;; Loading this file (at boot, or in a reload) starts the renderer's
-;; offscreen surfaces afresh; caches make them again when needed.
-(free-owned-surfaces!)
 
 ;; load.ss loads the core before this file can keep its texts: kept now,
 ;; moments after (a reload keeps them as it loads them).

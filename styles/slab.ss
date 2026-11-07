@@ -45,20 +45,16 @@
          '(minimize maximize close) '(0 1 2))))
 
 ;; What shows of a slab o below and right of the box x y w h. Slab's
-;; boxes are px-fill's, every edge on a device pixel, so that every line
+;; boxes are fill-box's, every edge on a device pixel, so that every line
 ;; is crisp at any scale, in the picker's half-size miniature too.
 (define (slab-under x y w h o color)
-  (px-fill (+ x w) (+ y o) o h color)
-  (px-fill (+ x o) (+ y h) (- w o) o color))
+  (fill-box (+ x w) (+ y o) o h color)
+  (fill-box (+ x o) (+ y h) (- w o) o color))
 
-;; The title's y, its capitals centered on cy. The cap height is measured
-;; on *cr* at the scale it is drawn (hinting makes it 9 pixels at 100%
-;; and 10 at 200%), and the baseline goes on the nearest device pixel,
-;; the higher one when two are as near.
+;; The title's y, its capitals centered on cy.
 (define (slab-title-y cy)
   (let-values ([(l top w h) (text-ink "H" 'title)])
-    (- (px-baseline (- cy (/ top 2)) (lambda (v) (ceiling (- v 1/2))))
-       (font-ascent 'title))))
+    (- (- cy (/ top 2)) (font-ascent 'title))))
 
 ;; ×, −, a square, or (to restore) a square on its slab, 2a wide around
 ;; the middle (cx, cy) of a key, on the key's face. The × reaches a
@@ -70,13 +66,13 @@
                  (ui-draw-glyph (- cx e) (- cy e) (* 2 e) (* 2 e)
                                 (list (cons 'ink ink) (cons 'width t))
                                 'close))]
-      [(minimize) (px-fill (- cx a) (- cy (/ t 2)) (* 2 a) t ink)]
+      [(minimize) (fill-box (- cx a) (- cy (/ t 2)) (* 2 a) t ink)]
       [else
        (let* ([d (if (maximized? win) (/ t 2) 0)]
               [x (- cx a d)] [y (- cy a d)] [s (* 2 a)])
          (when (maximized? win) (slab-under x y s s t ink))
-         (px-fill x y s s ink)
-         (px-fill (+ x t) (+ y t) (- s t t) (- s t t) face))])))
+         (fill-box x y s s ink)
+         (fill-box (+ x t) (+ y t) (- s t t) (- s t t) face))])))
 
 (define (slab-draw-key win kind kx ky ink under hover pressed)
   (let* ([k (slab-key)] [t slab-line]
@@ -87,8 +83,8 @@
                      [else 'button-max])]
          [kx (if down? (+ kx t) kx)] [ky (if down? (+ ky t) ky)])
     (unless down? (slab-under kx ky k k t under))
-    (px-fill kx ky k k ink)
-    (px-fill (+ kx t) (+ ky t) (- k t t) (- k t t) face)
+    (fill-box kx ky k k ink)
+    (fill-box (+ kx t) (+ ky t) (- k t t) (- k t t) face)
     (slab-glyph win kind (+ kx (/ k 2)) (+ ky (/ k 2)) (round (* 2/9 k))
                 (if hot? (color-readable-on face) ink) face)))
 
@@ -111,16 +107,15 @@
          [title (text-fit (window-title win)
                           (- (cadar buttons) t pad pad) 'title)])
     (unless max? (slab-under x y cw ch o under))
-    (px-fill x y cw ch ink)
-    (px-fill bx (+ y t) bw b (if focused? 'title-bg-focus 'title-bg))
-    (call-with-clip bx (+ y t) bw b
-      (lambda ()
-        (draw-text (+ bx pad) (slab-title-y (+ y t (/ b 2))) title
-                   (if focused? 'title-text 'title-text-dim) 'title)
-        (for-each (lambda (k)
-                    (slab-draw-key win (car k) (+ x (cadr k)) ky ink under
-                                   hover pressed))
-                  buttons)))))
+    (fill-box x y cw ch ink)
+    (fill-box bx (+ y t) bw b (if focused? 'title-bg-focus 'title-bg))
+    (with-clip (bx (+ y t) bw b)
+      (draw-text (+ bx pad) (slab-title-y (+ y t (/ b 2))) title
+                 (if focused? 'title-text 'title-text-dim) 'title)
+      (for-each (lambda (k)
+                  (slab-draw-key win (car k) (+ x (cadr k)) ky ink under
+                                 hover pressed))
+                buttons))))
 
 (define-style slab "Slab"
   ;; square, and so is everything drawn in it (rrect-path!); every common

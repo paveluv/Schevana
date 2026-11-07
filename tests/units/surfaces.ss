@@ -8,7 +8,7 @@
 (let* ([ss *surfaces*] [strips *strips*] [keys 0]
        [w (open-window "Alone" 'size '(200 . 100) 'pos '(300 . 200)
                        'draw (lambda (win cw ch)
-                               (fill-rect 0 0 cw ch #x336699))
+                               (fill-box 0 0 cw ch #x336699))
                        'key (lambda (win key mods) (set! keys (+ keys 1))))])
   (set! *surfaces* '())
   (set! *strips* '())
@@ -44,7 +44,7 @@
 (let* ([pressed '()]
        [w (open-window "Beside" 'size '(200 . 100) 'pos '(300 . 200))])
   (define-surface dock 15
-    'draw (lambda () (fill-rect 0 0 64 (screen-h) #xcc3300))
+    'draw (lambda () (fill-box 0 0 64 (screen-h) #xcc3300))
     'box (lambda () (values 0 0 64 (screen-h)))
     'at (lambda (x y) (and (< x 64) 'dock))
     'mouse (lambda (kind what x y button clicks)

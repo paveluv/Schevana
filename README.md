@@ -7,8 +7,9 @@ entirely in Chez Scheme. Every window, color, key binding, status-bar segment
 and running process is a live Scheme value. You can inspect it, redefine it and
 break it from a REPL that runs inside the world it changes.
 
-The only C code involved is SDL3 (host window and input) and Cairo (2D
-drawing), both called through Chez's FFI. There is no build step: the whole
+The only C code involved is SDL3 (the host window, input and the GPU),
+FreeType and fontconfig (fonts), all called through Chez's FFI. There is no
+build step: the whole
 world compiles from source in about 0.8 s at startup, and again at each
 `(reload!)`.
 
@@ -23,16 +24,21 @@ window composition.
 
 ## Running
 
-Requirements: Chez Scheme 10, SDL 3.2 or later, and `libcairo2` (usually
-installed already on a Linux desktop). On Debian 13, SDL3 is `sudo apt
-install libsdl3-0`. SDL chooses between Wayland and X11 by itself;
+Requirements: Chez Scheme 10, SDL 3.2 or later, FreeType and fontconfig
+(usually installed already on a Linux desktop), and a Vulkan driver. On
+Debian 13, SDL3 is `sudo apt install libsdl3-0`, and `mesa-vulkan-drivers`
+holds lavapipe, the Vulkan driver on the CPU that the tests use and that takes
+over when no GPU can open. SDL chooses between Wayland and X11 by itself;
 `SDL_VIDEO_DRIVER=x11 ./schevana` (or `wayland`) chooses for it.
 
-On a Mac, install all three from [Homebrew](https://brew.sh):
+On a Mac, install them from [Homebrew](https://brew.sh):
 
 ```bash
-brew install chezscheme sdl3 cairo
+brew install chezscheme sdl3 freetype fontconfig
 ```
+
+The Mac still waits for its shader back end (Metal's): nothing here rules it
+out.
 
 Homebrew's Chez Scheme is the command `chez`, not `scheme`: `./schevana`
 runs whichever of the two it finds, and finds Homebrew's libraries in
@@ -203,6 +209,7 @@ afterwards; `(only …)` or `(prefix … acme:)` keep them apart.
 (profile-on! #f)                            ; the profiler off (on at boot)
 (profile-history! 60 30)                   ; a minute of ticks, 30 of seconds
 (profile-totals (profile-seconds))         ; what each window, ... spent
+(profile-flag-report)                      ; every late tick, and why
 (tasks)                                    ; a task manager; tasks are data
 (add-task! "Fix the menu" 'priority 'high 'tags '("ui"))   ; shows at once
 (set-task! "Fix the" 'status 'review)      ; by title, id (27) or "TASK-27"
@@ -259,8 +266,7 @@ The Ticks tab has three parts:
 - **Ticks:** a bar a tick, all of its time since the last, stacked by
   phase: events, timers, processes, ticks, render, present, the
   collector, and the two waits, for input (the steps' wait for host
-  events) and for the screen (presenting a frame with vsync on), in
-  muted colors. A wait delays the next tick as much as work does, so
+  events) and for the screen, in muted colors. A wait delays the next tick as much as work does, so
   both count. The work is at the bottom, the phase that spent the most
   over the graph lowest and first in the legend, and the waits above
   it, so that a bar past the top loses a wait, never work. A line marks
@@ -271,8 +277,8 @@ The Ticks tab has three parts:
   refresh, a little before or after it, and one that missed a refresh
   waited for the next. All of it is whole ns and pixels, no float.
   Hover a bar for where its time went: its tick, how long it took and
-  whether it came late, its phases and its three largest consumers;
-  click it to pause there.
+  whether it came late and why, its phases and its three largest
+  consumers; click it to pause there.
 - **Consumers:** every window, surface (the desktop, the bars, the menu,
   the toasts) and process, and the collector, by milliseconds a second
   over the last 5 seconds, with the average and the longest a tick, the
@@ -294,6 +300,27 @@ is: every tick of the last 30 seconds (at most 100 a second of them)
 and each second's sums for the last 10 minutes, by default
 (`(profile-history! 30 10)`). With profiling off, the tab says how to
 turn it on.
+
+The **Flags** tab keeps every late tick (the last 1,024 of them) long
+after its bar has flowed past, the newest first: when it ended, what it
+took, what made it late, what the host said last before it and the ticks
+about it; `(profile-flag-report)` prints the same. What made it late is
+the biggest single thing in the tick that could have
+(`profile-tick-why`): a swapchain call the screen held main in, a wait
+for events past its period (asleep, or running in SDL), the collector or
+someone's work. When the screen held main for its next image, the last
+frame's fence says where the GPU stood: finished already, finishing
+during the wait, or not yet; so the GPU's work is told from the screen's
+hold, on any back end.
+
+A row's tooltip says all that's known of it: for each tick about it, how
+long it slept and worked, what each swapchain call held main for, where
+the GPU stood and when its frame went against the period; the host's
+events for the 10 seconds before it; its frame, the host window's state,
+the windows and processes, its memory, the machine's load and SDL's last
+error. `(profile-flag-log! path)` adds each flag to the end of a file as
+it comes, to outlive a run; a run from a checkout with a `.work` folder
+logs to `.work/flags.log`.
 
 The history is data, read in place: `(profile-ticks)` and
 `(profile-seconds)` give the ticks kept and the seconds done as seqs,
@@ -342,12 +369,12 @@ and the new definition takes the old one's place.
 (set-theme! 'palette 'dusk)                ; or click it in Settings
 (define-wallpaper stripes "Stripes"
   (lambda (x y w h top bottom)
-    (fill-rect x y w h top)
-    (do ([i 0 (+ i 24)]) ((>= i h)) (fill-rect x (+ y i) w 12 bottom))))
+    (fill-box x y w h top)
+    (do ([i 0 (+ i 24)]) ((>= i h)) (fill-box x (+ y i) w 12 bottom))))
 (set-theme! 'wallpaper 'stripes)
 (define (bare-insets win) (values 0 8 0 0))
 (define (bare-under win x y w h focused? hover pressed)
-  (fill-rect x y w 8 (if focused? 'accent 'bg-3)))
+  (fill-box x y w 8 (if focused? 'accent 'bg-3)))
 (define-style bare "Bare" 'frame-insets 'bare-insets 'frame-under 'bare-under)
 (set-style! 'bare)
 (define-style flat-mac "Flat Mac" 'parent 'mac 'corner-radius 0 'palette 'nord)
@@ -415,15 +442,19 @@ src/wm       window records, z-order, focus, hit testing, drag/resize,
              dispatch; the registries of surfaces and strips
 src/proc     processes + watchdog (Chez engines); notify, report-error!;
              the profiler's hook; worklets, what worker threads run
-src/host     SDL3 window ⇄ Scheme event lists, uploads   |  headless mode
+src/host     SDL3 window ⇄ Scheme event lists   |  headless mode
 src/gfx      immediate-mode drawing API, colors, stipples and gradients,
-             fonts and ink, operators, rotation, device pixels, layers,
-             raw pixels, PNG files; the two screen buffers
-src/shadows  window, menu and toast shadows (marked ;; shadow{ … } elsewhere)
+             what's clipped and turned, images and paints: all written as
+             records, the list a frame sends
+src/gpu      the GPU layer: the device, frames, images, buffers, compute,
+             in the world's terms, SDL's GPU names ending here
+src/shader   the shader language's compiler: one small tree, and SPIR-V
+src/font     fonts by fontconfig, glyphs by FreeType, the atlas, and measuring
+             from tables, with no device
 src/theme    the whole look: settings in layers, rules, palettes, styles,
              parts, the frame's parts; a hook that keeps each change
-src/ffi      the only file that knows about C (SDL3 + Cairo); only the
-             core uses it
+src/ffi      the only file that knows about C (SDL3, FreeType, fontconfig);
+             only the core uses it
 ```
 
 `src/` is the core, the explicit, ordered list in `load.ss`. Its last
@@ -446,7 +477,7 @@ them), and the **strips** they reserve at the screen's edges, which
 
 ```scheme
 (define-surface dock 15                      ; over the taskbar
-  'draw (lambda () (fill-rect 0 0 64 (screen-h) 'panel))
+  'draw (lambda () (fill-box 0 0 64 (screen-h) 'panel))
   'box (lambda () (values 0 0 64 (screen-h)))   ; what a frame redraws
   'at (lambda (x y) (and (< x 64) 'dock))       ; takes the points there
   'mouse (lambda (kind what x y button clicks) (notify "dock")))
@@ -479,7 +510,7 @@ Decisions worth keeping in mind for the real design:
   `worklet` like `lambda`) is compiled in an environment of its own:
   Scheme's pure core, fixnums, flonums, bytevectors, fxvectors, flvectors,
   boxes, the clock and the other worklets, and nothing of the world. One that names a
-  world procedure, SDL, Cairo, `eval`, a `#%` primitive or a local of the
+  world procedure, SDL, `eval`, a `#%` primitive or a local of the
   code around it, or sets a top-level name, is refused when it is
   defined, so a worklet touches only what it is handed, by construction;
   worklets call each other by name and see each other redefined, through
@@ -514,11 +545,11 @@ Decisions worth keeping in mind for the real design:
 - **Apps run in sandboxes.** An app's file that starts with
   `(app-requests window draw timers)` loads into `/apps/<name>`
   (`services/grant.ss`), on the confined base, holding of the world's
-  names only its bundles: titled lists ("Draw in its windows": `fill-rect`
+  names only its bundles: titled lists ("Draw in its windows": `fill-box`
   and 49 more). The tree's Boids, Clock and Life are approved by a table;
   Sketch, and every app of yours, asks the person, whose answers are kept in
   `~/.schevana.d/permissions.ss`. A bundle not allowed is there as stubs
-  that raise, naming it ("Sketch needs Draw in its windows (fill-rect):
+  that raise, naming it ("Sketch needs Draw in its windows (fill-box):
   denied"); a name in no bundle it requests is unbound. Its `define-app`
   registers that app alone, and what it defines stays in its sandbox
   (Boids' `boids-step` is no name of the world's): only `(clock)` at the world's
@@ -609,7 +640,7 @@ Decisions worth keeping in mind for the real design:
   the top bar's `ms/tick` is the most any tick took since it last looked,
   about a second, so that one spike shows. The bar's memory is the heap,
   then the process's resident memory where the system says it (Linux):
-  `43.0/175.3 MB`. That holds what Cairo and SDL keep outside the heap, which
+  `43.0/175.3 MB`. That holds what SDL and the drivers keep outside the heap, which
   neither reports. Monitor shows both.
 - **A pacer gives the ticks.** Every window's, surface's and toast's
   `'tick` runs exactly once a period, whether it draws or not, while a
@@ -626,6 +657,14 @@ Decisions worth keeping in mind for the real design:
   without that wait. With the focus, the wait paces frames, and input is
   handled and drawn as it comes, between ticks; without it, the ticks
   pace both: the loop sleeps until the next, and takes input then.
+  It also keeps frames off the screen's cutoff: a frame sent a little too
+  close to a refresh shows a refresh late, and the screen shows the last
+  one again. The pacer can't see that cutoff, but a wait for the screen's
+  next image ends about there, so it then re-times itself to send each
+  frame half a period later; if the next frame has to wait too, one is
+  left out, so that what's queued drains while the world ticks on.
+  `(inspect-pacer)` says how often. Between waits it runs on its own
+  clock, and can drift until the next one.
 - **Kernel vs user space via engines.** Each app handler runs in a Chez
   engine with a fuel budget (`safe-call`). An error or an infinite loop
   "crashes" only that window, which then shows the condition and can be
@@ -669,9 +708,10 @@ Decisions worth keeping in mind for the real design:
   plain data: the
   style, the scale, the Overrides and your changes per style; an older,
   flat file loads as the saved style's changes.
-- **Logical pixels.** All layout is in logical pixels; the canvas is
-  drawn `*scale*` times bigger with a single `cairo-scale`, so text and
-  shapes are rendered from outlines at full resolution. The scale follows
+- **Logical pixels.** All layout is in logical pixels, and a record holds
+  device pixels: what's drawn is `*scale*` times bigger, so text and shapes
+  are rendered from outlines at full resolution, and what a text measures
+  doesn't change with the scale. The scale follows
   the desktop (SDL's display scale for the window: the pixel ratio on
   macOS and Wayland, `Xft.dpi` under X11, which is how GNOME publishes
   200% and SDL reads once, as it starts), and the display's `scale` (a
@@ -733,9 +773,8 @@ Decisions worth keeping in mind for the real design:
   menu's entries go (`menu-align`: `left` or `center`), and whether the
   calendar steps by glyphs or by the words Previous and Next
   (`calendar-step-words`), and how wide a well's ring is, which a view
-  scrolling in it stops short of (`surface-well-ring`). A scroll view
-  clips on whole device pixels (`ui-call-with-pixel-clip`, which
-  Settings' own scrolling uses too), so what it cuts ends crisp at any
+  scrolling in it stops short of (`surface-well-ring`). A clip's edges,
+  like a box's, lie on whole device pixels, so what it cuts ends crisp at any
   scale. A
   container draws its inside in its place (`with-place`: a text box's
   `field`, a table's `list`, `dialog`, `tooltip`, `menu`, the bars'
@@ -750,16 +789,14 @@ Decisions worth keeping in mind for the real design:
   which the fill kit's `fill-gradient` and `fill-glow` are made of.
   `text-ink` measures what a string inks where it is drawn (capitals
   centered on a line), and a font made with `'crisp` is not
-  antialiased. What the styles once asked of Cairo themselves the core
-  gives: `call-with-operator` (`'difference`: reverse video, the bell's
-  flash; `'add`), `call-with-rotation` (Spine's title),
-  `call-with-device-pixels` and `device-transform` (where the device's
-  pixels lie: Curses draws on them), `stroke-round-rects` (outlines
-  stroked as one: Halo's glow), `draw-pixels` (raw pixels, which the
-  pixmap kit's `pixmap-draw` draws) and `write-image-png` (the app
-  icon's file). `kits/px.ss` draws on whole device pixels at any
-  scale, never antialiased: `px-fill`, `px-bevel` (Motif's corners or
-  the Mac's), `px-ring`, `px-bits` for small pictures, `px-text`,
+  antialiased. What the styles ask beyond a
+  box the core gives: `invert-box` (reverse video, the bell's flash; with a
+  pattern, inverted where it shows), `add-box`, `with-turn` (Spine's title),
+  `draw-scale` (how many device pixels a logical one is where we draw:
+  Curses draws in whole ones, under `with-scale`), `draw-pixels` (raw pixels,
+  which the pixmap kit's `pixmap-draw` draws) and `png-write-drawing` (the app
+  icon's file). `kits/px.ss` draws pictures of boxes: `px-bevel` (Motif's
+  corners or the Mac's), `px-bits` for small pictures,
   `px-invert` (reverse video: ink and paper swap, in any palette),
   `px-bitmap-text` (a bitmap font's text, the CADR's 5X5 among them)
   and `px-lozenge`. The
@@ -828,54 +865,49 @@ Decisions worth keeping in mind for the real design:
   bar 0 high is none; a style may make the taskbar another bar with its
   areas, drawing and tick (`taskbar-areas`, `draw-taskbar`,
   `taskbar-tick`).
-- **Every frame is drawn from scratch, where something changed.** The
-  canvas is the exact screen. A change says where it shows: input to a
-  window and `(invalidate! win)` ask for the window's extent (its frame
-  and what its style draws past it), and so does
-  `(invalidate! win x y w h)`, from when only part of a window was
-  redone; the hover for the window or bar it leaves and the one it
-  enters; moving or resizing a window for where it was and where it is;
-  the clock, once a second, for the top bar; `(invalidate!)` and the rest
-  of what the window manager or the desktop changes, the menus and toasts
-  included, for the whole screen. The next frame draws the wallpaper,
-  every window from the bottom up (each clipped to its extent, so nothing
-  it draws lies outside what it asks for), the panels, the menu and the
-  toasts again (`render-full-into!` in `src/wm.ss`), clipped to one
-  rectangle: the bounding box of what was asked for, grown until it holds
-  whole every window and bar it touches (cairo draws what a clip cuts a
-  little differently), or the whole screen while a menu or a toast shows.
-  A step that nothing asked a frame of draws, uploads and presents
-  nothing.
+- **A frame is a list of records, drawn whole.** Everything on the screen is
+  a list of flat records of 32 bytes, whole numbers, that the drawing
+  procedures write (`fill-box`, `draw-text`, ...); `with-clip`,
+  `with-translation`, `with-scale`, `with-turn` and `with-label` are forms,
+  with no closure a call. One shader on the GPU reads them, in one instanced
+  draw for a run of them that's alike. Coverage is by distance, a paint times
+  a geometry; glyphs come from an atlas on the GPU, and only they and what
+  must be saved keep pixels in main memory. A change asks for a frame:
+  input to a window, `(invalidate! win)`, the hover, the clock once a second,
+  the world's changes. The next tick's frame records the wallpaper, every
+  window from the bottom up (each clipped to its extent, so nothing it draws
+  lies outside it), the panels, the menu and the toasts (`record-world!` in
+  `src/wm.ss`), and sends the list: about 1 ms on main, and nothing waits for
+  the screen. A step that nothing asked a frame of draws nothing.
   Nothing is assumed about what a drawing procedure does inside its
   window, so redefining `draw-window`, a style's part or `draw-taskbar` at
-  the REPL changes the next frame: an evaluation asks for the whole screen
-  when it ends, and so does `(reload!)`. A window that changes by itself
-  over time says so with `(invalidate! win)`, as the Clock and Life do
-  when they tick; one whose change also shows outside it (its title, in
-  the bars) asks for the whole screen. The wallpaper is kept as a picture,
-  and it is a picture of its key: the screen's size and scale,
-  `draw-wallpaper` and the whole theme, whether changed by `set-theme!` or
-  behind its back. The next frame paints it again first when one of those
-  changes, and is the whole screen; nothing else does: a `draw-wallpaper`
-  that reads the clock shows a still picture.
-- **Drawing is single-threaded.** Drawing and the world's state stay on
+  the REPL changes the next frame: an evaluation asks for one when it ends,
+  and so does `(reload!)`. A window that changes by itself over time says so
+  with `(invalidate! win)`, as the Clock and Life do when they tick.
+- **A paint is a shader an app writes.** `define-paint` compiles when it's
+  expanded: its body runs for each pixel of a box and gives a color, and
+  `fill-shader` fills one, its arguments numbers, colors and GPU buffers
+  (`make-gpu-buffer`, `gpu-buffer-set!`), so what changes is a few numbers and
+  nothing is recorded again: Monitor's Ticks are one. `define-shader` is the
+  same language for compute. `kits/twin.ss` gives any shader as a Scheme
+  procedure, to call for one pixel at a REPL; the conformance test holds the
+  device and the twin together, whatever the driver. Life and Boids stay on
+  the crew's worklets for now, by choice.
+- **Drawing is single-threaded.** Recording and the world's state stay on
   the main thread; worker threads run only worklets and what a vat's sandbox
-  holds. A frame is drawn into a second screen buffer; then
-  each row of its rectangle is compared with the screen's, and only the
-  rows that changed are copied onto the screen and uploaded, each run of
-  them as one full-width rectangle. The other rows need no look: after
-  every frame the second buffer equals the screen, and a new canvas asks
-  for the whole screen. A frame that changes nothing uploads and
-  presents nothing. Monitor shows where each tick's time goes (above),
-  and the last frame's time (drawing it and comparing its rows) and the
-  rows it uploaded. A process may be
+  holds. Monitor shows where each tick's time goes (above). A process may be
   switched out at any call while frames go on, so typed in a REPL (or
-  called by a handler) `(render-frame!)` only asks for a frame, asking
-  for an area is atomic, and freeing the canvas or a cache of surfaces
-  runs with interrupts off: no frame sees it half done. Next on the
-  compositor plan: every window drawn into an image of its own when it
-  changes, and the images composed, on the CPU and then on the GPU, with
-  the worker threads drawing and composing where that is measured to help.
+  called by a handler) `(render-frame!)` only asks for a frame. Next: lists
+  showing lists (a window's own, moved without being drawn), then recording
+  off main.
+- **Pipeline shows all of this.** `(pipeline)` puts the way from a window's
+  draw to the screen on one screen, reading through `kits/inspect.ss`, plain
+  data that a REPL or a test can read too: the frame's list by who drew it,
+  each record decoded in draw order and a run of glyphs as its text, the
+  screen small with what's selected outlined, a press there listing what may
+  touch that pixel, a slider drawing the list as far as a record, and a bar a
+  frame. It looks 4 times a second while open; closed, what's left of it is
+  the core's few numbers a frame.
 - **The profiler hooks into the core.** `src/proc.ss` keeps one hook,
   `*profile-span*` (`#f`, or a pair of procedures, begin and end), and
   `with-profile-span`, in which five places run their work: the step
@@ -953,7 +985,7 @@ scheme --script tests/units.ss out
 This runs every file of `tests/units/`, a topic each, in a process of its
 own, so that none leans on what another left behind;
 `scheme --script tests/units.ss out life boids` runs those alone. Together
-they test the drawing layer piece by piece: the measuring context,
+they test the drawing layer piece by piece: measuring with no device,
 text cut to fit measuring no more of a long text than its width could
 show, cached shadows against the stacked ones, pixmaps, Life's
 generations against a plain reference (a tick's allocates under 8 KB), on
@@ -1007,18 +1039,14 @@ and what they are refused).
 scheme --script tests/frame.ss out
 ```
 
-This tests the renderer: once the frames asked for are drawn, the screen
-equals `render-full-into!` drawn directly, bit for bit, on several
-desktops, every window style, a menu and a toast, at 100, 125, 150, 200
-and 300%; a stand-in texture fed only the uploaded rows always equals
-the screen, and a frame that changes nothing uploads and presents
-nothing; every way of asking for an area (the clock's second, a window
-or part of it, a window under another, hover across windows and both
-bars, a window dragged and resized, another moved, a process asking for
-areas while the main loop asks for others, one switched out after each
-area it asks for) shows that frame at 100, 150 and 200%, the clock's
-second comparing and uploading only the top bar's rows, a lone window
-only its extent's; every style, and one that glows past its frame with
+This tests frames, on lavapipe, with no window but one offscreen for the
+swapchain's path: once the frames asked for are drawn, the screen is the
+world drawn into an image, bit for bit, on several desktops, every window
+style, a menu and a toast, at 100, 125, 150, 200 and 300%; with nothing
+asked for, no frame comes; every way the screen changes (the clock's second,
+a window, a window under another, hover across windows and both bars, a window
+dragged and resized, another moved, a process asking while the main loop
+draws) shows on that frame at 100, 150 and 200%; every style, and one that glows past its frame with
 and without its `'bleed`, moved, resized and hovered, shows the
 reference, and drawn unclipped each registered style keeps to its
 extent; with a stand-in window a boot, a resize or a rescale shows
@@ -1054,9 +1082,10 @@ defines, but the core's hooks, nothing reaches C, and only a world namespace
 shares the whole world, every file in a folder registers what it defines,
 under its own name (a kit's with its prefix, the desktop's plain), every
 style sets only settings that exist, in the kits, the services, the desktop
-layer, Tasks, Settings and Environments only the drawing procedures (parts,
+layer, Tasks, Settings, Environments and Pipeline only the drawing procedures
+(parts,
 `draw-…`, `ui-draw-…`, `complete-draw-…`, `tasks-draw-…`, `settings-draw-…`,
-`envs-draw-…`) draw or name a theme color, the edit kit never does, only
+`envs-draw-…`, `pipeline-draw-…`) draw or name a theme color, the edit kit never does, only
 styles call a part's built-in body, what an app in a sandbox defines stays
 there, a bundle names what the world has, each name in one bundle, and a
 tree app requests what the table approves.

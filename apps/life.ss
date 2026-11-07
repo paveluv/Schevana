@@ -90,14 +90,10 @@
 (define (draw-life-cells pixels cols rows cell ox oy)
   (pixmap-draw pixels ox oy (* cell cols) (* cell rows))
   (when (>= (* cell (screen-scale)) 5)
-    ;; columns and rows apart: crossing rects in one path take cairo's slow
-    ;; path under the window's rounded clip (5× slower)
-    (fill-rects (map (lambda (x) (list (+ ox (* x cell)) oy 1 (* cell rows)))
-                     (iota cols))
-                'bg-0)
-    (fill-rects (map (lambda (y) (list ox (+ oy (* y cell)) (* cell cols) 1))
-                     (iota rows))
-                'bg-0)))
+    (do ([x 0 (+ x 1)]) ((= x cols))
+      (fill-box (+ ox (* x cell)) oy 1 (* cell rows) 'bg-0))
+    (do ([y 0 (+ y 1)]) ((= y rows))
+      (fill-box ox (+ oy (* y cell)) (* cell cols) 1 'bg-0))))
 
 ;;; ------------------------------------------------------------------ controls
 
@@ -375,11 +371,11 @@
       (fit! w h)
       (palette!)
       ;; the margins around the grid (the grid covers the rest)
-      (fill-rect 0 0 w oy 'bg-0)
-      (fill-rect 0 oy ox (* cell rows) 'bg-0)
-      (fill-rect (+ ox (* cell cols)) oy (- w ox (* cell cols))
-                 (* cell rows) 'bg-0)
-      (fill-rect 0 (+ oy (* cell rows)) w (- h oy (* cell rows)) 'bg-0)
+      (fill-box 0 0 w oy 'bg-0)
+      (fill-box 0 oy ox (* cell rows) 'bg-0)
+      (fill-box (+ ox (* cell cols)) oy (- w ox (* cell cols))
+                (* cell rows) 'bg-0)
+      (fill-box 0 (+ oy (* cell rows)) w (- h oy (* cell rows)) 'bg-0)
       (let ([t0 (now-ns)])
         (draw-life-cells pixels cols rows cell ox oy)
         (set! draw-ns (+ draw-ns (- (now-ns) t0)))
@@ -393,7 +389,7 @@
     ;; place whether the panel shows or not.
     (define (draw-status w y bar)
       (let* ([bh (- bar 6)] [bw (+ bh 6)] [bx (- w bw 14)])
-        (fill-rect 0 y w bar 'bg-1)
+        (fill-box 0 y w bar 'bg-1)
         (draw-text 10 (+ y 5)
                    (text-fit (life-status-text generation running? cols rows
                                                shown-rate)

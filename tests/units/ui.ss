@@ -14,7 +14,7 @@
                                 opts)
                          (ui-side-panel-button ui 'p 7 (- h 20) 24 20 side)
                          (ui-end! ui w h)))])
-    (cairo-surface-destroy drawn)
+    (picture-free! drawn)
     (values rest panel)))
 
 (let ([win (open-window "Sides" 'size '(400 . 300))])
@@ -77,7 +77,7 @@
                                     (apply ui-side-panel ui 'p 0 0 400 280
                                            'right 100 80
                                            (lambda (x y w h)
-                                             (fill-rect x y w h #xff0000)
+                                             (fill-box x y w h #xff0000)
                                              (ui-area ui 'under x y w h
                                                       (lambda ()
                                                         (set! pressed
@@ -86,7 +86,7 @@
                                            opts)
                                     (ui-end! ui 400 300)))]
                              [p (pixel-at a 350 100)])
-                        (cairo-surface-destroy a)
+                        (picture-free! a)
                         p))]
              [beside (pixel)]
              [over (pixel 'floating #t)]
@@ -249,12 +249,12 @@
               [row (lambda (flags)
                      (image 300 30 1
                             (lambda ()
-                              (fill-rect 0 0 300 30 'bg-1)
+                              (fill-box 0 0 300 30 'bg-1)
                               (ui-draw-tree-row 0 0 300 30 flags 200 1))))]
               [cell (lambda (flags)
                       (image 300 30 1
                              (lambda ()
-                               (fill-rect 0 0 300 30 'bg-1)
+                               (fill-box 0 0 300 30 'bg-1)
                                (ui-draw-dim 0 0 cx 30 flags))))]
               [plain (row '(kids expanded))] [dim (row '(kids expanded dim))]
               [picked (row '(kids expanded selected))]

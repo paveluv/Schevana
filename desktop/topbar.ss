@@ -39,14 +39,14 @@
              [gap (max 11 (round (* 0.6 (font-line-height 'ui))))]
              [dot-w (text-width "·" 'ui)]
              [l (assq 'launcher areas)] [t (assq 'title areas)])
-        (fill-rect 0 0 w h (alpha 'panel 0.92))
+        (fill-box 0 0 w h (alpha 'panel 0.92))
         (draw-line 0 (- h 0.5) w (- h 0.5) (alpha 'panel-text 0.12))
         (when l
           (apply (lambda (x y lw lh)
                    (when (or (equal? *hover* '(surface topbar launcher))
                              (launcher-open?))
-                     (fill-round-rect (+ x 6) (+ y 4) (- lw 6) (- lh 8) 6
-                                      'panel-hover))
+                     (fill-box (+ x 6) (+ y 4) (- lw 6) (- lh 8) 'panel-hover
+                               6))
                    (draw-text (+ x 18) (+ y ty) "λ  Schevana" 'panel-accent
                               'ui-bold))
                  (cdr l)))

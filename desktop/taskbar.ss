@@ -41,7 +41,7 @@
     (lambda ()
       (let* ([w (screen-w)] [h (taskbar-height)] [y0 (- (screen-h) h)]
              [lh (font-line-height 'ui)])
-        (fill-rect 0 y0 w h (alpha 'panel 0.94))
+        (fill-box 0 y0 w h (alpha 'panel 0.94))
         (draw-line 0 (+ y0 0.5) w (+ y0 0.5) (alpha 'panel-text 0.12))
         (for-each
          (lambda (a)
@@ -55,13 +55,14 @@
                         [min? (not (visible? what))]
                         [color (app-color (window-app what))])
                     (when (or focused? hover?)
-                      (fill-round-rect x (+ y 5) bw (- h 10) 6
-                                       (if focused?
-                                           'panel-hover
-                                           (alpha 'panel-hover 0.6))))
+                      (fill-box x (+ y 5) bw (- h 10)
+                                (if focused?
+                                    'panel-hover
+                                    (alpha 'panel-hover 0.6))
+                                6))
                     (when focused?
-                      (fill-round-rect (+ x 12) (- (+ y h) 6) (- bw 24) 2 1
-                                       'panel-accent))
+                      (fill-box (+ x 12) (- (+ y h) 6) (- bw 24) 2
+                                'panel-accent 1))
                     (fill-circle (+ x 15) (+ y (/ h 2)) 4
                                  (if min? (alpha color 0.35) color))
                     (draw-text (+ x 27) (+ y (/ (- h lh) 2))

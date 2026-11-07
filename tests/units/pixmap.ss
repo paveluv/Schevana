@@ -93,8 +93,8 @@
                                           (pixel-at before x y)))
                                    (col (+ x 1)))))
                         (loop (+ y 1)))))])
-    (cairo-surface-destroy before)
-    (cairo-surface-destroy after)
+    (picture-free! before)
+    (picture-free! after)
     (canvas-create! 1280 800 *host-scale*)
     ok))
 

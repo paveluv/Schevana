@@ -84,24 +84,23 @@
                 [(ink) (if focused?
                            (color-readable-on 'accent)
                            (mix 'title-text-dim 'title-text 0.3))])
-    (window-shadow win x (+ y th) w (- h th) 0 focused?)   ; shadow
+    (window-shadow win x (+ y th) w (- h th) 0 focused?)
     ;; maximized, the tab stands on a strip, not on the windows behind
-    (when (maximized? win) (fill-rect x y w th 'title-bg))
-    (fill-rect x (+ y th) w lambda-rule tab)
-    (stroke-rect x (+ y th) w (- h th) tab)
-    (call-with-clip x y w h   ; a narrow window cuts its tab
-      (lambda ()
-        (fill-polygon (list (cons x y) (cons end y)
-                            (cons (+ end (* lambda-slant th)) (+ y th))
-                            (cons x (+ y th)))
-                      tab)
-        (lambda-draw-mark (+ x (lambda-pad)) (+ y (/ (- th s) 2)) s ink)
-        (draw-text (+ x tx) (+ y (/ (- th (font-line-height 'title)) 2))
-                   title ink 'title)
-        (for-each (lambda (kind i)
-                    (lambda-draw-button kind (+ x bx (* i bw)) y bw th
-                                        ink hover pressed))
-                  '(minimize maximize close) '(0 1 2))))))
+    (when (maximized? win) (fill-box x y w th 'title-bg))
+    (fill-box x (+ y th) w lambda-rule tab)
+    (stroke-box x (+ y th) w (- h th) tab)
+    (with-clip (x y w h)   ; a narrow window cuts its tab
+      (fill-polygon (list (cons x y) (cons end y)
+                          (cons (+ end (* lambda-slant th)) (+ y th))
+                          (cons x (+ y th)))
+                    tab)
+      (lambda-draw-mark (+ x (lambda-pad)) (+ y (/ (- th s) 2)) s ink)
+      (draw-text (+ x tx) (+ y (/ (- th (font-line-height 'title)) 2))
+                 title ink 'title)
+      (for-each (lambda (kind i)
+                  (lambda-draw-button kind (+ x bx (* i bw)) y bw th
+                                      ink hover pressed))
+                '(minimize maximize close) '(0 1 2)))))
 
 ;; The wheel on the tab rolls the window up into it (shades it) and down.
 (define-style lambda "Lambda"

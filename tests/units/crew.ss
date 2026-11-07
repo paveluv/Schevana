@@ -134,7 +134,7 @@
               [p (spawn "crew"
                         (lambda ()
                           (crew-for* 1 0 32 crew-test-count
-                                     (make-bytevector 32 0) 5000 ids)
+                                     (make-bytevector 32 0) 100000 ids)
                           (set! done #t)))])
          (let ([until (+ (real-time) 2000)])   ; at most 2 s
            (let loop ()

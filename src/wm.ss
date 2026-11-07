@@ -62,27 +62,18 @@
 
 ;;; ------------------------------------------------------------------
 ;;; invalidation
-;;; A change says where the screen may now look different. *dirty* holds
-;;; the bounding box of every area asked for since the last frame, or #t
-;;; for the whole screen. The next frame draws everything from scratch
-;;; (render-full-into!), clipped to that box grown to hold whole each
-;;; window and bar it touches (frame-box), each window clipped to its
-;;; extent, so nothing is assumed about what a drawing procedure does.
+;;; A change says that the screen may now look different, in *dirty*: the
+;;; next frame records everything from scratch and draws it all, so nothing
+;;; is assumed about what a drawing procedure does.
 ;;;
-;;;   (invalidate!)       anything may have changed: the whole screen
-;;;   (invalidate! win)   win's extent: its frame and what its style may
-;;;                       draw past it (input to a window says so by itself)
-;;;   (invalidate! win x y w h)   the same, for apps written when only
-;;;                       that part was drawn again (frames redraw whole
-;;;                       windows anyway)
-;;;   (request-frame!), (request-frame! x y w h)   the whole screen, or a
-;;;                       rectangle of it
+;;;   (invalidate!)       anything may have changed
+;;;   (invalidate! win)   win may have (input to a window says so by itself)
+;;;   (invalidate! win x y w h), (request-frame! x y w h)   a part of it
 ;;;
 ;;; A window that changes by itself over time (a clock, an animation) says
-;;; so with invalidate!; one whose change also shows outside it (its title
-;;; in the bars, say) asks for the whole screen. Of the rest, only the top
-;;; bar, with its status segments, asks for itself once a second (its
-;;; surface's tick, desktop/topbar.ss).
+;;; so with invalidate!. Of the rest, only the top bar, with its status
+;;; segments, asks for itself once a second (its surface's tick,
+;;; desktop/topbar.ss).
 
 ;; the window whose handler is running
 (defvar current-window (make-thread-parameter #f))
@@ -90,31 +81,29 @@
 ;; a hook a later layer sets (its background jobs, services/vat.ss).
 (defvar *window-gone* void)
 
-;; The bounding box of two boxes (x0 y0 x1 y1).
-(define (box-union a b)
-  (list (min (car a) (car b)) (min (cadr a) (cadr b))
-        (max (caddr a) (caddr b)) (max (cadddr a) (cadddr b))))
-
-;; Interrupts off: a process switched out between reading and writing
-;; *dirty* would lose any area asked for meanwhile.
 (define request-frame!
   (case-lambda
     [() (set! *dirty* #t)]
-    [(x y w h)
-     (when (and (> w 0) (> h 0))
-       (let ([r (list x y (+ x w) (+ y h))])
-         (with-interrupts-disabled
-           (let ([d *dirty*])
-             (set! *dirty* (if (pair? d) (box-union d r) (or d r)))))))]))
+    [(x y w h) (when (and (> w 0) (> h 0)) (set! *dirty* #t))]))
 
 (define invalidate!
   (case-lambda
     [() (request-frame!)]
-    [(win)
-     (if win
-         (call-with-values (lambda () (window-extent win)) request-frame!)
-         (request-frame!))]
-    [(win x y w h) (invalidate! win)]))
+    [(win) (request-frame!)]
+    [(win x y w h) (request-frame!)]))
+
+;; A window's shadow, for its style: the theme key 'shadow, half unfocused;
+;; a maximized window has none.
+(define (window-shadow win x y w h r focused?)
+  (unless (maximized? win)
+    (draw-shadow x y w h r
+                 (if focused? (theme 'shadow) (quotient (theme 'shadow) 2)))))
+
+;; How far past its frame a window's shadow may reach, in whole logical
+;; pixels: the focused size, and the third of it the shadow lies lower.
+(define (window-shadow-reach win)
+  (let ([size (theme 'shadow)])
+    (if (maximized? win) 0 (+ size (quotient (+ size 2) 3)))))
 
 ;; How far past its frame a window may draw, never less than 0: its
 ;; style's frame-bleed. A style that strokes inside its frame needs none:
@@ -123,7 +112,7 @@
   (in-window-theme win
     (lambda ()
       (max 0
-           (window-shadow-reach win)   ; shadow
+           (window-shadow-reach win)
            (frame-bleed win)))))
 
 ;; What win may cover on screen, (values x y w h): its frame and bleed;
@@ -211,9 +200,6 @@
 (define (over-windows? s) (>= (surface-depth s) 0))
 
 ;; What s covers this frame, in device pixels (x0 y0 x1 y1).
-(define (surface-pixel-box s)
-  (call-with-values (lambda () (surface-call s surface-box)) pixel-box))
-
 ;;; strips
 ;; (define-strip topbar 'top 'topbar-height): the area windows go in loses
 ;; (topbar-height) pixels at the top; strips on one edge add up.
@@ -966,139 +952,85 @@
         ((theme-part 'frame-under) win x y w h focused? hover pressed)
         (unless (shaded? win)
           (let-values ([(cx cy cw ch) (content-rect win)])
-            (call-with-round-clip x y w h (frame-radius win)
-              (lambda ()
-                (call-with-clip cx cy cw ch
-                  (lambda ()
-                    (call-with-translation cx cy
-                      (lambda ()
-                        (fill-rect 0 0 cw ch (window-bg win))
-                        (if (window-error win)
-                            ((theme-part 'draw-crash-panel) win cw ch)
-                            (window-call win 'draw cw ch))))))))))
+            (with-clip (x y w h (frame-radius win))
+              (with-clip (cx cy cw ch)
+                (with-translation (cx cy)
+                  (fill-box 0 0 cw ch (window-bg win))
+                  (if (window-error win)
+                      ((theme-part 'draw-crash-panel) win cw ch)
+                      (window-call win 'draw cw ch)))))))
         ((theme-part 'frame-over) win x y w h focused? hover pressed)))))
 
-;; the last frame's time: drawing it, comparing its rows
+;; the last frame's time: its work, not its wait for the screen
 (defvar *frame-ms* 0.0)
 (defvar *frames-drawn* 0)
 
-(define (ms-since t0)
-  (let ([dt (time-difference (current-time 'time-monotonic) t0)])
-    (+ (* 1000.0 (time-second dt)) (/ (time-nanosecond dt) 1e6))))
+;; The whole screen, as a list. A crashed draw leaves nothing to unwind: the
+;; state it left goes when the next one starts.
+(define (record-world!)
+  (let ([guarded (lambda (name thunk)
+                   (let ([state (rec-state)])
+                     (safely name thunk)
+                     (rec-state-set! state)))])
+    (let ([draw (lambda (s)
+                  (with-label ((surface-name s))
+                    (guarded (surface-name s)
+                             (lambda () (surface-call s surface-draw)))))])
+      (for-each draw (remp over-windows? *surfaces*))
+      (for-each (lambda (w)
+                  (when (visible? w)
+                    (with-label ((window-title w))
+                      (guarded 'window
+                               (lambda ()
+                                 (with-profile-span (window-id w) #f
+                                   (let-values ([(x y ew eh) (window-extent w)])
+                                     (with-clip (x y ew eh)
+                                       (draw-window w)))))))))
+                (reverse *windows*))
+      (for-each draw (filter over-windows? *surfaces*)))))
 
-;; The whole screen drawn from scratch onto surface, an image the
-;; canvas's size; or the same drawing clipped to the device pixels from
-;; (x0, y0) to (x1, y1). One rectangle: cairo 1.18.4 crashes on a clip
-;; of boxes with gaps between them.
-(define render-full-into!
-  (case-lambda
-    [(surface) (render-full-into! surface 0 0 *canvas-pw* *canvas-ph*)]
-    [(surface x0 y0 x1 y1)
-     ;; A fresh cairo context, so a crashed draw can't leave the graphics
-     ;; state unbalanced. Outside it *cr* only measures.
-     (let ([cr (cairo-create surface)])
-       (cairo-rectangle cr x0 y0 (- x1 x0) (- y1 y0))
-       (cairo-clip cr)
-       ;; every pixel, the last column at 150% too
-       (cairo-set-operator cr CAIRO_OPERATOR_SOURCE)
-       (cairo-set-source-rgba cr 0 0 0 1)
-       (cairo-paint cr)
-       (cairo-set-operator cr CAIRO_OPERATOR_OVER)
-       (cairo-scale cr *scale* *scale*)
-       (fluid-let ([*cr* cr])
-         (let ([draw (lambda (s)
-                       (safely (surface-name s)
-                               (lambda () (surface-call s surface-draw))))])
-           (for-each draw (remp over-windows? *surfaces*))
-           ;; a window wholly outside the box (it cuts none: frame-box)
-           ;; would draw nothing in it, clipped to its extent: not drawn
-           (for-each (lambda (w)
-                       (when (and (visible? w)
-                                  (box-overlaps? (list x0 y0 x1 y1)
-                                                 (extent-box w)))
-                         (safely 'window (lambda () (draw-window-clipped w)))))
-                     (reverse *windows*))
-           (for-each draw (filter over-windows? *surfaces*))))
-       (cairo-destroy cr)
-       (cairo-surface-flush surface))]))
-
-;; A logical rectangle in device pixels, rounded outward and clamped to
-;; the canvas: (x0 y0 x1 y1).
-(define (pixel-box x y w h)
-  (define (px v whole n) (clamp (exact (whole (* v *scale*))) 0 n))
-  (list (px x floor *canvas-pw*) (px y floor *canvas-ph*)
-        (px (+ x w) ceiling *canvas-pw*) (px (+ y h) ceiling *canvas-ph*)))
-
-(define (extent-box win)
-  (call-with-values (lambda () (window-extent win)) pixel-box))
-
-;; win drawn clipped to its extent's device pixels: whatever its style or
-;; a redefined draw-window draws, it is drawn again when win changes or
-;; moves.
-(define (draw-window-clipped win)
-  (with-profile-span (window-id win) #f
-    (apply (lambda (x0 y0 x1 y1)
-             (let ([s *scale*])
-               (call-with-clip (/ x0 s) (/ y0 s) (/ (- x1 x0) s)
-                               (/ (- y1 y0) s)
-                 (lambda () (draw-window win)))))
-           (extent-box win))))
-
-;; Does box a hold box b whole?
-(define (holds? a b)
-  (and (<= (car a) (car b)) (<= (cadr a) (cadr b))
-       (<= (caddr b) (caddr a)) (<= (cadddr b) (cadddr a))))
-
-;; Do boxes a and b overlap? Does a overlap b without holding it whole?
-(define (box-overlaps? a b)
-  (and (< (car a) (caddr b)) (< (car b) (caddr a))
-       (< (cadr a) (cadddr b)) (< (cadr b) (cadddr a))))
-
-(define (cuts? a b) (and (box-overlaps? a b) (not (holds? a b))))
-
-;; The frame's box: the area asked for (damage: #t, or (x0 y0 x1 y1)) in
-;; device pixels, grown until it cuts no window and no surface over them
-;; (a menu's or the toasts' box is the whole screen while they show).
-;; Cairo draws what a clip cuts a little differently from the same
-;; drawing whole (another compositing path, pixman's spans started
-;; elsewhere), so a box that cut one would not show the whole screen's
-;; drawing there.
-(define (frame-box damage)
-  (if (eq? damage #t)
-      (list 0 0 *canvas-pw* *canvas-ph*)
-      (let ([items (append (map surface-pixel-box
-                                (filter over-windows? *surfaces*))
-                           (map extent-box (filter visible? *windows*)))])
-        (let grow ([b (apply (lambda (x0 y0 x1 y1)
-                               (pixel-box x0 y0 (- x1 x0) (- y1 y0)))
-                             damage)])
-          (let ([i (find (lambda (i) (cuts? b i)) items)])
-            (if i (grow (box-union b i)) b))))))
-
-;; One step's frame, of the area asked for (damage, from *dirty*): drawn
-;; from scratch into the second buffer, clipped to its box; then only the
-;; box's rows are compared with the screen's, and those that changed are
-;; copied onto the screen (gfx.ss), where they wait for the host's upload.
-;; That is enough because after every frame the second buffer equals the
-;; screen; a new canvas or second buffer asks for the whole screen. (So
-;; does a new picture of the wallpaper: the desktop's tick asks.) A
-;; process may be switched out at any call while the main loop draws on,
-;; so typed in a REPL (a process) or called by a handler, (render-frame!)
-;; only asks for a frame.
+;; One step's frame: recorded and sent to the screen. A screen with no room
+;; for it yet asks again. A process may be switched out at any call while the
+;; main loop draws on, so typed in a REPL (a process) or called by a handler,
+;; (render-frame!) only asks for a frame.
 (define render-frame!
   (case-lambda
     [() (render-frame! #t)]
-    [(damage)
+    [(asked?)
      (cond
-       [(or (not damage) (eqv? *canvas* 0)) (void)]
+       [(or (not asked?) (not *renderer*) (eqv? *canvas-pw* 0)) (void)]
        [(in-engine?) (request-frame!)]
+       [(host-hidden?) (request-frame!)]
        [else
-        (let* ([t0 (current-time 'time-monotonic)]
-               [box (frame-box damage)])
-          (apply (lambda (x0 y0 x1 y1)
-                   (render-full-into! *back* x0 y0 x1 y1)
-                   (set! *upload-rows*
-                     (append (copy-changed-rows! y0 y1) *upload-rows*)))
-                 box)
-          (set! *frame-ms* (ms-since t0))
-          (set! *frames-drawn* (+ *frames-drawn* 1)))])]))
+        (let ([t0 (now-ns)] [waits *pacer-waits*])
+          (rec-begin! *canvas-ratio*)
+          (record-world!)
+          (let ([shown? (rec-present!)])
+            (if shown?
+                (set! *frames-drawn* (+ *frames-drawn* 1))
+                (request-frame!))
+            (set! *frame-ms* (/ (- (now-ns) t0 (- *pacer-waits* waits)) 1e6))
+            (frame-ring-add! shown?)))])]))
+
+;; The last frames, for kits/inspect.ss: what each took and held. Always
+;; kept: a few numbers a frame.
+(define frame-ring-rows 256)
+(define frame-ring-words 6)
+(defvar *frame-ring* (make-fxvector (* frame-ring-rows frame-ring-words) 0))
+(defvar *frame-ring-n* 0)   ; frames so far
+
+(define (frame-ring-add! shown?)
+  (let ([at (* frame-ring-words (modulo *frame-ring-n* frame-ring-rows))]
+        [ring *frame-ring*])
+    (fxvector-set! ring at (exact (round (* 1000 *frame-ms*))))
+    (fxvector-set! ring (+ at 1) (rec-count))
+    (fxvector-set! ring (+ at 2) *rec-extra-at*)
+    (fxvector-set! ring (+ at 3) (length *rec-runs*))
+    (fxvector-set! ring (+ at 4) *glyph-count*)
+    (fxvector-set! ring (+ at 5) (if shown? 1 0)))
+  (set! *frame-ring-n* (+ *frame-ring-n* 1)))
+
+;; The screen as it would be drawn now: its pixels, row after row,
+;; premultiplied BGRA. What tests and screenshots see.
+(define (screen-bytes)
+  (drawing->bytes *canvas-pw* *canvas-ph* *canvas-ratio* record-world! #f))

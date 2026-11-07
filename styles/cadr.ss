@@ -22,16 +22,16 @@
 ;; 3 pixels as the Inspector's, in a strip wider to hit.
 (define (cadr-scrollbar x y w h flags start size)
   (let ([t (cdr (assq 'thumb (ui-scrollbar-areas x y w h start size)))])
-    (px-fill x (cadr t) 3 (cadddr t) 'text)))
+    (fill-box x (cadr t) 3 (cadddr t) 'text)))
 
 ;; No slider either: a 1-pixel rule, and a solid block the cursor's size
 ;; at the value, the scroll bar's segment turned sideways.
 (define (cadr-slider x y w h flags frac paint)
   (let ([cy (round (+ y (/ h 2)))] [kx (+ x (* frac w))])
     (if paint
-        (call-with-clip x (- cy 4) w 8 (lambda () (paint x (- cy 4) w 8)))
-        (px-fill x cy w 1 'text))
-    (px-fill (- kx 4) (- cy 6) 8 12 'text)))
+        (with-clip (x (- cy 4) w 8) (paint x (- cy 4) w 8))
+        (fill-box x cy w 1 'text))
+    (fill-box (- kx 4) (- cy 6) 8 12 'text)))
 
 ;; Progress as the who line counted a file's, "37%" (wholin.lisp:405-450),
 ;; where the line has room; else none, the count is beside it.
@@ -66,7 +66,7 @@
   ;; the widgets
   'genera-hover-nudge 1
   'genera-panel-border 1
-  'genera-shadow #f   ; shadow
+  'genera-shadow #f
   'genera-choice-heavy #t
   'places '((menu genera-separator-rule #f)
             (dialog genera-margin-choice #t))

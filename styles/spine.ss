@@ -56,8 +56,8 @@
 
 ;; Two thin rules across the spine, as gilt on a binding.
 (define (spine-rules x y s ink)
-  (fill-rect x y (- s 1) 1 ink)
-  (fill-rect x (+ y 3) (- s 1) 1 ink))
+  (fill-box x y (- s 1) 1 ink)
+  (fill-box x (+ y 3) (- s 1) 1 ink))
 
 (define (spine-draw-under win x y w h focused? hover pressed)
   (let*-values ([(s) (spine-width)] [(c) (spine-cell)] [(r) (spine-radius win)]
@@ -72,38 +72,36 @@
                 [(end) (if foot? tail (+ y h -4))]
                 [(title) (text-fit (window-title win) (- end head 12) 'title)]
                 [(a) (font-ascent 'title)])
-    (window-shadow win x y w h r focused?)   ; shadow
-    (fill-round-rect x y w h r (window-bg win))
-    (call-with-round-clip x y w h r
-      (lambda ()
-        (fill-rect x y s h band)
-        (fill-rect (+ x s -1) y 1 h (alpha #x000000 0.18))   ; the joint
-        (for-each (lambda (b)
-                    (unless (eq? (car b) 'title)
-                      (spine-draw-button win (car b) cx
-                                         (+ y (caddr b) (quotient c 2))
-                                         focused? hover pressed ink)))
-                  (spine-regions win))
-        (when foot?
-          (spine-rules x tail s (alpha ink 0.35))
-          (text-draw-centered x (+ tail 6) s c "λ" ink 'title))
-        (unless (string=? title "…")   ; a spine too short for any title
-          (spine-rules x head s (alpha ink 0.35))
-          ;; turned to read upward, its capitals (about 3/4 of the
-          ;; ascent) centered across the spine
-          (call-with-translation (- (round (+ cx (* 3/8 a))) a)
-                                 (round (+ (/ (+ head 4 end) 2)
-                                           (/ (text-width title 'title) 2)))
-            (lambda ()
-              (call-with-rotation (* -1/2 pi)
-                (lambda () (draw-text 0 0 title ink 'title))))))))))
+    (window-shadow win x y w h r focused?)
+    (fill-box x y w h (window-bg win) r)
+    (with-clip (x y w h r)
+      (fill-box x y s h band)
+      (fill-box (+ x s -1) y 1 h (alpha #x000000 0.18))   ; the joint
+      (for-each (lambda (b)
+                  (unless (eq? (car b) 'title)
+                    (spine-draw-button win (car b) cx
+                                       (+ y (caddr b) (quotient c 2))
+                                       focused? hover pressed ink)))
+                (spine-regions win))
+      (when foot?
+        (spine-rules x tail s (alpha ink 0.35))
+        (text-draw-centered x (+ tail 6) s c "λ" ink 'title))
+      (unless (string=? title "…")   ; a spine too short for any title
+        (spine-rules x head s (alpha ink 0.35))
+        ;; turned to read upward, its capitals (about 3/4 of the
+        ;; ascent) centered across the spine
+        (with-translation ((- (round (+ cx (* 3/8 a))) a)
+                           (round (+ (/ (+ head 4 end) 2)
+                                     (/ (text-width title 'title) 2))))
+          (with-turn ((* -1/2 pi)) (draw-text 0 0 title ink 'title)))))))
 
 (define (spine-draw-over win x y w h focused? hover pressed)
-  (stroke-round-rect x y w h (spine-radius win)
-                     (if focused?
-                         (mix (app-color (window-app win))
-                              'window-border-focus 0.5)
-                         'window-border)))
+  (stroke-box x y w h
+              (if focused?
+                  (mix (app-color (window-app win))
+                       'window-border-focus 0.5)
+                  'window-border)
+              1 (spine-radius win)))
 
 (define-style spine "Spine"
   'frame-insets 'spine-insets

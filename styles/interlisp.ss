@@ -41,16 +41,15 @@
 (define (interlisp-draw-under win x y w h focused? hover pressed)
   (let* ([o (interlisp-margin)] [x (+ x o)] [w (- w o)] [k interlisp-ink]
          [s (interlisp-strip)])
-    (fill-rect x y w h 'text)
-    (fill-rect (+ x k) (+ y s) (- w k k) (- h s k) (window-bg win))
-    (call-with-clip x y w s   ; even "…" may not fit a narrow window
-      (lambda ()
-        (let ([end (draw-text (+ x 4) (+ y 1)
-                              (text-fit (window-title win) (- w 8) 'ui-small)
-                              (window-bg win) 'ui-small)])
-          (when (< (+ end 2) (- (+ x w) k))
-            (fill-rect (+ end 2) (+ y 1) (- (+ x w) k end 2) (- s k)
-                       'interlisp-title-shade)))))))
+    (fill-box x y w h 'text)
+    (fill-box (+ x k) (+ y s) (- w k k) (- h s k) (window-bg win))
+    (with-clip (x y w s)   ; even "…" may not fit a narrow window
+      (let ([end (draw-text (+ x 4) (+ y 1)
+                            (text-fit (window-title win) (- w 8) 'ui-small)
+                            (window-bg win) 'ui-small)])
+        (when (< (+ end 2) (- (+ x w) k))
+          (fill-box (+ end 2) (+ y 1) (- (+ x w) k end 2) (- s k)
+                    'interlisp-title-shade))))))
 
 ;; The outside scroll bar, while it shows.
 (define (interlisp-draw-over win x y w h focused? hover pressed)
@@ -61,12 +60,12 @@
 ;; pixel in at the sides and 2 at the ends, in a 12.5 % shade
 ;; (WINDOWSCROLL:368, :569-641).
 (define (interlisp-scrollbar x y w h flags start size)
-  (px-fill x y w h 'text)
-  (px-fill (+ x 1) (+ y 1) (- w 2) (- h 2) 'window-bg)
+  (fill-box x y w h 'text)
+  (fill-box (+ x 1) (+ y 1) (- w 2) (- h 2) 'window-bg)
   (apply (lambda (tx ty tw th)
-           (px-fill (+ tx 2) ty (- tw 4) th 'text)
-           (px-fill (+ tx 3) (+ ty 2) (- tw 6) (- th 4)
-                    'interlisp-scroll-shade))
+           (fill-box (+ tx 2) ty (- tw 4) th 'text)
+           (fill-box (+ tx 3) (+ ty 2) (- tw 6) (- th 4)
+                     'interlisp-scroll-shade))
          (cdr (assq 'thumb (ui-scrollbar-areas x y w h start size)))))
 
 ;; Medley's ghost box for Move and Shape: 2 pixels of its dashed shade,
@@ -78,12 +77,10 @@
                                        (make-list 8 (run #\# #\.))))))
 
 (define (interlisp-drag-outline x y w h)
-  (call-with-operator 'difference
-    (lambda ()
-      (px-fill x y w 2 interlisp-dashes)
-      (px-fill x (+ y h -2) w 2 interlisp-dashes)
-      (px-fill x (+ y 2) 2 (- h 4) interlisp-dashes)
-      (px-fill (+ x w -2) (+ y 2) 2 (- h 4) interlisp-dashes))))
+  (invert-box x y w 2 interlisp-dashes)
+  (invert-box x (+ y h -2) w 2 interlisp-dashes)
+  (invert-box x (+ y 2) 2 (- h 4) interlisp-dashes)
+  (invert-box (+ x w -2) (+ y 2) 2 (- h 4) interlisp-dashes))
 
 ;; Its colors, which you may change and save as any color: the title
 ;; shade, ink; the thumb's 12.5 % shade (SCROLLBARSHADE, WINDOWSCROLL:34).

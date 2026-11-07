@@ -7,7 +7,7 @@
 ;;;   scheme --script main.ss --uninstall-desktop
 ;;;
 ;;; --eval expressions run after boot, e.g.
-;;;   --eval '(after 2000 (lambda () (screenshot "shot.png") (quit!)))'
+;;;   --eval '(after 2000 (lambda () (png-write-screen "s.png") (quit!)))'
 
 (define *schevana-root*
   (let ([dir (path-parent (car (command-line)))])
@@ -20,6 +20,11 @@
 (load-user-folders!)
 ;; What you allowed apps in sandboxes (services/grant.ss).
 (grant-file-load!)
+;; A checkout's private folder, if it has one, keeps every late tick, for
+;; whoever is looking into them.
+(let ([dir (string-append *schevana-root* "/.work")])
+  (when (file-directory? dir)
+    (profile-flag-log! (string-append dir "/flags.log"))))
 
 (define (parse-size s)
   (let ([parts (string-split s #\x)])
@@ -53,7 +58,10 @@
        (move-window! (find-window 'clock) (- w 270) 60)
        (repl))
      (for-each (lambda (e) (eval (read (open-input-string e)))) (reverse evals))
-     (schevana-run!)]
+     (schevana-run!)
+     ;; Chez reads a script a form at a time: were this file changed during
+     ;; the run, it would go on from where it was, in the middle of something
+     (exit 0)]
     [(string=? (car args) "--headless") (loop (cdr args) 'headless size evals)]
     [(and (string=? (car args) "--size") (pair? (cdr args)))
      (loop (cddr args) mode (parse-size (cadr args)) evals)]

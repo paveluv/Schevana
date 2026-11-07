@@ -5,4 +5,4 @@
 
 (define-wallpaper shade "Shade"
   (lambda (x y w h top bottom)
-    (fill-rect x y w h (stipple bottom top "#..." "#..." "..#." "..#."))))
+    (fill-box x y w h (stipple bottom top "#..." "#..." "..#." "..#."))))

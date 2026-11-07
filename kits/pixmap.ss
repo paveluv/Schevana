@@ -2,7 +2,7 @@
 ;;; A pixmap is a small image an app fills pixel by pixel (one pixel per
 ;;; Life cell, say) and draws scaled up in one call, instead of drawing
 ;;; thousands of rectangles. Its pixels are a Scheme bytevector of 4·w·h
-;;; bytes, row after row, each pixel one native 32-bit word in cairo's
+;;; bytes, row after row, each pixel one native 32-bit word in the GPU's
 ;;; premultiplied ARGB (color->pixel makes one). Tight loops can write
 ;;; (pixmap-bytes pm) directly; a worker thread can fill a buffer from
 ;;; make-pixmap-bytevector and hand it over with pixmap-swap-bytes!.

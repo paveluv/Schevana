@@ -45,15 +45,14 @@
     (unless (= s *status-last-second*)
       (set! *status-last-second* s)
       (call-with-values box request-frame!)))
-  (when (and *dirty* (holds? (frame-box *dirty*)
-                             (call-with-values box pixel-box)))
-    (refresh-status!)))
+  (when *dirty* (refresh-status!)))
 
 (define (status-procs)
   (let ([n (length *procs*)])
     (and (> n 0) (format "⚙ ~a running" n))))
 
-;; The process's memory in RAM, bytes: the heap, and what Cairo and SDL hold
+;; The process's memory in RAM, bytes: the heap, and what SDL and the drivers
+;; hold
 ;; outside it, which neither reports. #f where the system doesn't say: /proc
 ;; is Linux's.
 (define (status-process-bytes)

@@ -499,16 +499,15 @@
 ;; card outline.
 (define (settings-draw-card x y w h flags title changed? style . extra)
   (let ([lh (settings-card-label-height)])
-    (call-with-round-clip x y w h 8
-      (lambda ()
-        (apply draw-style-preview style x y w (- h lh) extra)
-        (fill-rect x (- (+ y h) lh) w lh 'panel)
-        (draw-text (+ x 12) (+ (- (+ y h) lh)
-                               (/ (- lh (font-line-height 'ui)) 2))
-                   (text-fit title (- w 34) 'ui) 'panel-text 'ui)
-        (when changed?
-          (fill-circle (- (+ x w) 15) (- (+ y h) (/ lh 2)) 3.5
-                       'panel-accent))))
+    (with-clip (x y w h 8)
+      (apply draw-style-preview style x y w (- h lh) extra)
+      (fill-box x (- (+ y h) lh) w lh 'panel)
+      (draw-text (+ x 12) (+ (- (+ y h) lh)
+                             (/ (- lh (font-line-height 'ui)) 2))
+                 (text-fit title (- w 34) 'ui) 'panel-text 'ui)
+      (when changed?
+        (fill-circle (- (+ x w) 15) (- (+ y h) (/ lh 2)) 3.5
+                     'panel-accent)))
     (ui-draw-card x y w h flags)
     (when (memq 'focused flags) (ui-draw-focus x y w h flags 8))))
 
@@ -526,12 +525,9 @@
              (window-h-set! win (- (* 2 h) 28))
              (fill-wallpaper x y w h (theme 'wallpaper) 'desktop-top
                              'desktop-bottom)
-             (call-with-clip x y w h
-               (lambda ()
-                 (call-with-translation x y
-                   (lambda ()
-                     (call-with-scale 1/2
-                       (lambda () (draw-window* win #t)))))))))
+             (with-clip (x y w h)
+               (with-translation (x y)
+                 (with-scale (1/2) (draw-window* win #t))))))
          extra))
 
 (define (settings-draw-preview-content win cw ch)
@@ -762,8 +758,8 @@
 (define (settings-draw-steps x y w h color-at)
   (let ([n 48])
     (do ([i 0 (+ i 1)]) ((= i n))
-      (fill-rect (+ x (* i (/ w n))) y (+ 1 (/ w n)) h
-                 (color-at (/ (+ i 0.5) n))))))
+      (fill-box (+ x (* i (/ w n))) y (+ 1 (/ w n)) h
+                (color-at (/ (+ i 0.5) n))))))
 
 ;; A row of the color list: its swatch and its name; flags: selected,
 ;; hover.
@@ -777,17 +773,16 @@
                  (if (memq 'selected flags) '() '(dim)) (symbol->string key))
   (when (memq 'selected flags)
     (ui-draw-highlight-over (+ x 4) y (- w 8) h '()))
-  (fill-round-rect (+ x 12) (+ y (/ (- h 16) 2)) 16 16 4 key)
-  (stroke-round-rect (+ x 12) (+ y (/ (- h 16) 2)) 16 16 4
-                     'settings-swatch-ring))
+  (fill-box (+ x 12) (+ y (/ (- h 16) 2)) 16 16 key 4)
+  (stroke-box (+ x 12) (+ y (/ (- h 16) 2)) 16 16 'settings-swatch-ring 1 4))
 
 ;; A swatch's ring, which reads on its row, chosen or not: a stipple of ink
 ;; and paper where a style inverts the chosen row (Genera).
 (color-default! 'settings-swatch-ring (theme-rule (alpha 'text 0.25)))
 
 (define (settings-draw-big-swatch x y d color)
-  (fill-round-rect x y d d 12 color)
-  (stroke-round-rect x y d d 12 (alpha 'text 0.25)))
+  (fill-box x y d d color 12)
+  (stroke-box x y d d (alpha 'text 0.25) 1 12))
 
 ;; avail: the visible height of the pane, which the list fills.
 (define (settings-colors ui st x y w avail)
@@ -807,29 +802,28 @@
     (ui-draw-surface x ly lw lh '(well))
     ;; for the wheel; the rows sit on top
     (ui-area ui 'color-list x ly lw lh #f)
-    (ui-call-with-pixel-clip x (+ ly 4) lw (- lh 8)
-      (lambda ()
-        (let loop ([rs rows] [ry (- (+ ly 6) scroll)])
-          (unless (or (null? rs) (> ry (+ ly lh)))
-            (let ([r (car rs)] [top (max ry ly)]
-                  [bottom (min (+ ry row-h) (+ ly lh))])
-              (when (> (+ ry row-h) ly)
-                (if (string? r)
-                    (ui-draw-label (+ x 12) ry (- lw 24) row-h '(section) r)
-                    (begin
-                      (when (> bottom top)
-                        (ui-area ui (list 'color r) x top lw (- bottom top)
-                                 (lambda ()
-                                   (settings-st-key-set! st r)
-                                   (settings-st-hex-set! st #f))))
-                      (settings-draw-color-row
-                       x ry lw row-h r
-                       (cond [(eq? r (settings-st-key st)) '(selected)]
-                             [(and (> bottom top)
-                                   (ui-hover? ui x top lw (- bottom top)))
-                              '(hover)]
-                             [else '()])))))
-              (loop (cdr rs) (+ ry row-h)))))))
+    (with-clip (x (+ ly 4) lw (- lh 8))
+      (let loop ([rs rows] [ry (- (+ ly 6) scroll)])
+        (unless (or (null? rs) (> ry (+ ly lh)))
+          (let ([r (car rs)] [top (max ry ly)]
+                [bottom (min (+ ry row-h) (+ ly lh))])
+            (when (> (+ ry row-h) ly)
+              (if (string? r)
+                  (ui-draw-label (+ x 12) ry (- lw 24) row-h '(section) r)
+                  (begin
+                    (when (> bottom top)
+                      (ui-area ui (list 'color r) x top lw (- bottom top)
+                               (lambda ()
+                                 (settings-st-key-set! st r)
+                                 (settings-st-hex-set! st #f))))
+                    (settings-draw-color-row
+                     x ry lw row-h r
+                     (cond [(eq? r (settings-st-key st)) '(selected)]
+                           [(and (> bottom top)
+                                 (ui-hover? ui x top lw (- bottom top)))
+                            '(hover)]
+                           [else '()])))))
+            (loop (cdr rs) (+ ry row-h))))))
     (if beside?
         (max (+ ly lh)
              (settings-color-editor ui st (+ x lw 28) ly (- w lw 28)))
@@ -949,19 +943,18 @@
         (draw-repl-line (+ x 18) (+ y code-y (* i lh))
                         text colors 999 0 1 cw lh)))
     (if (<= (theme 'corner-radius) 0)   ; square: on whole device pixels
-        (begin (px-fill x y w ph 'bg-0) (px-ring x y w ph 'window-border))
-        (begin (fill-round-rect x y w ph 8 'bg-0)
-               (stroke-round-rect x y w ph 8 'window-border)))
-    (call-with-clip x y w ph
-      (lambda ()
-        (draw-text (+ x 18) (+ y 14)
-                   "The quick brown fox jumps over the lazy dog." 'text 'ui)
-        (draw-text (+ x 18) (+ y 14 (font-line-height 'ui) 8)
-                   "Window titles and menus use the bold weight."
-                   'text-dim 'ui-bold)
-        (code-line 0 "λ> (define (square x) (* x x))  ; code")
-        (code-line 1 "λ> (map square '(1 2 3))")
-        (draw-text (+ x 18) (+ y code-y (* 2 lh)) "(1 4 9)" 'teal 'mono)))
+        (begin (fill-box x y w ph 'bg-0) (stroke-box x y w ph 'window-border))
+        (begin (fill-box x y w ph 'bg-0 8)
+               (stroke-box x y w ph 'window-border 1 8)))
+    (with-clip (x y w ph)
+      (draw-text (+ x 18) (+ y 14)
+                 "The quick brown fox jumps over the lazy dog." 'text 'ui)
+      (draw-text (+ x 18) (+ y 14 (font-line-height 'ui) 8)
+                 "Window titles and menus use the bold weight."
+                 'text-dim 'ui-bold)
+      (code-line 0 "λ> (define (square x) (* x x))  ; code")
+      (code-line 1 "λ> (map square '(1 2 3))")
+      (draw-text (+ x 18) (+ y code-y (* 2 lh)) "(1 4 9)" 'teal 'mono))
     (+ y ph)))
 
 ;; The four text options (dimmed where the style sets them), and a
@@ -1126,18 +1119,15 @@
          [cw (- w x (max 28 (ui-scrollbar-inset 'right)))]
          [scroll (settings-st-pane-scroll st)]
          [y (- 20 scroll)]
-         [bottom (ui-call-with-pixel-clip (+ sw 1) 0 (- w sw 1) h
-                   (lambda ()
-                     ;; under its widgets: the pointer here shows the
-                     ;; pane's bar on hover
-                     (ui-region! ui 'pane (+ sw 1) 0 (- w sw 1) h)
-                     (parameterize ([settings-pane-height h])
-                       (case (settings-st-tab st)
-                         [(colors) (settings-colors ui st x y cw (- h 38))]
-                         [(fonts) (settings-fonts ui x y cw)]
-                         [(display) (settings-display ui x y cw)]
-                         [(permissions) (settings-permissions ui x y cw)]
-                         [else (settings-theme-tab ui x y cw)]))))]
+         [bottom (with-clip ((+ sw 1) 0 (- w sw 1) h)
+                   (ui-region! ui 'pane (+ sw 1) 0 (- w sw 1) h)
+                   (parameterize ([settings-pane-height h])
+                     (case (settings-st-tab st)
+                       [(colors) (settings-colors ui st x y cw (- h 38))]
+                       [(fonts) (settings-fonts ui x y cw)]
+                       [(display) (settings-display ui x y cw)]
+                       [(permissions) (settings-permissions ui x y cw)]
+                       [else (settings-theme-tab ui x y cw)])))]
          [content-h (+ (- bottom y) 20 18)]
          [max-scroll (max 0 (- content-h h))])
     (when (> max-scroll 0)

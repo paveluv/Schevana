@@ -162,7 +162,7 @@
 ;; The live cells a window shows: those whose pixel is not bg-0's.
 (define (life-shown win)
   (let-values ([(a seen) (life-drawn win 1)])
-    (cairo-surface-destroy a)
+    (picture-free! a)
     (apply (lambda (pixels cols rows cell ox oy)
              (let ([g (make-bytevector (* cols rows) 0)]
                    [dead (color->pixel 'bg-0)])
@@ -191,18 +191,18 @@
     (resize-window! win content-w content-h)
     (let-values ([(cw ch) (window-content-size win)]
                  [(a seen) (life-drawn win s)])
-      (let* ([pw (cairo-image-surface-get-width a)]
-             [ph (cairo-image-surface-get-height a)]
+      (let* ([pw (picture-w a)]
+             [ph (picture-h a)]
              [dead (color->pixel 'bg-0)] [live 0]
              [b (apply (lambda (pixels cols rows cell ox oy)
                          (image pw ph s
                                 (lambda ()
-                                  (fill-rect 0 0 cw ch 'bg-0)
+                                  (fill-box 0 0 cw ch 'bg-0)
                                   (do ([y 0 (+ y 1)]) ((= y rows))
                                     (do ([x 0 (+ x 1)]) ((= x cols))
                                       (unless (= dead (pixmap-ref pixels x y))
                                         (set! live (+ live 1))
-                                        (fill-rect
+                                        (fill-box
                                          (+ ox (* x cell) 1) (+ oy (* y cell) 1)
                                          (- cell 1) (- cell 1)
                                          (mix 'green 'cyan (/ y rows)))))))))
@@ -210,8 +210,8 @@
              [grid-bottom (exact (floor (* s (- ch (life-bar-height)))))]
              [ok (and (> live 100)
                       (= 0 (max-diff a b (list 0 grid-bottom pw ph))))])
-        (cairo-surface-destroy a)
-        (cairo-surface-destroy b)
+        (picture-free! a)
+        (picture-free! b)
         (close-window! win)
         (canvas-create! 1280 800 *host-scale*)
         ok))))
@@ -236,7 +236,7 @@
                               life-env))
       (lambda ()
         (let-values ([(a drawn) (life-drawn win 1)])
-          (cairo-surface-destroy a))
+          (picture-free! a))
         seen)
       (lambda () (set-top-level-value! 'life-status-text real life-env)))))
 
@@ -349,7 +349,7 @@
                                                (cols-loop (+ x 1)))))
                                     (rows-loop (+ y 1))))))
                        seen))])
-        (cairo-surface-destroy a)
+        (picture-free! a)
         (close-window! win)
         (canvas-create! 1280 800 *host-scale*)
         ok))))

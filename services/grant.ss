@@ -8,7 +8,7 @@
 ;;;   (define-app (weather) "Weather" ...)
 ;;;
 ;;; A bundle is a titled list of the world's names ("Draw in its windows":
-;;; fill-rect, draw-text ...). The tree's apps are approved by a table
+;;; fill-box, draw-text ...). The tree's apps are approved by a table
 ;;; here (grant-tree-apps); the others by the person, whose decisions are
 ;;; kept in *grant-file-path* (main.ss reads it; tests point it at a
 ;;; scratch file). A bundle requested and not approved is there as stubs,
@@ -49,23 +49,21 @@
      window-title
      window-title-set!)
     (draw "Draw in its windows"
-     fill-rect
+     fill-box
+     stroke-box
      draw-text
      draw-line
-     stroke-rect
-     fill-rects
-     fill-round-rect
-     stroke-round-rect
      draw-polyline
      fill-polygon
      fill-circle
      stroke-circle
      fill-glow
      fill-gradient
-     call-with-clip
-     call-with-translation
-     call-with-scale
-     call-with-rotation
+     with-clip
+     with-translation
+     with-scale
+     with-turn
+     with-label
      theme
      rgb
      alpha
@@ -497,7 +495,7 @@
   (bundle grant-needed-bundle))
 
 ;; What app's name n raises in its sandbox while its bundle b is not
-;; approved: "Sketch needs Draw in its windows (fill-rect): not allowed
+;; approved: "Sketch needs Draw in its windows (fill-box): not allowed
 ;; yet".
 (define (grant-stub app b n denied?)
   (lambda args

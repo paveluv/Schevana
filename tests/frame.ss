@@ -1,46 +1,27 @@
-;;; tests/frame.ss — the renderer: every frame drawn on the main thread
-;;; into the second screen buffer, compared row by row with the screen;
-;;; the rows that changed are copied onto it and uploaded.
+;;; tests/frame.ss — frames: whenever something changes the screen, a frame is
+;;; asked for, and it shows what the world draws now.
 ;;;
 ;;;   scheme --script tests/frame.ss [output-dir]
 ;;;
-;;; The reference for a frame is render-full-into! drawn directly into an
-;;; image: the very procedure the renderer runs.
-;;;   identity      once the frames asked for are drawn, the canvas is the
+;;; The reference is the world drawn now into an image, which is the same
+;;; recording a frame sends to the screen; a frame is drawn whole, so what is
+;;; tested is that nothing changes without asking.
+;;;   identity      once the frames asked for are drawn, the screen is the
 ;;;                 reference, bit for bit: S30T, S30, S5, a translucent
 ;;;                 window, every style, a menu and a toast, at 100, 125,
 ;;;                 150, 200 and 300% (Monitor's content masked: it shows
 ;;;                 the heap)
-;;;   damage        a texture fed only the uploaded rows is the canvas after
-;;;                 every step of this file; a frame that changes nothing
-;;;                 uploads and presents nothing; the screen stays one
-;;;                 surface; every way an area is asked for (the clock's
-;;;                 second, a window, part of it, a covered one, hover,
-;;;                 dragging, resizing, moving, a process, one switched
-;;;                 out after each area it asks for) leaves the reference
-;;;                 at 100, 150 and 200%, the clock comparing only the top
-;;;                 bar's rows, a lone window its extent's
-;;;   bleed         every style, and one glowing past its frame with and
-;;;                 without its 'bleed, moved, resized and hovered at 100
-;;;                 and 150%, leaves the reference; drawn unclipped, each
-;;;                 registered style keeps to its extent
-;;;   the window    a fake window: boot, a resize, a drag, a rescale and a
-;;;                 lost texture each show their own frame at once, never
-;;;                 an empty new canvas
-;;;   processes     a process, switched out anywhere, frees tile caches and
-;;;                 owned surfaces, rescales and calls (render-frame!) while
-;;;                 the main loop draws: frames stay whole
-;;;   raising       a window's draw that raises crashes the window; a frame
-;;;                 whose drawing raises shows nothing; a window-bleed that
-;;;                 raises is reported, and frames and input go on
+;;;   asking        every way the screen changes (the clock's second, a
+;;;                 window, a covered one, hover, dragging, resizing, moving,
+;;;                 a process) leaves the reference at 100, 150 and 200%
+;;;   the window    the swapchain's path, on an offscreen window
+;;;   processes     a process, switched out anywhere, rescales and calls
+;;;                 (render-frame!) while the main loop draws: frames stay whole
+;;;   raising       a window's draw that raises crashes the window; a window-
+;;;                 bleed that raises is reported, and frames and input go on
 ;;;   redefinition  draw-window, draw-taskbar and a style, redefined: the
-;;;                 next frame shows them, is the reference, costs the same;
-;;;                 a REPL evaluation asks for the whole screen as it ends
-;;;   wallpaper     a theme change (raw or by set-theme!), a redefined
-;;;                 draw-wallpaper or the wallpaper in use defined again
-;;;                 paints it again for the next frame; a clock-reading
-;;;                 draw-wallpaper is a still picture; the picture is
-;;;                 draw-wallpaper's drawing
+;;;                 next frame shows them; a REPL evaluation asks for a frame
+;;;                 as it ends
 ;;;   Life          each generation of 30 Life windows shows on the next frame
 ;;;   Tasks         typing, the caret's blink, hover, a tooltip, a drag, the
 ;;;                 wheel, a menu, the calendar, the dialog, a REPL change
@@ -100,24 +81,21 @@
 
 ;;; ------------------------------------------------------------------ images
 
-(define (canvas-image)
-  (cairo-image-surface-create CAIRO_FORMAT_ARGB32 *canvas-pw* *canvas-ph*))
+(define-record-type picture
+  (fields bytes w h))
+(define (picture-free! p) (void))
 
-;; The frame render-full-into! draws now, straight into an image.
+;; What the last frame left on the screen.
+(define (screen-picture)
+  (let* ([r *renderer*]
+         [w (renderer-target-w r)]
+         [h (renderer-target-h r)]
+         [cb (sdl-acquire-gpu-commands (renderer-device r))])
+    (make-picture (gpu-read-texture! r cb (renderer-target r) w h) w h)))
+
+;; The frame the world draws now, straight into an image.
 (define (reference)
-  (let ([ref (canvas-image)])
-    (render-full-into! ref)
-    ref))
-
-;; A copy of the canvas.
-(define (canvas-copy)
-  (let ([c (canvas-image)])
-    (cairo-surface-flush *canvas*)
-    (sdl-memcpy (cairo-image-surface-get-data c)
-                (cairo-image-surface-get-data *canvas*)
-                (* (cairo-image-surface-get-stride c) *canvas-ph*))
-    (cairo-surface-mark-dirty c)
-    c))
+  (make-picture (screen-bytes) *canvas-pw* *canvas-ph*))
 
 ;; Monitor's content in device pixels, (x0 y0 x1 y1), or #f.
 (define (monitor-mask)
@@ -129,34 +107,30 @@
 
 ;; How many pixels of a and b (the same size) differ outside the mask.
 (define (differing a b mask)
-  (cairo-surface-flush a)
-  (cairo-surface-flush b)
-  (let ([pa (cairo-image-surface-get-data a)]
-        [pb (cairo-image-surface-get-data b)]
-        [st (cairo-image-surface-get-stride a)]
-        [w (cairo-image-surface-get-width a)]
-        [h (cairo-image-surface-get-height a)])
-    (let row ([y 0] [n 0])
-      (cond
-        [(= y h) n]
-        [(zero? (sdl-memcmp (+ pa (* y st)) (+ pb (* y st)) (* 4 w)))
-         (row (+ y 1) n)]
-        [else
-         (row (+ y 1)
-              (let col ([x 0] [n n])
-                (cond
-                  [(= x w) n]
-                  [(and mask (<= (car mask) x) (< x (caddr mask))
-                        (<= (cadr mask) y) (< y (cadddr mask)))
-                   (col (+ x 1) n)]
-                  [(= (foreign-ref 'unsigned-32 pa (+ (* y st) (* 4 x)))
-                      (foreign-ref 'unsigned-32 pb (+ (* y st) (* 4 x))))
-                   (col (+ x 1) n)]
-                  [else (col (+ x 1) (+ n 1))])))]))))
+  (if (bytevector=? (picture-bytes a) (picture-bytes b))
+      0
+      (let ([pa (picture-bytes a)]
+            [pb (picture-bytes b)]
+            [w (picture-w a)]
+            [h (picture-h a)])
+        (let row ([y 0] [n 0])
+          (if (= y h)
+              n
+              (row (+ y 1)
+                   (let col ([x 0] [n n])
+                     (cond
+                       [(= x w) n]
+                       [(and mask (<= (car mask) x) (< x (caddr mask))
+                             (<= (cadr mask) y) (< y (cadddr mask)))
+                        (col (+ x 1) n)]
+                       [(= (bytevector-u32-native-ref pa (* 4 (+ x (* y w))))
+                           (bytevector-u32-native-ref pb (* 4 (+ x (* y w)))))
+                        (col (+ x 1) n)]
+                       [else (col (+ x 1) (+ n 1))]))))))))
 
 (define (same-image? a b)
-  (and (= (cairo-image-surface-get-width a) (cairo-image-surface-get-width b))
-       (= (cairo-image-surface-get-height a) (cairo-image-surface-get-height b))
+  (and (= (picture-w a) (picture-w b))
+       (= (picture-h a) (picture-h b))
        (zero? (differing a b #f))))
 
 (define shots 0)
@@ -164,13 +138,13 @@
 ;; Does the canvas equal the reference? label is printed with a count
 ;; when it does not.
 (define (shows-reference? label)
-  (let* ([ref (reference)] [n (differing *canvas* ref (monitor-mask))])
+  (let* ([ref (reference)] [n (differing (screen-picture) ref (monitor-mask))])
     (unless (= n 0)
       (set! shots (+ shots 1))
       (printf "  ~a: ~a pixels differ from the reference\n" label n)
       (when (<= shots 3)
-        (screenshot (format "~a/differs-~a.png" out-dir shots))))
-    (cairo-surface-destroy ref)
+        (png-write-screen (format "~a/differs-~a.png" out-dir shots))))
+    (picture-free! ref)
     (= n 0)))
 
 ;; The same, once the frames asked for are drawn.
@@ -178,65 +152,11 @@
   (settle)
   (shows-reference? label))
 
-(define (pixel-of surface x y)   ; logical point
-  (cairo-surface-flush surface)
-  (foreign-ref 'unsigned-32 (cairo-image-surface-get-data surface)
-               (+ (* (exact (floor (* *scale* y)))
-                     (cairo-image-surface-get-stride surface))
-                  (* 4 (exact (floor (* *scale* x)))))))
-
-;;; ------------------------------------------------------------------
-;;; the texture
-;;; The host's SDL upload, with *host* 'sdl only around the present and the
-;;; texture an image that uploads copy rows into, as SDL_UpdateTexture does.
-;;; After every step it must equal the canvas, and a step presents if and
-;;; only if it uploaded or was exposed.
-
-(define texture #f)
-(define texture-steps 0)
-(define texture-mismatches 0)
-(define bad-presents 0)
-(define presents 0)
-(define plain-present #f)
-
-(define (texture-upload! t rect pixels pitch)
-  (unless (and texture (= (cairo-image-surface-get-width texture) *canvas-pw*)
-               (= (cairo-image-surface-get-height texture) *canvas-ph*))
-    (when texture (cairo-surface-destroy texture))
-    ;; a new texture: its pixels are undefined (here clear)
-    (set! texture (canvas-image)))
-  (let ([td (cairo-image-surface-get-data texture)]
-        [ts (cairo-image-surface-get-stride texture)])
-    (let-values ([(x y w h)
-                  (if (eqv? rect 0)
-                      (values 0 0 *canvas-pw* *canvas-ph*)
-                      (apply values
-                             (map (lambda (i) (foreign-ref 'integer-32 rect i))
-                                  '(0 4 8 12))))])
-      (unless (and (= x 0) (= w *canvas-pw*) (<= 0 y) (< 0 h)
-                   (<= (+ y h) *canvas-ph*) (= pitch ts))
-        (errorf 'sdl-update-texture "not a run of whole rows: ~s"
-                (list x y w h pitch)))
-      (sdl-memcpy (+ td (* y ts)) pixels (* h ts))
-      (cairo-surface-mark-dirty texture)
-      #t)))
-
-(set! sdl-update-texture texture-upload!)
-(set! sdl-render-texture (lambda (r t src dst) #t))
-(set! sdl-render-present (lambda (r) (set! presents (+ presents 1)) #t))
-(set! plain-present host-present-damage!)
-(set! host-present-damage!
-  (lambda ()
-    (let ([p0 presents] [u0 *upload-bytes*] [exposed? *present-only?*])
-      (fluid-let ([*host* 'sdl]) (plain-present))
-      (set! texture-steps (+ texture-steps 1))
-      (unless (and texture (same-image? texture *canvas*))
-        (set! texture-mismatches (+ texture-mismatches 1)))
-      (unless (= (- presents p0) (if (or exposed? (> *upload-bytes* u0)) 1 0))
-        (set! bad-presents (+ bad-presents 1))))))
-
-(set! *full-upload?* #t)
-(steps 2)
+(define (pixel-of p x y)   ; logical point
+  (bytevector-u32-native-ref
+   (picture-bytes p)
+   (* 4 (+ (* (exact (floor (* *scale* y))) (picture-w p))
+           (exact (floor (* *scale* x)))))))
 
 ;;; ------------------------------------------------------------------ scenes
 
@@ -327,15 +247,14 @@
        (notify "A toast")
        (try! 'toast)
        (close-window! g))
-     (check (format "once the frames asked for are drawn, the canvas is \
-                     render-full-into!'s frame, bit for bit, at ~a% (~a)" pct
+     (check (format "once the frames asked for are drawn, the screen is \
+                     the world drawn into an image, bit for bit, at ~a% (~a)"
+                    pct
                     (if (null? bad)
                         "S30T, S30, S5, translucent, every style, menu, toast"
                         (reverse bad)))
             (null? bad))))
  '(100 125 150 200 300))
-
-;;; ------------------------------------------------------------------ damage
 
 (set-theme! 'scale 100)
 (scene! 'S5)
@@ -343,72 +262,42 @@
 ;; they change by themselves
 (for-each (lambda (app) (close-window! (find-window app))) '(clock monitor))
 (steps 2)
-(invalidate!)
-(steps 1)
-(let ([u0 *upload-bytes*] [p0 presents] [n0 *frames-drawn*] [screen *canvas*])
-  (invalidate!)
-  (steps 1)
-  (let ([none (list (- *frames-drawn* n0) (- *upload-bytes* u0)
-                    (- presents p0))]
-        [kept (list (eqv? screen *canvas*))])   ; after each frame
-    (inject! '(text "x"))   ; into the REPL: a few rows change
+(let ([n0 *frames-drawn*])
+  (steps 3)
+  (let ([quiet (- *frames-drawn* n0)])
+    (invalidate!)
     (steps 1)
-    (let ([typed (list *frame-rows* (- *upload-bytes* u0) (- presents p0))]
-          [kept (append kept (list (eqv? screen *canvas*)))])
-      (check (format
-              "a frame that changes nothing uploads and presents nothing ~s; \
-               a keystroke uploads only its rows ~s; \
-               the rows are copied onto the screen, which stays one surface ~s"
-              none typed kept)
-             (and (equal? none '(1 0 0))
-                  (< 0 (car typed) (quotient *canvas-ph* 4))
-                  (= (cadr typed) (* 4 *canvas-pw* (car typed)))
-                  (= (caddr typed) 1)
-                  (equal? kept '(#t #t)))))))
+    (check (format "with nothing asked for, no frames (~a); asked for, one (~a)"
+                   quiet (- *frames-drawn* n0 quiet))
+           (and (= quiet 0) (= (- *frames-drawn* n0) 1)))))
 
 ;;; ------------------------------------------------------------------
-;;; damage paths
-;;; Every way an area is asked for, at 100, 150 and 200%, odd logical
+;;; asking
+;;; Every way the screen changes, at 100, 150 and 200%, odd logical
 ;;; coordinates giving fractional device ones: after each step the screen
-;;; is the reference. The clock's second compares (and so uploads) only
-;;; the top bar's rows; an invalidated window, alone, only its extent's.
-
-;; The rows the last frame compared, (y0 . y1), and the runs it changed.
-(define compared #f)
-(define compared-runs '())
-(let ([plain copy-changed-rows!])
-  (set! copy-changed-rows!
-    (lambda (y0 y1)
-      (let ([runs (plain y0 y1)])
-        (set! compared (cons y0 y1))
-        (set! compared-runs runs)
-        runs))))
-
-;; Did the step after u0 bytes compare just rows, change some of them and
-;; upload only those?
-(define (compared-only? rows u0)
-  (and (equal? compared rows) (pair? compared-runs)
-       (for-all (lambda (r) (<= (car rows) (car r) (cdr r) (cdr rows)))
-                compared-runs)
-       (= (- *upload-bytes* u0)
-          (* 4 *canvas-pw*
-             (apply + (map (lambda (r) (- (cdr r) (car r))) compared-runs))))))
+;;; is the reference.
 
 ;; Styles that glow 5 pixels past their frame: glow-5 says so with 'bleed,
 ;; glow does not, as one typed at the REPL might not.
 (define styles-before-glow *styles*)
 (define (glow-under win x y w h focused? hover pressed)
-  (fill-rect (- x 5) (- y 5) (+ w 10) (+ h 10) #xff00ff)
-  (fill-rect x y w (title-height) 'accent))
+  (fill-box (- x 5) (- y 5) (+ w 10) (+ h 10) #xff00ff)
+  (fill-box x y w (title-height) 'accent))
 (define-style glow-5 "Glow, 5" 'frame-bleed (lambda (win) 5)
   'frame-under glow-under)
 (define-style glow "Glow" 'frame-under glow-under)
 
-;; A window's extent, in device rows (y0 . y1).
-(define (extent-rows win)
-  (let-values ([(x y w h) (window-extent win)])
-    (cons (max 0 (exact (floor (* y *scale*))))
-          (min *canvas-ph* (exact (ceiling (* (+ y h) *scale*)))))))
+;; Does win ask for a frame while four steps of ms pass?
+(define (asks-while-waiting? win ms)
+  (let ([plain invalidate!] [asked #f])
+    (set! invalidate! (lambda args
+                        (when (and (pair? args) (eq? (car args) win))
+                          (set! asked #t))
+                        (apply plain args)))
+    (do ([i 0 (+ i 1)]) ((= i 4))
+      (steps 1 ms))
+    (set! invalidate! plain)
+    asked))
 
 ;; Where a style's button of that kind is, on screen.
 (define (button-point win kind)
@@ -426,14 +315,14 @@
          [c-ink #xa04060] [c-sub #xe0c040] [bad '()] [shown '()]
          ;; part of a's drawing lies under b
          [a (open-window "A" 'size '(301 . 201) 'pos '(201 . 151)
-              'draw (lambda (win w h) (fill-rect 151 101 141 91 a-ink)))]
+              'draw (lambda (win w h) (fill-box 151 101 141 91 a-ink)))]
          [b (open-window "B" 'size '(301 . 201) 'pos '(401 . 251)
-              'draw (lambda (win w h) (fill-rect 21 21 61 41 b-ink)))]
+              'draw (lambda (win w h) (fill-box 21 21 61 41 b-ink)))]
          ;; alone
          [c (open-window "C" 'size '(201 . 151) 'pos '(901 . 401)
               'draw (lambda (win w h)
-                      (fill-rect 0 0 w h c-ink)
-                      (fill-rect 11 13 47 29 c-sub)))])
+                      (fill-box 0 0 w h c-ink)
+                      (fill-box 11 13 47 29 c-sub)))])
     (define (try! label)
       (unless (matches-reference? (list pct label))
         (set! bad (cons label bad))))
@@ -455,25 +344,11 @@
     ;; the clock's second
     (set! tick 1)
     (set! *status-last-second* -1)
-    (let ([u0 *upload-bytes*])
-      (steps 1)
-      (set! shown
-        (list (compared-only?
-               (cons 0 (exact (ceiling (* (topbar-height) *scale*)))) u0))))
+    (steps 1)
     (try! 'tick)
-    ;; (invalidate! win), in a step within one second of the real clock:
-    ;; a second starting during it adds the top bar (wm-tick!), which is
-    ;; right but not what this measures, so such a step is measured again
     (set! c-ink #x60a040)
-    (let again ()
-      (let ([s (time-second (current-time))] [u0 *upload-bytes*])
-        (set! *status-last-second* s)
-        (invalidate! c)
-        (steps 1)
-        (if (= s (time-second (current-time)))
-            (set! shown
-              (append shown (list (compared-only? (extent-rows c) u0))))
-            (again))))
+    (invalidate! c)
+    (steps 1)
     (try! 'invalidate)
     (set! c-sub #x4040e0)
     (invalidate! c 11 13 47 29)
@@ -497,11 +372,11 @@
            (+ (window-y a) (window-h a) -3) -29 17)
     ;; one that draws nothing past its frame, moved away from where it
     ;; leaves half pixels at 150%
-    (set-theme! 'shadow 0)   ; shadow
+    (set-theme! 'shadow 0)
     (steps 1)
     (move-window! c 1001 451)
     (step! 'moved)
-    (set-theme! 'shadow (theme-default 'shadow))   ; shadow
+    (set-theme! 'shadow (theme-default 'shadow))
     ;; A process asks for areas around e, far from b and c, while main
     ;; changes b and c by turns, compared at each step: none of main's
     ;; areas may be lost, though the process is switched out anywhere.
@@ -530,7 +405,7 @@
     ;; less far), switched out right after each area it asks for until
     ;; main has drawn a frame (a timer may do that), then stays alive: d
     ;; leaves nothing behind.
-    (set-theme! 'shadow 0)   ; shadow
+    (set-theme! 'shadow 0)
     (let ([d (open-window "D" 'size '(121 . 81) 'pos '(61 . 81)
                           'window-style 'glow-5)]
           [plain request-frame!] [done #f])
@@ -559,17 +434,13 @@
           (set! bad (cons 'switched-out bad)))
         (kill! p)
         (close-window! d)))
-    (set-theme! 'shadow (theme-default 'shadow))   ; shadow
+    (set-theme! 'shadow (theme-default 'shadow))
     (for-each close-window! (list a b c))
     (fixed-status!)
     (steps 1)
-    (check (format "every way an area is asked for shows the reference at \
-                    ~a%~a; the clock's second compares and uploads only \
-                    the top bar's rows, an invalidated window only its \
-                    extent's ~s"
-                   pct (if (null? bad) "" (format " (not: ~s)" (reverse bad)))
-                   shown)
-           (and (null? bad) (equal? shown '(#t #t))))))
+    (check (format "every way the screen changes shows the reference at ~a%~a"
+                   pct (if (null? bad) "" (format " (not: ~s)" (reverse bad))))
+           (null? bad))))
 
 (for-each damage-paths '(100 150 200))
 
@@ -582,15 +453,19 @@
 
 ;; How many pixels win, drawn alone and unclipped, puts outside its extent.
 (define (bleeding win focused?)
-  (let ([alone (canvas-image)] [blank (canvas-image)])
-    (let ([cr (cairo-create alone)])
-      (cairo-scale cr *scale* *scale*)
-      (fluid-let ([*cr* cr]) (draw-window* win focused?))
-      (cairo-destroy cr))
-    (let ([n (differing alone blank (extent-box win))])
-      (cairo-surface-destroy alone)
-      (cairo-surface-destroy blank)
-      n)))
+  (let ([alone (make-picture
+                (drawing->bytes *canvas-pw* *canvas-ph* *canvas-ratio*
+                                (lambda () (draw-window* win focused?)) #t)
+                *canvas-pw* *canvas-ph*)]
+        [blank (make-picture
+                (drawing->bytes *canvas-pw* *canvas-ph* *canvas-ratio* void #t)
+                *canvas-pw* *canvas-ph*)])
+    (let-values ([(x y w h) (window-extent win)])
+      (let ([box (lambda (v) (exact (floor (* v *scale*))))])
+        (differing alone blank
+                   (list (box x) (box y)
+                         (exact (ceiling (* (+ x w) *scale*)))
+                         (exact (ceiling (* (+ y h) *scale*)))))))))
 
 ;; The registered styles that draw outside their extent.
 (define (styles-bleeding)
@@ -606,7 +481,7 @@
  (lambda (pct)
    (set-theme! 'scale pct)
    (clear-world!)
-   (override! 'shadow 0)   ; shadow
+   (override! 'shadow 0)
    (steps 1)
    (let ([bad '()] [glows '()])
      (define (step! label)
@@ -630,7 +505,8 @@
                     (frame-regions w))
           (inject! '(mouse-move 1200 650))
           (step! (list style 'left))
-          (set! glows (cons (cons style (pixel-of *canvas* (- (window-x w) 3)
+          (set! glows (cons (cons style (pixel-of (screen-picture)
+                                                  (- (window-x w) 3)
                                                   (+ (window-y w) 30)))
                             glows))
           (close-window! w)
@@ -638,7 +514,7 @@
       (styles))
      (let ([glow-5 (cdr (assq 'glow-5 glows))] [glow (cdr (assq 'glow glows))]
            [none (styles-bleeding)])
-       (override! 'shadow)   ; shadow
+       (override! 'shadow)
        (let ([default (styles-bleeding)])
          (check (format "a window is drawn clipped to its extent: every \
                          style, one glowing past its frame with its 'bleed \
@@ -657,123 +533,18 @@
 (set-theme! 'scale 100)
 (steps 1)
 
-;;; ------------------------------------------------------------------
-;;; the window
-
-;; Does the texture hold a frame? render-full-into! paints every pixel, so
-;; none is clear (one pixel in 7 looked at).
-(define (texture-holds-frame?)
-  (and texture
-       (let ([td (cairo-image-surface-get-data texture)]
-             [ts (cairo-image-surface-get-stride texture)]
-             [w (cairo-image-surface-get-width texture)]
-             [h (cairo-image-surface-get-height texture)])
-         (let row ([y 0])
-           (or (= y h)
-               (and (let col ([x 0])
-                      (or (>= x w)
-                          (and (not (fx= 0 (fxsrl (foreign-ref 'unsigned-32 td
-                                                               (+ (* y ts)
-                                                                  (* 4 x)))
-                                                  24)))
-                               (col (+ x 7)))))
-                    (row (+ y 1))))))))
-
-;; With a window, a step that uploads the whole canvas (at boot, after a
-;; resize (full screen, a drag) or a rescale, or when the texture was lost)
-;; shows its own frame: the canvas is new and holds no frame yet, and none
-;; may be shown. A fake window answers the SDL calls; the host's own
-;; events, resizing and upload run as with a real one.
-(let ([size (cons *canvas-pw* *canvas-ph*)] [queue 0] [label #f] [blank '()]
-      [log '()] [present sdl-render-present])
-  (define (size! a b)
-    (foreign-set! 'integer-32 a 0 (car size))
-    (foreign-set! 'integer-32 b 0 (cdr size)))
-  ;; A turn of the main loop with a window: its events, then the step.
-  (define (turn! l)
-    (set! label l)
-    (let ([p0 presents])
-      (apply inject! (fluid-let ([*host* 'sdl]) (host-events 0)))
-      (schevana-step! 0)
-      (set! log (cons (cons l (- presents p0)) log))))
-  (define (resize! l w h)
-    (set! size (cons w h))
-    (set! queue 1)
-    (turn! l))
-  (fluid-let ([sdl-get-window-size (lambda (win a b) (size! a b) #t)]
-              [sdl-get-current-render-output-size
-               (lambda (r a b) (size! a b) #t)]
-              [sdl-get-window-display-scale (lambda (win) 1.0)]
-              [sdl-set-window-minimum-size (lambda (win w h) #t)]
-              [sdl-get-window-flags (lambda (win) 0)]
-              [sdl-poll-event   ; the queued pixel-size-changed events
-               (lambda (buf)
-                 (and (> queue 0)
-                      (begin (foreign-set! 'unsigned-32 buf 0
-                                           SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED)
-                             (set! queue (- queue 1))
-                             #t)))]
-              [sdl-create-texture   ; a new texture: its pixels are undefined
-               (lambda (r f a w h)
-                 (when texture
-                   (cairo-surface-destroy texture)
-                   (set! texture #f))
-                 1)]
-              [sdl-set-texture-scale-mode (lambda (t mode) #t)]
-              [sdl-destroy-texture (lambda (t) (void))]
-              [sdl-render-present
-               (lambda (r)
-                 (unless (texture-holds-frame?) (set! blank (cons label blank)))
-                 (present r))]
-              [*sdl-texture* 0] [*pixel-ratio* *pixel-ratio*]
-              [*host-min-size* #f])
-    ;; as host-init! ends, then schevana-boot!
-    (fluid-let ([*host* 'sdl]) (host-sync-size!))
-    (invalidate!)
-    (turn! 'boot)
-    (resize! 'resize 1100 700)
-    (resize! 'full-screen 1920 1080)
-    (resize! 'back 1280 800)
-    (do ([i 0 (+ i 1)]) ((= i 4))   ; a drag: a frame, then a resize
-      (invalidate!)
-      (turn! 'frame)
-      (resize! 'drag (- 1240 (* 40 i)) (- 780 (* 20 i))))
-    (resize! 'drag-end 1280 800)
-    (fluid-let ([*host* 'sdl]) (set-theme! 'scale 150))
-    (turn! 'rescale)
-    (fluid-let ([*host* 'sdl]) (set-theme! 'scale 100))
-    (turn! 'rescale-back)
-    (inject! '(render-reset))
-    (turn! 'render-reset)
-    (fluid-let ([*host* 'sdl]) (handle-event! '(device-reset)))
-    (turn! 'device-reset))
-  (let ([log (reverse log)])
-    (check (format
-            "with a window, a step that uploads the whole canvas shows its \
-             own frame, never an empty canvas: presents per step ~s; empty ~s"
-            log (reverse blank))
-           (and (null? blank)
-                (for-all (lambda (e) (or (eq? (car e) 'frame) (= (cdr e) 1)))
-                         log)
-                (= (length (filter (lambda (e) (eq? (car e) 'drag)) log)) 4)
-                (= *canvas-pw* 1280) (= *canvas-ph* 800) (= *scale* 1.0)
-                (matches-reference? 'window-end)))))
-
 ;;; ------------------------------------------------------------------ processes
 
 ;; A process (a REPL evaluation is one) is an engine, switched out at any
 ;; call where interrupts are on, while the main loop draws on, here on the
-;; real clock. At 200% it flushes the tile caches, frees owned surfaces,
-;; rescales and calls (render-frame!), which in a process only asks for a
-;; frame. Besides its time running out, it is switched out for a step now
-;; and then where a timer could do it: before a surface is freed or
-;; destroyed. No error may come, every frame is the main loop's (one a
-;; step at most), and the frame is the reference.
+;; real clock. At 200% it rescales and calls (render-frame!), which in a
+;; process only asks for a frame. Besides its time running out, it is
+;; switched out for a step now and then. No error may come, every frame is
+;; the main loop's (one a step at most), and the frame is the reference.
 (set-theme! 'scale 200)
 (scene! 'S5)
 (let* ([acts (make-vector 5 0)] [switches 0] [errors 0] [n0 *frames-drawn*]
-       [destroy cairo-surface-destroy] [free free-owned-surface!]
-       [report report-error!] [steps-run 300])
+       [report report-error!] [steps-run 0] [t0 (real-now-ms)])
   (define (switch-point!)
     (when (and (current-proc) (= 0 (#%$tc-field 'disable-count (#%$tc)))
                (zero? (random 3)))
@@ -781,9 +552,7 @@
       (sleep-ms 1)))
   (fluid-let ([now-ms real-now-ms]
               [report-error! (lambda (who c)
-                               (set! errors (+ errors 1)) (report who c))]
-              [cairo-surface-destroy (lambda (s) (switch-point!) (destroy s))]
-              [free-owned-surface! (lambda (s) (switch-point!) (free s))])
+                               (set! errors (+ errors 1)) (report who c))])
     (let ([p (spawn "repl"
                (lambda ()
                  (let loop ()
@@ -791,20 +560,25 @@
                    (let ([a (random 5)])
                      (vector-set! acts a (+ 1 (vector-ref acts a)))
                      (case a
-                       [(0) (flush-shadow-tiles!)]   ; shadow
-                       [(1) (free-owned-surfaces!)]
                        [(2) (when (zero? (random 40))
                               (set-theme! 'scale (if (= *scale* 2.0) 150 200)))]
                        [(3) (render-frame!)]
-                       [else (free-layer! (make-layer* 40 40))]))
+                       [else (switch-point!)]))
                    (loop))))])
-      (do ([n 0 (+ n 1)]) ((= n steps-run)) (schevana-step! 0))
+      ;; steps cost little with no frame asked for: until the process is
+      ;; seen to have done enough
+      (let loop ()
+        (when (and (< (- (real-now-ms) t0) 20000)
+                   (or (<= switches 50) (<= (vector-ref acts 3) 100)))
+          (set! steps-run (+ steps-run 1))
+          (schevana-step! 0)
+          (loop)))
       (kill! p)))
   (set-theme! 'scale 200)
   (let ([frames (- *frames-drawn* n0)])
     (check (format
-            "a process, switched out anywhere, frees caches and surfaces, \
-             rescales and calls (render-frame!) while the main loop draws \
+            "a process, switched out anywhere, rescales and calls \
+             (render-frame!) while the main loop draws \
              (~a calls by kind ~s, ~a switches): \
              ~a frames in ~a steps, ~a errors"
             (apply + (vector->list acts)) acts switches frames steps-run errors)
@@ -820,14 +594,13 @@
                       'draw (lambda (win cw ch) (car '())))])
   (let ([crashed (matches-reference? 'crashed-window)])
     (close-window! w)
-    (let ([plain frame-box] [frames *frames-drawn*] [u0 *upload-bytes*])
-      (set! frame-box (lambda (damage) (error 'frame-box "on purpose")))
+    (let ([plain record-world!] [frames *frames-drawn*])
+      (set! record-world! (lambda () (error 'record-world! "on purpose")))
       (parameterize ([console-error-port (open-output-string)])
         (invalidate!)
         (steps 1))
-      (let ([shown? (or (not (= frames *frames-drawn*))
-                        (not (= u0 *upload-bytes*)))])
-        (set! frame-box plain)
+      (let ([shown? (not (= frames *frames-drawn*))])
+        (set! record-world! plain)
         (set! *toasts* '())
         (check (format
                 "a draw that raises crashes its window, and the frame is the \
@@ -876,8 +649,7 @@
   (set-theme! 'scale pct)
   (clear-world!)
   (tasks-reset!)
-  (let* ([w (tasks)] [ui (window-ref w 'ui)] [bad '()]
-         [top-rows (exact (ceiling (* (topbar-height) *scale*)))])
+  (let* ([w (tasks)] [ui (window-ref w 'ui)] [bad '()])
     (define (try! label)
       (unless (matches-reference? (list pct label))
         (set! bad (cons label bad))))
@@ -928,11 +700,8 @@
              '(mouse-up 1240 400 left))
     (steps 1)
     (try! 'unfocused)
-    (do ([i 0 (+ i 1)]) ((= i 4))
-      (set! compared #f)
-      (steps 1 500)
-      (when (and compared (> (cdr compared) top-rows))
-        (set! bad (cons (list 'unfocused-asked i) bad))))
+    (when (asks-while-waiting? w 500)
+      (set! bad (cons 'unfocused-asked bad)))
     (focus-window! w)
     (steps 1)
     (try! 'refocused)
@@ -985,11 +754,8 @@
       (try! 'details-end))
     (click! 'item-field 'new-item)
     (click! 'dialog-over-field 'delete)
-    (do ([i 0 (+ i 1)]) ((= i 4))
-      (set! compared #f)
-      (steps 1 530)
-      (when (and compared (> (cdr compared) top-rows))
-        (set! bad (cons (list 'dialog-asked i) bad))))
+    (when (asks-while-waiting? w 530)
+      (set! bad (cons 'dialog-asked bad)))
     (key! 'dialog-closed 'escape)
     (set-task! 9 'title "Changed from the REPL")
     (steps 1)
@@ -1217,21 +983,22 @@
        [plain-styles *styles*])
   (set! draw-window (lambda (win)
                       (draw-window* win #t)
-                      (fill-rect (window-x win) (window-y win) 40 6 #xff0000)))
+                      (fill-box (window-x win) (window-y win) 40 6 #xff0000)))
   (set! draw-taskbar (lambda ()
                        (plain-taskbar)
-                       (fill-rect 0 (- (screen-h) 6) 60 6 #x0000ff)))
+                       (fill-box 0 (- (screen-h) 6) 60 6 #x0000ff)))
   (register-style! 'mac "Mac, striped"
     (cons* 'frame-over (lambda (win x y w h focused? hover pressed)
                          (mac-draw-over win x y w h focused? hover pressed)
-                         (fill-rect x (+ y h -5) w 5 #x00ff00))
+                         (fill-box x (+ y h -5) w 5 #x00ff00))
            (style-settings (find-style 'mac))))
   (let* ([after (frame-ms 9)]
          [same (matches-reference? 'redefined)]
          [r (find-window 'repl)]
-         [shown (list (pixel-of *canvas* (+ (window-x r) 2) (+ (window-y r) 2))
-                      (pixel-of *canvas* 2 (- (screen-h) 2))
-                      (pixel-of *canvas* (+ (window-x r) 100)
+         [shown (list (pixel-of (screen-picture)
+                                (+ (window-x r) 2) (+ (window-y r) 2))
+                      (pixel-of (screen-picture) 2 (- (screen-h) 2))
+                      (pixel-of (screen-picture) (+ (window-x r) 100)
                                 (+ (window-y r) (window-h r) -2)))])
     (set! draw-window plain-draw-window)
     (set! draw-taskbar plain-taskbar)
@@ -1245,111 +1012,66 @@
                 (< after (+ (* 2 before) 0.5))
                 (matches-reference? 'restored)))))
 
-;; A REPL evaluation asks for the whole screen when it ends: a drawing
-;; procedure it redefines shows on that frame.
+;; A REPL evaluation asks for a frame when it ends: a drawing procedure it
+;; redefines shows on that frame.
 (let ([r (repl)] [plain draw-taskbar])
   (steps 2)
-  (inject! '(text "(define (draw-taskbar) (fill-rect 0 30 50 50 #xff00ff))")
+  (inject! '(text "(define (draw-taskbar) (fill-box 0 30 50 50 #xff00ff))")
            '(key-down return ()))
   (steps 1)
-  (let ([whole (equal? compared (cons 0 *canvas-ph*))]
-        [shown (pixel-of *canvas* 10 40)]
+  (let ([shown (pixel-of (screen-picture) 10 40)]
         [same (shows-reference? 'repl-redefined)])
     (set! draw-taskbar plain)
     (close-window! r)
-    (check (format "a REPL evaluation asks for the whole screen when it ends \
-                    (~a): a drawing procedure it redefines shows on that \
-                    frame (#x~x)" whole shown)
-           (and whole (= shown #xffff00ff) same (not (repl-proc
-                                                      (window-ref r 'state)))
+    (check (format "a REPL evaluation asks for a frame when it ends: a drawing \
+                    procedure it redefines shows on that frame (#x~x)" shown)
+           (and (= shown #xffff00ff) same (not (repl-proc
+                                                (window-ref r 'state)))
                 (matches-reference? 'repl-restored)))))
 
 ;;; ------------------------------------------------------------------ wallpaper
 
-;; Is the wallpaper's picture draw-wallpaper's drawing as things are now,
-;; drawn straight into a layer?
-(define (wallpaper-is-drawn?)
-  (let ([l (make-layer* *canvas-w* *canvas-h*)])
-    (draw-into-layer! l (lambda () (draw-wallpaper *canvas-w* *canvas-h*)))
-    (let ([ok (same-image? (layer-surface (car *wallpaper*))
-                           (layer-surface l))])
-      (free-layer! l)
-      ok)))
-
 ;; no window there
-(define (desktop-pixel) (pixel-of *canvas* 20 (quotient (screen-h) 2)))
+(define (desktop-pixel) (pixel-of (screen-picture) 20 (quotient (screen-h) 2)))
 
-;; A theme change, through set-theme! or behind its back, paints the
-;; wallpaper again, whatever key changed, and the next frame shows it. A
-;; frame with the theme as it was keeps the picture.
+;; The wallpaper is drawn with each frame: a theme change, through set-theme!
+;; or behind its back, shows on the next one.
 (set-theme! 'scale 200)
 (clear-world!)
 (steps 2)
-(let ([p0 (car *wallpaper*)] [px0 (desktop-pixel)] [top (theme 'desktop-top)]
-      [bottom (theme 'desktop-bottom)] [red (theme 'red)])
-  (invalidate!)
+(let ([px0 (desktop-pixel)]
+      [top (theme 'desktop-top)]
+      [bottom (theme 'desktop-bottom)])
+  (hashtable-set! *theme* 'desktop-top #x204060)
+  (request-frame!)
   (steps 1)
-  (let ([kept (eq? (car *wallpaper*) p0)])
-    (hashtable-set! *theme* 'desktop-top #x204060)
-    (request-frame!)
+  (let ([px1 (desktop-pixel)] [raw (matches-reference? 'wallpaper-raw)])
+    (set-theme! 'desktop-bottom #x603020)
     (steps 1)
-    (let* ([p1 (car *wallpaper*)] [px1 (desktop-pixel)]
-           [raw (and (wallpaper-is-drawn?) (matches-reference? 'wallpaper-raw))]
-           [t0 (current-time 'time-monotonic)])
-      (set-theme! 'desktop-bottom #x603020)
+    (let ([px2 (desktop-pixel)] [set (matches-reference? 'wallpaper-set)])
+      (hashtable-set! *theme* 'desktop-top top)
+      (set-theme! 'desktop-bottom bottom)
       (steps 1)
-      (let* ([ms (ms-since t0)] [p2 (car *wallpaper*)] [px2 (desktop-pixel)]
-             [set (and (wallpaper-is-drawn?)
-                       (matches-reference? 'wallpaper-set))])
-        (set-theme! 'red #x00ff00)   ; a key the wallpaper does not use
-        (steps 1)
-        (let ([p3 (car *wallpaper*)])
-          (hashtable-set! *theme* 'desktop-top top)
-          (set-theme! 'desktop-bottom bottom)
-          (set-theme! 'red red)
-          (steps 1)
-          (check (format
-                  "a theme change, raw (#x~x -> #x~x) or by set-theme! \
-                   (-> #x~x), paints the wallpaper again for the next frame, \
-                   whatever key changed \
-                   (the change and its frame take ~,1f ms at 200%)"
-                  px0 px1 px2 ms)
-                 (and kept raw set (not (= px0 px1)) (not (= px1 px2))
-                      (not (memq p1 (list p0))) (not (memq p2 (list p0 p1)))
-                      (not (memq p3 (list p0 p1 p2)))
-                      (= (desktop-pixel) px0) (wallpaper-is-drawn?))))))))
+      (check (format
+              "a theme change, raw (#x~x -> #x~x) or by set-theme! (-> #x~x), \
+               shows on the next frame" px0 px1 px2)
+             (and raw set (not (= px0 px1)) (not (= px1 px2))
+                  (= (desktop-pixel) px0))))))
 
-;; A redefined draw-wallpaper shows on the next frame. One that reads the
-;; clock shows a still picture (the wallpaper is a picture of its key).
+;; A redefined draw-wallpaper shows on the next frame.
 (let ([plain draw-wallpaper])
-  (set! draw-wallpaper (lambda (w h) (fill-rect 0 0 w h #x336699)))
+  (set! draw-wallpaper (lambda (w h) (fill-box 0 0 w h #x336699)))
   (invalidate!)
   (steps 1)
   (let ([shown (desktop-pixel)]
-        [same (and (wallpaper-is-drawn?)
-                   (matches-reference? 'wallpaper-redefined))])
-    (set! draw-wallpaper (lambda (w h)
-                           (fill-rect 0 0 w h
-                                      (if (even? (quotient fake-ms 1000))
-                                          #x112233
-                                          #x445566))))
+        [same (matches-reference? 'wallpaper-redefined)])
+    (set! draw-wallpaper plain)
     (invalidate!)
     (steps 1)
-    (let ([p (car *wallpaper*)] [px (desktop-pixel)])
-      (steps 3 1000)
-      (invalidate!)
-      (steps 1)
-      (let ([still (and (eq? (car *wallpaper*) p) (= px (desktop-pixel)))])
-        (set! draw-wallpaper plain)
-        (invalidate!)
-        (steps 1)
-        (check (format
-                "a redefined draw-wallpaper shows on the next frame (#x~x); \
-                 one that reads the clock shows a still picture (~a); \
-                 the old one is back the frame after"
-                shown still)
-               (and (= shown #xff336699) same still (wallpaper-is-drawn?)
-                    (matches-reference? 'wallpaper-back)))))))
+    (check (format "a redefined draw-wallpaper shows on the next frame (#x~x); \
+                    the old one is back the frame after" shown)
+           (and (= shown #xff336699) same
+                (matches-reference? 'wallpaper-back)))))
 
 ;; The wallpaper in use, defined again, shows on the next frame.
 (let ([pattern (theme 'wallpaper)] [plain *wallpapers*])
@@ -1357,18 +1079,16 @@
   (steps 1)
   (let ([px0 (desktop-pixel)])
     (define-wallpaper flat "Flat"
-      (lambda (x y w h top bottom) (fill-rect x y w h #x336699)))
+      (lambda (x y w h top bottom) (fill-box x y w h #x336699)))
     (steps 1)
     (let ([shown (desktop-pixel)]
-          [same (and (wallpaper-is-drawn?)
-                     (matches-reference? 'wallpaper-defined-again))])
+          [same (matches-reference? 'wallpaper-defined-again)])
       (set! *wallpapers* plain)
       (set-theme! 'wallpaper pattern)
       (steps 1)
       (check (format "the wallpaper in use, defined again, shows on the next \
                       frame (#x~x -> #x~x)" px0 shown)
              (and (= shown #xff336699) (not (= px0 shown)) same
-                  (wallpaper-is-drawn?)
                   (matches-reference? 'wallpaper-restored))))))
 
 ;;; ------------------------------------------------------------------ Life
@@ -1381,22 +1101,66 @@
 (steps 2)
 (let ([lifes (filter (lambda (w) (eq? (window-app w) 'life)) (windows))])
   (define (generation!)
-    (let ([before (canvas-copy)])
+    (let ([before (screen-picture)])
       (for-each (lambda (w) (window-call w 'key #\n '())) lifes)
       (steps 1)
-      (let ([changed (> (differing *canvas* before #f) 0)])
-        (cairo-surface-destroy before)
+      (let ([changed (> (differing (screen-picture) before #f) 0)])
+        (picture-free! before)
         (and changed (matches-reference? 'life)))))
   (let* ([first (generation!)] [second (generation!)])
     (check (format "30 Life windows step a generation, twice: each next \
                     frame shows it and is the reference (~a ~a)" first second)
            (and first second))))
 
-(check (format "the texture, fed only the uploaded rows, was the canvas after \
-                every step (~a of ~a); \
-                presents only after an upload or an expose (~a bad)"
-               (- texture-steps texture-mismatches) texture-steps bad-presents)
-       (and (= texture-mismatches 0) (= bad-presents 0) (> texture-steps 400)))
+;;; ---------------------------------------------------------------- the window
+
+;; The swapchain's path: SDL's offscreen video driver has a surface lavapipe
+;; can show. A frame is shown when the swapchain has an image free.
+(let ([window (sdl-create-window "Schevana" 640 400 0)])
+  (gpu-claim-window! window)
+  (let ([frames *frames-drawn*])
+    (do ([i 0 (+ i 1)]) ((= i 10))
+      (request-frame!)
+      (steps 1))
+    (let ([shown (- *frames-drawn* frames)])
+      (check (format "on a window, frames go through the swapchain (~a of 10 \
+                      shown)" shown)
+             (> shown 0))))
+  ;; a fake clock that only these two move
+  (let* ([t 0]
+         [held (lambda (f ms)
+                 (lambda args (set! t (+ t (* ms 1000000))) (apply f args)))]
+         [waits *pacer-waits*])
+    (fluid-let ([now-ns (lambda () t)]
+                [sdl-acquire-swapchain (held sdl-acquire-swapchain 5)]
+                [sdl-submit-gpu-fence (held sdl-submit-gpu-fence 7)])
+      (with-profile-span 'step #f (render-frame!)))
+    (let ([seq (profile-newest-tick)])
+      (check "the profiler keeps what each swapchain call held main for, \
+              when its frame went, and that the frame reached the screen"
+             (and (= (profile-tick-ns seq 'acquire) 5000000)
+                  (= (profile-tick-ns seq 'submit) 7000000)
+                  (= (profile-tick-ns seq 'sent) 5000000)
+                  (= (profile-tick-ns seq 'shown) 1))))
+    (check (format "what the swapchain holds a frame for is a wait (~a ms), \
+                    not its work (~a ms)"
+                   (/ (- *pacer-waits* waits) 1000000) *frame-ms*)
+           (and (= (- *pacer-waits* waits) 12000000) (zero? *frame-ms*)))
+    ;; the GPU's work told from the screen's hold, by the last frame's fence
+    (let ([state-when
+           (lambda answers
+             (fluid-let ([sdl-query-gpu-fence
+                          (lambda (d f)
+                            (let ([a (car answers)])
+                              (set! answers (cdr answers))
+                              a))])
+               (render-frame!)
+               *gpu-frame-state*))])
+      (check "a frame says where the GPU stood with the last one as main asked \
+              for its image: finished, finishing during the wait, or not yet"
+             (and (= (state-when #t #t) 0)
+                  (= (state-when #f #t) 1)
+                  (= (state-when #f #f) 2))))))
 
 (if (zero? failures)
     (printf "all checks passed\n")

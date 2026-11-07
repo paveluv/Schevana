@@ -1,7 +1,7 @@
 ;;; base.ss — small utilities shared by everything else.
 
 ;; The thread that loads the core is the main thread. The world's state is
-;; its alone, and so are SDL and Cairo: a worker runs only worklets
+;; its alone, and so is SDL: a worker runs only worklets
 ;; (proc.ss), where neither can be named.
 (define main-thread?
   (if (threaded?)

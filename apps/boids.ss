@@ -395,10 +395,10 @@
              'draw (lambda (win w h)
                      (let ([bar (boids-bar-height)]
                            [flock (window-ref win 'flock)])
-                       (fill-rect 0 0 w (- h bar) 'bg-0)
+                       (fill-box 0 0 w (- h bar) 'bg-0)
                        (do ([i 0 (+ i 1)]) ((= i (boids-size flock)))
                          (draw-boid flock i))
-                       (fill-rect 0 (- h bar) w bar 'bg-1)
+                       (fill-box 0 (- h bar) w bar 'bg-1)
                        (draw-text 10 (+ (- h bar) 5)
                                   (boids-status-text (boids-size flock) step-ms
                                                      running?)

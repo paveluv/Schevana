@@ -788,12 +788,6 @@
      "Changelog: the backlog as one long paragraph" changelog)
     (30 todo bug normal #f ("perf") #f ()
      "Find out what the pasted base64 is" blob)
-    ;; shadow{
-    (25 todo chore low "Pavel" ("style") #f ()
-     "Decide about window shadows"
-     "Shadows are on probation, isolated and removable. Keep them, or take \
-      them out?")
-    ;; shadow}
     (9 doing feature high "Claude" ("apps" "kit") 5
      (("Focus and Tab" . #t) ("Text editing" . #t) "Dropdowns and the calendar"
       "Drag and drop" "Tests and screenshots")
@@ -839,8 +833,8 @@
       per file, loaded in file-name order.")
     (5 done feature high "Claude" ("render") #f ()
      "HiDPI: draw from outlines at any scale"
-     "The canvas is drawn at the scale with one cairo-scale, so text and \
-      shapes stay sharp at 125, 150 or 200%.")
+     "Everything is drawn from outlines at the scale, so text and shapes \
+      stay sharp at 125, 150 or 200%.")
     (6 done feature normal "Claude" ("repl") #f ()
      "REPL completion with docs"
      "Tab lists the names that fit where the cursor is, with each one's \
@@ -1327,10 +1321,11 @@
             [bw (/ s 5)])
        (do ([i 0 (+ i 1)]) ((= i 4))
          (let ([bh (* s (/ (+ i 2) 5))])
-           (fill-round-rect (+ x (* i (+ bw (/ s 15)))) (+ y (- s bh)) bw bh
-                            1 (if (< i level)
-                                  color
-                                  (alpha 'text-faint 0.35))))))]
+           (fill-box (+ x (* i (+ bw (/ s 15)))) (+ y (- s bh)) bw bh
+                     (if (< i level)
+                         color
+                         (alpha 'text-faint 0.35))
+                     1))))]
     [(kind)
      (let ([c (/ s 2)])
        (case value
@@ -1339,12 +1334,11 @@
           (fill-polygon (list (cons (+ x c) y) (cons (+ x s) (+ y c))
                               (cons (+ x c) (+ y s)) (cons x (+ y c)))
                         'accent)]
-         [else (fill-round-rect (+ x 1) (+ y 1) (- s 2) (- s 2) 2
-                                'text-dim)]))]
+         [else (fill-box (+ x 1) (+ y 1) (- s 2) (- s 2) 'text-dim 2)]))]
     [(blocked)
      (fill-circle (+ x (/ s 2)) (+ y (/ s 2)) (* s 0.45) 'orange)
-     (fill-rect (+ x (* s 0.25)) (+ y (* s 0.41)) (* s 0.5) (* s 0.18)
-                (color-readable-on 'orange))]
+     (fill-box (+ x (* s 0.25)) (+ y (* s 0.41)) (* s 0.5) (* s 0.18)
+               (color-readable-on 'orange))]
     [(status)
      (fill-circle (+ x (/ s 2)) (+ y (/ s 2)) (/ s 3)
                   (case value
@@ -1379,8 +1373,8 @@
     ;; bg-3 would hide the progress track; a square card's on whole device
     ;; pixels, so its edge stays crisp over what it is dragged across
     (if (<= (theme 'corner-radius) 0)
-        (px-fill x y w h 'bg-2)
-        (fill-round-rect x y w h 8 'bg-2))
+        (fill-box x y w h 'bg-2)
+        (fill-box x y w h 'bg-2 8))
     (ui-draw-card x y w h flags)
     (tasks-draw-mark (+ x p) (+ y1 (/ (- a m) 2)) m 'priority
                      (task-priority t))
@@ -1458,8 +1452,8 @@
 
 ;; Where a dragged card would land.
 (define-part (tasks-draw-slot x y w h)
-  (fill-round-rect x y w h 8 (alpha 'accent 0.15))
-  (stroke-round-rect x y w h 8 'accent))
+  (fill-box x y w h (alpha 'accent 0.15) 8)
+  (stroke-box x y w h 'accent 1 8))
 
 ;; After a card at x y w h is drawn, with its flags: what links it to
 ;; the next card, gap below it (Cons's pointer), or to nothing when it

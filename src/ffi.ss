@@ -1,7 +1,7 @@
 ;;; ffi.ss — the only place where Schevana talks to C.
 ;;;
-;;; SDL3 gives us a host window, input events and a clipboard.
-;;; Cairo gives us 2D drawing into an in-memory image.
+;;; SDL3 gives us a host window, input events, a clipboard and the GPU.
+;;; FreeType gives us glyphs, and fontconfig the files that hold them.
 ;;; Everything above this file is plain Scheme, and only the core (src/)
 ;;; uses these bindings: the folders draw, measure and save through the
 ;;; core's procedures (tests/sources.ss checks it).
@@ -24,10 +24,15 @@
 
 (define libsdl (load-first-library sdl-library-names))
 
-(define libcairo
+(define libfreetype
   (load-first-library
-   '("libcairo.so.2" "libcairo.so" "libcairo.2.dylib" "libcairo.dylib"
-     "libcairo-2.dll" "cairo.dll")))
+   '("libfreetype.so.6" "libfreetype.so" "libfreetype.6.dylib"
+     "libfreetype.dylib" "freetype.dll")))
+
+(define libfontconfig
+  (load-first-library
+   '("libfontconfig.so.1" "libfontconfig.so" "libfontconfig.1.dylib"
+     "libfontconfig.dylib" "fontconfig.dll")))
 
 ;; Like foreign-procedure, but `double` arguments accept any real number,
 ;; and `bool` is C's one-byte bool (SDL3's) as #t or #f: Chez's boolean is
@@ -80,13 +85,10 @@
 (define SDL_INIT_VIDEO #x20)
 (define SDL_WINDOW_FULLSCREEN #x1)
 (define SDL_WINDOW_HIDDEN #x8)
-(define SDL_WINDOW_INPUT_FOCUS #x200)
 (define SDL_WINDOW_RESIZABLE #x20)
 (define SDL_WINDOW_HIGH_PIXEL_DENSITY #x2000)
 (define SDL_WINDOWPOS_CENTERED #x2FFF0000)
 (define SDL_PIXELFORMAT_ARGB8888 #x16362004)
-(define SDL_TEXTUREACCESS_STREAMING 1)
-(define SDL_SCALEMODE_NEAREST 0)
 
 (define SDL_EVENT_QUIT #x100)
 (define SDL_EVENT_WINDOW_EXPOSED #x204)
@@ -100,8 +102,6 @@
 (define SDL_EVENT_MOUSE_BUTTON_DOWN #x401)
 (define SDL_EVENT_MOUSE_BUTTON_UP #x402)
 (define SDL_EVENT_MOUSE_WHEEL #x403)
-(define SDL_EVENT_RENDER_TARGETS_RESET #x2000)
-(define SDL_EVENT_RENDER_DEVICE_RESET #x2001)
 
 (define-foreign sdl-init "SDL_Init" (unsigned-32) bool)
 (define-foreign sdl-quit "SDL_Quit" () void)
@@ -113,7 +113,6 @@
 (define-foreign sdl-create-window "SDL_CreateWindow"
   (string int int unsigned-64) uptr)
 (define-foreign sdl-destroy-window "SDL_DestroyWindow" (uptr) void)
-(define-foreign sdl-set-window-title "SDL_SetWindowTitle" (uptr string) bool)
 (define-foreign sdl-set-window-minimum-size "SDL_SetWindowMinimumSize"
   (uptr int int) bool)
 (define-foreign sdl-set-window-size "SDL_SetWindowSize" (uptr int int) bool)
@@ -123,23 +122,8 @@
 (define-foreign sdl-get-window-size "SDL_GetWindowSize" (uptr uptr uptr) bool)
 (define-foreign sdl-get-window-display-scale "SDL_GetWindowDisplayScale"
   (uptr) float)
-;; the name of a render driver, or #f to let SDL choose
-(define-foreign sdl-create-renderer "SDL_CreateRenderer" (uptr string) uptr)
-(define-foreign sdl-destroy-renderer "SDL_DestroyRenderer" (uptr) void)
-(define-foreign sdl-get-current-render-output-size
-  "SDL_GetCurrentRenderOutputSize" (uptr uptr uptr) bool)
-(define-foreign sdl-create-texture "SDL_CreateTexture"
-  (uptr unsigned-32 int int int) uptr)
-(define-foreign sdl-set-texture-scale-mode "SDL_SetTextureScaleMode"
-  (uptr int) bool)
-(define-foreign sdl-destroy-texture "SDL_DestroyTexture" (uptr) void)
-(define-foreign/collect-safe sdl-update-texture "SDL_UpdateTexture"
-  (uptr uptr uptr int) bool)
-(define-foreign sdl-render-texture "SDL_RenderTexture"
-  (uptr uptr uptr uptr) bool)
-(define-foreign/collect-safe sdl-render-present "SDL_RenderPresent"
-  (uptr) bool)
-(define-foreign sdl-set-render-vsync "SDL_SetRenderVSync" (uptr int) bool)
+(define-foreign sdl-get-window-size-in-pixels "SDL_GetWindowSizeInPixels"
+  (uptr uptr uptr) bool)
 (define-foreign sdl-get-display-for-window "SDL_GetDisplayForWindow"
   (uptr) unsigned-32)
 (define-foreign sdl-get-current-display-mode "SDL_GetCurrentDisplayMode"
@@ -160,110 +144,123 @@
   (int int unsigned-32 uptr int) uptr)
 (define-foreign sdl-destroy-surface "SDL_DestroySurface" (uptr) void)
 (define-foreign sdl-set-window-icon "SDL_SetWindowIcon" (uptr uptr) bool)
-(define-foreign sdl-memcmp "SDL_memcmp" (uptr uptr size_t) int)
 (define-foreign sdl-memcpy "SDL_memcpy" (uptr uptr size_t) uptr)
 
-;;; ------------------------------------------------------------------ Cairo
+;;; ------------------------------------------------------------------ SDL GPU
+;;; Only src/gpu.ss uses these: above it no SDL name for the GPU appears.
 
-(define CAIRO_FORMAT_ARGB32 0)
-(define CAIRO_FONT_SLANT_NORMAL 0)
-(define CAIRO_FONT_SLANT_ITALIC 1)
-(define CAIRO_FONT_WEIGHT_NORMAL 0)
-(define CAIRO_FONT_WEIGHT_BOLD 1)
-(define CAIRO_LINE_CAP_ROUND 1)
-(define CAIRO_LINE_JOIN_ROUND 1)
-
-(define-foreign cairo-image-surface-create "cairo_image_surface_create"
-  (int int int) uptr)
-(define-foreign cairo-image-surface-create-for-data
-  "cairo_image_surface_create_for_data"
-  (uptr int int int int) uptr)
-(define-foreign cairo-image-surface-get-width "cairo_image_surface_get_width"
-  (uptr) int)
-(define-foreign cairo-image-surface-get-height "cairo_image_surface_get_height"
-  (uptr) int)
-(define-foreign cairo-image-surface-get-data "cairo_image_surface_get_data"
+(define-foreign sdl-create-gpu-device "SDL_CreateGPUDevice"
+  (unsigned-32 bool uptr) uptr)
+(define-foreign sdl-claim-window "SDL_ClaimWindowForGPUDevice"
+  (uptr uptr) bool)
+(define-foreign sdl-release-window "SDL_ReleaseWindowFromGPUDevice"
+  (uptr uptr) void)
+(define-foreign sdl-swapchain-format "SDL_GetGPUSwapchainTextureFormat"
+  (uptr uptr) int)
+(define-foreign sdl-create-gpu-shader "SDL_CreateGPUShader" (uptr uptr) uptr)
+(define-foreign sdl-release-gpu-shader "SDL_ReleaseGPUShader"
+  (uptr uptr) void)
+(define-foreign sdl-create-gpu-pipeline "SDL_CreateGPUGraphicsPipeline"
+  (uptr uptr) uptr)
+(define-foreign sdl-release-gpu-pipeline "SDL_ReleaseGPUGraphicsPipeline"
+  (uptr uptr) void)
+(define-foreign sdl-create-gpu-compute "SDL_CreateGPUComputePipeline"
+  (uptr uptr) uptr)
+(define-foreign sdl-release-gpu-compute "SDL_ReleaseGPUComputePipeline"
+  (uptr uptr) void)
+(define-foreign sdl-create-gpu-buffer "SDL_CreateGPUBuffer" (uptr uptr) uptr)
+(define-foreign sdl-release-gpu-buffer "SDL_ReleaseGPUBuffer"
+  (uptr uptr) void)
+(define-foreign sdl-create-gpu-texture "SDL_CreateGPUTexture" (uptr uptr) uptr)
+(define-foreign sdl-release-gpu-texture "SDL_ReleaseGPUTexture"
+  (uptr uptr) void)
+(define-foreign sdl-create-gpu-sampler "SDL_CreateGPUSampler" (uptr uptr) uptr)
+(define-foreign sdl-create-gpu-transfer "SDL_CreateGPUTransferBuffer"
+  (uptr uptr) uptr)
+(define-foreign sdl-release-gpu-transfer "SDL_ReleaseGPUTransferBuffer"
+  (uptr uptr) void)
+(define-foreign sdl-map-gpu-transfer "SDL_MapGPUTransferBuffer"
+  (uptr uptr bool) uptr)
+(define-foreign sdl-unmap-gpu-transfer "SDL_UnmapGPUTransferBuffer"
+  (uptr uptr) void)
+(define-foreign sdl-acquire-gpu-commands "SDL_AcquireGPUCommandBuffer"
   (uptr) uptr)
-(define-foreign cairo-image-surface-get-stride "cairo_image_surface_get_stride"
-  (uptr) int)
-(define-foreign cairo-surface-flush "cairo_surface_flush" (uptr) void)
-(define-foreign cairo-surface-mark-dirty "cairo_surface_mark_dirty" (uptr) void)
-(define-foreign cairo-surface-destroy "cairo_surface_destroy" (uptr) void)
-(define-foreign cairo-surface-write-to-png "cairo_surface_write_to_png"
-  (uptr string) int)
-(define-foreign cairo-create "cairo_create" (uptr) uptr)
-(define-foreign cairo-destroy "cairo_destroy" (uptr) void)
-(define-foreign cairo-save "cairo_save" (uptr) void)
-(define-foreign cairo-restore "cairo_restore" (uptr) void)
-(define-foreign cairo-scale "cairo_scale" (uptr double double) void)
-(define-foreign cairo-translate "cairo_translate" (uptr double double) void)
-(define-foreign cairo-rotate "cairo_rotate" (uptr double) void)
-(define-foreign cairo-identity-matrix "cairo_identity_matrix" (uptr) void)
-;; Writes the six doubles xx yx xy yy x0 y0 to the given address.
-(define-foreign cairo-get-matrix "cairo_get_matrix" (uptr uptr) void)
-(define CAIRO_OPERATOR_CLEAR 0)
-(define CAIRO_OPERATOR_SOURCE 1)
-(define CAIRO_OPERATOR_OVER 2)
-(define CAIRO_OPERATOR_ADD 12)
-(define CAIRO_OPERATOR_DIFFERENCE 23)
-(define-foreign cairo-set-operator "cairo_set_operator" (uptr int) void)
-(define-foreign cairo-set-source-rgba "cairo_set_source_rgba"
-  (uptr double double double double) void)
-(define-foreign cairo-set-source "cairo_set_source" (uptr uptr) void)
-(define-foreign cairo-set-source-surface "cairo_set_source_surface"
-  (uptr uptr double double) void)
-(define-foreign cairo-new-path "cairo_new_path" (uptr) void)
-(define-foreign cairo-new-sub-path "cairo_new_sub_path" (uptr) void)
-(define-foreign cairo-close-path "cairo_close_path" (uptr) void)
-(define-foreign cairo-move-to "cairo_move_to" (uptr double double) void)
-(define-foreign cairo-line-to "cairo_line_to" (uptr double double) void)
-(define-foreign cairo-curve-to "cairo_curve_to"
-  (uptr double double double double double double) void)
-(define-foreign cairo-rectangle "cairo_rectangle"
-  (uptr double double double double) void)
-(define-foreign cairo-arc "cairo_arc"
-  (uptr double double double double double) void)
-(define-foreign cairo-fill "cairo_fill" (uptr) void)
-(define-foreign cairo-fill-preserve "cairo_fill_preserve" (uptr) void)
-(define-foreign cairo-stroke "cairo_stroke" (uptr) void)
-(define-foreign cairo-paint "cairo_paint" (uptr) void)
-(define-foreign cairo-clip "cairo_clip" (uptr) void)
-(define-foreign cairo-set-line-width "cairo_set_line_width" (uptr double) void)
-(define-foreign cairo-set-line-cap "cairo_set_line_cap" (uptr int) void)
-(define-foreign cairo-set-line-join "cairo_set_line_join" (uptr int) void)
-(define-foreign cairo-toy-font-face-create "cairo_toy_font_face_create"
-  (string int int) uptr)
-(define-foreign cairo-set-font-face "cairo_set_font_face" (uptr uptr) void)
-(define-foreign cairo-set-font-size "cairo_set_font_size" (uptr double) void)
-(define-foreign cairo-show-text "cairo_show_text" (uptr string) void)
-(define-foreign cairo-get-current-point "cairo_get_current_point"
+(define-foreign sdl-acquire-swapchain "SDL_AcquireGPUSwapchainTexture"
+  (uptr uptr uptr uptr uptr) bool)
+(define-foreign sdl-begin-copy-pass "SDL_BeginGPUCopyPass" (uptr) uptr)
+(define-foreign sdl-end-copy-pass "SDL_EndGPUCopyPass" (uptr) void)
+(define-foreign sdl-upload-to-buffer "SDL_UploadToGPUBuffer"
+  (uptr uptr uptr bool) void)
+(define-foreign sdl-upload-to-texture "SDL_UploadToGPUTexture"
+  (uptr uptr uptr bool) void)
+(define-foreign sdl-download-from-buffer "SDL_DownloadFromGPUBuffer"
   (uptr uptr uptr) void)
-(define-foreign cairo-text-extents "cairo_text_extents" (uptr string uptr) void)
-(define-foreign cairo-font-extents "cairo_font_extents" (uptr uptr) void)
-(define-foreign cairo-pattern-create-linear "cairo_pattern_create_linear"
-  (double double double double) uptr)
-(define-foreign cairo-pattern-create-radial "cairo_pattern_create_radial"
-  (double double double double double double) uptr)
-(define-foreign cairo-pattern-add-color-stop-rgba
-  "cairo_pattern_add_color_stop_rgba"
-  (uptr double double double double double) void)
-(define-foreign cairo-pattern-destroy "cairo_pattern_destroy" (uptr) void)
-(define-foreign cairo-pattern-create-for-surface
-  "cairo_pattern_create_for_surface"
-  (uptr) uptr)
-(define-foreign cairo-pattern-set-extend "cairo_pattern_set_extend"
-  (uptr int) void)
-(define-foreign cairo-pattern-set-filter "cairo_pattern_set_filter"
-  (uptr int) void)
-(define CAIRO_EXTEND_REPEAT 1)
-(define CAIRO_FILTER_NEAREST 3)
-;; Six doubles xx yx xy yy x0 y0 at the address, from user space.
-(define-foreign cairo-pattern-set-matrix "cairo_pattern_set_matrix"
+(define-foreign sdl-download-from-texture "SDL_DownloadFromGPUTexture"
+  (uptr uptr uptr) void)
+(define-foreign sdl-begin-render-pass "SDL_BeginGPURenderPass"
+  (uptr uptr unsigned-32 uptr) uptr)
+(define-foreign sdl-end-render-pass "SDL_EndGPURenderPass" (uptr) void)
+(define-foreign sdl-bind-gpu-pipeline "SDL_BindGPUGraphicsPipeline"
   (uptr uptr) void)
-;; text drawn without antialiasing (a crisp font)
-(define CAIRO_ANTIALIAS_NONE 1)
-(define-foreign cairo-font-options-create "cairo_font_options_create" () uptr)
-(define-foreign cairo-font-options-set-antialias
-  "cairo_font_options_set_antialias" (uptr int) void)
-(define-foreign cairo-set-font-options "cairo_set_font_options"
+(define-foreign sdl-bind-vertex-storage "SDL_BindGPUVertexStorageBuffers"
+  (uptr unsigned-32 uptr unsigned-32) void)
+(define-foreign sdl-bind-fragment-storage "SDL_BindGPUFragmentStorageBuffers"
+  (uptr unsigned-32 uptr unsigned-32) void)
+(define-foreign sdl-bind-fragment-samplers "SDL_BindGPUFragmentSamplers"
+  (uptr unsigned-32 uptr unsigned-32) void)
+(define-foreign sdl-push-vertex-uniform "SDL_PushGPUVertexUniformData"
+  (uptr unsigned-32 uptr unsigned-32) void)
+(define-foreign sdl-draw-primitives "SDL_DrawGPUPrimitives"
+  (uptr unsigned-32 unsigned-32 unsigned-32 unsigned-32) void)
+(define-foreign sdl-push-fragment-uniform "SDL_PushGPUFragmentUniformData"
+  (uptr unsigned-32 u8* unsigned-32) void)
+(define-foreign sdl-begin-compute-pass "SDL_BeginGPUComputePass"
+  (uptr uptr unsigned-32 uptr unsigned-32) uptr)
+(define-foreign sdl-end-compute-pass "SDL_EndGPUComputePass" (uptr) void)
+(define-foreign sdl-bind-compute-pipeline "SDL_BindGPUComputePipeline"
   (uptr uptr) void)
+(define-foreign sdl-bind-compute-storage "SDL_BindGPUComputeStorageBuffers"
+  (uptr unsigned-32 uptr unsigned-32) void)
+(define-foreign sdl-push-compute-uniform "SDL_PushGPUComputeUniformData"
+  (uptr unsigned-32 u8* unsigned-32) void)
+(define-foreign sdl-dispatch-compute "SDL_DispatchGPUCompute"
+  (uptr unsigned-32 unsigned-32 unsigned-32) void)
+(define-foreign sdl-submit-gpu-fence
+  "SDL_SubmitGPUCommandBufferAndAcquireFence" (uptr) uptr)
+(define-foreign/collect-safe sdl-wait-gpu-fences "SDL_WaitForGPUFences"
+  (uptr bool uptr unsigned-32) bool)
+(define-foreign sdl-query-gpu-fence "SDL_QueryGPUFence" (uptr uptr) bool)
+(define-foreign sdl-release-gpu-fence "SDL_ReleaseGPUFence" (uptr uptr) void)
+(define-foreign sdl-gpu-driver "SDL_GetGPUDeviceDriver" (uptr) string)
+(define-foreign sdl-window-supports-present-mode
+  "SDL_WindowSupportsGPUPresentMode" (uptr uptr int) bool)
+(define-foreign/collect-safe sdl-wait-gpu-idle "SDL_WaitForGPUIdle" (uptr) bool)
+(define gpu-copy-in (foreign-procedure "SDL_memcpy" (uptr u8* size_t) uptr))
+(define gpu-copy-out (foreign-procedure "SDL_memcpy" (u8* uptr size_t) uptr))
+
+;;; ------------------------------------------------------------------ FreeType
+
+(define-foreign ft-init-freetype "FT_Init_FreeType" (uptr) int)
+(define-foreign ft-new-face "FT_New_Face" (uptr string long uptr) int)
+(define-foreign ft-set-char-size "FT_Set_Char_Size"
+  (uptr long long unsigned unsigned) int)
+(define-foreign ft-set-transform "FT_Set_Transform" (uptr uptr uptr) void)
+(define-foreign ft-load-char "FT_Load_Char" (uptr unsigned-long int) int)
+(define-foreign ft-get-first-char "FT_Get_First_Char"
+  (uptr uptr) unsigned-long)
+(define-foreign ft-get-next-char "FT_Get_Next_Char"
+  (uptr unsigned-long uptr) unsigned-long)
+
+;;; ----------------------------------------------------------------- fontconfig
+
+(define-foreign fc-config-get-current "FcConfigGetCurrent" () uptr)
+(define-foreign fc-name-parse "FcNameParse" (string) uptr)
+(define-foreign fc-config-substitute "FcConfigSubstitute"
+  (uptr uptr int) int)
+(define-foreign fc-default-substitute "FcDefaultSubstitute" (uptr) void)
+(define-foreign fc-font-match "FcFontMatch" (uptr uptr uptr) uptr)
+(define-foreign fc-pattern-get-string "FcPatternGetString"
+  (uptr string int uptr) int)
+(define-foreign fc-pattern-get-integer "FcPatternGetInteger"
+  (uptr string int uptr) int)
+(define-foreign fc-pattern-destroy "FcPatternDestroy" (uptr) void)

@@ -1340,7 +1340,7 @@
     (repl-cols-set! r cols)
     (repl-rows-set! r rows)
     (repl-scroll-set! r (clamp (repl-scroll r) 0 (max 0 (- total rows))))
-    (fill-rect 0 0 w h (repl-background r))
+    (fill-box 0 0 w h (repl-background r))
     ;; Lay out bottom-up; while everything fits, hang it from the top instead.
     (let loop ([entries (append input-entries waiting (repl-lines r))]
                [bottom (if (< total rows) (+ pad (* total lh)) (- h pad))]
@@ -1367,9 +1367,9 @@
                               (let ([row (quotient j cols)]
                                     [col (remainder j cols)])
                                 (when (< row shown)
-                                  (fill-round-rect (+ pad (* col cw))
-                                                   (+ top (* row lh) mark-top)
-                                                   cw th 3 'repl-paren-mark)))
+                                  (fill-box (+ pad (* col cw))
+                                            (+ top (* row lh) mark-top) cw th
+                                            'repl-paren-mark 3)))
                               (vector-set! colors j 'yellow))))
                         paren))
                      (draw-repl-line pad top text colors cols 0 shown cw lh)
@@ -1385,9 +1385,9 @@
                                                (+ top (* row lh))))
                              (cond
                                [(not focused?)
-                                (stroke-rect (+ pad (* col cw))
-                                             (+ top (* row lh) mark-top)
-                                             cw th 'text-faint)]
+                                (stroke-box (+ pad (* col cw))
+                                            (+ top (* row lh) mark-top)
+                                            cw th 'text-faint)]
                                [(repl-blink r)
                                 (repl-draw-cursor (+ pad (* col cw))
                                                   (+ top (* row lh) mark-top)
@@ -1460,7 +1460,7 @@
 (define (repl-draw-cursor x y cw th)
   (if (eq? (theme 'text-caret) 'block)
       (px-invert x y cw th)
-      (fill-rect x y 2 th 'accent)))
+      (fill-box x y 2 th 'accent)))
 
 ;; Under the parenthesis that matches the one at the cursor, and it.
 (color-default! 'repl-paren-mark (theme-rule (alpha 'yellow 0.25)))

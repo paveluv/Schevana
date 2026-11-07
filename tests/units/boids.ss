@@ -378,7 +378,7 @@
                               (let ([ui (make-ui)])
                                 (ui-begin! ui)
                                 (set! bottom (boids-draw-rules ui win w)))))])
-             (cairo-surface-destroy s)
+             (picture-free! s)
              (<= bottom h))))
   (check "Boids: the rules window paints the style's page under its rows"
          (let*-values ([(rw) (rules-win)] [(w h) (window-content-size rw)])
@@ -393,7 +393,7 @@
                                 (parameterize ([current-window rw])
                                   ((hashtable-ref (window-handlers rw) 'draw #f)
                                    rw w h)))))])
-             (cairo-surface-destroy s)
+             (picture-free! s)
              (and (member '(page) surfaces) #t))))
   (check "Boids: its slider sets the flock's rule, on a weight's cube"
          (begin

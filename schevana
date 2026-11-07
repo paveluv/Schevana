@@ -3,7 +3,7 @@
 # and "scheme" elsewhere; "chez" first, since "scheme" may be another
 # Scheme there.
 #
-# A Mac finds a library by its name (libSDL3.dylib, libcairo.2.dylib) in
+# A Mac finds a library by its name (libSDL3.dylib, libfreetype.6.dylib) in
 # /usr/local/lib and /usr/lib, but Homebrew on Apple silicon keeps its own
 # in /opt/homebrew/lib: look there too. (Set from outside, the variable
 # would not get here: macOS drops it on the way into /bin/sh.)

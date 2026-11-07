@@ -4,15 +4,13 @@
 
 (define-part (draw-app-icon size)
   (let* ([m (* size 0.06)] [s (- size m m)] [r (* s 0.22)])
-    (call-with-round-clip m m s s r
-      (lambda ()
-        (fill-gradient m m s s 'desktop-top 'desktop-bottom)
-        (fill-glow (+ m (* s 0.8)) (+ m (* s 0.2)) (* s 0.9)
-                   (alpha 'accent-2 0.30))
-        (fill-glow (+ m (* s 0.15)) (+ m (* s 0.9)) (* s 0.8)
-                   (alpha 'accent 0.25))))
-    (stroke-round-rect (+ m 0.5) (+ m 0.5) (- s 1) (- s 1) r
-                       (alpha 'text 0.18) 1)
+    (with-clip (m m s s r)
+      (fill-gradient m m s s 'desktop-top 'desktop-bottom)
+      (fill-glow (+ m (* s 0.8)) (+ m (* s 0.2)) (* s 0.9)
+                 (alpha 'accent-2 0.30))
+      (fill-glow (+ m (* s 0.15)) (+ m (* s 0.9)) (* s 0.8)
+                 (alpha 'accent 0.25)))
+    (stroke-box (+ m 0.5) (+ m 0.5) (- s 1) (- s 1) (alpha 'text 0.18) 1 r)
     (text-draw-centered m m s s "λ" 'text
                         (make-font* "serif" (* s 0.72) 'bold))))
 
@@ -41,7 +39,7 @@
 
 ;; The app icon as a PNG file, size pixels square.
 (define (write-app-icon! path size)
-  (write-image-png path size size (lambda () (draw-app-icon size))))
+  (png-write-drawing path size size (lambda () (draw-app-icon size))))
 
 ;; Returns the files it wrote.
 (define (install-desktop-entry!)

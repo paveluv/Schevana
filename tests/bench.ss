@@ -9,15 +9,15 @@
 ;;;   S30   30 Life windows, cascaded
 ;;;   S30M  S30 under a maximized REPL
 ;;; A fake clock moves 81 ms a step, so every Life window steps, and asks
-;;; for a frame, at every step. Everything runs on the main thread. The
-;;; host's SDL upload runs against a stand-in whose texture takes the
-;;; changed rows with memcpy, as SDL_UpdateTexture does. Each scene: 10
-;;; steps to warm up, then frames (default 100) measured, each one step:
-;;;   main    the main thread's CPU time (median): events, ticks, drawing
-;;;           the frame, comparing its rows, the upload
+;;; for a frame, at every step. Everything runs on the main thread, on
+;;; lavapipe, whose work on its own threads the main thread only hands over.
+;;; Each scene: 10 steps to warm up, then frames (default 100) measured, each
+;;; one step:
+;;;   main    the main thread's CPU time (median): events, ticks, recording
+;;;           the frame, sending it
 ;;;   wall    the step's time, steps back to back (median, and 90th
 ;;;           percentile)
-;;;   upload  bytes given to the texture (mean)
+;;;   upload  the bytes of the list sent (mean)
 ;;;   GCs     collections (mean)
 ;;; Also a keystroke in S5's REPL (the clock still: the frame shows the
 ;;; new character), an idle step (30 paused Life windows, the clock
@@ -34,7 +34,7 @@
 ;;; at one pixel a cell, maximized on that screen, and Boids at 150, 450,
 ;;; 2,000 and 5,000, on one thread and more (printed, not bounded). Fails
 ;;; (exit 1) unless every measured step drew a frame, an idle step takes
-;;; under 0.2 ms and uploads nothing (with Tasks open too), a keystroke in
+;;; under 0.2 ms and sends nothing (with Tasks open too), a keystroke in
 ;;; a long text keeps within its budget, a step of the Tree with 2,000
 ;;; tasks within 1.5 times one with the seed, and the busy process and the
 ;;; animation both go on.
@@ -69,37 +69,16 @@
                 (min (- (length xs) 1) (exact (floor (* p (length xs))))))))
 
 ;;; ------------------------------------------------------------------
-;;; the upload
+;;; what goes up
 
-;; The host's SDL branch, with *host* 'sdl only around the present, and
-;; the texture a buffer the canvas's size.
-(define texture 0)
-(define texture-bytes 0)
-(define (texture-upload! t rect pixels pitch)
-  (let ([n (* pitch *canvas-ph*)])
-    (unless (= n texture-bytes)
-      (unless (eqv? texture 0) (foreign-free texture))
-      (set! texture (foreign-alloc n))
-      (set! texture-bytes n))
-    (if (eqv? rect 0)
-        (sdl-memcpy texture pixels n)
-        (let ([x (foreign-ref 'integer-32 rect 0)]
-              [y (foreign-ref 'integer-32 rect 4)]
-              [w (foreign-ref 'integer-32 rect 8)]
-              [h (foreign-ref 'integer-32 rect 12)])
-          (if (and (= x 0) (= (* 4 w) pitch))
-              (sdl-memcpy (+ texture (* y pitch)) pixels (* h pitch))
-              (do ([r 0 (+ r 1)]) ((= r h))
-                (sdl-memcpy (+ texture (* (+ y r) pitch) (* 4 x))
-                            (+ pixels (* r pitch))
-                            (* 4 w))))))
-    #t))
-(set! sdl-update-texture texture-upload!)
-(set! sdl-render-texture (lambda (r t src dst) #t))
-(set! sdl-render-present (lambda (r) #t))
-(define plain-present host-present-damage!)
-(set! host-present-damage!
-      (lambda () (fluid-let ([*host* 'sdl]) (plain-present))))
+;; The bytes of the lists frames have sent.
+(define *upload-bytes* 0)
+(define plain-present rec-present!)
+(set! rec-present!
+      (lambda ()
+        (set! *upload-bytes*
+          (+ *upload-bytes* *rec-at* (* 4 *rec-extra-at*)))
+        (plain-present)))
 
 ;;; ------------------------------------------------------------------ scenes
 
@@ -561,8 +540,8 @@
 ;;; computes the rows up to its target once (printed, with a looser
 ;;; budget). Every case is measured in three rounds, each round all of
 ;;; them, and keeps its least: a load on the machine that slows a round
-;;; leaves the others. The budgets are ratios to the empty text's, so a
-;;; load that slows every round slows both sides alike.
+;;; leaves the others. The budgets are what it may cost over the empty
+;;; text's, in ms: a frame costs too little now for a ratio to mean much.
 
 (define (long-text which n width)
   (let ([o (open-output-string)]
@@ -882,20 +861,20 @@
                   under 0.2 ms (~,3f) and uploads nothing" tasks-idle)
          (and (< tasks-idle 0.2) (= 0 tasks-idle-up)))
 (let ([budget
-       (lambda (where key ratio)
+       (lambda (where key most)
          (let ([empty (key (find (lambda (r) (and (eq? (car r) where)
                                                   (eq? (cadr r) 'empty)))
                                  long-text-results))])
            (for-all (lambda (r)
                       (or (not (eq? (car r) where))
-                          (<= (key r) (* ratio empty))))
+                          (<= (- (key r) empty) most)))
                     long-text-results)))])
-  (assert! "a keystroke in a long text's worst cases costs at most 1.25 \
-            times what it costs in an empty text in the details, 1.6 times \
-            in the editor maximized (drawing its screenful of rows), and a \
-            jump at most 2.5 times"
-           (and (budget 'details caddr 1.25) (budget 'editor caddr 1.6)
-                (budget 'details cadddr 2.5) (budget 'editor cadddr 2.5))))
+  (assert! "a keystroke in a long text's worst cases costs at most 1 ms more \
+            than in an empty text in the details, 2 ms in the editor \
+            maximized (drawing its screenful of rows), and a jump at most \
+            10 ms more"
+           (and (budget 'details caddr 1) (budget 'editor caddr 2)
+                (budget 'details cadddr 10) (budget 'editor cadddr 10))))
 (assert! "a step of the Tree with 2,000 tasks more, in chains, costs at most \
           1.5 times one with the seed: a key, Space and the wheel"
          (let ([seed (cdr (assq 'seed tree-results))]

@@ -33,12 +33,10 @@
     (map (lambda (kind i) (list kind (+ bx (* i c)) 0 c b))
          '(minimize maximize close) '(0 1 2))))
 
-;; The baseline that centers the title's capitals on the line through cy,
-;; on a whole device pixel, from their height measured on *cr*: hinting
-;; makes them 9 pixels tall at 100% but 10 logical pixels at 200%.
+;; The baseline that centers the title's capitals on the line through cy.
 (define (draft-baseline cy)
   (let-values ([(l top w h) (text-ink "H" 'title)])
-    (px-baseline (+ cy (/ (- top) 2)) round)))
+    (+ cy (/ (- top) 2))))
 
 ;; The dimension's text in room, as (values title size): both where they
 ;; fit, else the title cut to fit, else nothing: the line reads better
@@ -74,18 +72,18 @@
 ;; under the mouse lights in the accent, even on an unfocused window.
 (define (draft-block win x y hover pressed ink)
   (let ([c (draft-cell)] [b (draft-band)])
-    (stroke-rect (+ x (draft-block-x win)) y (+ 1 (* 3 c)) b ink)
+    (stroke-box (+ x (draft-block-x win)) y (+ 1 (* 3 c)) b ink)
     (for-each
      (lambda (bt)
        (let* ([kind (car bt)] [cx (+ x (cadr bt))]
               [down? (eq? pressed kind)] [hot? (or down? (eq? hover kind))]
               [red? (and hot? (eq? kind 'close))])
-         (fill-rect cx y 1 b ink)
+         (fill-box cx y 1 b ink)
          (when hot?
-           (fill-rect (+ cx 1) (+ y 1) (- c 1) (- b 2)
-                      (cond [(not red?) (alpha 'accent (if down? 0.3 0.15))]
-                            [down? (mix 'button-close #x000000 0.2)]
-                            [else 'button-close])))
+           (fill-box (+ cx 1) (+ y 1) (- c 1) (- b 2)
+                     (cond [(not red?) (alpha 'accent (if down? 0.3 0.15))]
+                           [down? (mix 'button-close #x000000 0.2)]
+                           [else 'button-close])))
          (draft-glyph win kind (+ cx (/ c 2) 1/2) (+ y (quotient b 2) 1/2)
                       (quotient c 6)
                       (cond [red? (color-readable-on 'button-close)]
@@ -110,22 +108,21 @@
                 [(pad) (if (zero? lw) 0 draft-pad)]
                 [(lx) (round (/ (+ left right (- lw)) 2))]
                 [(base) (draft-baseline (+ ly 1/2))])
-    (window-shadow win x y w h 0 focused?)   ; shadow
-    (fill-rect x y w h (window-bg win))
-    (call-with-clip x y w h   ; a window narrower than its block cuts it
-      (lambda ()
-        (unless (maximized? win) (stroke-rect x y w h ink))
-        (when (> (- right left) (* 2 a))
-          (fill-rect (+ left a -1) ly (- lx pad left a -1) 1 ink)
-          (fill-rect (+ lx lw pad) ly (- right a -1 lx lw pad) 1 ink)
-          (draft-arrowhead left (+ ly 1/2) 1 ink)
-          (draft-arrowhead right (+ ly 1/2) -1 ink))
-        (draw-text (draw-text lx (- base (font-ascent 'title)) title
-                              (if focused? 'title-text 'title-text-dim)
-                              'title)
-                   (- base (font-ascent 'ui)) size
-                   (if focused? ink 'title-text-dim) 'ui)
-        (draft-block win x y hover pressed ink)))))
+    (window-shadow win x y w h 0 focused?)
+    (fill-box x y w h (window-bg win))
+    (with-clip (x y w h)   ; a window narrower than its block cuts it
+      (unless (maximized? win) (stroke-box x y w h ink))
+      (when (> (- right left) (* 2 a))
+        (fill-box (+ left a -1) ly (- lx pad left a -1) 1 ink)
+        (fill-box (+ lx lw pad) ly (- right a -1 lx lw pad) 1 ink)
+        (draft-arrowhead left (+ ly 1/2) 1 ink)
+        (draft-arrowhead right (+ ly 1/2) -1 ink))
+      (draw-text (draw-text lx (- base (font-ascent 'title)) title
+                            (if focused? 'title-text 'title-text-dim)
+                            'title)
+                 (- base (font-ascent 'ui)) size
+                 (if focused? ink 'title-text-dim) 'ui)
+      (draft-block win x y hover pressed ink))))
 
 ;; A move or a resize drags a drawing of where the window goes: its
 ;; outline and, along its top, the dimension line with the live size,
@@ -135,10 +132,10 @@
          [size (format "~a × ~a" (exact (round w)) (exact (round h)))]
          [sw (ceiling (text-width size 'ui))]
          [lx (round (+ x (/ (- w sw) 2)))])
-    (stroke-rect x y w h 'accent)
+    (stroke-box x y w h 'accent)
     (when (and (> w (+ sw (* 2 (+ a 8 p)))) (> h (draft-band)))
-      (fill-rect (+ x a) ly (- lx p x a) 1 'accent)
-      (fill-rect (+ lx sw p) ly (- (+ x w) a lx sw p) 1 'accent)
+      (fill-box (+ x a) ly (- lx p x a) 1 'accent)
+      (fill-box (+ lx sw p) ly (- (+ x w) a lx sw p) 1 'accent)
       (draft-arrowhead (+ x 1) (+ ly 1/2) 1 'accent)
       (draft-arrowhead (+ x w -1) (+ ly 1/2) -1 'accent)
       (draw-text lx (- (draft-baseline (+ ly 1/2)) (font-ascent 'ui)) size

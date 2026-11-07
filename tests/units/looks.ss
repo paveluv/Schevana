@@ -58,7 +58,7 @@
                     [paint (lambda (outline?)
                              (image (k 300) (k 200) (inexact s)
                                     (lambda ()
-                                      (fill-rect 0 0 300 200 #xffffff)
+                                      (fill-box 0 0 300 200 #xffffff)
                                       (when outline?
                                         (draw-drag-outline 20 30 w h)))))]
                     [blank (paint #f)] [drawn (paint #t)]
@@ -66,8 +66,8 @@
                              (max-diff blank drawn
                                        (list (k 20) (k 30) (k (+ 20 w))
                                              (k (+ 30 h)))))])
-               (cairo-surface-destroy blank)
-               (cairo-surface-destroy drawn)
+               (picture-free! blank)
+               (picture-free! drawn)
                r))))
        '(1 3/2)))
 
@@ -87,17 +87,17 @@
            (let* ([at (lambda (w)
                         (image 300 200 1
                                (lambda ()
-                                 (fill-rect 0 0 300 200 #xffffff)
+                                 (fill-box 0 0 300 200 #xffffff)
                                  (draw-drag-outline 20 30 w 120))))]
                   [a (at 240)] [b (at 239)] [narrow (at 60)]
                   [plain (image 300 200 1
                                 (lambda ()
-                                  (fill-rect 0 0 300 200 #xffffff)
-                                  (stroke-rect 20 30 60 120 'accent)))]
+                                  (fill-box 0 0 300 200 #xffffff)
+                                  (stroke-box 20 30 60 120 'accent)))]
                   ;; the right edge moved; the label changed too
                   [r (list (max-diff a b '(250 0 300 200))
                            (max-diff narrow plain))])
-             (for-each cairo-surface-destroy (list a b narrow plain))
+             (for-each picture-free! (list a b narrow plain))
              (and (> (car r) 0) (= (cadr r) 0))))))
 
 (check "Genera grays a window not selected with a sparse stipple, and not \
@@ -127,12 +127,12 @@
            (let ([at (lambda (flags)
                        (let* ([img (image 120 40 1
                                           (lambda ()
-                                            (fill-rect 0 0 120 40 'window-bg)
+                                            (fill-box 0 0 120 40 'window-bg)
                                             (ui-draw-button 10 5 100 30 flags
                                                             "Go" #f)))]
                               [ps (list (pixel-at img 10 5)
                                         (pixel-at img 60 8))])
-                         (cairo-surface-destroy img)
+                         (picture-free! img)
                          ps))]
                  [ink (color->pixel 'text)] [paper (color->pixel 'window-bg)])
              (and (equal? (at '()) (list paper paper))
@@ -157,13 +157,13 @@
         ends, the name in capitals of MIT's 5X5"
        (let* ([img (image 30 12 1
                           (lambda ()
-                            (fill-rect 0 0 30 12 #xffffff)
+                            (fill-box 0 0 30 12 #xffffff)
                             (px-lozenge 0 0 "a" #x000000)))]
               [r (list (px-lozenge-width "AB")
                        (map (lambda (p) (= (apply pixel-at img p) #xff000000))
                             '((0 4) (3 1) (3 7) (4 0) (4 8) (14 4) (11 1)
                               (6 2) (5 2) (5 4) (9 4) (6 6) (5 6))))])
-         (cairo-surface-destroy img)
+         (picture-free! img)
          (equal? r '(21 (#t #t #t #t #t #t #t #t #f #t #t #f #t)))))
 
 (check "Genera chooses in inverse video: a row's 2-pixel box, its inside \
@@ -174,15 +174,15 @@
                      (lambda ()
                        (let* ([img (image 100 24 1
                                           (lambda ()
-                                            (fill-rect 0 0 100 24 #xffffff)
+                                            (fill-box 0 0 100 24 #xffffff)
                                             (ui-draw-table-row 0 0 100 24
                                                                '(selected))
-                                            (fill-rect 10 8 6 6 #x000000)
+                                            (fill-box 10 8 6 6 #x000000)
                                             (ui-draw-highlight-over
                                              0 0 100 24 '())))]
                               [ps (map (lambda (p) (apply pixel-at img p))
                                        '((0 0) (50 12) (12 10)))])
-                         (cairo-surface-destroy img)
+                         (picture-free! img)
                          ps))))])
          (and (equal? (at 'genera) '(#xff000000 #xff000000 #xffffffff))
               (= (caddr (at 'mac)) #xff000000))))
@@ -259,7 +259,7 @@
                                               (set! w (tasks-draw-mark
                                                        2 2 14 'status
                                                        'todo))))])
-                           (cairo-surface-destroy img)
+                           (picture-free! img)
                            w))))]
              [size (lambda (style flags)
                      (with-style style
@@ -366,7 +366,7 @@
          (lambda ()
            (let* ([img (image pw ph s thunk)]
                   [ps (map (lambda (p) (apply pixel-at img p)) at)])
-             (cairo-surface-destroy img)
+             (picture-free! img)
              ps))
          extra))
 
@@ -378,8 +378,8 @@
             (lambda ()
               (equal? (genera-pixels 20 10 1 '((5 5) (15 5))
                                      (lambda ()
-                                       (fill-rect 0 0 20 10 'window-bg)
-                                       (fill-rect 10 0 10 10 'text)
+                                       (fill-box 0 0 20 10 'window-bg)
+                                       (fill-box 10 0 10 10 'text)
                                        (px-invert 0 0 20 10))
                                      'palette palette)
                       (list (color->pixel 'text) (color->pixel 'window-bg))))
@@ -397,13 +397,12 @@
         ends in ink or paper"
        (let* ([img (image 30 30 1.5
                           (lambda ()
-                            (fill-rect 0 0 20 20 #xffffff)
-                            (ui-call-with-pixel-clip 1.3 1.3 10.4 10.4
-                                             (lambda ()
-                                               (fill-rect 0 0 20 20
-                                                          #x000000)))))]
+                            (fill-box 0 0 20 20 #xffffff)
+                            (with-clip (1.3 1.3 10.4 10.4)
+                              (fill-box 0 0 20 20
+                                        #x000000))))]
               [ps (map (lambda (i) (pixel-at img i i)) (iota 20))])
-         (cairo-surface-destroy img)
+         (picture-free! img)
          (for-all (lambda (p) (memv p '(#xff000000 #xffffffff))) ps)))
 
 (check "Genera's square things at 150 % on whole device pixels: a Tasks \
@@ -417,13 +416,13 @@
                [row (map (lambda (x) (list x 30)) (iota 8))])
            (and (crisp? (genera-pixels 60 60 1.5 row
                                        (lambda ()
-                                         (fill-rect 0 0 40 40 'text)
+                                         (fill-box 0 0 40 40 'text)
                                          (tasks-draw-card 1.3 1.3 30 30 '()
                                                           (car *tasks*)
                                                           '(2026 10 31)))))
                 (crisp? (genera-pixels 60 60 1.5 row
                                        (lambda ()
-                                         (fill-rect 0 0 40 40 'text)
+                                         (fill-box 0 0 40 40 'text)
                                          (settings-draw-font-sample
                                           1.3 1.3 30))))))))
 
@@ -432,14 +431,14 @@
        (let ([ink #xff000000])
          (and (equal? (genera-pixels 100 24 1 '((2 12) (90 3))
                                      (lambda ()
-                                       (fill-rect 0 0 100 24 #xffffff)
+                                       (fill-box 0 0 100 24 #xffffff)
                                        (ui-draw-nav-row 0 0 100 24
                                                         '(selected)
                                                         "Theme" #f)))
                       (list ink ink))
               (equal? (genera-pixels 200 28 1 '((150 4))
                                      (lambda ()
-                                       (fill-rect 0 0 200 28 #xffffff)
+                                       (fill-box 0 0 200 28 #xffffff)
                                        (settings-draw-color-row
                                         0 0 200 28 'red '(selected))))
                       (list ink)))))
@@ -451,7 +450,7 @@
                       (genera-pixels 20 10 1/2
                                      (map (lambda (x) (list x 9)) (iota 20))
                                      (lambda ()
-                                       (fill-rect 0 0 40 20 #xffffff)
+                                       (fill-box 0 0 40 20 #xffffff)
                                        (ui-draw-field 0 0 40 20 '()))))
               (with-style 'genera
                 (lambda ()
@@ -518,7 +517,7 @@
          (lambda ()
            (equal? (genera-pixels 200 28 1 '((20 14) (12 6) (13 6))
                                   (lambda ()
-                                    (fill-rect 0 0 200 28 #xffffff)
+                                    (fill-box 0 0 200 28 #xffffff)
                                     (settings-draw-color-row
                                      0 0 200 28 'accent '(selected))))
                    (list (color->pixel 'accent) #xff000000 #xffffffff)))))
@@ -603,7 +602,7 @@
                                        #\# #\.))
                                  (iota 4))))
                          (iota 4))])
-         (cairo-surface-destroy img)
+         (picture-free! img)
          (equal? rows '("#..." "#..." "..#." "..#."))))
 
 (check "Interlisp's scroll bars beside the window: with the side Outside \
@@ -664,34 +663,19 @@
                         (set! n 0)
                         (fluid-let ([draw-resize-grip
                                      (lambda (x y) (set! n (+ n 1)))])
-                          (render-full-into! *canvas*))
+                          (screen-bytes))
                         n)])
            (let* ([open (count)] [shaded (begin (shade-window! w) (count))])
              (close-window! w)
              (steps 1)
              (= shaded (- open 1))))))
 
-(check "a baseline lands on a whole device row in a half-size miniature, \
-        and moved half a device pixel"
-       (let ([rows '()])
-         (cairo-surface-destroy
-          (image 10 10 1
-                 (lambda ()
-                   (cairo-scale *cr* 0.5 0.5)
-                   (set! rows (list (* 0.5 (px-baseline 10.6 round))))
-                   (cairo-translate *cr* 0 1)
-                   (set! rows (cons (+ 0.5 (* 0.5 (px-baseline 10.6 round)))
-                                    rows)))))
-         (for-all integer? rows)))
-
-(check "a stipple's tile is made once for its rows, colors and scale"
+(check "a stipple's tile is made once for its rows and scale"
        (let* ([gray (stipple 'text #f "#..." "...." "...." "....")]
               [paint (lambda (s)
-                       (cairo-surface-destroy
-                        (image 24 24 s (lambda () (fill-rect 0 0 16 16 gray)
-                                         (fill-rect 0 0 8 8 gray)))))])
-         (vector-for-each free-owned-surface!
-                          (hashtable-values *stipple-tiles*))
+                       (picture-free!
+                        (image 24 24 s (lambda () (fill-box 0 0 16 16 gray)
+                                         (fill-box 0 0 8 8 gray)))))])
          (hashtable-clear! *stipple-tiles*)
          (paint 1)
          (let ([one (hashtable-size *stipple-tiles*)])
@@ -750,7 +734,7 @@
   (pixel-at (image 40 20 1
                    (lambda ()
                      (with-style st
-                       (lambda () (fill-round-rect 0 0 40 20 10 #x000000)))))
+                       (lambda () (fill-box 0 0 40 20 #x000000 10)))))
             0 0))
 
 (check "a style whose corner radius is 0 draws every rounded thing square, \
@@ -816,11 +800,11 @@
 
 (check "the stipple tiles cached are at most 64"
        (begin
-         (cairo-surface-destroy
+         (picture-free!
           (image 8 8 1 (lambda ()
                          (do ([i 0 (+ i 1)]) ((= i 70))
-                           (fill-rect 0 0 8 8 (stipple (* i 1000) #f "#."
-                                                       ".#"))))))
+                           (fill-box 0 0 8 8 (stipple (* i 1000) #f "#."
+                                                      ".#"))))))
          (<= (hashtable-size *stipple-tiles*) 64)))
 
 (check "the who line counts one window, not one windows"
@@ -832,7 +816,7 @@
                        [draw-text (lambda (x y s . rest)
                                     (set! texts (cons s texts))
                                     (apply real x y s rest))])
-             (render-full-into! *canvas*)))
+             (screen-bytes)))
          (set-style! 'mac)
          (close-window! w)
          (steps 1)
@@ -918,7 +902,7 @@
                         [rows (map (lambda (i)
                                      (pixel-at img x (- bottom i 1)))
                                    (iota 6))])
-                   (cairo-surface-destroy img)
+                   (picture-free! img)
                    (for-all (lambda (p) (or (= p ink) (= p paper)))
                             rows)))))
            '(1.25 1.5 1.75)))

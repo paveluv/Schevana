@@ -247,18 +247,17 @@
 (define (draw-menu-filter m x y w h)
   (let* ([font (theme 'menu-font)] [lh (font-line-height font)]
          [f (menu-filter m)] [ty (+ y (/ (- h lh) 2))])
-    (fill-round-rect x y w h 6 'bg-0)
+    (fill-box x y w h 'bg-0 6)
     (if (string=? f "")
         (draw-text (+ x 10) ty "Type to filter…" 'text-faint font)
-        (call-with-clip x y w h
-          (lambda ()
-            (let ([ex (draw-text (min (+ x 10)
-                                      (- (+ x w) 13 (text-width f font)))
-                                 ty f 'text font)])
-              (if (eq? (theme 'text-caret) 'block)   ; the kit's caret
-                  (px-invert ex ty (font-char-width font) lh)
-                  (fill-rect (+ ex 1) (+ y (round (/ (- h lh 1) 2))) 1.5
-                             (round (+ lh 1)) 'accent))))))))
+        (with-clip (x y w h)
+          (let ([ex (draw-text (min (+ x 10)
+                                    (- (+ x w) 13 (text-width f font)))
+                               ty f 'text font)])
+            (if (eq? (theme 'text-caret) 'block)   ; the kit's caret
+                (px-invert ex ty (font-char-width font) lh)
+                (fill-box (+ ex 1) (+ y (round (/ (- h lh 1) 2))) 1.5
+                          (round (+ lh 1)) 'accent)))))))
 
 ;;; The surface: over the bars, under the toasts.
 

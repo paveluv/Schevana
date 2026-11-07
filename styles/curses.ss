@@ -66,33 +66,33 @@
 ;; Drawn in device pixels, in pens: squares a line wide, 1 pixel at 100%
 ;; and 2 at 200%.
 (define (curses-draw-under win x y w h focused? hover pressed)
-  (let*-values ([(k ox oy) (device-transform)] [(p) (max 1 (round k))]
-                [(c) (curses-cell)] [(bg) (window-bg win)]
-                [(ink) (if focused? 'accent 'text-faint)]
-                [(fg) (if focused? 'title-text 'title-text-dim)]
-                [(buttons?) (or focused?
-                                (memq hover '(title close minimize maximize)))])
-    ;; the device pixels' edge nearest a logical x or y (o: ox or oy), and
-    ;; how many pens a logical length is
-    (define (dev v o) (exact (floor (+ (* k v) o 1/2))))
+  (let* ([k (draw-scale)] [p (max 1 (round k))]
+         [c (curses-cell)] [bg (window-bg win)]
+         [ink (if focused? 'accent 'text-faint)]
+         [fg (if focused? 'title-text 'title-text-dim)]
+         [buttons? (or focused?
+                       (memq hover '(title close minimize maximize)))])
+    ;; the device pixels' edge nearest a logical x or y, and how many pens a
+    ;; logical length is
+    (define (dev v) (exact (floor (+ (* k v) 1/2))))
     (define (pens v) (exact (round (/ (* k v) p))))
     ;; from an inset len wide's outer edge to the middle pen of the 3 of a
     ;; double rule through it
     (define (mid len) (exact (floor (/ (- (* k len) p) 2))))
-    (let* ([L (+ (dev x ox) (mid (curses-side)))]
-           [R (- (dev (+ x w) ox) (mid (curses-side)) p)]
-           [T (+ (dev y oy) (mid (curses-top)))]
-           [B (- (dev (+ y h) oy) (mid (curses-row)) p)]
+    (let* ([L (+ (dev x) (mid (curses-side)))]
+           [R (- (dev (+ x w)) (mid (curses-side)) p)]
+           [T (+ (dev y) (mid (curses-top)))]
+           [B (- (dev (+ y h)) (mid (curses-row)) p)]
            [e (pens (* 2/5 (curses-row)))] [arm (pens (* 0.45 c))]  ; brackets
            [a (pens (* 0.27 (curses-row)))] [n (pens (* 3/8 c))]    ; arrows
            [q (pens (/ c 4))] [b (pens (/ c 2))])
       ;; pens of the top rule, counted from the column cx and the rule
       (define (pen cx i j iw jh color)
-        (fill-rect (+ cx (* p i)) (+ T (* p j)) (* p iw) (* p jh) color))
+        (fill-box (+ cx (* p i)) (+ T (* p j)) (* p iw) (* p jh) color))
       ;; cells gw wide at gx on the top rule: the rule cleared under them,
       ;; a bracket at each end, and (fill cx) in the middle
       (define (group gx gw fill)
-        (let ([cx (dev (- (+ x gx (/ gw 2)) (/ p k 2)) ox)]
+        (let ([cx (dev (- (+ x gx (/ gw 2)) (/ p k 2)))]
               [d (pens (- (/ gw 2) (* 3/8 c)))])
           (pen cx (- (+ d q)) -1 (+ d d q q 1) 3 bg)
           (for-each (lambda (bar from)
@@ -126,28 +126,26 @@
                 [(close) (pen cx (- q) (- q) (+ q q 1) (+ q q 1) color)]
                 [(minimize) (arrow cx #f #t color)]
                 [else (arrow cx #t (maximized? win) color)])))))
-      (window-shadow win x y w h 0 focused?)   ; shadow
-      (fill-rect x y w h bg)
-      (call-with-clip x y w h   ; a narrow window cuts its buttons
-        (lambda ()
-          (call-with-device-pixels
-            (lambda ()
-              ;; the double rule's outer and inner lines, or the one
-              ;; between
-              (for-each (lambda (o)
-                          (stroke-rect (+ L o) (+ T o) (- (+ R p) L o o)
-                                       (- (+ B p) T o o) ink p))
-                        (if focused? (list (- p) p) '(0)))
-              (when buttons?
-                (for-each (lambda (bt)
-                            (button (car bt) (cadr bt) (cadddr bt)))
-                          (curses-regions win)))
-              (let ([t (curses-title win buttons?)])
-                (when t
-                  (group (cadr t) (caddr t)
-                    (lambda (cx)
-                      (curses-text (car t) (+ cx (/ p 2)) (+ T (/ p 2)) k
-                                   fg))))))))))))
+      (window-shadow win x y w h 0 focused?)
+      (fill-box x y w h bg)
+      (with-clip (x y w h)   ; a narrow window cuts its buttons
+        (with-scale ((/ 1 k))   ; from here on, whole device pixels
+          ;; the double rule's outer and inner lines, or the one
+          ;; between
+          (for-each (lambda (o)
+                      (stroke-box (+ L o) (+ T o) (- (+ R p) L o o)
+                                  (- (+ B p) T o o) ink p))
+                    (if focused? (list (- p) p) '(0)))
+          (when buttons?
+            (for-each (lambda (bt)
+                        (button (car bt) (cadr bt) (cadddr bt)))
+                      (curses-regions win)))
+          (let ([t (curses-title win buttons?)])
+            (when t
+              (group (cadr t) (caddr t)
+                (lambda (cx)
+                  (curses-text (car t) (+ cx (/ p 2)) (+ T (/ p 2)) k
+                               fg))))))))))
 
 ;; A terminal's visual bell flashes the screen; menus box their entries.
 (define-style curses "Curses"

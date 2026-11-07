@@ -6,7 +6,7 @@
 ;; The outline, within its rectangle: a 1-pixel ring of a 50 % stipple of
 ;; the text and window colors.
 (define-part (draw-drag-outline x y w h)
-  (px-ring x y w h (stipple 'text 'bg-1 "#." ".#")))
+  (stroke-box x y w h (stipple 'text 'bg-1 "#." ".#")))
 
 (define (outline-draw)
   (when *drag-outline* (apply draw-drag-outline *drag-outline*)))

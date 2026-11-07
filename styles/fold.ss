@@ -33,19 +33,12 @@
           (list 'maximize x 0 c th)
           (list 'minimize (- x c) 0 c th))))
 
-;; The y nearest to v on a whole device pixel, however *cr* is scaled.
-(define (fold-snap v)
-  (let-values ([(k ox oy) (device-transform)])
-    (/ (- (round (+ (* k v) oy)) oy) k)))
-
 ;; (values baseline middle): where the title stands so that the middle of
 ;; its capitals is the middle of the top strip under its 1-pixel edge.
-;; The cap height is measured on *cr*, at the scale it is drawn: hinting
-;; makes it 9 pixels at 100% but 10 at 200%.
 (define (fold-baseline y th)
   (let*-values ([(l top w h) (text-ink "H" 'title)]
                 [(cap) (- top)]
-                [(base) (fold-snap (+ y (/ (+ th 1) 2) (/ cap 2)))])
+                [(base) (+ y (/ (+ th 1) 2) (/ cap 2))])
     (values base (- base (/ cap 2)))))
 
 ;; A polygon with a 1-pixel edge: outer in edge, inner (1 pixel in) in fill.
@@ -78,34 +71,33 @@
                 [(f) (fold-depth focused? close?)]
                 [(ink) (if focused? 'title-text 'title-text-dim)]
                 [(base mid) (fold-baseline y th)]
-                [(top) (fold-snap (- mid (/ fold-mark 2)))]
+                [(top) (- mid (/ fold-mark 2))]
                 ;; the dog-ear: solid red, accent, or the paper's back
                 [(back) (cond [(eq? pressed 'close)
                                (mix 'button-close #x000000 0.2)]
                               [close? 'button-close]
                               [focused? 'accent]
                               [else #f])])
-    ;; from the content down, so that the cut corner stays clear   ; shadow
-    (window-shadow win x (+ y th) w (- h th) 0 focused?)   ; shadow
+    ;; from the content down, so that the cut corner stays clear
+    (window-shadow win x (+ y th) w (- h th) 0 focused?)
     (when (maximized? win)   ; the desk, not a sliver of a window behind
-      (fill-rect (+ x w (- f)) y f f 'desktop-top))
+      (fill-box (+ x w (- f)) y f f 'desktop-top))
     (fold-sheet! x y w h f (if (maximized? win) 0 1)
                  (if focused? 'window-border-focus 'window-border) paper)
-    (call-with-clip x y w th   ; even "…" may not fit a narrow window
-      (lambda ()
-        (draw-text (+ x fold-margin) (- base (font-ascent 'title))
-                   (text-fit (window-title win)
-                             (- w fold-margin th g (* 2 (+ fold-mark g)))
-                             'title)
-                   ink 'title)))
+    (with-clip (x y w th)   ; even "…" may not fit a narrow window
+      (draw-text (+ x fold-margin) (- base (font-ascent 'title))
+                 (text-fit (window-title win)
+                           (- w fold-margin th g (* 2 (+ fold-mark g)))
+                           'title)
+                 ink 'title))
     (for-each
      (lambda (b)
        (let ([kind (car b)] [mx (+ x (cadr b) (quotient g 2))]
              [s (+ fold-mark 10)])
          (unless (eq? kind 'close)
            (when (memq kind (list hover pressed))   ; square, like the sheet
-             (fill-rect (- mx 5) (- top 5) s s
-                        (alpha 'text (if (eq? pressed kind) 0.22 0.12))))
+             (fill-box (- mx 5) (- top 5) s s
+                       (alpha 'text (if (eq? pressed kind) 0.22 0.12))))
            (ui-draw-glyph mx top fold-mark fold-mark
                           (list (cons 'ink (if (eq? hover kind)
                                                'title-text

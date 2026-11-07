@@ -370,3 +370,206 @@
              (steps 1)
              (printf "  ~s ~s\n" end room)
              (and end (> (ui-scrollbar-inset 'right) 0) (<= end room))))))
+
+;;; Flags: a late tick kept with what explains it.
+
+;; Ticks by hand on a clock only pass! moves (ms), a period 16 ms; thunk's
+;; value, the flags kept from a clean history.
+(define profile-test-t (* 5000 1000000000))
+(define (profile-test-pass! ms)
+  (set! profile-test-t (+ profile-test-t (* ms 1000000))))
+(define (profile-test-calm!)   ; a tick as it should be
+  (with-profile-span 'step #f (profile-test-pass! 16)))
+(define (profile-test-flags thunk)
+  (fluid-let ([now-ns (lambda () profile-test-t)]
+              [pacer-period (lambda () 16000000)])
+    (profile-clear!)
+    (profile-test-calm!)
+    (thunk)
+    (do ([i 0 (+ i 1)]) ((= i 3)) (profile-test-calm!))
+    (profile-flags)))
+
+(check "a late tick stays as a flag, with the ticks about it, what each \
+        swapchain call held main for and when its frame went; the ticks in \
+        time don't"
+       (let* ([sent #f]
+              [flags (profile-test-flags
+                      (lambda ()
+                        (profile-test-calm!)
+                        (profile-test-calm!)
+                        (with-profile-span 'step #f
+                          (with-profile-span 'vsync-wait 'acquire
+                            (profile-test-pass! 2))
+                          (with-profile-span 'render #f (profile-test-pass! 1))
+                          (set! sent profile-test-t)
+                          (with-profile-span 'vsync-wait 'submit
+                            (profile-test-pass! 30)))))]
+              [f (car flags)]
+              [lines (profile-flag-lines f)])
+         (for-each (lambda (l) (printf "  ~a\n" l)) lines)
+         (and (= (length flags) 1)
+              (= (profile-flag-count) 1)
+              (equal? (profile-flag-why f) '(submit 30000000))
+              (= (profile-flag-ns f) 33000000)
+              (= (profile-flag-acquire f) 2000000)
+              (= (profile-flag-submit f) 30000000)
+              (equal? (map cadr (profile-flag-beside f))
+                      '(16000000 16000000 16000000 33000000 16000000 16000000
+                        16000000))
+              (equal? (caddr (list-ref (profile-flag-beside f) 3)) sent)
+              (equal? (profile-flag-ticks-text f)
+                      "16.0 16.0 16.0 [33.0] 16.0 16.0 16.0")
+              (equal? (cadr lines)
+                      "the screen held main 30.0 ms, taking the frame")
+              (equal? (profile-flag-summary) "1 flag: 1 submit")
+              (let-values ([(port get) (open-string-output-port)])
+                (profile-flag-report port)
+                (let* ([out (get)]
+                       [want (format "1 flag: 1 submit\n\n~a\n"
+                                     (string-join lines "\n"))]
+                       [from (- (string-length out) (string-length want))])
+                  (and (> from 0)
+                       (string=? (substring out from (string-length out))
+                                 want)))))))
+
+(check "a flag's why is the biggest thing in the tick that could have made it \
+        late: a call of the screen's, a sleep past its period, the collector \
+        or someone's work, not the sleep that was only its tick's wait"
+       (let* ([win (open-window "Slow" 'size '(120 . 80) 'pos '(600 . 400))]
+              [why (lambda (thunk)
+                     (let ([flags (profile-test-flags
+                                   (lambda ()
+                                     (with-profile-span 'step #f (thunk))))])
+                       (and (= (length flags) 1)
+                            (let ([w (profile-flag-why (car flags))])
+                              (printf "  ~a\n" (profile-why-text w))
+                              w))))]
+              [acquire (why (lambda ()
+                              (with-profile-span 'vsync-wait 'acquire
+                                (profile-test-pass! 30))))]
+              [unclaimed (why (lambda ()
+                                (with-profile-span 'vsync-wait #f
+                                  (profile-test-pass! 30))))]
+              [asleep (why (lambda () (profile-test-pass! 40)))]
+              [gc (why (lambda ()
+                         (with-profile-span 'gc #f (profile-test-pass! 30))))]
+              [work (why (lambda ()
+                           (profile-test-pass! 15)   ; its tick's wait
+                           (with-profile-span 'render #f
+                             (with-profile-span (window-id win) 'draw
+                               (profile-test-pass! 12)))))])
+         (close-window! win)
+         (and (equal? acquire '(acquire 30000000))
+              (equal? unclaimed '(screen 30000000))
+              (equal? asleep '(asleep 24000000))
+              (equal? gc '(gc 30000000))
+              (eq? (car work) 'work)
+              (equal? (profile-why-text work) "Slow's draw took 12.0 ms"))))
+
+(check "a flag outlives the ticks' ring and says how long the window had \
+        been showing; the flags kept are the newest, the count all of them; \
+        clearing the history clears them"
+       (let* ([hidden? #t]
+              [flags (fluid-let ([host-hidden? (lambda () hidden?)])
+                       (profile-test-flags
+                        (lambda ()
+                          (set! hidden? #f)
+                          (profile-test-pass! 2000)   ; shown for 2 s and more
+                          (with-profile-span 'step #f
+                            (with-profile-span 'vsync-wait 'submit
+                              (profile-test-pass! 30))))))]
+              [f (car flags)]
+              [seq (profile-flag-seq f)]
+              [gone (fluid-let ([now-ns (lambda () profile-test-t)]
+                                [pacer-period (lambda () 16000000)])
+                      (profile-test-pass! (* 1000 (+ 1 *profile-tick-seconds*)))
+                      (profile-test-calm!)
+                      (not (profile-tick-kept? seq)))]
+              [still (equal? (car (profile-flags)) f)]
+              [many (profile-test-flags
+                     (lambda ()
+                       (do ([i 0 (+ i 1)]) ((= i (+ profile-flags-kept 6)))
+                         (with-profile-span 'step #f
+                           (with-profile-span 'vsync-wait 'submit
+                             (profile-test-pass! 30))))))]
+              [count (profile-flag-count)]
+              [summary (profile-flag-summary)])
+         (profile-clear!)
+         (printf "  shown for ~a, gone ~a, still ~a, ~a kept of ~a\n"
+                 (profile-flag-shown-for f) gone still (length many) count)
+         (and (= (profile-flag-shown-for f) (+ 2000000000 30000000))
+              gone still
+              (= (length many) profile-flags-kept)
+              (= count (+ profile-flags-kept 6))
+              (equal? summary "1030 flags, the last 1024: 1024 submit")
+              (> (profile-flag-seq (car many))
+                 (profile-flag-seq (cadr many)))
+              (null? (profile-flags)))))
+
+(check "a tick keeps what main itself ran, by its CPU clock"
+       (let ([spent (lambda ()
+                      (with-profile-span 'step #f
+                        (let loop ([i 0]) (when (< i 3000000) (loop (+ i 1)))))
+                      (profile-tick-ns (profile-newest-tick) 'cpu))])
+         (spent)
+         (> (spent) 0)))
+
+(check "a flag says what the host said about then, the mouse's motion only \
+        counted; what the tick drew on, its window and its memory, and how \
+        the ticks about it went, in the report and in its log"
+       (let* ([path (string-append out-dir "/flags.log")]
+              [flags (begin
+                       (when (file-exists? path) (delete-file path))
+                       (profile-flag-log! path)
+                       (profile-test-flags
+                        (lambda ()
+                          (profile-test-calm!)
+                          (*host-event-seen* #x20E)   ; focus-gained
+                          (profile-test-pass! 5)
+                          (*host-event-seen* #x400)   ; motion: counted
+                          (with-profile-span 'step #f
+                            (with-profile-span 'vsync-wait 'acquire
+                              (profile-test-pass! 30))))))]
+              [more (begin
+                      (profile-flag-log! #f)
+                      (call-with-input-file path get-string-all))]
+              [f (car flags)]
+              [lines (profile-flag-lines f)]
+              [has? (lambda (text s)
+                      (let ([n (string-length text)])
+                        (let loop ([i 0])
+                          (and (<= (+ i n) (string-length s))
+                               (or (string=? text (substring s i (+ i n)))
+                                   (loop (+ i 1)))))))]
+              [line? (lambda (text) (exists (lambda (l) (has? text l)) lines))])
+         (for-each (lambda (l) (printf "  ~a\n" l)) lines)
+         (delete-file path)
+         (and (equal? (car (profile-flag-events f))
+                      (cons 'focus-gained -35000000))
+              (= 1 (length (profile-flag-events f)))
+              (equal? (profile-flag-before-text f) "focus-gained, 35.0 ms ago")
+              (line? "the host said: focus-gained -35.0 ms")
+              (line? "next image: 0.0 0.0 [30.0] 0.0 0.0 0.0")
+              (line? "host events: 0 0 [2] 0 0 0")
+              (line? "memory: heap")
+              (line? "records: ")
+              (line? "the host window:")
+              (has? "; the GPU" (cadr lines))
+              (has? "=== a run" more)
+              (has? "present modes offered" more)
+              (has? "the host said: focus-gained" more))))
+
+(check "main past its time in the wait for events: asleep if it ran little \
+        of that, running if it ran most"
+       (let* ([cpu 0]
+              [why (lambda (ran-ms)
+                     (fluid-let ([profile-thread-cpu (lambda () cpu)])
+                       (let ([flags (profile-test-flags
+                                     (lambda ()
+                                       (set! cpu (+ cpu (* ran-ms 1000000)))
+                                       (with-profile-span 'step #f
+                                         (profile-test-pass! 40))))])
+                         (profile-flag-why (car flags)))))])
+         (and (eq? (car (why 0)) 'asleep)
+              (eq? (car (why 30)) 'pump))))
+

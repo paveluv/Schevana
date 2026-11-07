@@ -57,7 +57,14 @@
         (list buttons)
         (list (list tx tw title) buttons))))
 
-;; The pills' outlines at y, as stroke-round-rects' boxes (x y w h r),
+;; Each box (x y w h r) stroked by a line lw wide.
+(define (halo-stroke-boxes boxes color lw)
+  (for-each (lambda (b)
+              (stroke-box (car b) (cadr b) (caddr b) (cadddr b) color lw
+                          (car (cddddr b))))
+            boxes))
+
+;; The pills' outlines at y, as halo-stroke-boxes' boxes (x y w h r),
 ;; each grown by d at every side: a line 2d wide stroked inside one runs
 ;; along the pill's edge.
 (define (halo-pill-boxes pills x y d)
@@ -90,19 +97,19 @@
 
 (define (halo-draw-under win x y w h focused? hover pressed)
   (let ([e (halo-edge win)] [r (halo-radius win)] [pills (halo-pills win)])
-    (window-shadow win x (+ y e) w (- h e) r focused?)   ; shadow
+    (window-shadow win x (+ y e) w (- h e) r focused?)
     ;; the glow: strokes around card and pills together, fading outward;
     ;; the card and the pills then cover their inner halves
     (when (and focused? (not (maximized? win)))
       (for-each (lambda (lw)
                   (let ([d (/ lw 2)])
-                    (stroke-round-rects
+                    (halo-stroke-boxes
                      (cons (list (- x d) (- (+ y e) d) (+ w lw) (+ (- h e) lw)
                                  r)
                            (halo-pill-boxes pills x y d))
                      (halo-ink x y w h #t 0.05) lw)))
                 '(2 4 6 8 10)))
-    (fill-round-rect x (+ y e) w (- h e) r (window-bg win))))
+    (fill-box x (+ y e) w (- h e) (window-bg win) r)))
 
 (define (halo-draw-over win x y w h focused? hover pressed)
   (let* ([ph (halo-pill-height)] [lw (if focused? 1.5 1)]
@@ -114,17 +121,17 @@
          [ink (halo-ink x y w h focused? 1)])
     ;; the card's edge: maximized, a line lw high across the top
     (if (maximized? win)
-        (fill-rect x (- mid (/ lw 2)) w lw ink)
-        (stroke-round-rect x (+ y e) w (- h e) (halo-radius win) ink lw))
+        (fill-box x (- mid (/ lw 2)) w lw ink)
+        (stroke-box x (+ y e) w (- h e) ink lw (halo-radius win)))
     (for-each (lambda (p)
-                (fill-round-rect (+ x (car p)) top (cadr p) ph (/ ph 2)
-                                 (window-bg win))
+                (fill-box (+ x (car p)) top (cadr p) ph (window-bg win)
+                          (/ ph 2))
                 (when (caddr p)
                   (text-draw-centered (+ x (car p)) top (cadr p) ph (caddr p)
                                       (if focused? 'title-text 'title-text-dim)
                                       'ui)))
               pills)
-    (stroke-round-rects (halo-pill-boxes pills x top (/ lw 2)) ink lw)
+    (halo-stroke-boxes (halo-pill-boxes pills x top (/ lw 2)) ink lw)
     (for-each
      (lambda (b)
        (let ([kind (car b)] [gx (+ x (cadr b) (/ (cadddr b) 2))]

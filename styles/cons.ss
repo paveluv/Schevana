@@ -53,28 +53,28 @@
           (list 'close (+ (caddr xs) c) 0 c th))))
 
 ;; A box's lines, lw thick inside it, and every fill below, on whole
-;; device pixels (px-fill): a cell is crisp wherever it lies, at any
+;; device pixels (fill-box): a cell is crisp wherever it lies, at any
 ;; scale.
 ;; A line n thick, but a device pixel at least: in Settings' half-size
 ;; miniature, too.
 (define (cons-thin n)
-  (let-values ([(s ox oy) (device-transform)]) (max n (/ 1 s))))
+  (max n (/ 1 (draw-scale))))
 
 (define (cons-ring! x y w h color . lw)
   (let ([n (cons-thin (if (pair? lw) (car lw) 1))])
-    (px-fill x y w n color)
-    (px-fill x (+ y h (- n)) w n color)
-    (px-fill x (+ y n) n (- h n n) color)
-    (px-fill (+ x w (- n)) (+ y n) n (- h n n) color)))
+    (fill-box x y w n color)
+    (fill-box x (+ y h (- n)) w n color)
+    (fill-box x (+ y n) n (- h n n) color)
+    (fill-box (+ x w (- n)) (+ y n) n (- h n n) color)))
 
 ;; A pair at x of any height: a car w wide and a cdr cw wide, h high,
 ;; each maybe tinted. The divider lies in the car, so a cell's car is a
 ;; square inside.
 (define (cons-pair-h! x y w h cw ink lw car-tint cdr-tint)
-  (when car-tint (px-fill x y w h car-tint))
-  (when cdr-tint (px-fill (+ x w) y cw h cdr-tint))
+  (when car-tint (fill-box x y w h car-tint))
+  (when cdr-tint (fill-box (+ x w) y cw h cdr-tint))
   (cons-ring! x y (+ w cw) h ink lw)
-  (px-fill (+ x w (- lw)) y (cons-thin lw) h ink))
+  (fill-box (+ x w (- lw)) y (cons-thin lw) h ink))
 
 ;; The title's pair: its cdr a square cell, c.
 (define (cons-pair! x y w c ink lw car-tint cdr-tint)
@@ -91,7 +91,7 @@
 (define (cons-right! dx my x1 c ink lw)
   (let ([head (quotient c 3)] [half (quotient c 6)] [ly (- my (/ lw 2))])
     (fill-circle dx my (+ (/ c 10) (/ lw 2)) ink)
-    (px-fill (floor dx) ly (- x1 head (floor dx) -1) (cons-thin lw) ink)
+    (fill-box (floor dx) ly (- x1 head (floor dx) -1) (cons-thin lw) ink)
     (fill-polygon (list (cons x1 my) (cons (- x1 head) (- my half))
                         (cons (- x1 head) (+ my half)))
                   ink)))
@@ -100,7 +100,7 @@
 (define (cons-down! dx my y1 c ink lw)
   (let ([head (quotient c 3)] [half (quotient c 6)] [lx (- dx (/ lw 2))])
     (fill-circle dx my (+ (/ c 10) (/ lw 2)) ink)
-    (px-fill lx (floor my) (cons-thin lw) (- y1 head (floor my) -1) ink)
+    (fill-box lx (floor my) (cons-thin lw) (- y1 head (floor my) -1) ink)
     (fill-polygon (list (cons dx y1) (cons (- dx half) (- y1 head))
                         (cons (+ dx half) (- y1 head)))
                   ink)))
@@ -114,17 +114,16 @@
 (define (cons-sign! x y c plus? color lw)
   (let* ([i (- c lw lw)] [g (* 2 (quotient c 5))]
          [o (+ lw (quotient (- i g) 2))] [m (+ lw (quotient (- i 2) 2))])
-    (px-fill (+ x o) (+ y m) g 2 color)
-    (when plus? (px-fill (+ x m) (+ y o) 2 g color))))
+    (fill-box (+ x o) (+ y m) g 2 color)
+    (when plus? (fill-box (+ x m) (+ y o) 2 g color))))
 
 ;; nil: the slash across the cdr whose inside starts at x, crossed out in
 ;; the color cross. Clipped to the inside, so the box's lines stay clean.
 (define (cons-nil! x y c ink lw cross)
   (let ([w (- c lw)] [h (- c lw lw)] [y (+ y lw)])
-    (call-with-clip x y w h
-      (lambda ()
-        (draw-line x (+ y h) (+ x w) y (or cross ink) lw)
-        (when cross (draw-line x y (+ x w) (+ y h) cross lw))))))
+    (with-clip (x y w h)
+      (draw-line x (+ y h) (+ x w) y (or cross ink) lw)
+      (when cross (draw-line x y (+ x w) (+ y h) cross lw)))))
 
 ;; nil in a cdr cw wide and h high: the slash across a square of its
 ;; width in its middle.
@@ -132,13 +131,10 @@
   (cons-nil! x (+ y (quotient (- h cw) 2)) cw ink lw cross))
 
 ;; The y to draw the title at so that its capitals sit in the middle of a
-;; cell at cy, c high. The cap height is measured on *cr*, at the scale it
-;; is drawn: hinting makes it 9 px at 100% but 10 logical px at 200%. The
-;; baseline goes on a whole device pixel, never below the middle.
+;; cell at cy, c high.
 (define (cons-title-y cy c)
   (let-values ([(l top w h) (text-ink "H" 'title)])
-    (- (px-baseline (+ cy (/ c 2) (/ (- top) 2)) floor)
-       (font-ascent 'title))))
+    (- (+ cy (/ c 2) (/ (- top) 2)) (font-ascent 'title))))
 
 (define (cons-tint kind hover pressed color)
   (cond [(eq? pressed kind) (alpha color 0.6)]
@@ -158,19 +154,18 @@
       (let ([tint (cons-tint kind hover pressed 'accent)])
         (cons-pair! x cy c c ink lw tint cdr-tint)
         (cons-sign! x cy c plus? (if tint bg fg) lw)))
-    (window-shadow win x y w h 0 focused?)   ; shadow
-    (px-fill x y w h bg)
-    (px-fill x (+ y th -1) w 1 'window-border)
-    (call-with-clip x y w th
-      (lambda ()
-        (cons-pair! t cy cw c ink lw #f #f)
-        (draw-text (+ t (floor (/ (- cw (text-width s 'title)) 2)))
-                   (cons-title-y cy c) s fg 'title)
-        (cons-pointer! (+ t cw) b cy c ink lw)
-        (sign b 'minimize #f #f)
-        (cons-pointer! (+ b c) m cy c ink lw)
-        (sign m 'maximize #t close)
-        (cons-nil! (+ m c) cy c ink lw (and close bg))))))
+    (window-shadow win x y w h 0 focused?)
+    (fill-box x y w h bg)
+    (fill-box x (+ y th -1) w 1 'window-border)
+    (with-clip (x y w th)
+      (cons-pair! t cy cw c ink lw #f #f)
+      (draw-text (+ t (floor (/ (- cw (text-width s 'title)) 2)))
+                 (cons-title-y cy c) s fg 'title)
+      (cons-pointer! (+ t cw) b cy c ink lw)
+      (sign b 'minimize #f #f)
+      (cons-pointer! (+ b c) m cy c ink lw)
+      (sign m 'maximize #t close)
+      (cons-nil! (+ m c) cy c ink lw (and close bg)))))
 
 (define (cons-draw-over win x y w h focused? hover pressed)
   (cons-ring! x y w h (if focused? 'window-border-focus 'window-border)))
@@ -248,7 +243,7 @@
          [label (and label (text-fit label (- w 12 gw) 'ui))]
          [cw (if label (+ gw (text-width label 'ui)) g)]
          [x0 (+ x (/ (- w cw) 2))])
-    (when tint (px-fill x y w h tint))
+    (when tint (fill-box x y w h tint))
     (cons-ring! x y w h ink (if bold? 2 1))
     (when glyph
       (ui-draw-glyph x0 (+ y (/ (- h g) 2)) g g (list (cons 'ink fg)) glyph))
@@ -274,7 +269,7 @@
          [focused? (memq 'focused flags)]
          [ink (if focused? 'accent 'cons-ink)]
          [tint (cons-tint-of flags ink)])
-    (when tint (px-fill x by bw b tint))
+    (when tint (fill-box x by bw b tint))
     (cons-ring! x by bw b ink (if focused? 2 1))
     (text-draw-centered x by bw b (if on? "#t" "#f")
                         (cond [tint 'window-bg] [on? 'accent] [else 'text-dim])
@@ -448,7 +443,7 @@
                 [(tint) (and (not removable?) (cons-tint-of flags 'cons-ink))]
                 [(close) (and removable? (cons-tint-of flags 'button-close))])
     (if cut?
-        (begin (when tint (px-fill x y w h tint))
+        (begin (when tint (fill-box x y w h tint))
                (cons-ring! x y w h 'cons-ink 1))
         (cons-pair-h! x y cw h h 'cons-ink 1 tint #f))
     (draw-text (+ x (cons-space)) (+ y (/ (- h sh) 2))
@@ -458,7 +453,7 @@
                (if tint 'window-bg 'text) 'ui-small)
     (when removable?
       (let-values ([(bx by bs) (cons-chip-x-box x y cw h)])
-        (when close (px-fill bx by bs bs close))
+        (when close (fill-box bx by bs bs close))
         (ui-draw-glyph (+ bx (/ (- bs g) 2)) (+ by (/ (- bs g) 2)) g g
                        (list (cons 'ink (if close 'window-bg 'text-dim)))
                        'cross)))
@@ -488,11 +483,11 @@
          [ym (floor (/ (+ bottom ny) 2))] [xl (- nx head 3)]
          [ny2 (cons-dot-y ny h 1)] [ly (- my 1/2)] [n (cons-thin 1)])
     (fill-circle dx my (+ (/ h 10) 1/2) ink)
-    (px-fill (floor dx) ly (- xr (floor dx)) n ink)
-    (px-fill (- xr 1) ly n (- ym ly) ink)
-    (px-fill xl ym (- xr xl) n ink)
-    (px-fill xl ym n (- ny2 ym) ink)
-    (px-fill xl (- ny2 1/2) (- nx head xl -1) n ink)
+    (fill-box (floor dx) ly (- xr (floor dx)) n ink)
+    (fill-box (- xr 1) ly n (- ym ly) ink)
+    (fill-box xl ym (- xr xl) n ink)
+    (fill-box xl ym n (- ny2 ym) ink)
+    (fill-box xl (- ny2 1/2) (- nx head xl -1) n ink)
     (fill-polygon (list (cons nx ny2) (cons (- nx head) (- ny2 half))
                         (cons (- nx head) (+ ny2 half)))
                   ink)))
@@ -539,7 +534,7 @@
 ;; bold stroke; under the mouse, a faint fill.
 (define (cons-card x y w h flags)
   (let ([bold? (or (memq 'selected flags) (memq 'floating flags))])
-    (when (memq 'hover flags) (px-fill x y w h (alpha 'cons-ink 0.08)))
+    (when (memq 'hover flags) (fill-box x y w h (alpha 'cons-ink 0.08)))
     (cons-ring! x y w h (if bold? 'accent 'cons-ink) (if bold? 2 1))))
 
 ;; A scroll bar is a 1-pixel track; its thumb a cell, filling under the
@@ -557,8 +552,8 @@
   (let* ([t (cdr (assq 'thumb (ui-scrollbar-areas x y w h start size)))]
          [g (cons-space)] [tw (caddr t)]
          [hot? (or (memq 'hover flags) (memq 'pressed flags))])
-    (px-fill (+ x (quotient tw 2)) (+ y g) 1 (max 0 (- h g g)) 'text-faint)
-    (px-fill x (cadr t) tw (cadddr t) (if hot? 'cons-ink 'window-bg))
+    (fill-box (+ x (quotient tw 2)) (+ y g) 1 (max 0 (- h g g)) 'text-faint)
+    (fill-box x (cadr t) tw (cadddr t) (if hot? 'cons-ink 'window-bg))
     (cons-ring! x (cadr t) tw (cadddr t) 'cons-ink 1)))
 
 ;; A slider is a line, filled in accent up to its value; its knob a
@@ -568,17 +563,17 @@
   (let* ([cy (round (+ y (/ h 2)))] [kx (round (+ x (* frac w)))]
          [hot? (or (memq 'hover flags) (memq 'pressed flags))])
     (if paint
-        (call-with-clip x (- cy 3) w 6 (lambda () (paint x (- cy 3) w 6)))
-        (begin (px-fill x cy w 1 'text-faint)
-               (px-fill x (- cy 1) (max 0 (- kx x)) 2 'accent)))
-    (px-fill (- kx 4) (- cy 7) 8 14 'window-bg)
+        (with-clip (x (- cy 3) w 6) (paint x (- cy 3) w 6))
+        (begin (fill-box x cy w 1 'text-faint)
+               (fill-box x (- cy 1) (max 0 (- kx x)) 2 'accent)))
+    (fill-box (- kx 4) (- cy 7) 8 14 'window-bg)
     (cons-ring! (- kx 4) (- cy 7) 8 14 (if hot? 'accent 'cons-ink)
                  (if hot? 2 1))))
 
 ;; Progress is a cell filling with ink by the fraction; green when done.
 (define (cons-progress x y w h flags frac)
   (when (> frac 0)
-    (px-fill x y (* w (min 1 frac)) h (if (>= frac 1) 'green 'accent)))
+    (fill-box x y (* w (min 1 frac)) h (if (>= frac 1) 'green 'accent)))
   (cons-ring! x y w h 'cons-ink 1))
 
 ;; A column's heading, faint, its words underlined; the sort as a
@@ -592,7 +587,7 @@
                                      'text-faint)
                          'ui-small)])
     (when (> (string-length s) 0)
-      (px-fill tx (- (+ y h) (cons-space)) (- end tx) 1 'text-faint))
+      (fill-box tx (- (+ y h) (cons-space)) (- end tx) 1 'text-faint))
     (when dir
       (ui-draw-glyph (+ end 4) (+ y (/ (- h g) 2)) g g '((ink . cons-ink))
                      dir))))
@@ -603,8 +598,8 @@
 (define (cons-table-row x y w h flags)
   (let* ([g (cons-space)] [x (+ x g)] [w (- w g)])
     (cond [(memq 'selected flags) (cons-ring! x y w h 'accent 2)]
-          [(memq 'hover flags) (px-fill x y w h (alpha 'cons-ink 0.08))])
-    (px-fill x (- (+ y h) 1) w 1 (alpha 'text-faint 0.5))))
+          [(memq 'hover flags) (fill-box x y w h (alpha 'cons-ink 0.08))])
+    (fill-box x (- (+ y h) 1) w 1 (alpha 'text-faint 0.5))))
 
 ;; A tree is nested lists; a node's twisty is the pointer: a dot and an
 ;; arrow right while its children are hidden past it, down when they
@@ -627,19 +622,19 @@
 (define (cons-surface x y w h flags)
   (cond
     [(memq 'well flags) (cons-ring! x y w h 'text-faint 1)]
-    [(memq 'nav flags) (px-fill (+ x w -1) y 1 h 'window-border)]
+    [(memq 'nav flags) (fill-box (+ x w -1) y 1 h 'window-border)]
     [else
-     (px-fill x y w h 'bg-1)
+     (fill-box x y w h 'bg-1)
      (cond [(memq 'toolbar flags)
-            (px-fill x (- (+ y h) 1) w 1 'window-border)]
-           [(memq 'footer flags) (px-fill x y w 1 'window-border)]
-           [(memq 'side flags) (px-fill x y 1 h 'window-border)])]))
+            (fill-box x (- (+ y h) 1) w 1 'window-border)]
+           [(memq 'footer flags) (fill-box x y w 1 'window-border)]
+           [(memq 'side flags) (fill-box x y 1 h 'window-border)])]))
 
 ;; A popup is an outlined box on the window's background, nothing under
 ;; it (drawn, not painted): a dialog's in the focused window's border, a
 ;; tooltip's faint, a menu's and a toast's in the plain ink.
 (define (cons-panel x y w h flags)
-  (px-fill x y w h 'window-bg)
+  (fill-box x y w h 'window-bg)
   (cons-ring! x y w h
                (cond [(memq 'dialog flags) 'window-border-focus]
                      [(memq 'tooltip flags) 'text-faint]
@@ -651,7 +646,7 @@
 (define (cons-highlight x y w h flags)
   (cond [(memq 'hover flags) (cons-ring! x y w h 'cons-ink 1)]
         [(not (memq 'outline flags)) (cons-ring! x y w h 'accent 2)]
-        [(memq 'pressed flags) (px-fill x y w h 'cons-ink)]
+        [(memq 'pressed flags) (fill-box x y w h 'cons-ink)]
         [else (cons-ring! x y w h 'cons-ink 1)]))
 
 ;; A faint line between groups (the completion's signature).
@@ -737,7 +732,7 @@
          [close (cons-tint-of flags 'button-close)]
          [s (text-fit title (- tw (* 4/5 c)) 'title)])
     (ui-draw-panel x y w h '(dialog))
-    (px-fill x (+ y th -1) w 1 'window-border)
+    (fill-box x (+ y th -1) w 1 'window-border)
     (cons-pair! (car t) cy tw c ink lw #f #f)
     (draw-text (+ (car t) (floor (/ (- tw (text-width s 'title)) 2)))
                (cons-title-y cy c) s 'title-text 'title)
@@ -747,7 +742,7 @@
       (if (null? cars)
           (begin
             (when close
-              (px-fill cx (+ cy lw) (- c lw) (- c lw lw) close))
+              (fill-box cx (+ cy lw) (- c lw) (- c lw lw) close))
             (cons-nil! cx cy c ink lw (and close 'window-bg)))
           (let* ([b (car cars)] [nx (+ (car b) (caddr b))])
             (cons-right! (cons-dot-x cx c lw) (cons-dot-y cy c lw) (car b) c
@@ -759,7 +754,7 @@
                (cadr m) (ui-dialog-lines message (caddr m)))))
 
 ;; Under a dialog: the window faintly veiled.
-(define (cons-scrim x y w h flags) (px-fill x y w h (alpha 'bg-0 0.4)))
+(define (cons-scrim x y w h flags) (fill-box x y w h (alpha 'bg-0 0.4)))
 
 ;; A day is a cell: the chosen one filled, today bold, the keyboard's
 ;; bold in ink, another month's faint, the mouse's filled with ink.
@@ -771,7 +766,7 @@
                     [(on? 'outside) 'text-faint]
                     [else 'cons-ink])]
          [tint (cond [sel? 'accent] [(on? 'hover) ink] [else #f])])
-    (when tint (px-fill cx cy s s tint))
+    (when tint (fill-box cx cy s s tint))
     (cons-ring! cx cy s s ink (if (or (on? 'today) (on? 'cursor)) 2 1))
     (text-draw-centered x y w h label
                         (cond [tint 'window-bg]
@@ -845,12 +840,12 @@
 (define (cons-dashes! x y w h color)
   (do ([i 0 (+ i 7)]) ((>= i w))
     (let ([d (min 4 (- w i))])
-      (px-fill (+ x i) y d 1 color)
-      (px-fill (+ x i) (+ y h -1) d 1 color)))
+      (fill-box (+ x i) y d 1 color)
+      (fill-box (+ x i) (+ y h -1) d 1 color)))
   (do ([i 0 (+ i 7)]) ((>= i h))
     (let ([d (min 4 (- h i))])
-      (px-fill x (+ y i) 1 d color)
-      (px-fill (+ x w -1) (+ y i) 1 d color))))
+      (fill-box x (+ y i) 1 d color)
+      (fill-box (+ x w -1) (+ y i) 1 d color))))
 
 ;; Where a dragged card would land: a dashed pair.
 (define (cons-tasks-slot x y w h)
@@ -947,12 +942,11 @@
     (ui-draw-field x y w h '(focused))
     (if (string=? f "")
         (draw-text tx ty "Type to filter…" 'text-faint font)
-        (call-with-clip tx y tw h
-          (lambda ()
-            (let ([ex (draw-text (min tx (- (+ tx tw) 3 (text-width f font)))
-                                 ty f 'text font)])
-              (px-fill (+ ex 1) (+ y (round (/ (- h lh 1) 2))) 1.5
-                         (round (+ lh 1)) 'accent)))))))
+        (with-clip (tx y tw h)
+          (let ([ex (draw-text (min tx (- (+ tx tw) 3 (text-width f font)))
+                               ty f 'text font)])
+            (fill-box (+ ex 1) (+ y (round (/ (- h lh 1) 2))) 1.5
+                        (round (+ lh 1)) 'accent))))))
 
 ;; The mouse documentation as the data it is, in the code font:
 ;; ((L . "Select") (R . "Task menu")).
@@ -968,13 +962,13 @@
              [gap (max 11 (round (* 0.6 (font-line-height 'ui))))]
              [dot-w (text-width "·" 'ui)]
              [l (assq 'launcher areas)] [t (assq 'title areas)])
-        (px-fill 0 0 w h (alpha 'panel 0.92))
+        (fill-box 0 0 w h (alpha 'panel 0.92))
         (draw-line 0 (- h 0.5) w (- h 0.5) (alpha 'panel-text 0.12))
         (when l
           (apply (lambda (x y lw lh)
                    (when (or (equal? *hover* '(surface topbar launcher))
                              (launcher-open?))
-                     (px-fill (+ x 6) (+ y 4) (- lw 6) (- lh 8) 'panel-hover))
+                     (fill-box (+ x 6) (+ y 4) (- lw 6) (- lh 8) 'panel-hover))
                    (draw-text (+ x 18) (+ y ty) "λ  Schevana" 'panel-accent
                               'ui-bold))
                  (cdr l)))
@@ -1047,7 +1041,7 @@
              [c (cons-cell)] [a (cons-arrow)] [cy (+ y0 (quotient (- h c) 2))]
              [lh (font-line-height 'ui)] [areas (taskbar-areas)]
              [hint (assq 'hint areas)])
-        (px-fill 0 y0 w h (alpha 'panel 0.94))
+        (fill-box 0 y0 w h (alpha 'panel 0.94))
         (draw-line 0 (+ y0 0.5) w (+ y0 0.5) (alpha 'panel-text 0.12))
         (when hint
           (draw-text (+ (cadr hint) (* 2 (cons-space)))
@@ -1104,7 +1098,7 @@
           (unless (null? bs)
             (let* ([b (car bs)] [x (vector-ref b 0)] [y (vector-ref b 1)]
                    [tw (vector-ref b 2)] [h (vector-ref b 3)] [cw (- tw c)])
-              (px-fill x y tw h 'window-bg)
+              (fill-box x y tw h 'window-bg)
               (cons-pair-h! x y cw h c 'cons-ink 1 #f #f)
               (draw-text (+ x (* 2 (cons-space))) (+ y (/ (- h lh) 2))
                          (vector-ref b 4) 'text

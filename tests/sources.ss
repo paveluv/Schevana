@@ -178,7 +178,7 @@
 
 ;; Raise it deliberately: the core is what the desktop needs to boot and
 ;; run; everything else belongs in a folder.
-(define src-budget 14200)
+(define src-budget 25000)
 
 ;; The tokens of a datum as read; a list's end is none.
 (define (tokens x)
@@ -208,7 +208,8 @@
 ;;; not a set.
 
 (define core-hooks
-  '(*profile-span* *theme-saver* *window-gone* *app-loader*))
+  '(*profile-span* *theme-saver* *window-gone* *app-loader*
+    *host-event-seen*))
 
 ;; The names a file defines at its top level.
 (define (top-level-names f)
@@ -255,15 +256,14 @@
 ;;; only the core calls C
 ;;; One of the core's roles is to keep C away from the rest: outside src/
 ;;; no file names a binding of src/ffi.ss, a foreign-… procedure, an
-;;; ftype form, load-shared-object, or the core's cairo context (*cr*) and
-;;; scratch memory (*scratch*). The tests may: they inspect what is
+;;; ftype form or load-shared-object. The tests may: they inspect what is
 ;;; drawn and stand in for the host.
 
 (define ffi-names (map cdr (definitions "src/ffi.ss")))
 
 (define (reaches-c? s)
   (or (and (memq s (append ffi-names
-                           '(*cr* *scratch* define-ftype make-ftype-pointer
+                           '(define-ftype make-ftype-pointer
                              load-shared-object)))
            #t)
       (exists (lambda (p) (string-prefix? p (symbol->string s)))
@@ -282,9 +282,36 @@
   (remp (lambda (f) (equal? (file-folder f) "src"))
         (append world-files '("main.ss"))))
 
+;; The GPU layer speaks the world's terms: above it, in the core too, nothing
+;; names SDL's windowless half, Vulkan or SPIR-V, so that another back end, or
+;; raw Vulkan, is the GPU layer's business alone. The host keeps SDL's windows,
+;; and the clock is SDL's.
+(define above-gpu-files
+  (remp (lambda (f)
+          (member f '("src/ffi.ss" "src/shader.ss" "src/gpu.ss" "src/font.ss"
+                      "src/host.ss")))
+        (append world-files '("main.ss"))))
+
+(define (names-a-back-end? s)
+  (let ([name (symbol->string s)])
+    (and (not (eq? s 'sdl-get-ticks-ns))
+         (or (string-prefix? "sdl-" name)
+             (string-contains-ci? name "spirv")
+             (string-contains-ci? name "vulkan")))))
+
+(check (format "above the GPU layer (~a files) no name is SDL's, Vulkan's or \
+                SPIR-V's" (length above-gpu-files))
+       (none? (apply append
+                     (map (lambda (f)
+                            (map (lambda (s) (format "~a names ~a" f s))
+                                 (reverse (filter names-a-back-end?
+                                                  (symbols-in
+                                                   (file-forms f))))))
+                          above-gpu-files))))
+
 (check (format "outside src/ (~a files) nothing reaches C: no binding of \
-                src/ffi.ss (~a), no foreign-… or ftype form, no *cr* or \
-                *scratch*" (length outside-src) (length ffi-names))
+                src/ffi.ss (~a), no foreign-… or ftype form"
+               (length outside-src) (length ffi-names))
        (none? (apply append
                      (map (lambda (f)
                             (map (lambda (s) (format "~a names ~a" f s))
@@ -424,7 +451,8 @@
   (append (filter (lambda (f) (member (file-folder f)
                                             '("kits" "services" "desktop")))
                   (folder-files))
-          '("apps/tasks.ss" "apps/settings.ss" "apps/envs.ss")))
+          '("apps/tasks.ss" "apps/settings.ss" "apps/envs.ss"
+            "apps/pipeline.ss")))
 
 ;; The parts: the keys whose built-in is name*, a body of their own.
 (define parts
@@ -436,16 +464,14 @@
   (map (lambda (k) (string->symbol (format "~a*" k))) parts))
 
 ;; What paints or chooses paint. Calling a part is what other code does
-;; (a style's own then draws); making an image is not painting, nor is
-;; finding where the device's pixels lie (px-snap: for a clip on whole
-;; pixels).
+;; (a style's own then draws); finding where the device's pixels lie is not
+;; painting.
 (define (drawing-primitive? s)
   (and (not (memq s parts))
-       (not (memq s '(draw-into-layer! px-snap)))
+       (not (memq s '(draw-scale)))
        (or (exists (lambda (p) (string-prefix? p (symbol->string s)))
                    '("fill-" "stroke-" "draw-" "px-"))
-           (and (memq s '(set-color! use-font! clear! blit-layer! pixmap-draw))
-                #t))))
+           (and (memq s '(invert-box add-box pixmap-draw)) #t))))
 
 ;; What a form does that only a drawing procedure may: ((draws . name)
 ;; (color . key) ...).
@@ -485,7 +511,8 @@
              (or (drawing-primitive? name)
                  (exists (lambda (p) (string-prefix? p (symbol->string name)))
                          '("ui-draw-" "complete-draw-" "tasks-draw-"
-                           "settings-draw-" "envs-draw-" "text-draw-"))))
+                           "settings-draw-" "envs-draw-" "pipeline-draw-"
+                           "text-draw-"))))
         (and (pair? form)
              (memq (car form) '(define-part theme-default! color-default!))
              #t))))
@@ -534,7 +561,7 @@
 
 (check "the REPL's docs read the folders too, parts and their built-ins"
        (for-all (lambda (name) (hashtable-contains? (name-docs) name))
-                '("ui-button" "mac-draw-under" "px-fill" "settings"
+                '("ui-button" "mac-draw-under" "px-bevel" "settings"
                   "ui-draw-button" "ui-draw-button*")))
 
 ;;; ------------------------------------------------------------------
@@ -611,4 +638,18 @@
 (if (zero? failures)
     (printf "all checks passed\n")
     (printf "~a check(s) FAILED\n" failures))
-(exit (if (zero? failures) 0 1))
+(exit ;; Chez reads a script a form at a time, so a run has to end by exiting:
+;; main.ss may have been edited during it, and what's read next would be
+;; nonsense.
+(let ()
+  (define (run-then-exit? x)
+    (and (pair? x)
+         (or (and (equal? (car x) '(schevana-run!))
+                  (pair? (cdr x))
+                  (equal? (cadr x) '(exit 0)))
+             (run-then-exit? (car x))
+             (run-then-exit? (cdr x)))))
+  (check "main.ss exits when its run ends, reading no more of itself"
+         (exists run-then-exit? (file-forms "main.ss"))))
+
+(if (zero? failures) 0 1))

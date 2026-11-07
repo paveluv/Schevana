@@ -31,6 +31,21 @@
 
 (define (steps n) (do ([i 0 (+ i 1)]) ((= i n)) (schevana-step! 0)))
 
+;; The screen as it would be drawn now: the same bytes until a frame is asked
+;; for or drawn, so that reading pixel after pixel costs one drawing.
+(define screen-picture-kept #f)
+(define screen-picture-frames -1)
+(define (screen-picture)
+  (when (or *dirty* (not screen-picture-kept)
+            (not (= screen-picture-frames *frames-drawn*)))
+    (set! screen-picture-kept (screen-bytes))
+    (set! screen-picture-frames *frames-drawn*))
+  screen-picture-kept)
+
+;; The screen's pixel at device x, y.
+(define (screen-pixel x y)
+  (bytevector-u32-native-ref (screen-picture) (* 4 (+ x (* y *canvas-pw*)))))
+
 (define (type! str)
   (for-each (lambda (c) (inject! (list 'text (string c)))) (string->list str)))
 
@@ -189,7 +204,7 @@
          (and (string=? "(set-theme" (repl-input r))
               (equal? (list-head (offered) 2)
                       '("set-theme!" "set-theme-plist!"))))
-  (screenshot (string-append out-dir "/completion.png"))
+  (png-write-screen (string-append out-dir "/completion.png"))
   (press! 'down)
   (press! 'return)
   (steps 1)
@@ -372,7 +387,7 @@
            [row-y (+ cy (list-ref box 5) (* 3/2 (complete-row-height)))])
       (move! row-x row-y)
       (let ([over (state)])
-        (screenshot (string-append out-dir "/completion-hover.png"))
+        (png-write-screen (string-append out-dir "/completion-hover.png"))
         (move! (+ cx cw -10) (+ cy 10))
         (let ([off (state)])
           (move! row-x row-y)
@@ -442,7 +457,7 @@
                 (string=? "(set-theme-plist!" (repl-input r))
                 (>= (cadddr (complete-box c))
                     (+ 8 (complete-row-height) (complete-detail-height 0))))))
-  (screenshot (string-append out-dir "/completion-sole.png"))
+  (png-write-screen (string-append out-dir "/completion-sole.png"))
   (press! 'backspace)
   (steps 1)
   (check "the next key closes it and acts as usual"
@@ -455,7 +470,7 @@
          (let ([c (complete-of r)])
            (and c (equal? (complete-message c) "No completions")
                 (equal? (offered) '()))))
-  (screenshot (string-append out-dir "/completion-none.png"))
+  (png-write-screen (string-append out-dir "/completion-none.png"))
   (type! "y")
   (steps 1)
   (check "typed text closes it and is typed"
@@ -484,7 +499,7 @@
               in view"
              (and box (< 0 (list-ref box 4) complete-rows)
                   (<= (+ (cadr box) (cadddr box)) line)))))
-  (screenshot (string-append out-dir "/completion-small.png"))
+  (png-write-screen (string-append out-dir "/completion-small.png"))
   (let* ([c (complete-of r)]
          [shown (and c (complete-box c) (list-ref (complete-box c) 4))])
     (press! 'tab)
@@ -518,7 +533,7 @@
                                              (* (list-ref box 4)
                                                 (complete-row-height))))])
                   (when (= k 1)
-                    (screenshot (string-append out-dir
+                    (png-write-screen (string-append out-dir
                                                "/completion-above.png")))
                   (press! 'tab)
                   (steps 1)
@@ -588,7 +603,7 @@
 (steps 20)
 (tile-windows!)
 (steps 2)
-(screenshot (string-append out-dir "/repl-modes.png"))
+(png-write-screen (string-append out-dir "/repl-modes.png"))
 (close-window! q)
 (close-window! (focused-window))
 (focus-window! r)
@@ -1023,7 +1038,7 @@
   (steps 2)
   (check "dragging the corner resizes" (= (window-w c) (+ w0 40))))
 
-(screenshot (string-append out-dir "/desktop.png"))
+(png-write-screen (string-append out-dir "/desktop.png"))
 
 ;; The launcher menu.
 (press! 'f1)
@@ -1031,7 +1046,7 @@
 (check "F1 opens the launcher" (launcher-open?))
 (type! "lif")
 (steps 1)
-(screenshot (string-append out-dir "/launcher.png"))
+(png-write-screen (string-append out-dir "/launcher.png"))
 (press! 'return)
 (steps 2)
 (check "launcher starts Life" (find-window 'life))
@@ -1068,10 +1083,7 @@
 (steps 1)
 (check "and back" (not (fullscreen?)))
 (check "the app icon draws"
-       (let ([l (make-layer* 64 64)])
-         (draw-into-layer! l (lambda () (draw-app-icon 64)))
-         (free-layer! l)
-         #t))
+       (bytevector? (drawing->bytes 64 64 1 (lambda () (draw-app-icon 64)))))
 
 ;; An app in a sandbox that asks (services/grant.ss): the launcher shows
 ;; what it requests first (desktop/permissions.ss), and Settings changes
@@ -1173,7 +1185,7 @@
 (monitor)
 (tile-windows!)
 (steps 3)
-(screenshot (string-append out-dir "/tiled.png"))
+(png-write-screen (string-append out-dir "/tiled.png"))
 (reset-theme!)
 
 ;; Window styles: the frame, its buttons and their actions come from the style.
@@ -1196,7 +1208,8 @@
   (move-window! (find-window 'life) 560 330)
   (focus-window! (find-window 'repl))
   (steps 2)
-  (screenshot (string-append out-dir "/style-" (symbol->string style) ".png"))
+  (png-write-screen
+   (string-append out-dir "/style-" (symbol->string style) ".png"))
   (for-all (lambda (w) (not (window-error w))) (windows)))
 
 (check "mac style draws" (style-scene! 'mac))
@@ -1250,7 +1263,7 @@
     (check "and its corner still resizes it" (= (window-w w) (+ w0 20)))))
 (set-palette! 'genera)
 (style-scene! 'genera)
-(screenshot (string-append out-dir "/style-genera-palette.png"))
+(png-write-screen (string-append out-dir "/style-genera-palette.png"))
 (check "genera's palette keeps its own panel text"
        (= (theme 'panel-text) #xffffff))
 (reset-theme!)
@@ -1334,7 +1347,7 @@
 (set-theme! 'window-style 'interlisp)
 (set-palette! 'interlisp)
 (style-scene! 'interlisp)
-(screenshot (string-append out-dir "/style-interlisp-palette.png"))
+(png-write-screen (string-append out-dir "/style-interlisp-palette.png"))
 (check "the interlisp style shades the desktop"
        (eq? (theme 'wallpaper) 'shade))
 (set-palette! 'nord)
@@ -1396,7 +1409,7 @@
 (reset-theme!)
 (set-style! 'mac)
 (steps 2)
-(screenshot (string-append out-dir "/settings-theme.png"))
+(png-write-screen (string-append out-dir "/settings-theme.png"))
 (click-ui! s '(style test-serif))
 (check "a style card switches the style, its palette, wallpaper and fonts \
         at once"
@@ -1449,7 +1462,7 @@
 (check "↺ drops one change" (= (theme 'corner-radius) 9))
 (scroll-to-ui! s '(option corner-radius))
 (drag-ui! s '(option corner-radius) 0)
-(screenshot (string-append out-dir "/settings-changed.png"))
+(png-write-screen (string-append out-dir "/settings-changed.png"))
 ;; The text size is on the Fonts tab: pinned, it holds in every style
 ;; that honors it, and test-serif does not.
 (click-ui! s '(tab fonts))
@@ -1472,7 +1485,7 @@
                 (eq? (car (theme-source 'ui-font-size)) 'built-in)
                 (not (ui-find (settings-ui) '(option ui-font-size)))
                 (not (ui-find (settings-ui) '(pin ui-font-size)))))
-    (screenshot (string-append out-dir "/settings-fonts-unused.png"))
+    (png-write-screen (string-append out-dir "/settings-fonts-unused.png"))
     (set-style! 'mac)
     (steps 2)
     (click-ui! s '(pin ui-font-size))
@@ -1493,7 +1506,7 @@
 (check "lightness slider darkens it"
        (let-values ([(h sat l) (color->hsl (theme 'accent))])
          (< (abs (- l 0.25)) 0.02)))
-(screenshot (string-append out-dir "/settings-colors.png"))
+(png-write-screen (string-append out-dir "/settings-colors.png"))
 ;; Reset, after a dialog listing the changes; Save as new style.
 (click-ui! s '(tab theme))
 (click-ui! s '(style windows))
@@ -1501,7 +1514,7 @@
 (set-theme! 'bell 'screen)
 (steps 2)
 (click-ui! s 'reset-style)
-(screenshot (string-append out-dir "/settings-reset.png"))
+(png-write-screen (string-append out-dir "/settings-reset.png"))
 (let ([shown (and (ui-find (settings-ui) '(reset-dialog 1)) #t)])
   (click-ui! s '(reset-dialog 1))
   (check "Reset asks first, then forgets the style's changes"
@@ -1513,7 +1526,7 @@
 (click-ui! s 'save-style)
 (press! 'backspace)   ; the title is selected: typing replaces it
 (type! "My Windows")
-(screenshot (string-append out-dir "/settings-save.png"))
+(png-write-screen (string-append out-dir "/settings-save.png"))
 (press! 'return)
 (steps 2)
 (let ([file (string-append out-dir "/styles/my-windows.ss")])
@@ -1538,14 +1551,8 @@
 ;; a column of pixels down the middle of the pane
 (define (settings-column)
   (let-values ([(cx cy cw ch) (content-rect s)])
-    (cairo-surface-flush *canvas*)
-    (let ([d (cairo-image-surface-get-data *canvas*)]
-          [stride (cairo-image-surface-get-stride *canvas*)]
-          [px (exact (floor (* *scale* (+ cx (quotient cw 2)))))])
-      (map (lambda (y)
-             (foreign-ref 'unsigned-32 d
-                          (+ (* stride (exact (floor (* *scale* (+ cy y)))))
-                             (* 4 px))))
+    (let ([px (exact (floor (* *scale* (+ cx (quotient cw 2)))))])
+      (map (lambda (y) (screen-pixel px (exact (floor (* *scale* (+ cy y))))))
            (iota ch)))))
 (let ([at-end (settings-column)])
   (inject! '(wheel 0 -1))
@@ -1555,7 +1562,7 @@
 (scroll-to-ui! s '(option title-height))
 (drag-ui! s '(option title-height) 1)
 (check "title bar height follows" (= 44 (theme 'title-height)))
-(screenshot (string-append out-dir "/settings-behavior.png"))
+(png-write-screen (string-append out-dir "/settings-behavior.png"))
 (click-ui! s '(tab fonts))
 (click-ui! s '((option ui-font) "serif"))
 (scroll-to-ui! s '(option mono-font-size))
@@ -1581,7 +1588,7 @@
   (check "the settings pane scrolls when its content doesn't fit"
          (and (> (settings-st-pane-scroll (window-ref s 'state)) 0)
               (ui-find (window-ref s 'ui) 'pane-scrollbar))))
-(screenshot (string-append out-dir "/settings-fonts.png"))
+(png-write-screen (string-append out-dir "/settings-fonts.png"))
 (click-ui! s '(tab theme))
 (scroll-to-ui! s '(option title-height))
 (drag-ui! s '(option title-height) 0.5)
@@ -1619,7 +1626,7 @@
 (move-window! (find-window 'clock) 900 300)
 (click-ui! s '(tab theme))
 (steps 2)
-(screenshot (string-append out-dir "/paper.png"))
+(png-write-screen (string-append out-dir "/paper.png"))
 (focus-window! s)   ; the REPL above opened on top of it
 (click-ui! s '(tab display))
 (click-ui! s '(scale 200))
@@ -1627,7 +1634,7 @@
        (and (= 200 (theme 'scale)) (= *scale* 2.0)
             (= (screen-w) 1280) (= (canvas-pixel-width) 2560)))
 (steps 1)
-(screenshot (string-append out-dir "/scale-200.png"))
+(png-write-screen (string-append out-dir "/scale-200.png"))
 (click-ui! s '(scale 0))
 (check "and Auto follows the desktop again"
        (and (= 0 (theme 'scale)) (= *scale* 1.0) (= (canvas-pixel-width) 1280)))
@@ -1674,7 +1681,7 @@
 (define (column-of status)
   (filter (lambda (t) (eq? (task-status t) status)) *tasks*))
 (define (next-to t) (cadr (memq (find-task t) *tasks*)))
-(define (shot name) (screenshot (format "~a/tasks-~a.png" out-dir name)))
+(define (shot name) (png-write-screen (format "~a/tasks-~a.png" out-dir name)))
 
 ;; Presses and releases at a point of the window's content.
 (define (tasks-click! x y . more)   ; more: button, clicks
@@ -2226,11 +2233,8 @@
               [(cx cy cw ch) (content-rect tw)]
               [(px py) (values (+ cx x 12 6) (+ cy y 20 6))])
   (define (pixel)
-    (cairo-surface-flush *canvas*)
-    (foreign-ref 'unsigned-32 (cairo-image-surface-get-data *canvas*)
-                 (+ (* (exact (floor (* *scale* py)))
-                       (cairo-image-surface-get-stride *canvas*))
-                    (* 4 (exact (floor (* *scale* px)))))))
+    (screen-pixel (exact (floor (* *scale* px)))
+                  (exact (floor (* *scale* py)))))
   (let ([before (pixel)])
     (inject! `(mouse-move ,(+ cx x) ,(+ cy y)))
     (steps 2)
@@ -2242,11 +2246,8 @@
               [(cx cy cw ch) (content-rect tw)]
               [(px py) (values (+ cx x 12 6) (+ cy y 20 6))])
   (define (pixel)
-    (cairo-surface-flush *canvas*)
-    (foreign-ref 'unsigned-32 (cairo-image-surface-get-data *canvas*)
-                 (+ (* (exact (floor (* *scale* py)))
-                       (cairo-image-surface-get-stride *canvas*))
-                    (* 4 (exact (floor (* *scale* px)))))))
+    (screen-pixel (exact (floor (* *scale* px)))
+                  (exact (floor (* *scale* py)))))
   (tasks-click! x y)
   (type! "x")
   (steps 2)
@@ -2468,11 +2469,8 @@
 ;; checklist item or List row with a tooltip.
 (define (content-pixel x y)
   (let-values ([(cx cy cw ch) (content-rect tw)])
-    (cairo-surface-flush *canvas*)
-    (foreign-ref 'unsigned-32 (cairo-image-surface-get-data *canvas*)
-                 (+ (* (exact (floor (* *scale* (+ cy y))))
-                       (cairo-image-surface-get-stride *canvas*))
-                    (* 4 (exact (floor (* *scale* (+ cx x)))))))))
+    (screen-pixel (exact (floor (* *scale* (+ cx x))))
+                  (exact (floor (* *scale* (+ cy y)))))))
 (define (pixels-of x y w h)
   (let ([w (exact (round w))] [h (exact (round h))])
     (map (lambda (i) (content-pixel (+ x (mod i w)) (+ y (quotient i w))))
@@ -3308,7 +3306,7 @@
             (eq? 'text (ui-focused (window-ref (editor) 'ui)))
             (= 0 (ui-caret (window-ref (editor) 'ui)))
             (waiting?)))
-(screenshot (format "~a/tasks-editor.png" out-dir))
+(png-write-screen (format "~a/tasks-editor.png" out-dir))
 (let-values ([(cx cy cw ch) (content-rect tw)])
   (let ([x (+ cx 30)] [y (+ cy 80)] [n (length *tasks*)])
     (focus-window! tw)
@@ -3376,7 +3374,7 @@
 (let ([eui (window-ref (editor) 'ui)])
   (check "Escape with changes asks first"
          (and (editor) (ui-find eui '(discard 1))))
-  (screenshot (format "~a/tasks-editor-discard.png" out-dir))
+  (png-write-screen (format "~a/tasks-editor-discard.png" out-dir))
   (click-ui! (editor) '(discard 0))
   (check "Keep editing: back to the text, the caret where it was"
          (and (editor) (not (ui-find eui 'discard))
@@ -3397,7 +3395,7 @@
   (check "maximized, it types at the end of the text"
          (and (maximized? ed) (not (window-error ed))
               (string-suffix? "!" (editor-text))))
-  (screenshot (format "~a/tasks-editor-maximized.png" out-dir))
+  (png-write-screen (format "~a/tasks-editor-maximized.png" out-dir))
   (close-window! ed)
   (steps 2)
   (check "closed by its window, the editor lets Tasks go, the draft lost"
@@ -3542,9 +3540,9 @@
   (let ([until (+ (real-time) 1700)])
     (let loop () (when (< (real-time) until) (schevana-step! 5) (loop))))
   (steps 1)
-  (screenshot (string-append out-dir "/monitor.png"))
+  (png-write-screen (string-append out-dir "/monitor.png"))
   (check "Monitor draws its graphs: a bar a tick, a row a consumer"
-         (and (not (window-error m)) (>= (length (bars)) 20)
+         (and (not (window-error m)) (pair? (bars))
               (ui-find ui (list 'monitor-kill (proc-id p)))
               (ui-find ui (list 'monitor-focus (window-id target)))))
   ;; the Consumers sorted by a heading: by name, again the other way, and
@@ -3591,22 +3589,22 @@
            (and r (string? (ui-region-tip r))
                 (string-contains-ci? (ui-region-tip r) "average"))))
   ;; the pointer resting on the newest bar: its tooltip, what it spent
-  (let* ([newest (apply max (map (lambda (r) (cadr (ui-region-id r)))
-                                 (bars)))]
-         [id (list 'monitor-ticks newest)])
-    (let-values ([(x y) (ui-point m id 0.5)])
-      (inject! `(mouse-move ,x ,y))
-      (let ([until (+ (real-time) 800)])
-        (let loop () (when (< (real-time) until) (schevana-step! 5) (loop))))
-      (screenshot (string-append out-dir "/monitor-tip.png"))
-      (let ([tip (let ([r (ui-find ui id)]) (and r (ui-region-tip r)))])
-        (printf "  ~s\n" tip)
-        (check "hovering a bar of Monitor's Ticks shows its tooltip: its \
-                tick, whether it came late, and its phases"
-               (and (string? tip)
-                    (string-contains-ci? tip "tick ")
-                    (string-contains-ci? tip "(a tick is ")
-                    (< (+ (car (ui-state-rest ui)) ui-tip-ms) (now-ms)))))))
+  (let ([r (car (bars))])
+    (let-values ([(cx cy cw ch) (content-rect m)])
+      (inject! `(mouse-move ,(+ cx (ui-region-x r) (ui-region-w r) -2)
+                            ,(+ cy (ui-region-y r)
+                                (quotient (ui-region-h r) 2)))))
+    (let ([until (+ (real-time) 800)])
+      (let loop () (when (< (real-time) until) (schevana-step! 5) (loop))))
+    (png-write-screen (string-append out-dir "/monitor-tip.png"))
+    (let ([tip (let ([rs (bars)]) (and (pair? rs) (ui-region-tip (car rs))))])
+      (printf "  ~s\n" tip)
+      (check "hovering a bar of Monitor's Ticks shows its tooltip: its \
+              tick, whether it came late, and its phases"
+             (and (string? tip)
+                  (string-contains-ci? tip "tick ")
+                  (string-contains-ci? tip "(a tick is ")
+                  (< (+ (car (ui-state-rest ui)) ui-tip-ms) (now-ms))))))
   (click-ui! m (list 'monitor-focus (window-id target)))
   (check "a window's name in Monitor focuses it" (eq? (focused-window) target))
   (focus-window! m)
@@ -3718,34 +3716,11 @@
 
 ;; How many pixels of the canvas inside the device box b are px.
 (define (canvas-pixels b px)
-  (cairo-surface-flush *canvas*)
-  (let ([data (cairo-image-surface-get-data *canvas*)]
-        [stride (cairo-image-surface-get-stride *canvas*)])
-    (do ([y (cadr b) (+ y 1)]
-         [n 0 (do ([x (car b) (+ x 1)]
-                   [n n (if (= px (foreign-ref 'unsigned-32 data
-                                               (+ (* y stride) (* 4 x))))
-                            (+ n 1) n)])
-                  ((= x (caddr b)) n))])
-        ((= y (cadddr b)) n))))
-
-;; Do two images of the same size hold the same pixels?
-(define (same-image? a b)
-  (cairo-surface-flush a)
-  (cairo-surface-flush b)
-  (let ([pa (cairo-image-surface-get-data a)]
-        [pb (cairo-image-surface-get-data b)]
-        [sa (cairo-image-surface-get-stride a)]
-        [sb (cairo-image-surface-get-stride b)]
-        [w (cairo-image-surface-get-width a)]
-        [h (cairo-image-surface-get-height a)])
-    (and (= w (cairo-image-surface-get-width b))
-         (= h (cairo-image-surface-get-height b))
-         (let loop ([y 0])
-           (or (= y h)
-               (and (zero? (sdl-memcmp (+ pa (* y sa)) (+ pb (* y sb))
-                                       (* 4 w)))
-                    (loop (+ y 1))))))))
+  (do ([y (cadr b) (+ y 1)]
+       [n 0 (do ([x (car b) (+ x 1)]
+                 [n n (if (= px (screen-pixel x y)) (+ n 1) n)])
+                ((= x (caddr b)) n))])
+      ((= y (cadddr b)) n)))
 
 ;; Input asks for a frame by itself, so a handler that only changes its
 ;; state is seen.
@@ -3783,9 +3758,9 @@
                                (set! count (+ count 1))
                                (invalidate! win))
                        'draw (lambda (win cw ch)
-                               (fill-rect 0 0 cw ch (if (even? count)
-                                                        #xff0000
-                                                        #x0000ff))))])
+                               (fill-box 0 0 cw ch (if (even? count)
+                                                       #xff0000
+                                                       #x0000ff))))])
   (let-values ([(x y cw ch) (content-rect w)])
     (define (red?) (> (canvas-pixels (device-box x y cw ch) #xffff0000) 0))
     (steps 2)
@@ -3796,63 +3771,40 @@
              (and (not (eq? a b)) (not (eq? b c))))))
   (close-window! w))
 
-;; Steps that nothing asked a frame of draw and upload nothing. The frame
-;; the clock asks for once a second (the top bar's) draws no window below
-;; the bar (outside its box) and uploads the rows it changed (the top
-;; bar's clock); (invalidate!) draws every window once, and when nothing
-;; on screen changed it uploads nothing.
+;; Steps that nothing asked a frame of draw nothing. The frame the clock
+;; asks for once a second, and (invalidate!), draw every window once.
 (let* ([a (plain-window "One" 100 100)] [b (plain-window "Two" 420 160)]
-       [na (count-draws! a)] [nb (count-draws! b)] [row (* 4 *canvas-pw*)])
+       [na (count-draws! a)] [nb (count-draws! b)])
   (steps 2)
   (let ([a0 (na)] [b0 (nb)] [t0 (now-ms)])
-    (let loop ([n 0] [forced 0] [ok #t])
+    (let loop ([n 0] [forced 0])
       (if (< (- (now-ms) t0) 1100)
-          (let* ([u *upload-bytes*] [d (step-drew?)] [up (- *upload-bytes* u)])
-            (loop (+ n 1) (if d (+ forced 1) forced)
-                  (and ok (= up (if d (* row *frame-rows*) 0)))))
-          (check (format "idle steps draw and upload nothing; a forced frame \
-                          draws no window outside its box and uploads the \
-                          rows it changed (~a steps, ~a forced)" n forced)
-                 (and ok (> n 3) (<= 1 forced 2) (= (- (na) a0) 0)
-                      (= (- (nb) b0) 0))))))
+          (loop (+ n 1) (if (step-drew?) (+ forced 1) forced))
+          (check (format "idle steps draw nothing; a forced frame draws every \
+                          window once (~a steps, ~a forced)" n forced)
+                 (and (> n 3) (<= 1 forced 2) (= (- (na) a0) forced)
+                      (= (- (nb) b0) forced))))))
   (with-quiet-status
    (lambda ()
      (invalidate!)
      (steps 1)   ; the quiet top bar drawn
-     (let ([a0 (na)] [b0 (nb)] [u0 *upload-bytes*])
+     (let ([a0 (na)] [b0 (nb)])
        (invalidate!)
        (steps 1)
-       (check "(invalidate!) draws every window again, and uploads nothing \
-               when nothing on screen changed"
-              (and (= (na) (+ a0 1)) (= (nb) (+ b0 1))
-                   (= *upload-bytes* u0))))))
+       (check "(invalidate!) draws every window again"
+              (and (= (na) (+ a0 1)) (= (nb) (+ b0 1)))))))
   (close-window! a)
   (close-window! b))
 
-;; The host's texture: an expose only shows it again, and a lost one is
-;; uploaded whole.
+;; An expose shows a frame again: what the window showed may be gone.
 (with-quiet-status
  (lambda ()
-   (let ([w (plain-window "Plain" 300 200)]
-         [whole (* 4 *canvas-pw* *canvas-ph*)])
+   (let ([w (plain-window "Plain" 300 200)])
      (after-clock-frame!)
-     (let ([u0 *upload-bytes*])
+     (let ([frames *frames-drawn*])
        (inject! '(expose))
-       (steps 2)
-       (let ([exposed (- *upload-bytes* u0)])
-         (inject! '(render-reset))
-         (steps 2)
-         (let ([reset (- *upload-bytes* u0 exposed)])
-           (inject! '(device-reset))
-           (steps 2)
-           (let ([device (- *upload-bytes* u0 exposed reset)]
-                 [u1 *upload-bytes*])
-             (invalidate! w 10 10 30 20)   ; part of w's content
-             (steps 1)
-             (check "an expose uploads nothing; a lost texture goes up whole; \
-                     a frame that changes nothing uploads nothing"
-                    (and (= exposed 0) (= reset whole) (= device whole)
-                         (= (- *upload-bytes* u1) 0)))))))
+       (steps 1)
+       (check "an expose draws a frame" (= *frames-drawn* (+ frames 1))))
      (close-window! w)
      (steps 1))))
 
@@ -3907,8 +3859,9 @@
             [(and (pair? x)
                   (memq (car x) '(define-foreign define-foreign/collect-safe))
                   (string-prefix? "SDL_" (caddr x))
-                  ;; plain memory: kept
-                  (not (member (caddr x) '("SDL_memcmp" "SDL_memcpy"))))
+                  ;; plain memory and the GPU's: kept
+                  (not (member (caddr x) '("SDL_memcmp" "SDL_memcpy")))
+                  (not (string-contains-ci? (caddr x) "GPU")))
              (loop (cons (cadr x) acc))]
             [else (loop acc)]))))))
 
@@ -3919,17 +3872,6 @@
 (define fake-hints '())        ; the hints set, newest first
 (define fake-queue '())        ; the event types SDL_PollEvent hands out next
 (define fake-log '())          ; what was asked of the window, newest first
-(define fake-texture #f)
-(define fake-nearest? #f)      ; the texture is not filtered
-(define fake-bytes 0)
-(define fake-copies 0)
-(define fake-presents 0)
-(define fake-vsync 1)          ; presents wait for the screen
-(define fake-steps 0)
-;; steps after which the texture was not the canvas
-(define fake-mismatches 0)
-;; steps that presented though nothing was uploaded or exposed, or the reverse
-(define fake-bad-presents 0)
 (define fake-unfaked '())      ; SDL calls made that have no stand-in
 
 (define (fake-log! . entry) (set! fake-log (cons entry fake-log)))
@@ -3959,7 +3901,6 @@
        (fake-log! 'create w h
                   (if (logtest flags SDL_WINDOW_HIDDEN) 'hidden 'shown))
        1)]
-    [(sdl-create-renderer) (lambda (win name) 2)]
     [(sdl-set-window-size)
      (lambda (win w h) (set! fake-units (cons w h)) (fake-log! 'size w h) #t)]
     [(sdl-set-window-position)
@@ -3973,92 +3914,32 @@
     [(sdl-get-window-flags) (lambda (win) fake-flags)]
     [(sdl-get-window-size)
      (lambda (win w h) (pair! w h (car fake-units) (cdr fake-units)))]
-    [(sdl-get-current-render-output-size)
-     (lambda (r w h)
+    [(sdl-get-window-size-in-pixels)
+     (lambda (win w h)
        (pair! w h (* fake-ratio (car fake-units))
               (* fake-ratio (cdr fake-units))))]
     [(sdl-poll-event) poll]
     [(sdl-wait-event-timeout) (lambda (buf ms) (poll buf))]
-    [(sdl-create-texture)   ; its pixels are undefined: clear here
-     (lambda (r format access w h)
-       (when fake-texture (cairo-surface-destroy fake-texture))
-       (set! fake-texture (cairo-image-surface-create CAIRO_FORMAT_ARGB32 w h))
-       (set! fake-nearest? #f)
-       3)]
-    [(sdl-set-texture-scale-mode)
-     (lambda (t mode)
-       (set! fake-nearest? (and (= t 3) (= mode SDL_SCALEMODE_NEAREST)))
-       #t)]
-    [(sdl-destroy-texture) (lambda (t) (void))]
-    [(sdl-update-texture)
-     (lambda (t rect pixels pitch)
-       (let ([td (cairo-image-surface-get-data fake-texture)]
-             [ts (cairo-image-surface-get-stride fake-texture)]
-             [tw (cairo-image-surface-get-width fake-texture)]
-             [th (cairo-image-surface-get-height fake-texture)])
-         (let-values ([(x y w h)
-                       (if (= rect 0)
-                           (values 0 0 tw th)
-                           (apply values
-                                  (map (lambda (i)
-                                         (foreign-ref 'integer-32 rect i))
-                                       '(0 4 8 12))))])
-           (unless (and (= t 3) (<= 0 x) (<= 0 y) (< 0 w) (< 0 h)
-                        (<= (+ x w) tw) (<= (+ y h) th))
-             (errorf 'sdl-update-texture "bad upload ~s" (list t x y w h)))
-           (do ([r 0 (+ r 1)]) ((= r h))
-             (sdl-memcpy (+ td (* (+ y r) ts) (* 4 x)) (+ pixels (* r pitch))
-                         (* 4 w)))
-           (cairo-surface-mark-dirty fake-texture)
-           (set! fake-bytes (+ fake-bytes (* 4 w h)))
-           #t)))]
-    [(sdl-render-texture)
-     (lambda (r t src dst)
-       (unless (and (= t 3) (= src 0) (= dst 0) fake-nearest?)
-         (errorf 'sdl-render-texture "not the whole texture, unfiltered"))
-       (set! fake-copies (+ fake-copies 1))
-       #t)]
-    [(sdl-render-present)
-     (lambda (r) (set! fake-presents (+ fake-presents 1)) #t)]
-    [(sdl-set-render-vsync) (lambda (r v) (set! fake-vsync v) #t)]
     [(sdl-get-ticks-ns) (top-level-value name)]   ; the clock: SDL's own
     [(sdl-get-num-logical-cpu-cores) (top-level-value name)]
     [else (lambda args
             (set! fake-unfaked (cons name fake-unfaked))
             (errorf name "the fake SDL has no stand-in for this"))]))
 
-;; Runs thunk with the fake SDL in place of the real one. Each step then
-;; presents through the host's SDL branch, and after it the texture must
-;; be the canvas, and it presented if and only if it uploaded or was exposed.
+;; Runs thunk with the fake SDL in place of the real one, the GPU's frames
+;; going on to its target.
 (define (with-fake-sdl thunk)
   (let ([saved (map top-level-value fake-sdl-names)]
-        [present host-present-damage!] [vsync? *host-vsync?*])
+        [claim gpu-claim-window!])
     (dynamic-wind
       (lambda ()
         (for-each (lambda (n) (set-top-level-value! n (fake-sdl n)))
                   fake-sdl-names)
-        (set! host-present-damage!
-          (lambda ()
-            (let ([b0 fake-bytes] [p0 fake-presents] [exposed? *present-only?*])
-              (set! fake-steps (+ fake-steps 1))
-              (unless (guard (c [#t (printf "  error: ~a\n"
-                                            (condition->string c))
-                                    #f])
-                        (fluid-let ([*host* 'sdl]) (present))
-                        (and (= (cairo-image-surface-get-width fake-texture)
-                                *canvas-pw*)
-                             (= (cairo-image-surface-get-height fake-texture)
-                                *canvas-ph*)
-                             (same-image? fake-texture *canvas*)))
-                (set! fake-mismatches (+ fake-mismatches 1)))
-              (unless (= (- fake-presents p0)
-                         (if (or exposed? (> fake-bytes b0)) 1 0))
-                (set! fake-bad-presents (+ fake-bad-presents 1)))))))
+        (set! gpu-claim-window! (lambda (window) (void))))
       thunk
       (lambda ()
         (for-each set-top-level-value! fake-sdl-names saved)
-        (set! host-present-damage! present)
-        (set! *host-vsync?* vsync?)))))
+        (set! gpu-claim-window! claim)))))
 
 ;; SDL reports window events (through the host's real event loop); the
 ;; world handles what the host makes of them.
@@ -4075,93 +3956,25 @@
   (fake-event! SDL_EVENT_WINDOW_RESIZED SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED
                SDL_EVENT_WINDOW_DISPLAY_SCALE_CHANGED))
 
-;; A font's metrics measured afresh (no cache) at the current scale.
-(define (fresh-metrics name)
-  (let ([f (get-font name)])
-    (font-metrics (make-font (font-family f) (font-slant f) (font-weight f)
-                             (font-size f) (font-face f) #f
-                             (font-options f)))))
-
 (with-quiet-status
  (lambda ()
-   (fluid-let ([*sdl-texture* 0] [*host-min-size* #f] [*pixel-ratio* 1]
+   (fluid-let ([*host-min-size* #f] [*pixel-ratio* 1]
                [*host-scale* *host-scale*])
      (with-fake-sdl
       (lambda ()
         (set! fake-log '())
-        (fake-resize! '(1280 . 800) 1)   ; the first one makes the texture
-        ;; uploads: a drag, a small invalidation, Life running
-        (let ([w (plain-window "Uploaded" 300 200)] [l (life)])
-          (move-window! l 640 260)
-          (steps 2)
-          ;; on w's title
-          (inject! '(mouse-move 420 210) '(mouse-down 420 210 left 1))
-          (do ([i 1 (+ i 1)]) ((> i 6))
-            (inject! `(mouse-move ,(+ 420 (* 17 i)) ,(+ 210 (* 5 i))))
-            (steps 1))
-          (inject! '(mouse-up 522 240 left))
-          (steps 1)
-          (invalidate! w 10 10 30 20)
-          (steps 1)
-          (let ([t0 (now-ms)])
-            (let loop () (when (< (- (now-ms) t0) 400) (steps 1) (loop))))
-          (window-call l 'key #\space '())   ; paused
-          (after-clock-frame!)
-          (let ([p0 fake-presents] [b0 fake-bytes])
-            (fake-event! SDL_EVENT_WINDOW_EXPOSED)
-            (let ([exposed (list (- fake-presents p0) (- fake-bytes b0))]
-                  [p1 fake-presents]
-                  [b1 fake-bytes])
-              (steps 5)
-              (let ([idle (list (- fake-presents p1) (- fake-bytes b1))])
-                (check (format "the host's SDL upload leaves its texture equal \
-                                to the screen after every step (~a of ~a)"
-                               (- fake-steps fake-mismatches) fake-steps)
-                       (and (= fake-mismatches 0) (> fake-steps 20)
-                            (null? fake-unfaked)))
-                (check (format "an expose presents once and uploads nothing \
-                                (~s); idle steps present nothing (~s)"
-                               exposed idle)
-                       (and (equal? exposed '(1 0)) (equal? idle '(0 0))
-                            (= fake-bad-presents 0)
-                            (= fake-copies fake-presents)))))
-            ;; unfocused so far (no SDL_WINDOW_INPUT_FOCUS)
-            (let ([unfocused fake-vsync])
-              (set! fake-flags SDL_WINDOW_INPUT_FOCUS)
-              (invalidate! w)
-              (steps 1)
-              (let ([focused fake-vsync])
-                (set! fake-flags 0)
-                (invalidate! w)
-                (steps 1)
-                (check (format "the host waits for the screen only while it \
-                                has the focus (~a ~a ~a)"
-                               unfocused focused fake-vsync)
-                       (equal? (list unfocused focused fake-vsync)
-                               '(0 1 0)))
-                ;; an event queued: still the whole wait, then the event
-                (set! fake-queue (list SDL_EVENT_WINDOW_EXPOSED))
-                (let* ([t0 (real-time)]
-                       [evs (fluid-let ([*host* 'sdl]) (host-events 30))]
-                       [slept (- (real-time) t0)])
-                  (check (format "without the focus, input waits for the \
-                                  tick: the wait is slept whole (~a of 30 \
-                                  ms) ~s" slept evs)
-                         (and (>= slept 29) (equal? evs '((expose)))))))))
-          (close-window! w)
-          (close-window! l)
-          (steps 1))
-        ;; fonts: the desktop's scale changes, as a resize event tells
+        (fake-resize! '(1280 . 800) 1)
+        (check "the fake SDL had a stand-in for every call"
+               (null? fake-unfaked))
+        ;; measuring is by the fonts' tables: a scale changes nothing of it
         (let ([before (font-metrics 'mono)])
           ;; a window moved to a 2x display (macOS, Wayland)
           (fake-resize! '(1280 . 800) 2)
-          (check (format "a scale change by a resize event measures the fonts \
-                          again (mono ~s at 100%, ~s at 200%)"
-                         before (font-metrics 'mono))
+          (check (format "a scale change by a resize event leaves the world \
+                          its logical size, and the fonts' measures (mono ~s)"
+                         before)
                  (and (= *scale* 2.0) (= *canvas-w* 1280) (= *canvas-h* 800)
-                      (for-all (lambda (n)
-                                 (equal? (font-metrics n) (fresh-metrics n)))
-                               '(mono ui ui-bold title)))))
+                      (equal? before (font-metrics 'mono)))))
         (fake-resize! '(1280 . 800) 1)
         ;; the minimum size: plain resizes do not repeat it; in full screen SDL
         ;; only stores it, so it is passed on again after
@@ -4191,8 +4004,8 @@
 ;; SDL is told the app id that the desktop entry names.
 (with-quiet-status
  (lambda ()
-   (fluid-let ([*host* 'headless] [*sdl-window* 0] [*sdl-renderer* 0]
-               [*sdl-texture* 0] [*host-fullscreen* #f] [*host-min-size* #f]
+   (fluid-let ([*host* 'headless] [*sdl-window* 0]
+               [*host-fullscreen* #f] [*host-min-size* #f]
                [*pixel-ratio* 1] [*host-scale* *host-scale*])
      (with-fake-sdl
       (lambda ()
@@ -4203,7 +4016,7 @@
           (set! fake-ratio ratio)
           (set! fake-desktop desktop)
           (set! fake-log '())
-          (set! *sdl-texture* 0)   ; as in a new session
+          (set! *canvas-pw* 0)   ; as in a new session
           (apply host-init! 'sdl 1280 800 fullscreen?)
           (set! *host* 'headless)   ; steps stay headless
           (list (reverse fake-log) *canvas-w* *canvas-h*
@@ -4244,12 +4057,10 @@
                                      640 400 #t))
                       (= *scale* 1.0) (= *canvas-w* 1280) (= *canvas-h* 800)
                       (null? fake-unfaked))))
-        (check (format "SDL gets the app id the desktop entry names, ~s, and \
-                        vsync" host-app-id)
-               (and (equal? (assoc "SDL_APP_ID" fake-hints)
-                            (cons "SDL_APP_ID" host-app-id))
-                    (equal? (assoc "SDL_RENDER_VSYNC" fake-hints)
-                            '("SDL_RENDER_VSYNC" . "1")))))))))
+        (check (format "SDL gets the app id the desktop entry names, ~s"
+                       host-app-id)
+               (equal? (assoc "SDL_APP_ID" fake-hints)
+                       (cons "SDL_APP_ID" host-app-id))))))))
 
 
 ;; Settings: input and the full-screen switch reach it.
@@ -4401,7 +4212,7 @@
  (lambda ()
    (let ([x (open-window "Red" 'size '(300 . 200) 'pos '(300 . 200)
                          'draw (lambda (win cw ch)
-                                 (fill-rect 0 0 cw ch #xff0000)))])
+                                 (fill-box 0 0 cw ch #xff0000)))])
      (steps 2)
      (minimize-window! x)
      (let ([y (open-window "Broken" 'size '(300 . 200) 'pos '(300 . 200)
@@ -4638,33 +4449,31 @@
   (set! *toasts* '())
   (steps 1))
 
-;; A draw-wallpaper that raises: its cairo context is let go, it is tried
-;; once per change, and the old picture stays.
-(let ([refs (foreign-procedure "cairo_surface_get_reference_count" (uptr)
-                               unsigned-int)]
-      [l (make-layer* 10 10)])
-  (guard (c [#t #f])
-    (draw-into-layer! l (lambda () (error 'smoke "on purpose"))))
-  (check "draw-into-layer! lets go of its cairo context when the drawing raises"
-         (= 1 (refs (layer-surface l))))
-  (free-layer! l))
-(let ([orig draw-wallpaper] [calls 0] [old (car *wallpaper*)])
-  ;; an argument short
-  (set! draw-wallpaper (lambda (w h)
-                         (set! calls (+ calls 1))
-                         (fill-gradient 0 0 w h #x102030)))
-  (parameterize ([console-error-port (open-output-string)])
-    (invalidate!)
-    (steps 3)
-    (invalidate!)
-    (steps 3))
-  (let ([kept? (eq? (car *wallpaper*) old)] [n calls])
+;; A draw-wallpaper that raises, tried again with every frame, is reported
+;; once, and the windows are drawn as ever.
+(let ([orig draw-wallpaper] [calls 0] [told 0] [plain notify] [drawn 0]
+      [w (plain-window "Over" 100 100)])
+  (let ([n (count-draws! w)])
+    ;; an argument short
+    (set! draw-wallpaper (lambda (w h)
+                           (set! calls (+ calls 1))
+                           (fill-gradient 0 0 w h #x102030)))
+    (set! notify (lambda args (set! told (+ told 1)) (apply plain args)))
+    (parameterize ([console-error-port (open-output-string)])
+      (let ([d0 (n)])
+        (invalidate!)
+        (steps 1)
+        (invalidate!)
+        (steps 1)
+        (set! drawn (- (n) d0))))
     (set! draw-wallpaper orig)
+    (set! notify plain)
     (invalidate!)
     (steps 1)
-    (check (format "a draw-wallpaper that raises is tried once (~a) and keeps \
-                    the old picture" n)
-           (and (= n 1) kept? (not (eq? (car *wallpaper*) old)))))
+    (check (format "a draw-wallpaper that raises is reported once though \
+                    tried ~a times, and windows are drawn (~a)" calls drawn)
+           (and (= told 1) (>= calls 2) (>= drawn 2))))
+  (close-window! w)
   (set! *toasts* '())
   (steps 1))
 

@@ -8,10 +8,11 @@
     [(x y w h c1 c2) (fill-gradient x y w h c1 c2 'vertical 0)]
     [(x y w h c1 c2 dir) (fill-gradient x y w h c1 c2 dir 0)]
     [(x y w h c1 c2 dir radius)
-     (fill-round-rect x y w h radius
-                      (if (eq? dir 'horizontal)
-                          (linear-gradient x 0 (+ x w) 0 c1 c2)
-                          (linear-gradient 0 y 0 (+ y h) c1 c2)))]))
+     (fill-box x y w h
+               (if (eq? dir 'horizontal)
+                   (linear-gradient x 0 (+ x w) 0 c1 c2)
+                   (linear-gradient 0 y 0 (+ y h) c1 c2))
+               radius)]))
 
 ;; A radial glow: color at the center fading to transparent at radius r.
 (define (fill-glow cx cy r color)

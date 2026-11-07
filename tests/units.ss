@@ -68,56 +68,70 @@
 
 ;;; ------------------------------------------------------------------ images
 
-;; A fresh pw × ph image drawn by thunk with *cr* on it, scaled by s.
-(define (image pw ph s thunk)
-  (let* ([surface (cairo-image-surface-create CAIRO_FORMAT_ARGB32 pw ph)]
-         [cr (cairo-create surface)])
-    (cairo-scale cr s s)
-    (fluid-let ([*cr* cr]) (thunk))
-    (cairo-destroy cr)
-    (cairo-surface-flush surface)
-    surface))
+;; An image's pixels, read back from the GPU: premultiplied, a native word of
+;; B, G, R and A bytes each.
+(define-record-type picture
+  (fields bytes w h))
 
-(define (pixel-at surface x y)
-  (foreign-ref 'unsigned-32 (cairo-image-surface-get-data surface)
-               (+ (* y (cairo-image-surface-get-stride surface)) (* 4 x))))
+;; A fresh pw × ph image drawn by thunk, scaled by s.
+(define (image pw ph s thunk)
+  (make-picture (drawing->bytes pw ph s thunk) pw ph))
+
+;; What the last frame left on the screen.
+(define (shown-picture)
+  (let* ([r *renderer*]
+         [w (renderer-target-w r)]
+         [h (renderer-target-h r)]
+         [cb (sdl-acquire-gpu-commands (renderer-device r))])
+    (make-picture (gpu-read-texture! r cb (renderer-target r) w h) w h)))
+
+;; The screen as it would be drawn now: the same picture until a frame is
+;; asked for or drawn, so that reading pixel after pixel costs one drawing.
+(define screen-picture-kept #f)
+(define screen-picture-frames -1)
+(define (screen-picture)
+  (when (or *dirty* (not screen-picture-kept)
+            (not (= screen-picture-frames *frames-drawn*)))
+    (set! screen-picture-kept
+      (make-picture (screen-bytes) *canvas-pw* *canvas-ph*))
+    (set! screen-picture-frames *frames-drawn*))
+  screen-picture-kept)
+
+;; Nothing to free: a picture is a bytevector.
+(define (picture-free! p) (void))
+
+(define (pixel-at p x y)
+  (bytevector-u32-native-ref (picture-bytes p)
+                             (* 4 (+ x (* y (picture-w p))))))
 
 ;; The largest channel difference between two images of the same size,
 ;; outside the mask rects ((x0 y0 x1 y1) ...).
 (define (max-diff a b . mask)
-  (unless (and (= (cairo-image-surface-get-width a)
-                  (cairo-image-surface-get-width b))
-               (= (cairo-image-surface-get-height a)
-                  (cairo-image-surface-get-height b)))
+  (unless (and (= (picture-w a) (picture-w b))
+               (= (picture-h a) (picture-h b)))
     (errorf 'max-diff "images differ in size"))
-  (cairo-surface-flush a)
-  (cairo-surface-flush b)
-  (let ([pa (cairo-image-surface-get-data a)]
-        [pb (cairo-image-surface-get-data b)]
-        [sa (cairo-image-surface-get-stride a)]
-        [sb (cairo-image-surface-get-stride b)]
-        [w (cairo-image-surface-get-width a)]
-        [h (cairo-image-surface-get-height a)])
+  (let ([pa (picture-bytes a)] [pb (picture-bytes b)]
+        [w (picture-w a)] [h (picture-h a)])
     (define (masked? x y)
       (exists (lambda (r)
                 (and (<= (car r) x) (< x (caddr r))
                      (<= (cadr r) y) (< y (cadddr r))))
               mask))
-    (let row ([y 0] [worst 0])
-      (cond
-        [(= y h) worst]
-        [(zero? (sdl-memcmp (+ pa (* y sa)) (+ pb (* y sb)) (* 4 w)))
-         (row (+ y 1) worst)]
-        [else
-         (let col ([x 0] [worst worst])
-           (if (= x w)
-               (row (+ y 1) worst)
-               (let ([p (foreign-ref 'unsigned-32 pa (+ (* y sa) (* 4 x)))]
-                     [q (foreign-ref 'unsigned-32 pb (+ (* y sb) (* 4 x)))])
-                 (col (+ x 1)
-                      (if (or (fx= p q) (masked? x y))
-                          worst
-                          (fxmax worst (pixel-diff p q)))))))]))))
+    (if (bytevector=? pa pb)
+        0
+        (let row ([y 0] [worst 0])
+          (if (= y h)
+              worst
+              (let col ([x 0] [worst worst])
+                (if (= x w)
+                    (row (+ y 1) worst)
+                    (let ([p (bytevector-u32-native-ref pa (* 4 (+ x (* y w))))]
+                          [q (bytevector-u32-native-ref pb
+                                                        (* 4 (+ x (* y w))))])
+                      (col (+ x 1)
+                           (if (or (fx= p q) (masked? x y))
+                               worst
+                               (fxmax worst (pixel-diff p q))))))))))))
 
 ;; The largest difference of the four channels of two pixels.
 (define (pixel-diff p q)
@@ -133,33 +147,21 @@
           worst (if where (format " at ~s" where) "")))
 
 (define (same-bytes? a b)
-  (and (= (cairo-image-surface-get-width a) (cairo-image-surface-get-width b))
-       (= (cairo-image-surface-get-height a) (cairo-image-surface-get-height b))
-       (zero? (max-diff a b))))
+  (and (= (picture-w a) (picture-w b))
+       (= (picture-h a) (picture-h b))
+       (bytevector=? (picture-bytes a) (picture-bytes b))))
 
-;; The canvas's pixels, copied.
-(define (canvas-bytes)
-  (cairo-surface-flush *canvas*)
-  (let* ([n (* (cairo-image-surface-get-stride *canvas*) (canvas-pixel-height))]
-         [bv (make-immobile-bytevector n)])
-    (sdl-memcpy (object->reference-address bv)
-                (cairo-image-surface-get-data *canvas*)
-                n)
-    bv))
-
-(define (cairo-matrix-xx cr)
-  (cairo-get-matrix cr *scratch*)
-  (foreign-ref 'double *scratch* 0))
+;; The screen's pixels.
+(define (canvas-bytes) (screen-bytes))
 
 ;;; ------------------------------------------------------------------ helpers
 ;;; What more than one topic uses.
 
 (define (bytes-total) (+ (bytes-allocated) (bytes-deallocated)))
 
-;; The canvas's pixel at logical point (x, y).
+;; The screen's pixel at logical point (x, y).
 (define (canvas-pixel x y)
-  (cairo-surface-flush *canvas*)
-  (pixel-at *canvas* (exact (floor (* x *scale*)))
+  (pixel-at (screen-picture) (exact (floor (* x *scale*)))
             (exact (floor (* y *scale*)))))
 
 ;; thunk's result, with the styles registered meanwhile gone after it.
@@ -193,8 +195,8 @@
 ;; An image's pixels as rows of characters, by colors ((pixel . char)
 ;; ...); # for any other.
 (define (pixel-rows surface key)
-  (let ([w (cairo-image-surface-get-width surface)]
-        [h (cairo-image-surface-get-height surface)])
+  (let ([w (picture-w surface)]
+        [h (picture-h surface)])
     (map (lambda (y)
            (list->string
             (map (lambda (x)
@@ -225,7 +227,7 @@
                    (ui-scroll ui 'v 0 0 w h
                      (lambda (top)
                        (do ([i 0 (+ i 1)]) ((= i 40))
-                         (fill-rect 10 (+ top (* i 20)) 260 10 'accent))
+                         (fill-box 10 (+ top (* i 20)) 260 10 'accent))
                        (+ top 800)))
                    (ui-end! ui w h))
            (append opts (ui-handlers ui)))))

@@ -13,7 +13,7 @@
     ((f11) . ,(lambda () (toggle-fullscreen!)))
     ((f12) . ,(lambda ()
                 (notify (format "Saved ~a"
-                                (screenshot (next-screenshot-path))))))))
+                                (png-write-screen (next-screenshot-path))))))))
 
 (define (install-default-keys!)
   (for-each (lambda (b)

@@ -15,15 +15,14 @@
          ;; a step by hand, a tick of its own, as the main loop's (a
          ;; window's handlers run in an engine, where spans are untimed):
          ;; 10 ms waiting for input (the step's own), 1 of ticks, 3 of the
-         ;; window's drawing, and 2 waiting for the screen in present
+         ;; window's drawing, and 2 waiting for the screen in render
          (set! now-ns (lambda () fake))
          (profile-clear!)
          (with-profile-span 'step #f
            (clock 10000000)
            (with-profile-span 'tick #f (clock 1000000))
            (with-profile-span 'render #f
-             (with-profile-span (window-id win) #f (clock 3000000)))
-           (with-profile-span 'present #f
+             (with-profile-span (window-id win) #f (clock 3000000))
              (with-profile-span 'vsync-wait #f (clock 2000000))))
          (set! now-ns real)
          (let* ([seq (profile-newest-tick)]
@@ -63,6 +62,71 @@
                         "16 ms, late (a tick is 3 ms)")
                 (= 9 (length (ui-tooltip-lines
                               "1\n2\n3\n4\n5\n6\n7\n8\n9")))))))
+
+(check "a tick hours long, the screen holding main all that time, is a bar \
+        like any other: Monitor's Ticks go on drawing, on rows the paint can \
+        add up in 32 bits"
+       (let* ([real now-ns] [held 0]
+              [m (monitor)] [ui (window-ref m 'ui)]
+              [ring (make-gpu-buffer (* monitor-ring-rows monitor-ring-words))])
+         (steps 3)
+         (let-values ([(cx cy cw ch) (content-rect m)])   ; its Ticks
+           (let* ([r (ui-find ui '(tab ticks))]
+                  [x (exact (round (+ cx (ui-region-x r)
+                                      (/ (ui-region-w r) 2))))]
+                  [y (exact (round (+ cy (ui-region-y r)
+                                      (/ (ui-region-h r) 2))))])
+             (inject! `(mouse-down ,x ,y left 1) `(mouse-up ,x ,y left))))
+         (steps 3)
+         (fluid-let ([now-ns (lambda () (+ (real) held))])
+           (with-profile-span 'step #f
+             (with-profile-span 'vsync-wait #f
+               (set! held (* 8671932088 1000))))
+           (let ([seq (profile-newest-tick)])
+             (monitor-ring-send! ring (- seq 1) seq (pacer-period))
+             (let* ([at (* monitor-ring-words (modulo seq monitor-ring-rows))]
+                    [row (map (lambda (j) (gpu-buffer-ref ring (+ at j)))
+                              (iota (- monitor-ring-words 1)))])
+               (steps 3)
+               (let ([crashed (window-error m)])
+                 (gpu-buffer-release! ring)
+                 (close-window! m)
+                 (and (not crashed)
+                      (memv monitor-ring-most row)
+                      (< (apply + row) (expt 2 31)))))))))
+
+(check "Monitor's Flags tab lists every late tick, the newest first, why it \
+        came late and the ticks about it, a row's tooltip all that's known"
+       (let* ([real now-ns] [held 0]
+              [m (monitor)] [ui (window-ref m 'ui)])
+         (profile-clear!)
+         (steps 3)
+         (let-values ([(cx cy cw ch) (content-rect m)])
+           (let* ([r (ui-find ui '(tab flags))]
+                  [x (exact (round (+ cx (ui-region-x r)
+                                      (/ (ui-region-w r) 2))))]
+                  [y (exact (round (+ cy (ui-region-y r)
+                                      (/ (ui-region-h r) 2))))])
+             (inject! `(mouse-down ,x ,y left 1) `(mouse-up ,x ,y left))))
+         (steps 3)
+         (let ([none (ui-find ui '(monitor-flags row 0))])
+           (fluid-let ([now-ns (lambda () (+ (real) held))])
+             (with-profile-span 'step #f
+               (with-profile-span 'vsync-wait 'submit
+                 (set! held (* 8671932088 1000))))
+             (steps 5)
+             (invalidate! m)
+             (steps 2))
+           (let ([rows (ui-find ui '(monitor-flags row 0))]
+                 [flags (profile-flags)]
+                 [crashed (window-error m)])
+             (close-window! m)
+             (printf "  ~s\n" (profile-flag-summary))
+             (and (not none) rows (not crashed) (pair? flags)
+                  (equal? (profile-why-text
+                           (profile-flag-why (car (reverse flags))))
+                          "the screen held main 8671.9 s, taking the \
+                           frame"))))))
 
 (check "a bar chart flags at its top the bars 'flagged says, in chart-flag"
        (let* ([ui (make-ui)] [seen '()]

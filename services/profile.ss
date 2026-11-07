@@ -11,10 +11,11 @@
 ;;; tick, a process's turn, the collector) keeps its self time: its time
 ;;; less the spans inside it, so that the parts add up to the tick; two
 ;;; are waits, input-wait the steps' own (mostly the wait for host
-;;; events) and vsync-wait the screen's (presenting a frame, with vsync
-;;; on), for a wait delays the next tick as much as work. Each tick's sums
-;;; go into a ring of the last 30 seconds (at most 100 ticks a second, and
-;;; as many uses as its ring holds), and into per-second sums kept for 10
+;;; events) and vsync-wait the screen's (taking its image and sending it
+;;; a frame, with vsync on), for a wait delays the next tick as much as
+;;; work. Each tick's sums go into a ring of the last 30 seconds (at most
+;;; 100 ticks a second, and as many uses as its ring holds), and into
+;;; per-second sums kept for 10
 ;;; minutes, with what each key spent for the last minute.
 ;;;
 ;;;   (profile-on! #f)           off: no records, no clock reads; #t: on
@@ -22,6 +23,7 @@
 ;;;   (profile-totals (profile-seconds))   by subject, the most first
 ;;;   (map profile-tick-phases (profile-slow-ticks))   the ticks that came
 ;;;                              late, and where their time went
+;;;   (profile-flag-report)      every late tick kept since, and why
 ;;;
 ;;; In the hot path it allocates nothing: the clock is fixnum ns (now-ns),
 ;;; the spans open a stack of fixed depth, a tick's and a second's sums go
@@ -52,13 +54,13 @@
 
 ;; A tick's phases, by index: its self times go to them.
 (define profile-phase-names
-  '#(input-wait event timers procs tick render present gc other vsync-wait))
+  '#(input-wait event timers procs tick render gc other vsync-wait))
 (define profile-phase-count (vector-length profile-phase-names))
 
 (define (profile-phase-index key)
   (case key
     [(event) 1] [(timers) 2] [(procs) 3] [(tick) 4] [(render) 5]
-    [(present) 6] [(gc) 7] [else 8]))
+    [(gc) 6] [else 7]))
 
 ;;; ------------------------------------------------------------------ tables
 ;;; Open addressing in vectors made once: a slot a (key part phase), its
@@ -168,8 +170,16 @@
                      (make-fxvector (fx* n profile-phase-count) 0)))
 
 ;; A tick's fields: its end and length (ns), collections, their ns, bytes
-;; allocated, heap, and where its uses start in their ring and how many.
-(define profile-tick-fields '(end ns gcs gc-ns allocated heap start count))
+;; allocated, heap, where its uses start in their ring and how many; then
+;; how long the screen held main in each of its calls (ns), when its frame
+;; went (by the clock; 0, none), the frames that reached the screen, what
+;; main itself ran (ns, by the thread's CPU clock), the host window's flags,
+;; the host's events, the frames tried so far, where the GPU stood with the
+;; frame before (*gpu-frame-state*), how long after that frame went its own
+;; did (0, no frame), and the records of the frame last recorded.
+(define profile-tick-fields
+  '(end ns gcs gc-ns allocated heap start count
+    acquire submit sent shown cpu flags input frames gpu gap records))
 ;; A second's: its clock second, ticks, ns, the longest tick's ns, the
 ;; rest as a tick's, and its subjects' start and count.
 (define profile-second-fields
@@ -261,6 +271,14 @@
 ;; at the last tick's end: collections, bytes allocated, the collector's
 (defvar *profile-gc-ns* 0)
 (defvar *profile-memory* (make-fxvector 3 0))
+;; this tick's waits for the screen: ns in acquire, ns in submit, when the
+;; frame went; at the last tick's end, the frames drawn and main's CPU ns;
+;; and when the host window was last seen hidden
+(defvar *profile-screen* (make-fxvector 3 0))
+(defvar *profile-frames* 0)
+(defvar *profile-cpu* 0)
+(defvar *profile-hidden-at* 0)
+(defvar *profile-last-sent* 0)   ; when the last frame went
 ;; the thread profiled; Chez's own handler of a collect request
 (defvar *profile-thread* 0)
 (defvar *profile-plain-collect* (collect-request-handler))
@@ -271,6 +289,11 @@
 (define (profile-thread-id) (if (threaded?) (get-thread-id) 0))
 
 (define (profile-ms ns) (/ ns 1e6))
+
+;; What this thread has run so far, by its CPU clock: ns.
+(define (profile-thread-cpu)
+  (let ([t (current-time 'time-thread)])
+    (+ (* 1000000000 (time-second t)) (time-nanosecond t))))
 
 ;;; ------------------------------------------------------------------ spans
 
@@ -312,6 +335,15 @@
           [(fx> *profile-past* 0) (set! *profile-past* (fx- *profile-past* 1))]
           [(fx> *profile-depth* 1) (profile-close! (fx- *profile-depth* 1))])))
 
+;; The screen held main ns, till now, in its call part.
+(define (profile-screen-held! part now ns)
+  (let ([v *profile-screen*])
+    (case part
+      [(acquire) (profile-fx+! v 0 ns)]
+      [(submit)
+       (profile-fx+! v 1 ns)
+       (fxvector-set! v 2 (fx- now ns))])))
+
 ;; The span at depth d closes, and those above it with it: their time is
 ;; its own, and what closed inside them is inside it, so the books add
 ;; up. Its self time goes to its phase (the collector's to gc, the wait
@@ -331,8 +363,10 @@
           (profile-end-step! now ns self)
           (begin
             (profile-fx+! inner (fx- d 1) ns)
+            (when (eq? key 'vsync-wait)
+              (profile-screen-held! (vector-ref *profile-parts* d) now self))
             (profile-fx+! *profile-phase-ns*
-                          (case key [(gc) 7] [(vsync-wait) 9] [else phase])
+                          (case key [(gc) 6] [(vsync-wait) 8] [else phase])
                           self)
             (profile-tally! *profile-tick-table*
                             (fx+ *profile-tick-newest* 1) key
@@ -363,6 +397,7 @@
       (profile-clear-table! *profile-tick-table*)
       (do ([i 0 (fx+ i 1)]) ((fx= i profile-phase-count))
         (fxvector-set! *profile-phase-ns* i 0))
+      (fxvector-fill! *profile-screen* 0)
       (profile-trim-ticks! now))))
 
 ;; The tick's slot in the ring: its fields and phases, its uses into the
@@ -388,6 +423,25 @@
     (profile-ring-set! r names 'heap slot (bytes-allocated))
     (profile-ring-set! r names 'start slot at)
     (profile-ring-set! r names 'count slot count)
+    (profile-ring-set! r names 'acquire slot (fxvector-ref *profile-screen* 0))
+    (profile-ring-set! r names 'submit slot (fxvector-ref *profile-screen* 1))
+    (profile-ring-set! r names 'sent slot (fxvector-ref *profile-screen* 2))
+    (profile-ring-set! r names 'shown slot (- *frames-drawn* *profile-frames*))
+    (set! *profile-frames* *frames-drawn*)
+    (let ([cpu (profile-thread-cpu)])
+      (profile-ring-set! r names 'cpu slot (- cpu *profile-cpu*))
+      (set! *profile-cpu* cpu))
+    (when (host-hidden?) (set! *profile-hidden-at* now))
+    (profile-ring-set! r names 'flags slot (host-flags))
+    (profile-ring-set! r names 'input slot *profile-input*)
+    (set! *profile-input* 0)
+    (profile-ring-set! r names 'frames slot *frame-ring-n*)
+    (profile-ring-set! r names 'gpu slot *gpu-frame-state*)
+    (profile-ring-set! r names 'records slot (rec-count))
+    (let ([sent (fxvector-ref *profile-screen* 2)])
+      (profile-ring-set! r names 'gap slot
+                         (if (zero? sent) 0 (- sent *profile-last-sent*)))
+      (unless (zero? sent) (set! *profile-last-sent* sent)))
     (fxvector-set! m 0 gcs)
     (fxvector-set! m 1 allocated)
     (fxvector-set! m 2 *profile-gc-ns*)
@@ -424,7 +478,8 @@
                   (profile-ring-ref r names 'gc-ns slot))
     (profile-fx+! (profile-field sr sn 'allocated) s
                   (profile-ring-ref r names 'allocated slot))
-    (profile-ring-set! sr sn 'heap s (profile-ring-ref r names 'heap slot))))
+    (profile-ring-set! sr sn 'heap s (profile-ring-ref r names 'heap slot))
+    (profile-flag-check!)))
 
 ;; A window's title or a process's name (kind window or #t), kept when
 ;; its id is first seen.
@@ -502,6 +557,424 @@
              *profile-subject-entries* profile-second-subjects-most
              'subjects-start 'subjects-count))))
 
+;;; ------------------------------------------------------------------ the host
+;;; What the host said lately, by the clock, in a ring made once, so that a
+;;; flag can say what came just before it. The mouse's motion is too common
+;;; to keep: like every event, it only counts into its tick.
+
+(define profile-host-kept 256)
+(defvar *profile-host-at* (make-fxvector profile-host-kept 0))
+(defvar *profile-host-types* (make-fxvector profile-host-kept 0))
+(defvar *profile-host-count* 0)
+(defvar *profile-input* 0)   ; this tick's events
+
+(define (profile-host-event! type)
+  (when *profile-on?*
+    (set! *profile-input* (fx+ *profile-input* 1))
+    (unless (eq? (host-event-name type) 'mouse-motion)
+      (let ([i (fxmodulo *profile-host-count* profile-host-kept)])
+        (fxvector-set! *profile-host-at* i (now-ns))
+        (fxvector-set! *profile-host-types* i type)
+        (set! *profile-host-count* (fx+ *profile-host-count* 1))))))
+
+;; What it said from seconds before end (by the clock) on, the most kept the
+;; newest: ((name . ns after end) ...), the oldest first.
+(define (profile-host-about end seconds most)
+  (let loop ([n (- *profile-host-count* 1)] [left most] [acc '()])
+    (if (or (< n 0) (= left 0)
+            (<= n (- *profile-host-count* profile-host-kept 1)))
+        acc
+        (let* ([i (modulo n profile-host-kept)]
+               [at (- (fxvector-ref *profile-host-at* i) end)])
+          (if (< at (* seconds -1000000000))
+              acc
+              (loop (- n 1) (- left 1)
+                    (cons (cons (host-event-name
+                                 (fxvector-ref *profile-host-types* i))
+                                at)
+                          acc)))))))
+
+;;; ------------------------------------------------------------------ flags
+;;; A tick that came late is a flag. The ticks' ring lets it go in seconds;
+;;; the flags keep it, with all there is to explain it. One is written a few
+;;; ticks on, to say what came after it too. Few ticks come late, so a flag
+;;; may allocate.
+
+(define profile-flags-kept 1024)
+(define profile-flag-reach 3)   ; the ticks it keeps, each side of it
+
+;; A flag: tick seq, the date it ended, what it took and the period it's
+;; late against (ns), why (profile-tick-why), its phases ((phase . ns) ...),
+;; what the screen held main for in each call, what main ran, the frames
+;; that reached the screen, how long the host window had been showing (ns),
+;; the ticks about it (profile-tick-row), oldest first, what the host said
+;; about then ((name . ns after its end) ...) and lines of what else there
+;; was to see.
+(define-record-type profile-flag
+  (nongenerative schevana-profile-flag-2)
+  (fields seq date ns period why phases acquire submit cpu shown shown-for
+          beside events notes))
+
+(defvar *profile-flags* (make-vector profile-flags-kept #f))
+(defvar *profile-flag-count* 0)   ; all told, since the history was cleared
+;; the file each flag goes to as it comes, and how many have this run
+(defvar *profile-flag-log* #f)
+(defvar *profile-flag-logged* 0)
+(define profile-flag-log-most 20000)
+
+;; The tick a few back, if it came late, into the flags.
+(define (profile-flag-check!)
+  (let ([seq (fx- *profile-tick-newest* profile-flag-reach)])
+    (when (and (profile-tick-kept? seq)
+               (profile-tick-late? seq (pacer-period)))
+      (profile-flag-keep! seq (pacer-period)))))
+
+(define (profile-flag-keep! seq period)
+  (let* ([end (profile-tick-ns seq 'end)]
+         [f (make-profile-flag
+             seq (profile-date-at end) (profile-tick-ns seq 'ns) period
+             (profile-tick-why seq period) (profile-tick-phases seq)
+             (profile-tick-ns seq 'acquire) (profile-tick-ns seq 'submit)
+             (profile-tick-ns seq 'cpu) (profile-tick-ns seq 'shown)
+             (- end *profile-hidden-at*)
+             (map profile-tick-row
+                  (filter profile-tick-kept?
+                          (map (lambda (i) (+ seq i (- profile-flag-reach)))
+                               (iota (+ 1 (* 2 profile-flag-reach))))))
+             (profile-host-about end 10 12)
+             (profile-tick-notes seq))])
+    (vector-set! *profile-flags*
+                 (modulo *profile-flag-count* profile-flags-kept) f)
+    (set! *profile-flag-count* (+ *profile-flag-count* 1))
+    (profile-flag-log-write! f)))
+
+;; The date when the clock (now-ns) read ns.
+(define (profile-date-at ns)
+  (let ([ago (max 0 (- (now-ns) ns))])
+    (time-utc->date
+     (subtract-duration (current-time)
+                        (make-time 'time-duration (remainder ago 1000000000)
+                                   (quotient ago 1000000000))))))
+
+;; A tick as a flag keeps those about it: its seq, what it took, when its
+;; frame went, how long it slept and worked, what the screen held main for
+;; in each call (all ns), where the GPU stood with the frame before
+;; (*gpu-frame-state*), its events, how long after the last frame its own
+;; went (ns; 0, none), the records of the frame last recorded.
+(define (profile-tick-row seq)
+  (let ([slept (profile-tick-phase-ns seq 'input-wait)]
+        [ns (profile-tick-ns seq 'ns)])
+    (list seq ns (profile-tick-ns seq 'sent) slept
+          (- ns slept (profile-tick-phase-ns seq 'vsync-wait))
+          (profile-tick-ns seq 'acquire) (profile-tick-ns seq 'submit)
+          (profile-tick-ns seq 'gpu) (profile-tick-ns seq 'input)
+          (profile-tick-ns seq 'gap) (profile-tick-ns seq 'records))))
+
+;; What else there is to see of tick seq, as lines: its frame, the host
+;; window, the world's windows and processes, its memory, the machine's load
+;; and SDL's last error, those last read a few ticks on.
+(define (profile-tick-notes seq)
+  (let* ([frames (profile-tick-ns seq 'frames)]
+         [before (if (profile-tick-kept? (- seq 1))
+                     (profile-tick-ns (- seq 1) 'frames)
+                     frames)]
+         [rows (inspect-frames (+ 1 (- *frame-ring-n* frames)))]
+         [frame (and (> frames before) (pair? rows) (car (last-pair rows)))]
+         [names (map (lambda (w)
+                       (if (eq? w (focused-window))
+                           (format "~a*" (window-title w))
+                           (window-title w)))
+                     (windows))]
+         [loaded (profile-machine-load)]
+         [wrong (host-error-text)])
+    (append
+     (list
+      (if frame
+          (format "its frame: ~,1f ms of work, ~a records, ~a extras, ~a \
+                   runs, ~a glyphs"
+                  (/ (car frame) 1000) (cadr frame) (caddr frame)
+                  (cadddr frame) (list-ref frame 4))
+          "it drew no frame")
+      (format "the host window: ~a"
+              (string-join (map symbol->string
+                                (host-flag-names
+                                 (profile-tick-ns seq 'flags)))
+                           " "))
+      (format "windows: ~a; ~a processes" (string-join names ", ")
+              (length (procs)))
+      (format "memory: heap ~,1f MB, ~,1f MB allocated, ~a collections"
+              (/ (profile-tick-ns seq 'heap) 1048576.0)
+              (/ (profile-tick-ns seq 'allocated) 1048576.0)
+              (profile-tick-ns seq 'gcs)))
+     (let ([p (inspect-pacer)])
+       (list (format "the pacer: re-timed ~a times, left out ~a frames"
+                     (cdr (assq 'retimed p)) (cdr (assq 'skipped p)))))
+     (if loaded (list (format "the machine's load: ~a" loaded)) '())
+     (if (string=? wrong "")
+         '()
+         (list (format "SDL's last error, maybe an old one: ~a" wrong))))))
+
+;; The machine's load as the system says it, where it says it so.
+(define (profile-machine-load)
+  (and (file-exists? "/proc/loadavg")
+       (call-with-input-file "/proc/loadavg" get-line)))
+
+;; The flags kept, the newest first.
+(define (profile-flags)
+  (let ([n *profile-flag-count*])
+    (let loop ([i (max 0 (- n profile-flags-kept))] [acc '()])
+      (if (= i n)
+          acc
+          (loop (+ i 1)
+                (cons (vector-ref *profile-flags* (modulo i profile-flags-kept))
+                      acc))))))
+
+(define (profile-flag-count) *profile-flag-count*)
+
+;; What made tick seq late: the biggest single thing in it that could. Each
+;; call the screen held main in; the wait for events, but only past a
+;; period, for up to that is the wait for its tick, and in two kinds: main
+;; asleep, or running in it (in SDL, for no span covers that); the collector;
+;; or someone's work. => (kind ns . who): kind acquire, submit, screen (a
+;; wait no call claims), asleep, pump, gc or work; who, work's (subject .
+;; part).
+(define (profile-tick-why seq period)
+  (let* ([phase (lambda (p) (profile-tick-phase-ns seq p))]
+         [acquire (profile-tick-ns seq 'acquire)]
+         [submit (profile-tick-ns seq 'submit)]
+         [over (max 0 (- (phase 'input-wait) period))]
+         [work (- (profile-tick-ns seq 'ns) (phase 'input-wait)
+                  (phase 'vsync-wait))]
+         [ran (- (profile-tick-ns seq 'cpu) work)])
+    (fold-left
+     (lambda (best c) (if (> (cadr c) (cadr best)) c best))
+     (list 'screen (- (phase 'vsync-wait) acquire submit))
+     (cons* (list 'acquire acquire)
+            (list 'submit submit)
+            (list (if (> (* 2 ran) over) 'pump 'asleep) over)
+            (list 'gc (phase 'gc))
+            (map (lambda (u)
+                   (cons* 'work (* 1e6 (profile-use-ms u))
+                          (profile-use-subject u) (profile-use-part u)))
+                 (remp (lambda (u)
+                         (memq (profile-use-subject u) '(vsync-wait gc)))
+                       (profile-tick-uses seq)))))))
+
+;; ns in words: "31.2 ms", "8671.9 s".
+(define (profile-ns-text ns)
+  (if (< ns 1000000000)
+      (format "~,1f ms" (/ ns 1e6))
+      (format "~,1f s" (/ ns 1e9))))
+
+;; A why (profile-tick-why) in words.
+(define (profile-why-text why)
+  (let ([took (profile-ns-text (cadr why))])
+    (case (car why)
+      [(acquire) (format "the screen held main ~a, for its next image" took)]
+      [(submit) (format "the screen held main ~a, taking the frame" took)]
+      [(screen) (format "the screen held main ~a" took)]
+      [(asleep) (format "main woke ~a past its time" took)]
+      [(pump) (format "main ran ~a past its time, waiting for events" took)]
+      [(gc) (format "the collector took ~a" took)]
+      [else
+       (let* ([subject (caddr why)] [part (cdddr why)]
+              [name (or (profile-subject-name subject)
+                        (format "~a" subject))])
+         (format "~a took ~a"
+                 (if (symbol? part) (format "~a's ~a" name part) name)
+                 took))])))
+
+;; A flag's why, with where the GPU stood when main asked for its image.
+(define (profile-flag-why-text f)
+  (let ([why (profile-flag-why f)])
+    (if (eq? (car why) 'acquire)
+        (format "~a; ~a" (profile-why-text why)
+                (profile-gpu-text
+                 (list-ref (profile-flag-row f) 7)))
+        (profile-why-text why))))
+
+(define (profile-gpu-text state)
+  (vector-ref '#("the GPU had already finished the last frame"
+                 "the GPU finished the last frame during the wait"
+                 "the GPU hadn't finished the last frame")
+              state))
+
+;; The flag's own tick among those about it.
+(define (profile-flag-row f)
+  (find (lambda (b) (= (car b) (profile-flag-seq f))) (profile-flag-beside f)))
+
+;; The ticks about a flag: "16.7 16.6 [31.2] 2.4 16.8", in ms.
+(define (profile-flag-ticks-text f)
+  (profile-flag-ms-text f 1))
+
+(define (profile-flag-ms-text f k)
+  (profile-flag-row-text
+   f (lambda (b) (format "~,1f" (/ (list-ref b k) 1e6)))))
+
+;; When their frames went, ms into a period by the clock: a frame that
+;; misses a refresh should show where they lie against it. "-", no frame.
+(define (profile-flag-sent-text f)
+  (profile-flag-row-text
+   f (lambda (b)
+       (if (zero? (caddr b))
+           "-"
+           (format "~,1f"
+                   (/ (modulo (caddr b) (profile-flag-period f)) 1e6))))))
+
+(define (profile-flag-row-text f text-of)
+  (string-join
+   (map (lambda (b)
+          (if (= (car b) (profile-flag-seq f))
+              (format "[~a]" (text-of b))
+              (text-of b)))
+        (profile-flag-beside f))
+   " "))
+
+;; The clock's time of a flag: "19:15:08.123".
+(define (profile-flag-clock f)
+  (let ([d (profile-flag-date f)]
+        [two (lambda (n) (if (< n 10) (format "0~a" n) (format "~a" n)))])
+    (format "~a:~a:~a.~a" (two (date-hour d)) (two (date-minute d))
+            (two (date-second d))
+            (let ([ms (quotient (date-nanosecond d) 1000000)])
+              (cond [(< ms 10) (format "00~a" ms)]
+                    [(< ms 100) (format "0~a" ms)]
+                    [else ms])))))
+
+;; An event as a flag says it: "focus-gained -1203.4 ms".
+(define (profile-event-text e)
+  (format "~a ~,1f ms" (car e) (/ (cdr e) 1e6)))
+
+;; What came last before a flag's tick ended, for a glance; or "".
+(define (profile-flag-before-text f)
+  (let ([before (filter (lambda (e) (< (cdr e) 0)) (profile-flag-events f))])
+    (if (null? before)
+        ""
+        (let ([e (car (last-pair before))])
+          (format "~a, ~a ago" (car e) (profile-ns-text (- (cdr e))))))))
+
+;; All that's known of a flag, a line each.
+(define (profile-flag-lines f)
+  (let* ([of (lambda (p)
+               (let ([x (assq p (profile-flag-phases f))]) (if x (cdr x) 0)))]
+         [work (- (profile-flag-ns f) (of 'input-wait) (of 'vsync-wait))]
+         [text profile-ns-text]
+         [states '#("done" "during" "not yet")])
+    (append
+     (list
+      (format "~a, tick ~a: ~a (a tick is ~a)" (profile-flag-clock f)
+              (profile-flag-seq f) (text (profile-flag-ns f))
+              (text (profile-flag-period f)))
+      (profile-flag-why-text f)
+      (format "work ~a, of which the collector ~a; main ran ~a" (text work)
+              (text (of 'gc)) (text (profile-flag-cpu f)))
+      (format "slept ~a; the screen ~a: next image ~a (~,1f refreshes), \
+               taking the frame ~a"
+              (text (of 'input-wait)) (text (of 'vsync-wait))
+              (text (profile-flag-acquire f))
+              (/ (profile-flag-acquire f) (profile-flag-period f) 1.0)
+              (text (profile-flag-submit f)))
+      (format "~a; the window showing for ~a"
+              (if (zero? (profile-flag-shown f))
+                  "no frame reached the screen"
+                  "its frame reached the screen")
+              (text (profile-flag-shown-for f)))
+      (format "ticks about it, ms: ~a" (profile-flag-ticks-text f))
+      (format "  slept: ~a" (profile-flag-ms-text f 3))
+      (format "  work: ~a" (profile-flag-ms-text f 4))
+      (format "  next image: ~a" (profile-flag-ms-text f 5))
+      (format "  taking the frame: ~a" (profile-flag-ms-text f 6))
+      (format "  the last frame on the GPU: ~a"
+              (profile-flag-row-text
+               f (lambda (b) (vector-ref states (list-ref b 7)))))
+      (format "  host events: ~a"
+              (profile-flag-row-text
+               f (lambda (b) (number->string (list-ref b 8)))))
+      (format "  frames went, ms into a tick: ~a" (profile-flag-sent-text f))
+      (format "  ms after the frame before: ~a" (profile-flag-ms-text f 9))
+      (format "  records: ~a"
+              (profile-flag-row-text
+               f (lambda (b) (number->string (list-ref b 10)))))
+      (format "the host said: ~a"
+              (if (null? (profile-flag-events f))
+                  "nothing for 10 s"
+                  (string-join (map profile-event-text (profile-flag-events f))
+                               ", "))))
+     (profile-flag-notes f))))
+
+;; What draws, a line each: once a report or a log.
+(define (profile-device-lines)
+  (let ([of (lambda (k) (cdr (assq k (inspect-device))))])
+    (list
+     (format "driver ~a, present modes offered ~a, ~a × ~a pixels"
+             (of 'driver) (of 'present-modes) (car (of 'pixels))
+             (cdr (of 'pixels)))
+     (let ([d (of 'display)])
+       (if d
+           (format "display ~a × ~a at ~a/~a Hz, density ~a" (car d) (cadr d)
+                   (caddr d) (cadddr d) (list-ref d 4))
+           "no display")))))
+
+;; The flags in a line: "12 flags: 9 submit, 3 work"; past what's kept,
+;; "5936 flags, the last 1024: 1024 acquire".
+(define (profile-flag-summary)
+  (let* ([kinds (map (lambda (f) (car (profile-flag-why f))) (profile-flags))]
+         [counts (map (lambda (k)
+                        (cons k (length (filter (lambda (x) (eq? x k)) kinds))))
+                      '(submit acquire screen asleep pump gc work))]
+         [some (filter (lambda (c) (> (cdr c) 0)) counts)])
+    (format "~a flag~a~a~a" *profile-flag-count*
+            (if (= *profile-flag-count* 1) "" "s")
+            (if (> *profile-flag-count* profile-flags-kept)
+                (format ", the last ~a" profile-flags-kept)
+                "")
+            (if (null? some)
+                ""
+                (format ": ~a"
+                        (string-join (map (lambda (c)
+                                            (format "~a ~a" (cdr c) (car c)))
+                                          some)
+                                     ", "))))))
+
+(define (profile-flag-write f port)
+  (newline port)
+  (for-each (lambda (line) (fprintf port "~a\n" line)) (profile-flag-lines f)))
+
+;; Every flag kept, the oldest first, to a port (by default the current
+;; output's).
+(define profile-flag-report
+  (case-lambda
+    [() (profile-flag-report (current-output-port))]
+    [(port)
+     (for-each (lambda (line) (fprintf port "~a\n" line))
+               (profile-device-lines))
+     (fprintf port "~a\n" (profile-flag-summary))
+     (for-each (lambda (f) (profile-flag-write f port))
+               (reverse (profile-flags)))]))
+
+;; From now on each flag also goes to the end of the file at path as it
+;; comes, to outlive this run; #f, to none. A run writes so many at most, and
+;; a file it can't write it gives up.
+(define (profile-flag-log! path)
+  (set! *profile-flag-log* path)
+  (set! *profile-flag-logged* 0))
+
+(define (profile-flag-log-write! f)
+  (when (and *profile-flag-log*
+             (< *profile-flag-logged* profile-flag-log-most))
+    (guard (c [#t (set! *profile-flag-log* #f)
+                  (report-error! 'profiler c)])
+      (call-with-output-file *profile-flag-log*
+        (lambda (port)
+          (when (zero? *profile-flag-logged*)
+            (fprintf port "\n=== a run, its first flag ~a\n"
+                     (profile-flag-clock f))
+            (for-each (lambda (line) (fprintf port "~a\n" line))
+                      (profile-device-lines)))
+          (profile-flag-write f port))
+        'append)
+      (set! *profile-flag-logged* (+ *profile-flag-logged* 1)))))
+
 ;;; ------------------------------------------------------------------ the API
 
 ;; (profile-on! #f) turns the profiler off: the hooks go, and with them
@@ -516,6 +989,9 @@
     (profile-clear-table! *profile-tick-table*)
     (do ([i 0 (fx+ i 1)]) ((fx= i profile-phase-count))
       (fxvector-set! *profile-phase-ns* i 0))
+    (fxvector-fill! *profile-screen* 0)
+    (set! *profile-frames* *frames-drawn*)
+    (set! *profile-cpu* (profile-thread-cpu))
     (fxvector-set! *profile-memory* 0 (collections))
     (fxvector-set! *profile-memory* 1 (+ (bytes-allocated)
                                          (bytes-deallocated)))
@@ -536,6 +1012,7 @@
   (when (fx>= *profile-tick-newest* 0) (profile-trim-ticks! (now-ns))))
 
 (define (profile-clear!)
+  (set! *profile-flag-count* 0)
   (set! *profile-tick-oldest* (fx+ *profile-tick-newest* 1))
   (set! *profile-second-oldest* (fx+ *profile-second-now* 1)))
 
@@ -582,8 +1059,8 @@
                              (profile-slot-of r seq))])
     (if (memq name '(end ms longest gc-ms)) (profile-ms v) v)))
 
-;; A tick's end, length or phase as kept: whole ns, by the clock (now-ns).
-(define (profile-tick-ns seq name)   ; end or ns
+;; A tick's field as kept, or its phase: whole ns, by the clock (now-ns).
+(define (profile-tick-ns seq name)   ; any of profile-tick-fields
   (profile-ring-ref *profile-ticks-ring* profile-tick-fields name
                     (profile-slot-of *profile-ticks-ring* seq)))
 
@@ -844,3 +1321,4 @@
 ;; Loading this file (at boot, or in a reload) sets the hooks as the flag
 ;; says, the spans open dropped.
 (profile-on! *profile-on?*)
+(set! *host-event-seen* (lambda (type) (profile-host-event! type)))

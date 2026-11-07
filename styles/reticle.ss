@@ -17,7 +17,7 @@
 
 ;; Device pixels per logical pixel where we draw: the picker's miniature
 ;; is drawn scaled down.
-(define (reticle-k) (let-values ([(k ox oy) (device-transform)]) k))
+(define (reticle-k) (draw-scale))
 
 ;; Whole device pixels, so that lines are crisp at any scale: v to the
 ;; nearest one (or by floor or ceiling, to stay inside a box), and a
@@ -43,8 +43,7 @@
          '(minimize maximize close) '(2 1 0))))
 
 ;; (values baseline middle): the baseline that centers the label's
-;; capitals on cy, on a whole device pixel, and the capitals' middle. The
-;; cap height is measured on *cr*, at the scale it is drawn.
+;; capitals on cy, and the capitals' middle.
 (define (reticle-caps cy)
   (let*-values ([(l top w h) (text-ink "H" reticle-font)]
                 [(cap) (- top)]
@@ -80,14 +79,11 @@
          [x1 (- (reticle-snap (+ x w) floor) a)]
          [y1 (- (reticle-snap (+ y h) floor) a)]
          [side (lambda (v first?) (if (eq? first? in?) (+ v a (- lw)) v))])
-    (fill-rects
-     (apply append
-            (map (lambda (sx sy left? top?)
-                   (list (list sx (side sy top?) a lw)
-                         (list (side sx left?) sy lw a)))
-                 (list x0 x1 x0 x1) (list y0 y0 y1 y1)
-                 '(#t #f #t #f) '(#t #t #f #f)))
-     color)))
+    (for-each (lambda (sx sy left? top?)
+                (fill-box sx (side sy top?) a lw color)
+                (fill-box (side sx left?) sy lw a color))
+              (list x0 x1 x0 x1) (list y0 y0 y1 y1)
+              '(#t #f #t #f) '(#t #t #f #f))))
 
 ;; −, ×, or the brackets (turned in to restore) in the g box at (x, y).
 ;; Under the mouse, brackets d out lock onto the glyph, closing in while
@@ -104,7 +100,7 @@
                        (if hot? (+ d 1) (round (/ g 3))) 1 ink
                        (and (eq? kind 'maximize) (maximized? win))))
     (case kind
-      [(minimize) (fill-rect x (+ y (/ (- g lw) 2)) g lw ink)]
+      [(minimize) (fill-box x (+ y (/ (- g lw) 2)) g lw ink)]
       [(close)   ; corner to corner, as heavy as a 1-pixel line
        (let ([t (* 3/4 lw)] [b (+ y g)])
          (for-each (lambda (x0 x1 u)   ; from the top at x0 to the bottom at x1
@@ -125,29 +121,28 @@
                 [(gy) (reticle-snap (- mid (/ g 2)))]
                 [(d) (min 4 (floor (/ (- th top g) 2)))]
                 [(tx) (+ x m 1 reticle-pad)])
-    (window-shadow win cx cy cw ch 0 focused?)   ; shadow
+    (window-shadow win cx cy cw ch 0 focused?)
     (if (maximized? win)   ; the screen's edges are the card's
-        (fill-rect x y w h (window-bg win))
+        (fill-box x y w h (window-bg win))
         (let ([x0 (reticle-snap cx ceiling)] [y0 (reticle-snap cy ceiling)])
-          (fill-rect cx cy cw ch (window-bg win))
-          (stroke-rect x0 y0 (- (reticle-snap (+ cx cw) floor) x0)
-                       (- (reticle-snap (+ cy ch) floor) y0)
-                       (if focused? 'window-border-focus 'window-border)
-                       (reticle-px 1))))
+          (fill-box cx cy cw ch (window-bg win))
+          (stroke-box x0 y0 (- (reticle-snap (+ cx cw) floor) x0)
+                      (- (reticle-snap (+ cy ch) floor) y0)
+                      (if focused? 'window-border-focus 'window-border)
+                      (reticle-px 1))))
     (when focused?
       (reticle-corners x y w h (round (* 0.7 th)) 2 'accent #f))
-    (call-with-clip (+ x top) (+ y top) (- w top top) (- th top)
-      (lambda ()
-        (reticle-draw-label tx (- base (font-ascent reticle-font))
-                            (reticle-label (window-title win)
-                                           (- (+ x (cadar bs)) tx 6))
-                            (if focused? 'title-text 'title-text-dim))
-        (for-each (lambda (b)
-                    (reticle-draw-button
-                     win (car b)
-                     (reticle-snap (+ x (cadr b) (/ (- (cadddr b) g) 2)))
-                     gy g d focused? hover pressed))
-                  bs)))))
+    (with-clip ((+ x top) (+ y top) (- w top top) (- th top))
+      (reticle-draw-label tx (- base (font-ascent reticle-font))
+                          (reticle-label (window-title win)
+                                         (- (+ x (cadar bs)) tx 6))
+                          (if focused? 'title-text 'title-text-dim))
+      (for-each (lambda (b)
+                  (reticle-draw-button
+                   win (car b)
+                   (reticle-snap (+ x (cadr b) (/ (- (cadddr b) g) 2)))
+                   gy g d focused? hover pressed))
+                bs))))
 
 ;; A move or a resize drags the brackets alone to where the window goes.
 (define (reticle-drag-outline x y w h)

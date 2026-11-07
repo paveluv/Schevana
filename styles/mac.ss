@@ -32,24 +32,23 @@
 (define (mac-draw-under win x y w h focused? hover pressed)
   (let ([th (title-height)] [r (mac-radius win)]
         [glyphs? (memq hover '(close minimize maximize))])
-    (window-shadow win x y w h r focused?)   ; shadow
-    (fill-round-rect x y w h r (window-bg win))
-    (call-with-round-clip x y w h r
-      (lambda ()
-        (fill-gradient x y w th
-                       (if focused? 'mac-title-top 'title-bg)
-                       (if focused? 'title-bg-focus 'title-bg))
-        (draw-line x (+ y th -0.5) (+ x w) (+ y th -0.5) (alpha #x000000 0.5))
-        (for-each (lambda (cx color glyph)
-                    (let ([cy (+ y (/ th 2))])
-                      (fill-circle (+ x cx) cy 6
-                        (if (or focused? glyphs?) color 'button-idle))
-                      (when glyphs?
-                        (mac-glyph glyph (+ x cx) cy
-                                   (mix color #x000000 0.6)))))
-                  '(18 38 58) '(button-close button-min button-max)
-                  '(close minimize maximize))
-        (mac-title win x y w th focused?)))))
+    (window-shadow win x y w h r focused?)
+    (fill-box x y w h (window-bg win) r)
+    (with-clip (x y w h r)
+      (fill-gradient x y w th
+                     (if focused? 'mac-title-top 'title-bg)
+                     (if focused? 'title-bg-focus 'title-bg))
+      (draw-line x (+ y th -0.5) (+ x w) (+ y th -0.5) (alpha #x000000 0.5))
+      (for-each (lambda (cx color glyph)
+                  (let ([cy (+ y (/ th 2))])
+                    (fill-circle (+ x cx) cy 6
+                      (if (or focused? glyphs?) color 'button-idle))
+                    (when glyphs?
+                      (mac-glyph glyph (+ x cx) cy
+                                 (mix color #x000000 0.6)))))
+                '(18 38 58) '(button-close button-min button-max)
+                '(close minimize maximize))
+      (mac-title win x y w th focused?))))
 
 ;; The title, centered between the buttons and their mirror, after the
 ;; window's icon if its app gave one, the two centered together.
@@ -64,8 +63,8 @@
                         (if focused? 'title-text 'title-text-dim) 'title)))
 
 (define (mac-draw-over win x y w h focused? hover pressed)
-  (stroke-round-rect x y w h (mac-radius win)
-                     (if focused? 'window-border-focus 'window-border))
+  (stroke-box x y w h (if focused? 'window-border-focus 'window-border) 1
+              (mac-radius win))
   ;; (the grip reaches 11 pixels in; a shaded window has no corner)
   (unless (or (maximized? win) (shaded? win) (< w 14) (< h 14))
     (draw-resize-grip (+ x w) (+ y h))))

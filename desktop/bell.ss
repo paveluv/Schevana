@@ -20,7 +20,7 @@
 ;; White by the difference operator: what is there, inverted, in any
 ;; palette (the CADR complemented its screen; Medley flashes the window).
 (define-part (draw-bell-flash x y w h)
-  (call-with-operator 'difference (lambda () (fill-rect x y w h #xffffff))))
+  (invert-box x y w h))
 
 (define (bell-draw) (when *bell* (apply draw-bell-flash (cdr *bell*))))
 
