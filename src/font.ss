@@ -77,8 +77,19 @@
 (define ft-face-flag-fixed-width 4)
 
 ;; Where fontconfig finds this family: (file . index in it).
+;; What a Mac asks for by the generic names, which there give a monospace with
+;; no λ and a sans-serif taller than the layouts here are made for: DejaVu, as
+;; on Linux, or where it isn't installed the nearest the system has.
+(define font-generic-families
+  (if (string-contains-ci? (symbol->string (machine-type)) "osx")
+      '(("sans-serif" . "DejaVu Sans,Lucida Grande")
+        ("serif" . "DejaVu Serif,serif")
+        ("monospace" . "DejaVu Sans Mono,Menlo"))
+      '()))
+
 (define (font-file-match family slant weight)
-  (let* ([name (format "~a:slant=~a:weight=~a" family
+  (let* ([own (assoc family font-generic-families)]
+         [name (format "~a:slant=~a:weight=~a" (if own (cdr own) family)
                        (if (eq? slant 'italic) 100 0)
                        (if (eq? weight 'bold) 200 80))]
          [pattern (fc-name-parse name)]
@@ -167,14 +178,8 @@
 
 (define (make-font* family size . opts)
   (let ([italic? (memq 'italic opts)]
-        [bold? (memq 'bold opts)]
-        ;; a Mac takes monospace for Courier, which has no λ
-        [face-family (if (and (equal? family "monospace")
-                              (memq (machine-type)
-                                    '(ta6osx tarm64osx a6osx arm64osx)))
-                         "Menlo"
-                         family)])
-    (make-font face-family (if italic? 'italic 'normal)
+        [bold? (memq 'bold opts)])
+    (make-font family (if italic? 'italic 'normal)
                (if bold? 'bold 'normal)
                size #f #f (and (memq 'crisp opts) #t) 0 #f '())))
 

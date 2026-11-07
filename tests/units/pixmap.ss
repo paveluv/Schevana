@@ -104,6 +104,22 @@
               '(0 1 2 3) '(#xffff0000 #xff00ff00 #xff0000ff #xff123456))
     pm))
 
+;; A frame's new glyphs go up just before its images, a byte a pixel: one
+;; size of them or another leaves an odd offset, which Metal shifts pixels by.
+(check "a pixmap arrives whole, whatever new glyphs the frame sends before it"
+       (for-all
+        (lambda (i)
+          (let ([pm (make-pixmap 4 4)])
+            (pixmap-fill! pm #x123456)
+            (let ([img (image 60 40 1
+                              (lambda ()
+                                (fill-box 0 0 60 40 #x000000)
+                                (draw-text 0 0 "gQ" 'text
+                                           (font "sans-serif" (+ 17 i)))
+                                (pixmap-draw pm 50 30 4 4)))])
+              (= (pixel-at img 51 31) #xff123456))))
+        (iota 8)))
+
 (check "pixmap-draw is nearest-neighbor at 100%"
        (draws-nearest? 1 (quadrants (make-immobile-bytevector 16 0))))
 (check "pixmap-draw is nearest-neighbor at 200%"

@@ -68,9 +68,9 @@ before it:
   `foreign-…` procedure, outside `src/`: the core grows a primitive instead
   (`tests/sources.ss`).
 - **The GPU layer speaks the world's terms.** Above `src/gpu.ss`, in the core
-  too, nothing names SDL's GPU, Vulkan or SPIR-V, so that another back end or
-  raw Vulkan stays its business alone (`tests/sources.ss`; the host keeps
-  SDL's windows).
+  too, nothing names SDL's GPU, Vulkan, SPIR-V, Metal or MSL, so that another
+  back end or raw Vulkan stays its business alone (`tests/sources.ss`; the
+  host keeps SDL's windows).
 - **The shader language is the contract.** What a back end can't do doesn't
   get in: the twin (`kits/twin.ss`) is a second back end from the start, and
   `tests/units/shader.ss` holds it and the device together.

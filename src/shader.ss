@@ -17,9 +17,18 @@
 ;;;   (fetch texture u v channel)  (emit-position x y id)
 ;;;   (emit-color r g b a)  (nothing)
 ;;; A back end is a table from those to its target and a walk over the
-;;; tree. SPIR-V's is here; the twin (kits/twin.ss), the same tree as a Scheme
-;;; procedure, is the second from the start, so that nothing SPIR-V alone can
-;;; do gets into the language.
+;;; tree. SPIR-V's and MSL's are here; the twin (kits/twin.ss), the same tree
+;;; as a Scheme procedure, is another, so that nothing one target alone can do
+;;; gets into the language.
+
+;; This machine's back end: a Mac has Metal, everything else Vulkan.
+(define shader-target
+  (if (string-contains-ci? (symbol->string (machine-type)) "osx")
+      'msl
+      'spirv))
+
+;; What a shader's entry is called: main is no function's name in MSL.
+(define shader-entry (if (eq? shader-target 'msl) "main0" "main"))
 
 ;;; ------------------------------------------------------------------ front
 
@@ -396,7 +405,7 @@
           (reverse acc)
           (loop (+ i 4) (cons (bytevector-u32-native-ref out i) acc))))))
 
-(define (spirv-float-bits x)
+(define (shader-float-bits x)
   (let ([b (make-bytevector 4)])
     (bytevector-ieee-single-native-set! b 0 x)
     (bytevector-u32-native-ref b 0)))
@@ -451,7 +460,7 @@
           (hashtable-set! ints n i)
           i)))
   (define (float-const x)
-    (let ([bits (spirv-float-bits x)])
+    (let ([bits (shader-float-bits x)])
       (or (hashtable-ref floats bits #f)
           (let ([i (id!)])
             (type! 43 t-float i bits)
@@ -704,7 +713,7 @@
                (inst 15 (append
                          (list (case stage [(compute) 5] [(vertex) 0] [else 4])
                                main)
-                         (spirv-string "main")
+                         (spirv-string shader-entry)
                          interface))
                (case stage
                  [(compute) (inst 16 (list main 17 shader-group-x 1 1))]
@@ -723,6 +732,234 @@
 ;; A compute shader's group, across: a dispatch counts in these.
 (define shader-group-x 64)
 
+;;; ------------------------------------------------------------------ MSL
+;;; Metal's language, as text for its compiler. It has no statement
+;;; expressions, so each node of the tree prints as one assignment and a
+;;; walk gives back what names its value. Every name is a number of ours,
+;;; whatever the source called it: a name printed from the source could say
+;;; anything, and a shader sees only what it was handed. Signed overflow is
+;;; undefined there, so what wraps goes through uint.
+;;; SDL's numbering: buffers count uniforms, then read-only ones, then
+;;; read-write ones; textures count from 0, in every stage.
+
+(define msl-ops
+  '((fx+ . "int(uint(~a) + uint(~a))") (fx- . "int(uint(~a) - uint(~a))")
+    (fx* . "int(uint(~a) * uint(~a))") (fxneg . "int(0u - uint(~a))")
+    (fxnot . "~~~a") (fxand . "~a & ~a") (fxior . "~a | ~a")
+    (fxxor . "~a ^ ~a")
+    (fxsll . "int(uint(~a) << uint(~a))")
+    (fxsrl . "int(uint(~a) >> uint(~a))") (fxsra . "~a >> ~a")
+    (fx= . "~a == ~a") (fx< . "~a < ~a") (fx> . "~a > ~a")
+    (fx<= . "~a <= ~a") (fx>= . "~a >= ~a")
+    (fl= . "~a == ~a") (fl< . "~a < ~a") (fl> . "~a > ~a")
+    (fl<= . "~a <= ~a") (fl>= . "~a >= ~a")
+    (fl+ . "~a + ~a") (fl- . "~a - ~a") (fl* . "~a * ~a") (fl/ . "~a / ~a")
+    (flneg . "-~a") (not . "!~a")
+    (fixnum->flonum . "float(~a)") (flonum->fixnum . "int(~a)")
+    (flabs . "fabs(~a)") (flfloor . "floor(~a)") (flceiling . "ceil(~a)")
+    (flround . "rint(~a)") (flsqrt . "sqrt(~a)")
+    (flsin . "sin(~a)") (flcos . "cos(~a)")
+    (flmin . "min(~a, ~a)") (flmax . "max(~a, ~a)")))
+
+;; The smallest int by -1 overflows, which % and / leave undefined.
+(define (msl-op name args)
+  (case name
+    [(fxquotient)
+     (format "~a == -1 ? int(0u - uint(~a)) : ~a / ~a"
+             (cadr args) (car args) (car args) (cadr args))]
+    [(fxrem)
+     (format "~a == -1 ? 0 : ~a % ~a" (cadr args) (car args) (cadr args))]
+    [else
+     (let ([o (assq name msl-ops)])
+       (unless o (shader-error "no MSL for ~a" name))
+       (apply format (cdr o) args))]))
+
+(define (msl-type t)
+  (case t
+    [(fixnum) "int"]
+    [(flonum) "float"]
+    [(boolean) "bool"]
+    [else (shader-error "no value of type ~a" t)]))
+
+(define (msl-const type x)
+  (case type
+    [(fixnum) (format "int(~au)" (logand x #xffffffff))]
+    [(flonum) (format "as_type<float>(~au)" (shader-float-bits x))]
+    [else (if x "true" "false")]))
+
+(define (shader-msl stage coords params tree)
+  (define out (open-output-string))
+  (define next 0)
+  (define names (make-eqv-hashtable))     ; a tree's id or a parameter's name
+  (define (line . parts)
+    (for-each (lambda (s) (display s out)) parts)
+    (newline out))
+  (define (fresh!)
+    (set! next (+ next 1))
+    (format "v~a" next))
+  (define (name! id)
+    (let ([v (fresh!)]) (hashtable-set! names id v) v))
+  (define (name-of id) (hashtable-ref names id #f))
+  (define (assign! type text)
+    (let ([v (fresh!)])
+      (line (msl-type type) " " v " = " text ";")
+      v))
+  (define (value t)
+    (case (car t)
+      [(const) (msl-const (cadr t) (caddr t))]
+      [(var) (name-of (caddr t))]
+      [(op)
+       (assign! (cadr t) (msl-op (caddr t) (map value (cdddr t))))]
+      [(let)
+       (hashtable-set! names (cadr t) (value (caddr t)))
+       (value (cadddr t))]
+      [(seq) (fold-left (lambda (last f) (value f)) "" (cdr t))]
+      [(if) (branch t)]
+      [(loop) (bounded-loop t)]
+      [(load)
+       (assign! (cadr t)
+                (format "~a[~a]" (name-of (caddr t)) (value (cadddr t))))]
+      [(store)
+       (let* ([i (value (caddr t))] [v (value (cadddr t))])
+         (line (name-of (cadr t)) "[" i "] = " v ";")
+         "")]
+      [(fetch)
+       (let* ([u (value (caddr t))] [v (value (cadddr t))])
+         (assign! 'flonum
+                  (format "~a.read(uint2(uint(~a), uint(~a)), 0u)[~a]"
+                          (name-of (cadr t)) u v (car (cddddr t)))))]
+      [(emit-position)
+       (let* ([x (value (cadr t))] [y (value (caddr t))]
+              [i (value (cadddr t))])
+         (line "stage.position = float4(" x ", " y ", 0.0, 1.0);")
+         (line "stage.id = " i ";")
+         "")]
+      [(emit-color)
+       (let* ([r (value (cadr t))] [g (value (caddr t))]
+              [b (value (cadddr t))] [a (value (car (cddddr t)))])
+         (line "color = float4(" r ", " g ", " b ", " a ");")
+         "")]
+      [else ""]))
+  (define (branch t)
+    (let* ([c (value (caddr t))]
+           [v (and (not (eq? (cadr t) 'void)) (fresh!))])
+      (define (arm form)
+        (let ([a (value form)])
+          (when v (line v " = " a ";"))))
+      (when v (line (msl-type (cadr t)) " " v ";"))
+      (line "if (" c ") {")
+      (arm (cadddr t))
+      (line "} else {")
+      (arm (car (cddddr t)))
+      (line "}")
+      (or v "")))
+  ;; A round's new values are all worked out before any is set: a step may
+  ;; name another variable, and means the value it had.
+  (define (bounded-loop t)
+    (let ([specs (cadddr t)] [count (fresh!)])
+      (for-each (lambda (s)
+                  (hashtable-set! names (car s)
+                                  (assign! (cadr s) (value (caddr s)))))
+                specs)
+      (line "int " count " = 0;")
+      (line "while (true) {")
+      (line "if (" (value (car (cddddr t))) " || " count " >= " (caddr t)
+            ") break;")
+      (let ([news (map (lambda (s) (assign! (cadr s) (value (cadddr s))))
+                       specs)])
+        (for-each (lambda (s v) (line (name-of (car s)) " = " v ";"))
+                  specs news))
+      (line count " += 1;")
+      (line "}")
+      (value (cadr (cddddr t)))))
+  (let* ([uniforms (shader-uniforms stage params)]
+         [slots (if (null? uniforms) 0 1)]
+         [reads (filter (lambda (p)
+                          (and (memq (cadr p) '(fx-buffer fl-buffer))
+                               (null? (cddr p))))
+                        params)]
+         [args '()]
+         [read-n 0]
+         [write-n 0]
+         [tex-n 0])
+    (define (arg! . parts) (set! args (cons (apply string-append parts) args)))
+    ;; Metal's default is fast math, which takes (a + b) - a for b
+    (line "#pragma METAL fp math_mode(safe)")
+    (line "#include <metal_stdlib>")
+    (line "using namespace metal;")
+    (unless (null? uniforms)
+      (line "struct Uniforms {")
+      (let loop ([us uniforms] [k 0])
+        (unless (null? us)
+          (line (msl-type (cadr (car us))) " m" k ";")
+          (loop (cdr us) (+ k 1))))
+      (line "};")
+      (arg! "constant Uniforms& uniforms [[buffer(0)]]"))
+    (line "struct Stage {")
+    (line "float4 position [[position]];")
+    (line "int id [[user(locn0)]] [[flat]];")
+    (line "};")
+    (for-each
+     (lambda (p)
+       (case (cadr p)
+         [(fx-buffer fl-buffer)
+          (let ([type (if (eq? (cadr p) 'fx-buffer) "int" "float")]
+                [v (name! (car p))])
+            (if (null? (cddr p))
+                (begin
+                  (arg! "device const " type "* " v " [[buffer("
+                        (number->string (+ slots read-n)) ")]]")
+                  (set! read-n (+ read-n 1)))
+                (begin
+                  (arg! "device " type "* " v " [[buffer("
+                        (number->string (+ slots (length reads) write-n))
+                        ")]]")
+                  (set! write-n (+ write-n 1)))))]
+         [(texture)
+          (arg! "texture2d<float> " (name! (car p)) " [[texture("
+                (number->string tex-n) ")]]")
+          (set! tex-n (+ tex-n 1))]))
+     params)
+    (let ([given (string-join (reverse args) ", ")]
+          [with (if (null? args) "" ", ")])
+      (case stage
+        [(compute)
+         (line "kernel void " shader-entry "(uint3 cell \
+                [[thread_position_in_grid]]" with given ") {")
+         (hashtable-set! names (car coords) (assign! 'fixnum "int(cell.x)"))
+         (hashtable-set! names (cadr coords) (assign! 'fixnum "int(cell.y)"))]
+        [(vertex)
+         (line "vertex Stage " shader-entry "(uint vertex_at [[vertex_id]], \
+                uint instance_at [[instance_id]]" with given ") {")
+         (line "Stage stage;")
+         (hashtable-set! names (car coords)
+                         (assign! 'fixnum "int(vertex_at)"))
+         (hashtable-set! names (cadr coords)
+                         (assign! 'fixnum "int(instance_at)"))]
+        [else
+         (line "fragment float4 " shader-entry "(Stage stage [[stage_in]]"
+               with given ") {")
+         (line "float4 color = float4(0.0);")
+         (hashtable-set! names (car coords)
+                         (assign! 'flonum "stage.position.x"))
+         (hashtable-set! names (cadr coords)
+                         (assign! 'flonum "stage.position.y"))
+         (hashtable-set! names (caddr coords)
+                         (assign! 'fixnum "stage.id"))]))
+    (let loop ([us uniforms] [k 0])
+      (unless (null? us)
+        (hashtable-set! names (car (car us))
+                        (assign! (cadr (car us))
+                                 (format "uniforms.m~a" k)))
+        (loop (cdr us) (+ k 1))))
+    (value tree)
+    (case stage
+      [(vertex) (line "return stage;")]
+      [(fragment) (line "return color;")]
+      [else (void)])
+    (line "}")
+    (get-output-string out)))
+
 ;;; ------------------------------------------------------------------ shaders
 
 (define-record-type shader
@@ -732,7 +969,10 @@
 ;; (code . price) of a shader's source, for this machine's back end.
 (define (shader-compile stage coords params forms)
   (let ([tree (shader-lower stage coords params forms)])
-    (cons (shader-spirv stage coords params tree) (shader-tree-price tree))))
+    (cons (if (eq? shader-target 'msl)
+              (string->utf8 (shader-msl stage coords params tree))
+              (shader-spirv stage coords params tree))
+          (shader-tree-price tree))))
 
 ;; The shader's source as its tree, for anyone who wants to look.
 (define (shader-tree s)

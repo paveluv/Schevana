@@ -283,9 +283,9 @@
         (append world-files '("main.ss"))))
 
 ;; The GPU layer speaks the world's terms: above it, in the core too, nothing
-;; names SDL's windowless half, Vulkan or SPIR-V, so that another back end, or
-;; raw Vulkan, is the GPU layer's business alone. The host keeps SDL's windows,
-;; and the clock is SDL's.
+;; names SDL's windowless half, Vulkan, SPIR-V, Metal or MSL, so that another
+;; back end, or raw Vulkan, is the GPU layer's business alone. The host keeps
+;; SDL's windows, and the clock is SDL's.
 (define above-gpu-files
   (remp (lambda (f)
           (member f '("src/ffi.ss" "src/shader.ss" "src/gpu.ss" "src/font.ss"
@@ -297,10 +297,12 @@
     (and (not (eq? s 'sdl-get-ticks-ns))
          (or (string-prefix? "sdl-" name)
              (string-contains-ci? name "spirv")
-             (string-contains-ci? name "vulkan")))))
+             (string-contains-ci? name "vulkan")
+             (string-contains-ci? name "msl")
+             (string-contains-ci? name "metal")))))
 
-(check (format "above the GPU layer (~a files) no name is SDL's, Vulkan's or \
-                SPIR-V's" (length above-gpu-files))
+(check (format "above the GPU layer (~a files) no name is SDL's, Vulkan's, \
+                SPIR-V's, Metal's or MSL's" (length above-gpu-files))
        (none? (apply append
                      (map (lambda (f)
                             (map (lambda (s) (format "~a names ~a" f s))

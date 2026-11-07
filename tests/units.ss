@@ -29,7 +29,12 @@
 (define (units-run topic)
   (printf "--- ~a\n" topic)
   (flush-output-port (current-output-port))
-  (zero? (system (format "scheme --script \"~a/tests/units.ss\" \"~a\" \"~a\""
+  ;; Chez is "chez" where Homebrew installs it, as in ./schevana, and macOS
+  ;; drops the library path on the way into /bin/sh: it's handed on.
+  (zero? (system (format "DYLD_FALLBACK_LIBRARY_PATH=\"~a\" \
+                          $(command -v chez || echo scheme) --script \
+                          \"~a/tests/units.ss\" \"~a\" \"~a\""
+                         (or (getenv "DYLD_FALLBACK_LIBRARY_PATH") "")
                          *schevana-root* out-dir topic))))
 
 ;; All of them, or those asked for: here only the topics' verdicts.

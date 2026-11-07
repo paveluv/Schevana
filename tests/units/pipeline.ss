@@ -108,7 +108,7 @@
                 (<= (length (inspect-frames 100000)) frame-ring-rows)))))
 
 (check "what the device and the GPU hold reads back"
-       (and (eq? (cdr (assq 'renderer (inspect-device))) 'cpu)
+       (and (eq? (cdr (assq 'renderer (inspect-device))) gpu-windowless-kind)
             (> (cdr (assq 'glyphs (inspect-glyphs))) 0)
             (for-all (lambda (o) (>= (cddr o) 0)) (inspect-gpu-objects))))
 

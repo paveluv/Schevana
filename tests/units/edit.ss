@@ -407,6 +407,10 @@
   ((make-engine thunk) 1000000000 (lambda (left . r) (- 1000000000 left))
    (lambda (e) +inf.0)))
 
+;; A row's ticks at most. The same work counts up to 10% more on arm64.
+(define edit-test-row-ticks
+  (if (string-contains-ci? (symbol->string (machine-type)) "arm64") 560 500))
+
 (check "a keystroke's text work, in an engine's ticks, is about 500 a row \
         in view (8,500 for 17 rows) at 65,535 characters as at 16,383, in \
         each worst case, where a look at every character would be 16,383 \
@@ -451,7 +455,7 @@
                              (work text (exact (floor (* (car op) n)))
                                    (cdr op))))])
                  (let ([small (at 16383)] [big (at 65535)])
-                   (or (< (max small big) (* 500 17))
+                   (or (< (max small big) (* edit-test-row-ticks 17))
                        (begin (printf "  ~a: ~a then ~a ticks\n" which
                                       small big)
                               #f)))))

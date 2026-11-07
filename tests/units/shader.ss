@@ -77,6 +77,85 @@
           (define-shader (shader-test-bad x y) ([in fx-buffer])
             (fx-set! in 0 1)))))
 
+;;; What a back end prints.
+
+(define shader-test-odd-names
+  '((|a); evil(| fixnum)
+    (|b[[x]]| fx-buffer write)))
+
+(define (shader-test-text-has? text piece)
+  (let ([n (string-length piece)])
+    (let loop ([i 0])
+      (and (<= (+ i n) (string-length text))
+           (or (string=? (substring text i (+ i n)) piece)
+               (loop (+ i 1)))))))
+
+(check "MSL's text holds no name from the source, which could say anything: \
+        a parameter's, a buffer's or a coordinate's"
+       (let* ([forms '((fx-set! |b[[x]]| |x(| |a); evil(|))]
+              [text (shader-msl
+                     'compute '(|x(| |y(|) shader-test-odd-names
+                     (shader-lower 'compute '(|x(| |y(|)
+                                   shader-test-odd-names forms))])
+         (not (or (shader-test-text-has? text "evil")
+                  (shader-test-text-has? text "[[x]]")
+                  (shader-test-text-has? text "x(")))))
+
+(eval `(define-shader (shader-test-odd x y)
+         ,shader-test-odd-names
+         (fx-set! |b[[x]]| x |a); evil(|)))
+
+(check "a parameter may be called anything, on the device"
+       (let ([out (make-gpu-buffer 4)])
+         (gpu-compute! shader-test-odd 4 1 7 out)
+         (gpu-buffer-read! out)
+         (let ([ok (for-all (lambda (i) (= 7 (gpu-buffer-ref out i)))
+                            (iota 4))])
+           (gpu-buffer-release! out)
+           ok)))
+
+;; Metal's fast math would take (a + b) - a for b, and contract a product and
+;; a sum. Other drivers may do as they like: the language promises its
+;; floats no more than this, and Metal alone has a switch for it.
+(when (eq? shader-target 'msl)
+  (let* ([ops '((fl+ a b) (fl- a b) (fl* a b) (fl/ a b) (fl+ (fl* a b) c)
+                (fl- (fl+ a b) a) (flfloor a) (flceiling a) (flround a)
+                (flmin a b) (flmax a b) (flabs a) (fl- a))]
+         [count (length ops)]
+         [cells (* 200 count)]
+         [body (let loop ([ops ops] [i 0])
+                 (if (null? (cdr ops))
+                     (car ops)
+                     `(if (fx= k ,i)
+                          ,(car ops)
+                          ,(loop (cdr ops) (+ i 1)))))]
+         [s (eval `(let ()
+                     (define-shader (shader-test-floats x y)
+                       ([in fl-buffer] [out fl-buffer write])
+                       (let* ([k (fxmod x ,count)]
+                              [a (fl-ref in (fx* x 3))]
+                              [b (fl-ref in (fx+ 1 (fx* x 3)))]
+                              [c (fl-ref in (fx+ 2 (fx* x 3)))])
+                         (fl-set! out x ,body)))
+                     shader-test-floats))]
+         [in (make-gpu-buffer (* 3 cells))]
+         [out (make-gpu-buffer cells)]
+         [expected (make-bytevector (* 4 cells) 0)])
+    (random-seed 12345)
+    (do ([i 0 (+ i 1)]) ((= i (* 3 cells)))
+      (gpu-buffer-set! in i
+                       (flsingle (* (- (random 2000.0) 1000.0)
+                                    (if (even? i) 1.0 0.001)))))
+    (gpu-compute! s cells 1 in out)
+    (gpu-buffer-read! out)
+    (do ([x 0 (+ x 1)]) ((= x cells))
+      ((twin-procedure s) x 0 cells 1 (gpu-buffer-bytes in) expected))
+    (check "on Metal, floats add, multiply and divide exactly as the twin \
+            does, a product and a sum and (a + b) - a among them"
+           (bytevector=? (gpu-buffer-bytes out) expected))
+    (gpu-buffer-release! in)
+    (gpu-buffer-release! out)))
+
 ;;; Paints.
 
 (define-paint (shader-test-half x y)
@@ -84,6 +163,17 @@
    [split fixnum]
    [right color])
   (if (fx< x split) (fx-ref colors 0) right))
+
+;; A shader keeps its source, to be compiled for whatever device is there.
+(check "a paint's record compiles again to the code it holds, and its tree \
+        names the coordinates the paint's source was lowered with"
+       (let ([s (gfx-paint-shader shader-test-half)])
+         (and (equal? (shader-coords s) '(px py id))
+              (pair? (shader-tree s))
+              (equal? (shader-code s)
+                      (car (shader-compile 'fragment (shader-coords s)
+                                           (shader-params s)
+                                           (shader-source s)))))))
 
 (check "a paint colors its box, by its arguments and a buffer"
        (let* ([colors (shader-test-buffer (list #xff102030))]

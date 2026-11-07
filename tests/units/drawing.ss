@@ -9,6 +9,16 @@
         (font-metrics (make-font* "sans" 13))
         (font-metrics (make-font* "monospace" 11 'bold))))
 
+;; Fontconfig's own choices there lack a λ or break the layouts.
+(when (string-contains-ci? (symbol->string (machine-type)) "osx")
+  (check "a Mac's generic font names give DejaVu, or the nearest it has"
+         (for-all
+          (lambda (family names)
+            (let ([file (car (font-file-match family 'normal 'normal))])
+              (exists (lambda (n) (string-contains-ci? file n)) names)))
+          '("sans-serif" "monospace")
+          '(("DejaVuSans" "LucidaGrande") ("DejaVuSansMono" "Menlo")))))
+
 (check "text-width and font-metrics work before the first frame"
        (and (zero? *frame-ms*)
             (> (text-width "Schevana" 'ui) 0)

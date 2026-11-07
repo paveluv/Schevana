@@ -33,7 +33,8 @@
 (define gpu-usage-graphics-read 8)
 (define gpu-usage-compute-read 16)
 (define gpu-usage-compute-write 32)
-(define gpu-shader-spirv 2)
+;; What shaders are, to SDL: SPIR-V, or MSL.
+(define gpu-shader-format (if (eq? shader-target 'msl) 16 2))
 (define gpu-blend-zero 1)
 (define gpu-blend-one 2)
 (define gpu-blend-one-minus-source 4)
@@ -178,12 +179,18 @@
     (define (lavapipe? f) (string-contains-ci? f "lvp_icd"))
     (if (eq? kind 'cpu) (filter lavapipe? files) (remp lavapipe? files))))
 
+;; With no window: what renders, and SDL's video driver, none named meaning
+;; its choice. Metal is a Mac's one renderer and needs its real video driver,
+;; which opens no window until asked; Vulkan has lavapipe for this.
+(define gpu-windowless-kind (if (eq? shader-target 'msl) 'gpu 'cpu))
+(define gpu-windowless-video (if (eq? shader-target 'msl) #f "offscreen"))
+
 ;; A device of this kind, 'gpu or 'cpu; or #f.
 (define (gpu-open-device kind)
   (let ([files (gpu-driver-files kind)])
     (unless (null? files)
       (putenv "VK_DRIVER_FILES" (string-join files ":")))
-    (let ([d (sdl-create-gpu-device gpu-shader-spirv #f 0)])
+    (let ([d (sdl-create-gpu-device gpu-shader-format #f 0)])
       (and (not (eqv? d 0)) d))))
 
 (define (gpu-make-texture device format usage w h)
@@ -210,8 +217,8 @@
   (let* ([device (or (gpu-open-device kind)
                      (and (eq? kind 'gpu) (gpu-open-device 'cpu))
                      (errorf 'gpu-open!
-                             "no GPU device, and no lavapipe to fall back \
-                              on: ~a" (sdl-get-error)))])
+                             "no GPU device, and no renderer on the CPU to \
+                              fall back on: ~a" (sdl-get-error)))])
     (let ([r (make-renderer
               kind device
               (gpu-make-sampler device)
@@ -250,9 +257,12 @@
   (length (filter (lambda (p) (memq (cadr p) kinds)) (shader-params shader))))
 
 (define gpu-entry-name
-  (let ([p (foreign-alloc 5)])
-    (for-each (lambda (i b) (foreign-set! 'unsigned-8 p i b))
-              '(0 1 2 3 4) '(109 97 105 110 0))
+  (let* ([bytes (string->utf8 shader-entry)]
+         [n (bytevector-length bytes)]
+         [p (foreign-alloc (+ n 1))])
+    (do ([i 0 (+ i 1)]) ((= i n))
+      (foreign-set! 'unsigned-8 p i (bytevector-u8-ref bytes i)))
+    (foreign-set! 'unsigned-8 p n 0)
     p))
 
 (define (gpu-make-shader device shader)
@@ -265,7 +275,7 @@
     (ftype-set! gpu-shader-info (code-size) p n)
     (ftype-set! gpu-shader-info (code) p code)
     (ftype-set! gpu-shader-info (entry) p gpu-entry-name)
-    (ftype-set! gpu-shader-info (format) p gpu-shader-spirv)
+    (ftype-set! gpu-shader-info (format) p gpu-shader-format)
     (ftype-set! gpu-shader-info (stage) p
                 (if (eq? (shader-stage shader) 'vertex) 0 1))
     (ftype-set! gpu-shader-info (samplers) p
@@ -544,7 +554,7 @@
     (ftype-set! gpu-compute-info (code-size) p n)
     (ftype-set! gpu-compute-info (code) p code)
     (ftype-set! gpu-compute-info (entry) p gpu-entry-name)
-    (ftype-set! gpu-compute-info (format) p gpu-shader-spirv)
+    (ftype-set! gpu-compute-info (format) p gpu-shader-format)
     (ftype-set! gpu-compute-info (read-buffers) p (- (length buffers) writes))
     (ftype-set! gpu-compute-info (write-buffers) p writes)
     (ftype-set! gpu-compute-info (uniform-buffers) p 1)
@@ -669,15 +679,17 @@
   (let* ([piece-n (lambda (p) (bytevector-length (car (cddddr p))))]
          [image-n (lambda (i) (bytevector-length (gpu-image-pending i)))]
          [total (+ recs-n extras-n (if table table-n 0)
-                   (fold-left (lambda (n p) (+ n (piece-n p))) 0 atlas-pieces)
-                   (fold-left (lambda (n i) (+ n (image-n i))) 0 images))]
+                   (fold-left (lambda (n p) (+ n 3 (piece-n p))) 0 atlas-pieces)
+                   (fold-left (lambda (n i) (+ n 3 (image-n i))) 0 images))]
          [transfer (car (gpu-sized-transfer r (max total 16)))]
          [mapped (gpu-must 'gpu-upload!
                            (sdl-map-gpu-transfer (renderer-device r) transfer
                                                  #t))]
          [at 0])
+    ;; Each starts on a word: an image's pixels are words, whatever a piece
+    ;; of the atlas before them left, and Metal shifts them otherwise.
     (define (put! bv n)
-      (let ([off at])
+      (let ([off (logand (+ at 3) -4)])
         (gpu-copy-in (+ mapped off) bv n)
         (set! at (+ off n))
         off))

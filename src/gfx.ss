@@ -723,7 +723,7 @@
 (define-syntax define-paint
   (lambda (x)
     (syntax-case x ()
-      [(k (name px py) params form ...)
+      [(k (name x y) params form ...)
        (let* ([given (datum params)]
               ;; to the compiler, a color is a whole number
               [plain (map (lambda (p)
@@ -731,7 +731,7 @@
                                 (list (car p) 'fixnum)
                                 p))
                           given)]
-              [source (gfx-paint-source (datum px) (datum py)
+              [source (gfx-paint-source (datum x) (datum y)
                                         (datum (form ...)))]
               [compiled (shader-compile 'fragment '(px py id)
                                         (append '((records fx-buffer)

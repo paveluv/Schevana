@@ -37,14 +37,22 @@ On a Mac, install them from [Homebrew](https://brew.sh):
 brew install chezscheme sdl3 freetype fontconfig
 ```
 
-The Mac still waits for its shader back end (Metal's): nothing here rules it
-out.
+On a Mac the world draws on Metal, its shaders written out as Metal's language
+and compiled by the system when a pipeline is made, so Xcode isn't needed.
+
+For the fonts Linux has, install DejaVu too. Without it, `sans-serif` and
+`monospace` are Lucida Grande and Menlo, not what fontconfig would choose.
+
+```bash
+brew install --cask font-dejavu
+```
 
 Homebrew's Chez Scheme is the command `chez`, not `scheme`: `./schevana`
 runs whichever of the two it finds, and finds Homebrew's libraries in
 `/opt/homebrew/lib` (Apple silicon) or `/usr/local/lib` (Intel). To run
 the tests below on Apple silicon, type `chez` for `scheme` and put
-`DYLD_FALLBACK_LIBRARY_PATH=/opt/homebrew/lib` before it.
+`DYLD_FALLBACK_LIBRARY_PATH=/opt/homebrew/lib` before it. A Mac has no
+lavapipe, so they run on Metal, with no Dock icon and no window shown.
 
 ```bash
 ./schevana
@@ -476,7 +484,8 @@ src/gfx      immediate-mode drawing API, colors, stipples and gradients,
              records, the list a frame sends
 src/gpu      the GPU layer: the device, frames, images, buffers, compute,
              in the world's terms, SDL's GPU names ending here
-src/shader   the shader language's compiler: one small tree, and SPIR-V
+src/shader   the shader language's compiler: one small tree, and SPIR-V or,
+             on a Mac, Metal's language
 src/font     fonts by fontconfig, glyphs by FreeType, the atlas, and measuring
              from tables, with no device
 src/theme    the whole look: settings in layers, rules, palettes, styles,
@@ -1079,9 +1088,10 @@ and what they are refused).
 scheme --script tests/frame.ss out
 ```
 
-This tests frames, on lavapipe, with no window but one offscreen for the
-swapchain's path: once the frames asked for are drawn, the screen is the
-world drawn into an image, bit for bit, on several desktops, every window
+This tests frames, on lavapipe (Metal on a Mac), with no window but one
+offscreen (hidden on a Mac) for the swapchain's path: once the frames asked
+for are drawn, the screen is the world drawn into an image, bit for bit, on
+several desktops, every window
 style, a menu and a toast, at 100, 125, 150, 200 and 300%; with nothing
 asked for, no frame comes; every way the screen changes (the clock's second,
 a window, a window under another, hover across windows and both bars, a window

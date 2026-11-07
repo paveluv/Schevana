@@ -1115,8 +1115,11 @@
 ;;; ---------------------------------------------------------------- the window
 
 ;; The swapchain's path: SDL's offscreen video driver has a surface lavapipe
-;; can show. A frame is shown when the swapchain has an image free.
-(let ([window (sdl-create-window "Schevana" 640 400 0)])
+;; can show. A Mac's has none for Metal, whose window stays hidden, so that
+;; nothing opens. A frame is shown when the swapchain has an image free.
+(let ([window (sdl-create-window
+               "Schevana" 640 400
+               (if gpu-windowless-video 0 SDL_WINDOW_HIDDEN))])
   (gpu-claim-window! window)
   (let ([frames *frames-drawn*])
     (do ([i 0 (+ i 1)]) ((= i 10))

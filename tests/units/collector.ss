@@ -19,8 +19,9 @@
               (< (bytes-allocated 0) (* 1024 1024)))))
 
 (check "what survives a request moves to the next generation, no further"
-       (let* ([kept (make-bytevector (* 4 1024 1024) 1)]
-              [before (bytes-allocated 1)])
+       ;; before first: so much allocated may bring a request by itself
+       (let* ([before (bytes-allocated 1)]
+              [kept (make-bytevector (* 4 1024 1024) 1)])
          (collect-rendezvous)
          (let ([grown (- (bytes-allocated 1) before)])
            (and (>= grown (* 4 1024 1024))

@@ -80,8 +80,10 @@
     [(headless)
      (set! *headless-size* (cons w h))
      (set! *host-scale* (wanted-scale))
-     (host-sdl-init! "offscreen")
-     (unless *renderer* (gpu-open! 'cpu))
+     ;; on a Mac, no Dock icon and no taking the focus from what you're doing
+     (sdl-set-hint "SDL_MAC_BACKGROUND_APP" "1")
+     (host-sdl-init! gpu-windowless-video)
+     (unless *renderer* (gpu-open! gpu-windowless-kind))
      (canvas-create! w h *host-scale*)]
     [(sdl)
      (sdl-set-hint "SDL_VIDEO_X11_NET_WM_BYPASS_COMPOSITOR" "0")
