@@ -136,6 +136,17 @@
      crew-size
      crew-size-set!
      host-cpu-count)
+    ;; a shader touches only the buffers it's handed (src/shader.ss), and
+    ;; nothing here waits for the GPU
+    (gpu "Compute and draw on the GPU"
+     define-compute-shader
+     define-paint
+     fill-shader
+     draw-scale
+     make-gpu-buffer
+     gpu-buffer-set!
+     gpu-buffer-release!
+     gpu-compute-soon!)
     (toasts "Show notifications"
      notify)
     (launch "Open other apps"
@@ -159,6 +170,7 @@
 ;; Sketch is not here: the person approves it, as an app of their own.
 (define grant-tree-apps
   '((boids window draw ui timers crew)
+    (boids3d window draw ui timers gpu)
     (clock window draw timers)
     (life window draw ui timers crew)))
 

@@ -231,6 +231,8 @@ afterwards; `(only …)` or `(prefix … acme:)` keep them apart.
 (boids)                                    ; a flock, its rules beside it
 (repl "/apps/boids")                       ; a REPL in its sandbox; there,
 (define boids-step-ms 100)                 ; a slow flock; (reload!) undoes
+(boids3d)                                  ; a murmuration, all on the GPU;
+                                           ; drag round it, h for its rules
 (define (draw-wallpaper w h) (fill-gradient 0 0 w h #x102030 #x301020))
 ; every window looks focused; (reload!) undoes it
 (define (draw-window win) (draw-window* win #t))
@@ -427,7 +429,7 @@ styles and palettes with the others, and the saved look may name them.
 An app of yours runs in a sandbox of its own, which holds only what it asks
 for, so not your kits, which are the world's. Its file is named after it, and
 its first form says what it needs, of the bundles `window`, `draw`, `ui`,
-`timers`, `crew`, `toasts` and `launch`: the Counter above, in `counter.ss`, starts
+`timers`, `crew`, `gpu`, `toasts` and `launch`: the Counter above, in `counter.ss`, starts
 with `(app-requests window draw)`. The launcher asks you before its first
 run, and Settings, Permissions changes it later.
 `(apps)`, `(styles)`, `(palettes)`, `(wallpapers)` and
@@ -437,7 +439,8 @@ run, and Settings, Permissions changes it later.
 
 ```
 apps/        in the world: repl  debug-repl  envs  monitor  settings  tasks
-             each in a sandbox of its own: boids  clock  life  sketch
+             each in a sandbox of its own: boids  boids3d  clock  life
+             sketch
 wallpapers/  desktop fills: gradient  flat  shade
 palettes/    named colors: catppuccin  crayons  forest  genera  gruvbox
              interlisp  neon  nord  paper  phosphor  sakura  sunset
@@ -583,7 +586,8 @@ Decisions worth keeping in mind for the real design:
   `(app-requests window draw timers)` loads into `/apps/<name>`
   (`services/grant.ss`), on the confined base, holding of the world's
   names only its bundles: titled lists ("Draw in its windows": `fill-box`
-  and 49 more). The tree's Boids, Clock and Life are approved by a table;
+  and 49 more). The tree's Boids, Boids 3D, Clock and Life are approved by a
+  table;
   Sketch, and every app of yours, asks the person, whose answers are kept in
   `~/.schevana.d/permissions.ss`. A bundle not allowed is there as stubs
   that raise, naming it ("Sketch needs Draw in its windows (fill-box):
@@ -616,6 +620,16 @@ Decisions worth keeping in mind for the real design:
   its sandbox alone has, so an app's worklets reach nothing of the world's
   or another app's, and none lands in `/worklets`. Not approved, they are
   stubs like any other: the app loads, and the first use raises.
+- **Apps use the GPU through a bundle.** `gpu`, "Compute and draw on the
+  GPU", gives an app `define-compute-shader`, `define-paint`, `fill-shader`,
+  `draw-scale` and its own buffers (`make-gpu-buffer`, `gpu-buffer-set!`,
+  `gpu-buffer-release!`). A shader touches only the buffers it's handed: a
+  read outside one reads its last word and a write outside is left out, on
+  every device, each buffer's length a uniform of its own. A compute run asked
+  for with `(gpu-compute-soon! shader w h arg ...)` goes with the next frame,
+  ahead of its drawing, so a paint shows what it wrote, and nothing waits
+  for it; `gpu-compute!`, which waits, and `gpu-buffer-read!` are the world's
+  alone. `(inspect-computes)` lists the runs waiting for the frame.
 - **Life and Boids run on the crew.** Life's grid is as many cells as its
   window has room for: a new size keeps what fits and seeds the new ground.
   Its panel sets the cell size (in the screen's own pixels: 1 px is one),
@@ -954,7 +968,19 @@ Decisions worth keeping in mind for the real design:
   `(glyph-row-left row)` reads it. `kits/twin.ss` gives any shader as a Scheme
   procedure, to call for one pixel at a REPL; the conformance test holds the
   device and the twin together, whatever the driver. Life and Boids stay on
-  the crew's worklets for now, by choice.
+  the crew's worklets, by choice; Boids 3D is all shaders.
+- **Boids 3D flies on the GPU.** `(boids3d)` is Boids in space, as Reynolds
+  first made them: the same rules, a field of view that's a cone, Flake's
+  blocker rules carried into 3D, and a pull home into a ball where Boids
+  wraps at the screen's edges. Its defaults make a murmuration. A step, the
+  flock laid out by the camera, the birds listed by 16-pixel tile, and the
+  picture are four shaders (`boids3d-steer`, `-place`, `-bin` and the paint
+  `boids3d-view`), and the flock never comes back to the CPU. Each bird is a
+  body and two wings that beat, bend at the wrist and bank into turns, in a
+  haze that grows with distance, so far off it looks like a real one. With a
+  step every frame, at 2560 × 1600, the GPU's frame grows from 0.82 ms to
+  2.01 ms with 1,000 birds and to 5.18 ms with 4,096, its most; main spends
+  about 0.1 ms.
 - **Drawing is single-threaded.** Recording and the world's state stay on
   the main thread; worker threads run only worklets and what a vat's sandbox
   holds. Monitor shows where each tick's time goes (above). A process may be
@@ -1201,7 +1227,9 @@ Boids (`apps/boids.ss`) is ported from Eduardo Cavazos's
 [Boids in Niva](https://github.com/dharmatech/boids-niva) (MIT). Its two
 blocker rules, clear view and back off, follow Gary William Flake's *The
 Computational Beauty of Nature* (MIT Press, 1998), written from his
-description.
+description. Boids 3D (`apps/boids3d.ss`) takes the same rules into three
+dimensions, as Craig Reynolds' "Flocks, Herds, and Schools: A Distributed
+Behavioral Model" (SIGGRAPH 1987) first had them.
 
 The CADR's 5X5 font in `kits/px.ss` (the glyphs of `px-5x5`) is MIT's,
 decoded from System 99's `fonts/5x5.qfasl`:
