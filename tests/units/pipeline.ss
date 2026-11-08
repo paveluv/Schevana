@@ -283,9 +283,73 @@
          (eq? (pipeline) w))
   (check "a label's children are its records"
          (let* ([group (assoc "Pipeline" (pipeline-view-groups v))]
-                [rows (pipeline-children v group)])
+                [rows (pipeline-children v '("Pipeline" 0))])
            (and (pair? rows)
-                (= (apply + (map pipeline-node-count rows)) (caddr group)))))
+                (= (apply + (map (lambda (row) (pipeline-node-count v row))
+                                 rows))
+                   (caddr group)))))
+  ;; A window below draws one box, then two, as a caret blinks: what the
+  ;; Pipeline draws moves along by a record and back each time.
+  (let* ([boxes 1]
+         [below (open-window "Pipeline test boxes" 'size '(120 . 80)
+                             'pos '(10 . 10) 'app 'pipeline-test
+                             'draw (lambda (win w h)
+                                     (do ([i 0 (+ i 1)]) ((= i boxes))
+                                       (fill-box (* i 10) 0 8 8 'accent))))]
+         [tree '(pipeline tree)]
+         [row-of (lambda (name)
+                   (let ([rows (ui-memo ui (list tree 'rows) '#())])
+                     (find (lambda (r)
+                             (equal? (pipeline-node-name (ui-tree-row-node r))
+                                     name))
+                           (vector->list rows))))]
+         [look! (lambda ()
+                  (invalidate! below)
+                  (steps 1)
+                  (pipeline-look! v)
+                  (steps 1))])
+    (focus-window! w)
+    (look!)
+    (let* ([rows (ui-memo ui (list tree 'rows) '#())]
+           [i (let loop ([i 0])
+                (if (equal? (pipeline-node-name
+                             (ui-tree-row-node (vector-ref rows i)))
+                            "Pipeline")
+                    i
+                    (loop (+ i 1))))]
+           [r (ui-find ui (list tree 'row i))]
+           [twisty (cdr (assq 'twisty
+                              (ui-tree-areas (ui-region-x r) (ui-region-y r)
+                                             (ui-region-w r) (ui-region-h r)
+                                             0)))])
+      (let-values ([(cx cy cw ch) (content-rect w)])
+        (let ([x (exact (round (+ cx (car twisty) (/ (caddr twisty) 2))))]
+              [y (exact (round (+ cy (cadr twisty) (/ (cadddr twisty) 2))))])
+          (inject! `(mouse-move ,x ,y) `(mouse-down ,x ,y left 1)
+                   `(mouse-up ,x ,y left))
+          (steps 2))))
+    (check "a press on a span's twisty opens it"
+           (ui-tree-row-expanded? (row-of "Pipeline")))
+    (check "and it stays open while records before it and in it come and go"
+           (for-all (lambda (n)
+                      (set! boxes n)
+                      (look!)
+                      (ui-tree-row-expanded? (row-of "Pipeline")))
+                    '(2 1 2 1)))
+    (pipeline-view-selected-set! v (ui-tree-row-node (row-of "Pipeline")))
+    (check "a span selected stays so, its records marked where they are now"
+           (for-all (lambda (n)
+                      (set! boxes n)
+                      (look!)
+                      (and (equal? (ui-tree-row-node (row-of "Pipeline"))
+                                   (pipeline-view-selected v))
+                           (= (car (pipeline-tape-marked v))
+                              (cadr (assoc "Pipeline"
+                                           (pipeline-view-groups v))))))
+                    '(2 1)))
+    (pipeline-view-selected-set! v #f)
+    (close-window! below)
+    (steps 1))
   (let ([drawn '()] [plain ui-draw-cell])
     (fluid-let ([ui-draw-cell (lambda (x y w h flags text)
                                 (set! drawn (cons text drawn))
@@ -449,7 +513,7 @@
            (let ([upto (pipeline-view-upto v)])
              (and (pipeline-view-held? v)
                   upto (< 0 upto n)
-                  (= (pipeline-node-first (pipeline-view-selected v))
+                  (= (pipeline-node-first v (pipeline-view-selected v))
                      (- upto 1))
                   (memv (- upto 1) (pipeline-tape-marked v)))))
     (let ([before (pipeline-view-upto v)])
@@ -467,7 +531,8 @@
            (and (not (pipeline-view-playing v))
                 (not (pipeline-view-upto v))))
     (let ([span (car (pipeline-view-groups v))])
-      (pipeline-view-selected-set! v span)
+      (pipeline-view-selected-set!
+       v (car (pipeline-span-nodes (pipeline-view-groups v))))
       (check "what's selected is marked, a span of records whole"
              (equal? (list-head (pipeline-tape-marked v) (caddr span))
                      (map (lambda (k) (+ (cadr span) k))
@@ -475,7 +540,7 @@
     (pipeline-view-selected-set! v #f)
     (pipeline-trace! v 5 5)
     (check "and so are the records at a pixel traced"
-           (let ([traced (map pipeline-node-first
+           (let ([traced (map (lambda (node) (pipeline-node-first v node))
                               (caddr (pipeline-view-traced v)))])
              (and (pair? traced)
                   (for-all (lambda (i) (memv i (pipeline-tape-marked v)))

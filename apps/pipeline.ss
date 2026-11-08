@@ -29,7 +29,7 @@
           (mutable shown)      ; (inspect-list), the one on view
           (mutable held?)      ; it stays
           (mutable looked)     ; when it was read (now-ms)
-          (mutable groups)     ; the tree's roots: (label first count) ...
+          (mutable groups)     ; its spans: (label first count) ...
           (mutable selected)   ; a tree node
           (mutable traced)     ; the records at a pixel, or #f: (x y n ...)
           (mutable upto)       ; the slider's record, or #f: all of them
@@ -408,17 +408,19 @@
 
 ;; The records marked: what's selected, and those at the pixel traced.
 (define (pipeline-tape-marked v)
-  (let ([n (inspect-list-count (pipeline-view-shown v))]
-        [selected (pipeline-view-selected v)]
-        [traced (pipeline-view-traced v)])
+  (let* ([n (inspect-list-count (pipeline-view-shown v))]
+         [selected (pipeline-view-selected v)]
+         [first (and selected (pipeline-node-first v selected))]
+         [traced (pipeline-view-traced v)])
     (append
-     (if (and selected (< (pipeline-node-first selected) n))
-         (let ([first (pipeline-node-first selected)])
-           (map (lambda (k) (+ first k))
-                (iota (min (pipeline-node-count selected) (- n first)))))
+     (if (and first (< first n))
+         (map (lambda (k) (+ first k))
+              (iota (min (pipeline-node-count v selected) (- n first))))
          '())
      (if traced
-         (filter (lambda (i) (< i n)) (map pipeline-node-first (caddr traced)))
+         (filter (lambda (i) (< i n))
+                 (map (lambda (node) (pipeline-node-first v node))
+                      (caddr traced)))
          '()))))
 
 ;; The small screen draws as far as k records, the last of them selected.
@@ -531,16 +533,46 @@
 
 ;;; ---- what the tree holds
 
-;; A node is a label's span, (label first count), or a row of it (a vector).
-(define (pipeline-children v node)
-  (if (pair? node)
-      (inspect-rows (pipeline-view-shown v) (cadr node) (caddr node))
-      '()))
+;; A node is a label's span or a row of it (a vector). A span's node is its
+;; label and which of that label's spans it is, (label k), not where it is:
+;; records before it and in it come and go (a caret blinks, the clock ticks),
+;; and a span opened or selected stays so. Its records are looked up in the
+;; list on view.
+(define (pipeline-span-nodes spans)
+  (let loop ([spans spans] [seen '()] [acc '()])
+    (if (null? spans)
+        (reverse acc)
+        (let ([label (caar spans)])
+          (loop (cdr spans) (cons label seen)
+                (cons (list label (length (filter (lambda (l)
+                                                    (equal? l label))
+                                                  seen)))
+                      acc))))))
 
-(define (pipeline-node-first node)
-  (if (pair? node) (cadr node) (vector-ref node 0)))
-(define (pipeline-node-count node)
-  (if (pair? node) (caddr node) (vector-ref node 1)))
+;; The span of node (label k) in the list on view, (label first count), or #f
+;; when it's gone.
+(define (pipeline-node-span v node)
+  (let loop ([spans (pipeline-view-groups v)] [k (cadr node)])
+    (cond [(null? spans) #f]
+          [(not (equal? (caar spans) (car node))) (loop (cdr spans) k)]
+          [(zero? k) (car spans)]
+          [else (loop (cdr spans) (- k 1))])))
+
+(define (pipeline-children v node)
+  (let ([span (and (pair? node) (pipeline-node-span v node))])
+    (if span
+        (inspect-rows (pipeline-view-shown v) (cadr span) (caddr span))
+        '())))
+
+;; Where a node's records start and how many, or #f for a span that's gone.
+(define (pipeline-node-first v node)
+  (if (pair? node)
+      (let ([span (pipeline-node-span v node)]) (and span (cadr span)))
+      (vector-ref node 0)))
+(define (pipeline-node-count v node)
+  (if (pair? node)
+      (let ([span (pipeline-node-span v node)]) (and span (caddr span)))
+      (vector-ref node 1)))
 
 (define (pipeline-node-name node)
   (cond [(pair? node)
@@ -723,9 +755,8 @@
               [else #f])))
     (pipeline-draw-viewer
      v (pipeline-view-image v) x y w h
-     (and selected
-          (< (pipeline-node-first selected) n)
-          (inspect-reach l (pipeline-node-first selected))))
+     (let ([first (and selected (pipeline-node-first v selected))])
+       (and first (< first n) (inspect-reach l first))))
     (when (and over? (pipeline-view-loupe? v) (pipeline-view-image v))
       (let* ([p (pipeline-viewer-pixel v x y w h mx my)]
              [px (exact (floor (car p)))] [py (exact (floor (cdr p)))]
@@ -886,8 +917,8 @@
                   cx cy cw ch flags
                   (case key
                     [(name) (pipeline-node-name node)]
-                    [(first) (number->string (pipeline-node-first node))]
-                    [(count) (number->string (pipeline-node-count node))]
+                    [(first) (number->string (pipeline-node-first v node))]
+                    [(count) (number->string (pipeline-node-count v node))]
                     [else (pipeline-node-what node)])))]
          [select! (lambda (node) (pipeline-view-selected-set! v node))])
     (if traced
@@ -900,7 +931,7 @@
           (ui-table ui '(pipeline traced) x (+ y ch 4) w (- h ch 4) columns
                     (caddr traced) (pipeline-view-selected v) select! cell))
         (ui-tree ui '(pipeline tree) x y w h columns
-                 (pipeline-view-groups v)
+                 (pipeline-span-nodes (pipeline-view-groups v))
                  (lambda (node) (pipeline-children v node))
                  (pipeline-view-selected v) select! cell))))
 
