@@ -330,8 +330,9 @@
     (gpu-must 'gpu-make-pipeline
               (sdl-create-gpu-pipeline device (gpu-at p)))))
 
-;; The pipelines drawing records to this format, made once: by mode, four for a
-;; run that shows no image, then four for one that does.
+;; The pipelines drawing records to this format, made once: four by mode for
+;; each variant of the fragment shader, in gfx-fragments' order. All of them,
+;; so that a run that's the first to need one doesn't wait for it.
 (define (gpu-pipelines-for format)
   (let ([r *renderer*])
     (cond
@@ -339,22 +340,24 @@
       [else
        (let* ([d (renderer-device r)]
               [vs (gpu-make-shader d (top-level-value 'gfx-vertex))]
-              [fs (gpu-make-shader d (top-level-value 'gfx-fragment))]
-              [is (gpu-make-shader d (top-level-value 'gfx-image-fragment))]
-              [modes (vector (gpu-make-pipeline d vs fs format 0)
-                             (gpu-make-pipeline d vs fs format 1)
-                             (gpu-make-pipeline d vs fs format 2)
-                             (gpu-make-pipeline d vs fs format 3)
-                             (gpu-make-pipeline d vs is format 0)
-                             (gpu-make-pipeline d vs is format 1)
-                             (gpu-make-pipeline d vs is format 2)
-                             (gpu-make-pipeline d vs is format 3))])
+              [all (apply vector
+                          (apply append
+                                 (map (lambda (name)
+                                        (gpu-pipelines-of d vs name format))
+                                      (vector->list
+                                       (top-level-value 'gfx-fragments)))))])
          (sdl-release-gpu-shader d vs)
-         (sdl-release-gpu-shader d fs)
-         (sdl-release-gpu-shader d is)
          (renderer-pipelines-set!
-          r (cons (cons format modes) (renderer-pipelines r)))
-         modes)])))
+          r (cons (cons format all) (renderer-pipelines r)))
+         all)])))
+
+;; The four pipelines of the fragment shader named name, by mode.
+(define (gpu-pipelines-of d vs name format)
+  (let* ([fs (gpu-make-shader d (top-level-value name))]
+         [ps (map (lambda (mode) (gpu-make-pipeline d vs fs format mode))
+                  '(0 1 2 3))])
+    (sdl-release-gpu-shader d fs)
+    ps))
 
 ;; After a reload the shaders may be new.
 (define (gpu-forget-pipelines!)
@@ -769,8 +772,8 @@
          images image-ats)
         (sdl-end-copy-pass pass)))))
 
-;; Draws the runs, ((mode image first count) ...), to target, w × h, cleared
-;; to black, or to nothing if clear?.
+;; Draws the runs, ((mode image first count variant) ...), to target, w × h,
+;; cleared to black, or to nothing if clear?.
 (define (gpu-draw-runs! r cb target format w h runs clear?)
   (let ([pipelines (gpu-pipelines-for format)]
         [c gpu-color-target*]
@@ -801,7 +804,7 @@
                  [first (caddr run)]
                  [count (cadddr run)]
                  [call (and (gpu-call? image) image)]
-                 [pipeline (if image (+ run-mode 4) run-mode)])
+                 [pipeline (+ run-mode (* 4 (list-ref run 4)))])
             (when (> count 0)
               (ftype-set! gpu-frame-uniforms (first) uniforms first)
               (cond

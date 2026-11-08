@@ -79,6 +79,18 @@
               (eq? (pipeline-test-field (record 3) 'paint) 'stipple)
               (eq? (pipeline-test-field (record 4) 'kind) 'segment)
               (eq? (pipeline-test-field (record 5) 'kind) 'polygon)))
+  (check (format "a record that needs another variant of the fragment shader \
+                  starts a run, which draws with that one: ~s"
+                 (inspect-list-runs l))
+         (equal? (map (lambda (run)
+                        (list (caddr run) (cadddr run)
+                              (inspect-run-shader run)))
+                      (inspect-list-runs l))
+                 '((0 2 gfx-fragment)
+                   (2 1 gfx-gradient-fragment)
+                   (3 1 gfx-stipple-fragment)
+                   (4 2 gfx-line-fragment)
+                   (6 4 gfx-fragment))))
   (check (format "labels span what's drawn inside them: ~s"
                  (inspect-list-labels l))
          (equal? (inspect-list-labels l)
@@ -95,6 +107,36 @@
          (equal? (inspect-records-at l (exact (round (* 35 *scale*)))
                                      (exact (round (* 55 *scale*))))
                  '(0))))
+
+(check "the variant a record needs: the plain one for a box or glyph in a \
+        solid color; one for a line, a shadow or a paint; the full one for a \
+        line or shadow in a gradient or stipple"
+       (let ([shader (lambda (kind paint)
+                       (vector-ref gfx-fragments
+                                   (rec-variant
+                                    (fxior kind (fxsll paint 4)))))])
+         (equal? (list (shader rec-kind-box rec-paint-solid)
+                       (shader rec-kind-glyph rec-paint-solid)
+                       (shader rec-kind-segment rec-paint-solid)
+                       (shader rec-kind-polygon rec-paint-solid)
+                       (shader rec-kind-shadow rec-paint-solid)
+                       (shader rec-kind-glyph rec-paint-gradient)
+                       (shader rec-kind-box rec-paint-stipple)
+                       (shader rec-kind-box rec-paint-image)
+                       (shader rec-kind-box rec-paint-shader)
+                       (shader rec-kind-segment rec-paint-gradient)
+                       (shader rec-kind-shadow rec-paint-stipple))
+                 '(gfx-fragment
+                   gfx-fragment
+                   gfx-line-fragment
+                   gfx-line-fragment
+                   gfx-shadow-fragment
+                   gfx-gradient-fragment
+                   gfx-stipple-fragment
+                   gfx-image-fragment
+                   gfx-fragment
+                   gfx-full-fragment
+                   gfx-full-fragment))))
 
 (check "the frames kept say what each held, and every one was shown"
        (begin

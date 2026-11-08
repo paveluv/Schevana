@@ -70,6 +70,9 @@
   (+ (* 32 (vector-ref l 3)) (* 4 (vector-ref l 4))))
 (define (inspect-list-row l) (vector-ref l 5))
 (define (inspect-list-runs l) (vector-ref l 6))
+;; The name of the fragment shader a run draws with: the variant its records
+;; need.
+(define (inspect-run-shader run) (vector-ref gfx-fragments (list-ref run 4)))
 (define (inspect-list-frame l) (vector-ref l 7))
 
 ;; How many of its runs showed an image or a paint, which aren't kept.

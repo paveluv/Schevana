@@ -220,11 +220,12 @@
 (defvar *rec-cy0* 0)
 (defvar *rec-cx1* 0)
 (defvar *rec-cy1* 0)
-;; runs, the newest first: (mode image first count); this one's mode, image
-;; and first record
+;; runs, the newest first: (mode image first count variant); this one's mode,
+;; image, variant and first record
 (defvar *rec-runs* '())
 (defvar *rec-mode* 0)
 (defvar *rec-image* #f)
+(defvar *rec-variant* 0)
 (defvar *rec-run-first* 0)
 (defvar *rec-images* '())         ; images with pixels to go up
 ;; what shaders' cost a list adds up to, as it's written: area in pixels
@@ -235,7 +236,21 @@
     (bytevector-copy! *rec-bytes* 0 new 0 *rec-at*)
     (set! *rec-bytes* new)))
 
+;; Which of the fragment shader's variants a record needs, by its head: an
+;; index in gfx-fragments. A box or glyph in a solid color needs the plain
+;; one; a line, a shadow or a paint the one with its code; a line or shadow
+;; in a gradient or stipple the full one. Kinds and paints in their order.
+(define (rec-variant head)
+  (let ([k (vector-ref '#(0 1 1 0 2) (fxand head 15))]
+        [p (vector-ref '#(0 3 4 5 0) (fxand (fxsrl head 4) 15))])
+    (cond [(fx= k 0) p] [(fx= p 0) k] [else 6])))
+
 (define (rec-put! w0 w1 x0 y0 x1 y1 a b)
+  ;; a record that needs another variant starts a run
+  (let ([v (rec-variant w0)])
+    (unless (fx= v *rec-variant*)
+      (rec-run-end!)
+      (set! *rec-variant* v)))
   (let ([at *rec-at*])
     (when (fx= at (bytevector-length *rec-bytes*)) (rec-records-grow!))
     (let ([bv *rec-bytes*])
@@ -282,6 +297,7 @@
   (set! *rec-runs* '())
   (set! *rec-mode* 0)
   (set! *rec-image* #f)
+  (set! *rec-variant* 0)
   (set! *rec-run-first* 0)
   (set! *rec-images* '())
   (set! *rec-area* 0))
@@ -294,7 +310,7 @@
     (when (fx> n *rec-run-first*)
       (set! *rec-runs*
         (cons (list *rec-mode* *rec-image* *rec-run-first*
-                    (fx- n *rec-run-first*))
+                    (fx- n *rec-run-first*) *rec-variant*)
               *rec-runs*))
       (set! *rec-run-first* n))))
 
@@ -940,9 +956,10 @@
 
 ;;; ------------------------------------------------------------------ shaders
 ;;; One shader draws everything, in one instanced call and in order, but for
-;;; what forces a new run: an image, or another blend. It's made twice: a run
-;;; that shows an image draws with gfx-image-fragment, the rest with
-;;; gfx-fragment, which has none of the image's code.
+;;; what forces a new run: an image, another blend, or a record that needs
+;;; another variant of the fragment shader. They're made from one source,
+;;; each with only some of its code (gfx-fragments), so that a pixel pays only
+;;; for what its run draws.
 
 (define-vertex-shader (gfx-vertex v i)
   ([records fx-buffer]
@@ -1014,10 +1031,11 @@
                      (fl- 1.0 (fl/ (fl* 2.0 py) th))
                      id))))
 
-;; How a record colors a pixel, with images or without: images? is #t or #f,
-;; known when it's compiled, so that the shader without has none of their
+;; How a record colors a pixel, with features or without: lines? (segments
+;; and polygons), shadows?, gradients?, stipples? and images? are #t or #f,
+;; known when it's compiled, so that a shader without one has none of its
 ;; code. Code a pixel never runs still costs it: on Metal, the image's took a
-;; third of a frame.
+;; third of a frame, and the rest's more than a third of what was left.
 (define-shader-helpers gfx-coloring
   ;; where p falls on an image n wide drawn from p0 to p1, in a level's pixels:
   ;; whole at their centers
@@ -1035,7 +1053,7 @@
     (if (fx= shift 24)
         (channel w 24)
         (fl* (channel w shift) (channel w 24))))
-  (define (pixel-color images?)
+  (define (pixel-color lines? shadows? gradients? stipples? images?)
     (let* ([head (rec-row-head)]
            [kind (fxand head 15)]
            [paint-kind (fxand (fxsrl head 4) 15)]
@@ -1052,9 +1070,9 @@
            [ipx (flonum->fixnum (flfloor px))]
            [ipy (flonum->fixnum (flfloor py))]
            [cover
-            (case kind
+            (cond
               ;; box: rect, round rect, circle; a line inside it, if it has one
-              [(rec-kind-box)
+              [(fx= kind rec-kind-box)
                (let* ([radius a]
                       [line b]
                       [d (box-distance x0 y0 x1 y1 radius)])
@@ -1064,7 +1082,7 @@
                            (fl- (flabs (fl+ d (fl* 0.5 line))) (fl* 0.5 line))
                            d))))]
               ;; segment
-              [(rec-kind-segment)
+              [(and lines? (fx= kind rec-kind-segment))
                (let* ([width a]
                       [ax (fl- px x0)]
                       [ay (fl- py y0)]
@@ -1081,7 +1099,7 @@
                   (fl- 0.5 (fl- (flsqrt (fl+ (fl* dx dx) (fl* dy dy)))
                                 (fl* 0.5 width)))))]
               ;; polygon: distance to its edges, sign by crossings
-              [(rec-kind-polygon)
+              [(and lines? (fx= kind rec-kind-polygon))
                (let ([o (rec-polygon-points)] [n (rec-polygon-count)])
                  (define (vx k) (pixels (extra (fx+ o (fx* 2 k)))))
                  (define (vy k)
@@ -1120,7 +1138,7 @@
                             [s 1.0 (if (crosses? k j) (fl- s) s)])
                          ((fx>= k n) (fl* s (flsqrt d2)))))))]
               ;; glyph: its place from the table
-              [(rec-kind-glyph)
+              [(fx= kind rec-kind-glyph)
                (let* ([row (fx* (rec-glyph-number) glyph-row-words)]
                       [u (glyph-row-u row)]
                       [v (glyph-row-v row)]
@@ -1141,14 +1159,15 @@
                       (fx+ v (fx- ipy (fx- pen-y top)))
                       0)))]
               ;; shadow: fading out over its size
-              [else
+              [shadows?
                (let* ([radius a]
                       [size b]
                       [d (box-distance x0 y0 x1 y1 radius)])
-                 (clamp01 (fl- 1.0 (fl/ d (flmax size 1.0)))))])]
+                 (clamp01 (fl- 1.0 (fl/ d (flmax size 1.0)))))]
+              [else 0.0])]
            [m (fl* cover (clip-coverage clip))]
            ;; a gradient: where the pixel falls between two of its colors
-           [gradient? (fx= paint-kind rec-paint-gradient)]
+           [gradient? (and gradients? (fx= paint-kind rec-paint-gradient))]
            [t (if gradient?
                   (let ([ax (pixels (gradient-row-x0 w1))]
                         [ay (pixels (gradient-row-y0 w1))]
@@ -1176,11 +1195,12 @@
            [dither (if gradient?
                        (let* ([v (fl+ (fl* 0.06711056 px) (fl* 0.00583715 py))]
                               [f (fl* 52.9829189 (fl- v (flfloor v)))])
-                         (fl/ (fl- (fl- f (flfloor f)) 0.5) 255.0))
+                         (fl* (fl- (fl- f (flfloor f)) 0.5)
+                              0.00392156862745098))
                        0.0)]
            ;; a stipple: ink or paper, by its tile
            [solid-word
-            (if (fx= paint-kind rec-paint-stipple)
+            (if (and stipples? (fx= paint-kind rec-paint-stipple))
                 (let* ([tu (stipple-row-u w1)]
                        [tv (stipple-row-v w1)]
                        [tw (stipple-row-w w1)]
@@ -1254,26 +1274,40 @@
        (paint 0 (image-channel 2))
        (paint 24 (image-channel 3))))))
 
-;; What draws a run that shows no image, and one that shows an image.
-(define-fragment-shader (gfx-fragment px py id)
-  ([atlas texture]
-   [image texture]
-   [records fx-buffer]
-   [extras fx-buffer]
-   [glyphs fx-buffer])
-  (use-shader-helpers gfx-helpers)
-  (use-shader-helpers gfx-coloring)
-  (pixel-color #f))
+;; A variant of the fragment shader, its features on or off.
+(define-syntax define-gfx-fragment
+  (syntax-rules ()
+    [(_ name lines? shadows? gradients? stipples? images?)
+     (define-fragment-shader (name px py id)
+       ([atlas texture]
+        [image texture]
+        [records fx-buffer]
+        [extras fx-buffer]
+        [glyphs fx-buffer])
+       (use-shader-helpers gfx-helpers)
+       (use-shader-helpers gfx-coloring)
+       (pixel-color lines? shadows? gradients? stipples? images?))]))
 
-(define-fragment-shader (gfx-image-fragment px py id)
-  ([atlas texture]
-   [image texture]
-   [records fx-buffer]
-   [extras fx-buffer]
-   [glyphs fx-buffer])
-  (use-shader-helpers gfx-helpers)
-  (use-shader-helpers gfx-coloring)
-  (pixel-color #t))
+;; What draws a run, by what its records need (rec-variant): boxes and glyphs
+;; in a solid color, and with them lines, shadows, gradients, stipples or an
+;; image; and all but images.
+(define-gfx-fragment gfx-fragment #f #f #f #f #f)
+(define-gfx-fragment gfx-line-fragment #t #f #f #f #f)
+(define-gfx-fragment gfx-shadow-fragment #f #t #f #f #f)
+(define-gfx-fragment gfx-gradient-fragment #f #f #t #f #f)
+(define-gfx-fragment gfx-stipple-fragment #f #f #f #t #f)
+(define-gfx-fragment gfx-image-fragment #f #f #f #f #t)
+(define-gfx-fragment gfx-full-fragment #t #t #t #t #f)
+
+;; Their names, by rec-variant's numbers.
+(define gfx-fragments
+  '#(gfx-fragment
+     gfx-line-fragment
+     gfx-shadow-fragment
+     gfx-gradient-fragment
+     gfx-stipple-fragment
+     gfx-image-fragment
+     gfx-full-fragment))
 
 ;; A reload may bring new shaders.
 (gpu-forget-pipelines!)
@@ -1337,7 +1371,8 @@
                 (if (eq? (cadr run) image)
                     acc
                     (cons (list (car run) (cadr run) (caddr run)
-                                (min (cadddr run) (- n (caddr run))))
+                                (min (cadddr run) (- n (caddr run)))
+                                (list-ref run 4))
                           acc)))))))
 
 ;; What thunk draws, on an image pw × ph, scale times bigger, clear or black:

@@ -585,14 +585,38 @@
 
 ;;; The world's shaders.
 
-(check "a run that shows no image draws with a shader that has none of an \
-        image's code, one that shows an image with a shader that reads it"
-       (let ([reads-image?
-              (lambda (s)
-                (exists (lambda (t) (eq? (cadr t) 'image))
-                        (shader-test-nodes (shader-tree s) 'fetch)))])
-         (and (not (reads-image? gfx-fragment))
-              (reads-image? gfx-image-fragment))))
+;; How many nodes a tree has.
+(define (shader-test-size t)
+  (if (pair? t) (fold-left + 1 (map shader-test-size t)) 0))
+
+(check "each variant of the fragment shader has the code of what it draws and \
+        none of the rest's: lines, gradients, stipples and images by a node \
+        only theirs has, shadows by the size they add"
+       (let* ([variant (lambda (i)
+                         (top-level-value (vector-ref gfx-fragments i)))]
+              [has? (lambda (i head test)
+                      (exists test (shader-test-nodes
+                                    (shader-tree (variant i)) head)))]
+              [features
+               (lambda (i)
+                 (list (has? i 'loop (lambda (t) #t))      ; a polygon's edges
+                       (has? i 'const                      ; a gradient's dither
+                             (lambda (t) (eqv? (caddr t) 52.9829189)))
+                       (has? i 'op                         ; a stipple's tile
+                             (lambda (t) (eq? (caddr t) 'fxrem)))
+                       (has? i 'fetch (lambda (t) (eq? (cadr t) 'image)))))]
+              [size (lambda (i) (shader-test-size (shader-tree (variant i))))])
+         (printf "  ~s\n" (map size (iota 7)))
+         (and (equal? (map features (iota 7))
+                      '((#f #f #f #f)     ; boxes and glyphs, solid
+                        (#t #f #f #f)     ; and lines
+                        (#f #f #f #f)     ; and shadows
+                        (#f #t #f #f)     ; and gradients
+                        (#f #f #t #f)     ; and stipples
+                        (#f #f #f #t)     ; and an image
+                        (#t #t #t #f)))   ; all but images
+              (for-all (lambda (i) (< (size 0) (size i))) '(1 2 3 4 5 6))
+              (for-all (lambda (i) (< (size i) (size 6))) '(1 2 3 4)))))
 
 (check "every byte of a color comes out as itself, and as its alpha takes it \
         over black"
