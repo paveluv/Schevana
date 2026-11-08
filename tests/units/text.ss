@@ -3,9 +3,10 @@
 
 ;;; long text: cut, colored and searched in time at any length
 
-;; text-fit as plainly as it can be said: a character shorter at a time.
+;; text-fit as plainly as it can be said: a character shorter at a time. An
+;; empty string has nothing to cut, so it's never an ellipsis.
 (define (fit-plainly str max-w font)
-  (if (<= (text-width str font) max-w)
+  (if (or (string=? str "") (<= (text-width str font) max-w))
       str
       (let loop ([n (- (string-length str) 1)])
         (let ([s (string-append (substring str 0 (max n 0)) "…")])

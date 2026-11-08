@@ -25,8 +25,8 @@
                     (lambda (s) (text-width s font)))]
          [s (text-within str max-w)]
          [cut (lambda (n) (string-append (substring s 0 n) "…"))])
-    (if (and (eq? s str) (<= (width str) max-w))
-        str
+    (if (or (string=? s "") (and (eq? s str) (<= (width str) max-w)))
+        s
         (let loop ([lo 0] [hi (- (string-length s) 1)])   ; lo fits, or is 0
           (let ([mid (quotient (+ lo hi 1) 2)])
             (cond [(>= lo hi) (cut lo)]
