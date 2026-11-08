@@ -397,7 +397,8 @@
 
 ;; A stepper at 5 with a label's 5 beside it, the two read from a picture at
 ;; scale s: (the digit's ink, the label's, where the field's text starts and
-;; how wide it may be, device pixels).
+;; how wide it may be, the ink of a 5 drawn to end at the text's right edge,
+;; device pixels).
 (define (ui-test-stepper-ink style s)
   (with-style style
     (lambda ()
@@ -433,9 +434,18 @@
                        [label (ui-test-ink
                                img
                                (device (+ (ui-region-x up) (ui-region-w up) 4))
-                               ty (device 40) th)])
+                               ty (device 40) th)]
+                       [ref (image (device 300) (device 60) s
+                                   (lambda ()
+                                     (fill-box 0 0 300 60 'bg-1)
+                                     (draw-text (- (+ (list-ref a 1)
+                                                      (list-ref a 3))
+                                                   (text-width "5" 'ui))
+                                                (list-ref a 2) "5" 'text 'ui)))]
+                       [at-right (ui-test-ink ref tx ty tw th)])
                   (picture-free! img)
-                  (list digit label tx tw)))])
+                  (picture-free! ref)
+                  (list digit label tx tw at-right)))])
         (close-window! win)
         result))))
 
@@ -473,13 +483,15 @@
                   (< (top '(single)) 10)
                   (= (top '(field)) (/ (- 100 lh) 2)))))))
 
+;; The digit's ink against a 5's that ends at the right edge, not against a
+;; gap, which is the font's: Verdana's 5 keeps more room at its right than
+;; DejaVu's.
 (check "and they're at the field's right, as a table's numbers are"
        (for-all
         (lambda (style)
           (let* ([ink (ui-test-stepper-ink style 2)]
-                 [digit (car ink)]
-                 [tx (caddr ink)] [tw (cadddr ink)]
-                 [gap-left (- (car digit) tx)]
-                 [gap-right (- (+ tx tw) (cadr digit))])
-            (and (> gap-left gap-right) (<= gap-right 4))))
+                 [digit (car ink)] [at-right (list-ref ink 4)])
+            (printf "  ~a: ~s, a 5 at the right ~s\n" style digit at-right)
+            (and (<= (abs (- (car digit) (car at-right))) 1)
+                 (<= (abs (- (cadr digit) (cadr at-right))) 1))))
         '(mac genera cons)))
