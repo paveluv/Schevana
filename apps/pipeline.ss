@@ -1,12 +1,15 @@
 ;;; apps/pipeline.ss — Pipeline: the way from a window's draw to the screen
 ;;; surface, on one screen, read through kits/inspect.ss.
 ;;;
-;;; For now two stages, chosen on the cards at the top:
+;;; Three stages, chosen on the cards at the top:
 ;;;   Lists   the frame's list by who drew it, and each's records, decoded
 ;;;           in draw order, a run of glyphs as its text; a drawer's checkbox
 ;;;           off leaves it out of the small screen and the Tape
+;;;   Who     what each drawer cost: main's time drawing it, its records, the
+;;;           pixels they may touch, the runs they start, what changed
 ;;;   Screen  what draws, and what it holds on the GPU
-;;; Right, the screen small, the selected record outlined: a press there
+;;; Right, the screen small, the selected record outlined, or who drew each
+;;; record, in its drawer's color, the selected one's bright: a press there
 ;;; lists the records that may touch that pixel. It draws again every tick, or
 ;;; as seldom as it's told, and it's on the screen it shows: so it's in itself,
 ;;; a tick older each time round. The wheel zooms it at the pointer and a drag
@@ -55,7 +58,10 @@
           (mutable off)        ; the spans left out, by node: (label k) ...
           (mutable kept)       ; the records drawn of the list on view, a
                                ; vector in order: what the Tape goes through
-          (mutable kept-of)))  ; the list on view it's of
+          (mutable kept-of)    ; the list on view it's of
+          (mutable look)       ; what the small screen shows: picture or who
+          (mutable painted)    ; a list repainted for it, used again
+          (mutable who)))      ; what each drew cost: (list . rows)
 
 (define pipeline-period-ms 250)
 
@@ -68,17 +74,19 @@
   (pipeline-view-shown-set! v l)
   (pipeline-view-groups-set! v (inspect-list-labels l)))
 
+;; What a profiler's node took, ms a tick, over the half second to tick newest.
+(define (pipeline-ms-over node newest)
+  (let ([seqs (filter profile-tick-kept?
+                      (map (lambda (i) (- newest i)) (iota 30)))])
+    (/ (fold-left (lambda (ms seq) (+ ms (profile-tick-node-ms seq node)))
+                  0.0 seqs)
+       (max 1 (length seqs)))))
+
 ;; What the window takes itself, ms a tick, over the last half second.
 (define (pipeline-own-ms)
   (let ([win (find-window 'pipeline)] [newest (profile-newest-tick)])
     (if (and win newest)
-        (let ([seqs (filter profile-tick-kept?
-                            (map (lambda (i) (- newest i)) (iota 30)))]
-              [subject (profile-subject-of win)])
-          (/ (fold-left (lambda (ms seq)
-                          (+ ms (profile-tick-node-ms seq subject)))
-                        0.0 seqs)
-             (max 1 (length seqs))))
+        (pipeline-ms-over (profile-subject-of win) newest)
         0.0)))
 
 (define (pipeline-look! v)
@@ -99,14 +107,25 @@
 
 ;; What's on view, drawn on image, but the spans left out. Live, it's drawn
 ;; with the next frame, as far as the slider says; held, what's kept of the
-;; frame is.
+;; frame is. Showing who drew, it's a frame kept, repainted: live, the one
+;; just drawn.
 (define (pipeline-preview-on! v image)
   (let ([l (pipeline-view-shown v)] [upto (pipeline-view-upto v)]
         [left-out (pipeline-left-out-of v)])
-    (if (pipeline-view-held? v)
-        (inspect-preview-list! image l (or upto (inspect-list-count l))
-                               left-out)
-        (inspect-preview! image (or upto (most-positive-fixnum)) left-out))))
+    (cond
+      [(eq? (pipeline-view-look v) 'who)
+       (let* ([h (pipeline-view-history v)]
+              [from (if (pipeline-view-held? v)
+                        l
+                        (or (inspect-history-ref h (inspect-history-newest h))
+                            l))])
+         (inspect-preview-list! image (pipeline-painted v from)
+                                (or upto (inspect-list-count from)) left-out))]
+      [(pipeline-view-held? v)
+       (inspect-preview-list! image l (or upto (inspect-list-count l))
+                              left-out)]
+      [else
+       (inspect-preview! image (or upto (most-positive-fixnum)) left-out)])))
 
 ;; At once, on the image that frame shows. An image can't show itself as it's
 ;; drawn on, so its own box stays empty.
@@ -665,14 +684,32 @@
                                                   seen)))
                       acc))))))
 
-;; The span of node (label k) in the list on view, (label first count), or #f
-;; when it's gone.
-(define (pipeline-node-span v node)
-  (let loop ([spans (pipeline-view-groups v)] [k (cadr node)])
+;; The span of node (label k) among spans, (label first count), or #f when
+;; it's gone.
+(define (pipeline-span-in spans node)
+  (let loop ([spans spans] [k (cadr node)])
     (cond [(null? spans) #f]
           [(not (equal? (caar spans) (car node))) (loop (cdr spans) k)]
           [(zero? k) (car spans)]
           [else (loop (cdr spans) (- k 1))])))
+
+(define (pipeline-node-span v node)
+  (pipeline-span-in (pipeline-view-groups v) node))
+
+;; The node of the span that holds record i of the list on view, or #f.
+(define (pipeline-span-node-at v i)
+  (let loop ([spans (pipeline-view-groups v)]
+             [nodes (pipeline-span-nodes (pipeline-view-groups v))])
+    (cond [(null? spans) #f]
+          [(< -1 (- i (cadar spans)) (caddar spans)) (car nodes)]
+          [else (loop (cdr spans) (cdr nodes))])))
+
+;; Who drew what's selected: its span's node, a record's being its span's.
+(define (pipeline-selected-span v)
+  (let ([selected (pipeline-view-selected v)])
+    (cond [(not selected) #f]
+          [(pair? selected) selected]
+          [else (pipeline-span-node-at v (vector-ref selected 0))])))
 
 (define (pipeline-children v node)
   (let ([span (and (pair? node) (pipeline-node-span v node))])
@@ -708,6 +745,145 @@
     (unless (null? at)
       (pipeline-view-selected-set! v (car (inspect-rows l (car at) 1))))))
 
+;;; ---- who: what each drew cost
+
+;; The profiler's name for who drew a span: a surface by its name, a window by
+;; its id, found by its title among the windows drawn, the k-th of that title;
+;; #f for a window gone since.
+(define (pipeline-span-subject node)
+  (let ([label (car node)])
+    (if (symbol? label)
+        label
+        (let ([same (filter (lambda (w)
+                              (and (visible? w)
+                                   (equal? (window-title w) label)))
+                            (reverse (windows)))])
+          (and (< (cadr node) (length same))
+               (profile-subject-of (list-ref same (cadr node))))))))
+
+;; What main took to draw who subject is, a surface's draw or a window's frame
+;; and its app's draw: ms a frame, over the last 30 ticks to tick newest that
+;; drew it, of those the profiler keeps; #f when none did. A frame, not a
+;; tick, so that a pause, held or idle, doesn't read as nothing.
+(define (pipeline-drawing-ms subject newest)
+  (let loop ([seq newest] [n 0] [ms 0.0])
+    (if (or (fx= n 30) (not (profile-tick-kept? seq)))
+        (and (fx> n 0) (/ ms n))
+        (let ([t (+ (profile-tick-node-ms seq (list subject #f 'render))
+                    (if (pair? subject)
+                        (profile-tick-node-ms seq (list subject 'draw 'render))
+                        0.0))])
+          (if (> t 0)
+              (loop (fx- seq 1) (fx+ n 1) (+ ms t))
+              (loop (fx- seq 1) n ms))))))
+
+;; What each span of the list on view cost, in draw order, a row each:
+;; #(node i ms records pixels runs changed), i its place (its color's), ms
+;; what main took to draw it a frame, up to the frame's tick, or #f,
+;; changed how many of its records differ from the frame before's, #f when
+;; that one isn't kept. Made again for each list.
+(define (pipeline-who-rows v)
+  (let ([l (pipeline-view-shown v)] [who (pipeline-view-who v)])
+    (if (and who (eq? (car who) l))
+        (cdr who)
+        (let* ([spans (inspect-list-labels l)]
+               [before (inspect-history-ref (pipeline-view-history v)
+                                            (- (inspect-list-frame l) 1))]
+               [newest (or (pipeline-view-tick v) (profile-newest-tick))]
+               [row (lambda (span node i)
+                      (let-values ([(pixels runs)
+                                    (inspect-span-cost l (cadr span)
+                                                       (caddr span))])
+                        (let ([subject (pipeline-span-subject node)]
+                              [b (and before
+                                      (pipeline-span-in
+                                       (inspect-list-labels before) node))])
+                          (vector node i
+                                  (and subject newest
+                                       (pipeline-drawing-ms subject newest))
+                                  (caddr span) pixels runs
+                                  (and b (inspect-span-changed
+                                          l (cadr span) (caddr span)
+                                          before (cadr b) (caddr b)))))))]
+               [rows (map row spans (pipeline-span-nodes spans)
+                          (iota (length spans)))])
+          (pipeline-view-who-set! v (cons l rows))
+          rows))))
+
+;; A count of pixels, short.
+(define (pipeline-pixels-text n)
+  (cond [(>= n 1000000) (format "~,1f M" (/ n 1000000.0))]
+        [(>= n 10000) (format "~a K" (round (/ n 1000)))]
+        [else (number->string n)]))
+
+;; A row's cell's text, and its share of its column's most, for its bar.
+(define (pipeline-who-cell row key most)
+  (let* ([records (vector-ref row 3)]
+         [k (case key [(ms) 2] [(records) 3] [(pixels) 4] [(runs) 5] [else 6])]
+         [n (vector-ref row k)]
+         [share (and n (> (most k) 0) (/ n (most k)))])
+    (case key
+      [(ms) (values (if n (format "~,2f" n) "—") share)]
+      [(pixels) (values (pipeline-pixels-text n) share)]
+      [(changed)
+       (if (and n (> records 0))
+           (values (format "~a%" (round (/ (* 100 n) records)))
+                   (/ n records))
+           (values "—" #f))]
+      [else (values (number->string n) share)])))
+
+;; Who: a row a drawer, in draw order, what it cost; its checkbox leaves it
+;; out as the tree's does, and selecting it selects its span everywhere.
+(define (pipeline-who-pane v x y w h)
+  (let* ([ui (pipeline-view-ui v)]
+         [rows (pipeline-who-rows v)]
+         [most (lambda (k)
+                 (fold-left (lambda (m r) (max m (or (vector-ref r k) 0)))
+                            0 rows))]
+         [span (pipeline-selected-span v)]
+         [columns
+          `((name "Who" ,(max 140 (- (ui-table-room w) 72 76 84 60 84 32)))
+            (ms "Main" 72 right
+                "What main took to draw it, ms a frame over its last 30")
+            (records "Records" 76 right)
+            (pixels "Pixels" 84 right
+                    "What its records may touch: the pixels the GPU shades, \
+                     a pixel each time a record covers it")
+            (runs "Runs" 60 right
+                  "The runs that start among its records: a draw call each, \
+                   and a new one where a record needs another shader")
+            (changed "Changed" 84 right
+                     "Its records that differ from the frame before"))]
+         [cell (lambda (row key cx cy cw ch flags)
+                 (if (eq? key 'name)
+                     (pipeline-draw-who-name
+                      cx cy cw ch flags (vector-ref row 1)
+                      (pipeline-node-name (vector-ref row 0)))
+                     (let-values ([(text share) (pipeline-who-cell row key
+                                                                   most)])
+                       (when share (pipeline-draw-share cx cy cw ch share))
+                       (ui-draw-cell cx cy cw ch flags text))))])
+    (ui-table ui '(pipeline who) x y w h columns rows
+              (find (lambda (r) (equal? (vector-ref r 0) span)) rows)
+              (lambda (row) (pipeline-view-selected-set! v (vector-ref row 0)))
+              cell
+              'checked (lambda (row)
+                         (not (member (vector-ref row 0)
+                                      (pipeline-view-off v))))
+              'on-check (lambda (row)
+                          (let ([node (vector-ref row 0)])
+                            (pipeline-show-span!
+                             v node
+                             (and (member node (pipeline-view-off v)) #t)))))))
+
+;; The small screen showing who drew: each record solid in its drawer's color,
+;; the others dim while a drawer's selected, of list l, in into.
+(define (pipeline-painted v l)
+  (let-values ([(words other)
+                (pipeline-draw-who-words (inspect-list-labels l)
+                                         (pipeline-selected-span v))])
+    (inspect-list-paint! (pipeline-view-painted v) l words other)))
+
 ;;; ---- drawing
 
 ;; A stage's card: its name and what it holds, lines of text; pressed, it
@@ -720,6 +896,36 @@
     (for-each (lambda (line i)
                 (draw-text (+ x 10) (+ y 6 (* lh (+ i 1))) line 'text-dim 'ui))
               lines (iota (length lines)))))
+
+;; Who drew span i, a color: the Tape's, so that a drawer's is the same
+;; everywhere.
+(define (pipeline-draw-who-color i)
+  (list-ref pipeline-draw-tape-who (modulo i (length pipeline-draw-tape-who))))
+
+;; A drawer's name in a cell, after a swatch of its color.
+(define (pipeline-draw-who-name x y w h flags i name)
+  (let ([s 10])
+    (fill-box (+ x 6) (+ y (/ (- h s) 2)) s s (pipeline-draw-who-color i) 2)
+    (ui-draw-cell (+ x s 8) y (max 0 (- w s 8)) h flags name)))
+
+;; A number's share of its column's most, a bar behind it; none for a share
+;; too small to tell from a line between columns.
+(define (pipeline-draw-share x y w h share)
+  (when (>= share 0.03)
+    (fill-box x (+ y 3) (* w (min 1 share)) (- h 6) (alpha 'accent 0.22) 2)))
+
+;; The words the small screen paints spans' records with, who drew them: dim
+;; but the one selected, while one is. => (values words other), other for a
+;; record under no label
+(define (pipeline-draw-who-words spans selected)
+  (values (map (lambda (node i)
+                 (let ([c (pipeline-draw-who-color i)])
+                   ;; opaque, so that a drawer's layers don't add up
+                   (color-word (if (and selected (not (equal? node selected)))
+                                   (mix c 'bg-0 0.75)
+                                   c))))
+               (pipeline-span-nodes spans) (iota (length spans)))
+          (color-word 'text-faint)))
 
 ;;; ---- the viewer: the screen small, zoomed, moved, magnified, popped out
 
@@ -926,7 +1132,21 @@
           (ui-button ui '(pipeline pop) (- (+ x w) pw) y pw ch "Pop out"
                      (lambda () (pipeline-pop-out! v (current-window)))
                      'tip "Show it in a window of its own, above the \
-                           Pipeline"))))))
+                           Pipeline")))))
+  ;; under them, what it shows
+  (let* ([ch (ui-control-height)] [y (+ y ch 6)]
+         [lw (+ 8 (text-width "Show" 'ui))])
+    (ui-draw-label x y lw ch '(dim) "Show")
+    (ui-segmented ui '(pipeline look) (+ x lw) y (min 240 (- w lw)) ch
+                  '(("Picture" . picture) ("Who drew" . who))
+                  (pipeline-view-look v)
+                  (lambda (look)
+                    (pipeline-view-look-set! v look)
+                    (pipeline-preview! v)))))
+
+;; Its two rows' height.
+(define (pipeline-viewer-bar-height)
+  (+ (ui-control-height) 6 (ui-control-height)))
 
 ;; The viewer in a window of its own, kept above the Pipeline's, win: closed,
 ;; it's back in its place.
@@ -935,7 +1155,7 @@
     (let* ([ui (make-ui)]
            [w 960]
            [h (exact (round (+ (* w (/ *canvas-ph* *canvas-pw*))
-                               (ui-control-height) (* 3 (ui-pad)))))])
+                               (pipeline-viewer-bar-height) (* 3 (ui-pad)))))])
       (pipeline-view-popped-set!
        v (apply open-window "Pipeline — the screen"
                 'size (cons w h)
@@ -950,11 +1170,11 @@
                         (list 'tick (lambda (pop) (ui-tick ui pop)))))))))
 
 (define (pipeline-popped-draw v ui w h)
-  (let ([pad (ui-pad)] [ch (ui-control-height)])
+  (let ([pad (ui-pad)] [bh (pipeline-viewer-bar-height)])
     (ui-begin! ui)
-    (let ([vw (- w pad pad)] [vh (- h pad ch pad pad)])
+    (let ([vw (- w pad pad)] [vh (- h pad bh pad pad)])
       (pipeline-viewer-bar v ui pad pad vw vw vh #t)
-      (pipeline-viewer v ui '(pipeline viewer) pad (+ pad ch pad) vw vh))
+      (pipeline-viewer v ui '(pipeline viewer) pad (+ pad bh pad) vw vh))
     (ui-end! ui w h)))
 
 ;; With the loupe on, a move of the pointer in either window draws again.
@@ -970,6 +1190,23 @@
 
 (define (pipeline-card-lines v stage)
   (case stage
+    [(who)
+     (let ([rows (pipeline-who-rows v)])
+       (list (format "main ~,2f ms a frame drawing"
+                     (fold-left (lambda (ms r) (+ ms (or (vector-ref r 2) 0.0)))
+                                0.0 rows))
+             (if (null? rows)
+                 "nothing drawn"
+                 (format "the most pixels: ~a"
+                         (pipeline-node-name
+                          (vector-ref
+                           (fold-left (lambda (a r)
+                                        (if (> (vector-ref r 4)
+                                               (vector-ref a 4))
+                                            r
+                                            a))
+                                      (car rows) (cdr rows))
+                           0))))))]
     [(lists)
      (let* ([l (pipeline-view-shown v)] [row (inspect-list-row l)])
        (list (format "~a records, ~a KB" (inspect-list-count l)
@@ -1106,13 +1343,15 @@
          [l (pipeline-view-shown v)]
          [ch (ui-control-height)]
          [screen-w (- side pad)]
-         ;; as tall as the screen's shape says, but for the three rows under
-         ;; it: the viewer fits the screen in whatever it's given
+         [bh (pipeline-viewer-bar-height)]
+         ;; as tall as the screen's shape says, but for its bar and the two
+         ;; rows under it: the viewer fits the screen in whatever it's given
          [screen-h (max ch (min (exact (round (* screen-w (/ *canvas-ph*
                                                               *canvas-pw*))))
-                                (- bottom top gap (* 3 (+ ch gap)))))])
+                                (- bottom top gap bh gap
+                                   (* 2 (+ ch gap)))))])
     (ui-begin! ui)
-    (let ([card-w (quotient (- w pad pad gap) 2)])
+    (let ([card-w (quotient (- w pad pad gap gap) 3)])
       (for-each
        (lambda (stage name i)
          (let ([cx (+ pad (* i (+ card-w gap)))])
@@ -1121,16 +1360,18 @@
            (pipeline-draw-card cx pad card-w card-h
                                (eq? stage (pipeline-view-stage v)) name
                                (pipeline-card-lines v stage))))
-       '(lists screen) '("Lists" "Screen") '(0 1)))
+       '(lists who screen) '("Lists" "Who" "Screen") '(0 1 2)))
     (let ([pane-w (- w pad pad side gap)])
       (with-clip (pad top pane-w (- bottom top))
-        (if (eq? (pipeline-view-stage v) 'lists)
-            (pipeline-lists-pane v pad top pane-w (- bottom top))
-            (pipeline-screen-pane v pad top pane-w (- bottom top))))
+        (case (pipeline-view-stage v)
+          [(lists) (pipeline-lists-pane v pad top pane-w (- bottom top))]
+          [(who) (pipeline-who-pane v pad top pane-w (- bottom top))]
+          [else (pipeline-screen-pane v pad top pane-w (- bottom top))]))
       ;; the small screen, or its place while it's out; its bar, Hold
       (pipeline-image! v)
       (let* ([sx (+ pad pane-w gap)]
-             [sy (+ top screen-h gap)])
+             [sy (+ top screen-h gap)]
+             [hy (+ sy bh gap)])
         (if (pipeline-view-popped v)
             (let ([bw (+ 24 (text-width "Bring it back" 'ui))])
               (pipeline-draw-popped-out sx top screen-w screen-h)
@@ -1143,11 +1384,11 @@
             (begin
               (pipeline-viewer v ui '(pipeline viewer) sx top screen-w screen-h)
               (pipeline-viewer-bar v ui sx sy screen-w screen-w screen-h #f)))
-        (ui-checkbox ui '(pipeline hold) sx (+ sy ch gap)
+        (ui-checkbox ui '(pipeline hold) sx hy
                      screen-w ch "Hold this frame" (pipeline-view-held? v)
                      (lambda (on?)
                        (if on? (pipeline-hold! v) (pipeline-resume! v))))
-        (let* ([ey (+ sy ch gap ch gap)]
+        (let* ([ey (+ hy ch gap)]
                [every (pipeline-view-every v)]
                [label "Draw it every"]
                [lw (+ 8 (text-width label 'ui))])
@@ -1162,7 +1403,7 @@
                            '(dim) (if (= every 1) "tick" "ticks"))))
         ;; what a frame kept can't show
         (when (and (pipeline-view-held? v) (> (inspect-list-left-out l) 0))
-          (ui-draw-label sx (+ sy ch gap ch gap ch gap)
+          (ui-draw-label sx (+ hy ch gap ch gap)
                          screen-w 0 '(hint wrap)
                          "An image or a paint let go of since this frame \
                           is left out of it here."))))
@@ -1205,7 +1446,8 @@
                                       river 'lists (inspect-list) #f 0 '() #f #f
                                       #f #f #f #f #f #f '() 0.0 #f 1
                                       (pipeline-tape-new 0) #f #f 5
-                                      #f #f #f #f '() #f #f)])
+                                      #f #f #f #f '() #f #f 'picture
+                                      (inspect-list-empty) #f)])
           (pipeline-look! v)
           (apply open-window "Pipeline"
                  'size '(1100 . 860)

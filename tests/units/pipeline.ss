@@ -221,6 +221,69 @@
              (inspect-preview-free! image)
              (and (= live #xffff0000) (= kept #xff0000ff))))))
 
+(check "a list repainted: each record solid in its span's color over what it \
+        covers, its runs those plain records need"
+       (let* ([image (inspect-preview-image *canvas-pw* *canvas-ph*)]
+              [plain record-world!]
+              [green (color-word #x00ff00)] [white (color-word #xffffff)]
+              [at (lambda (x) (exact (floor (* x *scale*))))])
+         (set! record-world! (lambda ()
+                               (with-label ("one")
+                                 (fill-box 0 0 10 10 #xff0000))
+                               (with-label ("two") (invert-box 0 0 5 10))))
+         (request-frame!)
+         (steps 1)
+         (let* ([l (inspect-list)]
+                [p (inspect-list-paint! (inspect-list-empty) l
+                                        (list green white) 0)])
+           (inspect-preview-list! image p (inspect-list-count p))
+           (request-frame!)
+           (steps 1)
+           (let ([left (pipeline-test-preview-pixel image (at 2) (at 5))]
+                 [right (pipeline-test-preview-pixel image (at 7) (at 5))])
+             (set! record-world! plain)
+             (request-frame!)
+             (steps 1)
+             (inspect-preview-free! image)
+             (and (= (inspect-list-count p) 2)
+                  (> (length (inspect-list-runs l)) 1)
+                  (for-all (lambda (i) (eq? (inspect-paint p i) 'solid))
+                           '(0 1))
+                  (equal? (map (lambda (run) (list (car run) (cadr run)))
+                               (inspect-list-runs p))
+                          '((0 #f)))
+                  (= left #xffffffff)
+                  (= right #xff00ff00))))))
+
+(check "a span's cost: the device pixels its records may touch within their \
+        clips, the runs that start among them, and how many changed since a \
+        frame before"
+       (let* ([plain record-world!]
+              [frame (lambda (color)
+                       (set! record-world!
+                         (lambda ()
+                           (with-label ("one")
+                             (fill-box 0 0 10 10 #xff0000)
+                             (with-clip (0 0 5 10)
+                               (fill-box 0 0 10 10 color)))
+                           (with-label ("two") (invert-box 0 0 5 10))))
+                       (request-frame!)
+                       (steps 1)
+                       (inspect-list))]
+              [a (frame #x00ff00)] [b (frame #x00ff00)] [c (frame #x0000ff)]
+              [device (* 150 *scale* *scale*)])
+         (set! record-world! plain)
+         (request-frame!)
+         (steps 1)
+         (let-values ([(one runs-one) (inspect-span-cost a 0 2)]
+                      [(two runs-two) (inspect-span-cost a 2 1)])
+           (and (<= device one (* 1.1 device))
+                (= runs-one 1)
+                (= runs-two 1)
+                (= (inspect-span-changed b 0 2 a 0 2) 0)
+                (= (inspect-span-changed c 0 2 b 0 2) 1)
+                (= (inspect-span-changed c 0 2 b 0 1) 1)))))
+
 ;;; The frames kept.
 
 ;; A box in the color its buffer holds.
@@ -654,6 +717,63 @@
            (and (not (pipeline-view-held? v))
                 (eq? (pipeline-view-kept-of v) (pipeline-view-shown v))
                 (eq? (pipeline-view-tape-of v) (pipeline-view-kept v)))))
+  ;; Who, and the small screen showing who drew
+  (press! '(pipeline who))
+  (let* ([rows (pipeline-who-rows v)]
+         [mine (find (lambda (r) (equal? (vector-ref r 0) '("Pipeline" 0)))
+                     rows)])
+    (check "Who has a row a drawer, in draw order, of what each cost: main's \
+            time drawing it, its records, the pixels they may touch, the runs \
+            they start"
+           (and (eq? (pipeline-view-stage v) 'who)
+                (not (window-error w))
+                (equal? (map (lambda (r) (vector-ref r 0)) rows)
+                        (pipeline-span-nodes (pipeline-view-groups v)))
+                mine
+                (> (vector-ref mine 2) 0)
+                (= (vector-ref mine 3)
+                   (caddr (assoc "Pipeline" (pipeline-view-groups v))))
+                (> (vector-ref mine 4) 0)
+                (>= (vector-ref mine 5) 1)))
+    (press! (list '(pipeline who) 'row
+                  (let loop ([rs rows] [i 0])
+                    (if (eq? (car rs) mine) i (loop (cdr rs) (+ i 1))))))
+    (check "a row pressed selects its drawer, everywhere"
+           (equal? (pipeline-view-selected v) '("Pipeline" 0)))
+    (pipeline-view-selected-set!
+     v (car (inspect-rows (pipeline-view-shown v)
+                          (cadr (assoc "Pipeline" (pipeline-view-groups v)))
+                          1)))
+    (check "and a record selected shows as its drawer's"
+           (equal? (pipeline-selected-span v) '("Pipeline" 0))))
+  (pipeline-view-selected-set! v #f)
+  (press! '((pipeline look) who))
+  (press! '(pipeline hold))
+  (let* ([image (pipeline-view-image v)]
+         [x (quotient *canvas-pw* 2)] [y (quotient *canvas-ph* 2)]
+         [top (car (pipeline-records-at v x y))]
+         [i (let loop ([ns (pipeline-span-nodes (pipeline-view-groups v))]
+                       [i 0])
+              (if (equal? (car ns) (pipeline-span-node-at v top))
+                  i
+                  (loop (cdr ns) (+ i 1))))]
+         [color (color-word (pipeline-draw-who-color i))]
+         [shown (lambda ()
+                  (pipeline-preview! v)
+                  (request-frame!)
+                  (steps 1)
+                  (pipeline-test-preview-pixel image x y))])
+    (check "showing who drew, the small screen paints each record its \
+            drawer's color"
+           (and (eq? (pipeline-view-look v) 'who) (= (shown) color)))
+    (pipeline-view-selected-set! v '(topbar 0))
+    (check "the others dim while a drawer is selected"
+           (= (shown) (color-word (mix (pipeline-draw-who-color i) 'bg-0
+                                       0.75)))))
+  (pipeline-view-selected-set! v #f)
+  (press! '((pipeline look) picture))
+  (press! '(pipeline hold))
+  (press! '(pipeline lists))
   ;; the viewer: zoomed, moved, magnified, popped out
   (let* ([r (ui-find ui '(pipeline viewer))]
          [vx (ui-region-x r)] [vy (ui-region-y r)]

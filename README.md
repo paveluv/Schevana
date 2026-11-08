@@ -997,10 +997,15 @@ Decisions worth keeping in mind for the real design:
   data that a REPL or a test can read too: the frame's list by who drew it,
   each record decoded in draw order and a run of glyphs as its text, and
   each drawer with a checkbox that leaves it out of the small screen and the
-  Tape (the core's preview takes a cut of the frame's runs), the
+  Tape (the core's preview takes a cut of the frame's runs); Who, what each
+  drawer cost, a row each in draw order: main's time drawing it a frame, its
+  records, the pixels they may touch, the runs they start and how many
+  changed since the frame before, each with a bar for its share; the
   screen small, drawn again every tick unless told otherwise and showing
   itself in its own box, a tick older each time round, with what's selected
-  outlined, and a press there listing what may touch that pixel; the wheel
+  outlined, or showing who drew each record, in its drawer's color, the
+  others dim while one's selected, and a press there listing what may touch
+  that pixel; the wheel
   zooms it at the pointer, a drag moves it, Fit and 100% set it, a loupe
   magnifies the pixels at the pointer and names the record on top there,
   and Pop out puts it in a window of its own kept above the Pipeline, back
