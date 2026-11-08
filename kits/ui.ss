@@ -995,10 +995,13 @@
                  (cdr chars)
                  chars))))
 
-;; Its two buttons, and a field that holds the widest number.
+;; Its two buttons, and a field whose text holds the widest number and no
+;; more, inside the style's own insets: that number fills it, as much room
+;; either side, and a narrower one is at its right.
 (define (ui-stepper-size lo hi)
   (let ([b (ui-control-height)])
-    (values (+ b b 20 (text-widest (map number->string (list lo hi)) 'ui))
+    (values (+ b b (ui-text-box-insets '(field))
+               (text-widest (map number->string (list lo hi)) 'ui))
             b)))
 
 ;; A path as crumbs: labels, the oldest first, each a quiet button that
@@ -1442,6 +1445,13 @@
 (define (ui-text-box-inset flags)
   (with-place 'field
     (lambda () (cadr (car (ui-text-box-areas 0 0 0 0 flags))))))
+
+;; How much of a box's width its text doesn't get: what the style keeps on
+;; either side, its marks and margins.
+(define (ui-text-box-insets flags)
+  (with-place 'field
+    (lambda ()
+      (- 100 (list-ref (car (ui-text-box-areas 0 0 100 0 flags)) 3)))))
 
 ;; (values w h) for rows of text.
 (define-part (ui-text-box-size flags w rows)

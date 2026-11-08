@@ -451,6 +451,16 @@
            '(1 7/4 2)))
         '(mac genera cons)))
 
+(check "a stepper's field holds its widest number and no more, in every kind \
+        of style: that one has as much room either side, and none is cut"
+       (for-all
+        (lambda (style)
+          (with-style style
+            (lambda ()
+              (= (cadddr (ui-test-stepper-ink style 2))
+                 (exact (round (* 2 (text-widest '("1" "60") 'ui))))))))
+        '(mac genera cons)))
+
 (check "an area's rows start at the top, however tall it is, a field's one \
         in the middle"
        (with-place 'field
