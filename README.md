@@ -1001,7 +1001,11 @@ Decisions worth keeping in mind for the real design:
   Tape (the core's preview takes a cut of the frame's runs); Who, what each
   drawer cost, a row each in draw order: main's time drawing it a frame, its
   records, the pixels they may touch, the runs they start and how many
-  changed since the frame before, each with a bar for its share; the
+  changed since the frame before, each with a bar for its share; Course,
+  a tick's stages in order, each as wide as its time, render split into
+  each drawer's draw and the rest; Inside, the record selected decoded, its
+  words and its run, and its shader's source with its helpers written out;
+  Memory, what the GPU holds as bars, and the glyphs' atlas live; the
   screen small, drawn again every tick unless told otherwise and showing
   itself in its own box, a tick older each time round, with what's selected
   outlined, or showing who drew each record, in its drawer's color, the

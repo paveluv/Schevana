@@ -514,3 +514,49 @@
                (not (inspect-record-same? l (+ first k) b (+ bfirst k))))
            (loop (+ k 1) (+ n 1))]
           [else (loop (+ k 1) n)])))
+
+;;; ---- inside a record
+
+;; The run that draws record i of l, (mode image first count variant), or #f.
+(define (inspect-record-run l i)
+  (find (lambda (run) (< -1 (- i (caddr run)) (cadddr run)))
+        (inspect-list-runs l)))
+
+;; The shader a run's records are drawn with: a paint's own, or the variant
+;; of the fragment shader they need.
+(define (inspect-run-fragment run)
+  (let ([x (cadr run)])
+    (if (gpu-call? x)
+        (gpu-call-shader x)
+        (top-level-value (inspect-run-shader run)))))
+
+;; A shader's source, pretty-printed, the helpers it uses written out where
+;; it uses them, under their names: lines.
+(define (inspect-shader-lines shader)
+  (let ([text (with-output-to-string
+                (lambda ()
+                  (parameterize ([print-gensym #f])
+                    (for-each
+                     (lambda (form)
+                       (if (and (pair? form)
+                                (eq? (car form) 'use-shader-helpers))
+                           (begin
+                             (printf ";; ~a\n" (cadr form))
+                             (for-each pretty-print
+                                       (hashtable-ref *shader-helpers*
+                                                      (cadr form) '())))
+                           (pretty-print form)))
+                     (shader-source shader)))))])
+    (let loop ([chars (string->list text)] [line '()] [acc '()])
+      (cond [(null? chars)
+             (reverse (if (null? line) acc (cons (list->string (reverse line))
+                                                 acc)))]
+            [(char=? (car chars) #\newline)
+             (loop (cdr chars) '() (cons (list->string (reverse line)) acc))]
+            [else (loop (cdr chars) (cons (car chars) line) acc)]))))
+
+;; The glyphs' atlas as an image, to draw: one channel, coverage, as the
+;; glyph records read it. The renderer's own: it's never let go of here.
+(define (inspect-atlas-image)
+  (make-gpu-image (renderer-atlas *renderer*) gpu-atlas-side gpu-atlas-side
+                  1 #f #f))

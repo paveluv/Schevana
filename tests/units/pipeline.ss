@@ -882,6 +882,86 @@
                   (inspect-list-labels l)
                   (pipeline-span-nodes (inspect-list-labels l)))))))
   (pipeline-view-look-set! v 'picture)
+  ;; slice 4: Course, Inside, Memory
+  (press! '(pipeline course))
+  (let* ([c (pipeline-course v)] [items (and c (cadr c))]
+         [of (lambda (kind) (filter (lambda (it) (eq? (caddr it) kind))
+                                    items))])
+    (check "Course lays out a tick: its phases in order, render as each \
+            drawer's draw and the rest, then what's left of the period"
+           (and items (not (window-error w))
+                (let ([order (map car monitor-phases)]
+                      [phases (map cadddr (of 'phase))])
+                  (equal? phases
+                          (filter (lambda (p) (memq p phases)) order)))
+                (equal? (map cadddr (of 'drawer))
+                        (pipeline-span-nodes (pipeline-view-groups v)))
+                (let ([total (cadr (car (of 'total)))]
+                      [parts (fold-left (lambda (m it) (+ m (cadr it))) 0.0
+                                        (append (of 'drawer) (of 'gpu)))])
+                  (< (abs (- total parts)) 1e-6))
+                (= 1 (length (of 'idle)))
+                (eq? 'idle (caddr (list-ref items (- (length items) 1)))))))
+  (check "Course sorts its stages, and render's parts among themselves \
+          under it; a heading's press sorts, again the other way, a third \
+          time in order"
+         (let* ([items '(("b" 1.0 phase events) ("render" 5.0 total render)
+                         ("x" 1.0 drawer n1) ("y" 3.0 drawer n2)
+                         ("to the GPU" 1.0 gpu render)
+                         ("a" 2.0 idle #f))]
+                [names (lambda (sort)
+                         (map car (pipeline-course-sorted items sort)))]
+                [sorts (map (lambda (k)
+                              (press! '((pipeline course) header ms))
+                              (pipeline-view-course-sort v))
+                            '(1 2 3))])
+           (and (equal? (names #f) (map car items))
+                (equal? (names '(ms . down))
+                        '("render" "y" "x" "to the GPU" "a" "b"))
+                (equal? (names '(name . up))
+                        '("a" "b" "render" "to the GPU" "x" "y"))
+                (equal? sorts '((ms . down) (ms . up) #f)))))
+  (let ([l (pipeline-view-shown v)]
+        [i (+ (cadr (assoc "Pipeline" (pipeline-view-groups v))) 3)])
+    (pipeline-select! v (car (inspect-rows l i 1)))
+    (press! '(pipeline inside))
+    (let* ([facts (pipeline-inside-facts v i)]
+           [run (inspect-record-run l i)]
+           [lines (inspect-shader-lines (inspect-run-fragment run))])
+      (check "Inside decodes the record selected, its eight words and its \
+              run, and shows its shader's source with its helpers written out"
+             (and (not (window-error w))
+                  (= (pipeline-inside-record v) i)
+                  (assoc "kind" facts)
+                  (= 8 (length (string-split (cdr (assoc "Words" facts))
+                                             #\space)))
+                  (< -1 (- i (caddr run)) (cadddr run))
+                  (member ";; gfx-helpers" lines)
+                  (> (length lines) 50)))))
+  (pipeline-select! v #f)
+  (press! '(pipeline memory))
+  (check "Memory shows what the GPU holds, and the atlas"
+         (and (eq? (pipeline-view-stage v) 'memory)
+              (not (window-error w))
+              (= (inspect-preview-w (inspect-atlas-image)) gpu-atlas-side)))
+  ;; the atlas: a drag moves through it, and no further than its edges
+  (let* ([r (ui-find ui '(pipeline atlas))]
+         [at (lambda () (ui-memo ui '(pipeline atlas) '(0 . 0)))])
+    (let-values ([(cx cy cw ch) (content-rect w)])
+      (let ([x (exact (round (+ cx (ui-region-x r) 40)))]
+            [y (exact (round (+ cy (ui-region-y r) 20)))])
+        (inject! `(mouse-move ,(+ x 30) ,y) `(mouse-down ,(+ x 30) ,y left 1)
+                 `(mouse-move ,x ,y) `(mouse-up ,x ,y left))
+        (steps 2)
+        (let ([moved (at)])
+          (inject! `(mouse-move ,x ,y) `(mouse-down ,x ,y left 1)
+                   `(mouse-move ,(+ x 400) ,(+ y 400))
+                   `(mouse-up ,(+ x 400) ,(+ y 400) left))
+          (steps 2)
+          (check (format "a drag moves through the atlas (~s), back no \
+                          further than its corner (~s)" moved (at))
+                 (and (= (car moved) (* 30 (draw-scale)))
+                      (= (car (at)) (cdr (at)) 0)))))))
   (press! '(pipeline hold))
   (press! '(pipeline lists))
   ;; the viewer: zoomed, moved, magnified, popped out
@@ -1033,7 +1113,7 @@
     (check "and comes back to the screen's own"
            (and (= (inspect-preview-w (pipeline-view-image v)) *canvas-pw*)
                 (not (window-error w)))))
-  (pipeline-view-stage-set! v 'screen)
+  (pipeline-view-stage-set! v 'memory)
   (invalidate! w)
   (steps 2)
   (check "the Screen stage draws its facts" (not (window-error w)))

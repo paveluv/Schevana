@@ -1,13 +1,17 @@
 ;;; apps/pipeline.ss — Pipeline: the way from a window's draw to the screen
 ;;; surface, on one screen, read through kits/inspect.ss.
 ;;;
-;;; Three stages, chosen on the cards at the top:
+;;; Five stages, chosen on the cards at the top:
 ;;;   Lists   the frame's list by who drew it, and each's records, decoded
 ;;;           in draw order, a run of glyphs as its text; a drawer's checkbox
 ;;;           off leaves it out of the small screen and the Tape
 ;;;   Who     what each drawer cost: main's time drawing it, its records, the
 ;;;           pixels they may touch, the runs they start, what changed
-;;;   Screen  what draws, and what it holds on the GPU
+;;;   Course  a tick's stages in order, each as wide as its time, render
+;;;           split into each drawer's draw and the rest
+;;;   Inside  the record selected, decoded, and the shader it's drawn with,
+;;;           its source and its helpers'
+;;;   Memory  what draws, what it holds on the GPU, and the glyphs' atlas
 ;;; Right, the screen small, the selected record outlined, or shown another
 ;;; way: who drew each record, in its drawer's color, the selected one's
 ;;; bright; each record's kind; heat, a pixel as bright as how many records
@@ -33,7 +37,7 @@
 
 (define-record-type pipeline-view
   (fields ui history river
-          (mutable stage)      ; lists or screen
+          (mutable stage)      ; lists, who, course, inside or memory
           (mutable shown)      ; (inspect-list), the one on view
           (mutable held?)      ; it stays
           (mutable looked)     ; when it was read (now-ms)
@@ -66,6 +70,8 @@
           (mutable look)       ; what the small screen shows: pipeline-looks
           (mutable painted)    ; a list repainted for it, used again
           (mutable who)        ; what each drew cost: (list . rows)
+          (mutable course)     ; a tick's stages: (list . (seq items))
+          (mutable course-sort) ; (key . up|down), or #f: in their order
           colors))             ; each drawer's color, by node: an index
 
 (define pipeline-period-ms 250)
@@ -1061,6 +1067,363 @@
          spans (pipeline-span-nodes spans))))
     marks))
 
+;;; ---- course: a tick's stages, in order, as wide as their time
+
+;; The tick to lay out: the one picked on the River, or the newest kept that
+;; drew a frame; #f when none is kept.
+(define (pipeline-course-tick v)
+  (or (pipeline-view-tick v)
+      (let ([newest (profile-newest-tick)])
+        (and newest
+             (let loop ([seq newest] [left 30])
+               (cond [(or (zero? left) (not (profile-tick-kept? seq))) newest]
+                     [(> (pipeline-phase-ms (profile-tick-uses seq) 'render)
+                         0.0)
+                      seq]
+                     [else (loop (- seq 1) (- left 1))]))))))
+
+(define (pipeline-phase-ms uses phase)
+  (fold-left (lambda (ms u)
+               (if (eq? (profile-use-phase u) phase)
+                   (+ ms (profile-use-ms u))
+                   ms))
+             0.0 uses))
+
+;; What subject took to draw in uses, a tick's, ms.
+(define (pipeline-render-ms uses subject)
+  (fold-left (lambda (ms u)
+               (if (and (eq? (profile-use-phase u) 'render)
+                        (equal? (profile-use-subject u) subject))
+                   (+ ms (profile-use-ms u))
+                   ms))
+             0.0 uses))
+
+;; What a tick spent, in order: (name ms kind detail) each, kind phase (a
+;; phase of monitor-phases), drawer (detail its span's node: render, its
+;; draw), gpu (the rest of render: the list to the GPU and its wait) or idle
+;; (what's left of the period).
+(define (pipeline-course-items v seq)
+  (let* ([uses (profile-tick-uses seq)]
+         [spans (inspect-list-labels (pipeline-view-shown v))]
+         [period (/ (pacer-period) 1e6)]
+         [stages
+          (apply append
+                 (map (lambda (p)
+                        (let ([ms (pipeline-phase-ms uses (car p))])
+                          (cond
+                            [(not (eq? (car p) 'render))
+                             (if (> ms 0.0)
+                                 (list (list (cddr p) ms 'phase (car p)))
+                                 '())]
+                            [else
+                             (let* ([drawers
+                                     (map (lambda (node)
+                                            (list (pipeline-node-name node)
+                                                  (pipeline-render-ms
+                                                   uses
+                                                   (pipeline-span-subject
+                                                    node))
+                                                  'drawer node))
+                                          (pipeline-span-nodes spans))]
+                                    [drawn (fold-left (lambda (m d)
+                                                        (+ m (cadr d)))
+                                                      0.0 drawers)])
+                               (append (list (list (cddr p) ms 'total
+                                                   'render))
+                                       drawers
+                                       (list (list "to the GPU"
+                                                   (max 0.0 (- ms drawn))
+                                                   'gpu 'render))))])))
+                      (remp (lambda (p) (memq (car p)
+                                              '(input-wait vsync-wait)))
+                            monitor-phases)))]
+         [busy (fold-left (lambda (m it)
+                            (if (eq? (caddr it) 'total) m (+ m (cadr it))))
+                          0.0 stages)])
+    (append stages
+            (list (list "till the next tick" (max 0.0 (- period busy))
+                        'idle #f)))))
+
+;; Course's items sorted ((key . up|down), or #f: as they come): the
+;; stages among themselves, and render's parts, under it, among
+;; themselves.
+(define (pipeline-course-sorted items sort)
+  (define (part? it) (memq (caddr it) '(drawer gpu)))
+  (define (before? a b)
+    (let ([up? (eq? (cdr sort) 'up)])
+      (if (eq? (car sort) 'name)
+          (if up? (string<? (car a) (car b)) (string>? (car a) (car b)))
+          (if up? (< (cadr a) (cadr b)) (> (cadr a) (cadr b))))))
+  (if (not sort)
+      items
+      ;; a stage and the parts after it, together
+      (let* ([groups (reverse
+                      (fold-left (lambda (gs it)
+                                   (if (and (part? it) (pair? gs))
+                                       (cons (append (car gs) (list it))
+                                             (cdr gs))
+                                       (cons (list it) gs)))
+                                 '() items))])
+        (apply append
+               (map (lambda (g) (cons (car g) (list-sort before? (cdr g))))
+                    (list-sort (lambda (a b) (before? (car a) (car b)))
+                               groups))))))
+
+;; The tick laid out and its stages, made again for each list on view: (seq
+;; items), or #f.
+(define (pipeline-course v)
+  (let ([l (pipeline-view-shown v)] [c (pipeline-view-course v)])
+    (if (and c (eq? (car c) l))
+        (cdr c)
+        (let* ([seq (pipeline-course-tick v)]
+               [r (and seq (list seq (pipeline-course-items v seq)))])
+          (pipeline-view-course-set! v (cons l r))
+          r))))
+
+;; Course: the tick as a bar, each stage as wide as its time of the period,
+;; then the stages as a table.
+(define (pipeline-course-pane v x y w h)
+  (let ([c (pipeline-course v)] [ch (ui-control-height)]
+        [ui (pipeline-view-ui v)])
+    (if (not c)
+        (ui-draw-label x y w ch '(dim) "No tick is kept yet.")
+        (let* ([items (cadr c)]
+               [period (/ (pacer-period) 1e6)]
+               [whole (max period
+                           (fold-left (lambda (m it)
+                                        (if (eq? (caddr it) 'total)
+                                            m
+                                            (+ m (cadr it))))
+                                      0.0 items))]
+               [bar-y (+ y ch 6)]
+               [bar-h 34]
+               [rows (map (lambda (it) (list->vector it))
+                          (pipeline-course-sorted items
+                                                  (pipeline-view-course-sort
+                                                   v)))])
+          (ui-draw-label x y w ch '(dim)
+                         (format "Tick ~a, in order, of a period of ~,2f ms"
+                                 (car c) period))
+          (pipeline-draw-course-bar v x bar-y w bar-h items whole)
+          (ui-table ui '(pipeline course) x (+ bar-y bar-h 10) w
+                    (max 0 (- h ch 6 bar-h 10))
+                    `((name "Stage" ,(max 160 (- (ui-table-room w) 96 96)))
+                      (ms "ms" 96 right)
+                      (share "Of the period" 96 right))
+                    rows #f (lambda (row) #f)
+                    (lambda (row key cx cy cw rh flags)
+                      (case key
+                        [(name)
+                         (ui-draw-cell cx cy cw rh flags
+                                       (if (eq? (vector-ref row 2) 'drawer)
+                                           (string-append
+                                            "    " (vector-ref row 0))
+                                           (vector-ref row 0)))]
+                        [(ms)
+                         (ui-draw-cell cx cy cw rh flags
+                                       (format "~,2f" (vector-ref row 1)))]
+                        [else
+                         (pipeline-draw-share cx cy cw rh
+                                              (/ (vector-ref row 1) whole))
+                         (ui-draw-cell cx cy cw rh flags
+                                       (format "~a%"
+                                               (exact
+                                                (round
+                                                 (/ (* 100 (vector-ref row 1))
+                                                    period)))))]))
+                    'sort (pipeline-view-course-sort v)
+                    ;; a number the most first, a name from A; again, the
+                    ;; other way; a third time, in order
+                    'on-sort (lambda (key)
+                               (let ([s (pipeline-view-course-sort v)]
+                                     [first (if (eq? key 'name) 'up 'down)])
+                                 (pipeline-view-course-sort-set!
+                                  v (cond [(not (and s (eq? (car s) key)))
+                                           (cons key first)]
+                                          [(eq? (cdr s) first)
+                                           (cons key (if (eq? first 'up)
+                                                         'down
+                                                         'up))]
+                                          [else #f])))))))))
+
+;;; ---- inside: a record decoded, and the shader it's drawn with
+
+;; The record selected, its index in the list on view, or #f.
+(define (pipeline-inside-record v)
+  (let ([selected (pipeline-view-selected v)]
+        [n (inspect-list-count (pipeline-view-shown v))])
+    (and (vector? selected) (< (vector-ref selected 0) n)
+         (vector-ref selected 0))))
+
+;; A decoded value, in words.
+(define (pipeline-value-text key value)
+  (cond [(and (eq? key 'color) (integer? value)) (format "#~8,'0x" value)]
+        [(flonum? value) (format "~,1f" value)]
+        [(list? value)
+         (apply string-append
+                (map (lambda (x i)
+                       (string-append (if (> i 0) " " "")
+                                      (pipeline-value-text #f x)))
+                     value (iota (length value))))]
+        [(not value) "none"]
+        [else (format "~a" value)]))
+
+;; Record i's facts: what it is, its fields, its words, its run.
+(define (pipeline-inside-facts v i)
+  (let* ([l (pipeline-view-shown v)]
+         [who (pipeline-span-node-at v i)]
+         [run (inspect-record-run l i)]
+         [runs (inspect-list-runs l)])
+    (append
+     (list (cons "Record"
+                 (format "~a of ~a~a" i (inspect-list-count l)
+                         (if who
+                             (format ", by ~a" (pipeline-node-name who))
+                             ""))))
+     (map (lambda (field)
+            (cons (format "~a" (car field))
+                  (pipeline-value-text (car field) (cdr field))))
+          (inspect-record l i))
+     (list (cons "Words"
+                 (apply string-append
+                        (map (lambda (k)
+                               (format (if (= k 0) "~8,'0x" " ~8,'0x")
+                                       (fxand (inspect-word l i k)
+                                              #xffffffff)))
+                             (iota rec-row-words)))))
+     (if run
+         (list (cons "Run"
+                     (format "~a of ~a: records ~a–~a, ~a"
+                             (+ 1 (list-index (lambda (r) (eq? r run)) runs))
+                             (length runs) (caddr run)
+                             (+ (caddr run) (cadddr run) -1)
+                             (case (car run)
+                               [(1 2) "inverting"]
+                               [(3) "adding"]
+                               [else "drawn over"]))))
+         '()))))
+
+;; Inside: the record selected, decoded, and its shader's source.
+(define (pipeline-inside-pane v x y w h)
+  (let ([i (pipeline-inside-record v)] [lh (font-line-height 'ui)]
+        [ui (pipeline-view-ui v)])
+    (if (not i)
+        (ui-draw-label x y w 0 '(hint wrap)
+                       "Select a record: a drawer's row opened in Lists, a \
+                        mark on the Tape, or a press on the small screen. \
+                        What its words say, and the shader it's drawn with, \
+                        show here.")
+        (let* ([facts (pipeline-inside-facts v i)]
+               [run (inspect-record-run (pipeline-view-shown v) i)]
+               [shader (and run (inspect-run-fragment run))]
+               [sy (+ y (* (length facts) (+ lh 4)) 6)])
+          (for-each (lambda (fact k)
+                      (let ([ly (+ y (* k (+ lh 4)))])
+                        (ui-draw-label x ly 90 lh '(dim) (car fact))
+                        (ui-draw-label (+ x 94) ly (- w 94) lh '()
+                                       (cdr fact))))
+                    facts (iota (length facts)))
+          (when shader
+            (let ([lines (pipeline-inside-lines v shader)])
+              (ui-draw-label x sy w lh '(dim)
+                             (format "Shader ~a, ~a lines of its source"
+                                     (shader-name shader) (length lines)))
+              (pipeline-draw-source ui x (+ sy lh 6) w
+                                    (max 0 (- (+ y h) sy lh 6))
+                                    lines)))))))
+
+;; A shader's lines, kept for the shader last shown: pretty-printing is dear.
+(define (pipeline-inside-lines v shader)
+  (let* ([ui (pipeline-view-ui v)] [had (ui-memo ui '(pipeline source) #f)])
+    (if (and had (eq? (car had) shader))
+        (cdr had)
+        (let ([lines (inspect-shader-lines shader)])
+          (ui-memo! ui '(pipeline source) (cons shader lines))
+          lines))))
+
+;;; ---- memory: what the GPU holds, and the atlas
+
+;; Memory: the screen's facts, what's held for frames, as bars, and beside
+;; them the atlas, the part of it in use.
+(define (pipeline-memory-pane v x y w h)
+  (let* ([lh (font-line-height 'ui)]
+         ;; the device's facts: what it holds is the bars'
+         [facts (list-head (pipeline-screen-facts v) 6)]
+         [left-w (min 480 (quotient w 2))]
+         [by (+ y (* (length facts) (+ lh 4)) 10)]
+         [objects (append
+                   (map (lambda (o) (cons (format "~a" (car o)) (cddr o)))
+                        (inspect-gpu-objects))
+                   (let ([image (pipeline-view-image v)])
+                     (if image
+                         (list (cons "small screen"
+                                     (* 2 (inspect-preview-bytes image))))
+                         '()))
+                   (list (cons "frames kept, in RAM"
+                               (inspect-history-bytes
+                                (pipeline-view-history v)))))]
+         [most (apply max 1 (map cdr objects))]
+         [g (inspect-glyphs)]
+         [ax (+ x left-w 16)]
+         [aw (- w left-w 16)])
+    (for-each (lambda (fact k)
+                (let ([ly (+ y (* k (+ lh 4)))])
+                  (ui-draw-label x ly 120 lh '(dim) (car fact))
+                  (ui-draw-label (+ x 124) ly (- left-w 124) lh '()
+                                 (cdr fact))))
+              facts (iota (length facts)))
+    (for-each (lambda (o k)
+                (let ([ly (+ by (* k (+ lh 6)))])
+                  (pipeline-draw-memory-bar (+ x 124) ly (- left-w 124) lh
+                                            (/ (cdr o) most))
+                  (ui-draw-label x ly 120 lh '(dim) (car o))
+                  (ui-draw-label (+ x 128) ly (- left-w 132) lh '()
+                                 (format "~a MB" (pipeline-mb (cdr o))))))
+              objects (iota (length objects)))
+    (ui-draw-label ax y aw lh '(dim)
+                   (format "The atlas, ~a glyphs: drag to move"
+                           (cdr (assq 'glyphs g))))
+    (pipeline-atlas-view (pipeline-view-ui v) ax (+ y lh 6) aw
+                         (max 0 (- h lh 6))
+                         (* gpu-atlas-side (cdr (assq 'atlas-used g))))))
+
+;; The atlas at x y w h, a pixel of it a device pixel, from where a drag
+;; left it: used, the rows of it in use.
+(define (pipeline-atlas-view ui x y w h used)
+  (let* ([id '(pipeline atlas)]
+         [grab (list id 'grab)]   ; (mx my ox oy)
+         [s (draw-scale)]
+         [most-x (max 0 (- gpu-atlas-side (* w s)))]
+         [most-y (max 0 (- used (* h s)))]
+         [at (ui-memo ui id '(0 . 0))]
+         [ox (clamp (car at) 0 most-x)]
+         [oy (clamp (cdr at) 0 most-y)])
+    (ui-region! ui id x y w h
+      'doc '((L . "Drag to move through the atlas"))
+      'on (lambda (ev)
+            (case (car ev)
+              [(press)
+               (and (eq? (list-ref ev 3) 'left)
+                    (begin (ui-memo! ui grab (list (cadr ev) (caddr ev) ox oy))
+                           #t))]
+              [(drag)
+               (let ([g (ui-memo ui grab #f)])
+                 (and g
+                      (begin
+                        (ui-memo! ui id
+                                  (cons (clamp (- (caddr g)
+                                                  (* s (- (cadr ev) (car g))))
+                                               0 most-x)
+                                        (clamp (- (cadddr g)
+                                                  (* s (- (caddr ev) (cadr g))))
+                                               0 most-y)))
+                        #t)))]
+              [(release)
+               (and (ui-memo ui grab #f)
+                    (begin (ui-memo! ui grab #f) #t))]
+              [else #f])))
+    (pipeline-draw-atlas x y w h (/ ox s) (/ oy s) (/ used s) (/ s))))
+
 ;;; ---- drawing
 
 ;; A stage's card: its name and what it holds, lines of text; pressed, it
@@ -1119,6 +1482,58 @@
 ;; same)
 (define (pipeline-draw-changed-words)
   (values (color-word 'chart-1) (color-word (mix 'text-faint 'bg-0 0.6))))
+
+;; A tick's stages in a row, each as wide as its time of whole: a phase in
+;; its River color, a drawer's draw in its color, the rest of render darker,
+;; what's left of the period faint; a stage wide enough names itself.
+(define (pipeline-draw-course-bar v x y w h items whole)
+  (fill-box x y w h 'bg-1 3)
+  (let loop ([items (remp (lambda (it) (eq? (caddr it) 'total)) items)]
+             [at x])
+    (unless (null? items)
+      (let* ([it (car items)]
+             [sw (* w (/ (cadr it) whole))]
+             [color (case (caddr it)
+                      [(phase) (cadr (assq (cadddr it) monitor-phases))]
+                      [(drawer) (pipeline-draw-who-color
+                                 (pipeline-color-index v (cadddr it)))]
+                      [(gpu) (mix (cadr (assq 'render monitor-phases))
+                                  'bg-0 0.45)]
+                      [else (alpha 'text-faint 0.15)])])
+        (fill-box at y (max 0 (- sw 1)) h color 2)
+        (when (> sw (+ 12 (text-width (car it) 'ui-small)))
+          (draw-text (+ at 5) (+ y (/ (- h (font-line-height 'ui-small)) 2))
+                     (car it)
+                     (if (eq? (caddr it) 'idle) 'text-dim 'bg-0)
+                     'ui-small))
+        (loop (cdr items) (+ at sw))))))
+
+;; A shader's source, a line of the mono font each, scrolling.
+(define (pipeline-draw-source ui x y w h lines)
+  (let ([lh (font-line-height 'mono-small)])
+    (fill-box x y w h 'bg-1 3)
+    (ui-scroll ui '(pipeline source-view) x y w h
+      (lambda (top)
+        (for-each (lambda (line k)
+                    (let ([ly (+ top 6 (* k lh))])
+                      (when (and (> (+ ly lh) y) (< ly (+ y h)))
+                        (draw-text (+ x 8) ly line 'text 'mono-small))))
+                  lines (iota (length lines)))
+        (+ top 12 (* lh (length lines)))))))
+
+;; A share of the most held, a bar.
+(define (pipeline-draw-memory-bar x y w h share)
+  (fill-box x (+ y 2) (* w (max 0.004 (min 1 share))) (- h 4)
+            (alpha 'accent 0.3) 2))
+
+;; The atlas in w × h from (ox, oy), k of it a pixel; the rows in use,
+;; used, as a texture viewer shows its one channel, in gray.
+(define (pipeline-draw-atlas x y w h ox oy used k)
+  (fill-box x y w h 'bg-1 3)
+  (with-clip (x y w (max 0 (min h (- used oy))))
+    (draw-image (inspect-atlas-image) (- x ox) (- y oy)
+                (* k gpu-atlas-side) (* k gpu-atlas-side) 'gray))
+  (stroke-box x y w h 'window-border 1 3))
 
 ;;; ---- the viewer: the screen small, zoomed, moved, magnified, popped out
 
@@ -1425,12 +1840,38 @@
              (format "~a drew, ~a runs"
                      (length (inspect-list-labels l))
                      (if row (cadddr row) 0))))]
+    [(course)
+     (let ([c (pipeline-course v)])
+       (if c
+           (list (format "tick ~a, ~,2f ms busy" (car c)
+                         (fold-left (lambda (ms it) (+ ms (cadr it))) 0.0
+                                    (remp (lambda (it)
+                                            (memq (caddr it) '(idle total)))
+                                          (cadr c))))
+                 (format "render ~,2f ms of it"
+                         (fold-left (lambda (ms it)
+                                      (if (memq (caddr it) '(drawer gpu))
+                                          (+ ms (cadr it))
+                                          ms))
+                                    0.0 (cadr c))))
+           (list "no tick kept" "")))]
+    [(inside)
+     (let ([i (pipeline-inside-record v)] [l (pipeline-view-shown v)])
+       (if i
+           (let ([run (inspect-record-run l i)])
+             (list (format "record ~a, a ~a" i (inspect-kind l i))
+                   (if run
+                       (format "~a" (shader-name (inspect-run-fragment run)))
+                       "")))
+           (list "a record selected," "decoded")))]
     [else
-     (let ([d (inspect-device)])
-       (list (format "~a × ~a, on the ~a"
-                     (cadr (assq 'pixels d)) (cddr (assq 'pixels d))
-                     (if (eq? (cdr (assq 'renderer d)) 'cpu) "CPU" "GPU"))
-             (format "last frame ~,1f ms" *frame-ms*)))]))
+     (let ([d (inspect-device)] [g (inspect-glyphs)])
+       (list (format "~a MB on the GPU"
+                     (pipeline-mb (apply + (map cddr (inspect-gpu-objects)))))
+             (format "the atlas ~a% used"
+                     (exact (round (* 100 (cdr (assq 'atlas-used g))))))))]))
+
+(define (pipeline-mb bytes) (format "~,1f" (/ bytes 1048576.0)))
 
 ;; Screen's pane: one fact a line.
 (define (pipeline-screen-facts v)
@@ -1522,15 +1963,6 @@
                                                        #f))))
           (ui-memo! ui '(pipeline revealed) shown)))))
 
-(define (pipeline-screen-pane v x y w h)
-  (let ([lh (font-line-height 'ui)])
-    (for-each (lambda (fact i)
-                (let ([ly (+ y (* i (+ lh 4)))])
-                  (ui-draw-label x ly 120 lh '(dim) (car fact))
-                  (ui-draw-label (+ x 124) ly (- w 124) lh '() (cdr fact))))
-              (pipeline-screen-facts v)
-              (iota (length (pipeline-screen-facts v))))))
-
 ;; The small screen's images, as big as the screen: the shader draws on real
 ;; pixels. Made again when the screen's size changes: a draw still waiting names
 ;; the old ones, so the new one's first picture takes its place.
@@ -1569,7 +2001,7 @@
                                 (- bottom top gap bh gap
                                    (* 2 (+ ch gap)))))])
     (ui-begin! ui)
-    (let ([card-w (quotient (- w pad pad gap gap) 3)])
+    (let ([card-w (quotient (- w pad pad (* 4 gap)) 5)])
       (for-each
        (lambda (stage name i)
          (let ([cx (+ pad (* i (+ card-w gap)))])
@@ -1578,13 +2010,17 @@
            (pipeline-draw-card cx pad card-w card-h
                                (eq? stage (pipeline-view-stage v)) name
                                (pipeline-card-lines v stage))))
-       '(lists who screen) '("Lists" "Who" "Screen") '(0 1 2)))
+       '(lists who course inside memory)
+       '("Lists" "Who" "Course" "Inside" "Memory")
+       '(0 1 2 3 4)))
     (let ([pane-w (- w pad pad side gap)])
       (with-clip (pad top pane-w (- bottom top))
         (case (pipeline-view-stage v)
           [(lists) (pipeline-lists-pane v pad top pane-w (- bottom top))]
           [(who) (pipeline-who-pane v pad top pane-w (- bottom top))]
-          [else (pipeline-screen-pane v pad top pane-w (- bottom top))]))
+          [(course) (pipeline-course-pane v pad top pane-w (- bottom top))]
+          [(inside) (pipeline-inside-pane v pad top pane-w (- bottom top))]
+          [else (pipeline-memory-pane v pad top pane-w (- bottom top))]))
       ;; the small screen, or its place while it's out; its bar, Hold
       (pipeline-image! v)
       (let* ([sx (+ pad pane-w gap)]
@@ -1665,7 +2101,7 @@
                                       #f #f #f #f #f #f '() 0.0 #f 1
                                       (pipeline-tape-new 0) #f #f 5
                                       #f #f #f #f '() #f #f 'picture
-                                      (inspect-list-empty) #f
+                                      (inspect-list-empty) #f #f #f
                                       (make-hashtable equal-hash equal?))])
           (pipeline-look! v)
           (apply open-window "Pipeline"
