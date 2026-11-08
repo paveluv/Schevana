@@ -935,29 +935,42 @@ Decisions worth keeping in mind for the real design:
   bar 0 high is none; a style may make the taskbar another bar with its
   areas, drawing and tick (`taskbar-areas`, `draw-taskbar`,
   `taskbar-tick`).
-- **A frame is a list of records, drawn whole.** Everything on the screen is
-  a list of flat records of 32 bytes, whole numbers, that the drawing
-  procedures write (`fill-box`, `draw-text`, ...); `with-clip`,
-  `with-translation`, `with-scale`, `with-turn` and `with-label` are forms,
-  with no closure a call. One shader on the GPU reads them, in one instanced
-  draw for a run of them that's alike, in variants: a run of boxes and text
-  in solid colors draws with none of the code for lines, shadows, gradients,
-  stipples or images, which on Metal every pixel would pay for, and a record
-  that needs one of them starts a run (`gfx-fragments`). Coverage is by
-  distance, a paint times a geometry; glyphs come from an atlas on the GPU,
-  and only they and what must be saved keep pixels in main memory. A change
-  asks for a frame:
-  input to a window, `(invalidate! win)`, the hover, the clock once a second,
-  the world's changes. The next tick's frame records the wallpaper, every
-  window from the bottom up (each clipped to its extent, so nothing it draws
-  lies outside it), the panels, the menu and the toasts (`record-world!` in
-  `src/wm.ss`), and sends the list: about 1 ms on main, and nothing waits for
-  the screen. A step that nothing asked a frame of draws nothing.
-  Nothing is assumed about what a drawing procedure does inside its
-  window, so redefining `draw-window`, a style's part or `draw-taskbar` at
-  the REPL changes the next frame: an evaluation asks for one when it ends,
-  and so does `(reload!)`. A window that changes by itself over time says so
-  with `(invalidate! win)`, as the Clock and Life do when they tick.
+- **The screen is a tree of lists of records.** A list is flat records
+  of 32 bytes, whole numbers, that the drawing procedures write
+  (`fill-box`, `draw-text`, ...); `with-clip`, `with-translation`,
+  `with-scale`, `with-turn` and `with-label` are forms, with no closure a
+  call. One shader on the GPU reads them, in one instanced draw for a run of
+  them that's alike, in variants: a run of boxes and text in solid colors
+  draws with none of the code for lines, shadows, gradients, stipples or
+  images, which on Metal every pixel would pay for, and a record that needs
+  one of them starts a run (`gfx-fragments`). Coverage is by distance, a
+  paint times a geometry; glyphs come from an atlas on the GPU, and only
+  they and what must be saved keep pixels in main memory. A list can show
+  another, `(show-list lst x y)`, inside the clip around it: what
+  `record-list!` recorded into it keeps its own coordinates and its own
+  buffers on the GPU, and is drawn where it's shown, so moving it changes
+  one run and nothing is recorded again. A window is a list from its corner,
+  what `draw-window` draws, and its content a list of its own, shown in it.
+  A change asks for a frame: input to a window, `(invalidate! win)`, the
+  hover, the clock once a second, the world's changes. The next tick's frame
+  records the wallpaper, the panels, the menu and the toasts, shows each
+  window's list from the bottom up, each clipped to its extent
+  (`record-world!` in `src/wm.ss`), and sends them; a list that changed goes
+  up to the GPU, the others are there. A window draws again only when it
+  opens or resizes, when what its frame is drawn with changes (its focus,
+  the part under the mouse or held, its title, state or error), after input
+  to it, and when asked, `(invalidate! win)`; `(invalidate!)` asks every
+  window. Moved or raised, it isn't drawn again, and a window whose app is
+  slow keeps showing what it drew. A step that nothing asked a frame of
+  draws nothing. Nothing is assumed about what a drawing procedure does
+  inside its window, so redefining `draw-window`, a style's part or
+  `draw-taskbar` at the REPL changes the next frame each is drawn in: an
+  evaluation asks every window when it ends, and so does `(reload!)`. A
+  window that changes by itself over time says so with `(invalidate! win)`,
+  as the Clock and Life do when they tick. The Pipeline reads the tree as
+  one list (`inspect-list` in `kits/inspect.ss`): each list's records where
+  its runs draw them, moved to where it's shown, which draws the same
+  pixels.
 - **A paint is a shader an app writes.** `define-paint` compiles when it's
   expanded: its body runs for each pixel of a box and gives a color, and
   `fill-shader` fills one, its arguments numbers, colors and GPU buffers

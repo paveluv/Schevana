@@ -32,36 +32,262 @@
 
 ;; A copy of the last frame's list: #(records extras labels count words row
 ;; runs frame), labels ((label first-record count) ...) in draw order, row the
-;; frame's in inspect-frames, runs its runs, frame its number. Only one list so
-;; far: the root's.
+;; frame's in inspect-frames, runs its runs, frame its number. The lists it
+;; shows are in it, flattened: each one's records where its runs draw them,
+;; moved to where it's shown and cut to its clip, so it draws the same
+;; pixels from one list, and its records come in the order they're drawn.
 (define (inspect-list) (inspect-list-read! (inspect-list-empty)))
 
 (define (inspect-list-empty)
   (vector (make-bytevector 0) (make-bytevector 0) '() 0 0 #f '() -1))
 
-;; l holds the last frame's list from now on, in its own buffers when they're
-;; big enough: they stay where they are, and a collection needn't copy them.
+;; l holds the last list recorded from now on, the frame's, in its own
+;; buffers when they're big enough: they stay where they are, and a
+;; collection needn't copy them.
 (define (inspect-list-read! l)
   (let* ([newest (inspect-frames 1)]
          [row (and (pair? newest) (car newest))]
-         [count (if row (cadr row) 0)]
-         [words (if row (caddr row) 0)]
+         [count (rec-count)]
+         [words *rec-extra-at*]
+         [runs (reverse *rec-runs*)]
+         [labels (list->vector (list-head (vector->list *rec-labels*)
+                                          *rec-label-at*))]
+         [need (inspect-flat-size (* 32 count) (* 4 words) runs)]
          [fit! (lambda (slot n)
                  (when (< (bytevector-length (vector-ref l slot)) n)
                    (vector-set! l slot
                                 (make-immobile-bytevector
                                  (+ n (quotient n 4))))))])
-    (fit! 0 (* 32 count))
-    (fit! 1 (* 4 words))
-    (bytevector-copy! *rec-bytes* 0 (vector-ref l 0) 0 (* 32 count))
-    (bytevector-copy! *rec-extras* 0 (vector-ref l 1) 0 (* 4 words))
-    (vector-set! l 2 (inspect-labels count))
-    (vector-set! l 3 count)
-    (vector-set! l 4 words)
-    (vector-set! l 5 row)
-    (vector-set! l 6 (reverse *rec-runs*))
-    (vector-set! l 7 (- *frame-ring-n* 1))
-    l))
+    (fit! 0 (car need))
+    (fit! 1 (cdr need))
+    (let ([flat (inspect-flatten! (vector-ref l 0) (vector-ref l 1)
+                                  *rec-bytes* *rec-extras* (* 4 words)
+                                  runs labels)])
+      (vector-set! l 2 (inspect-label-spans (car flat) (cadr flat)))
+      (vector-set! l 3 (cadr flat))
+      (vector-set! l 4 (caddr flat))
+      (vector-set! l 5 row)
+      (vector-set! l 6 (cadddr flat))
+      (vector-set! l 7 (- *frame-ring-n* 1))
+      l)))
+
+;; The bytes the flattened list takes: (records . extras), each list as
+;; often as it's shown, and a clip row for each show.
+(define (inspect-flat-size recs-n extras-n runs)
+  (fold-left (lambda (n run)
+               (if (gpu-show-run? run)
+                   (let* ([lst (cadr run)]
+                          [in (inspect-flat-size (gpu-list-recs-n lst)
+                                                 (gpu-list-extras-n lst)
+                                                 (gpu-list-runs lst))])
+                     (cons (+ (car n) (car in))
+                           (+ (cdr n) (cdr in) (* 4 clip-row-words))))
+                   n))
+             (cons recs-n extras-n) runs))
+
+;; Writes the list (recs, extras, its runs and labels, as the recorder keeps
+;; them) and those it shows into to and to-extras, flattened. =>
+;; (labels count words runs): labels a list ((first . label) ...) in order,
+;; count the records, words the extras' words.
+(define (inspect-flatten! to to-extras recs extras extras-n runs labels)
+  (let ([count 0] [words 1] [out-runs '()] [out-labels '()])
+    (define (word bv i) (bytevector-s32-native-ref bv (fx* 4 i)))
+    (define (word! bv i v) (bytevector-s32-native-set! bv (fx* 4 i) v))
+    ;; a label the same as the one before goes on
+    (define (label! text)
+      (unless (and (pair? out-labels) (equal? (cdar out-labels) text))
+        (set! out-labels (cons (cons count text) out-labels))))
+    ;; a list's extras, bytes long, after those so far, its rows moved by
+    ;; (dx, dy) in 256ths, a clip's cut to box; then its records, by
+    ;; recs-of, handed how to find and move its rows
+    (define (extras! from bytes dx dy box recs-of)
+      (let ([base (fx- words 1)] [seen (make-eqv-hashtable)]
+            [n (fxquotient bytes 4)])
+        (bytevector-copy! from 4 to-extras (fx* 4 words) (fx* 4 (fx- n 1)))
+        (set! words (fx+ words (fx- n 1)))
+        (let ([sr (and box
+                       (let ([r words])
+                         (for-each (lambda (k v) (word! to-extras (+ r k) v))
+                                   (iota clip-row-words)
+                                   (list (car box) (cadr box) (caddr box)
+                                         (cadddr box) 0 0 (car box) (cadr box)
+                                         (caddr box) (cadddr box)))
+                         (set! words (fx+ words clip-row-words))
+                         r))])
+          (define (at row) (fx+ base row))
+          (define (move! row k d)
+            (let ([i (at (+ row k))])
+              (word! to-extras i (+ d (word to-extras i)))))
+          (define (clip! row)
+            (unless (or (fx= row 0) (hashtable-ref seen row #f))
+              (hashtable-set! seen row #t)
+              (for-each (lambda (k d) (move! row k d))
+                        (list clip-row-x0 clip-row-y0 clip-row-x1 clip-row-y1
+                              clip-row-rx0 clip-row-ry0 clip-row-rx1
+                              clip-row-ry1)
+                        (list dx dy dx dy dx dy dx dy))
+              (when box
+                (let ([cut (lambda (k f v)
+                             (word! to-extras (at (+ row k))
+                                    (f v (word to-extras (at (+ row k))))))])
+                  (cut clip-row-x0 max (car box))
+                  (cut clip-row-y0 max (cadr box))
+                  (cut clip-row-x1 min (caddr box))
+                  (cut clip-row-y1 min (cadddr box))))
+              (let ([parent (word to-extras (at (+ row clip-row-parent)))])
+                (word! to-extras (at (+ row clip-row-parent))
+                       (cond [(not (fx= parent 0)) (at parent)]
+                             [sr sr]
+                             [else 0]))
+                (clip! parent))))
+          (define (paint! row kind)
+            (unless (hashtable-ref seen row #f)
+              (hashtable-set! seen row #t)
+              (when (fx= kind rec-paint-gradient)
+                (move! row gradient-row-x0 dx)
+                (move! row gradient-row-y0 dy)
+                (unless (fx= (word to-extras (at (+ row gradient-row-kind)))
+                             rec-gradient-radial)
+                  (move! row gradient-row-x1 dx)
+                  (move! row gradient-row-y1 dy)))))
+          (define (points! row n)
+            (unless (hashtable-ref seen row #f)
+              (hashtable-set! seen row #t)
+              (do ([k 0 (fx+ k 1)]) ((fx= k n))
+                (move! row (fx* 2 k) dx)
+                (move! row (fx+ 1 (fx* 2 k)) dy))))
+          (recs-of at sr clip! paint! points!))))
+    ;; a list's records first to first + n, at the end of to, moved by
+    ;; (dx, dy) in 256ths, their rows by at
+    (define (records! from first n dx dy at sr clip! paint! points!)
+      (bytevector-copy! from (fx* 32 first) to (fx* 32 count) (fx* 32 n))
+      (do ([i count (fx+ i 1)]) ((fx= i (fx+ count n)))
+        (let* ([o (fx* i rec-row-words)]
+               [head (fxand (word to o) #xffffffff)]
+               [kind (fxand head 15)]
+               [paint (fxand (fxsrl head 4) 15)]
+               [clip (fxsrl head 8)])
+          (define (move! k d) (word! to (+ o k) (+ d (word to (+ o k)))))
+          (word! to o (fxior (fxand head 255)
+                             (fxsll (cond [(not (fx= clip 0)) (at clip)]
+                                          [sr sr]
+                                          [else 0])
+                                    8)))
+          (clip! clip)
+          (when (memv paint (list rec-paint-gradient rec-paint-stipple
+                                  rec-paint-image))
+            (word! to (+ o rec-row-paint)
+                   (at (word to (+ o rec-row-paint))))
+            (paint! (word from (+ (fx* (fx+ first (fx- i count))
+                                       rec-row-words)
+                                   rec-row-paint))
+                    paint))
+          (cond
+            [(fx= kind rec-kind-glyph)
+             (move! rec-glyph-pen-x (fxsra dx 8))
+             (move! rec-glyph-pen-y (fxsra dy 8))]
+            [else
+             (move! rec-row-x0 dx)
+             (move! rec-row-y0 dy)
+             (move! rec-row-x1 dx)
+             (move! rec-row-y1 dy)
+             (when (fx= kind rec-kind-polygon)
+               (points! (word to (+ o rec-polygon-points))
+                        (word to (+ o rec-polygon-count)))
+               (word! to (+ o rec-polygon-points)
+                      (at (word to (+ o rec-polygon-points)))))])))
+      (set! count (fx+ count n)))
+    ;; a list at (ox, oy) device pixels, inside box or none, its runs in
+    ;; order; its labels where they fall among them, none being outer, the
+    ;; label of what shows it
+    (define (flatten! recs extras extras-n runs labels ox oy box outer)
+      (let ([dx (fx* ox 256)] [dy (fx* oy 256)] [li 0]
+            [label-n (vector-length labels)])
+        (define (labels-upto! k at-record)
+          (let loop ()
+            (when (and (fx< li (min k label-n))
+                       (fx<= (vector-ref labels li) at-record))
+              (label! (or (vector-ref labels (fx+ li 1)) outer))
+              (set! li (fx+ li 2))
+              (loop))))
+        (label! outer)
+        (extras! extras extras-n dx dy box
+          (lambda (at sr clip! paint! points!)
+            (let ([current #f])
+              (for-each
+               (lambda (run)
+                 (if (gpu-show-run? run)
+                     (let* ([lst (cadr run)]
+                            [own (list-ref run 4)]
+                            [inner
+                             (let ([b (and own
+                                           (map (lambda (v d) (fx* 256 (+ v d)))
+                                                own (list ox oy ox oy)))])
+                               (cond [(not b) box]
+                                     [(not box) b]
+                                     [else (list (max (car b) (car box))
+                                                 (max (cadr b) (cadr box))
+                                                 (min (caddr b) (caddr box))
+                                                 (min (cadddr b)
+                                                      (cadddr box)))]))])
+                       (labels-upto! (list-ref run 5) (most-positive-fixnum))
+                       (let ([shown (and (pair? out-labels)
+                                         (cdar out-labels))])
+                         (flatten! (gpu-list-recs lst) (gpu-list-extras lst)
+                                   (gpu-list-extras-n lst) (gpu-list-runs lst)
+                                   (gpu-list-labels lst)
+                                   (+ ox (caddr run)) (+ oy (cadddr run))
+                                   inner shown)
+                         (label! shown)))
+                     (let ([first (caddr run)] [n (cadddr run)])
+                       (let split ([first first] [n n])
+                         ;; a label inside the run starts where it falls
+                         (labels-upto! label-n first)
+                         (let ([next (and (fx< li label-n)
+                                          (vector-ref labels li))])
+                           (if (and next (fx< next (fx+ first n)))
+                               (let ([k (fx- next first)])
+                                 (records! recs first k dx dy at sr clip!
+                                           paint! points!)
+                                 (split next (fx- n k)))
+                               (records! recs first n dx dy at sr clip!
+                                         paint! points!))))
+                       (set! out-runs
+                         (cons (list (car run) (cadr run)
+                                     (fx- count n) n (list-ref run 4))
+                               out-runs)))))
+               runs)
+              (labels-upto! label-n (most-positive-fixnum)))))))
+    (flatten! recs extras extras-n runs labels 0 0 #f #f)
+    (list (reverse out-labels) count words (reverse out-runs))))
+
+;; The labels' spans of the first count records, from ((first . label) ...)
+;; in order: a label holds until the next, and a span of none, or of no
+;; label, is left out.
+(define (inspect-label-spans labels count)
+  (let loop ([ls labels] [acc '()])
+    (if (null? ls)
+        (reverse acc)
+        (let* ([first (min count (caar ls))]
+               [end (if (null? (cdr ls)) count (min count (caadr ls)))])
+          (loop (cdr ls)
+                (if (or (not (cdar ls)) (>= first end))
+                    acc
+                    (cons (list (cdar ls) first (- end first)) acc)))))))
+
+;; The lists the last frame shows, as a tree: ((x y records bytes fresh?
+;; children) ...) in draw order, (x, y) in device pixels from what shows it,
+;; fresh? while it hasn't gone up to the GPU yet.
+(define (inspect-list-tree)
+  (let walk ([runs (reverse *rec-runs*)])
+    (map (lambda (run)
+           (let ([lst (cadr run)])
+             (list (caddr run) (cadddr run)
+                   (fxquotient (gpu-list-recs-n lst) 32)
+                   (+ (gpu-list-recs-n lst) (gpu-list-extras-n lst))
+                   (gpu-list-fresh? lst)
+                   (walk (gpu-list-runs lst)))))
+         (filter gpu-show-run? runs))))
 
 (define (inspect-list-count l) (vector-ref l 3))
 (define (inspect-list-labels l) (vector-ref l 2))
@@ -123,19 +349,6 @@
                       (bytevector-length (vector-ref l 1)))
                    n))
              0 (vector->list (inspect-history-slots h))))
-
-;; The labels' spans of the first count records: a label holds until the
-;; next, and a span of none, or of no label, is left out.
-(define (inspect-labels count)
-  (let loop ([i (- *rec-label-at* 2)] [end count] [acc '()])
-    (if (< i 0)
-        acc
-        (let ([first (min count (vector-ref *rec-labels* i))]
-              [label (vector-ref *rec-labels* (+ i 1))])
-          (loop (- i 2) first
-                (if (or (not label) (>= first end))
-                    acc
-                    (cons (list label first (- end first)) acc)))))))
 
 (define (inspect-word l i k)
   (bytevector-s32-native-ref (vector-ref l 0)
@@ -353,18 +566,26 @@
 
 ;; With the next frame, its first count records drawn on image, but those
 ;; (left-out spans) gives: ((first . count) ...) in order, spans the frame's
-;; labels' spans, as inspect-list-labels has them. Without left-out, none are.
+;; labels' spans, as inspect-list-labels has them. Without left-out, none
+;; are. The frame is read, flattened, into a list kept for it.
 (define inspect-preview!
   (case-lambda
     [(image count) (inspect-preview! image count #f)]
     [(image count left-out)
      (rec-preview! image
-                   (lambda (runs)
-                     (let ([runs (inspect-runs-upto runs count image)])
-                       (if left-out
-                           (inspect-runs-without
-                            runs (left-out (inspect-labels (rec-count))))
-                           runs))))]))
+                   (lambda ()
+                     (let* ([l (inspect-list-read! inspect-live)]
+                            [runs (inspect-runs-upto (inspect-list-runs l)
+                                                     count image)])
+                       (list (vector-ref l 0) (* 32 (inspect-list-count l))
+                             (vector-ref l 1) (* 4 (vector-ref l 4))
+                             (if left-out
+                                 (inspect-runs-without
+                                  runs (left-out (inspect-list-labels l)))
+                                 runs)))))]))
+
+;; The frame inspect-preview! draws: a cache, which only saves the buffers.
+(define inspect-live (inspect-list-empty))
 
 ;; Ahead of the next frame, a kept list's first count records drawn on image,
 ;; but those left out, as inspect-preview! has them.
@@ -530,23 +751,28 @@
         (gpu-call-shader x)
         (top-level-value (inspect-run-shader run)))))
 
-;; A shader's source, pretty-printed, the helpers it uses written out where
-;; it uses them, under their names: lines.
+;; The helper groups a shader's source takes, wherever it takes them, in
+;; order.
+(define (inspect-helpers-used form)
+  (let walk ([form form] [acc '()])
+    (cond [(not (pair? form)) acc]
+          [(and (eq? (car form) 'use-shader-helpers) (pair? (cdr form)))
+           (if (memq (cadr form) acc) acc (append acc (list (cadr form))))]
+          [else (walk (cdr form) (walk (car form) acc))])))
+
+;; A shader's source, pretty-printed, and after it the helpers it uses
+;; written out, under their names: lines.
 (define (inspect-shader-lines shader)
   (let ([text (with-output-to-string
                 (lambda ()
                   (parameterize ([print-gensym #f])
+                    (for-each pretty-print (shader-source shader))
                     (for-each
-                     (lambda (form)
-                       (if (and (pair? form)
-                                (eq? (car form) 'use-shader-helpers))
-                           (begin
-                             (printf ";; ~a\n" (cadr form))
-                             (for-each pretty-print
-                                       (hashtable-ref *shader-helpers*
-                                                      (cadr form) '())))
-                           (pretty-print form)))
-                     (shader-source shader)))))])
+                     (lambda (name)
+                       (printf ";; ~a\n" name)
+                       (for-each pretty-print
+                                 (hashtable-ref *shader-helpers* name '())))
+                     (inspect-helpers-used (shader-source shader))))))])
     (let loop ([chars (string->list text)] [line '()] [acc '()])
       (cond [(null? chars)
              (reverse (if (null? line) acc (cons (list->string (reverse line))

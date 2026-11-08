@@ -413,7 +413,8 @@
              (and end (> (ui-scrollbar-inset 'right) 0) (<= end room))))))
 
 (check "Monitor's Consumers say each row's type, list a row for the minute \
-        since it last ran, and a row opened stays open as its parts go quiet"
+        since it last ran, and a row opened stays open as its parts go \
+        quiet: a window not asked to draw shows its list, and only that"
        (let* ([fake (expt 10 15)]
               [busy? #t]
               [q (open-window "Quiet"
@@ -452,8 +453,11 @@
              (set! busy? #f)
              (run! 10)   ; out of the 5 s the columns sum
              (let ([quiet (member draw-part (rows))])
-               (run! 70)   ; out of the minute: only one part ran in it
-               (let ([kept (member draw-part (rows))])
+               (run! 70)   ; out of the minute: only its frame ran in it
+               (let ([kept (and (member (list subject #f 'render) (rows))
+                                (not (member draw-part (rows)))
+                                (hashtable-ref (ui-tree-states ui 'consumers)
+                                               subject #f))])
                  (close-window! q)
                  (run! 10)
                  (let ([closed (member subject (rows))])

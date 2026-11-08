@@ -225,6 +225,7 @@
   (uptr unsigned-32 uptr unsigned-32) void)
 (define-foreign sdl-push-vertex-uniform "SDL_PushGPUVertexUniformData"
   (uptr unsigned-32 uptr unsigned-32) void)
+(define-foreign sdl-set-gpu-scissor "SDL_SetGPUScissor" (uptr uptr) void)
 (define-foreign sdl-draw-primitives "SDL_DrawGPUPrimitives"
   (uptr unsigned-32 unsigned-32 unsigned-32 unsigned-32) void)
 (define-foreign sdl-push-fragment-uniform "SDL_PushGPUFragmentUniformData"

@@ -60,7 +60,7 @@ before it:
 - **The core never depends on a later layer.** It reaches them only
   through registries, parts and settings they fill, and hooks they set
   (`*profile-span*`, `*theme-saver*`, `*window-gone*`, `*app-loader*`).
-- **The core has a budget**, 27,000 tokens (atoms as read; comments,
+- **The core has a budget**, 27,500 tokens (atoms as read; comments,
   whitespace and names' lengths are free), in `tests/sources.ss`. Don't
   join lines or shorten names to fit it. Code the core doesn't need moves
   out to the next layer, kits first; the budget is raised only on purpose.

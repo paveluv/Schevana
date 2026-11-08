@@ -221,6 +221,66 @@
              (inspect-preview-free! image)
              (and (= live #xffff0000) (= kept #xff0000ff))))))
 
+;; The screen is a tree of lists; read, it's one: drawn, the same pixels,
+;; from a window drawing every kind and paint, clipped and rounded, its
+;; frame's shadow, round corners, title.
+(let ([w (open-window "Every kind"
+                      'size '(220 . 140) 'pos '(130 . 90)
+                      'draw (lambda (win cw ch)
+                              (fill-box 4 4 40 20
+                                        (stipple 'text 'bg-1 "#." ".#"))
+                              (fill-box 50 4 60 20
+                                        (linear-gradient 50 0 110 0
+                                                         'accent 'bg-1))
+                              (fill-box 4 30 40 40
+                                        (radial-gradient 24 50 20
+                                                         'accent 'bg-0))
+                              (fill-polygon '((60 . 30) (100 . 40) (70 . 70))
+                                            'accent)
+                              (draw-line 4 80 100 90 'text 2)
+                              (draw-text 4 100 "Flat" 'text 'ui)
+                              (with-clip (110 30 40 40 8)
+                                (fill-box 100 20 60 60 'accent))
+                              (invert-box 120 80 20 10)
+                              (fill-box 150 4 30 20 'accent 6)
+                              (stroke-box 150 30 30 20 'text 1 4)))])
+  (invalidate!)
+  (steps 1)
+  (let* ([l (inspect-list)]
+         [image (inspect-preview-image *canvas-pw* *canvas-ph*)])
+    (inspect-preview-list! image l (inspect-list-count l))
+    (request-frame!)
+    (steps 1)
+    (let* ([r *renderer*]
+           [flat (gpu-read-texture! r (sdl-acquire-gpu-commands
+                                       (renderer-device r))
+                                    (gpu-image-texture image)
+                                    *canvas-pw* *canvas-ph*)]
+           [tree (screen-bytes)]
+           [differ (let loop ([i 0] [n 0])
+                     (if (= i (bytevector-length tree))
+                         n
+                         (loop (+ i 4)
+                               (if (= (bytevector-u32-native-ref tree i)
+                                      (bytevector-u32-native-ref flat i))
+                                   n
+                                   (+ n 1)))))])
+      (check "the screen's lists read as a tree: a window's, at its corner, \
+              showing its content's"
+             (let ([mine (find (lambda (n)
+                                 (and (= (car n) (* *scale* (window-x w)))
+                                      (= (cadr n) (* *scale* (window-y w)))))
+                               (inspect-list-tree))])
+               (and mine (> (caddr mine) 0) (not (list-ref mine 4))
+                    (= 1 (length (list-ref mine 5))))))
+      (check (format "the screen's lists, read as one, draw its pixels: ~a \
+                      of ~a differ, in ~a records"
+                     differ (* *canvas-pw* *canvas-ph*) (inspect-list-count l))
+             (and (= differ 0) (> (inspect-list-count l) 0)))
+      (inspect-preview-free! image)
+      (close-window! w)
+      (steps 1))))
+
 (check "a list repainted: each record solid in its span's color over what it \
         covers, its runs those plain records need"
        (let* ([image (inspect-preview-image *canvas-pw* *canvas-ph*)]

@@ -337,6 +337,77 @@
   (set! *rec-cy1* (vector-ref s 9))
   (rec-run! 0 #f))
 
+;;; ---- lists
+
+;; What thunk draws, recorded into lst (gpu-list-new) in place of what it
+;; held, from its own origin, at this list's scale: then a show-list of it
+;; draws it. The list being recorded goes on after, as it was.
+(define (record-list! lst thunk)
+  (let ([outer (vector *rec-bytes* *rec-at* *rec-extras* *rec-extra-at*
+                       *rec-labels* *rec-label-at* *rec-label* *rec-runs*
+                       *rec-mode* *rec-image* *rec-variant* *rec-run-first*
+                       *rec-area* (rec-state))])
+    (dynamic-wind
+     (lambda ()
+       (set! *rec-bytes* (gpu-list-recs lst))
+       (set! *rec-at* 0)
+       (set! *rec-extras* (gpu-list-extras lst))
+       (set! *rec-extra-at* 1)
+       (set! *rec-labels* (make-vector 16 #f))
+       (set! *rec-label-at* 0)
+       (set! *rec-label* #f)
+       (set! *rec-runs* '())
+       (set! *rec-mode* 0)
+       (set! *rec-image* #f)
+       (set! *rec-variant* 0)
+       (set! *rec-run-first* 0)
+       (set! *rec-area* 0)
+       (set! *rec-ox* 0)
+       (set! *rec-oy* 0)
+       (set! *rec-turn* #f)
+       (set! *rec-clip* 0))
+     thunk
+     (lambda ()
+       (rec-run-end!)
+       (gpu-list-recs-set! lst *rec-bytes*)
+       (gpu-list-recs-n-set! lst *rec-at*)
+       (gpu-list-extras-set! lst *rec-extras*)
+       (gpu-list-extras-n-set! lst (* 4 *rec-extra-at*))
+       (gpu-list-runs-set! lst (reverse *rec-runs*))
+       (gpu-list-labels-set! lst (list->vector
+                                  (list-head (vector->list *rec-labels*)
+                                             *rec-label-at*)))
+       (gpu-list-fresh?-set! lst #t)
+       (set! *rec-bytes* (vector-ref outer 0))
+       (set! *rec-at* (vector-ref outer 1))
+       (set! *rec-extras* (vector-ref outer 2))
+       (set! *rec-extra-at* (vector-ref outer 3))
+       (set! *rec-labels* (vector-ref outer 4))
+       (set! *rec-label-at* (vector-ref outer 5))
+       (set! *rec-label* (vector-ref outer 6))
+       (set! *rec-runs* (vector-ref outer 7))
+       (set! *rec-mode* (vector-ref outer 8))
+       (set! *rec-image* (vector-ref outer 9))
+       (set! *rec-variant* (vector-ref outer 10))
+       (set! *rec-run-first* (vector-ref outer 11))
+       (set! *rec-area* (vector-ref outer 12))
+       (rec-state-set! (vector-ref outer 13))))))
+
+;; lst drawn with its origin at (x, y), inside the clip: no record, a run
+;; that shows it, and how many labels came before it, for kits/inspect.ss.
+;; Moved, only this run changes; lst isn't recorded again.
+(define (show-list lst x y)
+  (rec-run-end!)
+  (set! *rec-runs*
+    (cons (list 'show lst
+                (fxsra (rec-snap (rec-device x *rec-ox*)) 8)
+                (fxsra (rec-snap (rec-device y *rec-oy*)) 8)
+                (and (not (fx= *rec-clip* 0))
+                     (list (fxsra *rec-cx0* 8) (fxsra *rec-cy0* 8)
+                           (fxsra *rec-cx1* 8) (fxsra *rec-cy1* 8)))
+                *rec-label-at*)
+          *rec-runs*)))
+
 ;;; ---- the transform
 
 ;; v, along an axis whose origin is o, in 1/256ths of a device pixel.
@@ -763,17 +834,28 @@
                                  (pixels (clip-row-radius clip))))))))))
 
 (define (gfx-paint-source x y forms)
-  `((use-shader-helpers gfx-helpers)
-    (let* ([clip (fxsrl (rec-row-head) 8)]
-           [m (clip-coverage clip)]
-           [,x (fx- (flonum->fixnum (flfloor px)) (fxsra (rec-row-x0) 8))]
-           [,y (fx- (flonum->fixnum (flfloor py)) (fxsra (rec-row-y0) 8))]
-           [c (let () ,@forms)]
-           [a (fl* m (channel c 24))])
-      (emit-color (fl* a (channel c 16))
-                  (fl* a (channel c 8))
-                  (fl* a (channel c 0))
-                  a))))
+  ;; the pixel in the list's own terms
+  `((let ([px (fl- px (fixnum->flonum list-ox))]
+          [py (fl- py (fixnum->flonum list-oy))])
+      (use-shader-helpers gfx-helpers)
+      (let* ([clip (fxsrl (rec-row-head) 8)]
+             [m (clip-coverage clip)]
+             [,x (fx- (flonum->fixnum (flfloor px)) (fxsra (rec-row-x0) 8))]
+             [,y (fx- (flonum->fixnum (flfloor py)) (fxsra (rec-row-y0) 8))]
+             [c (let () ,@forms)]
+             [a (fl* m (channel c 24))])
+        (emit-color (fl* a (channel c 16))
+                    (fl* a (channel c 8))
+                    (fl* a (channel c 0))
+                    a)))))
+
+;; What every paint is handed first: its list's records and extras, and
+;; where the list is on the target, which the frame fills in.
+(define gfx-paint-hidden
+  '((records fx-buffer)
+    (extras fx-buffer)
+    (list-ox fixnum)
+    (list-oy fixnum)))
 
 (define-syntax define-paint
   (lambda (x)
@@ -789,9 +871,7 @@
               [source (gfx-paint-source (datum x) (datum y)
                                         (datum (form ...)))]
               [compiled (shader-compile 'fragment '(px py id)
-                                        (append '((records fx-buffer)
-                                                  (extras fx-buffer))
-                                                plain)
+                                        (append gfx-paint-hidden plain)
                                         source)])
          (with-syntax ([code (datum->syntax #'k (car compiled))]
                        [price (datum->syntax #'k (cdr compiled))]
@@ -800,9 +880,7 @@
            #'(define name
                (make-gfx-paint
                 (make-shader 'name 'fragment '(px py id)
-                             (append '((records fx-buffer)
-                                       (extras fx-buffer))
-                                     'plain)
+                             (append gfx-paint-hidden 'plain)
                              'source 'code price)
                 'params))))])))
 
@@ -811,7 +889,7 @@
 (define (fill-shader x y w h paint . args)
   (let ([params (gfx-paint-params paint)])
     (rec-run! 0 (gpu-make-call
-                 (gfx-paint-shader paint) '()
+                 (gfx-paint-shader paint) '(0 0)
                  (map (lambda (p)
                         (if (eq? (cadr p) 'color) (list (car p) 'fixnum) p))
                       params)
@@ -969,7 +1047,9 @@
    [glyphs fx-buffer]
    [tw flonum]
    [th flonum]
-   [first fixnum])
+   [first fixnum]
+   [ox fixnum]     ; where the list's origin is on the target: a list shown
+   [oy fixnum])    ; by another is drawn where that one puts it
   (define (whole n) (fixnum->flonum n))
   (let ([id (fx+ i first)])
     (use-shader-helpers gfx-helpers)
@@ -1029,8 +1109,8 @@
                                y1)))]
            [px (if (or (fx= v 1) (fx= v 3) (fx= v 5)) right left)]
            [py (if (or (fx= v 2) (fx= v 4) (fx= v 5)) bottom top)])
-      (emit-position (fl- (fl/ (fl* 2.0 px) tw) 1.0)
-                     (fl- 1.0 (fl/ (fl* 2.0 py) th))
+      (emit-position (fl- (fl/ (fl* 2.0 (fl+ px (whole ox))) tw) 1.0)
+                     (fl- 1.0 (fl/ (fl* 2.0 (fl+ py (whole oy))) th))
                      id))))
 
 ;; How a record colors a pixel, with features or without: lines? (segments
@@ -1192,10 +1272,13 @@
            [low (if (fx>= low stops) (fx- stops 1) low)]
            [low (if (fx< low 0) 0 low)]
            [between (fl- place (fixnum->flonum low))]
-           ;; less than a level either way, by the pixel: a slow gradient would
-           ;; show its 8-bit steps as bands (interleaved gradient noise)
+           ;; less than a level either way, by the screen's pixel: a slow
+           ;; gradient would show its 8-bit steps as bands (interleaved
+           ;; gradient noise)
            [dither (if gradient?
-                       (let* ([v (fl+ (fl* 0.06711056 px) (fl* 0.00583715 py))]
+                       (let* ([sx (fl+ px (fixnum->flonum ox))]
+                              [sy (fl+ py (fixnum->flonum oy))]
+                              [v (fl+ (fl* 0.06711056 sx) (fl* 0.00583715 sy))]
                               [f (fl* 52.9829189 (fl- v (flfloor v)))])
                          (fl* (fl- (fl- f (flfloor f)) 0.5)
                               0.00392156862745098))
@@ -1208,8 +1291,9 @@
                        [tw (stipple-row-w w1)]
                        [th (stipple-row-h w1)])
                   (if (fl> (texture-ref atlas
-                                        (fx+ tu (fxmod ipx tw))
-                                        (fx+ tv (fxmod ipy th))
+                                        ;; from the screen's origin
+                                        (fx+ tu (fxmod (fx+ ipx ox) tw))
+                                        (fx+ tv (fxmod (fx+ ipy oy) th))
                                         0)
                            0.5)
                       (stipple-row-ink w1)
@@ -1287,10 +1371,15 @@
         [image texture]
         [records fx-buffer]
         [extras fx-buffer]
-        [glyphs fx-buffer])
-       (use-shader-helpers gfx-helpers)
-       (use-shader-helpers gfx-coloring)
-       (pixel-color lines? shadows? gradients? stipples? images?))]))
+        [glyphs fx-buffer]
+        [ox fixnum]
+        [oy fixnum])
+       ;; the pixel in the list's own terms
+       (let ([px (fl- px (fixnum->flonum ox))]
+             [py (fl- py (fixnum->flonum oy))])
+         (use-shader-helpers gfx-helpers)
+         (use-shader-helpers gfx-coloring)
+         (pixel-color lines? shadows? gradients? stipples? images?)))]))
 
 ;; What draws a run, by what its records need (rec-variant): boxes and glyphs
 ;; in a solid color, and with them lines, shadows, gradients, stipples or an
@@ -1340,23 +1429,22 @@
   (when *rec-past*
     (apply gpu-list-on-image! *rec-past*)
     (set! *rec-past* #f))
-  (let ([table (rec-take-table!)]
-        [pieces (rec-take-atlas-pieces!)]
-        [runs (reverse *rec-runs*)]
-        [preview *rec-preview*])
+  (let ([preview *rec-preview*])
     (set! *rec-preview* #f)
-    (gpu-frame! *rec-bytes* *rec-at* *rec-extras* (* 4 *rec-extra-at*)
-                table (rec-table-bytes) pieces *rec-images* runs
-                (and preview
-                     (cons (car preview)
-                           (guard (c [#t (report-error! 'preview c) '()])
-                             ((cdr preview) runs)))))))
+    (when preview
+      (let ([kept (guard (c [#t (report-error! 'preview c) #f])
+                    ((cdr preview)))])
+        (when kept (apply gpu-list-on-image! (car preview) kept)))))
+  (gpu-frame! *rec-bytes* *rec-at* *rec-extras* (* 4 *rec-extra-at*)
+              (rec-take-table!) (rec-table-bytes) (rec-take-atlas-pieces!)
+              *rec-images* (reverse *rec-runs*)))
 
-;; With the next frame, its records drawn on image too, as big as the screen,
-;; for the Pipeline: the runs (runs-of runs) gives of the frame's runs, a cut
-;; of them, which can't show image.
+;; With the next frame, a list drawn on image too, as big as the screen, for
+;; the Pipeline: what (list-of) gives as it's sent, made of the frame just
+;; recorded, (recs recs-n extras extras-n runs), which can't show image; or
+;; #f for none.
 (defvar *rec-preview* #f)
-(define (rec-preview! image runs-of) (set! *rec-preview* (cons image runs-of)))
+(define (rec-preview! image list-of) (set! *rec-preview* (cons image list-of)))
 
 ;; Ahead of the next frame, a list kept from earlier drawn on image: (image recs
 ;; recs-n extras extras-n runs), its images and paints as they are now.

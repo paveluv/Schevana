@@ -693,6 +693,7 @@
                         (set! n 0)
                         (fluid-let ([draw-resize-grip
                                      (lambda (x y) (set! n (+ n 1)))])
+                          (invalidate!)   ; windows keep what they drew
                           (screen-bytes))
                         n)])
            (let* ([open (count)] [shaded (begin (shade-window! w) (count))])

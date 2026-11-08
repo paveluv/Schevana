@@ -66,17 +66,20 @@
 ;;; ------------------------------------------------------------------
 ;;; invalidation
 ;;; A change says that the screen may now look different, in *dirty*: the
-;;; next frame records everything from scratch and draws it all, so nothing
-;;; is assumed about what a drawing procedure does.
+;;; next frame records the screen's surfaces again and draws it all. A
+;;; window keeps what it drew, as a list, and draws again only when it
+;;; opens or resizes, when what its frame is drawn with changes (its
+;;; focus, the part under the mouse or held, its title, state or error),
+;;; after it handles input, and when it's asked to:
 ;;;
-;;;   (invalidate!)       anything may have changed
+;;;   (invalidate!)       anything may have changed: every window draws
 ;;;   (invalidate! win)   win may have (input to a window says so by itself)
-;;;   (invalidate! win x y w h), (request-frame! x y w h)   a part of it
+;;;   (invalidate! win x y w h)   a part of it
+;;;   (request-frame!), (request-frame! x y w h)   only where things are
 ;;;
 ;;; A window that changes by itself over time (a clock, an animation) says
-;;; so with invalidate!. Of the rest, only the top bar, with its status
-;;; segments, asks for itself once a second (its surface's tick,
-;;; desktop/topbar.ss).
+;;; so with invalidate!. A window moved or raised isn't drawn again: the
+;;; screen shows its list somewhere else.
 
 ;; the window whose handler is running
 (defvar current-window (make-thread-parameter #f))
@@ -89,11 +92,19 @@
     [() (set! *dirty* #t)]
     [(x y w h) (when (and (> w 0) (> h 0)) (set! *dirty* #t))]))
 
+;; Each (invalidate!) is a new generation, and each (invalidate! win) a new
+;; ask of win's: a list of win's drawn before either is drawn again. Asked
+;; while it draws, it draws again the next frame.
+(defvar *wm-generation* 0)
+
 (define invalidate!
   (case-lambda
-    [() (request-frame!)]
-    [(win) (request-frame!)]
-    [(win x y w h) (request-frame!)]))
+    [() (set! *wm-generation* (+ *wm-generation* 1)) (request-frame!)]
+    [(win) (when win
+             (hashtable-update! (window-props win) 'wm-asked
+                                (lambda (n) (+ n 1)) 0))
+           (request-frame!)]
+    [(win x y w h) (invalidate! win)]))
 
 ;; A window's shadow, for its style: the theme key 'shadow, half unfocused;
 ;; a maximized window has none.
@@ -495,6 +506,7 @@
     (for-each close-window! (window-owned win))
     (window-call win 'close)
     (set! *windows* (remq win *windows*))
+    (window-lists-release! win)
     (*window-gone* win)
     (when (and *drag* (eq? (drag-win *drag*) win))
       (set! *drag* #f)
@@ -527,7 +539,8 @@
     (window-h-set! win h)
     (when resized? (window-call win 'resize (- w l r) (- h t b)))
     (request-frame! ox oy ow oh)
-    (invalidate! win)))
+    ;; moved, it isn't drawn again: the screen shows its list elsewhere
+    (if resized? (invalidate! win) (request-frame!))))
 
 (define (move-window! win x y)
   (set-geometry! win x y (window-w win) (window-h win)))
@@ -985,12 +998,60 @@
           (let-values ([(cx cy cw ch) (content-rect win)])
             (with-clip (x y w h (frame-radius win))
               (with-clip (cx cy cw ch)
-                (with-translation (cx cy)
-                  (fill-box 0 0 cw ch (window-bg win))
-                  (if (window-error win)
-                      ((theme-part 'draw-crash-panel) win cw ch)
-                      (window-call win 'draw cw ch)))))))
+                (show-list (window-content-list win x y w h cx cy cw ch)
+                           cx cy)))))
         ((theme-part 'frame-over) win x y w h focused? hover pressed)))))
+
+;; win's content, as a list from the content's corner, drawn again when win
+;; is asked to draw, or when its size, the scale or its error changes; inside
+;; the window's rounded box, which a style may cut its corners with.
+(define (window-content-list win x y w h cx cy cw ch)
+  (let ([l (window-list win 'wm-content-list)]
+        [key (list *wm-generation* (window-ref win 'wm-asked 0) (draw-scale)
+                   (- x cx) (- y cy) w h cw ch (window-error win))])
+    (unless (equal? key (window-ref win 'wm-content-key))
+      (hashtable-set! (window-props win) 'wm-content-key key)
+      (record-list! l
+        (lambda ()
+          (with-clip ((- x cx) (- y cy) w h (frame-radius win))
+            (with-clip (0 0 cw ch)
+              (fill-box 0 0 cw ch (window-bg win))
+              (if (window-error win)
+                  ((theme-part 'draw-crash-panel) win cw ch)
+                  (window-call win 'draw cw ch)))))))
+    l))
+
+;; One of win's lists, by name, made the first time.
+(define (window-list win name)
+  (or (window-ref win name)
+      (let ([l (gpu-list-new)])
+        (hashtable-set! (window-props win) name l)
+        l)))
+
+;; win as a list from its corner: draw-window's, drawn again when win is
+;; asked to draw or what its frame is drawn with changes; moved, it isn't.
+(define (window-whole-list win)
+  (let ([l (window-list win 'wm-list)]
+        [key (list *wm-generation* (window-ref win 'wm-asked 0) (draw-scale)
+                   (eq? win *focus*) (window-hover win) (window-pressed win)
+                   (window-w win) (window-h win) (window-title win)
+                   (window-state win) (window-error win))])
+    (unless (equal? key (window-ref win 'wm-list-key))
+      (hashtable-set! (window-props win) 'wm-list-key key)
+      (record-list! l
+        (lambda ()
+          (with-translation ((- (window-x win)) (- (window-y win)))
+            (draw-window win)))))
+    l))
+
+;; Its lists let go of, on the GPU too.
+(define (window-lists-release! win)
+  (for-each (lambda (name)
+              (let ([l (window-ref win name)])
+                (when l
+                  (gpu-list-release! l)
+                  (hashtable-delete! (window-props win) name))))
+            '(wm-list wm-content-list)))
 
 ;; the last frame's time: its work, not its wait for the screen
 (defvar *frame-ms* 0.0)
@@ -1015,8 +1076,10 @@
                                (lambda ()
                                  (with-profile-span (window-id w) #f
                                    (let-values ([(x y ew eh) (window-extent w)])
-                                     (with-clip (x y ew eh)
-                                       (draw-window w)))))))))
+                                     (let ([l (window-whole-list w)])
+                                       (with-clip (x y ew eh)
+                                         (show-list l (window-x w)
+                                                    (window-y w)))))))))))
                 (reverse *windows*))
       (for-each draw (filter over-windows? *surfaces*)))))
 

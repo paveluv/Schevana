@@ -354,7 +354,10 @@
       (lambda ()
         (fill-box 0 0 n n #x000000)
         (do ([x 0 (+ x 2)]) ((>= x n)) (fill-box x 0 1 n #xffffff))))
-    (rec-preview! target (lambda (runs) runs))
+    (rec-preview! target
+                  (lambda ()
+                    (list *rec-bytes* *rec-at* *rec-extras*
+                          (* 4 *rec-extra-at*) (reverse *rec-runs*))))
     (request-frame!)
     (steps 1)
     (set! record-world! plain)
@@ -397,6 +400,37 @@
          (for-all even? '(32 20 13 8 5)))
   (gpu-image-release! stripes))
 
+;; A list recorded once and shown: where show-list puts it, inside the
+;; clip around it, shown again elsewhere without being recorded again, and
+;; inside another list, at the sum of their places.
+(let* ([inner (gpu-list-new)] [outer (gpu-list-new)]
+       [red #xffff0000] [black #xff000000]
+       [shown (lambda (thunk . points)
+                (apply pixels-of 40 30 1
+                       (lambda () (fill-box 0 0 40 30 #x000000) (thunk))
+                       points))]
+       [first (shown (lambda ()
+                       (record-list! inner
+                                     (lambda () (fill-box 0 0 4 2 #xff0000)))
+                       (show-list inner 10 10)
+                       (with-clip (20 0 2 30) (show-list inner 20 20)))
+                     '(10 10) '(13 11) '(14 10) '(10 12) '(21 20) '(22 20))]
+       [moved (shown (lambda () (show-list inner 2 3))
+                     '(2 3) '(5 4) '(10 10))]
+       [nested (shown (lambda ()
+                        (record-list! outer (lambda () (show-list inner 5 5)))
+                        (show-list outer 10 10))
+                      '(15 15) '(14 15) '(19 15))])
+  (check (format "a list shows where show-list puts it, inside the clip \
+                  around it (~s); shown again, not recorded again (~s); \
+                  in a list shown, at the sum of their places (~s)"
+                 first moved nested)
+         (and (equal? first (list red red black black red black))
+              (equal? moved (list red red black))
+              (equal? nested (list red black black))))
+  (gpu-list-release! inner)
+  (gpu-list-release! outer))
+
 ;; Given 'gray an image's first channel shows in all three, as the glyphs'
 ;; atlas of one channel does in the Pipeline.
 (let ([target (gpu-image-make-target 4 4)] [plain record-world!])
@@ -405,7 +439,10 @@
       (fill-box 0 0 4 4 #x0000ff)
       (fill-box 0 0 1 4 #xff0000)
       (fill-box 2 0 1 4 #xff4000)))
-  (rec-preview! target (lambda (runs) runs))
+  (rec-preview! target
+                  (lambda ()
+                    (list *rec-bytes* *rec-at* *rec-extras*
+                          (* 4 *rec-extra-at*) (reverse *rec-runs*))))
   (request-frame!)
   (steps 1)
   (set! record-world! plain)

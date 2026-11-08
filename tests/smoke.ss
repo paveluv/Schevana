@@ -3772,7 +3772,8 @@
   (close-window! w))
 
 ;; Steps that nothing asked a frame of draw nothing. The frame the clock
-;; asks for once a second, and (invalidate!), draw every window once.
+;; asks for once a second draws no window, which keeps what it drew;
+;; (invalidate!) draws every window once.
 (let* ([a (plain-window "One" 100 100)] [b (plain-window "Two" 420 160)]
        [na (count-draws! a)] [nb (count-draws! b)])
   (steps 2)
@@ -3780,10 +3781,9 @@
     (let loop ([n 0] [forced 0])
       (if (< (- (now-ms) t0) 1100)
           (loop (+ n 1) (if (step-drew?) (+ forced 1) forced))
-          (check (format "idle steps draw nothing; a forced frame draws every \
-                          window once (~a steps, ~a forced)" n forced)
-                 (and (> n 3) (<= 1 forced 2) (= (- (na) a0) forced)
-                      (= (- (nb) b0) forced))))))
+          (check (format "idle steps draw nothing; a frame the clock asks \
+                          for draws no window (~a steps, ~a forced)" n forced)
+                 (and (> n 3) (<= 1 forced 2) (= (na) a0) (= (nb) b0))))))
   (with-quiet-status
    (lambda ()
      (invalidate!)
@@ -4094,16 +4094,17 @@
       (steps 2)))
   (close-window! s))
 
-;; A drawing procedure redefined at the REPL draws the next frame; so does
-;; the original, put back.
+;; A drawing procedure redefined at the REPL draws the next frame its
+;; window is drawn in (the REPL invalidates all when it's done); so does the
+;; original, put back.
 (let ([w (plain-window "Plain" 300 200)] [orig draw-window] [calls 0])
   (steps 2)
   (set! draw-window (lambda (win) (set! calls (+ calls 1)) (orig win)))
-  (request-frame!)
+  (invalidate!)
   (steps 1)
   (let ([n calls])
     (set! draw-window orig)
-    (request-frame!)
+    (invalidate!)
     (steps 1)
     (check (format "a redefined draw-window draws the next frame \
                     (~a windows), the one put back the frame after" n)
@@ -4230,7 +4231,8 @@
 (set! *styles*
   (remp (lambda (s) (eq? (style-name s) 'broken)) *styles*))
 
-;; Life's cells take a theme change made behind set-theme!'s back.
+;; Life's cells take a theme change made behind set-theme!'s back, once
+;; asked to draw (set-theme! asks every window).
 (let ([l (life)] [green (theme 'green)] [cyan (theme 'cyan)])
   (window-call l 'key #\space '())   ; paused
   (move-window! l 100 60)
@@ -4244,7 +4246,7 @@
                 [(old) (canvas-pixels grid (color->pixel green))])
     (hashtable-set! *theme* 'green #xff00ff)
     (hashtable-set! *theme* 'cyan #xff00ff)
-    (request-frame!)
+    (invalidate!)
     (steps 2)
     (let ([stale (canvas-pixels grid (color->pixel green))]
           [new (canvas-pixels grid (color->pixel #xff00ff))])

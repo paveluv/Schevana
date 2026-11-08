@@ -146,12 +146,15 @@
                    [pad2 unsigned-8] [pad3 unsigned-8])))
 (gpu-struct gpu-sampler-bindings gpu-sampler-bindings* 672
   (array 2 (struct [texture void*] [sampler void*])))
-;; The vertex shader's uniforms; the fragment shader's are the last three,
-;; the list's buffers' lengths in words, which go as bytes (gpu-list-words).
+;; The vertex shader's uniforms; the fragment shader's are the last five,
+;; where the list is on the target and its buffers' lengths in words, which
+;; go as bytes (gpu-list-words).
 (gpu-struct gpu-frame-uniforms gpu-frame-uniforms* 1040
-  (struct [w float] [h float] [first int]
+  (struct [w float] [h float] [first int] [ox int] [oy int]
           [records int] [extras int] [glyphs int]))
-(define gpu-list-words (make-bytevector 12 0))
+(define gpu-list-words (make-bytevector 20 0))
+(gpu-struct gpu-scissor gpu-scissor* 1072
+  (struct [x int] [y int] [w int] [h int]))
 (gpu-struct gpu-swapchain-out gpu-swapchain-out* 720
   (struct [texture void*] [w unsigned-32] [h unsigned-32]))
 (gpu-struct gpu-fence-list gpu-fence-list* 736
@@ -514,6 +517,46 @@
   (nongenerative schevana-gpu-call-1)
   (fields shader uniforms buffers))
 
+;; A list kept to be shown by another: its records and extras, as bytes, and
+;; how many of them; its runs, and the labels the recorder gave it; fresh?
+;; until they've gone up, into GPU buffers of its own, (buffer . size) each.
+(define-record-type gpu-list
+  (nongenerative schevana-gpu-list-1)
+  (fields (mutable recs) (mutable recs-n) (mutable extras) (mutable extras-n)
+          (mutable runs) (mutable labels) (mutable fresh?)
+          (mutable records-on-gpu) (mutable extras-on-gpu)))
+
+(define (gpu-list-new)
+  (make-gpu-list (make-immobile-bytevector 1024) 0
+                 (make-immobile-bytevector 256) 4 '() '() #f
+                 (cons 0 0) (cons 0 0)))
+
+;; Its GPU buffers let go of: shown again, it goes up again.
+(define (gpu-list-release! l)
+  (for-each (lambda (pair)
+              (unless (eqv? 0 (car pair))
+                (sdl-release-gpu-buffer (renderer-device *renderer*)
+                                        (car pair))))
+            (list (gpu-list-records-on-gpu l) (gpu-list-extras-on-gpu l)))
+  (gpu-list-records-on-gpu-set! l (cons 0 0))
+  (gpu-list-extras-on-gpu-set! l (cons 0 0))
+  (gpu-list-fresh?-set! l #t))
+
+;; A run that shows a list: (show list ox oy clip labels), at (ox, oy) in
+;; device pixels from its own list's origin, inside clip, (x0 y0 x1 y1)
+;; there, or #f for none; labels, the recorder's, before it.
+(define (gpu-show-run? run) (eq? (car run) 'show))
+
+;; The lists runs show, those they show too, with no list twice.
+(define (gpu-shown-lists runs)
+  (let loop ([runs runs] [acc '()])
+    (cond [(null? runs) acc]
+          [(and (gpu-show-run? (car runs))
+                (not (memq (cadar runs) acc)))
+           (loop (cdr runs)
+                 (loop (gpu-list-runs (cadar runs)) (cons (cadar runs) acc)))]
+          [else (loop (cdr runs) acc)])))
+
 ;; Does a run, (mode image first count variant), show an image or a paint's
 ;; buffer let go of since it was drawn? A list kept draws without it.
 (define (gpu-run-gone? run)
@@ -763,11 +806,17 @@
 ;; the glyph table if it changed, new atlas pieces ((u v w h bytes) ...),
 ;; and images' new pixels. All through one transfer buffer, mapped once.
 (define (gpu-upload! r cb recs recs-n extras extras-n table table-n
-                     atlas-pieces images)
+                     atlas-pieces images runs)
   (gpu-upload-buffers! r cb)
   (let* ([piece-n (lambda (p) (bytevector-length (car (cddddr p))))]
          [image-n (lambda (i) (bytevector-length (gpu-image-pending i)))]
+         ;; the lists it shows that changed since they went up
+         [lists (filter gpu-list-fresh? (gpu-shown-lists runs))]
          [total (+ recs-n extras-n (if table table-n 0)
+                   (fold-left (lambda (n l)
+                                (+ n 8 (gpu-list-recs-n l)
+                                   (gpu-list-extras-n l)))
+                              0 lists)
                    (fold-left (lambda (n p) (+ n 3 (piece-n p))) 0 atlas-pieces)
                    (fold-left (lambda (n i) (+ n 3 (image-n i))) 0 images))]
          [transfer (car (gpu-sized-transfer r (max total 16)))]
@@ -788,7 +837,12 @@
            [piece-ats (map (lambda (p) (put! (car (cddddr p)) (piece-n p)))
                            atlas-pieces)]
            [image-ats (map (lambda (i) (put! (gpu-image-pending i) (image-n i)))
-                           images)])
+                           images)]
+           [list-ats (map (lambda (l)
+                            (cons (put! (gpu-list-recs l) (gpu-list-recs-n l))
+                                  (put! (gpu-list-extras l)
+                                        (gpu-list-extras-n l))))
+                          lists)])
       (sdl-unmap-gpu-transfer (renderer-device r) transfer)
       (let ([pass (sdl-begin-copy-pass cb)])
         (define (to-buffer! pair off n)
@@ -827,6 +881,18 @@
           (to-buffer! extras-b extras-at extras-n)
           (when table-at (to-buffer! table-b table-at table-n)))
         (for-each
+         (lambda (l at)
+           (let ([recs-b (gpu-sized-buffer r (gpu-list-records-on-gpu l)
+                                           (max (gpu-list-recs-n l) 32))]
+                 [extras-b (gpu-sized-buffer r (gpu-list-extras-on-gpu l)
+                                             (max (gpu-list-extras-n l) 32))])
+             (gpu-list-records-on-gpu-set! l recs-b)
+             (gpu-list-extras-on-gpu-set! l extras-b)
+             (to-buffer! recs-b (car at) (gpu-list-recs-n l))
+             (to-buffer! extras-b (cdr at) (gpu-list-extras-n l))
+             (gpu-list-fresh?-set! l #f)))
+         lists list-ats)
+        (for-each
          (lambda (p off)
            (to-texture! (renderer-atlas r) off (car p) (cadr p) (caddr p)
                         (cadddr p)))
@@ -840,96 +906,134 @@
         (sdl-end-copy-pass pass)))))
 
 ;; Draws the runs, ((mode image first count variant) ...), to target, w × h,
-;; cleared to black, or to nothing if clear?.
+;; cleared to black, or to nothing if clear?. A run that shows a list draws
+;; its runs, from its buffers, where it puts it and inside its clip.
 (define (gpu-draw-runs! r cb target format w h runs clear?)
   (let ([pipelines (gpu-pipelines-for format)]
         [c gpu-color-target*]
         [buffers gpu-storage-buffers*]
         [samplers gpu-sampler-bindings*]
-        [uniforms gpu-frame-uniforms*])
+        [uniforms gpu-frame-uniforms*]
+        [box gpu-scissor*])
     (gpu-zero! c (ftype-sizeof gpu-color-target))
     (ftype-set! gpu-color-target (texture) c target)
     (ftype-set! gpu-color-target (a) c (if clear? 0.0 1.0))
     (ftype-set! gpu-color-target (load-op) c gpu-load-clear)
     (let ([pass (gpu-must 'gpu-draw-runs!
                           (sdl-begin-render-pass cb (gpu-at c) 1 0))])
-      (ftype-set! gpu-storage-buffers (0) buffers (car (renderer-records r)))
-      (ftype-set! gpu-storage-buffers (1) buffers (car (renderer-extras r)))
-      (ftype-set! gpu-storage-buffers (2) buffers (car (renderer-glyphs r)))
+      (define (word! i v) (bytevector-s32-native-set! gpu-list-words (* 4 i) v))
+      (define (scissor! clip)
+        (ftype-set! gpu-scissor (x) box (car clip))
+        (ftype-set! gpu-scissor (y) box (cadr clip))
+        (ftype-set! gpu-scissor (w) box (max 0 (- (caddr clip) (car clip))))
+        (ftype-set! gpu-scissor (h) box (max 0 (- (cadddr clip) (cadr clip))))
+        (sdl-set-gpu-scissor pass (gpu-at box)))
+      ;; a list's: its buffers, where it is, its lengths
+      (define (list! recs extras ox oy)
+        (ftype-set! gpu-storage-buffers (0) buffers (car recs))
+        (ftype-set! gpu-storage-buffers (1) buffers (car extras))
+        (ftype-set! gpu-storage-buffers (2) buffers (car (renderer-glyphs r)))
+        (word! 0 ox)
+        (word! 1 oy)
+        (word! 2 (fxquotient (cdr recs) 4))
+        (word! 3 (fxquotient (cdr extras) 4))
+        (word! 4 (fxquotient (cdr (renderer-glyphs r)) 4))
+        (ftype-set! gpu-frame-uniforms (ox) uniforms ox)
+        (ftype-set! gpu-frame-uniforms (oy) uniforms oy)
+        (ftype-set! gpu-frame-uniforms (records) uniforms
+                    (fxquotient (cdr recs) 4))
+        (ftype-set! gpu-frame-uniforms (extras) uniforms
+                    (fxquotient (cdr extras) 4))
+        (ftype-set! gpu-frame-uniforms (glyphs) uniforms
+                    (fxquotient (cdr (renderer-glyphs r)) 4)))
+      (define (draw! runs recs extras ox oy clip)
+        (list! recs extras ox oy)
+        (let loop ([runs runs] [bound #f])   ; the pipeline bound, or #f
+          (unless (null? runs)
+            (let ([run (car runs)])
+              (if (gpu-show-run? run)
+                  (let* ([l (cadr run)]
+                         [lx (+ ox (caddr run))]
+                         [ly (+ oy (cadddr run))]
+                         [own (list-ref run 4)]
+                         [inner (if own
+                                    (list (max (car clip) (+ ox (car own)))
+                                          (max (cadr clip) (+ oy (cadr own)))
+                                          (min (caddr clip) (+ ox (caddr own)))
+                                          (min (cadddr clip)
+                                               (+ oy (cadddr own))))
+                                    clip)])
+                    (unless (or (null? (gpu-list-runs l))
+                                (eqv? 0 (car (gpu-list-records-on-gpu l))))
+                      (scissor! inner)
+                      (draw! (gpu-list-runs l) (gpu-list-records-on-gpu l)
+                             (gpu-list-extras-on-gpu l) lx ly inner)
+                      (scissor! clip)
+                      (list! recs extras ox oy))
+                    (loop (cdr runs) #f))
+                  (let* ([run-mode (car run)]
+                         [image (cadr run)]
+                         [first (caddr run)]
+                         [count (cadddr run)]
+                         [call (and (gpu-call? image) image)]
+                         [pipeline (+ run-mode (* 4 (list-ref run 4)))])
+                    (when (> count 0)
+                      (ftype-set! gpu-frame-uniforms (first) uniforms first)
+                      (cond
+                        [call (gpu-draw-call! r cb pass call format)]
+                        [else
+                         (unless (eqv? pipeline bound)
+                           (sdl-bind-gpu-pipeline
+                            pass (vector-ref pipelines pipeline))
+                           (sdl-bind-vertex-storage pass 0 (gpu-at buffers) 3)
+                           (sdl-bind-fragment-storage pass 0 (gpu-at buffers)
+                                                      3))
+                         (ftype-set! gpu-sampler-bindings (1 texture) samplers
+                                     (if image
+                                         (gpu-image-texture image)
+                                         (renderer-blank r)))
+                         (sdl-bind-fragment-samplers pass 0 (gpu-at samplers)
+                                                     2)
+                         (sdl-push-fragment-uniform cb 0 gpu-list-words 20)])
+                      (sdl-push-vertex-uniform cb 0 (gpu-at uniforms)
+                                               (ftype-sizeof
+                                                gpu-frame-uniforms))
+                      (sdl-draw-primitives pass 6 count 0 0))
+                    (loop (cdr runs)
+                          (cond [call #f]
+                                [(> count 0) pipeline]
+                                [else bound]))))))))
       (ftype-set! gpu-frame-uniforms (w) uniforms (inexact w))
       (ftype-set! gpu-frame-uniforms (h) uniforms (inexact h))
-      (for-each (lambda (pair i)
-                  (bytevector-s32-native-set! gpu-list-words (* 4 i)
-                                              (fxquotient (cdr pair) 4)))
-                (list (renderer-records r) (renderer-extras r)
-                      (renderer-glyphs r))
-                '(0 1 2))
-      (ftype-set! gpu-frame-uniforms (records) uniforms
-                  (bytevector-s32-native-ref gpu-list-words 0))
-      (ftype-set! gpu-frame-uniforms (extras) uniforms
-                  (bytevector-s32-native-ref gpu-list-words 4))
-      (ftype-set! gpu-frame-uniforms (glyphs) uniforms
-                  (bytevector-s32-native-ref gpu-list-words 8))
       (ftype-set! gpu-sampler-bindings (0 texture) samplers (renderer-atlas r))
       (ftype-set! gpu-sampler-bindings (0 sampler) samplers
                   (renderer-sampler r))
       (ftype-set! gpu-sampler-bindings (1 sampler) samplers
                   (renderer-sampler r))
-      (let loop ([runs runs] [bound #f])   ; the pipeline bound, or #f
-        (unless (null? runs)
-          (let* ([run (car runs)]
-                 [run-mode (car run)]
-                 [image (cadr run)]
-                 [first (caddr run)]
-                 [count (cadddr run)]
-                 [call (and (gpu-call? image) image)]
-                 [pipeline (+ run-mode (* 4 (list-ref run 4)))])
-            (when (> count 0)
-              (ftype-set! gpu-frame-uniforms (first) uniforms first)
-              (cond
-                [call
-                 (sdl-bind-gpu-pipeline
-                  pass (gpu-paint-pipeline (gpu-call-shader call) format))
-                 (sdl-bind-vertex-storage pass 0 (gpu-at buffers) 3)
-                 ;; a paint's: the list's, then its own
-                 (let ([own (map gpu-buffer-id (gpu-call-buffers call))])
-                   (for-each (lambda (id i)
-                               (ftype-set! gpu-storage-buffers (i) buffers id))
-                             own (map (lambda (i) (+ i 2))
-                                      (iota (length own))))
-                   (sdl-bind-fragment-storage pass 0 (gpu-at buffers)
-                                              (+ 2 (length own))))
-                 (ftype-set! gpu-storage-buffers (2) buffers
-                             (car (renderer-glyphs r)))
-                 ;; the list's lengths, its records' and extras', come first
-                 ;; of the paint's buffers'
-                 (let ([u (gpu-call-uniforms call)])
-                   (bytevector-copy! gpu-list-words 0 u
-                                     (- (bytevector-length u)
-                                        (* 4 (gpu-count-params
-                                              (gpu-call-shader call)
-                                              '(fx-buffer fl-buffer))))
-                                     8)
-                   (sdl-push-fragment-uniform cb 0 u (bytevector-length u)))]
-                [else
-                 (unless (eqv? pipeline bound)
-                   (sdl-bind-gpu-pipeline pass (vector-ref pipelines pipeline))
-                   (sdl-bind-vertex-storage pass 0 (gpu-at buffers) 3)
-                   (sdl-bind-fragment-storage pass 0 (gpu-at buffers) 3))
-                 (ftype-set! gpu-sampler-bindings (1 texture) samplers
-                             (if image
-                                 (gpu-image-texture image)
-                                 (renderer-blank r)))
-                 (sdl-bind-fragment-samplers pass 0 (gpu-at samplers) 2)
-                 (sdl-push-fragment-uniform cb 0 gpu-list-words 12)])
-              (sdl-push-vertex-uniform cb 0 (gpu-at uniforms)
-                                       (ftype-sizeof gpu-frame-uniforms))
-              (sdl-draw-primitives pass 6 count 0 0))
-            (loop (cdr runs)
-                  (cond [call #f]
-                        [(> count 0) pipeline]
-                        [else bound])))))
+      (draw! runs (renderer-records r) (renderer-extras r) 0 0 (list 0 0 w h))
       (sdl-end-render-pass pass))))
+
+;; A paint's run: its pipeline, the list's buffers then its own, and its
+;; uniforms, where the list is first and the list's lengths first of its
+;; buffers'.
+(define (gpu-draw-call! r cb pass call format)
+  (let ([buffers gpu-storage-buffers*]
+        [own (map gpu-buffer-id (gpu-call-buffers call))]
+        [u (gpu-call-uniforms call)])
+    (sdl-bind-gpu-pipeline pass (gpu-paint-pipeline (gpu-call-shader call)
+                                                    format))
+    (sdl-bind-vertex-storage pass 0 (gpu-at buffers) 3)
+    (for-each (lambda (id i) (ftype-set! gpu-storage-buffers (i) buffers id))
+              own (map (lambda (i) (+ i 2)) (iota (length own))))
+    (sdl-bind-fragment-storage pass 0 (gpu-at buffers) (+ 2 (length own)))
+    (ftype-set! gpu-storage-buffers (2) buffers (car (renderer-glyphs r)))
+    (bytevector-copy! gpu-list-words 0 u 0 8)
+    (bytevector-copy! gpu-list-words 8 u
+                      (- (bytevector-length u)
+                         (* 4 (gpu-count-params (gpu-call-shader call)
+                                                '(fx-buffer fl-buffer))))
+                      8)
+    (sdl-push-fragment-uniform cb 0 u (bytevector-length u))))
 
 ;; Where the GPU stood with the last frame, as main asked the window for its
 ;; next image: what tells the GPU's work from the screen's hold. 0, it had
@@ -975,21 +1079,15 @@
 
 ;; One frame: uploads, then the runs, to the window or the target. => #t if
 ;; it reached the screen; #f if the window had no room for it yet (a frame
-;; still in flight, or it is hidden), and it should be tried again. preview,
-;; if not #f, (image . runs): those runs are drawn on image first.
+;; still in flight, or it is hidden), and it should be tried again.
 (define (gpu-frame! recs recs-n extras extras-n table table-n atlas-pieces
-                    images runs preview)
+                    images runs)
   (let* ([r *renderer*]
          [cb (gpu-must 'gpu-frame!
                        (sdl-acquire-gpu-commands (renderer-device r)))])
     (gpu-upload! r cb recs recs-n extras extras-n table table-n atlas-pieces
-                 images)
+                 images runs)
     (gpu-run-computes! cb)
-    (when preview
-      (gpu-draw-runs! r cb (gpu-image-texture (car preview)) gpu-format-bgra8
-                      (gpu-image-w (car preview)) (gpu-image-h (car preview))
-                      (cdr preview) #f)
-      (gpu-image-fill-levels! cb (car preview)))
     (if (eqv? 0 (renderer-window r))
         (begin
           (gpu-draw-runs! r cb (renderer-target r) gpu-format-bgra8
@@ -1042,7 +1140,7 @@
   (let* ([r *renderer*]
          [d (renderer-device r)]
          [cb (gpu-must 'gpu-list-on-image! (sdl-acquire-gpu-commands d))])
-    (gpu-upload! r cb recs recs-n extras extras-n #f 0 '() '())
+    (gpu-upload! r cb recs recs-n extras extras-n #f 0 '() '() runs)
     (gpu-draw-runs! r cb (gpu-image-texture image) gpu-format-bgra8
                     (gpu-image-w image) (gpu-image-h image)
                     (remp gpu-run-gone? runs) #f)
@@ -1058,7 +1156,7 @@
          [texture (gpu-make-texture d gpu-format-bgra8 gpu-usage-target w h)]
          [cb (gpu-must 'gpu-drawing->bytes (sdl-acquire-gpu-commands d))])
     (gpu-upload! r cb recs recs-n extras extras-n table table-n atlas-pieces
-                 images)
+                 images runs)
     (gpu-run-computes! cb)
     (gpu-draw-runs! r cb texture gpu-format-bgra8 w h runs clear?)
     (let ([bytes (gpu-read-texture! r cb texture w h)])
