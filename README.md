@@ -692,11 +692,12 @@ Decisions worth keeping in mind for the real design:
 - **A tick's busy time is always kept.** What a tick took but its waits for
   input and for the screen, profiling on or off: past a period, the next
   tick is late. `(pacer-busy-ms)` is the last tick's, Monitor shows it, and
-  the top bar's `ms/tick` is the most any tick took since it last looked,
-  about a second, so that one spike shows. The bar's memory is the heap,
-  then the process's resident memory where the system says it (Linux):
-  `43.0/175.3 MB`. That holds what SDL and the drivers keep outside the heap, which
-  neither reports. Monitor shows both.
+  the top bar's `ms/tick` is the most any tick took in the last second, so
+  that one spike shows. The bar's memory is the heap, then the process's
+  resident memory where the system says it (Linux): `43.0/175.3 MB`. That
+  holds what SDL and the drivers keep outside the heap, which neither
+  reports. Monitor shows both. The bar reads its numbers once a second,
+  however many frames are drawn between.
 - **A pacer gives the ticks.** Every window's, surface's and toast's
   `'tick` runs exactly once a period, whether it draws or not, while a
   tick's work and its frame fit in one: bookkeeping or a check on

@@ -421,12 +421,16 @@
           top bar shows it"
          (pacer-test-on-fake-clock
           (lambda ()
-            (inject! '(key-down #\a ()))
-            (steps 1)                     ; 3 ms and the key's 2
-            (let* ([shown ((cdr (assq 'busy *status-segments*)))]
-                   [after (begin (steps 1) (pacer-peak-ms!))])
-              (and (not (assq 'frame *status-segments*))
-                   (equal? shown "5.0 ms/tick")
-                   (= after 3.0)
-                   (= (pacer-peak-ms!) 0.0))))))
+            ;; the bar reads the peak when the clock's second turns: not
+            ;; here, so that only this check asks for it
+            (fluid-let ([status-tick (lambda (box) (void))])
+              (pacer-peak-ms!)
+              (inject! '(key-down #\a ()))
+              (steps 1)                   ; 3 ms and the key's 2
+              (let* ([shown ((cdr (assq 'busy *status-segments*)))]
+                     [after (begin (steps 1) (pacer-peak-ms!))])
+                (and (not (assq 'frame *status-segments*))
+                     (equal? shown "5.0 ms/tick")
+                     (= after 3.0)
+                     (= (pacer-peak-ms!) 0.0)))))))
   (close-window! win))

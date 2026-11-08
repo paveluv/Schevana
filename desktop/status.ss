@@ -14,15 +14,17 @@
   (set! *status-segments*
     (append (remp (lambda (s) (eq? (car s) name)) *status-segments*)
             (list (cons name thunk))))
+  (refresh-status!)
   (request-frame!))
 
 (define (remove-status-segment! name)
   (set! *status-segments*
     (remp (lambda (s) (eq? (car s) name)) *status-segments*))
+  (refresh-status!)
   (request-frame!))
 
-;; What the top bar shows: ((name . string-or-#f) ...), taken before a
-;; frame that draws the top bar, each segment under the watchdog.
+;; What the top bar shows: ((name . string-or-#f) ...), taken once a second,
+;; each segment under the watchdog.
 (defvar *status-shown* '())
 
 (define (refresh-status!)
@@ -37,15 +39,16 @@
 
 (defvar *status-last-second* -1)
 
-;; Once a second the bar that shows the status asks for itself, box (the
-;; clock). The status shown changes only with that bar: it is taken when
-;; the frame this step draws holds the bar.
+;; Once a second the bar that shows the status takes it again and asks for
+;; itself, box (the clock). Frames between, however many something else asks
+;; for, show the same: numbers that change every tick, the heap's and the
+;; busiest tick's, are read once a second, the busiest that second's.
 (define (status-tick box)
   (let ([s (time-second (current-time))])
     (unless (= s *status-last-second*)
       (set! *status-last-second* s)
-      (call-with-values box request-frame!)))
-  (when *dirty* (refresh-status!)))
+      (refresh-status!)
+      (call-with-values box request-frame!))))
 
 (define (status-procs)
   (let ([n (length *procs*)])
@@ -77,7 +80,7 @@
         (format "~,1f/~,1f MB" heap (/ process 1048576.0))
         (format "~,1f MB" heap))))
 
-;; The most a tick took since the bar last looked, about a second, but its
+;; The most a tick took since the bar last looked, a second ago, but its
 ;; waits: past a period, a tick was late.
 (define (status-busy) (format "~,1f ms/tick" (pacer-peak-ms!)))
 

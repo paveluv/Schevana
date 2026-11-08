@@ -4189,14 +4189,15 @@
   (for-each close-window! (list a b))
   (steps 1))
 
-;; A status segment's change shows on the next frame.
+;; A status segment's change shows when the bar next looks, at the clock's
+;; next second.
 (let ([v "probe-a"])
   (add-status-segment! 'probe (lambda () v))
   (steps 2)
   (set! v "probe-b")
-  (request-frame!)
+  (set! *status-last-second* -1)
   (steps 1)
-  (check (format "a status segment's change shows on the next frame ~s"
+  (check (format "a status segment's change shows at the bar's next second ~s"
                  (shown-status-strings))
          (and (member "probe-b" (shown-status-strings)) #t))
   (remove-status-segment! 'probe)

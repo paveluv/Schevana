@@ -98,3 +98,27 @@
                 (and (= 2 (length parts))
                      (equal? (cadr parts) "1024.0 MB")))
               (< (abs (- (number heap-only) (/ heap 1048576.0))) 20))))
+
+(check "the top bar takes its numbers once a second, however many frames \
+        are drawn between, and a segment added at once"
+       (let ([asked 0]
+             [second (lambda () (time-second (current-time)))])
+         (add-status-segment! 'asked
+                              (lambda ()
+                                (set! asked (+ asked 1))
+                                (format "asked ~a" asked)))
+         (let ([added asked] [from (second)])
+           (set! *status-last-second* from)
+           (do ([i 0 (+ i 1)]) ((= i 5))
+             (request-frame!)
+             (steps 1))
+           ;; the clock's seconds may turn meanwhile: no more than that
+           (let ([between (- asked added)] [turned (- (second) from)])
+             (set! *status-last-second* -1)
+             (steps 1)
+             (let ([shown (shown-status-strings)] [last asked])
+               (remove-status-segment! 'asked)
+               (and (= added 1)
+                    (<= between turned)
+                    (member (format "asked ~a" last) shown)
+                    (= last (+ added between 1))))))))
