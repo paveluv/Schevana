@@ -123,20 +123,24 @@
 ;; style's frame-bleed. A style that strokes inside its frame needs none:
 ;; anti-aliasing stays in the device pixels the frame touches.
 (define (window-bleed win)
-  (in-window-theme win
-    (lambda ()
-      (max 0
-           (window-shadow-reach win)
-           (frame-bleed win)))))
+  (if (eq? (window-theme win) *theme*)
+      (window-bleed-here win)
+      (in-window-theme win (lambda () (window-bleed-here win)))))
+
+(define (window-bleed-here win)
+  (max 0 (window-shadow-reach win) (frame-bleed win)))
 
 ;; What win may cover on screen, (values x y w h): its frame and bleed;
 ;; the whole screen if the bleed raises (a mistake typed at the REPL), so
 ;; that frames and input go on and it can be fixed.
 (define (window-extent win)
-  (guard (c [#t (report-error! 'bleed c) (values 0 0 (screen-w) (screen-h))])
-    (let ([b (window-bleed win)])
-      (values (- (window-x win) b) (- (window-y win) b)
-              (+ (window-w win) b b) (+ (window-h win) b b)))))
+  ;; the style's bleed alone guarded: one value, which a guard keeps
+  ;; cheaper than four
+  (let ([b (guard (c [#t (report-error! 'bleed c) #f]) (window-bleed win))])
+    (if b
+        (values (- (window-x win) b) (- (window-y win) b)
+                (+ (window-w win) b b) (+ (window-h win) b b))
+        (values 0 0 (screen-w) (screen-h)))))
 
 (define (screen-w) *canvas-w*)
 (define (screen-h) *canvas-h*)
@@ -386,9 +390,12 @@
                       thunk
                       (lambda () (when (eq? *theme* t) (set! *theme* main)))))))
 
-;; Calls win's frame part key (theme.ss) in win's theme.
+;; Calls win's frame part key (theme.ss) in win's theme: as it is, when
+;; it's the one on, with no closure.
 (define (frame-call win key . args)
-  (in-window-theme win (lambda () (apply (theme-part key) win args))))
+  (if (eq? (window-theme win) *theme*)
+      (apply (theme-part key) win args)
+      (in-window-theme win (lambda () (apply (theme-part key) win args)))))
 
 ;; A setting in win's theme: its own style's, or the chosen one's.
 (define (window-setting win key) (in-window-theme win (lambda () (theme key))))
@@ -1002,15 +1009,34 @@
                            cx cy)))))
         ((theme-part 'frame-over) win x y w h focused? hover pressed)))))
 
+;; Whether what a list of win's is drawn with, the values e ..., changed
+;; since it was drawn, kept by name in place: => #t, and the new values
+;; kept.
+(define-syntax window-key-changed!
+  (syntax-rules ()
+    [(_ win name e ...)
+     (let ([k (window-own win name
+                          (lambda () (make-vector (length '(e ...)) 'none)))])
+       (window-key-check k 0 #f e ...))]))
+
+(define-syntax window-key-check
+  (syntax-rules ()
+    [(_ k i changed) changed]
+    [(_ k i changed e rest ...)
+     (let* ([v e]
+            [c (if (equal? v (vector-ref k i))
+                   changed
+                   (begin (vector-set! k i v) #t))])
+       (window-key-check k (+ i 1) c rest ...))]))
+
 ;; win's content, as a list from the content's corner, drawn again when win
 ;; is asked to draw, or when its size, the scale or its error changes; inside
 ;; the window's rounded box, which a style may cut its corners with.
 (define (window-content-list win x y w h cx cy cw ch)
-  (let ([l (window-list win 'wm-content-list)]
-        [key (list *wm-generation* (window-ref win 'wm-asked 0) (draw-scale)
-                   (- x cx) (- y cy) w h cw ch (window-error win))])
-    (unless (equal? key (window-ref win 'wm-content-key))
-      (hashtable-set! (window-props win) 'wm-content-key key)
+  (let ([l (window-own win 'wm-content-list gpu-list-new)])
+    (when (window-key-changed! win 'wm-content-key
+            *wm-generation* (hashtable-ref (window-props win) 'wm-asked 0)
+            *rec-num* *rec-den* (- x cx) (- y cy) w h cw ch (window-error win))
       (record-list! l
         (lambda ()
           (with-clip ((- x cx) (- y cy) w h (frame-radius win))
@@ -1021,23 +1047,22 @@
                   (window-call win 'draw cw ch)))))))
     l))
 
-;; One of win's lists, by name, made the first time.
-(define (window-list win name)
-  (or (window-ref win name)
-      (let ([l (gpu-list-new)])
-        (hashtable-set! (window-props win) name l)
-        l)))
+;; What win keeps under name, made by (make) the first time.
+(define (window-own win name make)
+  (or (hashtable-ref (window-props win) name #f)
+      (let ([v (make)])
+        (hashtable-set! (window-props win) name v)
+        v)))
 
 ;; win as a list from its corner: draw-window's, drawn again when win is
 ;; asked to draw or what its frame is drawn with changes; moved, it isn't.
 (define (window-whole-list win)
-  (let ([l (window-list win 'wm-list)]
-        [key (list *wm-generation* (window-ref win 'wm-asked 0) (draw-scale)
-                   (eq? win *focus*) (window-hover win) (window-pressed win)
-                   (window-w win) (window-h win) (window-title win)
-                   (window-state win) (window-error win))])
-    (unless (equal? key (window-ref win 'wm-list-key))
-      (hashtable-set! (window-props win) 'wm-list-key key)
+  (let ([l (window-own win 'wm-list gpu-list-new)])
+    (when (window-key-changed! win 'wm-list-key
+            *wm-generation* (hashtable-ref (window-props win) 'wm-asked 0)
+            *rec-num* *rec-den* (eq? win *focus*) (window-hover win)
+            (window-pressed win) (window-w win) (window-h win)
+            (window-title win) (window-state win) (window-error win))
       (record-list! l
         (lambda ()
           (with-translation ((- (window-x win)) (- (window-y win)))
@@ -1060,28 +1085,44 @@
 ;; The whole screen, as a list. A crashed draw leaves nothing to unwind: the
 ;; state it left goes when the next one starts.
 (define (record-world!)
-  (let ([guarded (lambda (name thunk)
-                   (let ([state (rec-state)])
-                     (safely name thunk)
-                     (rec-state-set! state)))])
-    (let ([draw (lambda (s)
-                  (with-label ((surface-name s))
-                    (guarded (surface-name s)
-                             (lambda () (surface-call s surface-draw)))))])
-      (for-each draw (remp over-windows? *surfaces*))
-      (for-each (lambda (w)
-                  (when (visible? w)
-                    (with-label ((window-title w))
-                      (guarded 'window
-                               (lambda ()
-                                 (with-profile-span (window-id w) #f
-                                   (let-values ([(x y ew eh) (window-extent w)])
-                                     (let ([l (window-whole-list w)])
-                                       (with-clip (x y ew eh)
-                                         (show-list l (window-x w)
-                                                    (window-y w)))))))))))
-                (reverse *windows*))
-      (for-each draw (filter over-windows? *surfaces*)))))
+  (record-surfaces! *surfaces* #f)
+  (record-windows! *windows*)
+  (record-surfaces! *surfaces* #t))
+
+;; The surfaces under the windows, or over them.
+(define (record-surfaces! ss over?)
+  (unless (null? ss)
+    (let ([s (car ss)])
+      (when (eq? (over-windows? s) over?)
+        (with-label ((surface-name s))
+          (record-safely (surface-name s)
+                         (lambda () (surface-call s surface-draw))))))
+    (record-surfaces! (cdr ss) over?)))
+
+;; The windows from the bottom up: each one's list, shown at its corner.
+(define (record-windows! ws)
+  (unless (null? ws)
+    (record-windows! (cdr ws))
+    (let ([w (car ws)])
+      (when (visible? w)
+        (with-label ((window-title w))
+          (record-safely
+           'window
+           (lambda ()
+             (with-profile-span (window-id w) #f
+               (let-values ([(x y ew eh) (window-extent w)])
+                 (let ([l (window-whole-list w)])
+                   (with-clip (x y ew eh)
+                     (show-list l (window-x w) (window-y w)))))))))))))
+
+;; thunk's drawing, which may crash: what it left of the recorder's state
+;; goes, the state as it was kept in variables.
+(define (record-safely name thunk)
+  (let ([num *rec-num*] [den *rec-den*] [ox *rec-ox*] [oy *rec-oy*]
+        [turn *rec-turn*] [clip *rec-clip*] [cx0 *rec-cx0*] [cy0 *rec-cy0*]
+        [cx1 *rec-cx1*] [cy1 *rec-cy1*])
+    (safely name thunk)
+    (rec-state-restore! num den ox oy turn clip cx0 cy0 cx1 cy1)))
 
 ;; One step's frame: recorded and sent to the screen. A screen with no room
 ;; for it yet asks again. A process may be switched out at any call while the
@@ -1103,7 +1144,9 @@
             (if shown?
                 (set! *frames-drawn* (+ *frames-drawn* 1))
                 (request-frame!))
-            (set! *frame-ms* (/ (- (now-ns) t0 (- *pacer-waits* waits)) 1e6))
+            (set! *frame-ms* (fl/ (fixnum->flonum
+                                   (- (now-ns) t0 (- *pacer-waits* waits)))
+                                  1e6))
             (frame-ring-add! shown?)))])]))
 
 ;; The last frames, for kits/inspect.ss: what each took and held. Always
@@ -1116,10 +1159,10 @@
 (define (frame-ring-add! shown?)
   (let ([at (* frame-ring-words (modulo *frame-ring-n* frame-ring-rows))]
         [ring *frame-ring*])
-    (fxvector-set! ring at (exact (round (* 1000 *frame-ms*))))
+    (fxvector-set! ring at (flonum->fixnum (flround (fl* 1000.0 *frame-ms*))))
     (fxvector-set! ring (+ at 1) (rec-count))
     (fxvector-set! ring (+ at 2) *rec-extra-at*)
-    (fxvector-set! ring (+ at 3) (length *rec-runs*))
+    (fxvector-set! ring (+ at 3) (length (rec-runs)))
     (fxvector-set! ring (+ at 4) *glyph-count*)
     (fxvector-set! ring (+ at 5) (if shown? 1 0)))
   (set! *frame-ring-n* (+ *frame-ring-n* 1)))

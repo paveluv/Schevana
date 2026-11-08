@@ -49,7 +49,7 @@
          [row (and (pair? newest) (car newest))]
          [count (rec-count)]
          [words *rec-extra-at*]
-         [runs (reverse *rec-runs*)]
+         [runs (rec-runs)]
          [labels (list->vector (list-head (vector->list *rec-labels*)
                                           *rec-label-at*))]
          [need (inspect-flat-size (* 32 count) (* 4 words) runs)]
@@ -218,7 +218,8 @@
                (lambda (run)
                  (if (gpu-show-run? run)
                      (let* ([lst (cadr run)]
-                            [own (list-ref run 4)]
+                            [own (and (list-ref run 4)
+                                      (list-head (list-tail run 4) 4))]
                             [inner
                              (let ([b (and own
                                            (map (lambda (v d) (fx* 256 (+ v d)))
@@ -230,7 +231,7 @@
                                                  (min (caddr b) (caddr box))
                                                  (min (cadddr b)
                                                       (cadddr box)))]))])
-                       (labels-upto! (list-ref run 5) (most-positive-fixnum))
+                       (labels-upto! (list-ref run 8) (most-positive-fixnum))
                        (let ([shown (and (pair? out-labels)
                                          (cdar out-labels))])
                          (flatten! (gpu-list-recs lst) (gpu-list-extras lst)
@@ -279,7 +280,7 @@
 ;; children) ...) in draw order, (x, y) in device pixels from what shows it,
 ;; fresh? while it hasn't gone up to the GPU yet.
 (define (inspect-list-tree)
-  (let walk ([runs (reverse *rec-runs*)])
+  (let walk ([runs (rec-runs)])
     (map (lambda (run)
            (let ([lst (cadr run)])
              (list (caddr run) (cadddr run)

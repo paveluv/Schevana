@@ -99,3 +99,14 @@
     (if (exists (lambda (e) (eq? (name-of e) name)) entries)
         (map (lambda (e) (if (eq? (name-of e) name) entry e)) entries)
         (append entries (list entry)))))
+
+;; The CPU time this thread has had, in ns: a number, read into memory
+;; kept for it, so that reading it allocates nothing. The clock's number is
+;; the system's.
+(define thread-cpu-clock
+  (if (string-contains-ci? (symbol->string (machine-type)) "osx") 16 3))
+(define thread-cpu-time (foreign-alloc 16))   ; a timespec
+(define (thread-cpu-ns)
+  (c-clock-gettime thread-cpu-clock thread-cpu-time)
+  (+ (* 1000000000 (foreign-ref 'long thread-cpu-time 0))
+     (foreign-ref 'long thread-cpu-time 8)))

@@ -265,37 +265,6 @@
              ;; whole logical pixels, up: layout's unit, and boxes stay crisp
              (flceiling (fl/ (fixnum->flonum w) 256.0)))))]))
 
-;; The ink of str in font: (values left top width height) from the pen on
-;; the baseline (top < 0 above), in logical pixels. Unhinted.
-(define (text-ink str font)
-  (let* ([f (get-font font)]
-         [ff (font-ready f)]
-         [n (string-length str)]
-         [scale (/ (font-size f) (font-file-upem ff))])
-    (let loop ([i 0] [pen 0] [x0 #f] [x1 0] [y0 #f] [y1 0])
-      (if (fx= i n)
-          (if x0
-              (values (inexact x0) (inexact y0)
-                      (inexact (- x1 x0)) (inexact (- y1 y0)))
-              (values 0.0 0.0 0.0 0.0))
-          (let* ([c (char->integer (string-ref str i))]
-                 [page (vector-ref (font-file-pages ff) (fxsrl c 8))]
-                 [at (fx* 5 (fxand c 255))]
-                 [w (if page (fxvector-ref page (fx+ at 3)) 0)]
-                 [h (if page (fxvector-ref page (fx+ at 4)) 0)]
-                 [left (if page (fxvector-ref page (fx+ at 1)) 0)]
-                 [top (if page (fxvector-ref page (fx+ at 2)) 0)]
-                 [next (fx+ pen (font-advance f ff c))])
-            (if (or (fx<= w 0) (fx<= h 0))
-                (loop (fx+ i 1) next x0 x1 y0 y1)
-                (let ([ax (+ (/ pen 256) (* left scale))]
-                      [ay (- (* top scale))])
-                  (loop (fx+ i 1) next
-                        (if x0 (min x0 ax) ax)
-                        (max x1 (+ ax (* w scale)))
-                        (if y0 (min y0 ay) ay)
-                        (max y1 (+ ay (* h scale)))))))))))
-
 ;;; ------------------------------------------------------------------ atlas
 ;;; One texture of coverage, filled by shelves. Its rows' table holds, for a
 ;;; glyph's number: u v w h left top, in device pixels.

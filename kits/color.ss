@@ -1,6 +1,17 @@
-;;; kits/color.ss — color math: a color as hue, saturation and lightness,
-;;; and back (Settings' color picker); as one #xRRGGBB fixnum; the text
-;;; color that reads on it.
+;;; kits/color.ss — color math: a color as an image's pixel; as hue,
+;;; saturation and lightness, and back (Settings' color picker); as one
+;;; #xRRGGBB fixnum; the text color that reads on it.
+
+;; A color as one pixel: premultiplied, a native word of B, G, R and A bytes,
+;; what an image holds. #xRRGGBB is opaque.
+(define (color->pixel c)
+  (if (fixnum? c)
+      (fxior #xff000000 (fxand c #xffffff))
+      (let-values ([(r g b a) (color-rgba c)])
+        (let ([a (clamp a 0.0 1.0)])
+          (define (byte v) (exact (round (* 255 v))))
+          (fxior (fxsll (byte a) 24) (fxsll (byte (* r a)) 16)
+                 (fxsll (byte (* g a)) 8) (byte (* b a)))))))
 
 ;; Hue in degrees, saturation and lightness in [0, 1].
 (define (color->hsl c)

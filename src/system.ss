@@ -136,11 +136,12 @@
       (unless hold? (set! *held-events* '()))
       (set! *injected* '())
       (set! *input-step?* (pair? evs))
-      (for-each
-       (lambda (ev)
-         (safely 'event
-                 (lambda () (if hold? (hold-event! ev) (handle-event! ev)))))
-       evs))
+      (let each ([evs evs])
+        (unless (null? evs)
+          (let ([ev (car evs)])
+            (safely 'event
+                    (lambda () (if hold? (hold-event! ev) (handle-event! ev)))))
+          (each (cdr evs)))))
     (let ([ticked?
            (and (not (reload-holding?))
                 (begin
@@ -157,9 +158,10 @@
       (when (and ticked? (not (reload-holding?)))
         (if (and *pacer-skip?* (pair? paced))
             (pacer-frame-skipped!)
-            (let ([damage *dirty*])
+            ;; a tick nothing asked a frame of goes on with no guard
+            (when *dirty*
               (set! *dirty* #f)
-              (safely 'render (lambda () (render-frame! damage)))))))))
+              (safely 'render render-frame!)))))))
 
 ;;; ------------------------------------------------------------------ pacer
 

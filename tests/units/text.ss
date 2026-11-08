@@ -111,3 +111,8 @@
             (let ([s (apply string-append (make-list 12500 "abcdefg "))]
                   [w (make-string 1000 #\z)])
               (within-fuel? (lambda () (string-contains-ci? s w))))))
+
+(check "text-ink: a capital's ink stands on the baseline, as wide as it inks"
+       (let-values ([(l top w h) (text-ink "H" 'ui)]
+                    [(l2 top2 w2 h2) (text-ink "Hi there" 'ui)])
+         (and (< top 0) (< (abs (+ top h)) 1) (> w 0) (> w2 w))))

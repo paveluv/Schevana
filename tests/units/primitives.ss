@@ -161,13 +161,9 @@
            (theme-file-save!)
            (equal? back gray))))
 
-(check "text-ink: a capital's ink stands on the baseline, as wide as it \
-        inks; font-descent is the font's"
-       (let-values ([(l top w h) (text-ink "H" 'ui)]
-                    [(l2 top2 w2 h2) (text-ink "Hi there" 'ui)])
-         (and (< top 0) (< (abs (+ top h)) 1) (> w 0) (> w2 w)
-              (= (font-descent 'ui) (vector-ref (font-metrics 'ui) 1))
-              (> (font-descent 'ui) 0))))
+(check "font-descent is the font's"
+       (and (= (font-descent 'ui) (vector-ref (font-metrics 'ui) 1))
+            (> (font-descent 'ui) 0)))
 
 ;; How many pixels of text drawn on white are neither white nor black.
 (define (gray-pixels font)
@@ -357,7 +353,7 @@
     (rec-preview! target
                   (lambda ()
                     (list *rec-bytes* *rec-at* *rec-extras*
-                          (* 4 *rec-extra-at*) (reverse *rec-runs*))))
+                          (* 4 *rec-extra-at*) (rec-runs))))
     (request-frame!)
     (steps 1)
     (set! record-world! plain)
@@ -442,7 +438,7 @@
   (rec-preview! target
                   (lambda ()
                     (list *rec-bytes* *rec-at* *rec-extras*
-                          (* 4 *rec-extra-at*) (reverse *rec-runs*))))
+                          (* 4 *rec-extra-at*) (rec-runs))))
   (request-frame!)
   (steps 1)
   (set! record-world! plain)

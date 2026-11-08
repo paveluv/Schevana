@@ -291,9 +291,7 @@
 (define (profile-ms ns) (/ ns 1e6))
 
 ;; What this thread has run so far, by its CPU clock: ns.
-(define (profile-thread-cpu)
-  (let ([t (current-time 'time-thread)])
-    (+ (* 1000000000 (time-second t)) (time-nanosecond t))))
+(define (profile-thread-cpu) (thread-cpu-ns))
 
 ;;; ------------------------------------------------------------------ spans
 

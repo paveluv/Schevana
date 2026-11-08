@@ -99,17 +99,6 @@
     (define (m a b) (exact (round (* 255 (+ a (* t (- b a)))))))
     (rgb (m r1 r2) (m g1 g2) (m b1 b2))))
 
-;; A color as one pixel: premultiplied, a native word of B, G, R and A bytes,
-;; what an image holds. #xRRGGBB is opaque.
-(define (color->pixel c)
-  (if (fixnum? c)
-      (fxior #xff000000 (fxand c #xffffff))
-      (let-values ([(r g b a) (color-rgba c)])
-        (let ([a (clamp a 0.0 1.0)])
-          (define (byte v) (exact (round (* 255 v))))
-          (fxior (fxsll (byte a) 24) (fxsll (byte (* r a)) 16)
-                 (fxsll (byte (* g a)) 8) (byte (* b a)))))))
-
 ;; A color as a record's word: straight, alpha on top. The GPU premultiplies.
 (define (color-word c)
   (cond
@@ -221,8 +210,13 @@
 (defvar *rec-cx1* 0)
 (defvar *rec-cy1* 0)
 ;; runs, the newest first: (mode image first count variant); this one's mode,
-;; image, variant and first record
+;; image, variant and first record. Those of the list recorded before are
+;; kept, and while the new ones are the same they're used again: *rec-runs*
+;; holds only those made since the first that differs, and
+;; *rec-runs-same* the old ones not yet matched, or #f once one differed.
 (defvar *rec-runs* '())
+(defvar *rec-runs-was* '())
+(defvar *rec-runs-same* '())
 (defvar *rec-mode* 0)
 (defvar *rec-image* #f)
 (defvar *rec-variant* 0)
@@ -295,6 +289,7 @@
   (set! *rec-label-at* 0)
   (set! *rec-label* #f)
   (set! *rec-runs* '())
+  (set! *rec-runs-same* *rec-runs-was*)
   (set! *rec-mode* 0)
   (set! *rec-image* #f)
   (set! *rec-variant* 0)
@@ -304,15 +299,50 @@
 
 (define (rec-count) (fxquotient *rec-at* 32))
 
+;; Whether the run recorded before at this place is the list of the
+;; values e ..., each compared once, nothing made.
+(define-syntax rec-run-is?
+  (syntax-rules ()
+    [(_ run) (null? run)]
+    [(_ run e more ...)
+     (let ([r run])
+       (and (pair? r) (eqv? (car r) e) (rec-run-is? (cdr r) more ...)))]))
+
 ;; The run so far ends here.
 (define (rec-run-end!)
   (let ([n (rec-count)])
     (when (fx> n *rec-run-first*)
-      (set! *rec-runs*
-        (cons (list *rec-mode* *rec-image* *rec-run-first*
-                    (fx- n *rec-run-first*) *rec-variant*)
-              *rec-runs*))
+      (let ([count (fx- n *rec-run-first*)])
+        (if (and (pair? *rec-runs-same*)
+                 (rec-run-is? (car *rec-runs-same*) *rec-mode* *rec-image*
+                              *rec-run-first* count *rec-variant*))
+            (set! *rec-runs-same* (cdr *rec-runs-same*))
+            (rec-run-add! (list *rec-mode* *rec-image* *rec-run-first* count
+                                *rec-variant*))))
       (set! *rec-run-first* n))))
+
+;; A run that differs from the one recorded before at its place: those that
+;; matched are copied first.
+(define (rec-run-add! run)
+  (when *rec-runs-same*
+    (let copy ([was *rec-runs-was*])
+      (unless (eq? was *rec-runs-same*)
+        (set! *rec-runs* (cons (car was) *rec-runs*))
+        (copy (cdr was))))
+    (set! *rec-runs-same* #f))
+  (set! *rec-runs* (cons run *rec-runs*)))
+
+;; The runs recorded, in order, the run so far ended: the same list as the
+;; last time when they're all the same, which the next recording starts
+;; from.
+(define (rec-runs)
+  (rec-run-end!)
+  (unless (null? *rec-runs-same*)
+    (when *rec-runs-same* (rec-run-add! #f) (set! *rec-runs* (cdr *rec-runs*)))
+    (set! *rec-runs-was* (reverse *rec-runs*))
+    (set! *rec-runs* '())
+    (set! *rec-runs-same* '()))
+  *rec-runs-was*)
 
 (define (rec-run! mode image)
   (unless (and (eqv? mode *rec-mode*) (eq? image *rec-image*))
@@ -320,22 +350,20 @@
     (set! *rec-mode* mode)
     (set! *rec-image* image)))
 
-;; The state a window's draw starts from, to go back to when it crashes.
-(define (rec-state)
-  (vector *rec-num* *rec-den* *rec-ox* *rec-oy* *rec-turn* *rec-clip*
-          *rec-cx0* *rec-cy0* *rec-cx1* *rec-cy1*))
-(define (rec-state-set! s)
-  (set! *rec-num* (vector-ref s 0))
-  (set! *rec-den* (vector-ref s 1))
-  (set! *rec-ox* (vector-ref s 2))
-  (set! *rec-oy* (vector-ref s 3))
-  (set! *rec-turn* (vector-ref s 4))
-  (set! *rec-clip* (vector-ref s 5))
-  (set! *rec-cx0* (vector-ref s 6))
-  (set! *rec-cy0* (vector-ref s 7))
-  (set! *rec-cx1* (vector-ref s 8))
-  (set! *rec-cy1* (vector-ref s 9))
+;; The transform and clip as they were, given as values.
+(define (rec-state-restore! num den ox oy turn clip cx0 cy0 cx1 cy1)
+  (set! *rec-num* num)
+  (set! *rec-den* den)
+  (set! *rec-ox* ox)
+  (set! *rec-oy* oy)
+  (set! *rec-turn* turn)
+  (set! *rec-clip* clip)
+  (set! *rec-cx0* cx0)
+  (set! *rec-cy0* cy0)
+  (set! *rec-cx1* cx1)
+  (set! *rec-cy1* cy1)
   (rec-run! 0 #f))
+
 
 ;;; ---- lists
 
@@ -346,7 +374,9 @@
   (let ([outer (vector *rec-bytes* *rec-at* *rec-extras* *rec-extra-at*
                        *rec-labels* *rec-label-at* *rec-label* *rec-runs*
                        *rec-mode* *rec-image* *rec-variant* *rec-run-first*
-                       *rec-area* (rec-state))])
+                       *rec-area* *rec-runs-was* *rec-runs-same* *rec-num*
+                       *rec-den* *rec-ox* *rec-oy* *rec-turn* *rec-clip*
+                       *rec-cx0* *rec-cy0* *rec-cx1* *rec-cy1*)])
     (dynamic-wind
      (lambda ()
        (set! *rec-bytes* (gpu-list-recs lst))
@@ -357,6 +387,8 @@
        (set! *rec-label-at* 0)
        (set! *rec-label* #f)
        (set! *rec-runs* '())
+       (set! *rec-runs-was* (gpu-list-runs lst))
+       (set! *rec-runs-same* *rec-runs-was*)
        (set! *rec-mode* 0)
        (set! *rec-image* #f)
        (set! *rec-variant* 0)
@@ -368,12 +400,11 @@
        (set! *rec-clip* 0))
      thunk
      (lambda ()
-       (rec-run-end!)
+       (gpu-list-runs-set! lst (rec-runs))
        (gpu-list-recs-set! lst *rec-bytes*)
        (gpu-list-recs-n-set! lst *rec-at*)
        (gpu-list-extras-set! lst *rec-extras*)
        (gpu-list-extras-n-set! lst (* 4 *rec-extra-at*))
-       (gpu-list-runs-set! lst (reverse *rec-runs*))
        (gpu-list-labels-set! lst (list->vector
                                   (list-head (vector->list *rec-labels*)
                                              *rec-label-at*)))
@@ -391,22 +422,26 @@
        (set! *rec-variant* (vector-ref outer 10))
        (set! *rec-run-first* (vector-ref outer 11))
        (set! *rec-area* (vector-ref outer 12))
-       (rec-state-set! (vector-ref outer 13))))))
+       (set! *rec-runs-was* (vector-ref outer 13))
+       (set! *rec-runs-same* (vector-ref outer 14))
+       (apply rec-state-restore! (list-tail (vector->list outer) 15))))))
 
 ;; lst drawn with its origin at (x, y), inside the clip: no record, a run
 ;; that shows it, and how many labels came before it, for kits/inspect.ss.
 ;; Moved, only this run changes; lst isn't recorded again.
 (define (show-list lst x y)
   (rec-run-end!)
-  (set! *rec-runs*
-    (cons (list 'show lst
-                (fxsra (rec-snap (rec-device x *rec-ox*)) 8)
-                (fxsra (rec-snap (rec-device y *rec-oy*)) 8)
-                (and (not (fx= *rec-clip* 0))
-                     (list (fxsra *rec-cx0* 8) (fxsra *rec-cy0* 8)
-                           (fxsra *rec-cx1* 8) (fxsra *rec-cy1* 8)))
-                *rec-label-at*)
-          *rec-runs*)))
+  (let* ([ox (fxsra (rec-snap (rec-device x *rec-ox*)) 8)]
+         [oy (fxsra (rec-snap (rec-device y *rec-oy*)) 8)]
+         [x0 (and (not (fx= *rec-clip* 0)) (fxsra *rec-cx0* 8))]
+         [y0 (and x0 (fxsra *rec-cy0* 8))]
+         [x1 (and x0 (fxsra *rec-cx1* 8))]
+         [y1 (and x0 (fxsra *rec-cy1* 8))])
+    (if (and (pair? *rec-runs-same*)
+             (rec-run-is? (car *rec-runs-same*) 'show lst ox oy x0 y0 x1 y1
+                          *rec-label-at*))
+        (set! *rec-runs-same* (cdr *rec-runs-same*))
+        (rec-run-add! (list 'show lst ox oy x0 y0 x1 y1 *rec-label-at*)))))
 
 ;;; ---- the transform
 
@@ -1437,7 +1472,7 @@
         (when kept (apply gpu-list-on-image! (car preview) kept)))))
   (gpu-frame! *rec-bytes* *rec-at* *rec-extras* (* 4 *rec-extra-at*)
               (rec-take-table!) (rec-table-bytes) (rec-take-atlas-pieces!)
-              *rec-images* (reverse *rec-runs*)))
+              *rec-images* (rec-runs)))
 
 ;; With the next frame, a list drawn on image too, as big as the screen, for
 ;; the Pipeline: what (list-of) gives as it's sent, made of the frame just
@@ -1460,10 +1495,9 @@
     [(pw ph scale thunk clear?)
      (rec-begin! (rationalize (exact scale) 1/100000))
      (thunk)
-     (rec-run-end!)
      (let ([table (rec-take-table!)]
            [pieces (rec-take-atlas-pieces!)])
        (gpu-drawing->bytes *rec-bytes* *rec-at*
                           *rec-extras* (* 4 *rec-extra-at*)
                           table (rec-table-bytes) pieces *rec-images*
-                          (reverse *rec-runs*) pw ph clear?))]))
+                          (rec-runs) pw ph clear?))]))

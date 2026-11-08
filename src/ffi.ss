@@ -73,6 +73,7 @@
 (define-syntax define-foreign/collect-safe
   (syntax-rules () [(_ . spec) (define-foreign-as collect-safe . spec)]))
 
+(define-foreign c-clock-gettime "clock_gettime" (int uptr) int)
 (define-foreign c-socket "socket" (int int int) int)
 (define-foreign c-bind "bind" (int uptr unsigned-32) int)
 (define-foreign c-listen "listen" (int int) int)
