@@ -2,7 +2,8 @@
 ;;;
 ;;; The language is a contract: a new back end must always be possible.
 ;;; It defines its own meaning (ints are 32 bits and wrap; fxmod floors;
-;;; dividing by 0 gives 0; a shift's count is taken mod 32), and asks only
+;;; dividing by 0 gives 0; a shift's count is taken mod 32; a read outside a
+;;; buffer reads its last word, and a write outside is left out), and asks only
 ;;; for what every GPU API has: three stages, scalars, buffers of 4-byte
 ;;; elements by index, a 2D texture by integer fetch at a level, a uniform
 ;;; block of scalars, if and bounded loops. No structs, pointers, recursion or
@@ -126,6 +127,14 @@
                             (cdr clause))))
                 clauses)))))
 
+;; Is an if a select: a value whose arms have nothing to work out, so that a
+;; back end needs no branch for it?
+(define (shader-select? t)
+  (and (not (eq? (cadr t) 'void))
+       (memq (car (cadddr t)) '(const var))
+       (memq (car (car (cddddr t))) '(const var))
+       #t))
+
 ;; A node's type.
 (define (shader-type t)
   (case (car t)
@@ -148,9 +157,9 @@
   (define (lookup name env) (let ([b (assq name env)]) (and b (cdr b))))
   (define (bind-value name t env)
     (cons (cons name (cons 'value t)) env))
-  ;; (let id t (k var)), or (k t) if t is constant
+  ;; (let id t (k var)), or (k t) if t is a constant or a variable already
   (define (bound t k)
-    (if (eq? (car t) 'const)
+    (if (memq (car t) '(const var))
         (k t)
         (let ([id (new-id!)])
           (list 'let id t (k (list 'var (shader-type t) id))))))
@@ -218,6 +227,28 @@
             (if (and (eq? (car n) 'const) (<= 0 (caddr n) 31))
                 n
                 (list 'op 'fixnum 'fxand n '(const fixnum 31))))))
+  ;; A buffer's word at index i, read, or written with v: the index is checked
+  ;; against the buffer's length, so that a shader touches only what it was
+  ;; handed. A read's index is at most the last word's, unsigned, so that a
+  ;; negative one is past it too: one instruction, where a compare and a select
+  ;; cost a frame a fifth more. A write outside is left out: 0 <= i < n as one
+  ;; compare, unsigned by the sign bit flipped on both sides.
+  (define (in-range i name)
+    (list 'op 'boolean 'fx<
+          (list 'op 'fixnum 'fxxor i '(const fixnum -2147483648))
+          (list 'op 'fixnum 'fxxor (list 'var 'fixnum (shader-words name))
+                '(const fixnum -2147483648))))
+  (define (checked-load type name i)
+    (list 'load type name
+          (list 'op 'fixnum 'fxumin i
+                (list 'op 'fixnum 'fx-
+                      (list 'var 'fixnum (shader-words name))
+                      '(const fixnum 1)))))
+  (define (checked-store name i v)
+    (bound i
+      (lambda (i)
+        (list 'if 'void (in-range i name) (list 'store name i v)
+              shader-nothing))))
   (define (element-of name env form type writing?)
     (let ([b (lookup name env)])
       (unless (and b (eq? (car b) 'buffer))
@@ -390,19 +421,19 @@
                 (lower-if (car args) #t (cons 'or (cdr args)) env form))]
            [(do-bounded) (lower-do form env)]
            [(fx-ref)
-            (list 'load 'fixnum (element-of (car args) env form 'fixnum #f)
-                  (want 'fixnum (lower (cadr args) env) form))]
+            (checked-load 'fixnum (element-of (car args) env form 'fixnum #f)
+                          (want 'fixnum (lower (cadr args) env) form))]
            [(fl-ref)
-            (list 'load 'flonum (element-of (car args) env form 'flonum #f)
-                  (want 'fixnum (lower (cadr args) env) form))]
+            (checked-load 'flonum (element-of (car args) env form 'flonum #f)
+                          (want 'fixnum (lower (cadr args) env) form))]
            [(fx-set!)
-            (list 'store (element-of (car args) env form 'fixnum #t)
-                  (want 'fixnum (lower (cadr args) env) form)
-                  (want 'fixnum (lower (caddr args) env) form))]
+            (checked-store (element-of (car args) env form 'fixnum #t)
+                           (want 'fixnum (lower (cadr args) env) form)
+                           (want 'fixnum (lower (caddr args) env) form))]
            [(fl-set!)
-            (list 'store (element-of (car args) env form 'flonum #t)
-                  (want 'fixnum (lower (cadr args) env) form)
-                  (want 'flonum (lower (caddr args) env) form))]
+            (checked-store (element-of (car args) env form 'flonum #t)
+                           (want 'fixnum (lower (cadr args) env) form)
+                           (want 'flonum (lower (caddr args) env) form))]
            [(texture-ref)
             (let ([t (lookup (car args) env)])
               (unless (and t (eq? (car t) 'texture))
@@ -467,11 +498,19 @@
          [else '(flonum flonum fixnum)])))
 
 ;; The uniforms a stage's block holds, hidden ones first: ((name type) ...).
+;; After the parameters, each buffer's length in words, in their order: no
+;; GPU API but Vulkan tells a shader how long its buffers are.
 (define (shader-uniforms stage params)
   (append (if (eq? stage 'compute)
               '((shader-w fixnum) (shader-h fixnum))
               '())
-          (filter (lambda (p) (memq (cadr p) '(fixnum flonum))) params)))
+          (filter (lambda (p) (memq (cadr p) '(fixnum flonum))) params)
+          (map (lambda (p) (list (shader-words (car p)) 'fixnum))
+               (filter (lambda (p) (memq (cadr p) '(fx-buffer fl-buffer)))
+                       params))))
+
+;; The uniform holding buffer name's length: a name no parameter can have.
+(define (shader-words name) (string->symbol (format "~a words" name)))
 
 ;; What a run of the tree costs at most: one unit an operation, a little
 ;; more for what touches memory or takes a root, times a loop's bound.
@@ -520,7 +559,8 @@
 ;; GLSL.std.450's numbers
 (define spirv-math-ops
   '((flround . 1) (flabs . 4) (flfloor . 8) (flceiling . 9)
-    (flsin . 13) (flcos . 14) (flsqrt . 31) (flmin . 37) (flmax . 40)))
+    (flsin . 13) (flcos . 14) (flsqrt . 31) (flmin . 37) (fxumin . 38)
+    (flmax . 40)))
 
 (define (spirv-string s)
   (let* ([b (string->utf8 s)]
@@ -670,6 +710,11 @@
   ;; Every if is a branch with a declared merge, as SPIR-V's structured
   ;; control flow demands, and its value a phi there.
   (define (branch t)
+    (if (shader-select? t)
+        (op! 169 (type-id (cadr t)) (value (caddr t)) (value (cadddr t))
+             (value (car (cddddr t))))
+        (branch-on t)))
+  (define (branch-on t)
     (let* ([c (value (caddr t))]
            [then (id!)] [other (id!)] [merge (id!)])
       (body! 247 merge 0)
@@ -887,7 +932,8 @@
     (flabs . "fabs(~a)") (flfloor . "floor(~a)") (flceiling . "ceil(~a)")
     (flround . "rint(~a)") (flsqrt . "sqrt(~a)")
     (flsin . "sin(~a)") (flcos . "cos(~a)")
-    (flmin . "min(~a, ~a)") (flmax . "max(~a, ~a)")))
+    (flmin . "min(~a, ~a)") (flmax . "max(~a, ~a)")
+    (fxumin . "int(min(uint(~a), uint(~a)))")))
 
 ;; The smallest int by -1 overflows, which % and / leave undefined.
 (define (msl-op name args)
@@ -970,6 +1016,11 @@
          "")]
       [else ""]))
   (define (branch t)
+    (if (shader-select? t)
+        (assign! (cadr t) (format "~a ? ~a : ~a" (value (caddr t))
+                                  (value (cadddr t)) (value (car (cddddr t)))))
+        (branch-on t)))
+  (define (branch-on t)
     (let* ([c (value (caddr t))]
            [v (and (not (eq? (cadr t) 'void)) (fresh!))])
       (define (arm form)

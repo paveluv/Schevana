@@ -146,8 +146,12 @@
                    [pad2 unsigned-8] [pad3 unsigned-8])))
 (gpu-struct gpu-sampler-bindings gpu-sampler-bindings* 672
   (array 2 (struct [texture void*] [sampler void*])))
-(gpu-struct gpu-frame-uniforms gpu-frame-uniforms* 704
-  (struct [w float] [h float] [first int]))
+;; The vertex shader's uniforms; the fragment shader's are the last three,
+;; the list's buffers' lengths in words, which go as bytes (gpu-list-words).
+(gpu-struct gpu-frame-uniforms gpu-frame-uniforms* 1040
+  (struct [w float] [h float] [first int]
+          [records int] [extras int] [glyphs int]))
+(define gpu-list-words (make-bytevector 12 0))
 (gpu-struct gpu-swapchain-out gpu-swapchain-out* 720
   (struct [texture void*] [w unsigned-32] [h unsigned-32]))
 (gpu-struct gpu-fence-list gpu-fence-list* 736
@@ -372,8 +376,10 @@
     (vector-for-each
      (lambda (ps)
        (for-each (lambda (p)
-                   (sdl-release-gpu-pipeline (renderer-device *renderer*)
-                                             (cdr p)))
+                   ((if (eq? (car p) 'compute)
+                        sdl-release-gpu-compute
+                        sdl-release-gpu-pipeline)
+                    (renderer-device *renderer*) (cdr p)))
                  ps))
      (hashtable-values (renderer-paints *renderer*)))
     (hashtable-clear! (renderer-paints *renderer*))))
@@ -444,8 +450,9 @@
 
 (defvar *gpu-dirty-buffers* '())
 
+;; At least a word: a read outside it reads word 0 (shader.ss).
 (define (make-gpu-buffer words)
-  (let ([p gpu-buffer-info*] [n (* 4 words)])
+  (let ([p gpu-buffer-info*] [n (* 4 (max 1 words))])
     (gpu-zero! p (ftype-sizeof gpu-buffer-info))
     (ftype-set! gpu-buffer-info (usage) p
                 (fxior gpu-usage-graphics-read gpu-usage-compute-read
@@ -488,6 +495,12 @@
 
 (define (gpu-buffer-release! b)
   (set! *gpu-dirty-buffers* (remq b *gpu-dirty-buffers*))
+  ;; a run waiting for the frame would name it
+  (set! *gpu-computes*
+    (filter (lambda (run)
+              (not (memv (gpu-buffer-id b)
+                         (append (cadddr run) (list-ref run 4)))))
+            *gpu-computes*))
   (sdl-release-gpu-buffer (renderer-device *renderer*) (gpu-buffer-id b)))
 
 ;; What a paint or a compute run is called with: its shader, its uniforms as
@@ -506,12 +519,23 @@
 (define (gpu-buffer-param? p) (memq (cadr p) '(fx-buffer fl-buffer)))
 
 ;; A shader's arguments in its parameters' order, by their kinds, its
-;; hidden uniforms first => a gpu-call
+;; hidden uniforms first, then its buffers' lengths: one it isn't handed
+;; here, a paint's list's, the frame fills in => a gpu-call
 (define (gpu-make-call shader hidden params args)
-  (let* ([values (append hidden
+  (let* ([given (map cons (map car params) args)]
+         [values (append hidden
                          (gpu-args-of (lambda (p)
                                         (memq (cadr p) '(fixnum flonum)))
-                                      params args))]
+                                      params args)
+                         (map (lambda (p)
+                                (let ([a (assq (car p) given)])
+                                  (if a
+                                      (fxquotient (bytevector-length
+                                                   (gpu-buffer-bytes (cdr a)))
+                                                  4)
+                                      0)))
+                              (filter gpu-buffer-param?
+                                      (shader-params shader))))]
          [bytes (make-bytevector (max 4 (* 4 (length values))) 0)])
     (for-each (lambda (v i) (gpu-word-set! bytes (* 4 i) v))
               values (iota (length values)))
@@ -588,47 +612,78 @@
       (foreign-free code)
       c)))
 
+;; A compute run: (call w h written read), the buffers by id.
+(define (gpu-compute-run shader w h args)
+  (let* ([params (shader-params shader)]
+         [ids (lambda (write?)
+                (map gpu-buffer-id
+                     (gpu-args-of (lambda (p)
+                                    (and (gpu-buffer-param? p)
+                                         (eq? write? (pair? (cddr p)))))
+                                  params args)))])
+    (list (gpu-make-call shader (list w h) params args) w h (ids #t) (ids #f))))
+
+;; The pipeline that runs a compute shader, built when first asked for and
+;; kept with the paints'.
+(define (gpu-compute-pipeline shader)
+  (let* ([r *renderer*]
+         [ps (hashtable-ref (renderer-paints r) shader '())])
+    (cond
+      [(assq 'compute ps) => cdr]
+      [else
+       (let ([p (gpu-make-compute (renderer-device r) shader)])
+         (hashtable-set! (renderer-paints r) shader (cons (cons 'compute p) ps))
+         p)])))
+
+;; A compute run on cb, in a pass of its own.
+(define (gpu-dispatch! cb run)
+  (apply
+   (lambda (call w h writes reads)
+     (let ([bindings gpu-buffer-bindings*] [ids gpu-storage-buffers*])
+       (gpu-zero! bindings (ftype-sizeof gpu-buffer-bindings))
+       (for-each (lambda (id i)
+                   (ftype-set! gpu-buffer-bindings (i buffer) bindings id))
+                 writes (iota (length writes)))
+       (let ([pass (sdl-begin-compute-pass cb 0 0 (gpu-at bindings)
+                                           (length writes))])
+         (sdl-bind-compute-pipeline
+          pass (gpu-compute-pipeline (gpu-call-shader call)))
+         (for-each (lambda (id i) (ftype-set! gpu-storage-buffers (i) ids id))
+                   reads (iota (length reads)))
+         (unless (null? reads)
+           (sdl-bind-compute-storage pass 0 (gpu-at ids) (length reads)))
+         (sdl-push-compute-uniform cb 0 (gpu-call-uniforms call)
+                                   (bytevector-length (gpu-call-uniforms call)))
+         (sdl-dispatch-compute pass (quotient (+ w (- shader-group-x 1))
+                                              shader-group-x)
+                               h 1)
+         (sdl-end-compute-pass pass))))
+   run))
+
 ;; Runs a compute shader over w × h cells, now, and waits for it: its buffers
 ;; are then ready to read with gpu-buffer-read!.
 (define (gpu-compute! shader w h . args)
   (let* ([r *renderer*]
-         [d (renderer-device r)]
-         [params (shader-params shader)]
-         [call (gpu-make-call shader (list w h) params args)]
-         [writes (map gpu-buffer-id
-                      (gpu-args-of (lambda (p)
-                                     (and (gpu-buffer-param? p)
-                                          (pair? (cddr p))))
-                                   params args))]
-         [reads (map gpu-buffer-id
-                     (gpu-args-of (lambda (p)
-                                    (and (gpu-buffer-param? p)
-                                         (null? (cddr p))))
-                                  params args))]
-         [pipeline (gpu-make-compute d shader)]
-         [cb (gpu-must 'gpu-compute! (sdl-acquire-gpu-commands d))]
-         [bindings gpu-buffer-bindings*]
-         [ids gpu-storage-buffers*])
+         [cb (gpu-must 'gpu-compute!
+                       (sdl-acquire-gpu-commands (renderer-device r)))])
     (gpu-upload-buffers! r cb)
-    (gpu-zero! bindings (ftype-sizeof gpu-buffer-bindings))
-    (for-each (lambda (id i)
-                (ftype-set! gpu-buffer-bindings (i buffer) bindings id))
-              writes (iota (length writes)))
-    (let ([pass (sdl-begin-compute-pass cb 0 0 (gpu-at bindings)
-                                        (length writes))])
-      (sdl-bind-compute-pipeline pass pipeline)
-      (for-each (lambda (id i) (ftype-set! gpu-storage-buffers (i) ids id))
-                reads (iota (length reads)))
-      (unless (null? reads)
-        (sdl-bind-compute-storage pass 0 (gpu-at ids) (length reads)))
-      (sdl-push-compute-uniform cb 0 (gpu-call-uniforms call)
-                                (bytevector-length (gpu-call-uniforms call)))
-      (sdl-dispatch-compute pass (quotient (+ w (- shader-group-x 1))
-                                           shader-group-x)
-                            h 1)
-      (sdl-end-compute-pass pass))
-    (gpu-wait! (gpu-must 'gpu-compute! (sdl-submit-gpu-fence cb)))
-    (sdl-release-gpu-compute d pipeline)))
+    (gpu-dispatch! cb (gpu-compute-run shader w h args))
+    (gpu-wait! (gpu-must 'gpu-compute! (sdl-submit-gpu-fence cb)))))
+
+;; Compute runs to go with the next frame, the newest first.
+(defvar *gpu-computes* '())
+
+;; Runs a compute shader over w × h cells with the next frame, ahead of what it
+;; draws, so that a paint shows what it wrote. Nothing waits for it.
+(define (gpu-compute-soon! shader w h . args)
+  (set! *gpu-computes*
+    (cons (gpu-compute-run shader w h args) *gpu-computes*)))
+
+;; Those asked for since, in order, on cb: after its uploads, before its draws.
+(define (gpu-run-computes! cb)
+  (let ([runs (reverse *gpu-computes*)])
+    (set! *gpu-computes* '())
+    (for-each (lambda (run) (gpu-dispatch! cb run)) runs)))
 
 ;; What a shader left in the buffer: read back into the copy here. => its
 ;; bytes
@@ -791,6 +846,18 @@
       (ftype-set! gpu-storage-buffers (2) buffers (car (renderer-glyphs r)))
       (ftype-set! gpu-frame-uniforms (w) uniforms (inexact w))
       (ftype-set! gpu-frame-uniforms (h) uniforms (inexact h))
+      (for-each (lambda (pair i)
+                  (bytevector-s32-native-set! gpu-list-words (* 4 i)
+                                              (fxquotient (cdr pair) 4)))
+                (list (renderer-records r) (renderer-extras r)
+                      (renderer-glyphs r))
+                '(0 1 2))
+      (ftype-set! gpu-frame-uniforms (records) uniforms
+                  (bytevector-s32-native-ref gpu-list-words 0))
+      (ftype-set! gpu-frame-uniforms (extras) uniforms
+                  (bytevector-s32-native-ref gpu-list-words 4))
+      (ftype-set! gpu-frame-uniforms (glyphs) uniforms
+                  (bytevector-s32-native-ref gpu-list-words 8))
       (ftype-set! gpu-sampler-bindings (0 texture) samplers (renderer-atlas r))
       (ftype-set! gpu-sampler-bindings (0 sampler) samplers
                   (renderer-sampler r))
@@ -822,9 +889,16 @@
                                               (+ 2 (length own))))
                  (ftype-set! gpu-storage-buffers (2) buffers
                              (car (renderer-glyphs r)))
-                 (sdl-push-fragment-uniform
-                  cb 0 (gpu-call-uniforms call)
-                  (bytevector-length (gpu-call-uniforms call)))]
+                 ;; the list's lengths, its records' and extras', come first
+                 ;; of the paint's buffers'
+                 (let ([u (gpu-call-uniforms call)])
+                   (bytevector-copy! gpu-list-words 0 u
+                                     (- (bytevector-length u)
+                                        (* 4 (gpu-count-params
+                                              (gpu-call-shader call)
+                                              '(fx-buffer fl-buffer))))
+                                     8)
+                   (sdl-push-fragment-uniform cb 0 u (bytevector-length u)))]
                 [else
                  (unless (eqv? pipeline bound)
                    (sdl-bind-gpu-pipeline pass (vector-ref pipelines pipeline))
@@ -834,7 +908,8 @@
                              (if image
                                  (gpu-image-texture image)
                                  (renderer-blank r)))
-                 (sdl-bind-fragment-samplers pass 0 (gpu-at samplers) 2)])
+                 (sdl-bind-fragment-samplers pass 0 (gpu-at samplers) 2)
+                 (sdl-push-fragment-uniform cb 0 gpu-list-words 12)])
               (sdl-push-vertex-uniform cb 0 (gpu-at uniforms)
                                        (ftype-sizeof gpu-frame-uniforms))
               (sdl-draw-primitives pass 6 count 0 0))
@@ -897,6 +972,7 @@
                        (sdl-acquire-gpu-commands (renderer-device r)))])
     (gpu-upload! r cb recs recs-n extras extras-n table table-n atlas-pieces
                  images)
+    (gpu-run-computes! cb)
     (when preview
       (gpu-draw-runs! r cb (gpu-image-texture (car preview)) gpu-format-bgra8
                       (gpu-image-w (car preview)) (gpu-image-h (car preview))
@@ -969,6 +1045,7 @@
          [cb (gpu-must 'gpu-drawing->bytes (sdl-acquire-gpu-commands d))])
     (gpu-upload! r cb recs recs-n extras extras-n table table-n atlas-pieces
                  images)
+    (gpu-run-computes! cb)
     (gpu-draw-runs! r cb texture gpu-format-bgra8 w h runs clear?)
     (let ([bytes (gpu-read-texture! r cb texture w h)])
       (sdl-release-gpu-texture d texture)

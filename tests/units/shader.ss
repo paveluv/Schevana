@@ -583,6 +583,99 @@
     (gpu-buffer-release! in)
     (gpu-buffer-release! out)))
 
+;; Out of a buffer, either end: a read reads its last word and a write is left
+;; out, on any device, so that a shader an app hands the GPU reaches nothing
+;; else.
+(let* ([s (eval '(let ()
+                   (define-compute-shader (shader-test-outside x y)
+                     ([in fx-buffer] [out fx-buffer write])
+                     (fx-set! out x (fx-ref in (fx- x 4)))
+                     (fx-set! out (fx+ x 16) 99)
+                     (fx-set! out (fx- x 20) 77))
+                   shader-test-outside))]
+       [in (make-gpu-buffer 8)]
+       [out (make-gpu-buffer 16)]
+       [expected (make-bytevector 64 0)])
+  (do ([i 0 (+ i 1)]) ((= i 8)) (gpu-buffer-set! in i (* 11 (+ i 1))))
+  (gpu-compute! s 16 1 in out)
+  (gpu-buffer-read! out)
+  (do ([x 0 (+ x 1)]) ((= x 16))
+    ((twin-procedure s) x 0 16 1 (gpu-buffer-bytes in) expected))
+  (check (format "a read outside a buffer reads its last word and a write \
+                  outside it is left out, on the device as on the twin: ~s"
+                 (map (lambda (i) (gpu-buffer-ref out i)) (iota 16)))
+         (and (bytevector=? (gpu-buffer-bytes out) expected)
+              (equal? (map (lambda (i) (gpu-buffer-ref out i)) (iota 16))
+                      '(88 88 88 88 11 22 33 44 55 66 77 88 88 88 88 88))))
+  (gpu-buffer-release! in)
+  (gpu-buffer-release! out))
+
+;; With the frame: what a compute run writes, a paint drawn after shows.
+(check "a compute asked for with the next frame runs ahead of its drawing, so \
+        that a paint shows what it wrote; the runs wait in order, and a buffer \
+        let go takes those that name it"
+       (let* ([fill (eval '(let ()
+                             (define-compute-shader (shader-test-fill x y)
+                               ([out fx-buffer write] [v fixnum])
+                               (fx-set! out x v))
+                             shader-test-fill))]
+              [show (eval '(let ()
+                             (define-paint (shader-test-show x y)
+                               ([in fx-buffer])
+                               (fx-ref in x))
+                             shader-test-show))]
+              [b (make-gpu-buffer 4)]
+              [gone (make-gpu-buffer 4)])
+         (gpu-compute-soon! fill 4 1 b #xff00ff00)
+         (gpu-compute-soon! fill 4 1 gone 7)
+         (let ([waiting (inspect-computes)])
+           (gpu-buffer-release! gone)
+           (let* ([left (inspect-computes)]
+                  [p (image 4 1 1 (lambda () (fill-shader 0 0 4 1 show b)))]
+                  [after (inspect-computes)])
+             (gpu-buffer-release! b)
+             (printf "  ~s ~s ~s\n" waiting left after)
+             (and (equal? waiting '((shader-test-fill 4 1)
+                                    (shader-test-fill 4 1)))
+                  (equal? left '((shader-test-fill 4 1)))
+                  (null? after)
+                  (for-all (lambda (x) (= (pixel-at p x 0) #xff00ff00))
+                           (iota 4)))))))
+
+;; What a device can't show: a read outside a buffer may well give what's
+;; there by chance, and a write outside lands where nothing reads it back. So
+;; the tree: each read's index is held to the last word, and each write is
+;; under a compare.
+(check "every read of a buffer is at an index held to its last word, and \
+        every write is under a compare: the world's shaders and an app's"
+       (let ([writer (eval '(let ()
+                              (define-compute-shader (shader-test-writer x y)
+                                ([in fl-buffer] [out fl-buffer write])
+                                (fl-set! out (fx* x 2) (fl-ref in x))
+                                (fl-set! out (fx+ (fx* x 2) 1) 1.0))
+                              shader-test-writer))])
+         (for-all
+          (lambda (s)
+            (let ([tree (shader-tree s)])
+              (and (for-all (lambda (t)
+                              (let ([i (cadddr t)])
+                                (and (eq? (car i) 'op)
+                                     (eq? (caddr i) 'fxumin)
+                                     (equal? (car (cddddr i))
+                                             `(op fixnum fx-
+                                                  (var fixnum
+                                                       ,(shader-words
+                                                         (caddr t)))
+                                                  (const fixnum 1))))))
+                            (shader-test-nodes tree 'load))
+                   (= (length (shader-test-nodes tree 'store))
+                      (length (filter (lambda (t)
+                                        (and (eq? (cadr t) 'void)
+                                             (eq? (car (caddr t)) 'op)
+                                             (eq? (car (cadddr t)) 'store)))
+                                      (shader-test-nodes tree 'if)))))))
+          (list gfx-vertex gfx-fragment gfx-full-fragment writer))))
+
 ;;; The world's shaders.
 
 ;; How many nodes a tree has.

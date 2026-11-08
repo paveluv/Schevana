@@ -73,6 +73,15 @@
 ;; The name of the fragment shader a run draws with: the variant its records
 ;; need.
 (define (inspect-run-shader run) (vector-ref gfx-fragments (list-ref run 4)))
+
+;; The compute runs waiting for the next frame, in the order they'll run:
+;; (shader-name w h) each, w × h its cells.
+(define (inspect-computes)
+  (map (lambda (run)
+         (list (shader-name (gpu-call-shader (car run)))
+               (cadr run)
+               (caddr run)))
+       (reverse *gpu-computes*)))
 (define (inspect-list-frame l) (vector-ref l 7))
 
 ;; How many of its runs showed an image or a paint, which aren't kept.

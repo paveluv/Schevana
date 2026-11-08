@@ -50,6 +50,8 @@
       [(fxsra) `(ash ,a (- ,b))]
       [(fxquotient) `(twin-wrap (quotient ,a ,b))]
       [(fxrem) `(remainder ,a ,b)]
+      [(fxumin)
+       `(twin-wrap (min (logand ,a #xffffffff) (logand ,b #xffffffff)))]
       [(fl+ fl- fl* fl/ flmin flmax)
        `(flsingle (,name ,a ,b))]
       [(flneg) `(fl- ,a)]
@@ -109,15 +111,24 @@
 (define twin-procedures (make-weak-eq-hashtable))
 
 ;; The shader as a procedure of its coordinates and parameters, hidden
-;; uniforms first in a compute shader's: => what it emitted, as a list.
+;; uniforms first in a compute shader's: => what it emitted, as a list. A
+;; buffer's length is its bytevector's, as the device's is its buffer's.
 (define (twin-procedure s)
   (or (hashtable-ref twin-procedures s #f)
       (let* ([stage (shader-stage s)]
              [hidden (if (eq? stage 'compute) '(shader-w shader-h) '())]
+             [buffers (filter (lambda (p)
+                                (memq (cadr p) '(fx-buffer fl-buffer)))
+                              (shader-params s))]
              [f (eval
                  `(lambda (,@(shader-coords s) ,@hidden
                            ,@(map car (shader-params s)))
-                    (let ([shader-out #f])
+                    (let (,@(map (lambda (p)
+                                   `[,(shader-words (car p))
+                                     (fxquotient (bytevector-length ,(car p))
+                                                 4)])
+                                 buffers)
+                          [shader-out #f])
                       ,(twin-form (shader-tree s))
                       shader-out)))])
         (hashtable-set! twin-procedures s f)
