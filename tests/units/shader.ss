@@ -77,6 +77,27 @@
           (define-compute-shader (shader-test-bad x y) ([in fx-buffer])
             (fx-set! in 0 1)))))
 
+;; The nodes of a tree that head starts, in order.
+(define (shader-test-nodes t head)
+  (if (pair? t)
+      (append (if (eq? (car t) head) (list t) '())
+              (apply append (map (lambda (x) (shader-test-nodes x head)) t)))
+      '()))
+
+(check "a float constant is 32 bits on the twin, as on the device"
+       (let* ([s (eval '(let ()
+                          (define-compute-shader (shader-test-tenth x y)
+                            ([out fl-buffer write])
+                            (fl-set! out x (fl* (fixnum->flonum x) 0.1)))
+                          shader-test-tenth))]
+              [twin (twin-procedure s)]
+              [out (make-bytevector 400 0)])
+         (do ([x 0 (+ x 1)]) ((= x 100)) (twin x 0 100 1 out))
+         (for-all (lambda (x)
+                    (= (bytevector-ieee-single-native-ref out (* 4 x))
+                       (flsingle (fl* (fixnum->flonum x) (flsingle 0.1)))))
+                  (iota 100))))
+
 ;;; What a back end prints.
 
 (define shader-test-odd-names
@@ -179,6 +200,13 @@
           (cond [else 1.0] [(fx= id 0) 2.0])
           (cond [(fx= id 0)] [else 1.0])
           (cond [(fx= id 0) 1.0]))))
+
+(check "a test known when it's compiled leaves only its arm, and the other is \
+        still checked"
+       (and (shader-test-same-tree? '(let ([on? #f]) (if on? 1.0 2.0)) 2.0)
+            (shader-test-same-tree? '(if (and #f (fx= id 0)) 1.0 2.0) 2.0)
+            (shader-test-same-tree? '(if (or #t (fx= id 0)) 1.0 2.0) 1.0)
+            (raises? (lambda () (shader-test-color '(if #f (car id) 1.0))))))
 
 (define-compute-shader (shader-test-branches x y)
   ([out fx-buffer write])
@@ -519,7 +547,7 @@
 (when (eq? shader-target 'msl)
   (let* ([ops '((fl+ a b) (fl- a b) (fl* a b) (fl/ a b) (fl+ (fl* a b) c)
                 (fl- (fl+ a b) a) (flfloor a) (flceiling a) (flround a)
-                (flmin a b) (flmax a b) (flabs a) (fl- a))]
+                (flmin a b) (flmax a b) (flabs a) (fl- a) (fl* a 0.1))]
          [count (length ops)]
          [cells (* 200 count)]
          [body (let loop ([ops ops] [i 0])
@@ -550,10 +578,40 @@
     (do ([x 0 (+ x 1)]) ((= x cells))
       ((twin-procedure s) x 0 cells 1 (gpu-buffer-bytes in) expected))
     (check "on Metal, floats add, multiply and divide exactly as the twin \
-            does, a product and a sum and (a + b) - a among them"
+            does, a product and a sum, (a + b) - a and a constant among them"
            (bytevector=? (gpu-buffer-bytes out) expected))
     (gpu-buffer-release! in)
     (gpu-buffer-release! out)))
+
+;;; The world's shaders.
+
+(check "a run that shows no image draws with a shader that has none of an \
+        image's code, one that shows an image with a shader that reads it"
+       (let ([reads-image?
+              (lambda (s)
+                (exists (lambda (t) (eq? (cadr t) 'image))
+                        (shader-test-nodes (shader-tree s) 'fetch)))])
+         (and (not (reads-image? gfx-fragment))
+              (reads-image? gfx-image-fragment))))
+
+(check "every byte of a color comes out as itself, and as its alpha takes it \
+        over black"
+       (let ([img (image 256 2 1
+                         (lambda ()
+                           (fill-box 0 0 256 2 #x000000)
+                           (do ([k 0 (+ k 1)]) ((= k 256))
+                             (fill-box k 0 1 1
+                                       (rgb k (- 255 k) (mod (* 37 k) 256)))
+                             (fill-box k 1 1 1
+                                       (alpha (rgb 255 200 k) (/ k 255))))))]
+             [word (lambda (r g b) (+ #xff000000 (* r 65536) (* g 256) b))]
+             [scaled (lambda (c k) (round (/ (* c k) 255)))])
+         (for-all (lambda (k)
+                    (and (= (pixel-at img k 0)
+                            (word k (- 255 k) (mod (* 37 k) 256)))
+                         (= (pixel-at img k 1)
+                            (word k (scaled 200 k) (scaled k k)))))
+                  (iota 256))))
 
 ;;; Paints.
 

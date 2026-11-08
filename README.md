@@ -921,9 +921,11 @@ Decisions worth keeping in mind for the real design:
   procedures write (`fill-box`, `draw-text`, ...); `with-clip`,
   `with-translation`, `with-scale`, `with-turn` and `with-label` are forms,
   with no closure a call. One shader on the GPU reads them, in one instanced
-  draw for a run of them that's alike. Coverage is by distance, a paint times
-  a geometry; glyphs come from an atlas on the GPU, and only they and what
-  must be saved keep pixels in main memory. A change asks for a frame:
+  draw for a run of them that's alike, made twice: a run that shows no image
+  draws with none of an image's code, which on Metal every pixel would pay
+  for. Coverage is by distance, a paint times a geometry; glyphs come from an
+  atlas on the GPU, and only they and what must be saved keep pixels in main
+  memory. A change asks for a frame:
   input to a window, `(invalidate! win)`, the hover, the clock once a second,
   the world's changes. The next tick's frame records the wallpaper, every
   window from the bottom up (each clipped to its extent, so nothing it draws

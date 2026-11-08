@@ -330,7 +330,8 @@
     (gpu-must 'gpu-make-pipeline
               (sdl-create-gpu-pipeline device (gpu-at p)))))
 
-;; The pipelines drawing records to this format, made once.
+;; The pipelines drawing records to this format, made once: by mode, four for a
+;; run that shows no image, then four for one that does.
 (define (gpu-pipelines-for format)
   (let ([r *renderer*])
     (cond
@@ -339,12 +340,18 @@
        (let* ([d (renderer-device r)]
               [vs (gpu-make-shader d (top-level-value 'gfx-vertex))]
               [fs (gpu-make-shader d (top-level-value 'gfx-fragment))]
+              [is (gpu-make-shader d (top-level-value 'gfx-image-fragment))]
               [modes (vector (gpu-make-pipeline d vs fs format 0)
                              (gpu-make-pipeline d vs fs format 1)
                              (gpu-make-pipeline d vs fs format 2)
-                             (gpu-make-pipeline d vs fs format 3))])
+                             (gpu-make-pipeline d vs fs format 3)
+                             (gpu-make-pipeline d vs is format 0)
+                             (gpu-make-pipeline d vs is format 1)
+                             (gpu-make-pipeline d vs is format 2)
+                             (gpu-make-pipeline d vs is format 3))])
          (sdl-release-gpu-shader d vs)
          (sdl-release-gpu-shader d fs)
+         (sdl-release-gpu-shader d is)
          (renderer-pipelines-set!
           r (cons (cons format modes) (renderer-pipelines r)))
          modes)])))
@@ -786,14 +793,15 @@
                   (renderer-sampler r))
       (ftype-set! gpu-sampler-bindings (1 sampler) samplers
                   (renderer-sampler r))
-      (let loop ([runs runs] [mode #f])
+      (let loop ([runs runs] [bound #f])   ; the pipeline bound, or #f
         (unless (null? runs)
           (let* ([run (car runs)]
                  [run-mode (car run)]
                  [image (cadr run)]
                  [first (caddr run)]
                  [count (cadddr run)]
-                 [call (and (gpu-call? image) image)])
+                 [call (and (gpu-call? image) image)]
+                 [pipeline (if image (+ run-mode 4) run-mode)])
             (when (> count 0)
               (ftype-set! gpu-frame-uniforms (first) uniforms first)
               (cond
@@ -815,8 +823,8 @@
                   cb 0 (gpu-call-uniforms call)
                   (bytevector-length (gpu-call-uniforms call)))]
                 [else
-                 (unless (eqv? run-mode mode)
-                   (sdl-bind-gpu-pipeline pass (vector-ref pipelines run-mode))
+                 (unless (eqv? pipeline bound)
+                   (sdl-bind-gpu-pipeline pass (vector-ref pipelines pipeline))
                    (sdl-bind-vertex-storage pass 0 (gpu-at buffers) 3)
                    (sdl-bind-fragment-storage pass 0 (gpu-at buffers) 3))
                  (ftype-set! gpu-sampler-bindings (1 texture) samplers
@@ -829,8 +837,8 @@
               (sdl-draw-primitives pass 6 count 0 0))
             (loop (cdr runs)
                   (cond [call #f]
-                        [(> count 0) run-mode]
-                        [else mode])))))
+                        [(> count 0) pipeline]
+                        [else bound])))))
       (sdl-end-render-pass pass))))
 
 ;; Where the GPU stood with the last frame, as main asked the window for its

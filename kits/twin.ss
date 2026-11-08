@@ -64,7 +64,8 @@
 
 (define (twin-form t)
   (case (car t)
-    [(const) (caddr t)]
+    ;; a float as the device has it, 32 bits
+    [(const) (let ([v (caddr t)]) (if (flonum? v) (flsingle v) v))]
     [(var) (twin-var (caddr t))]
     [(op) (twin-op (caddr t) (map twin-form (cdddr t)))]
     [(let)

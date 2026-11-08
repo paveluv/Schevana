@@ -280,6 +280,9 @@
                                 (bind-value
                                  (car ps) (list 'var (shader-type t) id)
                                  inner))))))))))
+  ;; A test known here leaves only its arm, so that a shader made twice, with
+  ;; a part and without, has none of it the second time, whatever the target's
+  ;; compiler would do. A name bound to a constant is the constant.
   (define (lower-if test yes no env form)
     (let ([c (want 'boolean (lower test env) form)]
           [a (lower yes env)]
@@ -287,7 +290,9 @@
       (unless (eq? (shader-type a) (shader-type b))
         (shader-error "~s: arms of ~a and ~a" form
                       (shader-type a) (shader-type b)))
-      (list 'if (shader-type a) c a b)))
+      (if (eq? (car c) 'const)
+          (if (caddr c) a b)
+          (list 'if (shader-type a) c a b))))
   ;; (do-bounded most ([v init step] ...) (test result)): at most most
   ;; rounds, so a shader's cost is known before it runs.
   (define (lower-do form env)
