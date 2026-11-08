@@ -8,7 +8,9 @@
 ;;; Right, the screen small, the selected record outlined: a press there
 ;;; lists the records that may touch that pixel. It draws again every tick, or
 ;;; as seldom as it's told, and it's on the screen it shows: so it's in itself,
-;;; a tick older each time round.
+;;; a tick older each time round. The wheel zooms it at the pointer and a drag
+;;; moves it; a loupe magnifies the pixels at the pointer; and it pops out to a
+;;; window of its own above the Pipeline, coming back when that one closes.
 ;;; Under them, the Tape: a mark a record in draw order, as tall as what it may
 ;;; cover, and in lanes who drew it and its kind. A press there, or its
 ;;; stepper, holds the frame and draws it as far as that record, the record
@@ -44,7 +46,11 @@
           (mutable tape)       ; the Tape, a stream a record
           (mutable tape-of)    ; the list it holds
           (mutable playing)    ; while it plays, how far it has: a number
-          (mutable play-secs))) ; how long it plays the whole frame
+          (mutable play-secs)  ; how long it plays the whole frame
+          (mutable zoom)       ; device pixels a screen pixel, or #f: all of it
+          (mutable center)     ; the screen's pixel at the middle: (x . y)
+          (mutable loupe?)
+          (mutable popped)))   ; its window when it's popped out, or #f
 
 (define pipeline-period-ms 250)
 
@@ -567,18 +573,253 @@
                 (draw-text (+ x 10) (+ y 6 (* lh (+ i 1))) line 'text-dim 'ui))
               lines (iota (length lines)))))
 
-;; The screen small, what's selected outlined. A pixel of the image is k
-;; device pixels.
-(define (pipeline-draw-screen image x y w h box k)
-  (fill-box x y w h 'bg-0)
-  (when image (draw-image image x y w h))
-  (stroke-box x y w h 'window-border)
-  (when box
-    (let ([bx (+ x (/ (car box) k))] [by (+ y (/ (cadr box) k))])
-      (stroke-box bx by
-                  (max 3 (/ (- (caddr box) (car box)) k))
-                  (max 3 (/ (- (cadddr box) (cadr box)) k))
-                  'accent 1))))
+;;; ---- the viewer: the screen small, zoomed, moved, magnified, popped out
+
+(define pipeline-zoom-most 32)    ; device pixels a screen pixel, at most
+(define pipeline-zoom-step 1.25)  ; a notch of the wheel
+(define pipeline-loupe-size 128)
+(define pipeline-loupe-zoom 8)    ; a screen pixel in the loupe, logical pixels
+
+;; How many device pixels of a viewer w × h a pixel of the screen takes: all
+;; of it, or as much more as asked.
+(define (pipeline-viewer-fit w h)
+  (let ([s (draw-scale)])
+    (min (/ (* w s) *canvas-pw*) (/ (* h s) *canvas-ph*))))
+
+(define (pipeline-viewer-zoom v w h)
+  (let ([fit (pipeline-viewer-fit w h)])
+    (max fit (or (pipeline-view-zoom v) fit))))
+
+;; The screen's pixel at the viewer's middle, on the screen.
+(define (pipeline-viewer-center v)
+  (let ([c (and (pipeline-view-zoom v) (pipeline-view-center v))])
+    (if c
+        (cons (max 0 (min *canvas-pw* (car c)))
+              (max 0 (min *canvas-ph* (cdr c))))
+        (cons (/ *canvas-pw* 2) (/ *canvas-ph* 2)))))
+
+;; The screen's pixel under (mx, my) of a viewer at x y w h.
+(define (pipeline-viewer-pixel v x y w h mx my)
+  (let ([k (/ (draw-scale) (pipeline-viewer-zoom v w h))]
+        [c (pipeline-viewer-center v)])
+    (cons (+ (car c) (* k (- mx (+ x (/ w 2)))))
+          (+ (cdr c) (* k (- my (+ y (/ h 2))))))))
+
+;; A notch of the wheel, or n: zoomed at (mx, my), the pixel there staying.
+(define (pipeline-zoom-at! v x y w h mx my n)
+  (let* ([fit (pipeline-viewer-fit w h)]
+         [p (pipeline-viewer-pixel v x y w h mx my)]
+         [z (max fit (min pipeline-zoom-most
+                          (* (pipeline-viewer-zoom v w h)
+                             (expt pipeline-zoom-step n))))]
+         [k (/ (draw-scale) z)])
+    (if (<= z (* fit 1.001))
+        (begin (pipeline-view-zoom-set! v #f) (pipeline-view-center-set! v #f))
+        (begin
+          (pipeline-view-zoom-set! v z)
+          (pipeline-view-center-set!
+           v (cons (- (car p) (* k (- mx (+ x (/ w 2)))))
+                   (- (cdr p) (* k (- my (+ y (/ h 2)))))))))))
+
+;; What the loupe says under its pixels: where, and the top record there.
+(define (pipeline-loupe-caption v px py)
+  (let* ([l (pipeline-view-shown v)]
+         [at (inspect-records-at l px py)])
+    (if (null? at)
+        (format "~a, ~a" px py)
+        (format "~a, ~a: ~a ~a" px py (inspect-kind l (car at)) (car at)))))
+
+;; The viewer: the screen at its zoom, around its center, what's selected
+;; outlined (box, screen pixels, or #f).
+(define (pipeline-draw-viewer v image x y w h box)
+  (let* ([z (pipeline-viewer-zoom v w h)]
+         [k (/ z (draw-scale))]
+         [c (pipeline-viewer-center v)]
+         [at (lambda (p mid) (+ mid (* k p)))]
+         [ox (- (+ x (/ w 2)) (* k (car c)))]
+         [oy (- (+ y (/ h 2)) (* k (cdr c)))])
+    (fill-box x y w h 'bg-0)
+    (with-clip (x y w h)
+      (when image
+        (draw-image image ox oy (* k *canvas-pw*) (* k *canvas-ph*)))
+      (when box
+        (stroke-box (at (car box) ox) (at (cadr box) oy)
+                    (max 3 (* k (- (caddr box) (car box))))
+                    (max 3 (* k (- (cadddr box) (cadr box))))
+                    'accent 1)))
+    (stroke-box x y w h 'window-border)))
+
+;; The loupe at lx, ly: the screen's pixels around (px, py), its own boxed.
+(define (pipeline-draw-loupe image lx ly px py caption)
+  (let* ([size pipeline-loupe-size] [m pipeline-loupe-zoom]
+         [lh (font-line-height 'ui-small)] [mid (/ size 2)])
+    (fill-box lx ly size (+ size lh 6) 'bg-2)
+    (with-clip (lx ly size size)
+      (draw-image image (- (+ lx mid) (* m (+ px 1/2)))
+                  (- (+ ly mid) (* m (+ py 1/2)))
+                  (* m *canvas-pw*) (* m *canvas-ph*)))
+    (stroke-box (- (+ lx mid) (/ m 2)) (- (+ ly mid) (/ m 2)) m m 'accent 1)
+    (stroke-box lx ly size (+ size lh 6) 'window-border)
+    (draw-text (+ lx 4) (+ ly size 3) (text-fit caption (- size 8) 'ui-small)
+               'text 'ui-small)))
+
+;; In the viewer's place while it's popped out.
+(define (pipeline-draw-popped-out x y w h)
+  (fill-box x y w h 'bg-1)
+  (stroke-box x y w h 'window-border))
+
+;; The viewer at x y w h, in ui as id: the wheel zooms it at the pointer, a drag
+;; moves it, a press lists the records at its pixel; with the loupe on, the
+;; pixels at the pointer magnified beside it.
+(define (pipeline-viewer v ui id x y w h)
+  (let* ([l (pipeline-view-shown v)]
+         [n (inspect-list-count l)]
+         [selected (pipeline-view-selected v)]
+         [grab (list id 'grab)]   ; (mx my center moved?)
+         [mx (ui-state-mx ui)] [my (ui-state-my ui)]
+         [win (current-window)]
+         [over? (and win (eq? (window-hover win) 'content)
+                     (point-in? mx my x y w h))])
+    (ui-region! ui id x y w h
+      'doc '((L . "List what may touch this pixel, or drag to move")
+             (Wheel . "Zoom in or out"))
+      'on (lambda (ev)
+            (case (car ev)
+              [(press)
+               (and (eq? (list-ref ev 3) 'left)
+                    (begin
+                      (ui-memo! ui grab (list (cadr ev) (caddr ev)
+                                              (pipeline-viewer-center v) #f))
+                      #t))]
+              [(drag)
+               (let ([g (ui-memo ui grab #f)])
+                 (and g
+                      (let ([dx (- (cadr ev) (car g))]
+                            [dy (- (caddr ev) (cadr g))]
+                            [k (/ (draw-scale) (pipeline-viewer-zoom v w h))])
+                        (when (or (cadddr g) (> (+ (abs dx) (abs dy)) 3))
+                          (ui-memo! ui grab
+                                    (list (car g) (cadr g) (caddr g) #t))
+                          (when (pipeline-view-zoom v)
+                            (pipeline-view-center-set!
+                             v (cons (- (car (caddr g)) (* k dx))
+                                     (- (cdr (caddr g)) (* k dy))))))
+                        #t)))]
+              [(release)
+               (let ([g (ui-memo ui grab #f)])
+                 (ui-memo! ui grab #f)
+                 (and g
+                      (begin
+                        (unless (cadddr g)
+                          (let ([p (pipeline-viewer-pixel
+                                    v x y w h (cadr ev) (caddr ev))])
+                            (pipeline-trace! v (exact (floor (car p)))
+                                             (exact (floor (cdr p))))))
+                        #t)))]
+              [(wheel)
+               (pipeline-zoom-at! v x y w h (ui-state-mx ui) (ui-state-my ui)
+                                  (cadr ev))
+               #t]
+              [else #f])))
+    (pipeline-draw-viewer
+     v (pipeline-view-image v) x y w h
+     (and selected
+          (< (pipeline-node-first selected) n)
+          (inspect-reach l (pipeline-node-first selected))))
+    (when (and over? (pipeline-view-loupe? v) (pipeline-view-image v))
+      (let* ([p (pipeline-viewer-pixel v x y w h mx my)]
+             [px (exact (floor (car p)))] [py (exact (floor (cdr p)))]
+             [said (ui-memo ui (list id 'loupe) #f)]
+             [caption (if (and said (equal? (car said) p))
+                          (cdr said)
+                          (let ([c (pipeline-loupe-caption v px py)])
+                            (ui-memo! ui (list id 'loupe) (cons p c))
+                            c))])
+        (ui-later! ui
+          (lambda (ww wh)
+            (let ([size pipeline-loupe-size]
+                  [tall (+ pipeline-loupe-size
+                           (font-line-height 'ui-small) 6)])
+              (pipeline-draw-loupe
+               (pipeline-view-image v)
+               (if (> (+ mx 20 size) ww) (- mx 20 size) (+ mx 20))
+               (if (> (+ my 20 tall) wh) (- my 20 tall) (+ my 20))
+               px py caption))))))))
+
+;; Fit, 100%, the loupe, how far the viewer vw × vh is zoomed, and Pop out
+;; unless it's out.
+(define (pipeline-viewer-bar v ui x y w vw vh popped?)
+  (let* ([ch (ui-control-height)] [gap 6]
+         [fw (+ 24 (text-width "Fit" 'ui))]
+         [hw (+ 24 (text-width "100%" 'ui))]
+         [lx (+ x fw gap hw gap)])
+    (ui-button ui '(pipeline fit) x y fw ch "Fit"
+               (lambda ()
+                 (pipeline-view-zoom-set! v #f)
+                 (pipeline-view-center-set! v #f))
+               'tip "Show the whole screen")
+    (ui-button ui '(pipeline actual) (+ x fw gap) y hw ch "100%"
+               (lambda ()
+                 (unless (pipeline-view-zoom v)
+                   (pipeline-view-center-set! v (pipeline-viewer-center v)))
+                 (pipeline-view-zoom-set! v 1))
+               'tip "A pixel of the screen for a pixel")
+    (let-values ([(cw chh) (ui-checkbox-size "Loupe")])
+      (ui-checkbox ui '(pipeline loupe) lx y cw ch "Loupe"
+                   (pipeline-view-loupe? v)
+                   (lambda (on?) (pipeline-view-loupe?-set! v on?))
+                   'tip "Magnify the pixels at the pointer")
+      (let* ([pw (if popped? 0 (+ 24 (text-width "Pop out" 'ui)))]
+             [zx (+ lx cw gap)])
+        (ui-draw-label zx y (max 0 (- (+ x w) pw gap zx)) ch '(dim)
+                       (format "~a%"
+                               (exact (round (* 100 (pipeline-viewer-zoom
+                                                     v vw vh))))))
+        (unless popped?
+          (ui-button ui '(pipeline pop) (- (+ x w) pw) y pw ch "Pop out"
+                     (lambda () (pipeline-pop-out! v (current-window)))
+                     'tip "Show it in a window of its own, above the \
+                           Pipeline"))))))
+
+;; The viewer in a window of its own, kept above the Pipeline's, win: closed,
+;; it's back in its place.
+(define (pipeline-pop-out! v win)
+  (unless (pipeline-view-popped v)
+    (let* ([ui (make-ui)]
+           [w 960]
+           [h (exact (round (+ (* w (/ *canvas-ph* *canvas-pw*))
+                               (ui-control-height) (* 3 (ui-pad)))))])
+      (pipeline-view-popped-set!
+       v (apply open-window "Pipeline — the screen"
+                'size (cons w h)
+                'min-size '(320 . 240)
+                'app (window-app win)
+                'above win
+                'draw (lambda (pop w h) (pipeline-popped-draw v ui w h))
+                'close (lambda (pop)
+                         (pipeline-view-popped-set! v #f)
+                         (invalidate! win))
+                (append (ui-handlers ui)
+                        (list 'tick (lambda (pop) (ui-tick ui pop)))))))))
+
+(define (pipeline-popped-draw v ui w h)
+  (let ([pad (ui-pad)] [ch (ui-control-height)])
+    (ui-begin! ui)
+    (let ([vw (- w pad pad)] [vh (- h pad ch pad pad)])
+      (pipeline-viewer-bar v ui pad pad vw vw vh #t)
+      (pipeline-viewer v ui '(pipeline viewer) pad (+ pad ch pad) vw vh))
+    (ui-end! ui w h)))
+
+;; With the loupe on, a move of the pointer in either window draws again.
+(define (pipeline-loupe-follow! v win)
+  (let ([popped (pipeline-view-popped v)])
+    (for-each (lambda (ui)
+                (let ([at (cons (ui-state-mx ui) (ui-state-my ui))])
+                  (unless (equal? at (ui-memo ui '(pipeline pointer) #f))
+                    (ui-memo! ui '(pipeline pointer) at)
+                    (invalidate! win))))
+              (cons (pipeline-view-ui v)
+                    (if popped (list (window-ref popped 'ui)) '())))))
 
 (define (pipeline-card-lines v stage)
   (case stage
@@ -702,7 +943,6 @@
          [top (+ pad card-h gap)]
          [bottom (max top (- h pad river-h gap tape-h gap))]
          [l (pipeline-view-shown v)]
-         [selected (pipeline-view-selected v)]
          [ch (ui-control-height)])
     (ui-begin! ui)
     (let ([card-w (quotient (- w pad pad gap) 2)])
@@ -720,28 +960,27 @@
         (if (eq? (pipeline-view-stage v) 'lists)
             (pipeline-lists-pane v pad top pane-w (- bottom top))
             (pipeline-screen-pane v pad top pane-w (- bottom top))))
-      ;; the small screen, and Hold under it
+      ;; the small screen, or its place while it's out; its bar, Hold
+      (pipeline-image! v)
       (let* ([sx (+ pad pane-w gap)]
-             [k (/ *canvas-pw* screen-w)]
-             [image (pipeline-image! v)]
-             [n (inspect-list-count l)]
              [sy (+ top screen-h gap)])
-        (ui-area ui '(pipeline screen) sx top screen-w screen-h
-                 #f
-                 (lambda (mx my)
-                   (pipeline-trace! v (exact (floor (* k (- mx sx))))
-                                    (exact (floor (* k (- my top)))))))
-        (pipeline-draw-screen
-         image sx top screen-w screen-h
-         (and selected
-              (< (pipeline-node-first selected) n)
-              (inspect-reach l (pipeline-node-first selected)))
-         k)
-        (ui-checkbox ui '(pipeline hold) sx sy
+        (if (pipeline-view-popped v)
+            (let ([bw (+ 24 (text-width "Bring it back" 'ui))])
+              (pipeline-draw-popped-out sx top screen-w screen-h)
+              (ui-draw-label sx (+ top (/ (- screen-h ch ch gap) 2)) screen-w
+                             ch '(dim center) "In a window of its own")
+              (ui-button ui '(pipeline unpop) (+ sx (/ (- screen-w bw) 2))
+                         (+ top (/ (+ (- screen-h ch ch gap) ch ch gap) 2))
+                         bw ch "Bring it back"
+                         (lambda () (close-window! (pipeline-view-popped v)))))
+            (begin
+              (pipeline-viewer v ui '(pipeline viewer) sx top screen-w screen-h)
+              (pipeline-viewer-bar v ui sx sy screen-w screen-w screen-h #f)))
+        (ui-checkbox ui '(pipeline hold) sx (+ sy ch gap)
                      screen-w ch "Hold this frame" (pipeline-view-held? v)
                      (lambda (on?)
                        (if on? (pipeline-hold! v) (pipeline-resume! v))))
-        (let* ([ey (+ sy ch gap)]
+        (let* ([ey (+ sy ch gap ch gap)]
                [every (pipeline-view-every v)]
                [label "Draw it every"]
                [lw (+ 8 (text-width label 'ui))])
@@ -756,7 +995,7 @@
                            '(dim) (if (= every 1) "tick" "ticks"))))
         ;; what a frame kept can't show
         (when (and (pipeline-view-held? v) (> (inspect-list-left-out l) 0))
-          (ui-draw-label sx (+ sy ch gap ch gap)
+          (ui-draw-label sx (+ sy ch gap ch gap ch gap)
                          screen-w 0 '(hint wrap)
                          "Images and paints aren't kept with a frame, so \
                           they're left out of it here."))))
@@ -771,6 +1010,7 @@
   (when (pipeline-view-playing v)
     (pipeline-play-tick! v)
     (invalidate! win))
+  (when (pipeline-view-loupe? v) (pipeline-loupe-follow! v win))
   (unless (pipeline-view-held? v)
     (pipeline-flip! v)
     (let ([history (pipeline-view-history v)])
@@ -797,7 +1037,8 @@
                                           pipeline-frames-kept)
                                       river 'lists (inspect-list) #f 0 '() #f #f
                                       #f #f #f #f #f #f '() 0.0 #f 1
-                                      (pipeline-tape-new 0) #f #f 5)])
+                                      (pipeline-tape-new 0) #f #f 5
+                                      #f #f #f #f)])
           (pipeline-look! v)
           (apply open-window "Pipeline"
                  'size '(1100 . 860)

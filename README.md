@@ -684,7 +684,11 @@ Decisions worth keeping in mind for the real design:
   the app's sandbox, for one in a sandbox) that
   calls `open-window` with a property list of handlers (`'draw`, `'key`,
   `'text`, `'mouse-down`, `'tick`, ...). Every other option becomes a
-  window property (`window-ref` / `window-set!`).
+  window property (`window-ref` / `window-set!`). `'above owner` makes a
+  window its owner's: it stays above the owner, which still takes the
+  keyboard when given it, and the two are raised, minimized, brought back,
+  sent behind and closed together (`window-owner`, `window-owned`); looked
+  up by its app, an app's own window comes first.
 - **A tick's busy time is always kept.** What a tick took but its waits for
   input and for the screen, profiling on or off: past a period, the next
   tick is late. `(pacer-busy-ms)` is the last tick's, Monitor shows it, and
@@ -994,7 +998,11 @@ Decisions worth keeping in mind for the real design:
   each record decoded in draw order and a run of glyphs as its text, the
   screen small, drawn again every tick unless told otherwise and showing
   itself in its own box, a tick older each time round, with what's selected
-  outlined, and a press there listing what may touch that pixel. Under them
+  outlined, and a press there listing what may touch that pixel; the wheel
+  zooms it at the pointer, a drag moves it, Fit and 100% set it, a loupe
+  magnifies the pixels at the pointer and names the record on top there,
+  and Pop out puts it in a window of its own kept above the Pipeline, back
+  in its place when that window closes. Under them
   the Tape: a mark a record in draw order, as tall as what it may cover, and
   in lanes who drew it and its kind; a press or its stepper holds the frame
   and draws it as far as that record, Play draws it record by record over a

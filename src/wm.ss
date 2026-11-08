@@ -10,6 +10,9 @@
 ;;;
 ;;; Options other than handlers (and size, min-size, pos, app) become
 ;;; window properties: (window-ref win 'bg), (window-ref win 'cursor).
+;;; 'above owner makes a window its owner's: it stays above the owner, which
+;;; still takes the keyboard when it's given it, and the two are raised,
+;;; minimized, brought back, sent behind and closed together.
 ;;;
 ;;; Handlers: open draw tick key text mouse-down mouse-up mouse-move wheel
 ;;;           resize focus blur close.
@@ -323,13 +326,17 @@
 (define (visible? win) (not (eq? (window-state win) 'minimized)))
 (define (maximized? win) (eq? (window-state win) 'maximized))
 
+;; An app's window, by its name, is its own before one opened above another.
 (define (find-window x)
-  (find (lambda (w)
-          (cond [(number? x) (= (window-id w) x)]
-                [(string? x) (string-contains-ci? (window-title w) x)]
-                [(symbol? x) (eq? (window-app w) x)]
-                [else (eq? w x)]))
-        *windows*))
+  (let ([match? (lambda (w)
+                  (cond [(number? x) (= (window-id w) x)]
+                        [(string? x) (string-contains-ci? (window-title w) x)]
+                        [(symbol? x) (eq? (window-app w) x)]
+                        [else (eq? w x)]))])
+    (or (and (symbol? x)
+             (find (lambda (w) (and (match? w) (not (window-owner w))))
+                   *windows*))
+        (find match? *windows*))))
 
 (define (window-ref win key . default)
   (hashtable-ref (window-props win) key (if (null? default) #f (car default))))
@@ -429,6 +436,18 @@
 (define (window-modal-above win)
   (and (window-setting win 'modal-above) (window-modal-child win)))
 
+;; The window win was opened above ('above), while it's open, or #f; the
+;; windows opened above win, the lowest first.
+(define (window-owner win)
+  (let ([o (window-ref win 'above)]) (and o (memq o *windows*) o)))
+
+(define (window-owned win)
+  (reverse (filter (lambda (w) (eq? (window-owner w) win)) *windows*)))
+
+;; The owner its owners lead up to: what moves win.
+(define (window-root win)
+  (let ([o (window-owner win)]) (if o (window-root o) win)))
+
 ;; Gives win the keyboard and brings it to the front (raise? #f: not); a
 ;; window that waits on another above it gives it the keyboard.
 (define (focus-window! win . raise?)
@@ -446,14 +465,20 @@
       (when (and old (memq old *windows*)) (window-call old 'blur))
       (when win (window-call win 'focus))))
   (when win
-    (when (eq? (window-state win) 'minimized)
-      (window-state-set! win (if (window-restore win) 'maximized 'normal)))
+    (window-unminimize! win)
     (unless (and (pair? raise?) (not (car raise?))) (raise-window! win)))
   (request-frame!))
+
+;; Back from minimized, and the windows it owns with it.
+(define (window-unminimize! win)
+  (when (eq? (window-state win) 'minimized)
+    (window-state-set! win (if (window-restore win) 'maximized 'normal))
+    (for-each window-unminimize! (window-owned win))))
 
 (define (raise-window! win)
   (set! *windows* (cons win (remq win *windows*)))
   (let ([c (window-modal-above win)]) (when c (raise-window! c)))
+  (for-each raise-window! (window-owned win))
   (request-frame!))
 
 (define (focus-topmost!)
@@ -467,6 +492,7 @@
 
 (define (close-window! win)
   (when (memq win *windows*)
+    (for-each close-window! (window-owned win))
     (window-call win 'close)
     (set! *windows* (remq win *windows*))
     (*window-gone* win)
@@ -479,6 +505,7 @@
 (define (minimize-window! win)
   (unshade-window! win)
   (window-state-set! win 'minimized)
+  (for-each minimize-window! (window-owned win))
   (when (eq? win *focus*) (focus-topmost!))
   (request-frame!))
 
@@ -511,13 +538,17 @@
     (set-geometry! win (window-x win) (window-y win) (+ w l r) (+ h t b))))
 
 ;; What a 'depth button does (the Amiga's depth gadget): send the front
-;; window to the back, or bring a window that is behind others to the front.
+;; window to the back, or bring a window that is behind others to the front;
+;; an owner and the windows above it as one.
 (define (depth-window! win)
-  (if (eq? win (find visible? *windows*))
-      (begin
-        (set! *windows* (append (remq win *windows*) (list win)))
-        (focus-topmost!))
-      (focus-window! win))
+  (let* ([root (window-root win)]
+         [group? (lambda (w) (eq? (window-root w) root))])
+    (if (group? (find visible? *windows*))
+        (begin
+          (set! *windows* (append (remp group? *windows*)
+                                  (filter group? *windows*)))
+          (focus-topmost!))
+        (focus-window! win)))
   (request-frame!))
 
 (define (maximize-window! win)

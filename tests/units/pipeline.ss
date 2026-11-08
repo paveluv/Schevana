@@ -294,7 +294,7 @@
     (check "its cells are the kit's, so that they line up under their headings \
             and clear of each other"
            (member "Pipeline" drawn)))
-  (press! '(pipeline screen))
+  (press! '(pipeline viewer))
   (check "a press on the small screen lists the records at that pixel, the \
           top one selected"
          (let ([t (pipeline-view-traced v)])
@@ -304,7 +304,7 @@
   (check "and they're drawn with no crash" (not (window-error w)))
   (press! '(pipeline untrace))
   (check "All goes back to the tree" (not (pipeline-view-traced v)))
-  (press! '(pipeline screen))
+  (press! '(pipeline viewer))
   (press! '(pipeline untrace))
   (press! '(pipeline hold))
   (check "Hold keeps the list on view"
@@ -486,6 +486,94 @@
     (check "and with Hold let go, it flows on, a mark a record of what's new"
            (and (not (pipeline-view-held? v))
                 (eq? (pipeline-view-tape-of v) (pipeline-view-shown v)))))
+  ;; the viewer: zoomed, moved, magnified, popped out
+  (let* ([r (ui-find ui '(pipeline viewer))]
+         [vx (ui-region-x r)] [vy (ui-region-y r)]
+         [vw (ui-region-w r)] [vh (ui-region-h r)]
+         [mid (lambda (dx dy)
+                (let-values ([(cx cy cw ch) (content-rect w)])
+                  (list (exact (round (+ cx vx (/ vw 2) dx)))
+                        (exact (round (+ cy vy (/ vh 2) dy))))))]
+         [pixel-at (lambda (mx my)
+                     (pipeline-viewer-pixel v vx vy vw vh mx my))])
+    (check "the viewer starts showing all of the screen"
+           (let ([corner (pixel-at vx vy)])
+             ;; the box's height rounded: within a pixel of the corner
+             (and (not (pipeline-view-zoom v))
+                  (< (abs (car corner)) 2)
+                  (< (abs (cdr corner)) 2))))
+    (let* ([mx (+ vx (/ vw 4))] [my (+ vy (/ vh 3))]
+           [before (pixel-at mx my)])
+      (pipeline-zoom-at! v vx vy vw vh mx my 3)
+      (check "zoomed at a point, the screen's pixel there stays put"
+             (let ([after (pixel-at mx my)])
+               (and (pipeline-view-zoom v)
+                    (< (abs (- (car after) (car before))) 1/1000)
+                    (< (abs (- (cdr after) (cdr before))) 1/1000)))))
+    (pipeline-zoom-at! v vx vy vw vh vx vy -40)
+    (check "zoomed out past all of it, it shows all of it"
+           (not (pipeline-view-zoom v)))
+    (apply (lambda (x y) (inject! `(mouse-move ,x ,y) '(wheel 0 2)))
+           (mid 0 0))
+    (steps 2)
+    (check "the wheel zooms it"
+           (pipeline-view-zoom v))
+    (let ([center (pipeline-viewer-center v)] [traced (pipeline-view-traced v)])
+      (apply (lambda (x y)
+               (inject! `(mouse-move ,x ,y) `(mouse-down ,x ,y left 1)
+                        `(mouse-move ,(+ x 30) ,(+ y 20))
+                        `(mouse-up ,(+ x 30) ,(+ y 20) left)))
+             (mid 0 0))
+      (steps 2)
+      (check "a drag moves it, and lists nothing"
+             (and (< (car (pipeline-viewer-center v)) (car center))
+                  (< (cdr (pipeline-viewer-center v)) (cdr center))
+                  (eq? (pipeline-view-traced v) traced))))
+    (press! '(pipeline actual))
+    (check "100% is a pixel of the screen for a device pixel"
+           (= (pipeline-view-zoom v) 1))
+    (press! '(pipeline fit))
+    (check "and Fit all of it again"
+           (not (pipeline-view-zoom v)))
+    (press! '(pipeline loupe))
+    (apply (lambda (x y) (inject! `(mouse-move ,x ,y))) (mid 10 10))
+    (steps 2)
+    (check "with the loupe on, the pixels at the pointer are magnified, and it \
+            says what's there"
+           (and (pipeline-view-loupe? v)
+                (not (window-error w))
+                (string-prefix? "5, 7" (pipeline-loupe-caption v 5 7))))
+    (press! '(pipeline loupe))
+    (press! '(pipeline pop))
+    (let ([pop (pipeline-view-popped v)])
+      (check "popped out, it's in a window of its own above the Pipeline's, \
+              the Pipeline keeping its place"
+             (and pop
+                  (eq? (window-owner pop) w)
+                  (ui-find (window-ref pop 'ui) '(pipeline viewer))
+                  (ui-find ui '(pipeline unpop))
+                  (not (ui-find ui '(pipeline viewer)))
+                  (eq? (find-window 'pipeline) w)))
+      (focus-window! w)
+      (steps 2)
+      (check "focused, the Pipeline takes the keyboard, and stays below it"
+             (and (eq? (focused-window) w)
+                  (memq w (cdr (memq pop (windows))))
+                  (not (window-error pop))))
+      (close-window! pop)
+      (steps 2)
+      (check "closed, it's back in its place"
+             (and (not (pipeline-view-popped v))
+                  (ui-find ui '(pipeline viewer))
+                  (not (ui-find ui '(pipeline unpop))))))
+    (press! '(pipeline pop))
+    ;; out of the way of the button under it
+    (set-geometry! (pipeline-view-popped v) 0 0 200 150)
+    (steps 2)
+    (press! '(pipeline unpop))
+    (check "and Bring it back closes it too"
+           (and (not (pipeline-view-popped v))
+                (ui-find ui '(pipeline viewer)))))
   ;; the small screen in the small screen: a flat box if it's left out, in a
   ;; list read since the selection's outline went
   (pipeline-view-selected-set! v #f)
@@ -499,7 +587,7 @@
                   [cb (sdl-acquire-gpu-commands (renderer-device r))]
                   [bytes (gpu-read-texture! r cb (gpu-image-texture image)
                                             pw (inspect-preview-h image))]
-                  [box (ui-find ui '(pipeline screen))])
+                  [box (ui-find ui '(pipeline viewer))])
              (let-values ([(cx cy cw ch) (content-rect w)])
                (let ([x0 (exact (ceiling (* *canvas-ratio*
                                             (+ cx (ui-region-x box) 2))))]
