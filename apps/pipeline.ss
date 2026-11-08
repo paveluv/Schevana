@@ -3,7 +3,8 @@
 ;;;
 ;;; For now two stages, chosen on the cards at the top:
 ;;;   Lists   the frame's list by who drew it, and each's records, decoded
-;;;           in draw order, a run of glyphs as its text
+;;;           in draw order, a run of glyphs as its text; a drawer's checkbox
+;;;           off leaves it out of the small screen and the Tape
 ;;;   Screen  what draws, and what it holds on the GPU
 ;;; Right, the screen small, the selected record outlined: a press there
 ;;; lists the records that may touch that pixel. It draws again every tick, or
@@ -44,13 +45,17 @@
           (mutable tip)        ; the last bar's tooltip: (seq . text)
           (mutable every)      ; the small screen draws every this many frames
           (mutable tape)       ; the Tape, a stream a record
-          (mutable tape-of)    ; the list it holds
+          (mutable tape-of)    ; the records it holds: kept, as it was
           (mutable playing)    ; while it plays, how far it has: a number
           (mutable play-secs)  ; how long it plays the whole frame
           (mutable zoom)       ; device pixels a screen pixel, or #f: all of it
           (mutable center)     ; the screen's pixel at the middle: (x . y)
           (mutable loupe?)
-          (mutable popped)))   ; its window when it's popped out, or #f
+          (mutable popped)     ; its window when it's popped out, or #f
+          (mutable off)        ; the spans left out, by node: (label k) ...
+          (mutable kept)       ; the records drawn of the list on view, a
+                               ; vector in order: what the Tape goes through
+          (mutable kept-of)))  ; the list on view it's of
 
 (define pipeline-period-ms 250)
 
@@ -92,13 +97,16 @@
                            newest))))))
   (pipeline-view-looked-set! v (now-ms)))
 
-;; What's on view, drawn on image. Live, it's drawn with the next frame, as far
-;; as the slider says; held, what's kept of the frame is.
+;; What's on view, drawn on image, but the spans left out. Live, it's drawn
+;; with the next frame, as far as the slider says; held, what's kept of the
+;; frame is.
 (define (pipeline-preview-on! v image)
-  (let ([l (pipeline-view-shown v)] [upto (pipeline-view-upto v)])
+  (let ([l (pipeline-view-shown v)] [upto (pipeline-view-upto v)]
+        [left-out (pipeline-left-out-of v)])
     (if (pipeline-view-held? v)
-        (inspect-preview-list! image l (or upto (inspect-list-count l)))
-        (inspect-preview! image (or upto (most-positive-fixnum))))))
+        (inspect-preview-list! image l (or upto (inspect-list-count l))
+                               left-out)
+        (inspect-preview! image (or upto (most-positive-fixnum)) left-out))))
 
 ;; At once, on the image that frame shows. An image can't show itself as it's
 ;; drawn on, so its own box stays empty.
@@ -362,9 +370,9 @@
   (ui-stream-new (let loop ([rows 2048]) (if (< rows n) (loop (* 2 rows)) rows))
                  1 pipeline-draw-tape-lanes))
 
-;; The Tape's rows of list l, a vector a record: (reach who kind), who and kind
-;; each its lane's color, from 1, or 0.
-(define (pipeline-tape-rows l)
+;; The Tape's rows of list l, a vector a record of those kept: (reach who
+;; kind), who and kind each its lane's color, from 1, or 0.
+(define (pipeline-tape-rows l kept)
   (let* ([n (inspect-list-count l)]
          [who (make-vector n 0)]
          [colors (length pipeline-draw-tape-who)]
@@ -374,54 +382,61 @@
                     ((>= k (min n (+ (cadr span) (caddr span)))))
                   (vector-set! who k (+ 1 (modulo i colors)))))
               (inspect-list-labels l) (iota (length (inspect-list-labels l))))
-    (let ([rows (make-vector n)])
-      (do ([i 0 (+ i 1)]) ((= i n) rows)
-        (let* ([r (inspect-reach l i)]
+    (let ([rows (make-vector (vector-length kept))])
+      (do ([j 0 (+ j 1)]) ((= j (vector-length kept)) rows)
+        (let* ([i (vector-ref kept j)]
+               [r (inspect-reach l i)]
                [area (max 1 (* (- (caddr r) (car r)) (- (cadddr r) (cadr r))))]
                [kind (memq (inspect-kind l i) pipeline-tape-kinds)])
-          (vector-set! rows i
+          (vector-set! rows j
                        (vector (exact (round (* 100 (log area 2))))
                                (vector-ref who i)
                                (if kind (+ 1 (- kinds (length kind))) 0))))))))
 
-;; The Tape holds the list on view: sent again when that's another.
+;; The Tape holds the records kept of the list on view: sent again when
+;; they're others.
 (define (pipeline-tape-send! v)
-  (let ([l (pipeline-view-shown v)])
-    (unless (eq? l (pipeline-view-tape-of v))
-      (let ([n (inspect-list-count l)])
+  (let ([kept (pipeline-kept v)])
+    (unless (eq? kept (pipeline-view-tape-of v))
+      (let ([n (vector-length kept)])
         (when (> n (ui-stream-rows (pipeline-view-tape v)))
           (ui-stream-release! (pipeline-view-tape v))
           (pipeline-view-tape-set! v (pipeline-tape-new n)))
         (let ([tape (pipeline-view-tape v)])
           (ui-stream-restart! tape)
           (when (> n 0)
-            (let ([rows (pipeline-tape-rows l)])
+            (let ([rows (pipeline-tape-rows (pipeline-view-shown v) kept)])
               (ui-stream-send! tape 0 (- n 1)
                                (lambda (seq j)
                                  (vector-ref (vector-ref rows seq) j))))))
-        (pipeline-view-tape-of-set! v l)))))
+        (pipeline-view-tape-of-set! v kept)))))
 
 (define (pipeline-tape-tip l i)
   (let ([label (inspect-label-at l i)])
     (format "record ~a, a ~a: ~a~a" i (inspect-kind l i) (inspect-what l i)
             (if label (format "\ndrawn by ~a" label) ""))))
 
-;; The records marked: what's selected, and those at the pixel traced.
+;; The marks on the Tape, where its records are: what's selected, and those at
+;; the pixel traced, but those left out.
 (define (pipeline-tape-marked v)
   (let* ([n (inspect-list-count (pipeline-view-shown v))]
+         [kept (pipeline-kept v)]
          [selected (pipeline-view-selected v)]
          [first (and selected (pipeline-node-first v selected))]
          [traced (pipeline-view-traced v)])
-    (append
-     (if (and first (< first n))
-         (map (lambda (k) (+ first k))
-              (iota (min (pipeline-node-count v selected) (- n first))))
-         '())
-     (if traced
-         (filter (lambda (i) (< i n))
-                 (map (lambda (node) (pipeline-node-first v node))
-                      (caddr traced)))
-         '()))))
+    (fold-right
+     (lambda (i acc)
+       (let ([at (and (< i n) (pipeline-kept-at kept i))])
+         (if at (cons at acc) acc)))
+     '()
+     (append
+      (if (and first (< first n))
+          (map (lambda (k) (+ first k))
+               (iota (min (pipeline-node-count v selected) (- n first))))
+          '())
+      (if traced
+          (map (lambda (node) (pipeline-node-first v node)) (caddr traced))
+          '())))))
 
 ;; The small screen draws as far as k records, the last of them selected.
 (define (pipeline-draw-upto! v k)
@@ -438,26 +453,30 @@
   (pipeline-view-playing-set! v #f)
   (pipeline-draw-upto! v k))
 
+;; Play goes through the records kept, from where the drawing stops: how far
+;; it has is a place on the Tape.
 (define (pipeline-play-toggle! v)
   (if (pipeline-view-playing v)
       (pipeline-view-playing-set! v #f)
-      (let ([n (inspect-list-count (pipeline-view-shown v))]
-            [upto (pipeline-view-upto v)])
+      (let ([n (vector-length (pipeline-kept v))]
+            [at (pipeline-tape-upto v)])
         (pipeline-hold! v)
-        (pipeline-view-playing-set! v (if (and upto (< upto n)) upto 0))
-        (pipeline-draw-upto! v (pipeline-view-playing v)))))
+        (pipeline-view-playing-set! v (if (< at n) at 0))
+        (pipeline-draw-upto! v (pipeline-kept-upto
+                                v (pipeline-view-playing v))))))
 
 ;; A tick of Play: on, by the share of the frame a tick of play-secs is.
 (define (pipeline-play-tick! v)
-  (let* ([n (inspect-list-count (pipeline-view-shown v))]
+  (let* ([n (vector-length (pipeline-kept v))]
          [at (+ (pipeline-view-playing v)
                 (/ (* n (pacer-period))
                    (* (pipeline-view-play-secs v) 1000000000)))])
     (if (>= at n)
         (begin (pipeline-view-playing-set! v #f)
-               (pipeline-draw-upto! v n))
+               (pipeline-draw-upto! v (pipeline-kept-upto v n)))
         (begin (pipeline-view-playing-set! v at)
-               (pipeline-draw-upto! v (exact (floor at)))))))
+               (pipeline-draw-upto! v (pipeline-kept-upto
+                                       v (exact (floor at))))))))
 
 ;; Where the drawing stops: a line after the last record drawn.
 (define (pipeline-draw-tape-at areas count upto)
@@ -466,12 +485,18 @@
       (fill-box (- (if (> upto 0) (+ bx bw) bx) 1) (cadr plot) 2 (cadddr plot)
                 'accent))))
 
+;; Whose each color is, but the spans left out, which keep their colors.
 (define (pipeline-tape-keys v)
-  (map (lambda (span i)
-         (cons (list-ref pipeline-draw-tape-who
-                         (modulo i (length pipeline-draw-tape-who)))
-               (pipeline-node-name span)))
-       (pipeline-view-groups v) (iota (length (pipeline-view-groups v)))))
+  (let ([spans (pipeline-view-groups v)] [off (pipeline-view-off v)])
+    (fold-right (lambda (span node i acc)
+                  (if (member node off)
+                      acc
+                      (cons (cons (list-ref pipeline-draw-tape-who
+                                            (modulo i (length
+                                                       pipeline-draw-tape-who)))
+                                  (pipeline-node-name span))
+                            acc)))
+                '() spans (pipeline-span-nodes spans) (iota (length spans)))))
 
 (define (pipeline-tape-height v w)
   (let-values ([(kw kh) (ui-legend-size (pipeline-tape-keys v))])
@@ -483,7 +508,8 @@
   (let*-values
       ([(ui) (pipeline-view-ui v)]
        [(l) (pipeline-view-shown v)]
-       [(n) (inspect-list-count l)]
+       [(kept) (pipeline-kept v)]
+       [(n) (vector-length kept)]
        [(upto) (pipeline-view-upto v)]
        [(ch) (ui-control-height)]
        [(keys) (pipeline-tape-keys v)]
@@ -500,8 +526,10 @@
     (let* ([px (+ x gw 16)]
            [pw (max 64 (+ 24 (text-width "Pause" 'ui)))]
            [lx (label! (+ px pw 12) "Drawn")]
-           [sw (ui-stepper ui '(pipeline drawn) lx y (or upto n) 0 n
-                           (lambda (k) (pipeline-tape-go! v k))
+           [sw (ui-stepper ui '(pipeline drawn) lx y (pipeline-tape-upto v)
+                           0 n
+                           (lambda (k)
+                             (pipeline-tape-go! v (pipeline-kept-upto v k)))
                            'tip "How many of the frame's records the small \
                                  screen draws, in their order: an arrow steps \
                                  one record")]
@@ -524,12 +552,100 @@
                'fit #t
                'doc '((L . "Draw as far as this record"))
                'strip-tips pipeline-tape-lane-tips
-               'tip (lambda (i) (and (< i n) (pipeline-tape-tip l i)))
-               'on-pick (lambda (i) (pipeline-tape-go! v (+ i 1)))
+               'tip (lambda (i)
+                      (and (< i n) (pipeline-tape-tip l (vector-ref kept i))))
+               'on-pick (lambda (i)
+                          (pipeline-tape-go! v (pipeline-kept-upto v (+ i 1))))
                'marked (pipeline-tape-marked v)
                'over (lambda (areas count)
-                       (when upto (pipeline-draw-tape-at areas count upto))))
+                       (when upto
+                         (pipeline-draw-tape-at areas count
+                                                (pipeline-tape-upto v)))))
     (ui-draw-legend x (+ sy sh 4) w kh '() keys)))
+
+;;; ---- left out
+
+;; A span whose checkbox is off is left out of the small screen and the Tape.
+;; Its records in spans: ((first . count) ...), in order.
+(define (pipeline-left-out off spans)
+  (fold-right (lambda (span node acc)
+                (if (member node off)
+                    (cons (cons (cadr span) (caddr span)) acc)
+                    acc))
+              '() spans (pipeline-span-nodes spans)))
+
+;; For the small screen, or #f when none is, so that a live frame's labels
+;; aren't read for nothing.
+(define (pipeline-left-out-of v)
+  (let ([off (pipeline-view-off v)])
+    (and (pair? off) (lambda (spans) (pipeline-left-out off spans)))))
+
+(define (pipeline-show-span! v node on?)
+  (pipeline-view-off-set! v (if on?
+                                (remove node (pipeline-view-off v))
+                                (cons node (pipeline-view-off v))))
+  (pipeline-view-kept-of-set! v #f)
+  (pipeline-preview! v))
+
+(define (pipeline-node-off? v node)
+  (let ([off (pipeline-view-off v)])
+    (and (pair? off)
+         (if (pair? node)
+             (and (member node off) #t)
+             (let ([i (vector-ref node 0)])
+               (exists (lambda (r) (< -1 (- i (car r)) (cdr r)))
+                       (pipeline-left-out off (pipeline-view-groups v))))))))
+
+;; The records drawn of the list on view, but those left out: a vector, in
+;; order, what the Tape and Play go through.
+(define (pipeline-kept v)
+  (let ([l (pipeline-view-shown v)])
+    (unless (eq? l (pipeline-view-kept-of v))
+      (let* ([n (inspect-list-count l)]
+             [out (pipeline-left-out (pipeline-view-off v)
+                                     (inspect-list-labels l))]
+             [kept (make-vector (- n (apply + (map cdr out))))])
+        (let loop ([i 0] [j 0] [out out])
+          (cond [(= i n)]
+                [(and (pair? out) (= i (caar out)))
+                 (loop (+ i (cdar out)) j (cdr out))]
+                [else (vector-set! kept j i) (loop (+ i 1) (+ j 1) out)]))
+        (pipeline-view-kept-set! v kept)
+        (pipeline-view-kept-of-set! v l)))
+    (pipeline-view-kept v)))
+
+;; How many of kept come before record i, kept being in order.
+(define (pipeline-kept-below kept i)
+  (let loop ([lo 0] [hi (vector-length kept)])
+    (if (< lo hi)
+        (let ([mid (quotient (+ lo hi) 2)])
+          (if (< (vector-ref kept mid) i) (loop (+ mid 1) hi) (loop lo mid)))
+        lo)))
+
+;; Where record i is on the Tape, or #f when it's left out.
+(define (pipeline-kept-at kept i)
+  (let ([at (pipeline-kept-below kept i)])
+    (and (< at (vector-length kept)) (= (vector-ref kept at) i) at)))
+
+;; As far as k of the Tape's records, as far as which of the list's: all of
+;; them at its end.
+(define (pipeline-kept-upto v k)
+  (let ([kept (pipeline-kept v)])
+    (cond [(<= k 0) 0]
+          [(>= k (vector-length kept))
+           (inspect-list-count (pipeline-view-shown v))]
+          [else (+ 1 (vector-ref kept (- k 1)))])))
+
+;; How far the drawing goes on the Tape.
+(define (pipeline-tape-upto v)
+  (let ([kept (pipeline-kept v)] [upto (pipeline-view-upto v)])
+    (if upto (pipeline-kept-below kept upto) (vector-length kept))))
+
+;; The records drawn at a device pixel, the one on top first.
+(define (pipeline-records-at v x y)
+  (let ([kept (pipeline-kept v)])
+    (filter (lambda (i) (pipeline-kept-at kept i))
+            (inspect-records-at (pipeline-view-shown v) x y))))
 
 ;;; ---- what the tree holds
 
@@ -586,7 +702,7 @@
 ;; The records at a device pixel, as nodes.
 (define (pipeline-trace! v x y)
   (let* ([l (pipeline-view-shown v)]
-         [at (inspect-records-at l x y)])
+         [at (pipeline-records-at v x y)])
     (pipeline-view-traced-set!
      v (list x y (map (lambda (i) (car (inspect-rows l i 1))) at)))
     (unless (null? at)
@@ -656,7 +772,7 @@
 ;; What the loupe says under its pixels: where, and the top record there.
 (define (pipeline-loupe-caption v px py)
   (let* ([l (pipeline-view-shown v)]
-         [at (inspect-records-at l px py)])
+         [at (pipeline-records-at v px py)])
     (if (null? at)
         (format "~a, ~a" px py)
         (format "~a, ~a: ~a ~a" px py (inspect-kind l (car at)) (car at)))))
@@ -908,18 +1024,33 @@
 
 (define (pipeline-lists-pane v x y w h)
   (let* ([ui (pipeline-view-ui v)] [traced (pipeline-view-traced v)]
-         [columns `((name "Who" 170)
+         [columns `((name "Who" 190)
                     (first "Record" 72 right)
                     (count "Count" 64 right)
-                    (what "What" ,(max 80 (- (ui-table-room w) 170 72 64))))]
+                    (what "What" ,(max 80 (- (ui-table-room w) 190 72 64))))]
+         [box (ui-checkbox-box)]
+         ;; a span's name has its checkbox: off, it's left out
          [cell (lambda (node key cx cy cw ch flags)
-                 (ui-draw-cell
-                  cx cy cw ch flags
-                  (case key
-                    [(name) (pipeline-node-name node)]
-                    [(first) (number->string (pipeline-node-first v node))]
-                    [(count) (number->string (pipeline-node-count v node))]
-                    [else (pipeline-node-what node)])))]
+                 (if (and (eq? key 'name) (pair? node))
+                     (begin
+                       (ui-checkbox ui (list 'pipeline 'shows node) cx cy box ch
+                                    "" (not (member node (pipeline-view-off v)))
+                                    (lambda (on?)
+                                      (pipeline-show-span! v node on?))
+                                    'focus 'keep
+                                    'tip "Draw it on the small screen and the \
+                                          Tape")
+                       (ui-draw-cell (+ cx box 6) cy (max 0 (- cw box 6)) ch
+                                     flags (pipeline-node-name node)))
+                     (ui-draw-cell
+                      cx cy cw ch flags
+                      (case key
+                        [(name) (pipeline-node-name node)]
+                        [(first)
+                         (number->string (pipeline-node-first v node))]
+                        [(count)
+                         (number->string (pipeline-node-count v node))]
+                        [else (pipeline-node-what node)]))))]
          [select! (lambda (node) (pipeline-view-selected-set! v node))])
     (if traced
         (let ([ch (ui-control-height)])
@@ -933,7 +1064,8 @@
         (ui-tree ui '(pipeline tree) x y w h columns
                  (pipeline-span-nodes (pipeline-view-groups v))
                  (lambda (node) (pipeline-children v node))
-                 (pipeline-view-selected v) select! cell))))
+                 (pipeline-view-selected v) select! cell
+                 'dim (lambda (node) (pipeline-node-off? v node))))))
 
 (define (pipeline-screen-pane v x y w h)
   (let ([lh (font-line-height 'ui)])
@@ -1073,7 +1205,7 @@
                                       river 'lists (inspect-list) #f 0 '() #f #f
                                       #f #f #f #f #f #f '() 0.0 #f 1
                                       (pipeline-tape-new 0) #f #f 5
-                                      #f #f #f #f)])
+                                      #f #f #f #f '() #f #f)])
           (pipeline-look! v)
           (apply open-window "Pipeline"
                  'size '(1100 . 860)

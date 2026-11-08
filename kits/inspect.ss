@@ -352,11 +352,69 @@
         (loop (+ level 1) (max 1 (quotient w 2)) (max 1 (quotient h 2))
               (+ n (* 4 w h))))))
 
-;; With the next frame, its first count records drawn on image.
-(define (inspect-preview! image count) (rec-preview! image count))
+;; With the next frame, its first count records drawn on image, but those
+;; (left-out spans) gives: ((first . count) ...) in order, spans the frame's
+;; labels' spans, as inspect-list-labels has them. Without left-out, none are.
+(define inspect-preview!
+  (case-lambda
+    [(image count) (inspect-preview! image count #f)]
+    [(image count left-out)
+     (rec-preview! image
+                   (lambda (runs)
+                     (let ([runs (inspect-runs-upto runs count image)])
+                       (if left-out
+                           (inspect-runs-without
+                            runs (left-out (inspect-labels (rec-count))))
+                           runs))))]))
 
-;; Ahead of the next frame, a kept list's first count records drawn on image.
-(define (inspect-preview-list! image l count)
-  (rec-past! image (vector-ref l 0) (* 32 (inspect-list-count l))
-             (vector-ref l 1) (* 4 (vector-ref l 4))
-             (rec-runs-upto (inspect-list-runs l) count image)))
+;; Ahead of the next frame, a kept list's first count records drawn on image,
+;; but those left out, as inspect-preview! has them.
+(define inspect-preview-list!
+  (case-lambda
+    [(image l count) (inspect-preview-list! image l count #f)]
+    [(image l count left-out)
+     (let ([runs (inspect-runs-upto (inspect-list-runs l) count image)])
+       (rec-past! image (vector-ref l 0) (* 32 (inspect-list-count l))
+                  (vector-ref l 1) (* 4 (vector-ref l 4))
+                  (if left-out
+                      (inspect-runs-without
+                       runs (left-out (inspect-list-labels l)))
+                      runs)))]))
+
+;; The runs, (mode image first count variant) ..., as far as record n, but
+;; those that show image, which is being drawn on.
+(define (inspect-runs-upto runs n image)
+  (let loop ([runs runs] [acc '()])
+    (if (or (null? runs) (>= (caddr (car runs)) n))
+        (reverse acc)
+        (let ([run (car runs)])
+          (loop (cdr runs)
+                (if (eq? (cadr run) image)
+                    acc
+                    (cons (list (car run) (cadr run) (caddr run)
+                                (min (cadddr run) (- n (caddr run)))
+                                (list-ref run 4))
+                          acc)))))))
+
+;; The runs but for the records in ranges, ((first . count) ...) in order: a
+;; run with records left out in its middle is cut in two.
+(define (inspect-runs-without runs ranges)
+  (if (null? ranges)
+      runs
+      (apply append
+             (map (lambda (run) (inspect-run-pieces run ranges)) runs))))
+
+;; What's left of run without the records in ranges, as runs.
+(define (inspect-run-pieces run ranges)
+  (let ([end (+ (caddr run) (cadddr run))]
+        [piece (lambda (from to)
+                 (list (car run) (cadr run) from (- to from)
+                       (list-ref run 4)))])
+    (let loop ([at (caddr run)] [ranges ranges])
+      (if (or (>= at end) (null? ranges))
+          (if (< at end) (list (piece at end)) '())
+          (let* ([from (caar ranges)] [to (+ from (cdar ranges))])
+            (cond [(<= to at) (loop at (cdr ranges))]
+                  [(<= from at) (loop to (cdr ranges))]
+                  [(>= from end) (list (piece at end))]
+                  [else (cons (piece at from) (loop to (cdr ranges)))]))))))

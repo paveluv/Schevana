@@ -354,7 +354,7 @@
       (lambda ()
         (fill-box 0 0 n n #x000000)
         (do ([x 0 (+ x 2)]) ((>= x n)) (fill-box x 0 1 n #xffffff))))
-    (rec-preview! target (most-positive-fixnum))
+    (rec-preview! target (lambda (runs) runs))
     (request-frame!)
     (steps 1)
     (set! record-world! plain)

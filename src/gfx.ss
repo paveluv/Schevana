@@ -1345,13 +1345,14 @@
                 table (rec-table-bytes) pieces *rec-images* runs
                 (and preview
                      (cons (car preview)
-                           (rec-runs-upto runs (cdr preview)
-                                          (car preview)))))))
+                           (guard (c [#t (report-error! 'preview c) '()])
+                             ((cdr preview) runs)))))))
 
-;; With the next frame, its first count records drawn on image, as big as
-;; the screen, for the Pipeline.
+;; With the next frame, its records drawn on image too, as big as the screen,
+;; for the Pipeline: the runs (runs-of runs) gives of the frame's runs, a cut
+;; of them, which can't show image.
 (defvar *rec-preview* #f)
-(define (rec-preview! image count) (set! *rec-preview* (cons image count)))
+(define (rec-preview! image runs-of) (set! *rec-preview* (cons image runs-of)))
 
 ;; Ahead of the next frame, a list kept from earlier drawn on image: (image recs
 ;; recs-n extras extras-n runs), its runs naming no image or paint, which may be
@@ -1359,21 +1360,6 @@
 (defvar *rec-past* #f)
 (define (rec-past! image recs recs-n extras extras-n runs)
   (set! *rec-past* (list image recs recs-n extras extras-n runs)))
-
-;; The runs as far as record n, but those that show image, which is being
-;; drawn on.
-(define (rec-runs-upto runs n image)
-  (let loop ([runs runs] [acc '()])
-    (if (or (null? runs) (>= (caddr (car runs)) n))
-        (reverse acc)
-        (let ([run (car runs)])
-          (loop (cdr runs)
-                (if (eq? (cadr run) image)
-                    acc
-                    (cons (list (car run) (cadr run) (caddr run)
-                                (min (cadddr run) (- n (caddr run)))
-                                (list-ref run 4))
-                          acc)))))))
 
 ;; What thunk draws, on an image pw × ph, scale times bigger, clear or black:
 ;; its pixels, row after row, premultiplied BGRA.

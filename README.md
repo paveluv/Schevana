@@ -995,7 +995,9 @@ Decisions worth keeping in mind for the real design:
 - **Pipeline shows all of this.** `(pipeline)` puts the way from a window's
   draw to the screen on one screen, reading through `kits/inspect.ss`, plain
   data that a REPL or a test can read too: the frame's list by who drew it,
-  each record decoded in draw order and a run of glyphs as its text, the
+  each record decoded in draw order and a run of glyphs as its text, and
+  each drawer with a checkbox that leaves it out of the small screen and the
+  Tape (the core's preview takes a cut of the frame's runs), the
   screen small, drawn again every tick unless told otherwise and showing
   itself in its own box, a tick older each time round, with what's selected
   outlined, and a press there listing what may touch that pixel; the wheel

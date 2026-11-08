@@ -187,6 +187,40 @@
            (inspect-preview-free! image)
            (and (= none #xff000000) (= one #xffff0000) (= two #xff0000ff)))))
 
+(check "a run with records left out is cut around them"
+       (equal? (inspect-runs-without '((m #f 0 10 0) (m #f 10 5 1))
+                                     '((2 . 3) (9 . 2) (14 . 1)))
+               '((m #f 0 2 0) (m #f 5 4 0) (m #f 11 3 1))))
+
+(check "the preview leaves out the spans it's told to, by the frame's labels: \
+        live, and of a frame kept"
+       (let* ([image (inspect-preview-image *canvas-pw* *canvas-ph*)]
+              [plain record-world!]
+              [but (lambda (label)
+                     (lambda (spans)
+                       (map (lambda (s) (cons (cadr s) (caddr s)))
+                            (filter (lambda (s) (equal? (car s) label))
+                                    spans))))])
+         (set! record-world! (lambda ()
+                               (with-label ("one")
+                                 (fill-box 0 0 10 10 #xff0000))
+                               (with-label ("two")
+                                 (fill-box 0 0 10 10 #x0000ff))))
+         (inspect-preview! image (most-positive-fixnum) (but "two"))
+         (request-frame!)
+         (steps 1)
+         (let ([live (pipeline-test-preview-pixel image 5 5)]
+               [l (inspect-list)])
+           (inspect-preview-list! image l (inspect-list-count l) (but "one"))
+           (request-frame!)
+           (steps 1)
+           (let ([kept (pipeline-test-preview-pixel image 5 5)])
+             (set! record-world! plain)
+             (request-frame!)
+             (steps 1)
+             (inspect-preview-free! image)
+             (and (= live #xffff0000) (= kept #xff0000ff))))))
+
 ;;; The frames kept.
 
 (let* ([plain record-world!]
@@ -348,6 +382,50 @@
                                            (pipeline-view-groups v))))))
                     '(2 1)))
     (pipeline-view-selected-set! v #f)
+    (let* ([node '("Pipeline test boxes" 0)]
+           [span (lambda () (assoc "Pipeline test boxes"
+                                   (pipeline-view-groups v)))]
+           [out? (lambda ()
+                   (let ([kept (pipeline-kept v)] [span (span)])
+                     (and (not (pipeline-kept-at kept (cadr span)))
+                          (= (vector-length kept)
+                             (- (inspect-list-count (pipeline-view-shown v))
+                                (caddr span))))))])
+      (press! (list 'pipeline 'shows node))
+      (check "a span's checkbox off leaves its records out of the small screen \
+              and the Tape, and its color out of the Tape's legend"
+             (and (equal? (pipeline-view-off v) (list node))
+                  (let ([given '()] [plain inspect-preview!])
+                    (fluid-let ([inspect-preview!
+                                 (lambda (image count . left-out)
+                                   (set! given left-out)
+                                   (apply plain image count left-out))])
+                      (steps 2))
+                    (and (pair? given) (car given)
+                         (equal? ((car given) (pipeline-view-groups v))
+                                 (list (cons (cadr (span)) (caddr (span)))))))
+                  (out?)
+                  (not (member "Pipeline test boxes"
+                               (map cdr (pipeline-tape-keys v))))))
+      (check "it stays out while records come and go"
+             (for-all (lambda (n) (set! boxes n) (look!) (out?)) '(2 1)))
+      (let* ([first (cadr (span))] [end (+ first (caddr (span)))])
+        (pipeline-tape-go! v (pipeline-kept-upto
+                              v (+ 1 (pipeline-kept-below (pipeline-kept v)
+                                                          first))))
+        (invalidate! w)
+        (steps 1)
+        (check "a press on the Tape goes to a record kept"
+               (= (pipeline-view-upto v) (+ end 1)))
+        (press! '((pipeline drawn) down))
+        (check "and its stepper steps over the records left out"
+               (= (pipeline-view-upto v) first)))
+      (press! '(pipeline hold))
+      (press! (list 'pipeline 'shows node))
+      (check "on again, they're back"
+             (and (null? (pipeline-view-off v))
+                  (= (vector-length (pipeline-kept v))
+                     (inspect-list-count (pipeline-view-shown v))))))
     (close-window! below)
     (steps 1))
   (let ([drawn '()] [plain ui-draw-cell])
@@ -471,9 +549,9 @@
   (let ([drawn (lambda (n)
                  (let ([calls 0] [plain inspect-preview!])
                    (fluid-let ([inspect-preview!
-                                (lambda (image count)
+                                (lambda (image count . left-out)
                                   (set! calls (+ calls 1))
-                                  (plain image count))])
+                                  (apply plain image count left-out))])
                      (steps n))
                    calls))])
     (check "the small screen draws every frame by default"
@@ -496,7 +574,8 @@
     (check "the Tape holds a mark a record of the frame on view: how much it \
             may cover, who drew it, its kind"
            (and (> n 0)
-                (eq? (pipeline-view-tape-of v) l)
+                (eq? (pipeline-view-kept-of v) l)
+                (eq? (pipeline-view-tape-of v) (pipeline-view-kept v))
                 (= (ui-stream-sent tape) (- n 1))
                 (let ([row (ui-stream-row tape 0)])
                   ;; record 0, the desktop's: as big as the screen
@@ -550,7 +629,8 @@
     (steps 2)
     (check "and with Hold let go, it flows on, a mark a record of what's new"
            (and (not (pipeline-view-held? v))
-                (eq? (pipeline-view-tape-of v) (pipeline-view-shown v)))))
+                (eq? (pipeline-view-kept-of v) (pipeline-view-shown v))
+                (eq? (pipeline-view-tape-of v) (pipeline-view-kept v)))))
   ;; the viewer: zoomed, moved, magnified, popped out
   (let* ([r (ui-find ui '(pipeline viewer))]
          [vx (ui-region-x r)] [vy (ui-region-y r)]
