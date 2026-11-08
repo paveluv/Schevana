@@ -19,7 +19,9 @@
 ;;; cover, and in lanes who drew it and its kind. A press there, or its
 ;;; stepper, holds the frame and draws it as far as that record, the record
 ;;; selected; Play draws it record by record. What's selected in the list, or
-;;; at a pixel, is marked on it.
+;;; at a pixel, is marked on it, and named on its heading, with Clear (or
+;;; Esc); a record selected opens its drawer in the tree, and stays with its
+;;; drawer as the frame changes. A drawer keeps its color while it's open.
 ;;; Below, the River: a bar a tick as it flows, what main did, and in lanes
 ;;; over them what else happened. A press holds it and goes back to that
 ;;; tick's frame, the whole app showing it; a drag moves through them. Frames
@@ -34,7 +36,7 @@
           (mutable held?)      ; it stays
           (mutable looked)     ; when it was read (now-ms)
           (mutable groups)     ; its spans: (label first count) ...
-          (mutable selected)   ; a tree node
+          (mutable selected)   ; a drawer's node or a record's row, or #f
           (mutable traced)     ; the records at a pixel, or #f: (x y n ...)
           (mutable upto)       ; the slider's record, or #f: all of them
           (mutable image)      ; the small screen on view, or #f
@@ -61,7 +63,8 @@
           (mutable kept-of)    ; the list on view it's of
           (mutable look)       ; what the small screen shows: picture or who
           (mutable painted)    ; a list repainted for it, used again
-          (mutable who)))      ; what each drew cost: (list . rows)
+          (mutable who)        ; what each drew cost: (list . rows)
+          colors))             ; each drawer's color, by node: an index
 
 (define pipeline-period-ms 250)
 
@@ -71,8 +74,14 @@
 (define pipeline-bar-px 3)
 
 (define (pipeline-show! v l)
-  (pipeline-view-shown-set! v l)
-  (pipeline-view-groups-set! v (inspect-list-labels l)))
+  (let ([place (pipeline-selected-place v)])
+    (pipeline-view-shown-set! v l)
+    (pipeline-view-groups-set! v (inspect-list-labels l))
+    ;; a new drawer's color, in draw order
+    (for-each (lambda (node) (pipeline-color-index v node))
+              (pipeline-span-nodes (inspect-list-labels l)))
+    (when place
+      (pipeline-view-selected-set! v (pipeline-place-row v place)))))
 
 ;; What a profiler's node took, ms a tick, over the half second to tick newest.
 (define (pipeline-ms-over node newest)
@@ -391,16 +400,18 @@
 
 ;; The Tape's rows of list l, a vector a record of those kept: (reach who
 ;; kind), who and kind each its lane's color, from 1, or 0.
-(define (pipeline-tape-rows l kept)
+(define (pipeline-tape-rows v l kept)
   (let* ([n (inspect-list-count l)]
          [who (make-vector n 0)]
          [colors (length pipeline-draw-tape-who)]
-         [kinds (length pipeline-tape-kinds)])
-    (for-each (lambda (span i)
-                (do ([k (cadr span) (+ k 1)])
-                    ((>= k (min n (+ (cadr span) (caddr span)))))
-                  (vector-set! who k (+ 1 (modulo i colors)))))
-              (inspect-list-labels l) (iota (length (inspect-list-labels l))))
+         [kinds (length pipeline-tape-kinds)]
+         [spans (inspect-list-labels l)])
+    (for-each (lambda (span node)
+                (let ([c (+ 1 (modulo (pipeline-color-index v node) colors))])
+                  (do ([k (cadr span) (+ k 1)])
+                      ((>= k (min n (+ (cadr span) (caddr span)))))
+                    (vector-set! who k c))))
+              spans (pipeline-span-nodes spans))
     (let ([rows (make-vector (vector-length kept))])
       (do ([j 0 (+ j 1)]) ((= j (vector-length kept)) rows)
         (let* ([i (vector-ref kept j)]
@@ -424,7 +435,8 @@
         (let ([tape (pipeline-view-tape v)])
           (ui-stream-restart! tape)
           (when (> n 0)
-            (let ([rows (pipeline-tape-rows (pipeline-view-shown v) kept)])
+            (let ([rows (pipeline-tape-rows v (pipeline-view-shown v)
+                                            kept)])
               (ui-stream-send! tape 0 (- n 1)
                                (lambda (seq j)
                                  (vector-ref (vector-ref rows seq) j))))))
@@ -504,18 +516,26 @@
       (fill-box (- (if (> upto 0) (+ bx bw) bx) 1) (cadr plot) 2 (cadddr plot)
                 'accent))))
 
+;; A drawer's color, kept while the Pipeline is open: the next free one the
+;; first time it's seen, not its place, which moves when a window is raised.
+(define (pipeline-color-index v node)
+  (let ([colors (pipeline-view-colors v)])
+    (or (hashtable-ref colors node #f)
+        (let ([i (hashtable-size colors)])
+          (hashtable-set! colors node i)
+          i))))
+
 ;; Whose each color is, but the spans left out, which keep their colors.
 (define (pipeline-tape-keys v)
   (let ([spans (pipeline-view-groups v)] [off (pipeline-view-off v)])
-    (fold-right (lambda (span node i acc)
+    (fold-right (lambda (span node acc)
                   (if (member node off)
                       acc
-                      (cons (cons (list-ref pipeline-draw-tape-who
-                                            (modulo i (length
-                                                       pipeline-draw-tape-who)))
+                      (cons (cons (pipeline-draw-who-color
+                                   (pipeline-color-index v node))
                                   (pipeline-node-name span))
                             acc)))
-                '() spans (pipeline-span-nodes spans) (iota (length spans)))))
+                '() spans (pipeline-span-nodes spans))))
 
 (define (pipeline-tape-height v w)
   (let-values ([(kw kh) (ui-legend-size (pipeline-tape-keys v))])
@@ -563,8 +583,7 @@
                  (lambda () (pipeline-play-toggle! v))
                  'tip "Draw the frame on the small screen record by record, \
                        holding it")
-      (ui-draw-label lx y (max 0 (- (+ x w) lx)) ch '(dim right)
-                     "a mark a record, in draw order"))
+      (pipeline-tape-caption v ui lx y (- (+ x w) lx) ch))
     (ui-stream ui 'pipeline-tape (pipeline-view-tape v) x sy w sh
                (and (> n 0) (- n 1)) 0 pipeline-tape-top pipeline-tape-rules
                pipeline-draw-tape-stack 1
@@ -739,11 +758,114 @@
 ;; The records at a device pixel, as nodes.
 (define (pipeline-trace! v x y)
   (let* ([l (pipeline-view-shown v)]
-         [at (pipeline-records-at v x y)])
-    (pipeline-view-traced-set!
-     v (list x y (map (lambda (i) (car (inspect-rows l i 1))) at)))
-    (unless (null? at)
-      (pipeline-view-selected-set! v (car (inspect-rows l (car at) 1))))))
+         [rows (map (lambda (i) (car (inspect-rows l i 1)))
+                    (pipeline-records-at v x y))])
+    (pipeline-view-traced-set! v (list x y rows))
+    (unless (null? rows) (pipeline-select! v (car rows)))))
+
+;;; ---- what's selected: a drawer or a record, shown and named everywhere
+
+;; Selects node, a drawer's or a record's, or nothing (#f), the small screen
+;; and both windows drawn again for it.
+(define (pipeline-select! v node)
+  (pipeline-view-selected-set! v node)
+  (pipeline-preview! v)
+  (for-each (lambda (win) (when win (invalidate! win)))
+            (list (find-window 'pipeline) (pipeline-view-popped v))))
+
+;; Where a selected record is: its drawer's node and how far into its span,
+;; so that it stays with its drawer as records before it come and go, or the
+;; frame changes. #f for none, or a drawer selected.
+(define (pipeline-selected-place v)
+  (let ([selected (pipeline-view-selected v)])
+    (and (vector? selected)
+         (let ([node (pipeline-span-node-at v (vector-ref selected 0))])
+           (and node
+                (cons node (- (vector-ref selected 0)
+                              (cadr (pipeline-node-span v node)))))))))
+
+;; The record at place in the list on view; its drawer when its span is
+;; shorter now; #f when the drawer's gone.
+(define (pipeline-place-row v place)
+  (let ([span (pipeline-node-span v (car place))])
+    (cond [(not span) #f]
+          [(< (cdr place) (caddr span))
+           (car (inspect-rows (pipeline-view-shown v)
+                              (+ (cadr span) (cdr place)) 1))]
+          [else (car place)])))
+
+;; What the tree shows selected: a record's row whole, the run of glyphs
+;; it's in.
+(define (pipeline-tree-selected v)
+  (let ([selected (pipeline-view-selected v)])
+    (if (vector? selected)
+        (let* ([i (vector-ref selected 0)]
+               [node (pipeline-span-node-at v i)]
+               [span (and node (pipeline-node-span v node))])
+          (or (and span
+                   (find (lambda (row)
+                           (< -1 (- i (vector-ref row 0)) (vector-ref row 1)))
+                         (inspect-rows (pipeline-view-shown v) (cadr span)
+                                       (caddr span))))
+              selected))
+        selected)))
+
+;; What's selected, in words, or #f.
+(define (pipeline-selected-text v)
+  (let ([selected (pipeline-view-selected v)])
+    (cond
+      [(not selected) #f]
+      [(pair? selected)
+       (let ([span (pipeline-node-span v selected)])
+         (if span
+             (format "~a, records ~a–~a" (pipeline-node-name selected)
+                     (cadr span) (+ (cadr span) (caddr span) -1))
+             (format "~a, not in this frame" (pipeline-node-name selected))))]
+      [else
+       (let* ([i (vector-ref selected 0)] [n (vector-ref selected 1)]
+              [kind (vector-ref selected 2)]
+              [who (pipeline-span-node-at v i)])
+         (format "~a, ~a~a"
+                 (if (> n 1)
+                     (format "records ~a–~a" i (+ i n -1))
+                     (format "record ~a" i))
+                 (if (eq? kind 'text)
+                     (format "text “~a”" (vector-ref selected 3))
+                     (format "a ~a" kind))
+                 (if who (format " by ~a" (pipeline-node-name who)) "")))])))
+
+;; The Tape's heading, at its right: what's selected and a button that
+;; clears it, or, with nothing selected, what the Tape is.
+(define (pipeline-tape-caption v ui x y w h)
+  (let ([text (pipeline-selected-text v)])
+    (if text
+        (let* ([bw (+ 24 (text-width "Clear" 'ui))] [bx (- (+ x w) bw)])
+          (ui-draw-label x y (max 0 (- bx 8 x)) h '(right)
+                         (string-append "Selected: " text))
+          (ui-button ui '(pipeline unselect) bx y bw h "Clear"
+                     (lambda () (pipeline-select! v #f))
+                     'tip "Select nothing (Esc)"))
+        (ui-draw-label x y (max 0 w) h '(dim right)
+                       "a mark a record, in draw order"))))
+
+;; The tree opens the drawer of a record selected, and scrolls it into view,
+;; and closes the one it opened for the record before; one opened by hand
+;; stays open.
+(define (pipeline-tree-open! ui node)
+  (let ([id '(pipeline tree)] [was (ui-memo ui '(pipeline opened) #f)])
+    (unless (equal? was node)
+      (let ([states (ui-tree-states ui id)])
+        (when (and was (eq? (hashtable-ref states was 'unset) #t))
+          (ui-tree-expand! ui id was #f))
+        (if (eq? (hashtable-ref states node 'unset) #t)
+            (ui-memo! ui '(pipeline opened) #f)
+            (begin (ui-tree-expand! ui id node #t)
+                   (ui-memo! ui '(pipeline opened) node)))))))
+
+;; Esc, in either window, selects nothing.
+(define (pipeline-key v win key mods)
+  (and (eq? key 'escape) (null? mods) (pipeline-view-selected v)
+       (begin (pipeline-select! v #f) #t)))
 
 ;;; ---- who: what each drew cost
 
@@ -778,7 +900,7 @@
               (loop (fx- seq 1) n ms))))))
 
 ;; What each span of the list on view cost, in draw order, a row each:
-;; #(node i ms records pixels runs changed), i its place (its color's), ms
+;; #(node i ms records pixels runs changed), i its color's index, ms
 ;; what main took to draw it a frame, up to the frame's tick, or #f,
 ;; changed how many of its records differ from the frame before's, #f when
 ;; that one isn't kept. Made again for each list.
@@ -805,8 +927,10 @@
                                   (and b (inspect-span-changed
                                           l (cadr span) (caddr span)
                                           before (cadr b) (caddr b)))))))]
-               [rows (map row spans (pipeline-span-nodes spans)
-                          (iota (length spans)))])
+               [nodes (pipeline-span-nodes spans)]
+               [rows (map row spans nodes
+                          (map (lambda (n) (pipeline-color-index v n))
+                               nodes))])
           (pipeline-view-who-set! v (cons l rows))
           rows))))
 
@@ -865,7 +989,7 @@
                        (ui-draw-cell cx cy cw ch flags text))))])
     (ui-table ui '(pipeline who) x y w h columns rows
               (find (lambda (r) (equal? (vector-ref r 0) span)) rows)
-              (lambda (row) (pipeline-view-selected-set! v (vector-ref row 0)))
+              (lambda (row) (pipeline-select! v (vector-ref row 0)))
               cell
               'checked (lambda (row)
                          (not (member (vector-ref row 0)
@@ -880,7 +1004,7 @@
 ;; the others dim while a drawer's selected, of list l, in into.
 (define (pipeline-painted v l)
   (let-values ([(words other)
-                (pipeline-draw-who-words (inspect-list-labels l)
+                (pipeline-draw-who-words v (inspect-list-labels l)
                                          (pipeline-selected-span v))])
     (inspect-list-paint! (pipeline-view-painted v) l words other)))
 
@@ -917,14 +1041,15 @@
 ;; The words the small screen paints spans' records with, who drew them: dim
 ;; but the one selected, while one is. => (values words other), other for a
 ;; record under no label
-(define (pipeline-draw-who-words spans selected)
-  (values (map (lambda (node i)
-                 (let ([c (pipeline-draw-who-color i)])
+(define (pipeline-draw-who-words v spans selected)
+  (values (map (lambda (node)
+                 (let ([c (pipeline-draw-who-color
+                           (pipeline-color-index v node))])
                    ;; opaque, so that a drawer's layers don't add up
                    (color-word (if (and selected (not (equal? node selected)))
                                    (mix c 'bg-0 0.75)
                                    c))))
-               (pipeline-span-nodes spans) (iota (length spans)))
+               (pipeline-span-nodes spans))
           (color-word 'text-faint)))
 
 ;;; ---- the viewer: the screen small, zoomed, moved, magnified, popped out
@@ -1166,7 +1291,9 @@
                 'close (lambda (pop)
                          (pipeline-view-popped-set! v #f)
                          (invalidate! win))
-                (append (ui-handlers ui)
+                (append (ui-handlers ui
+                                     'key (lambda (pop key mods)
+                                            (pipeline-key v pop key mods)))
                         (list 'tick (lambda (pop) (ui-tick ui pop)))))))))
 
 (define (pipeline-popped-draw v ui w h)
@@ -1288,7 +1415,7 @@
                         [(count)
                          (number->string (pipeline-node-count v node))]
                         [else (pipeline-node-what node)]))))]
-         [select! (lambda (node) (pipeline-view-selected-set! v node))])
+         [select! (lambda (node) (pipeline-select! v node))])
     (if traced
         (let ([ch (ui-control-height)])
           (ui-draw-label x y (- w 90) ch '(dim)
@@ -1298,11 +1425,18 @@
                      (lambda () (pipeline-view-traced-set! v #f)))
           (ui-table ui '(pipeline traced) x (+ y ch 4) w (- h ch 4) columns
                     (caddr traced) (pipeline-view-selected v) select! cell))
-        (ui-tree ui '(pipeline tree) x y w h columns
-                 (pipeline-span-nodes (pipeline-view-groups v))
-                 (lambda (node) (pipeline-children v node))
-                 (pipeline-view-selected v) select! cell
-                 'dim (lambda (node) (pipeline-node-off? v node))))))
+        (let ([shown (pipeline-tree-selected v)])
+          (when (vector? shown)
+            (pipeline-tree-open! ui (pipeline-span-node-at
+                                     v (vector-ref shown 0))))
+          (ui-tree ui '(pipeline tree) x y w h columns
+                   (pipeline-span-nodes (pipeline-view-groups v))
+                   (lambda (node) (pipeline-children v node))
+                   shown select! cell
+                   'dim (lambda (node) (pipeline-node-off? v node))
+                   'reveal (not (equal? shown (ui-memo ui '(pipeline revealed)
+                                                       #f))))
+          (ui-memo! ui '(pipeline revealed) shown)))))
 
 (define (pipeline-screen-pane v x y w h)
   (let ([lh (font-line-height 'ui)])
@@ -1447,7 +1581,8 @@
                                       #f #f #f #f #f #f '() 0.0 #f 1
                                       (pipeline-tape-new 0) #f #f 5
                                       #f #f #f #f '() #f #f 'picture
-                                      (inspect-list-empty) #f)])
+                                      (inspect-list-empty) #f
+                                      (make-hashtable equal-hash equal?))])
           (pipeline-look! v)
           (apply open-window "Pipeline"
                  'size '(1100 . 860)
@@ -1464,5 +1599,7 @@
                           (ui-stream-release! river)
                           (ui-stream-release! (pipeline-view-tape v)))
                  (append
-                  (ui-handlers ui)
+                  (ui-handlers ui
+                               'key (lambda (win key mods)
+                                      (pipeline-key v win key mods)))
                   (list 'tick (lambda (win) (pipeline-tick! v win)))))))))

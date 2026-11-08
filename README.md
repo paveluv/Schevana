@@ -1014,9 +1014,13 @@ Decisions worth keeping in mind for the real design:
   in lanes who drew it and its kind; a press or its stepper holds the frame
   and draws it as far as that record, Play draws it record by record over a
   few seconds, and what's selected in the list, or at a pixel, is marked on
-  it. Below, the River flows, a bar a tick: what main did, and in lanes over it
-  whether the tick came late, the frame it sent, where the GPU stood, the
-  collector, as bright as it took long, and input, green where all's well, a
+  it and named on its heading, with Clear (or Esc). A record selected opens
+  its drawer in the tree and stays with its drawer, at its place in it, as
+  the frame changes, and a drawer keeps its color, whatever its place, while
+  the Pipeline is open. Below, the River flows, a bar a tick: what main did,
+  and in lanes over it whether the tick came late, the frame it sent, where
+  the GPU stood, the collector, as bright as it took long, and input, green
+  where all's well, a
   label's tooltip saying what its colors mean. A press holds it and goes back
   to that tick's frame, the whole app showing it, and a drag moves through
   them: the last 300 frames are kept while it's open, the images and paints

@@ -512,6 +512,72 @@
              (and (null? (pipeline-view-off v))
                   (= (vector-length (pipeline-kept v))
                      (inspect-list-count (pipeline-view-shown v))))))
+    ;; what's selected: kept with its drawer, named, cleared, shown
+    (let ([before (map (lambda (n) (cons n (pipeline-color-index v n)))
+                       (pipeline-span-nodes (pipeline-view-groups v)))])
+      (focus-window! below)
+      (look!)
+      (check "a drawer keeps its color when it's raised: who it is, not its \
+              place"
+             (and (not (equal? (map car before)
+                               (pipeline-span-nodes
+                                (pipeline-view-groups v))))
+                  (for-all (lambda (p)
+                             (= (pipeline-color-index v (car p)) (cdr p)))
+                           before)))
+      (focus-window! w)
+      (look!))
+    (let ([pipe (lambda () (assoc "Pipeline" (pipeline-view-groups v)))])
+      (pipeline-select! v (car (inspect-rows (pipeline-view-shown v)
+                                             (+ (cadr (pipe)) 5) 1)))
+      (set! boxes 3)
+      (look!)
+      (check "a record selected stays with its drawer, at its place in it, \
+              as records before it come and go"
+             (let ([selected (pipeline-view-selected v)])
+               (and (vector? selected)
+                    (= (vector-ref selected 0) (+ (cadr (pipe)) 5))
+                    (equal? (pipeline-selected-span v) '("Pipeline" 0)))))
+      (check "the Tape's heading names it, by its drawer, with a button that \
+              clears it"
+             (let* ([text (pipeline-selected-text v)] [n (string-length text)])
+               (and (string=? (substring text (- n 12) n) " by Pipeline")
+                    (ui-find ui '(pipeline unselect)))))
+      (press! '(pipeline unselect))
+      (check "Clear selects nothing, and the heading says what the Tape is"
+             (and (not (pipeline-view-selected v))
+                  (not (ui-find ui '(pipeline unselect)))))
+      (pipeline-select! v '("Pipeline" 0))
+      (inject! '(key-down escape ()))
+      (steps 2)
+      (check "and so does Esc" (not (pipeline-view-selected v))))
+    (let ([first-of (lambda (name)
+                      (car (inspect-rows
+                            (pipeline-view-shown v)
+                            (cadr (assoc name (pipeline-view-groups v))) 1)))])
+      (pipeline-select! v (first-of "Pipeline test boxes"))
+      (steps 1)
+      (check "a record selected opens its drawer in the tree, its row shown \
+              selected"
+             (and (ui-tree-row-expanded? (row-of "Pipeline test boxes"))
+                  (find (lambda (r)
+                          (equal? (ui-tree-row-node r)
+                                  (pipeline-tree-selected v)))
+                        (vector->list
+                         (ui-memo ui (list tree 'rows) '#())))))
+      (pipeline-select! v (first-of 'topbar))
+      (steps 1)
+      (check "and closes it when another drawer's record is selected, as it \
+              opens that one"
+             (and (not (ui-tree-row-expanded? (row-of "Pipeline test boxes")))
+                  (ui-tree-row-expanded? (row-of "topbar"))
+                  (ui-tree-row-expanded? (row-of "Pipeline")))))
+    ;; the tree as it was: at its top, the topbar closed
+    (parameterize ([current-window w])
+      (ui-tree-expand! ui tree '(topbar 0) #f))
+    (pipeline-select! v '(desktop 0))
+    (steps 1)
+    (pipeline-select! v #f)
     (close-window! below)
     (steps 1))
   (let ([drawn '()] [plain ui-draw-cell])
@@ -752,11 +818,7 @@
   (let* ([image (pipeline-view-image v)]
          [x (quotient *canvas-pw* 2)] [y (quotient *canvas-ph* 2)]
          [top (car (pipeline-records-at v x y))]
-         [i (let loop ([ns (pipeline-span-nodes (pipeline-view-groups v))]
-                       [i 0])
-              (if (equal? (car ns) (pipeline-span-node-at v top))
-                  i
-                  (loop (cdr ns) (+ i 1))))]
+         [i (pipeline-color-index v (pipeline-span-node-at v top))]
          [color (color-word (pipeline-draw-who-color i))]
          [shown (lambda ()
                   (pipeline-preview! v)
