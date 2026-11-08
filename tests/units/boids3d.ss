@@ -35,7 +35,7 @@
             boids3d-steering boids3d-default-rules boids3d-rule
             boids3d-random-rules boids3d-ranges boids3d-set-rule
             boids3d-space boids3d-words boids3d-shape-words boids3d-step!
-            boids3d-resize! boids3d-current boids3d-camera))
+            boids3d-resize! boids3d-current boids3d-camera boids3d-horizon))
 
 ;;; ------------------------------------------------------------------ steps
 
@@ -333,24 +333,28 @@
               (let ([bs (window-ref win 'buffers)]) (list (car bs) (cdr bs))))
     (window-set! win 'yaw 0.0)
     (window-set! win 'pitch 0.0)
+    (window-set! win 'scene-bearing 3.14)   ; open sea, the sun behind
     (invalidate! win)
     (steps 2)
     win))
 
 (check "Boids 3D draws an evening sky, dark at the top and warm at the \
-        horizon, and a bird on it where the camera sees it"
+        horizon, the sea under it darker, and a bird on it where the camera \
+        sees it"
        (let* ([win (b3-one-bird-window)])
          (let-values ([(cx cy cw ch) (content-rect win)])
            (let* ([fh (- ch (max 26 (round (+ (font-line-height 'ui-small)
                                                 13))))]
                   [mx (+ cx (quotient cw 2))]
                   [my (+ cy (quotient fh 2))]
+                  [hy (+ cy (exact (floor (* fh (boids3d-horizon 0.0)))))]
                   [red (lambda (p) (fxand (fxsrl p 16) 255))]
                   [light (lambda (p) (+ (fxand (fxsrl p 16) 255)
                                         (fxand (fxsrl p 8) 255)
                                         (fxand p 255)))]
                   [top (canvas-pixel mx (+ cy 2))]
-                  [low (canvas-pixel mx (+ cy fh -3))]
+                  [low (canvas-pixel mx (- hy 3))]
+                  [sea (canvas-pixel mx (+ hy 30))]
                   [sky (canvas-pixel mx (- my 40))]
                   [darkest (apply min (map (lambda (dx)
                                              (apply min
@@ -362,11 +366,54 @@
                                                          '(-2 -1 0 1 2))))
                                            '(-3 -2 -1 0 1 2 3)))])
              (close-window! win)
-             (printf "  top ~x low ~x sky ~a darkest ~a\n" top low (light sky)
-                     darkest)
+             (printf "  top ~x low ~x sea ~x sky ~a darkest ~a\n" top low sea
+                     (light sky) darkest)
              (and (< (red top) (red low))
                   (< (light top) (light low))
+                  (< (light sea) (light low))
                   (< darkest (- (light sky) 60)))))))
+
+(check "Boids 3D: facing the sun, it sits on the horizon and lays a road on \
+        the sea, brighter than the water beside it"
+       (let ([win (b3-one-bird-window)])
+         (window-set! win 'scene-bearing 0.0)
+         (invalidate! win)
+         (steps 2)
+         (let-values ([(cx cy cw ch) (content-rect win)])
+           (let* ([fh (- ch (max 26 (round (+ (font-line-height 'ui-small)
+                                                13))))]
+                  [mx (+ cx (quotient cw 2))]
+                  [hy (+ cy (exact (floor (* fh (boids3d-horizon 0.0)))))]
+                  [light (lambda (p) (+ (fxand (fxsrl p 16) 255)
+                                        (fxand (fxsrl p 8) 255)
+                                        (fxand p 255)))]
+                  [road (apply max (map (lambda (dy)
+                                          (light (canvas-pixel mx (+ hy dy))))
+                                        '(6 8 10 12 14)))]
+                  [beside (light (canvas-pixel (+ mx 150) (+ hy 10)))]
+                  [sun (light (canvas-pixel mx (- hy 2)))])
+             (close-window! win)
+             (printf "  sun ~a road ~a beside ~a\n" sun road beside)
+             (and (> sun 600) (> road (+ beside 60)))))))
+
+(check "Boids 3D: a drag turns the scene with the camera; the camera's own \
+        circling leaves the scene where it is"
+       (let* ([win (boids3d)]
+              [bearing (lambda () (window-ref win 'scene-bearing))]
+              [start (bearing)])
+         (close-window! (find-window "Boids 3D — Rules"))
+         (let ([t (+ (now-ms) 40)]) (let loop () (when (< (now-ms) t) (loop))))
+         (window-call win 'tick)
+         (let ([circled (window-ref win 'yaw)])
+           (window-call win 'mouse-down 100 100 'left 1)
+           (window-call win 'mouse-move 150 100)
+           (window-call win 'mouse-up 150 100 'left)
+           (let ([dragged (bearing)] [yaw (window-ref win 'yaw)])
+             (close-window! win)
+             (and (= start 1.39)
+                  (> circled 0.6)
+                  (< (abs (- dragged (- start 0.5))) 1e-9)
+                  (< (abs (- yaw (- circled 0.5))) 1e-9))))))
 
 (check "Boids 3D: space pauses the flock, h shows and hides the rules; a \
         closed window leaves no step waiting for the frame"

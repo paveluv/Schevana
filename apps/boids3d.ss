@@ -1,6 +1,7 @@
 ;;; apps/boids3d.ss — Boids in three dimensions, as Craig Reynolds first made
 ;;; them (1987), all on the GPU: compute shaders steer the flock and lay it out
-;;; on the screen, and a paint draws it, birds far off against an evening sky.
+;;; on the screen, and a paint draws it, birds far off against an evening
+;;; sky over the sea, the sun setting, a wooded shore with a lighthouse.
 ;;; The flock never comes back to the CPU, which only sets the rules, moves
 ;;; the camera and asks for the shaders with each frame.
 ;;;
@@ -451,11 +452,15 @@
                            c)])
                ((fx>= j n) c)))))
 
-;; The sky, from its top through its middle to the horizon down the field h
-;; high, and over it the birds the pixel's tile lists: each dark strokes for
-;; its body and its wings, narrowing to the tips, as much of it as the haze
-;; leaves. They're all one ink, so what's in front doesn't matter:
-;; the sky shows through each by what it leaves.
+;; The scene round the flock, a pixel at a time: an evening sky from its top
+;; to the horizon, clouds drifting in a band of it, the sun half set at
+;; bearing 0, the sea below the horizon mirroring the sky, the sun's road on
+;; it glittering, and a wooded headland at bearing 1.7 with a lighthouse at
+;; its tip, a hazy ridge behind, both mirrored. It turns with the scene's own
+;; bearing, not the camera's circling. Over it the birds the pixel's tile
+;; lists: each dark strokes for its body and its wings, narrowing to the
+;; tips, as much of it as the haze leaves. They're all one ink, so what's in
+;; front doesn't matter: the scene shows through each by what it leaves.
 (define-paint (boids3d-view x y)
   ([shapes fl-buffer]
    [tiles fx-buffer]
@@ -466,26 +471,206 @@
    [top color]
    [middle color]
    [low color]
-   [ink color])
+   [ink color]
+   [left flonum]        ; the bearing at the field's left edge, radians
+   [step flonum]        ; radians a device pixel
+   [drift flonum]       ; how far the clouds have drifted, cells
+   [time flonum]        ; seconds, for the waves and the lamp
+   [horizon flonum])    ; the horizon's height, a share of the field's
   (define (at j k) (fl-ref shapes (fx+ (fx* j 24) k)))
   (define (part c shift) (fixnum->flonum (fxand (fxsrl c shift) 255)))
   (define (clamp01 v) (flmax 0.0 (flmin 1.0 v)))
   (define (mix a b t) (fl+ a (fl* t (fl- b a))))
+  (define (fract v) (fl- v (flfloor v)))
+  (define (smooth v) (fl* v (fl* v (fl- 3.0 (fl* 2.0 v)))))
+  (define (hash i j)
+    (let* ([a (fract (fl* i 0.1031))]
+           [b (fract (fl* j 0.1031))]
+           [d (fl+ (fl* a (fl+ b 33.33))
+                   (fl+ (fl* b (fl+ a 33.33)) (fl* a (fl+ a 33.33))))])
+      (fract (fl* (fl+ (fl+ a d) (fl+ b d)) (fl+ a d)))))
+  (define (wrap k period) (fl- k (fl* period (flfloor (fl/ k period)))))
+  (define (noise u v period)
+    (let* ([i (flfloor u)] [j (flfloor v)]
+           [su (smooth (fl- u i))] [sv (smooth (fl- v j))]
+           [i0 (wrap i period)] [i1 (wrap (fl+ i 1.0) period)]
+           [j1 (fl+ j 1.0)])
+      (mix (mix (hash i0 j) (hash i1 j) su)
+           (mix (hash i0 j1) (hash i1 j1) su)
+           sv)))
+  ;; an angle brought within half a turn either way
+  (define (around a)
+    (fl- a (fl* 6.2831853 (flfloor (fl/ (fl+ a 3.1415927) 6.2831853)))))
+  (define (sun-col shift) (part #xfff1c8 shift))
+  (define (glow-col shift) (part #xff9a5a shift))
+  (define (land-col shift) (part #x1c1a28 shift))
+  (define (deep-col shift) (part #x15233a shift))
+  (define (sand-col shift) (part #x8a6a58 shift))
+  (define (lamp-col shift) (part #xffe9a8 shift))
+  (define (tower-col shift) (part #xd8cfc8 shift))
+  (define (band-col shift) (part #x9a3b3b shift))
   (let* ([px (fl+ (fixnum->flonum x) 0.5)]
          [py (fl+ (fixnum->flonum y) 0.5)]
-         [t (fl/ py (fixnum->flonum (if (fx> h 1) h 1)))]
-         [high? (fl< t 0.6)]
-         [u (if high? (fl/ t 0.6) (fl/ (fl- t 0.6) 0.4))]
-         [base (fx* (fx+ (fxquotient x tile) (fx* (fxquotient y tile) across))
+         [hf (fixnum->flonum (if (fx> h 1) h 1))]
+         [hy (fl* hf horizon)]              ; the horizon
+         [sea? (fl> py hy)]
+         [base (fx* (fx+ (fxquotient x tile)
+                         (fx* (fxquotient y tile) across))
                     (fx+ most 1))]
-         [count (fx-ref tiles base)])
+         [count (fx-ref tiles base)]
+         [bearing (fl+ left (fl* px step))]
+         [focal (fl/ 1.0 step)]
+         ;; the sun: due bearing 0, half set
+         [r (fl* hf 0.032)]
+         [sdx (fl* (around bearing) focal)]
+         [sy (fl- hy (fl* r 0.35))]
+         [mirror (if sea? (fl- hy (fl- py hy)) py)]
+         [sdy (fl- mirror sy)]
+         [sd (flsqrt (fl+ (fl* sdx sdx) (fl* sdy sdy)))]
+         [disk (if sea? 0.0 (clamp01 (fl+ (fl- r sd) 0.5)))]
+         [halo (let ([g (clamp01 (fl- 1.0 (fl/ sd (fl* r 9.0))))])
+                 (fl* g g))]
+         [wide (let ([g (clamp01 (fl- 1.0 (fl/ (flabs sdx)
+                                               (fl* hf 1.4))))])
+                 (fl* g (fl* g (clamp01 (fl/ py hy)))))]
+         ;; the far shore, a wooded headland at bearing 1.7
+         [a (around (fl- bearing 1.7))]
+         [hill (fl- 1.0 (smooth (clamp01 (fl/ (flabs a) 0.8))))]
+         [k (fl/ (fl* bearing focal) (fl* hf 0.011))]
+         [pine (fl* (fl* 0.022 (fl+ 0.55 (fl* 0.45 (hash (flfloor k) 3.0))))
+                    (fl- 1.0 (fl* 2.0 (flabs (fl- (fract k) 0.5)))))]
+         [k2 (fl+ (fl* k 0.62) 0.3)]
+         [crown (let ([c (fl- (fl* 2.0 (fract k2)) 1.0)])
+                  (fl* (fl* 0.016 (fl+ 0.5 (fl* 0.5
+                                                 (hash (flfloor k2) 9.0))))
+                       (flsqrt (flmax 0.0 (fl- 1.0 (fl* c c))))))]
+         [mixed (if (fl> (hash (flfloor (fl* k 0.13)) 5.0) 0.45)
+                    (flmax pine (fl* crown 0.9))
+                    (flmax (fl* pine 0.8) crown))]
+         [trees (fl* (smooth (clamp01 (fl* hill 4.0))) (fl* hf mixed))]
+         [land-h (fl+ (fl* hf (fl* 0.045 (fl* hill
+                                              (fl+ 0.7 (fl* 0.5
+                                                (noise (fl* bearing 5.0)
+                                                       1.0 31.0))))))
+                      trees)]
+         ;; a farther ridge, hazy, behind the headland
+         [a2 (around (fl- bearing 1.25))]
+         [ridge-h (fl* hf (fl* 0.03 (fl* (fl- 1.0 (smooth (clamp01
+                                                      (fl/ (flabs a2) 1.3))))
+                                         (fl+ 0.55 (fl* 0.7
+                                           (noise (fl* bearing 9.0) 4.0
+                                                  57.0))))))]
+         [ridge (if sea? 0.0
+                    (clamp01 (fl+ (fl- py (fl- hy ridge-h)) 0.5)))]
+         [land (if sea?
+                   0.0
+                   (clamp01 (fl+ (fl- py (fl- hy land-h)) 0.5)))]
+         ;; sand where the headland meets the sea
+         [beach (if (and (not sea?) (fl> hill 0.05)
+                         (fl> py (fl- hy (fl* hf (fl* 0.005 hill)))))
+                    0.8
+                    0.0)]
+         ;; a lighthouse at the headland's tip, its lamp pulsing
+         [lx (fl* (around (fl- bearing 2.27)) focal)]
+         [lbase (fl- hy (fl* hf 0.006))]
+         [ltop (fl- lbase (fl* hf 0.075))]
+         [lup (clamp01 (fl/ (fl- lbase py) (fl- lbase ltop)))]
+         [tower (if (and (not sea?) (fl< py lbase) (fl> py ltop)
+                         (fl< (flabs lx) (fl* hf (fl- 0.0095
+                                                     (fl* 0.0035 lup)))))
+                    1.0
+                    0.0)]
+         [band (if (fl> (fract (fl* lup 4.0)) 0.5) 1.0 0.0)]
+         [beat (fl+ 0.45 (fl* 0.55 (clamp01 (fl* 3.0 (flsin (fl* time 1.6))))))]
+         [ly (fl- ltop (fl* hf 0.006))]
+         [lmy (if sea? (fl- hy (fl- py hy)) py)]
+         [ld (flsqrt (fl+ (fl* lx lx) (fl* (fl- lmy ly) (fl- lmy ly))))]
+         [lamp (fl* beat
+                    (if sea?
+                        (fl* 0.5 (clamp01 (fl- 1.0 (fl/ (flabs lx)
+                                                         (fl* hf 0.006)))))
+                        (flmax (clamp01 (fl+ (fl- (fl* hf 0.006) ld) 0.5))
+                               (let ([g (clamp01 (fl- 1.0
+                                                      (fl/ ld
+                                                           (fl* hf 0.05))))])
+                                 (fl* 0.6 (fl* g g))))))]
+         ;; the clouds, slower, in a band of the upper sky
+         [cu (fl+ (fl* bearing (fl/ 20.0 6.2831853)) drift)]
+         [cv (fl* py (fl* (fl/ (fl/ 20.0 6.2831853) focal) 2.6))]
+         [cuc (fl* cu 1.0)]
+         [d (fl+ (fl* 0.5 (noise cuc cv 20.0))
+                 (fl+ (fl* 0.25 (noise (fl* cuc 2.0) (fl* cv 2.0) 40.0))
+                      (fl+ (fl* 0.125 (noise (fl* cuc 4.0) (fl* cv 4.0)
+                                             80.0))
+                           (fl* 0.0625 (noise (fl* cuc 8.0) (fl* cv 8.0)
+                                              160.0)))))]
+         [ct (fl+ (fl/ py hf) (fl- 0.8 horizon))]
+         [band (fl* (smooth (clamp01 (fl/ (fl- ct 0.04) 0.2)))
+                    (fl- 1.0 (smooth (clamp01 (fl/ (fl- ct 0.36) 0.18)))))]
+         [cover (if sea? 0.0
+                    (fl* (smooth (clamp01 (fl* (fl- d 0.47) 3.2))) band))]
+         [core (clamp01 (fl* (fl- d 0.62) 3.0))]
+         ;; the sea: deeper toward the viewer, the shore's mirror under
+         ;; it, rippled, and the sun's road, glittering
+         [s (if sea? (clamp01 (fl/ (fl- py hy) (fl- hf hy))) 0.0)]
+         [ripple (if sea?
+                     (noise (fl* sdx (fl/ 0.07 (fl+ s 0.04)))
+                            (fl+ (fl/ 4.5 (fl+ s 0.03)) (fl* time 0.9))
+                            1000000.0)
+                     0.0)]
+         [shore (if (and sea? (fl< (fl- py hy)
+                                   (fl* (flmax land-h ridge-h)
+                                        (fl+ 0.75
+                                                     (fl* 0.4 ripple)))))
+                    0.85
+                    0.0)]
+         [road (if sea?
+                   (let ([g (clamp01
+                             (fl- 1.0 (fl/ (flabs sdx)
+                                           (fl* r (fl+ 0.9 (fl* 3.5 s))))))])
+                     (fl* (fl* g g)
+                          (fl* (smooth (clamp01 (fl* (fl- ripple 0.38)
+                                                     3.0)))
+                               (fl- 1.0 (fl* 0.4 s)))))
+                   0.0)])
+    (define (gradient y shift)
+      (let ([t (clamp01 (fl/ y hy))])
+        (if (fl< t 0.65)
+            (mix (part top shift) (part middle shift) (fl/ t 0.65))
+            (let ([u (fl/ (fl- t 0.65) 0.35)])
+              (mix (part middle shift) (part low shift) (fl* u u))))))
     (define (sky shift)
-      (if high?
-          (mix (part top shift) (part middle shift) u)
-          (mix (part middle shift) (part low shift) (fl* u u))))
-    ;; how much of the pixel a stroke from a to b covers, r wide at a and
-    ;; q at b: a stroke thinner than a pixel is drawn one pixel wide, and as
-    ;; faint as it is thin
+      (if sea?
+          (let* ([mirrored (fl+ (fl* 0.72 (gradient mirror shift))
+                                (fl* 0.5 (fl* (fl+ (fl* 0.5 halo) wide)
+                                              (glow-col shift))))]
+                 [water (mix mirrored (deep-col shift)
+                             (fl* 0.75 (flsqrt s)))]
+                 [mirrored-shore (mix water (fl* 0.8 (land-col shift))
+                                      shore)])
+            (mix (mix mirrored-shore (sun-col shift)
+                      (clamp01 (fl* 1.3 road)))
+                 (lamp-col shift)
+                 (clamp01 (fl* lamp (fl+ 0.3 (fl* 0.7 ripple))))))
+          (let* ([clear (gradient py shift)]
+                 [lit (fl* (mix (mix (part middle shift) 255.0 0.45)
+                                (part low shift)
+                                (fl* 0.8 (clamp01 (fl/ ct 0.5))))
+                           (fl- 1.0 (fl* 0.32 core)))]
+                 [clouded (mix clear lit (fl* 0.92 cover))]
+                 [glowing (mix clouded (glow-col shift)
+                               (clamp01 (fl+ (fl* 0.55 halo)
+                                             (fl* 0.35 wide))))]
+                 [sunned (mix glowing (sun-col shift) disk)])
+            (let* ([far (mix sunned (mix (land-col shift) clear 0.55)
+                             ridge)]
+                   [near (mix far (mix (land-col shift) clear 0.15) land)]
+                   [sandy (mix near (sand-col shift) (fl* beach land))]
+                   [towered (mix sandy
+                                 (mix (fl* 0.7 (tower-col shift))
+                                      (fl* 0.75 (band-col shift)) band)
+                                 tower)])
+              (mix towered (lamp-col shift) (clamp01 lamp))))))
     (define (stroke ax ay bx by r q)
       (let* ([pax (fl- px ax)]
              [pay (fl- py ay)]
@@ -497,19 +682,20 @@
              [dy (fl- pay (fl* bay s))]
              [w (fl+ r (fl* (fl- q r) s))]
              [ww (flmax w 0.5)])
-        (fl* (clamp01 (fl- 0.5 (fl- (flsqrt (fl+ (fl* dx dx) (fl* dy dy))) ww)))
+        (fl* (clamp01 (fl- 0.5 (fl- (flsqrt (fl+ (fl* dx dx) (fl* dy dy)))
+                                    ww)))
              (fl/ w ww))))
-    ;; from the chest: the head and the tail, narrowing; each wing to the
-    ;; wrist and on to the tip
-    (define (cover j)
+    (define (bird-cover j)
       (if (and (fl>= px (at j 0)) (fl<= px (at j 2))
                (fl>= py (at j 1)) (fl<= py (at j 3)))
           (let ([x (at j 4)] [y (at j 5)] [body (at j 18)]
                 [shoulder (at j 19)] [wrist (at j 20)] [tip (at j 21)])
             (fl* (at j 22)
                  (flmax
-                  (flmax (stroke x y (at j 6) (at j 7) body (fl* 0.5 body))
-                         (stroke x y (at j 8) (at j 9) body (fl* 0.3 body)))
+                  (flmax (stroke x y (at j 6) (at j 7) body
+                                 (fl* 0.5 body))
+                         (stroke x y (at j 8) (at j 9) body
+                                 (fl* 0.3 body)))
                   (flmax
                    (flmax (stroke x y (at j 10) (at j 11) shoulder wrist)
                           (stroke (at j 10) (at j 11) (at j 12) (at j 13)
@@ -522,13 +708,15 @@
            (do-bounded 64
                ([k 0 (fx+ k 1)]
                 [left 1.0 (fl* left
-                               (fl- 1.0 (cover (fx-ref tiles
-                                                       (fx+ base
-                                                            (fx+ k 1))))))])
+                               (fl- 1.0
+                                    (bird-cover
+                                     (fx-ref tiles
+                                             (fx+ base (fx+ k 1))))))])
              ((fx>= k count) left))])
       (define (channel shift)
         (flonum->fixnum
-         (flround (mix (part ink shift) (sky shift) sky-left))))
+         (flround (flmax 0.0 (flmin 255.0 (mix (part ink shift) (sky shift)
+                                    sky-left))))))
       (fxior (fxsll 255 24)
              (fxior (fxsll (channel 16) 16)
                     (fxior (fxsll (channel 8) 8) (channel 0)))))))
@@ -638,7 +826,8 @@
           new))))
 
 ;; The field, w × h: the flock laid out by the camera and listed by tile,
-;; with the frame, then drawn by the paint.
+;; with the frame, then drawn by the paint over the scene, seen at the
+;; window's scene bearing, the horizon raised as the camera looks down.
 (define (boids3d-draw-field win w h)
   (let* ([s (draw-scale)]
          [pw (exact (ceiling (* w s)))]
@@ -649,7 +838,12 @@
          [tiles (boids3d-tiles! win (* across down (+ boids3d-tile-most 1)))]
          [shapes (window-ref win 'shapes)]
          [n (window-ref win 'count)]
-         [focal (* ph 1.07)])   ; 50° from the top of the field to its foot
+         [focal (* ph 1.07)]   ; 50° from the top of the field to its foot
+         [turn 6.283185307179586]
+         [left (- (window-ref win 'scene-bearing) (/ (/ pw 2.0) focal))]
+         [ms (now-ms)]
+         ;; a cloud cell drifts by in 150 s, 20 of them round the sky
+         [drift (/ ms 150000.0)])
     (apply gpu-compute-soon! boids3d-place n 1 (boids3d-current win) shapes
            (append (boids3d-camera (window-ref win 'yaw) (window-ref win 'pitch)
                                    (window-ref win 'distance))
@@ -658,7 +852,17 @@
     (gpu-compute-soon! boids3d-bin across down shapes tiles n across
                        boids3d-tile-most (inexact tile))
     (fill-shader 0 0 w h boids3d-view shapes tiles across boids3d-tile-most
-                 tile ph boids3d-top boids3d-middle boids3d-low boids3d-ink)))
+                 tile ph boids3d-top boids3d-middle boids3d-low boids3d-ink
+                 (- left (* turn (floor (/ left turn))))
+                 (/ 1.0 focal)
+                 (- drift (* 20.0 (floor (/ drift 20.0))))
+                 (/ (mod ms 1000000) 1000.0)
+                 (boids3d-horizon (window-ref win 'pitch)))))
+
+;; The horizon's height, a share of the field's, for the camera's pitch: at
+;; the pitch it starts at, about seven tenths down.
+(define (boids3d-horizon pitch)
+  (max 0.35 (min 0.95 (- 0.8 (* 1.07 (+ pitch 0.25))))))
 
 ;; What the keys and the rules window's buttons do to the flock in win.
 (define (boids3d-randomize! win)
@@ -677,7 +881,7 @@
 (define-app (boids3d) "Boids 3D"
   (let ([w 760] [h 520]
         [running? #t] [last-step 0]
-        [drag #f]          ; (x y yaw pitch) where a drag began
+        [drag #f]          ; (x y yaw pitch bearing) where a drag began
         [rules-win #f])
     (define (toggle-rules! win)
       (if rules-win
@@ -695,7 +899,8 @@
               'tiles #f
               'rules boids3d-default-rules
               'yaw 0.6
-              'pitch -0.25         ; from below, the sky behind the flock
+              'pitch -0.17         ; from below, the sky behind the flock
+              'scene-bearing 1.39  ; the shore ahead, the sun to the left
               'distance 760.0
               'tick (lambda (win)
                       (when (and running?
@@ -726,11 +931,18 @@
               'mouse-doc '((L . "Turn"))
               'mouse-down (lambda (win x y button clicks)
                             (set! drag (list x y (window-ref win 'yaw)
-                                             (window-ref win 'pitch))))
+                                             (window-ref win 'pitch)
+                                             (window-ref win
+                                                         'scene-bearing))))
               'mouse-move (lambda (win x y)
                             (when drag
+                              ;; the camera and the scene turn together;
+                              ;; only the camera goes on circling
                               (window-set! win 'yaw
                                 (- (caddr drag) (* 0.01 (- x (car drag)))))
+                              (window-set! win 'scene-bearing
+                                (- (list-ref drag 4)
+                                   (* 0.01 (- x (car drag)))))
                               (window-set! win 'pitch
                                 (max -1.4 (min 1.4 (+ (cadddr drag)
                                                       (* 0.01 (- y (cadr
