@@ -235,7 +235,8 @@
          (steps 1)
          (let* ([l (inspect-list)]
                 [p (inspect-list-paint! (inspect-list-empty) l
-                                        (list green white) 0)])
+                                        (lambda (i) (if (= i 0) green white))
+                                        0)])
            (inspect-preview-list! image p (inspect-list-count p))
            (request-frame!)
            (steps 1)
@@ -813,7 +814,9 @@
     (check "and a record selected shows as its drawer's"
            (equal? (pipeline-selected-span v) '("Pipeline" 0))))
   (pipeline-view-selected-set! v #f)
-  (press! '((pipeline look) who))
+  (check "Show offers the small screen's views"
+         (equal? (map cdr pipeline-looks) '(picture who kind heat changed)))
+  (pipeline-view-look-set! v 'who)
   (press! '(pipeline hold))
   (let* ([image (pipeline-view-image v)]
          [x (quotient *canvas-pw* 2)] [y (quotient *canvas-ph* 2)]
@@ -833,7 +836,52 @@
            (= (shown) (color-word (mix (pipeline-draw-who-color i) 'bg-0
                                        0.75)))))
   (pipeline-view-selected-set! v #f)
-  (press! '((pipeline look) picture))
+  (let* ([l (pipeline-view-shown v)] [n (inspect-list-count l)]
+         [paint (lambda (look)
+                  (pipeline-view-look-set! v look)
+                  (pipeline-painted v l))]
+         [image (pipeline-view-image v)]
+         [x (quotient *canvas-pw* 2)] [y (quotient *canvas-ph* 2)])
+    (let ([p (paint 'kind)] [words (pipeline-draw-kind-words)])
+      (check "Kind paints each record its kind's color, as the Tape's kind \
+              lane"
+             (for-all (lambda (i)
+                        (= (fxand (inspect-word p i rec-row-paint) #xffffffff)
+                           (fxand (cdr (assq (inspect-kind l i) words))
+                                  #xffffffff)))
+                      (iota n))))
+    (let ([p (paint 'heat)])
+      (pipeline-preview! v)
+      (request-frame!)
+      (steps 1)
+      (check "Heat adds the records up, a pixel as bright as how many cover \
+              it"
+             (let ([red (fxand (fxsrl (pipeline-test-preview-pixel image x y)
+                                      16)
+                               255)])
+               (and (for-all (lambda (run) (= (car run) 3))
+                             (inspect-list-runs p))
+                    (>= red 16)))))
+    (let ([marks (pipeline-changed-marks v l)]
+          [before (inspect-history-ref (pipeline-view-history v)
+                                       (- (inspect-list-frame l) 1))])
+      (check "Changed marks the records that differ from the frame before, \
+              as many in each drawer as Who counts"
+             (or (not before)
+                 (for-all
+                  (lambda (span node)
+                    (let ([row (find (lambda (r) (equal? (vector-ref r 0) node))
+                                     (pipeline-who-rows v))]
+                          [marked (length
+                                   (filter (lambda (k)
+                                             (vector-ref marks
+                                                         (+ (cadr span) k)))
+                                           (iota (caddr span))))])
+                      (or (not (vector-ref row 6))
+                          (= marked (vector-ref row 6)))))
+                  (inspect-list-labels l)
+                  (pipeline-span-nodes (inspect-list-labels l)))))))
+  (pipeline-view-look-set! v 'picture)
   (press! '(pipeline hold))
   (press! '(pipeline lists))
   ;; the viewer: zoomed, moved, magnified, popped out

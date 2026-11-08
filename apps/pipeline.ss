@@ -8,8 +8,10 @@
 ;;;   Who     what each drawer cost: main's time drawing it, its records, the
 ;;;           pixels they may touch, the runs they start, what changed
 ;;;   Screen  what draws, and what it holds on the GPU
-;;; Right, the screen small, the selected record outlined, or who drew each
-;;; record, in its drawer's color, the selected one's bright: a press there
+;;; Right, the screen small, the selected record outlined, or shown another
+;;; way: who drew each record, in its drawer's color, the selected one's
+;;; bright; each record's kind; heat, a pixel as bright as how many records
+;;; cover it; or what changed since the frame before. A press there
 ;;; lists the records that may touch that pixel. It draws again every tick, or
 ;;; as seldom as it's told, and it's on the screen it shows: so it's in itself,
 ;;; a tick older each time round. The wheel zooms it at the pointer and a drag
@@ -61,7 +63,7 @@
           (mutable kept)       ; the records drawn of the list on view, a
                                ; vector in order: what the Tape goes through
           (mutable kept-of)    ; the list on view it's of
-          (mutable look)       ; what the small screen shows: picture or who
+          (mutable look)       ; what the small screen shows: pipeline-looks
           (mutable painted)    ; a list repainted for it, used again
           (mutable who)        ; what each drew cost: (list . rows)
           colors))             ; each drawer's color, by node: an index
@@ -122,7 +124,7 @@
   (let ([l (pipeline-view-shown v)] [upto (pipeline-view-upto v)]
         [left-out (pipeline-left-out-of v)])
     (cond
-      [(eq? (pipeline-view-look v) 'who)
+      [(not (eq? (pipeline-view-look v) 'picture))
        (let* ([h (pipeline-view-history v)]
               [from (if (pipeline-view-held? v)
                         l
@@ -1000,13 +1002,64 @@
                              v node
                              (and (member node (pipeline-view-off v)) #t)))))))
 
-;; The small screen showing who drew: each record solid in its drawer's color,
-;; the others dim while a drawer's selected, of list l, in into.
+;; The small screen showing list l another way than its picture, each record
+;; solid in a color of what's asked: who drew it, the others dim while a
+;; drawer's selected; its kind; or whether it changed since the frame
+;; before. Heat adds a little of one color a record, so that a pixel is as
+;; bright as how many records cover it.
 (define (pipeline-painted v l)
-  (let-values ([(words other)
-                (pipeline-draw-who-words v (inspect-list-labels l)
-                                         (pipeline-selected-span v))])
-    (inspect-list-paint! (pipeline-view-painted v) l words other)))
+  (let ([into (pipeline-view-painted v)] [n (inspect-list-count l)])
+    (case (pipeline-view-look v)
+      [(heat) (inspect-list-paint! into l (lambda (i) (pipeline-draw-heat-word))
+                                   3)]
+      [(kind)
+       (let ([words (pipeline-draw-kind-words)])
+         (inspect-list-paint!
+          into l
+          (lambda (i)
+            (cdr (assq (inspect-kind l i) words)))
+          0))]
+      [(changed)
+       (let ([marks (pipeline-changed-marks v l)])
+         (let-values ([(new same) (pipeline-draw-changed-words)])
+           (inspect-list-paint! into l
+                                (lambda (i) (if (vector-ref marks i) new same))
+                                0)))]
+      [else
+       (let-values ([(words other)
+                     (pipeline-draw-who-words v (inspect-list-labels l)
+                                              (pipeline-selected-span v))])
+         (let ([by (make-vector n other)])
+           (for-each (lambda (span w)
+                       (do ([i (cadr span) (+ i 1)])
+                           ((>= i (min n (+ (cadr span) (caddr span)))))
+                         (vector-set! by i w)))
+                     (inspect-list-labels l) words)
+           (inspect-list-paint! into l (lambda (i) (vector-ref by i)) 0)))])))
+
+;; Which records of l differ from the frame before's, a vector of booleans:
+;; each compared with the record at its place in its drawer's span then, a
+;; record past that span's, or of a drawer new since, changed; all of them
+;; when the frame before isn't kept.
+(define (pipeline-changed-marks v l)
+  (let* ([n (inspect-list-count l)]
+         [before (inspect-history-ref (pipeline-view-history v)
+                                      (- (inspect-list-frame l) 1))]
+         [marks (make-vector n (not before))])
+    (when before
+      (let ([spans (inspect-list-labels l)])
+        (for-each
+         (lambda (span node)
+           (let ([b (pipeline-span-in (inspect-list-labels before) node)])
+             (do ([k 0 (+ k 1)]) ((>= k (caddr span)))
+               (let ([i (+ (cadr span) k)])
+                 (when (< i n)
+                   (vector-set! marks i
+                                (or (not b) (>= k (caddr b))
+                                    (not (inspect-record-same?
+                                          l i before (+ (cadr b) k))))))))))
+         spans (pipeline-span-nodes spans))))
+    marks))
 
 ;;; ---- drawing
 
@@ -1051,6 +1104,21 @@
                                    c))))
                (pipeline-span-nodes spans))
           (color-word 'text-faint)))
+
+;; Kinds' words for the small screen, as the Tape's kind lane colors them.
+(define (pipeline-draw-kind-words)
+  (map (lambda (kind color) (cons kind (color-word color)))
+       pipeline-tape-kinds (cdr (cadr pipeline-draw-tape-lanes))))
+
+;; What a record adds where it covers, showing heat: a little of red, half as
+;; much green and a quarter blue, so that a pixel goes dark red, orange,
+;; yellow and white as more records cover it, red full at 16.
+(define (pipeline-draw-heat-word) (color-word #x100804))
+
+;; A record changed since the frame before, and one the same. => (values new
+;; same)
+(define (pipeline-draw-changed-words)
+  (values (color-word 'chart-1) (color-word (mix 'text-faint 'bg-0 0.6))))
 
 ;;; ---- the viewer: the screen small, zoomed, moved, magnified, popped out
 
@@ -1262,12 +1330,28 @@
   (let* ([ch (ui-control-height)] [y (+ y ch 6)]
          [lw (+ 8 (text-width "Show" 'ui))])
     (ui-draw-label x y lw ch '(dim) "Show")
-    (ui-segmented ui '(pipeline look) (+ x lw) y (min 240 (- w lw)) ch
-                  '(("Picture" . picture) ("Who drew" . who))
-                  (pipeline-view-look v)
-                  (lambda (look)
-                    (pipeline-view-look-set! v look)
-                    (pipeline-preview! v)))))
+    (ui-dropdown ui '(pipeline look) (+ x lw) y (min 150 (- w lw)) ch
+                 pipeline-looks (pipeline-view-look v)
+                 (lambda (look)
+                   (pipeline-view-look-set! v look)
+                   (pipeline-preview! v)))
+    (ui-draw-label (+ x lw (min 150 (- w lw)) 8) y
+                   (max 0 (- w lw (min 150 (- w lw)) 8)) ch '(dim)
+                   (cdr (assq (pipeline-view-look v) pipeline-look-notes)))))
+
+;; What the small screen may show, and in a word what each means.
+(define pipeline-looks
+  '(("Picture" . picture)
+    ("Who drew" . who)
+    ("Kind" . kind)
+    ("Heat" . heat)
+    ("Changed" . changed)))
+(define pipeline-look-notes
+  '((picture . "")
+    (who . "a drawer a color")
+    (kind . "as the Tape's kinds")
+    (heat . "more records, brighter")
+    (changed . "bright: changed")))
 
 ;; Its two rows' height.
 (define (pipeline-viewer-bar-height)

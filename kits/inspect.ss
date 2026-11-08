@@ -421,12 +421,12 @@
 ;;; ---- a list repainted, and what a span of it costs
 
 ;; into, a list as inspect-list-empty makes, holds l from now on with every
-;; record's paint solid: a span's in its word of words, a color's, one a span
-;; of l's labels in order, and a record under no label in other. What each
-;; covers stays, in colors of the caller's choosing (who drew it, say). Its
-;; runs are those solid records need, drawn plainly; its extras are l's, its
-;; records in into's own buffer when it's big enough. => into
-(define (inspect-list-paint! into l words other)
+;; record's paint solid, record i's (word-of i), a color's word: what each
+;; covers stays, in colors of the caller's choosing (who drew it, its kind).
+;; Its runs are those solid records need, blended by mode, a run's (0 over,
+;; 3 adding); its extras are l's, its records in into's own buffer when it's
+;; big enough. => into
+(define (inspect-list-paint! into l word-of mode)
   (let ([n (inspect-list-count l)])
     (when (< (bytevector-length (vector-ref into 0)) (* 32 n))
       (vector-set! into 0 (make-immobile-bytevector (+ (* 32 n) (* 8 n)))))
@@ -443,12 +443,7 @@
         (let ([head (bytevector-s32-native-ref bytes (at i rec-row-head))])
           (bytevector-s32-native-set! bytes (at i rec-row-head)
                                       (fxand head (fxnot #xf0)))
-          (paint! i other)))
-      (for-each (lambda (span w)
-                  (do ([i (cadr span) (fx+ i 1)])
-                      ((fx= i (fx+ (cadr span) (caddr span))))
-                    (paint! i w)))
-                (inspect-list-labels l) words)
+          (paint! i (word-of i))))
       (vector-set! into 1 (vector-ref l 1))
       (vector-set! into 2 (inspect-list-labels l))
       (vector-set! into 3 n)
@@ -462,7 +457,7 @@
          (cond
            [(fx= i n)
             (reverse (if (fx> n first)
-                         (cons (list 0 #f first (fx- n first) variant) acc)
+                         (cons (list mode #f first (fx- n first) variant) acc)
                          acc))]
            [else
             (let ([v (rec-variant
@@ -470,7 +465,7 @@
               (if (or (not variant) (fx= v variant))
                   (loop (fx+ i 1) first v acc)
                   (loop (fx+ i 1) i v
-                        (cons (list 0 #f first (fx- i first) variant)
+                        (cons (list mode #f first (fx- i first) variant)
                               acc))))])))
       into)))
 
@@ -496,26 +491,26 @@
    (length (filter (lambda (run) (< -1 (- (caddr run) first) count))
                    (inspect-list-runs l)))))
 
+;; Does record i of l say what record j of b does? What a record says of
+;; where it is in the list's extras, its clip and its rows, moves when
+;; something before it changes, so it isn't compared.
+(define (inspect-record-same? l i b j)
+  (let ([head (inspect-word l i rec-row-head)])
+    (and (fx= (fxand head #xff) (fxand (inspect-word b j rec-row-head) #xff))
+         (for-all (lambda (k)
+                    (or (and (fx= k rec-row-paint)
+                             (fx= (fxand (fxsrl head 4) 15) 1))
+                        (and (fx= k rec-polygon-points)
+                             (fx= (fxand head 15) 2))
+                        (fx= (inspect-word l i k) (inspect-word b j k))))
+                  (cdr (iota rec-row-words))))))
+
 ;; How many of count records of l from first differ from bcount records of b
-;; from bfirst, one by one, a record past b's counting as changed. What a
-;; record says of where it is in the list's extras, its clip and its rows,
-;; moves when something before it changes, so it isn't compared.
+;; from bfirst, one by one, a record past b's counting as changed.
 (define (inspect-span-changed l first count b bfirst bcount)
-  (let ([same? (lambda (i j)
-                 (let ([word (lambda (l i k) (inspect-word l i k))])
-                   (and (fx= (fxand (word l i rec-row-head) #xff)
-                             (fxand (word b j rec-row-head) #xff))
-                        (let ([head (word l i rec-row-head)])
-                          (for-all
-                           (lambda (k)
-                             (or (and (fx= k rec-row-paint)
-                                      (fx= (fxand (fxsrl head 4) 15) 1))
-                                 (and (fx= k rec-polygon-points)
-                                      (fx= (fxand head 15) 2))
-                                 (fx= (word l i k) (word b j k))))
-                           (cdr (iota rec-row-words)))))))])
-    (let loop ([k 0] [n 0])
-      (cond [(= k count) n]
-            [(or (>= k bcount) (not (same? (+ first k) (+ bfirst k))))
-             (loop (+ k 1) (+ n 1))]
-            [else (loop (+ k 1) n)]))))
+  (let loop ([k 0] [n 0])
+    (cond [(= k count) n]
+          [(or (>= k bcount)
+               (not (inspect-record-same? l (+ first k) b (+ bfirst k))))
+           (loop (+ k 1) (+ n 1))]
+          [else (loop (+ k 1) n)])))

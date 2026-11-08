@@ -1005,7 +1005,9 @@ Decisions worth keeping in mind for the real design:
   screen small, drawn again every tick unless told otherwise and showing
   itself in its own box, a tick older each time round, with what's selected
   outlined, or showing who drew each record, in its drawer's color, the
-  others dim while one's selected, and a press there listing what may touch
+  others dim while one's selected, or its records' kinds, or heat (a pixel
+  as bright as how many records cover it), or what changed since the frame
+  before, and a press there listing what may touch
   that pixel; the wheel
   zooms it at the pointer, a drag moves it, Fit and 100% set it, a loupe
   magnifies the pixels at the pointer and names the record on top there,
