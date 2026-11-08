@@ -576,7 +576,8 @@
          (let*-values ([(cx cy cw ch) (content-rect w)]
                        [(hy) (+ cy (quotient (ui-table-header-height) 2))]
                        [(over) (doc-at (+ cx 101) hy)]
-                       [(shape) (window-ref w 'cursor 'arrow)])
+                       [(shape) (window-ref w 'cursor 'arrow)]
+                       [(room) (ui-table-room cw)])
            (define (widths id)
              (map caddr (ui-table-columns ui id columns)))
            (define (drag! x0 x1 y)
@@ -600,14 +601,64 @@
                         (equal? over '((L . "Resize column")
                                        (L2 . "Default width")))
                         (equal? dragged '(140 100 100))
+                        ;; the last takes what the others leave
                         (equal? (filter (lambda (c) (eq? (car c) 't)) drawn)
-                                '((t a 0 140) (t b 140 100) (t c 240 100)))
+                                `((t a 0 140) (t b 140 100)
+                                  (t c 240 ,(max 100 (- room 240)))))
                         (equal? (filter (lambda (c) (eq? (car c) 'u)) drawn)
-                                '((u a 0 100) (u b 100 100) (u c 200 100)))
+                                `((u a 0 100) (u b 100 100)
+                                  (u c 200 ,(max 100 (- room 200)))))
                         (equal? narrow (list (ui-table-column-min) 100 100))
                         (equal? reset '(100 100 100))
                         (equal? tree '((100 100 100) (100 100 100)
                                        (100 80 100)))))))))))
+
+(check "with 'resize 'pair a drag moves the width between the two \
+        columns beside the handle, each at least the minimum, and a double \
+        click sets back both; Mac and Windows shift the rest along, as the \
+        Finder and Explorer do, the others resize the pair"
+       (let* ([columns '((a "A" 100) (b "B" 100) (c "C" 100))] [ui #f]
+              [w (kit-window "Pair"
+                             (lambda (u w h)
+                               (set! ui u)
+                               (ui-table u 't 0 0 w 50 columns '(1 2) #f void
+                                         (lambda (row key x y w h flags) #f)
+                                         'resize 'pair)))])
+         (steps 2)
+         (let*-values ([(cx cy cw ch) (content-rect w)]
+                       [(hy) (+ cy (quotient (ui-table-header-height) 2))])
+           (define (widths)
+             (map caddr (ui-table-columns ui 't columns)))
+           (define (drag! x0 x1)
+             (inject! `(mouse-move ,x0 ,hy) `(mouse-down ,x0 ,hy left 1)
+                      `(mouse-move ,x1 ,hy) `(mouse-up ,x1 ,hy left))
+             (steps 2))
+           (drag! (+ cx 101) (+ cx 141))
+           (let ([wider (widths)])
+             (drag! (+ cx 141) (+ cx 290))
+             (let ([most (widths)])
+               (inject! `(mouse-down ,(+ cx (car most)) ,hy left 2)
+                        `(mouse-up ,(+ cx (car most)) ,hy left))
+               (steps 2)
+               (let ([reset (widths)] [least (ui-table-column-min)])
+                 (close-window! w)
+                 (steps 1)
+                 (and (equal? wider '(140 60 100))
+                      (equal? most (list (- 200 least) least 100))
+                      (equal? reset '(100 100 100))
+                      (equal? (map (lambda (style)
+                                     (with-style style
+                                       (lambda () (theme 'table-resize))))
+                                   '(mac windows cons genera))
+                              '(shift shift pair pair)))))))))
+
+(check "columns dragged narrower than the table leave the room to the \
+        last, so the headings reach the edge; wider, they stay"
+       (let ([columns '((a "A" 60) (b "B" 100 right "tip"))])
+         (and (equal? (ui-table-filled columns 300)
+                      '((a "A" 60) (b "B" 240 right "tip")))
+              (equal? (ui-table-filled columns 120) columns)
+              (equal? (ui-table-filled '() 100) '()))))
 
 ;; The columns a heading inks, (first . last), drawn 200 wide in style
 ;; with flags and dir; its bottom line left out.

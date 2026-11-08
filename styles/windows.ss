@@ -68,6 +68,9 @@
               (windows-radius win)))
 
 (define-style windows "Windows"
+  ;; a divider's drag widens its column and moves the rest along, as
+  ;; Explorer's details view
+  'table-resize 'shift
   'frame-radius 'windows-radius
   'frame-regions 'windows-regions
   'frame-under 'windows-draw-under

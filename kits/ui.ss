@@ -2224,9 +2224,11 @@
 ;; its column's. opts: 'sort ((key . up|down) or #f), 'on-sort (key) on a
 ;; press on a heading, 'on-open (row) on a double click, 'on-menu (row x
 ;; y) on a right press, 'tip (row): a row's tooltip, or #f, 'reveal: true
-;; scrolls the selected row into view, and 'checked (row): a checkbox
+;; scrolls the selected row into view, 'checked (row): a checkbox
 ;; before each row's first cell, checked when it gives true, checked and
-;; off when it gives fixed, with 'on-check (row) on a press on it.
+;; off when it gives fixed, with 'on-check (row) on a press on it, and
+;; 'resize: how a drag resizes its columns, pair or shift, by default the
+;; style's (table-resize).
 (define (ui-table ui id x y w h columns rows selected on-select cell . opts)
   (with-place 'list
     (lambda ()
@@ -2234,7 +2236,7 @@
              [sx x] [sw w]
              [x (+ sx (ui-scrollbar-inset 'left))]
              [w (ui-table-room sw)]
-             [columns (ui-table-columns ui id columns)]
+             [columns (ui-table-filled (ui-table-columns ui id columns) w)]
              [hh (ui-table-header-height)] [rh (ui-table-row-height)]
              [sort (plist-ref opts 'sort #f)]
              [tip (plist-ref opts 'tip (lambda (r) #f))]
@@ -2251,7 +2253,7 @@
                      (list-index (lambda (r) (eq? r selected)) rows))]
              [rows (list->vector rows)] [n (vector-length rows)])
         (ui-table-headings! ui id sx sw x y hh columns sort on-sort
-                            (+ x lane))
+                            (+ x lane) (plist-ref opts 'resize #f))
         (when i (ui-reveal! ui body (* i rh) (* (+ i 1) rh) view-h))
         (ui-memo! ui (list id 'page) (max 1 (exact (floor (/ view-h rh)))))
         (ui-scroll ui body sx (+ y hh) sw view-h
@@ -2326,13 +2328,31 @@
            (if w (cons* (car c) (cadr c) w (cdddr c)) c)))
        columns))
 
+;; columns as drawn in w: when the widths the user dragged leave room at
+;; the right, the last column takes it, so that the headings reach the
+;; table's edge as its rows do.
+(define (ui-table-filled columns w)
+  (let ([left (- w (apply + (map caddr columns)))])
+    (if (or (null? columns) (<= left 0))
+        columns
+        (let ([c (car (last-pair columns))])
+          (append (list-head columns (- (length columns) 1))
+                  (list (cons* (car c) (cadr c) (+ (caddr c) left)
+                               (cdddr c))))))))
+
 ;; The narrowest the user drags a column: two lines.
 (define (ui-table-column-min) (exact (round (* 2 (font-line-height 'ui)))))
 
 ;; The handles of table or tree id: a few pixels on each line between
 ;; two of its headings, the first at x, h high. Dragging one sets the
 ;; width of the column left of it, in whole pixels, at least
-;; ui-table-column-min; a double click sets back its default.
+;; ui-table-column-min; by resize, pair takes it from the column right of
+;; it, which keeps as wide at least, and shift moves those right of it
+;; along. A double click sets back their defaults.
+;; How a style's tables resize (table-resize): pair, two columns, the
+;; table's width kept; shift, the Finder's and Explorer's way.
+(theme-default! 'table-resize 'pair)
+
 ;; When a table's column dividers show (table-dividers): always, faint;
 ;; hover, while the pointer is over the headings; handle, only the one
 ;; under it. Under the pointer or dragged, one always shows, strongly.
@@ -2345,7 +2365,7 @@
         [(hover) row-hover?]
         [else #f])))
 
-(define (ui-table-handles! ui id x y h columns sx sw)
+(define (ui-table-handles! ui id x y h columns sx sw resize)
   (define row-hover?
     (let ([win (current-window)])
       (and win
@@ -2354,7 +2374,10 @@
   (let loop ([cs columns] [cx x])
     (unless (or (null? cs) (null? (cdr cs)))
       (let* ([key (caar cs)] [cw (caddr (car cs))] [line (+ cx cw)]
-             [width (list id 'width key)] [grab (list id 'width-grab)])
+             [width (list id 'width key)] [grab (list id 'width-grab)]
+             [pair? (eq? resize 'pair)]
+             [next (list id 'width (caadr cs))]
+             [both (+ cw (caddr (cadr cs)))])
         (ui-region! ui (list id 'handle key) (- line 3) y 6 h
           'focus 'keep 'cursor 'resize-ew
           'doc '((L . "Resize column") (L2 . "Default width"))
@@ -2365,15 +2388,23 @@
                (and (eq? (list-ref ev 3) 'left)
                     (begin
                       (if (>= (list-ref ev 4) 2)
-                          (hashtable-delete! (ui-state-memo ui) width)
+                          (begin
+                            (hashtable-delete! (ui-state-memo ui) width)
+                            (when pair?
+                              (hashtable-delete! (ui-state-memo ui) next)))
                           (ui-memo! ui grab (- (cadr ev) line)))
                       #t))]
               [(drag)
-               (let ([new (max (ui-table-column-min)
-                               (exact (round (- (cadr ev) (ui-memo ui grab 0)
-                                                cx))))])
+               (let* ([least (ui-table-column-min)]
+                      [new (max least
+                                (exact (round (- (cadr ev) (ui-memo ui grab 0)
+                                                 cx))))]
+                      [new (if pair? (min new (- both least)) new)])
                  (and (< (cadddr ev) 2) (not (= new cw))
-                      (begin (ui-memo! ui width new) #t)))]
+                      (begin
+                        (ui-memo! ui width new)
+                        (when pair? (ui-memo! ui next (- both new)))
+                        #t)))]
               [else #f])))
         (let* ([flags (ui-flags ui (list id 'handle key))]
                [hot? (or (memq 'hover flags) (memq 'pressed flags))])
@@ -2392,7 +2423,8 @@
 ;; calls (on-sort key), and the one sort names ((key . up|down), or #f)
 ;; shows its direction. The first title starts at title-x: a tree's over
 ;; its roots' cells.
-(define (ui-table-headings! ui id sx sw x y h columns sort on-sort title-x)
+(define (ui-table-headings! ui id sx sw x y h columns sort on-sort title-x
+                            resize)
   (ui-table-call-with-clip ui sx y sw h
     (lambda ()
       (let loop ([cs columns] [cx x])
@@ -2417,7 +2449,8 @@
                                   (cadar cs)
                                   (and sort (eq? (car sort) key) (cdr sort)))
             (loop (cdr cs) (+ cx cw)))))
-      (ui-table-handles! ui id x y h columns sx sw))))
+      (ui-table-handles! ui id x y h columns sx sw
+                         (or resize (theme 'table-resize))))))
 
 ;; thunk, its drawing and its regions cut to x y w h: a table's headings,
 ;; which a column the user widened carries past its edge, as its rows.
@@ -2593,8 +2626,9 @@
 ;; selected, as Left would (by default on-select), 'tip (node w): its
 ;; tooltip, or #f, w its first cell's width, 'reveal: true scrolls the
 ;; selected row into view, 'dim (node): true dims its row (the flag dim),
-;; 'sort and 'on-sort as a table's (without 'on-sort the headings take no
-;; presses; roots and children come in the order sort names), and
+;; 'sort, 'on-sort and 'resize as a table's (without 'on-sort the
+;; headings take no presses; roots and children come in the order sort
+;; names), and
 ;; 'generation: a value that changes (eqv?) whenever roots or children
 ;; would give other nodes, so the rows are kept until it does or a node
 ;; is expanded or collapsed (without it, they are made at every draw).
@@ -2606,7 +2640,7 @@
              [sx x] [sw w]
              [x (+ sx (ui-scrollbar-inset 'left))]
              [w (ui-table-room sw)]
-             [columns (ui-table-columns ui id columns)]
+             [columns (ui-table-filled (ui-table-columns ui id columns) w)]
              [hh (ui-table-header-height)] [rh (ui-tree-row-height)]
              [tip (plist-ref opts 'tip (lambda (node w) #f))]
              [on-open (plist-ref opts 'on-open (lambda (node) #f))]
@@ -2631,7 +2665,8 @@
         (ui-memo! ui (list id 'rows) rows)
         (ui-memo! ui (list id 'generation) generation)
         ;; the first title over a root's cell
-        (ui-table-headings! ui id sx sw x y hh columns sort on-sort (car c0))
+        (ui-table-headings! ui id sx sw x y hh columns sort on-sort (car c0)
+                            (plist-ref opts 'resize #f))
         (when (plist-ref opts 'reveal #f)
           (let ([i (ui-tree-index rows selected)])
             (when i (ui-reveal! ui body (* i rh) (* (+ i 1) rh) view-h))))
