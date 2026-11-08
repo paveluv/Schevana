@@ -1014,8 +1014,10 @@ Decisions worth keeping in mind for the real design:
   collector, as bright as it took long, and input, green where all's well, a
   label's tooltip saying what its colors mean. A press holds it and goes back
   to that tick's frame, the whole app showing it, and a drag moves through
-  them: the last 300 frames are kept while it's open, without the images and
-  paints they showed, which may be gone by then. While it flows it asks for a
+  them: the last 300 frames are kept while it's open, the images and paints
+  they showed drawn again as they are now (the River's rows are kept by tick,
+  so its bands come back as they were), and left out once they're let go
+  of. While it flows it asks for a
   frame a tick, and says what that takes; closed, what's left of it is the
   core's few numbers a frame.
 - **The profiler hooks into the core.** `src/proc.ss` keeps one hook,

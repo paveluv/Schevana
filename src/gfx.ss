@@ -1355,8 +1355,7 @@
 (define (rec-preview! image runs-of) (set! *rec-preview* (cons image runs-of)))
 
 ;; Ahead of the next frame, a list kept from earlier drawn on image: (image recs
-;; recs-n extras extras-n runs), its runs naming no image or paint, which may be
-;; gone by now.
+;; recs-n extras extras-n runs), its images and paints as they are now.
 (defvar *rec-past* #f)
 (define (rec-past! image recs recs-n extras extras-n runs)
   (set! *rec-past* (list image recs recs-n extras extras-n runs)))

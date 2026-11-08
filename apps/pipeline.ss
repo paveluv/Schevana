@@ -1164,8 +1164,8 @@
         (when (and (pipeline-view-held? v) (> (inspect-list-left-out l) 0))
           (ui-draw-label sx (+ sy ch gap ch gap ch gap)
                          screen-w 0 '(hint wrap)
-                         "Images and paints aren't kept with a frame, so \
-                          they're left out of it here."))))
+                         "An image or a paint let go of since this frame \
+                          is left out of it here."))))
     (pipeline-tape-pane v pad (+ bottom gap) (- w pad pad) tape-h)
     (pipeline-river-pane v pad (- h pad river-h) (- w pad pad) river-h)
     (ui-end! ui w h)))

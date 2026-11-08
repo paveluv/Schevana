@@ -32,8 +32,8 @@
 
 ;; A copy of the last frame's list: #(records extras labels count words row
 ;; runs frame), labels ((label first-record count) ...) in draw order, row the
-;; frame's in inspect-frames, runs those that name no image or paint, frame its
-;; number. Only one list so far: the root's.
+;; frame's in inspect-frames, runs its runs, frame its number. Only one list so
+;; far: the root's.
 (define (inspect-list) (inspect-list-read! (inspect-list-empty)))
 
 (define (inspect-list-empty)
@@ -59,8 +59,7 @@
     (vector-set! l 3 count)
     (vector-set! l 4 words)
     (vector-set! l 5 row)
-    (vector-set! l 6 (filter (lambda (run) (not (cadr run)))
-                             (reverse *rec-runs*)))
+    (vector-set! l 6 (reverse *rec-runs*))
     (vector-set! l 7 (- *frame-ring-n* 1))
     l))
 
@@ -84,10 +83,10 @@
        (reverse *gpu-computes*)))
 (define (inspect-list-frame l) (vector-ref l 7))
 
-;; How many of its runs showed an image or a paint, which aren't kept.
+;; How many of its runs show an image or a paint let go of since: drawn again,
+;; the list leaves them out. Those still there show what they hold now.
 (define (inspect-list-left-out l)
-  (let ([row (inspect-list-row l)])
-    (if row (- (cadddr row) (length (inspect-list-runs l))) 0)))
+  (length (filter gpu-run-gone? (inspect-list-runs l))))
 
 ;;; ---- the frames kept
 

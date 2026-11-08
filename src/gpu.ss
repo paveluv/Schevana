@@ -405,9 +405,11 @@
 ;;; ------------------------------------------------------------------ images
 ;;; An image is a texture of premultiplied BGRA, its pixels on the GPU alone.
 
+;; gone?: it's been let go of, and a list kept from before that names it
+;; draws without it.
 (define-record-type gpu-image
   (nongenerative schevana-gpu-image-1)
-  (fields texture w h levels (mutable pending)))
+  (fields texture w h levels (mutable pending) (mutable gone?)))
 
 (define gpu-image-make
   (case-lambda
@@ -416,7 +418,7 @@
      (make-gpu-image
       (gpu-make-texture (renderer-device *renderer*) gpu-format-bgra8 usage w h
                         levels)
-      w h levels #f)]))
+      w h levels #f #f)]))
 
 ;; An image that can also be drawn on. It has a chain of levels, each half the
 ;; last down to a pixel, so that it can be shown smaller: a third more memory.
@@ -434,6 +436,7 @@
   (gpu-image-pending-set! image bytes))
 
 (define (gpu-image-release! image)
+  (gpu-image-gone?-set! image #t)
   (sdl-release-gpu-texture (renderer-device *renderer*)
                            (gpu-image-texture image)))
 
@@ -446,7 +449,8 @@
   (nongenerative schevana-gpu-buffer-1)
   (fields id bytes
           (mutable from)     ; the bytes to go up: from .. to
-          (mutable to)))
+          (mutable to)
+          (mutable gone?)))  ; let go of, as an image can be
 
 (defvar *gpu-dirty-buffers* '())
 
@@ -462,7 +466,7 @@
               (gpu-must 'make-gpu-buffer
                         (sdl-create-gpu-buffer (renderer-device *renderer*)
                                                (gpu-at p)))
-              (make-immobile-bytevector n 0) 0 n)])
+              (make-immobile-bytevector n 0) 0 n #f)])
       (set! *gpu-dirty-buffers* (cons b *gpu-dirty-buffers*))
       b)))
 
@@ -494,6 +498,7 @@
   (bytevector-s32-native-ref (gpu-buffer-bytes b) (fx* 4 i)))
 
 (define (gpu-buffer-release! b)
+  (gpu-buffer-gone?-set! b #t)
   (set! *gpu-dirty-buffers* (remq b *gpu-dirty-buffers*))
   ;; a run waiting for the frame would name it
   (set! *gpu-computes*
@@ -504,10 +509,18 @@
   (sdl-release-gpu-buffer (renderer-device *renderer*) (gpu-buffer-id b)))
 
 ;; What a paint or a compute run is called with: its shader, its uniforms as
-;; bytes, its buffers' ids.
+;; bytes, its buffers.
 (define-record-type gpu-call
   (nongenerative schevana-gpu-call-1)
   (fields shader uniforms buffers))
+
+;; Does a run, (mode image first count variant), show an image or a paint's
+;; buffer let go of since it was drawn? A list kept draws without it.
+(define (gpu-run-gone? run)
+  (let ([x (cadr run)])
+    (cond [(gpu-image? x) (gpu-image-gone? x)]
+          [(gpu-call? x) (exists gpu-buffer-gone? (gpu-call-buffers x))]
+          [else #f])))
 
 ;; The arguments of the parameters that keep? takes.
 (define (gpu-args-of keep? params args)
@@ -540,8 +553,7 @@
     (for-each (lambda (v i) (gpu-word-set! bytes (* 4 i) v))
               values (iota (length values)))
     (make-gpu-call shader bytes
-                   (map gpu-buffer-id
-                        (gpu-args-of gpu-buffer-param? params args)))))
+                   (gpu-args-of gpu-buffer-param? params args))))
 
 ;; The buffers' dirty bytes, by a copy pass on cb.
 (define (gpu-upload-buffers! r cb)
@@ -880,7 +892,7 @@
                   pass (gpu-paint-pipeline (gpu-call-shader call) format))
                  (sdl-bind-vertex-storage pass 0 (gpu-at buffers) 3)
                  ;; a paint's: the list's, then its own
-                 (let ([own (gpu-call-buffers call)])
+                 (let ([own (map gpu-buffer-id (gpu-call-buffers call))])
                    (for-each (lambda (id i)
                                (ftype-set! gpu-storage-buffers (i) buffers id))
                              own (map (lambda (i) (+ i 2))
@@ -1024,14 +1036,16 @@
           shown?))))
 
 ;; A list kept from earlier drawn on image, ahead of the next frame, which sends
-;; its own: its glyphs are all up already.
+;; its own: its glyphs are all up already. Its images and paints show what
+;; they hold now, but those let go of since.
 (define (gpu-list-on-image! image recs recs-n extras extras-n runs)
   (let* ([r *renderer*]
          [d (renderer-device r)]
          [cb (gpu-must 'gpu-list-on-image! (sdl-acquire-gpu-commands d))])
     (gpu-upload! r cb recs recs-n extras extras-n #f 0 '() '())
     (gpu-draw-runs! r cb (gpu-image-texture image) gpu-format-bgra8
-                    (gpu-image-w image) (gpu-image-h image) runs #f)
+                    (gpu-image-w image) (gpu-image-h image)
+                    (remp gpu-run-gone? runs) #f)
     (gpu-image-fill-levels! cb image)
     (sdl-submit-gpu cb)))
 

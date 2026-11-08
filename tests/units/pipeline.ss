@@ -223,6 +223,11 @@
 
 ;;; The frames kept.
 
+;; A box in the color its buffer holds.
+(define-paint (pipeline-test-paint x y)
+  ([colors fx-buffer])
+  (fx-ref colors 0))
+
 (let* ([plain record-world!]
        [draw! (lambda (thunk)
                 (set! record-world! thunk)
@@ -272,10 +277,28 @@
         (let ([l (inspect-history-ref h (inspect-history-newest h))])
           (draw! (box-of #x0000ff))
           (inspect-preview-free! gone)
-          (check "an image or a paint isn't kept with a frame: it's left out, \
-                  and says so, and one gone since can't hurt"
+          (check "an image let go of since a frame was kept is left out when \
+                  it's drawn again, and says so, and can't hurt"
                  (and (= (inspect-list-left-out l) 1)
                       (= (inspect-list-left-out la) 0)
+                      (= (shown l (inspect-list-count l)) red)))))
+      ;; a paint, as the River's and the Tape's bands are
+      (let ([colors (make-gpu-buffer 1)] [green #xff00ff00])
+        (gpu-buffer-set! colors 0 green)
+        (draw! (lambda ()
+                 (with-label ("one")
+                   (fill-box 0 0 10 10 #xff0000)
+                   (fill-shader 0 0 10 10 pipeline-test-paint colors))))
+        (inspect-history-add! h)
+        (let ([l (inspect-history-ref h (inspect-history-newest h))])
+          (draw! (box-of #x0000ff))
+          (check "a paint kept with a frame draws again, from what its buffer \
+                  holds"
+                 (and (= (inspect-list-left-out l) 0)
+                      (= (shown l (inspect-list-count l)) green)))
+          (gpu-buffer-release! colors)
+          (check "and once its buffer's let go of, it's left out, and says so"
+                 (and (= (inspect-list-left-out l) 1)
                       (= (shown l (inspect-list-count l)) red)))))
       (inspect-preview-free! image))
     (do ([i 0 (+ i 1)]) ((= i 8))
