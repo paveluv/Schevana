@@ -397,6 +397,31 @@
          (for-all even? '(32 20 13 8 5)))
   (gpu-image-release! stripes))
 
+;; Given 'gray an image's first channel shows in all three, as the glyphs'
+;; atlas of one channel does in the Pipeline.
+(let ([target (gpu-image-make-target 4 4)] [plain record-world!])
+  (set! record-world!
+    (lambda ()
+      (fill-box 0 0 4 4 #x0000ff)
+      (fill-box 0 0 1 4 #xff0000)
+      (fill-box 2 0 1 4 #xff4000)))
+  (rec-preview! target (lambda (runs) runs))
+  (request-frame!)
+  (steps 1)
+  (set! record-world! plain)
+  (request-frame!)
+  (steps 1)
+  (check "an image drawn gray shows its first channel, red, as gray"
+         (and (equal? (pixels-of 4 1 1
+                                 (lambda () (draw-image target 0 0 4 1 'gray))
+                                 '(0 0) '(1 0) '(2 0))
+                      '(#xffffffff #xff000000 #xffffffff))
+              (equal? (pixels-of 4 1 1
+                                 (lambda () (draw-image target 0 0 4 1))
+                                 '(0 0) '(1 0))
+                      '(#xffff0000 #xff0000ff))))
+  (gpu-image-release! target))
+
 (check "pixels with no chain, shown smaller, blend what they have"
        (let ([bv (make-bytevector 8 0)])
          (bytevector-u32-native-set! bv 0 #xffff0000)

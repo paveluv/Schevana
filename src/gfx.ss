@@ -194,7 +194,7 @@
 (define-shader-layout gradient-row extra
   (kind x0 y0 x1 y1 stops color0 color1))
 (define-shader-layout stipple-row extra (u v w h ink paper))
-(define-shader-layout image-row extra (w h level))
+(define-shader-layout image-row extra (w h level gray))
 ;; its rect; the clip around it; the rounded box it lies in, its radius first
 (define-shader-layout clip-row extra
   (x0 y0 x1 y1 radius parent rx0 ry0 rx1 ry1))
@@ -691,8 +691,9 @@
 
 ;; An image on the GPU, scaled to w × h at (x, y). At its size or bigger, each
 ;; pixel a sharp block; smaller, blended, from a level of its chain if it has
-;; one.
-(define (draw-image image x y w h)
+;; one. Given 'gray, its first channel shows as gray: an image of one
+;; channel, as a texture viewer shows it.
+(define (draw-image image x y w h . gray)
   (let ([row *rec-extra-at*]
         [x0 (rec-snap (rec-device x *rec-ox*))]
         [y0 (rec-snap (rec-device y *rec-oy*))]
@@ -701,6 +702,7 @@
     (rec-extra! (gpu-image-w image))
     (rec-extra! (gpu-image-h image))
     (rec-extra! (rec-image-level image (fxsra (- x1 x0) 8) (fxsra (- y1 y0) 8)))
+    (rec-extra! (if (null? gray) 0 1))
     (rec-run! 0 image)
     (set! *rec-paint-kind* rec-paint-image)
     (rec-put! (rec-head rec-kind-box) row x0 y0 x1 y1 0 0)
@@ -1217,6 +1219,7 @@
            [iw (if image? (image-row-w w1) 0)]
            [ih (if image? (image-row-h w1) 0)]
            [level (if image? (image-row-level w1) 0)]
+           [gray? (and image? (fx= (image-row-gray w1) 1))]
            [blend? (and image?
                         (or (fl< (fl- x1 x0) (fixnum->flonum iw))
                             (fl< (fl- y1 y0) (fixnum->flonum ih))))]
@@ -1268,11 +1271,12 @@
                   (fl+ (fl+ c0 (fl* between (fl- c1 c0)))
                        (if (fx= shift 24) 0.0 dither)))]
                [else (premultiplied solid-word shift)])))
-      (emit-color
-       (paint 16 (image-channel 0))
-       (paint 8 (image-channel 1))
-       (paint 0 (image-channel 2))
-       (paint 24 (image-channel 3))))))
+      (let ([red (image-channel 0)])
+        (emit-color
+         (paint 16 red)
+         (paint 8 (if gray? red (image-channel 1)))
+         (paint 0 (if gray? red (image-channel 2)))
+         (paint 24 (image-channel 3)))))))
 
 ;; A variant of the fragment shader, its features on or off.
 (define-syntax define-gfx-fragment
