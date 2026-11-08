@@ -561,12 +561,17 @@
                         (exact (round (+ cy vy (/ vh 2) dy))))))]
          [pixel-at (lambda (mx my)
                      (pipeline-viewer-pixel v vx vy vw vh mx my))])
-    (check "the viewer starts showing all of the screen"
-           (let ([corner (pixel-at vx vy)])
-             ;; the box's height rounded: within a pixel of the corner
+    (check "the viewer starts showing all of the screen, filling its box one \
+            way"
+           (let ([a (pixel-at vx vy)] [b (pixel-at (+ vx vw) (+ vy vh))])
+             ;; the box's size rounded: within a pixel or so
              (and (not (pipeline-view-zoom v))
-                  (< (abs (car corner)) 2)
-                  (< (abs (cdr corner)) 2))))
+                  (< (car a) 2) (< (cdr a) 2)
+                  (> (car b) (- *canvas-pw* 2)) (> (cdr b) (- *canvas-ph* 2))
+                  (or (and (< (abs (car a)) 2)
+                           (< (abs (- (car b) *canvas-pw*)) 2))
+                      (and (< (abs (cdr a)) 2)
+                           (< (abs (- (cdr b) *canvas-ph*)) 2))))))
     (let* ([mx (+ vx (/ vw 4))] [my (+ vy (/ vh 3))]
            [before (pixel-at mx my)])
       (pipeline-zoom-at! v vx vy vw vh mx my 3)

@@ -969,12 +969,16 @@
          [river-h (pipeline-river-height v (- w pad pad))]
          [tape-h (pipeline-tape-height v (- w pad pad))]
          [side (min 360 (quotient w 2))]
-         [screen-w (- side pad)]
-         [screen-h (exact (round (* screen-w (/ *canvas-ph* *canvas-pw*))))]
          [top (+ pad card-h gap)]
          [bottom (max top (- h pad river-h gap tape-h gap))]
          [l (pipeline-view-shown v)]
-         [ch (ui-control-height)])
+         [ch (ui-control-height)]
+         [screen-w (- side pad)]
+         ;; as tall as the screen's shape says, but for the three rows under
+         ;; it: the viewer fits the screen in whatever it's given
+         [screen-h (max ch (min (exact (round (* screen-w (/ *canvas-ph*
+                                                              *canvas-pw*))))
+                                (- bottom top gap (* 3 (+ ch gap)))))])
     (ui-begin! ui)
     (let ([card-w (quotient (- w pad pad gap) 2)])
       (for-each
