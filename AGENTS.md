@@ -50,7 +50,8 @@ before it:
 
 | Layer | What goes there |
 |---|---|
-| `src/` | The core: the world (windows, focus, the theme's layers, processes, timers, the host), the shader compiler, the GPU layer, the recorder and fonts, its registries, the hooks later layers fill, and the caches its own procedures need. |
+| `src/host/` | Core0, below the core: the host's own code, SDL's bindings and the GPU's device side (the window and its events to come). It loads right after `src/ffi.ss` and `src/base.ss`. |
+| `src/` | The core: the world (windows, focus, the theme's layers, processes, timers, the host's interface), the shader compiler, main's side of the GPU layer, the recorder and fonts, its registries, the hooks later layers fill, and the caches its own procedures need. |
 | `kits/` | Libraries, pure or almost. |
 | `services/` | Long-lived state with an API and no surface: the crew of worker threads, the tree of environments, the apps' sandboxes and what they are allowed, vats and their jobs, the profiler, the saved look. |
 | `desktop/` | The screen's own surfaces and the desktop's behavior: wallpaper, bars, menu, toasts, keys, arranging windows. |
@@ -60,17 +61,23 @@ before it:
 - **The core never depends on a later layer.** It reaches them only
   through registries, parts and settings they fill, and hooks they set
   (`*profile-span*`, `*theme-saver*`, `*window-gone*`, `*app-loader*`).
-- **The core has a budget**, 27,700 tokens (atoms as read; comments,
+- **Core0 sits below the core.** `src/host/` names nothing of the core
+  above it, and only it names SDL, but for the clock and the CPU count,
+  which any thread may call (`src/ffi.ss`). What still crosses is listed
+  in `tests/sources.ss`, and the lists only shrink
+  (`.work/gpu-design.md` 9.5, 9.12).
+- **The core has a budget**, 27,720 tokens (atoms as read; comments,
   whitespace and names' lengths are free), in `tests/sources.ss`. Don't
   join lines or shorten names to fit it. Code the core doesn't need moves
   out to the next layer, kits first; the budget is raised only on purpose.
 - **Only the core calls C.** No SDL, FreeType or fontconfig binding, or
   `foreign-…` procedure, outside `src/`: the core grows a primitive instead
   (`tests/sources.ss`).
-- **The GPU layer speaks the world's terms.** Above `src/gpu.ss`, in the core
-  too, nothing names SDL's GPU, Vulkan, SPIR-V, Metal or MSL, so that another
-  back end or raw Vulkan stays its business alone (`tests/sources.ss`; the
-  host keeps SDL's windows).
+- **The GPU layer speaks the world's terms.** Above core0, in the core too,
+  nothing names SDL's GPU, Vulkan, SPIR-V, Metal or MSL, so that another
+  back end or raw Vulkan stays core0's business alone (`tests/sources.ss`;
+  the compiler, `src/shader.ss`, writes the back ends' code, and the
+  window's code in `src/host.ss` moves down with step 5).
 - **The shader language is the contract.** What a back end can't do doesn't
   get in: the twin (`kits/twin.ss`) is a second back end from the start, and
   `tests/units/shader.ss` holds it and the device together.

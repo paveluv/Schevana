@@ -25,12 +25,6 @@
 ;;; as a Scheme procedure, is another, so that nothing one target alone can do
 ;;; gets into the language.
 
-;; This machine's back end: a Mac has Metal, everything else Vulkan.
-(define shader-target (if host-mac? 'msl 'spirv))
-
-;; What a shader's entry is called: main is no function's name in MSL.
-(define shader-entry (if (eq? shader-target 'msl) "main0" "main"))
-
 ;;; ------------------------------------------------------------------ front
 
 (define shader-fx-folds '(fx+ fx* fxand fxior fxxor))
@@ -494,21 +488,6 @@
          [(compute vertex) '(fixnum fixnum)]
          [else '(flonum flonum fixnum)])))
 
-;; The uniforms a stage's block holds, hidden ones first: ((name type) ...).
-;; After the parameters, each buffer's length in words, in their order: no
-;; GPU API but Vulkan tells a shader how long its buffers are.
-(define (shader-uniforms stage params)
-  (append (if (eq? stage 'compute)
-              '((shader-w fixnum) (shader-h fixnum))
-              '())
-          (filter (lambda (p) (memq (cadr p) '(fixnum flonum))) params)
-          (map (lambda (p) (list (shader-words (car p)) 'fixnum))
-               (filter (lambda (p) (memq (cadr p) '(fx-buffer fl-buffer)))
-                       params))))
-
-;; The uniform holding buffer name's length: a name no parameter can have.
-(define (shader-words name) (string->symbol (format "~a words" name)))
-
 ;; What a run of the tree costs at most: one unit an operation, a little
 ;; more for what touches memory or takes a root, times a loop's bound.
 (define (shader-tree-price t)
@@ -899,9 +878,6 @@
             (loop (+ i 4) (cdr ws))))
         bytes))))
 
-;; A compute shader's group, across: a dispatch counts in these.
-(define shader-group-x 64)
-
 ;;; ------------------------------------------------------------------ MSL
 ;;; Metal's language, as text for its compiler. It has no statement
 ;;; expressions, so each node of the tree prints as one assignment and a
@@ -1138,10 +1114,6 @@
     (get-output-string out)))
 
 ;;; ------------------------------------------------------------------ shaders
-
-(define-record-type shader
-  (nongenerative schevana-shader-1)
-  (fields name stage coords params source code price))
 
 ;; (code . price) of a shader's source, for this machine's back end.
 (define (shader-compile stage coords params forms)

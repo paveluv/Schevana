@@ -777,7 +777,7 @@
 (define (inspect-device)
   (let ([r *renderer*])
     `((renderer . ,(renderer-kind r))
-      (window? . ,(not (eqv? 0 (renderer-window r))))
+      (window? . ,(not (eqv? 0 (renderer-sdl-window r))))
       (pixels ,*canvas-pw* . ,*canvas-ph*)
       (scale . ,*canvas-ratio*)
       (driver . ,(gpu-driver-name))

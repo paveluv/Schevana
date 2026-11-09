@@ -32,7 +32,7 @@
     (set! *canvas-h* (exact (floor (/ ph scale))))
     (set! *scale* (inexact scale))
     (set! *canvas-ratio* (rationalize (exact scale) 1/100000))
-    (when (and *renderer* (eqv? 0 (renderer-window *renderer*)))
+    (when (and *renderer* (eqv? 0 (renderer-sdl-window *renderer*)))
       (gpu-set-target! pw ph))
     (request-frame!)
     (when rescaled? (theme-changed!))))
@@ -1504,9 +1504,10 @@
     [(pw ph scale thunk clear?)
      (rec-begin! (rationalize (exact scale) 1/100000))
      (thunk)
-     (let ([table (rec-take-table!)]
-           [pieces (rec-take-atlas-pieces!)])
-       (gpu-drawing->bytes *rec-bytes* *rec-at*
-                          *rec-extras* (* 4 *rec-extra-at*)
-                          table (rec-table-bytes) pieces *rec-images*
-                          (rec-runs) pw ph clear?))]))
+     (let-values ([(dirty computes) (gpu-take-asks!)])
+       (let ([table (rec-take-table!)]
+             [pieces (rec-take-atlas-pieces!)])
+         (gpu-drawing->bytes dirty computes *rec-bytes* *rec-at*
+                            *rec-extras* (* 4 *rec-extra-at*)
+                            table (rec-table-bytes) pieces *rec-images*
+                            (rec-runs) pw ph clear?)))]))

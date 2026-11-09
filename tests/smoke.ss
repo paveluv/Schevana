@@ -3841,29 +3841,35 @@
                       '(#f #f #f #f (wheel 0 -1))))))
 
 ;;; The host's SDL code, run against a stand-in for SDL: every SDL call
-;;; src/ffi.ss binds is replaced (one with no stand-in raises), so nothing
-;;; here reaches the real SDL or opens a window. The fake window is
-;;; fake-units window units big with fake-ratio physical pixels per unit,
-;;; on a desktop that asks for fake-desktop (Xft.dpi / 96 under X11), so
-;;; its display scale is their product, as SDL3's is; its texture is an
-;;; image that uploads copy rows into, as SDL_UpdateTexture does. *host*
-;;; is 'sdl only around single host calls, so steps stay headless.
+;;; src/ffi.ss and src/host/sdl.ss bind is replaced (one with no stand-in
+;;; raises), so nothing here reaches the real SDL or opens a window. The
+;;; fake window is fake-units window units big with fake-ratio physical
+;;; pixels per unit, on a desktop that asks for fake-desktop (Xft.dpi / 96
+;;; under X11), so its display scale is their product, as SDL3's is; its
+;;; texture is an image that uploads copy rows into, as SDL_UpdateTexture
+;;; does. *host* is 'sdl only around single host calls, so steps stay
+;;; headless.
 
 (define fake-sdl-names
-  (call-with-input-file (string-append *schevana-root* "/src/ffi.ss")
-    (lambda (p)
-      (let loop ([acc '()])
-        (let ([x (read p)])
-          (cond
-            [(eof-object? x) acc]
-            [(and (pair? x)
-                  (memq (car x) '(define-foreign define-foreign/collect-safe))
-                  (string-prefix? "SDL_" (caddr x))
-                  ;; plain memory and the GPU's: kept
-                  (not (member (caddr x) '("SDL_memcmp" "SDL_memcpy")))
-                  (not (string-contains-ci? (caddr x) "GPU")))
-             (loop (cons (cadr x) acc))]
-            [else (loop acc)]))))))
+  (apply append
+         (map (lambda (f)
+                (call-with-input-file (string-append *schevana-root* f)
+                  (lambda (p)
+                    (let loop ([acc '()])
+                      (let ([x (read p)])
+                        (cond
+                          [(eof-object? x) acc]
+                          [(and (pair? x)
+                                (memq (car x) '(define-foreign
+                                                define-foreign/collect-safe))
+                                (string-prefix? "SDL_" (caddr x))
+                                ;; plain memory and the GPU's: kept
+                                (not (member (caddr x)
+                                             '("SDL_memcmp" "SDL_memcpy")))
+                                (not (string-contains-ci? (caddr x) "GPU")))
+                           (loop (cons (cadr x) acc))]
+                          [else (loop acc)]))))))
+              '("/src/ffi.ss" "/src/host/sdl.ss"))))
 
 (define fake-units '(1280 . 800))
 (define fake-ratio 1)

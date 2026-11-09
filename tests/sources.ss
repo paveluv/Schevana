@@ -178,7 +178,7 @@
 
 ;; Raise it deliberately: the core is what the desktop needs to boot and
 ;; run; everything else belongs in a folder.
-(define src-budget 27700)
+(define src-budget 27720)
 
 ;; The tokens of a datum as read; a list's end is none.
 (define (tokens x)
@@ -187,10 +187,9 @@
         [(vector? x) (apply + (map tokens (vector->list x)))]
         [else 1]))
 
-(let* ([counts (map (lambda (f)
-                      (let ([path (string-append "src/" f)])
-                        (cons path (apply + (map tokens (file-forms path))))))
-                    (directory-list (source-path "src")))]
+(let* ([counts (map (lambda (f) (cons f (apply + (map tokens (file-forms f)))))
+                    (filter (lambda (f) (string-prefix? "src/" f))
+                            *schevana-sources*))]
        [n (apply + (map cdr counts))])
   (check (format "src/ is ~a tokens, within its budget of ~a (to grow the \
                   core, raise src-budget in tests/sources.ss on purpose)"
@@ -259,7 +258,8 @@
 ;;; ftype form or load-shared-object. The tests may: they inspect what is
 ;;; drawn and stand in for the host.
 
-(define ffi-names (map cdr (definitions "src/ffi.ss")))
+(define ffi-names
+  (map cdr (append (definitions "src/ffi.ss") (definitions "src/host/sdl.ss"))))
 
 (define (reaches-c? s)
   (or (and (memq s (append ffi-names
@@ -288,8 +288,8 @@
 ;; SDL's windows, and the clock is SDL's.
 (define above-gpu-files
   (remp (lambda (f)
-          (member f '("src/ffi.ss" "src/shader.ss" "src/gpu.ss" "src/font.ss"
-                      "src/host.ss")))
+          (member f '("src/ffi.ss" "src/shader.ss" "src/host/sdl.ss"
+                      "src/host/gpu.ss" "src/font.ss" "src/host.ss")))
         (append world-files '("main.ss"))))
 
 (define (names-a-back-end? s)
@@ -321,6 +321,78 @@
                                                   (symbols-in
                                                    (file-forms f))))))
                           outside-src))))
+
+;;; ------------------------------------------------------------------
+;;; core0 below the core
+;;; The host's code, src/host/, is core0 (.work/gpu-design.md 9.5): it
+;;; loads right after the C bindings and the basics, names nothing of the
+;;; core above it, and is the only code that names SDL. What it still
+;;; names above it, and the SDL the core above still calls, are listed
+;;; here: the next slices of step 5 take them away, and the lists only
+;;; shrink.
+
+(define core0-files
+  (filter (lambda (f) (string-prefix? "src/host/" f)) *schevana-sources*))
+
+(define above-core0-files
+  (remp (lambda (f)
+          (member f (append core0-files '("src/ffi.ss" "src/base.ss"))))
+        (filter (lambda (f) (string-prefix? "src/" f)) *schevana-sources*)))
+
+;; What core0 still names of the core above it: the core's fragment shaders,
+;; which pipelines are built for (slice 2), and the profiler's wrapper of
+;; the screen's waits (slice 5).
+(define core0-reaches-up '(gfx-fragments host-screen-wait))
+
+(check "core0 names nothing of the core above it but what's listed, on its \
+        way out"
+       (let ([above (map cdr (apply append (map definitions
+                                                 above-core0-files)))])
+         (none? (apply append
+                       (map (lambda (f)
+                              (map (lambda (s) (format "~a names ~a" f s))
+                                   (filter (lambda (s)
+                                             (and (memq s above)
+                                                  (not (memq
+                                                        s core0-reaches-up))))
+                                           (reverse (symbols-in
+                                                     (file-forms f))))))
+                            core0-files)))))
+
+;; The SDL the core above core0 still calls: the window's, in src/host.ss,
+;; until the host has a thread of its own (slice 4).
+(define core-sdl-left
+  '(sdl-get-window-display-scale sdl-set-hint sdl-create-window
+    SDL_WINDOW_RESIZABLE SDL_WINDOW_HIGH_PIXEL_DENSITY SDL_WINDOW_HIDDEN
+    SDL_WINDOW_FULLSCREEN sdl-get-error sdl-set-window-size
+    sdl-set-window-position SDL_WINDOWPOS_CENTERED sdl-show-window
+    sdl-start-text-input sdl-init SDL_INIT_VIDEO sdl-wait-gpu-idle
+    sdl-release-window sdl-destroy-window sdl-quit sdl-get-window-flags
+    sdl-set-window-fullscreen sdl-create-surface-from
+    SDL_PIXELFORMAT_ARGB8888 sdl-set-window-icon sdl-destroy-surface
+    sdl-get-window-size sdl-get-window-size-in-pixels
+    sdl-set-window-minimum-size sdl-get-current-display-mode
+    sdl-get-display-for-window SDL_EVENT_QUIT SDL_EVENT_KEY_DOWN
+    SDL_EVENT_TEXT_INPUT SDL_EVENT_MOUSE_MOTION SDL_EVENT_MOUSE_BUTTON_DOWN
+    SDL_EVENT_MOUSE_BUTTON_UP SDL_EVENT_MOUSE_WHEEL SDL_EVENT_WINDOW_RESIZED
+    SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED SDL_EVENT_WINDOW_DISPLAY_SCALE_CHANGED
+    SDL_EVENT_WINDOW_EXPOSED SDL_EVENT_WINDOW_MOUSE_LEAVE
+    sdl-wait-event-timeout sdl-poll-event sdl-set-cursor
+    sdl-create-system-cursor sdl-get-clipboard-text sdl-free
+    sdl-set-clipboard-text))
+
+(check "only core0 names SDL's bindings, but what's listed, on its way out"
+       (let ([sdl (map cdr (definitions "src/host/sdl.ss"))])
+         (none? (apply append
+                       (map (lambda (f)
+                              (map (lambda (s) (format "~a names ~a" f s))
+                                   (filter (lambda (s)
+                                             (and (memq s sdl)
+                                                  (not (memq s core-sdl-left))))
+                                           (reverse (symbols-in
+                                                     (file-forms f))))))
+                            (remp (lambda (f) (member f core0-files))
+                                  (append world-files '("main.ss"))))))))
 
 ;;; ------------------------------------------------------------------
 ;;; sharing the whole world
