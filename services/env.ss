@@ -282,7 +282,9 @@
     (let mark ([e e])
       (env-dropped?-set! e #t)
       (for-each mark (env-children e)))
-    (set! *env-generation* (+ *env-generation* 1))))
+    (set! *env-generation* (+ *env-generation* 1))
+    ;; every window drawn again: one that holds e (a REPL) shows it dropped
+    (invalidate!)))
 
 ;;; ------------------------------------------------------------------ names
 ;;; What an environment holds: what it was shared and still forwards, and

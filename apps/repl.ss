@@ -147,10 +147,11 @@
   (let ([w (repl-window r)]) (if w (invalidate! w) (request-frame!))))
 
 ;; Called from inside the evaluation process: queue, don't touch the
-;; transcript.
+;; transcript, and ask for the frame that drains it.
 (define (repl-emit! r style str)
   (with-interrupts-disabled
-   (repl-pending-set! r (cons (cons style str) (repl-pending r)))))
+   (repl-pending-set! r (cons (cons style str) (repl-pending r)))
+   (let ([w (repl-window r)]) (when w (window-frame-soon! w)))))
 
 (define (repl-drain! r)
   (let ([chunks (with-interrupts-disabled
@@ -258,7 +259,9 @@
           (repl-started-set! r (now-ms))
           (repl-proc-set! r (if v
                                 (repl-send! r win v forms width)
-                                (repl-spawn! r win forms width)))))))
+                                (repl-spawn! r win forms width)))
+          ;; its frames while it runs: what it prints, the busy mark
+          (window-frame-soon! win)))))
 
 (define (repl-spawn! r win forms width)
   (let ([port (repl-port r)])
@@ -1079,6 +1082,26 @@
     (complete-close! r)
     (invalidate! win)))
 
+;; While it has the keyboard its caret blinks, by a timer at each flip,
+;; 530 ms after the last (a key holds it on); one timer at a time.
+(define (repl-blink-soon! r win)
+  (unless (window-ref win 'repl-blinking #f)
+    (window-set! win 'repl-blinking #t)
+    (repl-blink-next! r win)))
+
+(define (repl-blink-next! r win)
+  (after (max 1 (- (+ (repl-blink-at r) 530) (now-ms)))
+         (lambda ()
+           (cond
+             [(not (and (memq win (windows)) (eq? win (focused-window))))
+              (window-set! win 'repl-blinking #f)]
+             [(>= (- (now-ms) (repl-blink-at r)) 530)
+              (repl-blink-set! r (not (repl-blink r)))
+              (repl-blink-at-set! r (now-ms))
+              (invalidate! win)
+              (repl-blink-next! r win)]
+             [else (repl-blink-next! r win)]))))
+
 (define (repl-edit-key r win key mods)
   (repl-blink-set! r #t)
   (repl-blink-at-set! r (now-ms))
@@ -1457,7 +1480,13 @@ here"))]
     'bg (repl-background r)
     'title-icon (lambda (x y s flags)
                   (ui-draw-env-icon x y s flags (repl-kind r)))
-    'draw (lambda (win w h) (repl-draw r win w h))
+    'draw (lambda (win w h)
+            ;; the environment dropped since: the title says so, in the
+            ;; next frame, the bars' too
+            (unless (string=? (window-title win) (repl-title r))
+              (window-title-set! win (repl-title r))
+              (invalidate!))
+            (repl-draw r win w h))
     'key (lambda (win key mods) (repl-key r win key mods))
     'text (lambda (win str) (repl-text r win str))
     'wheel (lambda (win dx dy)
@@ -1472,15 +1501,10 @@ here"))]
                       (when (repl-busy r) (invalidate! win))))
                   (when (repl-pointer! r win) (invalidate! win)))
     'blur (repl-blur r)
-    'open (lambda (win) (window-frame-soon! win))
-    ;; what came out of its evaluation, while it's seen
+    'focus (lambda (win) (repl-blink-soon! r win))
+    ;; what came out of its evaluation, while it runs or has output
     'frame (lambda (win t)
-            (window-frame-soon! win)
             (repl-drain! r)
-            ;; the environment dropped while it waited: the title says so
-            (unless (string=? (window-title win) (repl-title r))
-              (window-title-set! win (repl-title r))
-              (invalidate!))
             ;; busy once it has run a while; its mark drawn again as it
             ;; moves
             (let ([b (repl-busy r)])
@@ -1490,11 +1514,7 @@ here"))]
                     [(and b (>= (- (now-ms) (list-ref b 4))
                                 (ui-busy-frame-ms)))
                      (invalidate! win)]))
-            (when (and (eq? win (focused-window))
-                       (> (- (now-ms) (repl-blink-at r)) 530))
-              (repl-blink-set! r (not (repl-blink r)))
-              (repl-blink-at-set! r (now-ms))
-              (invalidate! win)))
+            (when (repl-proc r) (window-frame-soon! win)))
     'close (lambda (win)
              (let ([p (repl-proc r)])
                (cond [(vat-job? p) (vat-job-kill! p)]
