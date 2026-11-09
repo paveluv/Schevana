@@ -193,8 +193,9 @@
 ;; Compute runs to go with the next frame, the newest first.
 (defvar *gpu-computes* '())
 
-;; Runs a compute shader over w × h cells with the next frame, ahead of what it
-;; draws, so that a paint shows what it wrote. Nothing waits for it.
+;; Runs a compute shader over w × h cells soon: with the frame this turn
+;; makes, ahead of what it draws, so that a paint shows what it wrote, or at
+;; the turn's end with none (gpu-computes-send!). Nothing waits for it.
 (define (gpu-compute-soon! shader w h . args)
   (set! *gpu-computes*
     (cons (gpu-compute-run shader w h args) *gpu-computes*)))
@@ -206,6 +207,13 @@
     (set! *gpu-dirty-buffers* '())
     (set! *gpu-computes* '())
     (values (gpu-take-jobs!) dirty runs)))
+
+;; At a turn's end: compute runs no frame took go now, on their own, so
+;; that one an app steps on a timer, its window unseen, isn't kept waiting.
+(define (gpu-computes-send!)
+  (unless (eq? *host* 'none)
+    (let-values ([(jobs dirty runs) (gpu-take-asks!)])
+      (gpu-submit-computes! runs jobs dirty))))
 
 ;;; ------------------------------------------------------------------ frames
 

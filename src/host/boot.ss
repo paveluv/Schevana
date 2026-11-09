@@ -46,7 +46,8 @@
     ;; Calls into SDL or core0's own state: safe only on core0's thread.
     host-display host-frame-ns host-hidden? host-flags host-error-text
     gpu-frame-take! gpu-present! gpu-take-answers! gpu-drawing->bytes
-    gpu-compute-now! gpu-buffer-download! host-window-headless!
+    gpu-compute-now! gpu-submit-computes! gpu-buffer-download!
+    host-window-headless!
     host-window-open! host-window-show! host-window-close! host-window-sizes
     host-window-resize! host-window-minimum! host-window-scale
     host-window-fullscreen? host-window-fullscreen! host-window-icon!

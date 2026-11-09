@@ -186,7 +186,10 @@
             (when *dirty*
               (set! *dirty* #f)
               (safely 'render render-frame!)
-              (frame-turn-soon!)))))))
+              (frame-turn-soon!))))
+      ;; compute runs no frame took go on their own
+      (when (and (pair? *gpu-computes*) (not (reload-holding?)))
+        (safely 'render gpu-computes-send!)))))
 
 ;;; ------------------------------------------------------------------ pacer
 

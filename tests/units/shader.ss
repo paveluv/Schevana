@@ -827,3 +827,24 @@
          (gpu-buffer-release! colors)
          (and (= (pixel-at img 3 3) #xffff0000)
               (= (pixel-at img 8 8) #xff102030))))
+
+;; A compute run asked for soon goes with the frame its turn makes, or, with
+;; none, on its own at the turn's end: one stepped on a timer, its window
+;; unseen, isn't kept waiting for a frame.
+(define-compute-shader (shader-test-mark x y)
+  ([out fx-buffer write] [k fixnum])
+  (fx-set! out x k))
+
+(check "a compute run no frame takes goes at its turn's end, on its own"
+       (let ([out (make-gpu-buffer 8)] [frames *frames-drawn*])
+         ;; no timer's frame (the status clock's) to take it
+         (fluid-let ([*dirty* #f] [*timers* '()])
+           (gpu-compute-soon! shader-test-mark 8 1 out 41)
+           (schevana-step! 0))
+         (let ([sent (null? *gpu-computes*)])
+           (gpu-buffer-read! out)
+           (let ([ok (and sent (= *frames-drawn* frames)
+                          (for-all (lambda (i) (= 41 (gpu-buffer-ref out i)))
+                                   (iota 8)))])
+             (gpu-buffer-release! out)
+             ok))))

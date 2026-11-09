@@ -748,6 +748,18 @@
 (define (gpu-run-computes! cb runs)
   (for-each (lambda (run) (gpu-dispatch! cb run)) runs))
 
+;; runs that no frame took, main's jobs run and the dirty buffers going up
+;; first, sent with no frame and waited for by nobody. The queue keeps the
+;; order: what a frame sent after them reads finds them done.
+(define (gpu-submit-computes! runs jobs dirty)
+  (gpu-run-jobs! jobs)
+  (let* ([r *renderer*]
+         [cb (gpu-must 'gpu-submit-computes!
+                       (sdl-acquire-gpu-commands (renderer-device r)))])
+    (gpu-upload-buffers! r cb dirty)
+    (gpu-run-computes! cb runs)
+    (sdl-submit-gpu cb)))
+
 ;; What a shader left in the buffer: read back into the copy here, main's
 ;; jobs run first. => its bytes
 (define (gpu-buffer-download! jobs b)
