@@ -133,10 +133,11 @@
 
 ;; Caches, which only save copying: each list's newest copy, and each
 ;; copy's owner, said when it's made (inspect-list-whose); and each copy's
-;; list and basis, (list . basis).
-(define inspect-copies (make-weak-eq-hashtable))
-(define inspect-owners (make-weak-eq-hashtable))
-(define inspect-sources (make-weak-eq-hashtable))
+;; list and basis, (list . basis). Ephemeron tables, not weak ones: a copy
+;; is often its own basis, and a weak table's value keeps its key.
+(define inspect-copies (make-ephemeron-eq-hashtable))
+(define inspect-owners (make-ephemeron-eq-hashtable))
+(define inspect-sources (make-ephemeron-eq-hashtable))
 
 ;; The list a copy is of; a list that isn't one, itself.
 (define (inspect-list-original copy)
@@ -206,7 +207,7 @@
        runs))
 
 ;; Each show run's copy that shows a copy: a cache too.
-(define inspect-shows (make-weak-eq-hashtable))
+(define inspect-shows (make-ephemeron-eq-hashtable))
 
 (define (inspect-bytes-copy bv n)
   (let ([c (make-bytevector n)])

@@ -530,6 +530,19 @@
   (request-frame!)
   (steps 1))
 
+;; Copies made of a list, then nothing keeping them: the kit's caches let
+;; them go, though each copy is its own basis.
+(let ([before (hashtable-size inspect-sources)])
+  (let ([lst (gpu-list-new)])
+    (do ([i 0 (+ i 1)]) ((= i 20))
+      (record-list! lst (lambda () (fill-box 0 0 1 1 (+ #x100 i))))
+      (inspect-list-copy lst)))
+  (collector-pass! (collect-maximum-generation) (collect-maximum-generation))
+  (check (format "a list's copies go once nothing keeps them, their list, \
+                  basis and owner with them (~a of 20 kept)"
+                 (- (hashtable-size inspect-sources) before))
+         (<= (hashtable-size inspect-sources) before)))
+
 ;;; The app.
 
 (let* ([l (pipeline-test-list
