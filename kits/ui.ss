@@ -45,7 +45,7 @@
           doc))        ; what the mouse buttons do on it: ((L . "Set") ...)
 
 (define-record-type ui-state
-  (nongenerative schevana-ui-state-3)
+  (nongenerative schevana-ui-state-4)
   (fields (mutable regions)  ; this draw's, newest (topmost) first
           (mutable active)   ; the region the left button holds, or #f
           (mutable hover-id) ; the topmost live region under the pointer
@@ -66,14 +66,15 @@
           (mutable popup)    ; (id . cursor-day) of an open calendar, or #f
           (mutable later)    ; overlays for ui-end!, newest first
           (mutable due)      ; ms when the window next looks different
+          (mutable woken)    ; ms a timer is set for to draw it then, or #f
           (mutable fresh?)   ; nothing handled since the last layout
-          (mutable scans)    ; text layouts a scroll bar waits on: the
-                             ; ticks compute their rows to the end
+          (mutable scans)    ; text layouts a scroll bar waits on: its
+                             ; frames compute their rows to the end
           memo))             ; per-id kit memory (scroll offsets, ...)
 
 (define (make-ui)
-  (make-ui-state '() #f #f -1 -1 1 (list 0 -1 -1) #f #f #f 0 #f #f '() #f #t
-                 '() (make-hashtable equal-hash equal?)))
+  (make-ui-state '() #f #f -1 -1 1 (list 0 -1 -1) #f #f #f 0 #f #f '() #f #f
+                 #t '() (make-hashtable equal-hash equal?)))
 
 (define (ui-memo ui key default) (hashtable-ref (ui-state-memo ui) key default))
 (define (ui-memo! ui key value) (hashtable-set! (ui-state-memo ui) key value))
@@ -227,26 +228,47 @@
 ;;; ------------------------------------------------------------------ time
 
 ;; The draw says when the window next looks different by itself (a caret
-;; flip, a tooltip, midnight); the tick invalidates it then.
+;; flip, a tooltip, midnight); a timer draws it again then.
 (define (ui-due! ui ms)
   (let ([d (ui-state-due ui)])
     (when (or (not d) (< ms d)) (ui-state-due-set! ui ms))))
 
 ;; Also, a scroll bar over a text whose rows are not all computed shows
-;; an estimate: each tick computes some more of them, a millisecond's
+;; an estimate: each frame computes some more of them, a millisecond's
 ;; worth, but not in a step that brought any window input (never on a
 ;; keystroke's frame); once they reach the end the window is drawn again,
 ;; so the bar settles.
-(define (ui-tick ui win)
+
+;; After a draw of the current window: a timer for when it's due, unless
+;; one is set already for then or sooner; a frame while rows wait.
+(define (ui-wake! ui)
+  (let ([win (current-window)] [d (ui-state-due ui)] [w (ui-state-woken ui)])
+    (when win
+      (when (and d (not (and w (<= w d))))
+        (ui-state-woken-set! ui d)
+        (after (max 0 (- d (now-ms))) (lambda () (ui-woken! ui win d))))
+      (when (pair? (ui-state-scans ui)) (window-frame-soon! win)))))
+
+;; A timer set for ms went off: the window is drawn again if it's due; a
+;; draw since may have put that later, and then the timer is set again.
+(define (ui-woken! ui win ms)
+  (when (eqv? (ui-state-woken ui) ms) (ui-state-woken-set! ui #f))
   (let ([d (ui-state-due ui)])
-    (when (and d (>= (now-ms) d))
-      (ui-state-due-set! ui #f)
-      (invalidate! win)))
+    (when d
+      (if (>= (now-ms) d)
+          (begin (ui-state-due-set! ui #f) (invalidate! win))
+          (parameterize ([current-window win]) (ui-wake! ui))))))
+
+;; A frame asked for while rows wait: some more of them.
+(define (ui-frame ui win)
   (let ([scans (ui-state-scans ui)])
-    (when (and (pair? scans) (not *input-step?*)
-               (edit-layout-scan! (car scans) 1))
-      (ui-state-scans-set! ui (cdr scans))
-      (invalidate! win))))
+    (when (pair? scans)
+      (cond
+        [*input-step?* (window-frame-soon! win)]
+        [(edit-layout-scan! (car scans) 1)
+         (ui-state-scans-set! ui (cdr scans))
+         (invalidate! win)]
+        [else (window-frame-soon! win)]))))
 
 ;; Whether a focused caret shows now; asks for its next flip.
 (define (ui-caret-on? ui)
@@ -412,7 +434,7 @@
           'wheel (lambda (win dx dy) (ui-fresh! ui) (ui-wheel ui dy))
           'key (lambda (win k mods) (ui-fresh! ui) (ui-key ui k mods key))
           'text (lambda (win str) (ui-fresh! ui) (ui-text ui str text))
-          'tick (lambda (win) (ui-tick ui win))
+          'frame (lambda (win t) (ui-frame ui win))
           'ui ui)))
 
 ;; The region under an overlay: a press calls on-dismiss; every key is
@@ -504,7 +526,8 @@
                              [(tw th) (ui-tooltip-size tip)]
                              [(tx ty) (ui-popup-place (+ px 12) (+ py 20)
                                                       (- py 8) tw th w h)])
-                 (ui-draw-tooltip tx ty tw th '() tip))))])))))
+                 (ui-draw-tooltip tx ty tw th '() tip))))]))))
+  (ui-wake! ui))
 
 ;;; ------------------------------------------------------------------ menus
 
@@ -1719,7 +1742,7 @@
           (with-place 'field
             (lambda ()
               (ui-suggestion-list ui id x y w h shown chosen pick! ww wh))))))
-    ;; the bar's total is an estimate until the ticks finish the rows
+    ;; the bar's total is an estimate until its frames finish the rows
     (when bar?
       (when estimate?
         (ui-state-scans-set! ui (cons lay (ui-state-scans ui))))

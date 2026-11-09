@@ -582,10 +582,9 @@
                                             (window-call flock-win 'key key
                                                          mods)
                                             #t))
-                     ;; the kit's tick, then: a change from elsewhere shows,
-                     ;; and fonts grown in Settings get room for the rows
+                     ;; a change from elsewhere shows, and fonts grown in
+                     ;; Settings get room for the rows
                      (list 'tick (lambda (win)
-                                   (ui-tick ui win)
                                    (let-values ([(w h) (boids-rules-size)])
                                      (boids-grow-to! win w h))
                                    (unless (equal? shown (now-shown))

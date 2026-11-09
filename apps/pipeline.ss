@@ -1977,10 +1977,9 @@
                 'close (lambda (pop)
                          (pipeline-view-popped-set! v #f)
                          (invalidate! win))
-                (append (ui-handlers ui
-                                     'key (lambda (pop key mods)
-                                            (pipeline-key v pop key mods)))
-                        (list 'tick (lambda (pop) (ui-tick ui pop)))))))))
+                (ui-handlers ui
+                             'key (lambda (pop key mods)
+                                    (pipeline-key v pop key mods))))))))
 
 (define (pipeline-popped-draw v ui w h)
   (let ([pad (ui-pad)] [bh (pipeline-viewer-bar-height)])
@@ -2266,7 +2265,6 @@
 ;; Each tick while it flows: the frame just drawn is kept, a new bar drawn, and
 ;; the small screen with it as often as it's told.
 (define (pipeline-tick! v win)
-  (ui-tick (pipeline-view-ui v) win)
   (when (pipeline-view-playing v)
     (pipeline-play-tick! v)
     (invalidate! win))

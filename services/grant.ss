@@ -103,7 +103,7 @@
      ui-begin!
      ui-end!
      ui-handlers
-     ui-tick
+     ui-frame
      ui-area
      ui-side-panel
      ui-side-panel-button

@@ -1096,7 +1096,6 @@
                                                          mods)
                                             #t))
                      (list 'tick (lambda (win)
-                                   (ui-tick ui win)
                                    (let-values ([(w h) (boids3d-rules-size)])
                                      (boids3d-grow-to! win w h))
                                    (unless (equal? shown (now-shown))

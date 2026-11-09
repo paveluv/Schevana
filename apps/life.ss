@@ -421,8 +421,7 @@
                                  (ui-side-panel-toggle! ui 'life-controls)])
                               (invalidate! win)
                               #t))
-       ;; the kit's tick, then the generations and the meter
+       ;; the generations and the meter
        (list 'tick (lambda (win)
-                     (ui-tick ui win)
                      (when running? (run! win))
                      (meter! win)))))))

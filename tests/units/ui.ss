@@ -1,5 +1,5 @@
 ;;; tests/units/ui.ss — the widget kit: flow, forms, suggestions, tables' keys,
-;;; dates, trees, side panels.
+;;; dates, trees, side panels; when a window is drawn again by itself.
 
 ;; A side panel and its button, where it says, laid out in w × h: (values
 ;; rest panel) as called, each its rectangle or #f. opts: ui-side-panel's.
@@ -495,3 +495,48 @@
             (and (<= (abs (- (car digit) (car at-right))) 1)
                  (<= (abs (- (cadr digit) (cadr at-right))) 1))))
         '(mac genera cons)))
+
+;; What a window looks like by itself later comes by a timer, set once for
+;; the soonest; rows a scroll bar waits on come by frames it asks for.
+(let* ([t 1000]
+       [ui (make-ui)]
+       [win (apply open-window "Later" 'size '(200 . 100) (ui-handlers ui))]
+       [scan #f])
+  (define (asked) (window-ref win 'wm-asked 0))
+  (define (draw! due)
+    (parameterize ([current-window win])
+      (ui-begin! ui)
+      (when due (ui-due! ui due))
+      ;; as the kit's text views do while their bar shows an estimate
+      (when (and scan (not (edit-layout-done? scan)))
+        (ui-state-scans-set! ui (list scan)))
+      (ui-end! ui 200 100)))
+  (fluid-let ([now-ms (lambda () t)])
+    (let ([timers (length *timers*)] [before (asked)])
+      (draw! 1500)
+      (draw! 1500)
+      (check "a draw due again later sets one timer for it, not one a draw"
+             (= (length *timers*) (+ timers 1)))
+      (set! t 1499)
+      (run-timers!)
+      (check "the window isn't drawn again before it's due"
+             (= (asked) before))
+      (set! t 1500)
+      (run-timers!)
+      (check "and is when it is, by the timer, with no tick"
+             (and (> (asked) before)
+                  (not (hashtable-contains? (window-handlers win) 'tick))
+                  (= (length *timers*) timers)))))
+  (set! scan (edit-layout-of #f (apply string-append
+                                       (make-list 2000 "words of a row "))
+                             280 #f (lambda (s) (* 7 (string-length s))) #f))
+  (draw! #f)
+  (check "a draw whose bar waits on rows asks for a frame"
+         (window-ref win 'wm-frame-soon #f))
+  (let loop ([frames 0])
+    (if (and (window-ref win 'wm-frame-soon #f) (< frames 10000))
+        (begin (steps 1) (draw! #f) (loop (+ frames 1)))
+        (check "its frames compute the rows to the end, then stop asking"
+               (and (edit-layout-done? scan) (>= frames 1)
+                    (not (window-ref win 'wm-frame-soon #f))))))
+  (close-window! win))

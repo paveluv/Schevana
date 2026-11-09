@@ -930,7 +930,6 @@
             (ui-handlers ui)
             ;; the Ticks at every new tick, the rest twice a second
             (list 'tick (lambda (win)
-                          (ui-tick ui win)
                           (unless paused?
                             (when (> (- (now-ms) last) 500)
                               (move-on!)
