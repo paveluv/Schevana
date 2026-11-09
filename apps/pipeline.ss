@@ -2262,9 +2262,9 @@
     (pipeline-river-pane v pad (- h pad river-h) (- w pad pad) river-h)
     (ui-end! ui w h)))
 
-;; Each tick while it flows: the frame just drawn is kept, a new bar drawn, and
-;; the small screen with it as often as it's told.
-(define (pipeline-tick! v win)
+;; Each frame while it's seen and flows: the frame just drawn is kept, a new
+;; bar drawn, and the small screen with it as often as it's told.
+(define (pipeline-frame! v win)
   (when (pipeline-view-playing v)
     (pipeline-play-tick! v)
     (invalidate! win))
@@ -2324,4 +2324,8 @@
                   (ui-handlers ui
                                'key (lambda (win key mods)
                                       (pipeline-key v win key mods)))
-                  (list 'tick (lambda (win) (pipeline-tick! v win)))))))))
+                  (list 'open (lambda (win) (window-frame-soon! win))
+                        'frame (lambda (win t)
+                                 (window-frame-soon! win)
+                                 (ui-frame ui win)
+                                 (pipeline-frame! v win)))))))))

@@ -358,31 +358,31 @@
         controls hidden, a cell is a pixel of the screen, at 100% and 200%"
        (and (life-one-to-one? 1) (life-one-to-one? 2)))
 
-(check "Life: every tick is a generation each tick, though the clock stands \
-        still; flat out, several; at 12 a second, none till it is time"
-       (let ([win (life)])
+(check "Life: every frame is a generation each frame, though the clock \
+        stands still; flat out, several; at 12 a second, none till it is time"
+       (let ([win (life)] [frame! (lambda (win) (window-call win 'frame 0))])
          (life-size win)
          (fluid-let ([now-ms (let ([t (now-ms)]) (lambda () t))])
-           (window-call win 'tick)   ; maybe a generation: it was long ago
-           (let* ([ticks (lambda (k)
-                           (let ([g0 (life-generation win)])
-                             (do ([i 0 (+ i 1)]) ((= i k))
-                               (window-call win 'tick))
-                             (- (life-generation win) g0)))]
-                  [slow (ticks 3)]
-                  [every (begin (life-speed! win "every tick") (ticks 5))]
-                  [flat (begin (life-speed! win "flat out") (ticks 1))])
+           (frame! win)   ; maybe a generation: it was long ago
+           (let* ([frames (lambda (k)
+                            (let ([g0 (life-generation win)])
+                              (do ([i 0 (+ i 1)]) ((= i k))
+                                (frame! win))
+                              (- (life-generation win) g0)))]
+                  [slow (frames 3)]
+                  [every (begin (life-speed! win "every frame") (frames 5))]
+                  [flat (begin (life-speed! win "flat out") (frames 1))])
              (close-window! win)
-             (printf "  ~a generations in a tick, flat out\n" flat)
+             (printf "  ~a generations in a frame, flat out\n" flat)
              (and (= slow 0) (= every 5) (> flat 1))))))
 
-(check "Life: a tick's generation allocates under 8 KB"
+(check "Life: a frame's generation allocates under 8 KB"
        (let ([win (life)])
          (life-size win)
-         (life-speed! win "every tick")
-         (window-call win 'tick)
+         (life-speed! win "every frame")
+         (window-call win 'frame 0)
          (let ([b0 (bytes-total)])
-           (do ([i 0 (+ i 1)]) ((= i 20)) (window-call win 'tick))
+           (do ([i 0 (+ i 1)]) ((= i 20)) (window-call win 'frame 0))
            (let ([kb (/ (- (bytes-total) b0) 20 1024.0)])
              (close-window! win)
              (printf "  ~,1f KB\n" kb)

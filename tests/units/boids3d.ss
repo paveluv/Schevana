@@ -403,7 +403,7 @@
               [start (bearing)])
          (close-window! (find-window "Boids 3D — Rules"))
          (let ([t (+ (now-ms) 40)]) (let loop () (when (< (now-ms) t) (loop))))
-         (window-call win 'tick)
+         (window-call win 'frame (now-ns))
          (let ([circled (window-ref win 'yaw)])
            (window-call win 'mouse-down 100 100 'left 1)
            (window-call win 'mouse-move 150 100)
@@ -422,7 +422,7 @@
               [tick (lambda ()
                       (let ([t (+ (now-ms) 20)])
                         (let loop () (when (< (now-ms) t) (loop))))
-                      (window-call win 'tick))]
+                      (window-call win 'frame (now-ns)))]
               [flipped (lambda () (window-ref win 'flipped?))])
          (tick)
          (let* ([moving (let ([was (flipped)])
@@ -459,3 +459,22 @@
               (= (length steering) 15)
               (= (list-ref steering 5) -2.0)
               (= (list-ref steering 7) 0.0))))
+
+(check "Boids 3D: its frames step the flock by time, 15 ms a step, three at \
+        most however long since; the camera turns by the steps"
+       (let* ([win (boids3d)]
+              [yaw (lambda () (window-ref win 'yaw))]
+              [t (+ (now-ns) 1000000000)])
+         (close-window! (find-window "Boids 3D — Rules"))
+         (let* ([y0 (yaw)]
+                [late (begin (window-call win 'frame t) (- (yaw) y0))]
+                [y1 (yaw)]
+                [soon (begin (window-call win 'frame (+ t 5000000))
+                             (- (yaw) y1))]
+                [two (begin (window-call win 'frame (+ t 30000000))
+                            (- (yaw) y1))])
+           (close-window! win)
+           (and (< (abs (- late (* 3 0.0015))) 1e-12)
+                (= soon 0)
+                (< (abs (- two (* 2 0.0015))) 1e-12)
+                (not (hashtable-contains? (window-handlers win) 'tick))))))

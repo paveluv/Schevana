@@ -772,7 +772,7 @@
 
 ;;; ------------------------------------------------------------------ the app
 
-(define boids3d-step-ms 15)    ; a step about 60 times a second, as Boids'
+(define boids3d-step-ns 15000000) ; a step about 60 times a second, as Boids'
 (define boids3d-count 1000)    ; how many a new window starts with
 (define boids3d-span 9.0)      ; a bird's wings, tip to tip, in units
 (define boids3d-haze 1400.0)   ; how far until half a bird is gone in it
@@ -880,7 +880,7 @@
 
 (define-app (boids3d) "Boids 3D"
   (let ([w 760] [h 520]
-        [running? #t] [last-step 0]
+        [running? #t] [last-step (now-ns)]
         [drag #f]          ; (x y yaw pitch bearing) where a drag began
         [rules-win #f])
     (define (toggle-rules! win)
@@ -902,16 +902,29 @@
               'pitch -0.17         ; from below, the sky behind the flock
               'scene-bearing 1.39  ; the shore ahead, the sun to the left
               'distance 760.0
-              'tick (lambda (win)
-                      (when (and running?
-                                 (>= (- (now-ms) last-step) boids3d-step-ms))
-                        (set! last-step (now-ms))
-                        (boids3d-step! win)
-                        ;; the camera goes slowly round, unless held
-                        (unless drag
-                          (window-set! win 'yaw (+ (window-ref win 'yaw)
-                                                   0.0015)))
-                        (invalidate! win)))
+              'open (lambda (win) (window-frame-soon! win))
+              ;; the steps due by t, three at most, so that a flock seen
+              ;; again goes on rather than jumping ahead
+              'frame (lambda (win t)
+                       (window-frame-soon! win)
+                       (if (not running?)
+                           (set! last-step t)
+                           (let ([n (min 3 (quotient (- t last-step)
+                                                     boids3d-step-ns))])
+                             (when (> n 0)
+                               (set! last-step
+                                 (if (= n 3)
+                                     t
+                                     (+ last-step (* n boids3d-step-ns))))
+                               (do ([i 0 (+ i 1)]) ((= i n))
+                                 (boids3d-step! win))
+                               ;; the camera goes slowly round, unless held:
+                               ;; by the steps, so by time
+                               (unless drag
+                                 (window-set! win 'yaw
+                                              (+ (window-ref win 'yaw)
+                                                 (* n 0.0015))))
+                               (invalidate! win)))))
               'draw (lambda (win w h)
                       (let ([bar (boids3d-bar-height)])
                         (boids3d-draw-field win w (- h bar))
@@ -1095,7 +1108,10 @@
                                             (window-call flock-win 'key key
                                                          mods)
                                             #t))
-                     (list 'tick (lambda (win)
+                     (list 'open (lambda (win) (window-frame-soon! win))
+                           'frame (lambda (win t)
+                                   (window-frame-soon! win)
+                                   (ui-frame ui win)
                                    (let-values ([(w h) (boids3d-rules-size)])
                                      (boids3d-grow-to! win w h))
                                    (unless (equal? shown (now-shown))

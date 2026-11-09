@@ -1,4 +1,4 @@
-;;; apps/clock.ss — an analog clock. Shows 'tick + 'draw.
+;;; apps/clock.ss — an analog clock. Shows a timer + 'draw.
 
 (app-requests window draw timers)
 
@@ -36,13 +36,19 @@
                           'text-dim 'mono))]))
 
 (define-app (clock) "Clock"
-  (let ([shown (current-date)])   ; the time on the face, taken by the tick
+  (let ([shown (current-date)]   ; the time on the face, taken each second
+        [open? #t])
+    ;; a timer at the start of each second, until the window closes
+    (define (next-second! win)
+      (after (- 1000 (quotient (date-nanosecond (current-date)) 1000000))
+             (lambda ()
+               (when open?
+                 (set! shown (current-date))
+                 (invalidate! win)
+                 (next-second! win)))))
     (open-window "Clock"
       'size '(230 . 260)
       'min-size '(120 . 140)
-      'tick (lambda (win)
-              (let ([d (current-date)])
-                (unless (= (date-second d) (date-second shown))
-                  (set! shown d)
-                  (invalidate! win))))
+      'open next-second!
+      'close (lambda (win) (set! open? #f))
       'draw (lambda (win w h) (draw-clock-face shown w h)))))

@@ -387,11 +387,13 @@
              'size (cons w (+ h (boids-bar-height)))
              'flock (boids-scatter boids-count w h)
              'rules boids-default-rules
-             'tick (lambda (win)
-                     (when (and running?
-                                (>= (- (now-ms) last-step) boids-step-ms))
-                       (set! last-step (now-ms))
-                       (step! win)))
+             'open (lambda (win) (window-frame-soon! win))
+             'frame (lambda (win t)
+                      (window-frame-soon! win)
+                      (when (and running?
+                                 (>= (- t last-step) (* boids-step-ms 1000000)))
+                        (set! last-step t)
+                        (step! win)))
              'draw (lambda (win w h)
                      (let ([bar (boids-bar-height)]
                            [flock (window-ref win 'flock)])
@@ -584,7 +586,10 @@
                                             #t))
                      ;; a change from elsewhere shows, and fonts grown in
                      ;; Settings get room for the rows
-                     (list 'tick (lambda (win)
+                     (list 'open (lambda (win) (window-frame-soon! win))
+                           'frame (lambda (win t)
+                                   (window-frame-soon! win)
+                                   (ui-frame ui win)
                                    (let-values ([(w h) (boids-rules-size)])
                                      (boids-grow-to! win w h))
                                    (unless (equal? shown (now-shown))

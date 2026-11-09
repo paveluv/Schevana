@@ -1472,7 +1472,10 @@ here"))]
                       (when (repl-busy r) (invalidate! win))))
                   (when (repl-pointer! r win) (invalidate! win)))
     'blur (repl-blur r)
-    'tick (lambda (win)
+    'open (lambda (win) (window-frame-soon! win))
+    ;; what came out of its evaluation, while it's seen
+    'frame (lambda (win t)
+            (window-frame-soon! win)
             (repl-drain! r)
             ;; the environment dropped while it waited: the title says so
             (unless (string=? (window-title win) (repl-title r))

@@ -1,7 +1,7 @@
 ;;; apps/life.ss — Conway's Game of Life. Shows mouse input, animation and
 ;;; the crew: a generation runs on as many threads as it is given, and the
 ;;; controls beside the grid push it as far as the machine goes, up to one
-;;; pixel a cell in a maximized window and a generation every tick, or as
+;;; pixel a cell in a maximized window and a generation every frame, or as
 ;;; many as fit in one. The grid is as many cells as the window has room
 ;;; for: a new size keeps what fits and seeds the new ground.
 ;;; Space: pause · R: randomize · C: clear · N: single step · H: the controls,
@@ -100,7 +100,7 @@
 ;; How big a cell can be, in the screen's pixels: 1 is the screen's own.
 (define life-cell-stops '(1 2 3 4 5 6 8 10 12 16 20 24 32 40))
 
-;; How often a generation comes: ms apart, 0 for every tick, or flat for as
+;; How often a generation comes: ms apart, 0 for every frame, or flat for as
 ;; many as life-flat-ns holds.
 (define life-speeds
   '(("1 a second" . 1000)
@@ -108,7 +108,7 @@
     ("5 a second" . 200)
     ("12 a second" . 80)
     ("30 a second" . 33)
-    ("every tick" . 0)
+    ("every frame" . 0)
     ("flat out" . flat)))
 
 (define life-default-speed 3)
@@ -160,7 +160,7 @@
   (let ([pad (ui-pad)] [gap (ui-gap)])
     (+ pad pad
        (max (+ gap gap (text-widest life-labels 'ui)
-               (text-widest '("every tick" "1234.56 ms" "12.34 G") 'ui))
+               (text-widest '("every frame" "1234.56 ms" "12.34 G") 'ui))
             (+ gap (* 2 (apply max
                                (map (lambda (label)
                                       (let-values ([(w h)
@@ -421,7 +421,10 @@
                                  (ui-side-panel-toggle! ui 'life-controls)])
                               (invalidate! win)
                               #t))
-       ;; the generations and the meter
-       (list 'tick (lambda (win)
-                     (when running? (run! win))
-                     (meter! win)))))))
+       ;; the generations and the meter, while it's seen
+       (list 'open (lambda (win) (window-frame-soon! win))
+             'frame (lambda (win t)
+                      (window-frame-soon! win)
+                      (ui-frame ui win)
+                      (when running? (run! win))
+                      (meter! win)))))))

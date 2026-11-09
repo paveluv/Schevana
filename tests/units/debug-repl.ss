@@ -13,14 +13,16 @@
         (let ([next (host-socket-write fd bytes at)])
           (unless (= next (bytevector-length bytes)) (send next))))
       (host-socket-end-writing fd)
-      (let wait ([left 2000])
-        (when (= left 0) (errorf 'debug-repl-test-ask "no answer to ~a" text))
+      ;; it serves by a timer, so the answer is waited for by the clock
+      (let wait ([until (+ (now-ms) 5000)])
+        (when (> (now-ms) until)
+          (errorf 'debug-repl-test-ask "no answer to ~a" text))
         (steps 1)
         (let ([n (host-socket-read fd buffer)])
           (cond
-            [(not n) (wait (- left 1))]
+            [(not n) (wait until)]
             [(zero? n) (void)]
-            [else (put-bytevector port buffer 0 n) (wait (- left 1))])))
+            [else (put-bytevector port buffer 0 n) (wait until)])))
       (host-socket-close fd)
       (read (open-input-string (utf8->string (get)))))))
 

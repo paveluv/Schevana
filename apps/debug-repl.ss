@@ -54,6 +54,8 @@
 (define debug-repl-most-bytes 1048576)   ; a request's size, and a text's
 (define debug-repl-most-lines 200)   ; of a text, in the window
 (define debug-repl-most-clients 8)
+;; How often it looks for requests and answers them, ms: about a refresh.
+(define debug-repl-serve-ms 16)
 (define debug-repl-buffer-bytes 4096)
 (defvar *debug-repl-buffer* (make-bytevector debug-repl-buffer-bytes))
 
@@ -177,6 +179,14 @@
             #t]))])))
 
 ;; A tick's work: a new client, and a step of each.
+;; Serves again after debug-repl-serve-ms, while it listens.
+(define (debug-repl-serve-soon! d win)
+  (after debug-repl-serve-ms
+         (lambda ()
+           (when (debug-repl-listening d)
+             (debug-repl-serve! d win)
+             (debug-repl-serve-soon! d win)))))
+
 (define (debug-repl-serve! d win)
   (let ([fd (debug-repl-listening d)])
     (when fd
@@ -240,7 +250,8 @@
                  (transcript-scroll-set!
                   t (max 0 (+ (transcript-scroll t) (* 3 dy)))))
                (invalidate! win))
-      'tick (lambda (win) (debug-repl-serve! d win))
+      ;; served seen or not, every few ms, until it's closed
+      'open (lambda (win) (debug-repl-serve-soon! d win))
       'close (lambda (win) (debug-repl-close! d))
       'state d)))
 

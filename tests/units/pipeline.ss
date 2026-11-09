@@ -814,10 +814,10 @@
     ;; its reads a period apart on the clock
     (let ([at (now-ms)] [period pipeline-period-ms])
       (pipeline-view-looked-set! v (- at period 500))
-      (pipeline-tick! v w)
+      (pipeline-frame! v w)
       (let ([paced (pipeline-view-looked v)])
         (pipeline-view-looked-set! v (- at period period 500))
-        (pipeline-tick! v w)
+        (pipeline-frame! v w)
         (check (format "a read is due a period after the last was due, not \
                         after it was done (~a ms from then); one a period \
                         late or more starts again from then (~a)"
@@ -1380,7 +1380,7 @@
            (> (colors) 8)))
   ;; the screen's size changes while a tick's draw waits
   (let ([front (pipeline-view-image v)]
-        [waiting (begin (steps 1) (pipeline-tick! v w) *rec-preview*)])
+        [waiting (begin (steps 1) (pipeline-frame! v w) *rec-preview*)])
     (fluid-let ([*canvas-pw* (+ *canvas-pw* 2)])
       (pipeline-image! v))
     (check "a new size draws on what's new, not on what's let go of"

@@ -928,8 +928,12 @@
                     (ui-stream-release! ring))
            (append
             (ui-handlers ui)
-            ;; the Ticks at every new tick, the rest twice a second
-            (list 'tick (lambda (win)
+            ;; the Ticks at every new tick, the rest twice a second, while
+            ;; it's seen
+            (list 'open (lambda (win) (window-frame-soon! win))
+                  'frame (lambda (win t)
+                          (window-frame-soon! win)
+                          (ui-frame ui win)
                           (unless paused?
                             (when (> (- (now-ms) last) 500)
                               (move-on!)
