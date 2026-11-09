@@ -799,6 +799,18 @@
 
 ;; What times the frames: its period and when the next tick is due (ns), and
 ;; how often the screen has re-timed it and frames were left out for it.
+;; Core0's step: the window's facts as it last read them, the jobs posted
+;; to it and the steps' events not yet taken, and the last job that raised.
+(define (inspect-host)
+  (let ([state (host-step-state)])
+    `((sizes . ,(call-with-values host-window-sizes list))
+      (scale . ,(host-window-scale))
+      (flags . ,(host-flag-names (host-flags)))
+      (frame-ns . ,(host-frame-ns))
+      (jobs . ,(cdr (assq 'jobs state)))
+      (events . ,(cdr (assq 'events state)))
+      (failed . ,(cdr (assq 'failed state))))))
+
 (define (inspect-pacer)
   `((period . ,(pacer-period))
     (margin . ,(theme 'pacer-margin))

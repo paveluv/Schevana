@@ -75,7 +75,8 @@
        (unless (or *host-fullscreen* (and (= nw uw) (= nh uh)))
          (host-window-resize! nw nh)))
      (host-window-show!)
-     (host-sync-size!)]
+     (host-sync-size!)
+     (host-step! 0)]   ; what it posted (the least size) goes to the window
     [else (errorf 'host-init! "unknown host mode ~s" mode)]))
 
 (define (host-shutdown!)
@@ -177,10 +178,13 @@
 
 ;;; ------------------------------------------------------------------ events
 
-;; Waits up to wait-ms for the first event, then drains the queue: the
-;; host's events, each told to *host-event-seen*, as the world's.
+;; Steps core0, which waits up to wait-ms for the first event and drains the
+;; queue into the world's inbox; then the inbox: the host's events, each
+;; told to *host-event-seen*, as the world's. Once core0 has a thread, its
+;; loop steps it, and this only takes the inbox.
 (define (host-events wait-ms)
-  (let-values ([(events types) (host-window-events wait-ms)])
+  (host-step! wait-ms)
+  (let-values ([(events types) (host-window-events)])
     (for-each (lambda (type) (*host-event-seen* type)) types)
     (filter values (map host-event->world events))))
 

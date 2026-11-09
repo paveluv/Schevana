@@ -185,7 +185,7 @@
 
 ;; Raise it deliberately: the core is what the desktop needs to boot and
 ;; run; everything else belongs in a folder.
-(define src-budget 28887)
+(define src-budget 29212)
 
 ;; The tokens of a datum as read; a list's end is none.
 (define (tokens x)
@@ -457,7 +457,9 @@
     (crew-done? memory-order-acquire)
     (crew-push! memory-order-release)
     (crew-remove!)
-    (crew-claim!)))
+    (crew-claim!)
+    (host-put! memory-order-release)
+    (host-take! memory-order-acquire)))
 
 (define thread-fence-names '(memory-order-acquire memory-order-release))
 

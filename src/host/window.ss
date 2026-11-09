@@ -57,14 +57,17 @@
     (errorf 'host-window-open! "SDL_CreateWindow failed: ~a"
             (sdl-get-error)))
   (unless *renderer* (gpu-open! 'gpu))
-  (gpu-claim-window! *sdl-window*))
+  (gpu-claim-window! *sdl-window*)
+  (host-facts-refresh! #t))
 
 ;; Centered on its display and shown, taking text from then on.
 (define (host-window-show!)
   (sdl-set-window-position *sdl-window* SDL_WINDOWPOS_CENTERED
                            SDL_WINDOWPOS_CENTERED)
   (sdl-show-window *sdl-window*)
-  (sdl-start-text-input *sdl-window*))
+  (sdl-start-text-input *sdl-window*)
+  (host-clipboard-read!)
+  (host-facts-refresh! #t))
 
 (define (host-window-close!)
   (sdl-wait-gpu-idle (renderer-device *renderer*))
@@ -74,12 +77,12 @@
   (set! *renderer* #f)
   (set! *host* 'none))
 
-;; The window's size in window units and in physical pixels: (values w h pw
-;; ph).
+;; The window's size in window units and in physical pixels, as core0 last
+;; read it: (values w h pw ph).
 (define (host-window-sizes)
-  (let*-values ([(w h) (host-size-from sdl-get-window-size)]
-                [(pw ph) (host-size-from sdl-get-window-size-in-pixels)])
-    (values w h pw ph)))
+  (let ([f *host-facts*])
+    (values (vector-ref f 1) (vector-ref f 2) (vector-ref f 3)
+            (vector-ref f 4))))
 
 ;; The size get, one of SDL's, says: (values w h).
 (define (host-size-from get)
@@ -89,25 +92,34 @@
   (values (ftype-ref host-size (w) host-size*)
           (ftype-ref host-size (h) host-size*)))
 
-(define (host-window-resize! w h) (sdl-set-window-size *sdl-window* w h))
+(define (host-window-resize! w h)
+  (sdl-set-window-size *sdl-window* w h)
+  (host-facts-refresh! #t))
 
-;; The least it may be dragged to, in window units.
-(define (host-window-minimum! w h)
+;; The least it may be dragged to, in window units: a job of core0's.
+(define (host-window-minimum! w h) (host-post! (list 'host-minimum-now! w h)))
+(define (host-minimum-now! w h)
   (sdl-set-window-minimum-size *sdl-window* w h))
 
-;; SDL's display scale for the window; 0 is SDL's failure, 1 with no window.
+;; SDL's display scale for the window as last read; 0 is SDL's failure, 1
+;; with no window.
 (define (host-window-scale)
-  (if (eq? *host* 'sdl) (sdl-get-window-display-scale *sdl-window*) 1))
+  (if (eq? *host* 'sdl) (vector-ref *host-facts* 5) 1))
 
 ;; SDL3's flags include a change asked for and not made yet.
 (define (host-window-fullscreen?)
   (logtest (host-flags) SDL_WINDOW_FULLSCREEN))
 
 (define (host-window-fullscreen! on?)
+  (host-post! (list 'host-fullscreen-now! on?)))
+(define (host-fullscreen-now! on?)
   (sdl-set-window-fullscreen *sdl-window* on?))
 
-;; The window's icon, from size × size straight ARGB pixels: SDL copies them.
+;; The window's icon, from size × size straight ARGB pixels: a job, in which
+;; SDL copies them.
 (define (host-window-icon! size bytes)
+  (host-post! (list 'host-icon-now! size bytes)))
+(define (host-icon-now! size bytes)
   (let ([icon (sdl-create-surface-from size size SDL_PIXELFORMAT_ARGB8888
                                        (object->reference-address bytes)
                                        (* 4 size))])
@@ -132,7 +144,7 @@
 
 ;; How long the screen shows a frame, ns: by its display's refresh rate, or
 ;; 60 Hz when SDL does not say.
-(define (host-frame-ns)
+(define (host-read-frame-ns)
   (let* ([m (host-display-mode)]
          [hz (if m (ftype-ref sdl-display-mode (numerator) m) 0)]
          [per (if m (ftype-ref sdl-display-mode (denominator) m) 0)])
@@ -140,9 +152,13 @@
         (quotient (* 1000000000 per) hz)
         (quotient 1000000000 60))))
 
+;; The same, as core0 last read them.
+(define (host-frame-ns) (vector-ref *host-facts* 6))
+(define (host-display) (vector-ref *host-facts* 7))
+
 ;; The display as a person reads it: (w h refresh-numerator denominator
 ;; density), or #f.
-(define (host-display)
+(define (host-read-display)
   (let ([m (host-display-mode)])
     (and m
          (list (ftype-ref sdl-display-mode (w) m)
@@ -151,10 +167,9 @@
                (ftype-ref sdl-display-mode (denominator) m)
                (ftype-ref sdl-display-mode (density) m)))))
 
-;; What SDL says of the host window and last went wrong with it. It's all
-;; for whoever is looking into a late tick.
-(define (host-flags)
-  (if (eq? *host* 'sdl) (sdl-get-window-flags *sdl-window*) 0))
+;; What SDL says of the host window and last went wrong with it, as core0
+;; last read them. It's all for whoever is looking into a late tick.
+(define (host-flags) (vector-ref *host-facts* 0))
 
 (define (host-flag-names flags)
   (map cdr
@@ -167,7 +182,7 @@
                  (#x200 . input-focus)
                  (#x400 . mouse-focus)))))
 
-(define (host-error-text) (sdl-get-error))
+(define (host-error-text) (vector-ref *host-facts* 8))
 
 ;; An event's name, by its number (SDL_events.h); or the number.
 (define (host-event-name type)
@@ -231,7 +246,7 @@
 ;; which wait until it shows.
 (define (host-hidden?)
   ;; SDL_WINDOW_OCCLUDED, _HIDDEN and _MINIMIZED
-  (and (eq? *host* 'sdl) (logtest (sdl-get-window-flags *sdl-window*) #x4c)))
+  (and (eq? *host* 'sdl) (logtest (host-flags) #x4c)))
 
 ;;; ------------------------------------------------------------------ events
 
@@ -341,7 +356,7 @@
 ;; Waits up to wait-ms for the first event, then drains the queue: (values
 ;; events types), the events as sdl-event->list gives them, and every
 ;; event's number in order, whether it means anything or not.
-(define (host-window-events wait-ms)
+(define (host-window-pump wait-ms)
   (if (eq? *host* 'sdl)
       (let ([buf *sdl-event*])
         (let loop ([more? (if (> wait-ms 0)
@@ -364,7 +379,15 @@
   '((arrow . 0) (ibeam . 1) (wait . 2) (crosshair . 3) (resize-nwse . 5)
     (resize-nesw . 6) (resize-ew . 7) (resize-ns . 8) (move . 9) (hand . 11)))
 
+;; The pointer's shape, with a window a job of core0's when it changes from
+;; what was last asked (the asker's, so a move that keeps it posts nothing).
+(defvar *host-cursor-asked* #f)
 (define (host-set-cursor! kind)
+  (when (and (eq? *host* 'sdl) (not (eq? kind *host-cursor-asked*)))
+    (set! *host-cursor-asked* kind)
+    (host-post! (list 'host-cursor-now! kind))))
+
+(define (host-cursor-now! kind)
   (when (and (eq? *host* 'sdl) (not (eq? kind *current-cursor*)))
     (set! *current-cursor* kind)
     (sdl-set-cursor
@@ -374,14 +397,105 @@
            (hashtable-set! *cursors* kind c)
            c)))))
 
-(define (clipboard-get)
-  (if (eq? *host* 'sdl)
-      (let* ([p (sdl-get-clipboard-text)] [s (c-string->string p)])
-        (unless (= p 0) (sdl-free p))
-        s)
-      *host-clipboard*))
+;; The clipboard's text, as core0 read it last: when the window showed, and
+;; whenever SDL said it changed; headless, it's kept here.
+(define (clipboard-get) *host-clipboard*)
 
+(define (host-clipboard-read!)
+  (let* ([p (sdl-get-clipboard-text)] [s (c-string->string p)])
+    (unless (= p 0) (sdl-free p))
+    (set! *host-clipboard* s)))
+
+;; With a window, a job of core0's.
 (define (clipboard-set! s)
   (if (eq? *host* 'sdl)
-      (sdl-set-clipboard-text s)
+      (host-post! (list 'host-clipboard-now! s))
       (set! *host-clipboard* s)))
+
+(define (host-clipboard-now! s)
+  (sdl-set-clipboard-text s)
+  (set! *host-clipboard* s))
+
+;;; ------------------------------------------------------------------ step
+;;; Core0 runs the window in steps: the jobs the world posted, then the
+;;; events, put in the world's inbox, then what it says of itself, read
+;;; again. On one thread the world steps it where it waits for input; once
+;;; core0 has a thread, its loop does (.work/gpu-design.md 9.4).
+
+;; The jobs posted, newest first, each (name arg ...): core0's procedure by
+;; name, so a redefinition in "/host" takes; and the events pumped and not
+;; yet taken, newest first, each (events . types) of a step.
+(defvar *host-jobs* (box '()))
+(defvar *host-inbox* (box '()))
+(defvar *host-job-failed* #f)   ; (job . condition): the last job that raised
+
+;; What SDL says of the window, as core0 read it last: #(flags w h pw ph
+;; scale frame-ns display error-text). Made again whole when it changes, so
+;; another thread reads it whole.
+(defvar *host-facts* (vector 0 0 0 0 0 1 (quotient 1000000000 60) #f ""))
+
+;; x onto box b's list, what came before it handed over with it.
+(define (host-put! b x)
+  (memory-order-release)
+  (let loop ()
+    (let ([l (unbox b)]) (unless (box-cas! b l (cons x l)) (loop)))))
+
+;; Box b's list, taken, the oldest first.
+(define (host-take! b)
+  (let loop ()
+    (let ([l (unbox b)])
+      (cond [(null? l) l]
+            [(box-cas! b l '()) (memory-order-acquire) (reverse l)]
+            [else (loop)]))))
+
+(define (host-post! job) (host-put! *host-jobs* job))
+
+(define (host-run-job! job)
+  (guard (c [#t (set! *host-job-failed* (cons job c))])
+    (apply (top-level-value (car job) (host-environment)) (cdr job))))
+
+;; One step of core0's: the jobs posted, in order; the events, waiting up to
+;; wait-ms for the first, into the world's inbox; then what it says of
+;; itself, read again.
+(define (host-step! wait-ms)
+  (let ([jobs (host-take! *host-jobs*)])
+    (for-each host-run-job! jobs)
+    (let-values ([(events types) (host-window-pump wait-ms)])
+      (unless (null? types)
+        (when (memv #x900 types) (host-clipboard-read!))   ; clipboard-update
+        (host-put! *host-inbox* (cons events types)))
+      (host-facts-refresh! (or (pair? types) (pair? jobs))))))
+
+;; The events core0's steps have put in the inbox since it was last taken,
+;; as host-window-pump gives them: (values events types).
+(define (host-window-events)
+  (let ([steps (host-take! *host-inbox*)])
+    (if (null? steps)
+        (values '() '())
+        (values (apply append (map car steps))
+                (apply append (map cdr steps))))))
+
+;; The facts read again: the flags and sizes each step, and made again when
+;; they changed; the scale, the display and the last error too after
+;; events or jobs (all?), as they change only with those.
+(define (host-facts-refresh! all?)
+  (when (eq? *host* 'sdl)
+    (let*-values ([(f) (sdl-get-window-flags *sdl-window*)]
+                  [(w h) (host-size-from sdl-get-window-size)]
+                  [(pw ph) (host-size-from sdl-get-window-size-in-pixels)])
+      (let ([old *host-facts*])
+        (when (or all?
+                  (not (and (= f (vector-ref old 0)) (= w (vector-ref old 1))
+                            (= h (vector-ref old 2)) (= pw (vector-ref old 3))
+                            (= ph (vector-ref old 4)))))
+          (set! *host-facts*
+            (vector f w h pw ph (sdl-get-window-display-scale *sdl-window*)
+                    (host-read-frame-ns) (host-read-display)
+                    (sdl-get-error))))))))
+
+;; The step's state as plain data, for inspect-host (kits/inspect.ss): the
+;; jobs and events waiting, and the last job that raised.
+(define (host-step-state)
+  (list (cons 'jobs (length (unbox *host-jobs*)))
+        (cons 'events (length (unbox *host-inbox*)))
+        (cons 'failed (and *host-job-failed* (car *host-job-failed*)))))
