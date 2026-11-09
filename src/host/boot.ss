@@ -36,10 +36,10 @@
     gpu-frame-jobs-set! gpu-frame-dirty-set! gpu-frame-computes-set!
     gpu-frame-mode-set! gpu-frame-earlier-set!
     ;; What core0 says of itself, in variables it sets whole: another thread
-    ;; reads a whole value, given a release when one is set and an acquire
-    ;; when it's read, as ARM orders memory weakly. *gpu-waits* is filled in
-    ;; place, so another thread could read half of one frame's waits and
-    ;; half of the next.
+    ;; reads each whole (Chez lets no thread see an object half made), but
+    ;; not in step with the others, as ARM keeps no order between stores.
+    ;; *gpu-waits* is filled in place, so its slots may come from two
+    ;; frames.
     *gpu-facts* *gpu-frame-state* *gpu-waits* *host*
     ;; Calls into SDL or core0's own state: safe only on core0's thread.
     host-display host-frame-ns host-hidden? host-flags host-error-text
