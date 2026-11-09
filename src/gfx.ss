@@ -370,9 +370,10 @@
 ;; What thunk draws, recorded into lst (gpu-list-new) in place of what it
 ;; held, from its own origin, at this list's scale: then a show-list of it
 ;; draws it. The list being recorded goes on after, as it was. lst counts
-;; the time, and when and how long it took.
+;; the time, and, while the profiler is on, when and how long it took: off,
+;; only the pacer reads the clock.
 (define (record-list! lst thunk)
-  (let ([t0 (now-ns)]
+  (let ([t0 (and *profile-span* (now-ns))]
         [outer (vector *rec-bytes* *rec-at* *rec-extras* *rec-extra-at*
                        *rec-labels* *rec-label-at* *rec-label* *rec-runs*
                        *rec-mode* *rec-image* *rec-variant* *rec-run-first*
@@ -412,8 +413,10 @@
                                              *rec-label-at*)))
        (gpu-list-fresh?-set! lst #t)
        (gpu-list-version-set! lst (+ (gpu-list-version lst) 1))
-       (gpu-list-recorded-set! lst (now-ns))
-       (gpu-list-took-set! lst (- (now-ns) t0))
+       (when t0
+         (let ([now (now-ns)])
+           (gpu-list-recorded-set! lst now)
+           (gpu-list-took-set! lst (- now t0))))
        (set! *rec-bytes* (vector-ref outer 0))
        (set! *rec-at* (vector-ref outer 1))
        (set! *rec-extras* (vector-ref outer 2))

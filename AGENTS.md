@@ -66,7 +66,7 @@ before it:
   which any thread may call (`src/ffi.ss`). What still crosses is listed
   in `tests/sources.ss`, and the lists only shrink
   (`.work/gpu-design.md` 9.5, 9.12).
-- **The core has a budget**, 27,720 tokens (atoms as read; comments,
+- **The core has a budget**, 27,727 tokens (atoms as read; comments,
   whitespace and names' lengths are free), in `tests/sources.ss`. Don't
   join lines or shorten names to fit it. Code the core doesn't need moves
   out to the next layer, kits first; the budget is raised only on purpose.

@@ -52,9 +52,10 @@
             (pair? (profile-ticks))))
 
 (check "off, the hook is #f: no tick is kept, the clock is read only for the \
-        pacer's busy time, Chez's own collect handler is back; on again, \
-        ticks are kept"
-       (let ([reads 0] [clock now-ns] [before (profile-ticks)])
+        pacer's busy time and a frame's own, Chez's own collect handler is \
+        back; on again, ticks are kept"
+       (let ([reads 0] [clock now-ns] [before (profile-ticks)]
+             [frames *frames-drawn*])
          (profile-on! #f)
          (set! now-ns
            (lambda () (set! reads (+ reads 1)) (clock)))
@@ -62,7 +63,11 @@
          (set! now-ns clock)
          (let ([off (and (not (profile-on?)) (not *profile-span*)
                          (equal? before (profile-ticks))
-                         (<= reads (* 5 4))   ; a step's, only the pacer's
+                         ;; a step's, only the pacer's, and a frame drawn
+                         ;; (the top bar's clock asks for one each second)
+                         ;; times itself for the frame ring
+                         (<= reads (+ (* 5 4)
+                                      (* 2 (- *frames-drawn* frames))))
                          (eq? (collect-request-handler)
                               *profile-plain-collect*))])
            (profile-on! #t)
@@ -78,10 +83,15 @@
                              (with-profile-span (+ 1000000 (mod i 30)) 'draw
                                (with-profile-span 'profile-test-x #f
                                  i))))))]
-              [none (profile-test-bytes void)]   ; (statistics)'s own
-              [on (begin (spans) (- (profile-test-bytes spans) none))]
+              ;; each measured right after a collection, so that none of
+              ;; the world's falls in it
+              [settled (lambda (thunk)
+                         (collector-pass! 0 1)
+                         (profile-test-bytes thunk))]
+              [none (settled void)]   ; (statistics)'s own
+              [on (begin (spans) (- (settled spans) none))]
               [off (begin (profile-on! #f)
-                          (- (profile-test-bytes spans) none))])
+                          (- (settled spans) none))])
          (profile-on! #t)
          (printf "  ~a bytes on, ~a off, for 20,000 spans and a step\n" on off)
          (and (< on 1000) (= off 0))))
