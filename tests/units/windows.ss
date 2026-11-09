@@ -108,3 +108,16 @@
          (fluid-let ([*dirty* #f])
            (invalidate! w)
            (not *dirty*))))
+
+(check "a minimized window drawn again asks for no frame; brought back, it's \
+        drawn as it was asked"
+       (let ([w (windows-open "Hidden")])
+         (minimize-window! w)
+         (steps 1)
+         (let ([asked (window-ref w 'wm-asked 0)])
+           (fluid-let ([*dirty* #f])
+             (invalidate! w)
+             (let ([quiet (not *dirty*)])
+               (focus-window! w)
+               (close-window! w)
+               (and quiet (> (window-ref w 'wm-asked 0) asked)))))))

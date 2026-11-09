@@ -95,8 +95,9 @@
 ;; Each (invalidate!) is a new generation, and each (invalidate! win) a new
 ;; ask of win's: a list of win's drawn before either is drawn again. Asked
 ;; while it draws, it draws again the next frame. A window not open (closed,
-;; or one a preview draws) asks for no frame: a timer it left behind draws
-;; nothing.
+;; or one a preview draws) or not seen (minimized) asks for no frame: a
+;; timer it left behind, or one an app steps on unseen, draws nothing; one
+;; brought back is drawn as it comes.
 (defvar *wm-generation* 0)
 
 (define invalidate!
@@ -105,7 +106,8 @@
     [(win) (when win
              (hashtable-update! (window-props win) 'wm-asked
                                 (lambda (n) (+ n 1)) 0))
-           (when (or (not win) (memq win *windows*)) (request-frame!))]
+           (when (or (not win) (and (memq win *windows*) (visible? win)))
+             (request-frame!))]
     [(win x y w h) (invalidate! win)]))
 
 ;; A window's shadow, for its style: the theme key 'shadow, half unfocused;
@@ -359,13 +361,10 @@
 (define (window-ref win key . default)
   (hashtable-ref (window-props win) key (if (null? default) #f (car default))))
 
-;; A property may change the extent ('window-style): asks for the old one
-;; and the new one, once changed (see set-geometry!).
+;; The window is drawn again, as invalidate! asks: a frame if it's seen.
 (define (window-set! win key val)
-  (let-values ([(x y w h) (window-extent win)])
-    (hashtable-set! (window-props win) key val)
-    (request-frame! x y w h)
-    (invalidate! win)))
+  (hashtable-set! (window-props win) key val)
+  (invalidate! win))
 
 (define (window-on! win kind proc)
   (hashtable-set! (window-handlers win) kind proc)
