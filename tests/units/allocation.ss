@@ -4,7 +4,8 @@
 ;;; allocates a handler and a continuation each time, and the core keeps one
 ;;; around each part that may raise, so the budgets here are guards,
 ;;; measured in place, and a little more. Without surfaces, whose drawing is
-;;; the desktop's, and with windows that don't tick, whose ticks are apps'.
+;;; the desktop's, and with windows that ask no frames, whose frames are
+;;; apps'.
 
 (for-each close-window! (windows))
 
@@ -91,3 +92,40 @@
                   (<= move (+ extent 192))
                   ;; its new run, and the list of runs made again
                   (<= (- move3 frame3) 640))))))
+
+;;; Timers: one is linked in place, so setting it costs a vector and a pair
+;;; however many are set; the world's own runs as it is, allocating
+;;; nothing; one an app set (in an engine) runs in one, with a fuel.
+(let ([noop (lambda () (void))])
+  (define (set-cost n)   ; the bytes of after with n set before it
+    (fluid-let ([*timers* '()])
+      (do ([i 0 (+ i 1)]) ((= i n)) (after (+ 1000 i) noop))
+      (allocation-least 5 (lambda () (after 5000 noop)))))
+  (check "setting a timer costs the same with none set or a hundred"
+         (let ([none (set-cost 0)] [many (set-cost 100)])
+           (printf "  after: ~a bytes, with 100 set ~a\n" none many)
+           (and (= none many) (<= none 64))))
+  (check "a timer of the world's own allocates nothing as it runs"
+         (fluid-let ([*timers* '()] [now-ms (lambda () (expt 10 15))])
+           (let loop ([i 0] [least #f])
+             (if (= i 5)
+                 (= least 0)
+                 (begin
+                   (after 0 noop)
+                   (let ([a (allocation-now)])
+                     (run-timers!)
+                     (let ([d (- (allocation-now) a)])
+                       (loop (+ i 1) (if least (min least d) d)))))))))
+  (check "one set in an engine runs in one: looping, its fuel ends it, and \
+          the timers after it still run"
+         (let ([later #f] [errors 0])
+           (fluid-let ([*timers* '()]
+                       [report-error! (lambda (who c)
+                                        (set! errors (+ errors 1)))])
+             (safe-call 'test
+                        (lambda () (after 0 (lambda () (let loop () (loop)))))
+                        void)
+             (after 1 (lambda () (set! later #t)))
+             (fluid-let ([now-ms (lambda () (expt 10 15))])
+               (run-timers!)))
+           (and later (= errors 1)))))

@@ -68,7 +68,7 @@ before it:
   (`.work/gpu-design.md` 9.5, 9.12). The world names of core0's only its
   interface (`host-interface` in `src/host/boot.ss`), which "/" has
   read-only: a new name there is a reviewed change (`tests/sources.ss`).
-- **The core has a budget**, 28,792 tokens (atoms as read; comments,
+- **The core has a budget**, 28,827 tokens (atoms as read; comments,
   whitespace and names' lengths are free), in `tests/sources.ss`. Don't
   join lines or shorten names to fit it. Code the core doesn't need moves
   out to the next layer, kits first; the budget is raised only on purpose.

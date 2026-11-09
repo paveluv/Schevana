@@ -1,7 +1,7 @@
 ;;; system.ss — the main loop, timers, boot and reload.
 
 (defvar *running* #f)
-(defvar *timers* '())     ; ((due-ms . thunk) ...) sorted by due time
+(defvar *timers* '())     ; (#(due-ms thunk fueled?) ...) by due time
 (defvar *injected* '())   ; synthetic events waiting to be handled
 ;; events that came while a reload held the world, newest first
 (defvar *held-events* '())
@@ -35,22 +35,33 @@
 ;; the next tick
 (defvar *pacer-between?* #f)
 
-;; (after 1000 (lambda () (notify "a second later")))
+;; (after 1000 (lambda () (notify "a second later"))). Linked in place,
+;; after those due no later: a vector and a pair, however many are set.
+;; One set in an engine (an app's handler, a process, a timer of theirs)
+;; runs in one too, with a fuel; the world's own runs as it is.
 (define (after ms thunk)
-  (let ([t (cons (+ (now-ms) ms) thunk)])
-    (set! *timers*
-      (let ins ([ts *timers*])
-        (cond [(null? ts) (list t)]
-              [(< (car t) (caar ts)) (cons t ts)]
-              [else (cons (car ts) (ins (cdr ts)))])))
+  (let* ([due (+ (now-ms) ms)]
+         [t (vector due thunk (in-engine?))]
+         [cell (list t)])
+    (if (or (null? *timers*) (< due (vector-ref (car *timers*) 0)))
+        (begin (set-cdr! cell *timers*) (set! *timers* cell))
+        (let ins ([ts *timers*])
+          (if (or (null? (cdr ts)) (< due (vector-ref (cadr ts) 0)))
+              (begin (set-cdr! cell (cdr ts)) (set-cdr! ts cell))
+              (ins (cdr ts)))))
     t))
 
+;; The timers due, in order. An error in one of the world's own ends the
+;; turn's (run-timers! runs under safely); those still due run next turn.
 (define (run-timers!)
   (let loop ()
-    (when (and (pair? *timers*) (<= (caar *timers*) (now-ms)))
+    (when (and (pair? *timers*) (<= (vector-ref (car *timers*) 0) (now-ms)))
       (let ([t (car *timers*)])
         (set! *timers* (cdr *timers*))
-        (safe-call 'timer (cdr t) (lambda (c) (report-error! 'timer c)))
+        (if (vector-ref t 2)
+            (safe-call 'timer (vector-ref t 1)
+                       (lambda (c) (report-error! 'timer c)))
+            ((vector-ref t 1)))
         (loop)))))
 
 ;; (post-main! thunk), from any thread: thunk runs on the main thread at
@@ -321,7 +332,7 @@
                                  (pacer-period))
                              1000000))]
              [ms (if (pair? *timers*)
-                     (min ms (- (caar *timers*) (now-ms)))
+                     (min ms (- (vector-ref (car *timers*) 0) (now-ms)))
                      ms)])
         (max 0 (exact (ceiling ms))))))
 

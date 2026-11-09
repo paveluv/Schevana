@@ -7,7 +7,7 @@
   (check "Clock has no tick: a timer for the next second draws it again"
          (and (not (hashtable-contains? handlers 'tick))
               (= (length *timers*) (+ before 1))
-              (<= (- (caar *timers*) (now-ms)) 1000)))
+              (<= (- (vector-ref (car *timers*) 0) (now-ms)) 1000)))
   (let ([asked (window-ref win 'wm-asked 0)])
     (fluid-let ([now-ms (let ([t (+ (now-ms) 1000)]) (lambda () t))])
       (run-timers!))

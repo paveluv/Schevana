@@ -163,4 +163,5 @@
          (not *bell*)))
 (check "the status clock has a timer of its own"
        (and *status-timer?*
-            (exists (lambda (t) (<= (- (car t) (now-ms)) 1000)) *timers*)))
+            (exists (lambda (t) (<= (- (vector-ref t 0) (now-ms)) 1000))
+                    *timers*)))
