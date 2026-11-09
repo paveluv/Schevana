@@ -74,12 +74,14 @@
             (make-eq-hashtable) (make-eq-hashtable) '() #f kind may-fork
             #f (make-eq-hashtable) ""))
 
-;; Root, with the worklets' environment its first child.
+;; Root, with the worklets' environment its first child, and core0's,
+;; "/host", its second.
 (defvar *env-root*
   (let ([root (env-new 'root #f #f *world-env* 'root 'all)])
     (env-children-set! root
       (list (env-new 'worklets root 'core *worklet-environment*
-                     'worklets '())))
+                     'worklets '())
+            (env-new 'host root 'chez (host-environment) 'host '())))
     root))
 
 (define (env-root) *env-root*)
@@ -781,6 +783,17 @@
   'base 'chez
   'forks '()
   'doc "All of Chez, and nothing of the world's")
+
+(env-register-kind! 'host
+  'title "The host"
+  'base 'chez
+  'forks '()
+  'fork #f
+  'kept "core0 runs the window and the screen there; its files load \
+         again into it, or with a restart"
+  'doc "Core0, below the core: the window, its events and the GPU's \
+        device side. Of the world's names it holds none; what is defined \
+        here changes the host at its next call")
 
 (env-register-kind! 'sandbox
   'title "Sandbox"

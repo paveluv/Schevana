@@ -368,7 +368,7 @@
               (equal? (envs-chip-picked "a") '(a "" "")))))
 
 (check "dropping a child takes it, and its children, out of the tree and \
-        marks them dropped; not the world, nor /worklets, nor /apps"
+        marks them dropped; not the world, nor /worklets, /host or /apps"
        (let ([g (env-child units-env-world 'grand 'chez)])
          (env-drop! units-env-world)
          (env-drop! units-env)
@@ -377,12 +377,13 @@
               (raises? (lambda () (env-child g 'more 'chez)))
               (raises? (lambda () (env-drop! (env-root))))
               (raises? (lambda () (env-drop! (env-worklets))))
+              (raises? (lambda () (env-drop! (env-find "/host"))))
               (raises? (lambda () (env-drop! (grant-apps-env))))
               (not (env-find "/units-world/grand"))
               (not (env-find "/units"))
               (not (memq units-env (env-children (env-root))))
               (equal? (map env-name (env-children (env-root)))
-                      '(worklets apps)))))
+                      '(worklets host apps)))))
 
 ;;; The confined base (services/env.ss): what is always safe, for apps.
 
@@ -455,3 +456,43 @@
                         (equal? (get-output-string out) "a\n1b\"c\""))])
            (env-drop! e)
            ok)))
+
+;;; /host: core0's own environment, under the root, for the person.
+
+(let ([h (env-find "/host")])
+  (check "/host is core0's environment: its names, none of the world's, \
+          which \"/\" doesn't hold"
+         (and h (eq? (env-parent h) (env-root)) (eq? (env-kind h) 'host)
+              (eq? (env-environment h) core0-env)
+              (env-eval h '(procedure? gpu-frame!))
+              (not (top-level-bound? 'gpu-frame! *host-world*))))
+  (check "a definition there takes at core0's next call, through the \
+          world's forwarder too"
+         (let ([real (env-eval h 'host-error-text)])
+           (env-eval h '(define host-error-text (lambda () "from /host")))
+           (let ([seen (host-error-text)])
+             (env-eval h `(define host-error-text ',real))
+             (and (equal? seen "from /host")
+                  (eq? (env-eval h 'host-error-text) real)))))
+  (check "it isn't dropped, forks nothing, and is shared nothing of the \
+          world's"
+         (and (raises? (lambda () (env-drop! h)))
+              (null? (env-forks h))
+              (envs-why-not h 'share)
+              (not (envs-why-not h 'repl))))
+  (check "Environments shows it with an icon of its own, not the folder \
+          any other kind falls to"
+         (let* ([icon (lambda (kind)
+                        (image 16 16 1
+                               (lambda () (ui-draw-env-icon 0 0 16 '() kind))))]
+                [host (icon 'host)] [other (icon 'no-such-kind)]
+                [differ (not (equal? (picture-bytes host)
+                                     (picture-bytes other)))])
+           (picture-free! host)
+           (picture-free! other)
+           differ))
+  (let* ([win (repl "/host")] [r (window-ref win 'state)])
+    (check "a REPL opens there, in core0's look"
+           (and (equal? (window-title win) "REPL — /host")
+                (eq? (repl-kind r) 'host)))
+    (close-window! win)))

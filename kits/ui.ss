@@ -869,6 +869,15 @@
              (p 0.14 0.3) (p 0.5 0.1))
        (line (p 0.14 0.3) (p 0.5 0.5) (p 0.86 0.3))
        (line (p 0.5 0.5) (p 0.5 0.9))]
+      [(chip)   ; a chip from above: its body, and two pins a side
+       (line (p 0.28 0.28) (p 0.72 0.28) (p 0.72 0.72) (p 0.28 0.72)
+             (p 0.28 0.28))
+       (for-each (lambda (f)
+                   (line (p f 0.1) (p f 0.28))
+                   (line (p f 0.72) (p f 0.9))
+                   (line (p 0.1 f) (p 0.28 f))
+                   (line (p 0.72 f) (p 0.9 f)))
+                 '(0.38 0.62))]
       [(gear)   ; six teeth round a hub
        (let ([at (lambda (r a)
                    (p (+ 0.5 (* r (cos a))) (+ 0.5 (* r (sin a)))))])
@@ -2058,6 +2067,7 @@
                 (case kind
                   [(root) (values 'globe 'accent)]
                   [(worklets) (values 'gear 'yellow)]
+                  [(host) (values 'chip 'red)]   ; core0, the REPL's red
                   [(thread) (values 'gear 'orange)]
                   [(sandbox) (values 'box 'teal)]
                   [(apps) (values 'folder 'magenta)]

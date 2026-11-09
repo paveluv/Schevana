@@ -47,7 +47,7 @@
     host-display host-frame-ns host-hidden? host-flags host-error-text
     gpu-frame-take! gpu-present! gpu-take-answers! gpu-drawing->bytes
     gpu-compute-now! gpu-submit-computes! gpu-buffer-download!
-    host-window-headless!
+    host-environment host-window-headless!
     host-window-open! host-window-show! host-window-close! host-window-sizes
     host-window-resize! host-window-minimum! host-window-scale
     host-window-fullscreen? host-window-fullscreen! host-window-icon!
@@ -55,6 +55,12 @@
 
 ;; The world's environment, "/", once core0 has made it.
 (defvar *host-world* #f)
+
+;; Core0's own environment, where its files loaded: "/host" holds it
+;; (services/env.ss), for the person to evaluate in, and core0's loop calls
+;; its procedures by name, so a redefinition there takes at the next call.
+(define host-environment
+  (let ([e (interaction-environment)]) (lambda () e)))
 
 ;; Makes "/", all of Chez and of core0 only its interface, each name a
 ;; read-only forwarder to core0's binding (an identifier made here names

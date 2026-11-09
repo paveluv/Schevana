@@ -114,6 +114,8 @@
               "/worklets holds worklets only: define-worklet puts them there"]
              [(and (eq? what 'share) (memq kind '(apps app)))
               "An app holds the bundles it is allowed, and no more"]
+             [(and (eq? what 'share) (eq? kind 'host))
+              "Core0 names nothing of the world's: it sits below the core"]
              [vat? "Its sandbox is its vat's: share and load before its \
                     thread starts"]
              [(and (eq? what 'share) (not (env-parent e)))

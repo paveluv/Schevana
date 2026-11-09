@@ -58,15 +58,16 @@
     (world accent repl-bg-world)
     (pure green repl-bg-pure)
     (sandbox teal repl-bg-sandbox)
-    (thread orange repl-bg-thread)))
+    (thread orange repl-bg-thread)
+    (host red repl-bg-host)))   ; core0's: the screen's own code
 
 ;; The backgrounds, tinted by the prompt's color: rules, so that they
 ;; follow the style and palette as they change, as an open REPL must.
 (for-each (lambda (key tint)
             (color-default! key (theme-rule (mix 'bg-0 tint 0.06))))
           '(repl-bg-private repl-bg-world repl-bg-pure repl-bg-sandbox
-            repl-bg-thread)
-          '(accent-2 accent green teal orange))
+            repl-bg-thread repl-bg-host)
+          '(accent-2 accent green teal orange red))
 
 (define (repl-kind r) (vat-env-kind (repl-env r)))
 
