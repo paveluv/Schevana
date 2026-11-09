@@ -120,25 +120,37 @@
 
 ;; In r, counted before any claim, so its caller never sees none running
 ;; while one is under way; what is closed stays closed, so nothing starts
-;; once the caller has seen it closed with none running.
+;; once the caller has seen it closed with none running. The fences: what
+;; the caller wrote before it pushed r, in view; the count, seen before the
+;; claim (box-cas! orders no memory, and ARM keeps no order of its own).
 (define (crew-join! me r)
+  (memory-order-acquire)
   (crew-add! (crew-region-running r) 1)
+  (memory-order-release)
   (crew-worker-region-set! me r)
   (set-timer crew-fuel)
   (crew-calls! r #f (crew-worker-call me))
   (set-timer 0)
   (crew-leave! me r))
 
-;; Out of r, holding on to nothing of its arguments.
+;; Out of r, holding on to nothing of its arguments, its slices written
+;; before it's counted out.
 (define (crew-leave! me r)
   (set-cdr! (cdr (crew-worker-call me)) '())
   (crew-worker-region-set! me #f)
+  (memory-order-release)
   (crew-add! (crew-region-running r) -1))
 
 ;; What a worker's guard does with a condition: its region's first.
 (define (crew-failed! me c)
   (let ([r (crew-worker-region me)])
-    (when r (box-cas! (crew-region-error r) #f c))))
+    (when r (crew-error! r c))))
+
+;; r's first condition. box-cas! may fail on ARM with nothing in its way
+;; (Chez's guide), so it's tried until the box holds one.
+(define (crew-error! r c)
+  (let ([b (crew-region-error r)])
+    (let loop () (unless (or (unbox b) (box-cas! b #f c)) (loop)))))
 
 ;; After an error or a cancel. With no region to leave, something outside
 ;; a call is broken (a bad redefinition): not at full speed, then.
@@ -193,7 +205,17 @@
 
 (define (crew-open-region) (find crew-open? (unbox *crew-regions*)))
 
+;; No call left to start and none under way, the workers' slices in view.
+;; The first fence reads the count after the claims, as crew-join! made it.
+(define (crew-done? r)
+  (and (not (crew-open? r))
+       (begin (memory-order-acquire)
+              (fx= 0 (unbox (crew-region-running r))))
+       (begin (memory-order-acquire) #t)))
+
+;; What the caller wrote, before r is there for a worker to join.
 (define (crew-push! r)
+  (memory-order-release)
   (let loop ()
     (let ([rs (unbox *crew-regions*)])
       (unless (box-cas! *crew-regions* rs (cons r rs)) (loop)))))
@@ -246,21 +268,21 @@
 (define (crew-take-part! r)
   (with-exception-handler
    (lambda (c)
-     (box-cas! (crew-region-error r) #f c)
+     (crew-error! r c)
      (crew-wait! r)
      (crew-remove! r)
      (raise (unbox (crew-region-error r))))
    (lambda () (crew-calls! r #t (list 0 0)))))
 
-;; Until no worker is in r; on main, at most crew-main-ms past its deadline
-;; (for the cancelled calls to escape). Looks first, as the calls left are
-;; short, and a nap is much longer than it asks for.
+;; Until no worker is in r, which is closed by now; on main, at most
+;; crew-main-ms past its deadline (for the cancelled calls to escape).
+;; Looks first, as the calls left are short, and a nap is much longer than
+;; it asks for.
 (define (crew-wait! r)
   (let ([give-up (let ([d (crew-region-deadline r)])
-                   (and d (+ d crew-main-ms)))]
-        [running (crew-region-running r)])
+                   (and d (+ d crew-main-ms)))])
     (let loop ([spins 0])
-      (unless (fx= 0 (unbox running))
+      (unless (crew-done? r)
         (if (fx< spins crew-wait-spins)
             (loop (fx+ spins 1))
             (begin
@@ -329,8 +351,7 @@
        (crew-wake!)
        (if p
            (let wait ()   ; a process: no part in it, the desktop runs on
-             (unless (and (not (crew-open? r))
-                          (fx= 0 (unbox (crew-region-running r))))
+             (unless (crew-done? r)
                (sleep-ms 1)
                (crew-cancelled? r)
                (wait)))

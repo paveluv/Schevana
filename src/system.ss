@@ -54,10 +54,13 @@
 ;; (post-main! thunk), from any thread: thunk runs on the main thread at
 ;; its next step, after the events, in the order each thread posted it,
 ;; under safely (so a service's thunk calls an app's code under
-;; safe-call). Lock-free: neither a post nor the step ever waits.
+;; safe-call). Lock-free: neither a post nor the step ever waits. The
+;; fences hand main what the poster wrote before it posted: box-cas!
+;; orders no memory, and ARM keeps no order of its own.
 (defvar *main-mail* (box '()))   ; thunks, the newest first
 
 (define (post-main! thunk)
+  (memory-order-release)
   (let loop ()
     (let ([mail (unbox *main-mail*)])
       (unless (box-cas! *main-mail* mail (cons thunk mail)) (loop)))))
@@ -67,6 +70,7 @@
     (let ([mail (unbox *main-mail*)])
       (cond [(null? mail)]
             [(box-cas! *main-mail* mail '())
+             (memory-order-acquire)
              (for-each (lambda (t) (safely 'jobs t)) (reverse mail))]
             [else (loop)]))))
 

@@ -178,7 +178,7 @@
 
 ;; Raise it deliberately: the core is what the desktop needs to boot and
 ;; run; everything else belongs in a folder.
-(define src-budget 28629)
+(define src-budget 28631)
 
 ;; The tokens of a datum as read; a list's end is none.
 (define (tokens x)
@@ -424,6 +424,61 @@
                       (memq 'env-share-world! (symbols-in (file-forms f)))
                       (format "~a calls env-share-world!" f)))
                world-files)))
+
+;;; ------------------------------------------------------------------
+;;; memory order between threads
+;;; box-cas! orders no memory (Chez's guide), and ARM keeps no order of its
+;;; own: another thread may see what was written before a box-cas! only
+;;; after it. So a procedure that hands data to another thread fences with
+;;; a release before its box-cas!, and the one that takes the data with an
+;;; acquire after; a flag, or a count that hands nothing over, needs
+;;; neither. Every procedure that calls box-cas! or fences is listed with
+;;; its fences, so a new one is a reviewed change; and as box-cas! may fail
+;;; on ARM with nothing in its way, each tries again until it lands.
+
+(define thread-fences
+  '((post-main! memory-order-release)
+    (run-main-mail! memory-order-acquire)
+    (vat-flag-up!)
+    (vat-put! memory-order-release)
+    (vat-take! memory-order-acquire)
+    (crew-join! memory-order-acquire memory-order-release)
+    (crew-leave! memory-order-release)
+    (crew-error!)
+    (crew-add!)
+    (crew-done? memory-order-acquire)
+    (crew-push! memory-order-release)
+    (crew-remove!)
+    (crew-claim!)))
+
+(define thread-fence-names '(memory-order-acquire memory-order-release))
+
+;; f's procedures that call box-cas! or fence, each as the table lists one.
+(define (file-thread-fences f)
+  (filter-map
+   (lambda (x)
+     (let ([d (defined x)] [s (code-symbols-in x)])
+       (and (pair? d)
+            (or (memq 'box-cas! s)
+                (exists (lambda (n) (memq n s)) thread-fence-names))
+            (cons (cdar d)
+                  (filter (lambda (n) (memq n s)) thread-fence-names)))))
+   (file-forms f)))
+
+(check "every procedure that calls box-cas! or fences is listed, with its \
+        fences"
+       (let ([found (apply append
+                           (map file-thread-fences
+                                (append world-files '("main.ss"))))])
+         (none? (append
+                 (filter-map (lambda (p)
+                               (and (not (member p thread-fences))
+                                    (format "not listed: ~s" p)))
+                             found)
+                 (filter-map (lambda (p)
+                               (and (not (member p found))
+                                    (format "not in the tree: ~s" p)))
+                             thread-fences)))))
 
 ;;; ------------------------------------------------------------------
 ;;; folders

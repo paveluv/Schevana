@@ -106,13 +106,18 @@
 (define (vat-jobs-of v)
   (reverse (filter (lambda (j) (eq? (vat-job-vat j) v)) *vat-jobs*)))
 
+;; Raises a flag v's threads read. box-cas! may fail on ARM with nothing in
+;; its way (Chez's guide), so it's tried until the flag is up.
+(define (vat-flag-up! b)
+  (let loop () (unless (or (unbox b) (box-cas! b #f #t)) (loop))))
+
 ;; v's threads: more start, or those past n stop once done with their
 ;; turn.
 (define (vat-resize! v n)
   (let ([stops (vat-threads v)])
     (if (< n (length stops))
         (begin
-          (for-each (lambda (s) (box-cas! s #f #t)) (list-tail stops n))
+          (for-each vat-flag-up! (list-tail stops n))
           (vat-threads-set! v (list-head stops n))
           (vat-wake! v))
         (vat-threads-set! v (append stops
@@ -135,7 +140,7 @@
 
 ;; Ends v's threads, once each is done with its turn, and kills its jobs.
 (define (vat-drop! v)
-  (box-cas! (vat-dropped v) #f #t)
+  (vat-flag-up! (vat-dropped v))
   (set! *vat-all* (remq v *vat-all*))
   (for-each (lambda (j) (when (eq? (vat-job-vat j) v) (vat-job-kill! j)))
             *vat-jobs*)
@@ -186,7 +191,10 @@
                 (= n 1000))
       (try (+ n 1)))))
 
+;; The fences hand the vat's thread what main wrote before it sent the job,
+;; as post-main! hands main a job's outcome.
 (define (vat-put! v j)
+  (memory-order-release)
   (let loop ()
     (let ([jobs (unbox (vat-mailbox v))])
       (unless (box-cas! (vat-mailbox v) jobs (append jobs (list j)))
@@ -196,7 +204,9 @@
   (let loop ()
     (let ([jobs (unbox (vat-mailbox v))])
       (cond [(null? jobs) #f]
-            [(box-cas! (vat-mailbox v) jobs (cdr jobs)) (car jobs)]
+            [(box-cas! (vat-mailbox v) jobs (cdr jobs))
+             (memory-order-acquire)
+             (car jobs)]
             [else (loop)]))))
 
 ;;; ------------------------------------------------------------------ jobs
@@ -236,7 +246,7 @@
 
 (define (vat-job-kill! j)
   (set! *vat-jobs* (remq j *vat-jobs*))
-  (box-cas! (vat-job-killed j) #f #t))
+  (vat-flag-up! (vat-job-killed j)))
 
 ;; Kills the jobs sent from win, as it closes or crashes.
 (define (vat-window-gone! win)
