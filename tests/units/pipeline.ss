@@ -1048,7 +1048,10 @@
                    (apply open-window title 'size '(120 . 80)
                           'pos (cons x 500) 'draw draw
                           (if again?
-                              (list 'tick (lambda (win) (invalidate! win)))
+                              (list 'open window-frame-soon!
+                                    'frame (lambda (win at)
+                                             (window-frame-soon! win)
+                                             (invalidate! win)))
                               '())))]
            [still (open "Still" 40 #f
                         (lambda (win cw ch) (fill-box 0 0 cw ch 'accent)))]

@@ -43,8 +43,8 @@
                  (format " ~a" (window-state w))))))
 
 (define handler-kinds
-  '(open draw tick frame key text mouse-down mouse-up mouse-move wheel resize
-    focus blur close))
+  '(open draw frame key text mouse-down mouse-up mouse-move wheel resize focus
+    blur close))
 
 (defvar *windows* '())        ; z-order, topmost first
 (defvar *focus* #f)
@@ -509,9 +509,11 @@
             (window-call *focus* 'blur))
           (set! *focus* #f)))))
 
+;; The windows it owns, and the one waiting on it, go with it.
 (define (close-window! win)
   (when (memq win *windows*)
     (for-each close-window! (window-owned win))
+    (let ([c (window-modal-child win)]) (when c (close-window! c)))
     (window-call win 'close)
     (set! *windows* (remq win *windows*))
     (window-lists-release! win)
@@ -974,7 +976,8 @@
 ;; goes on animating asks again from its 'frame. Asking draws nothing, so
 ;; the flag isn't set by window-set!, which would draw the window again.
 (define (window-frame-soon! win)
-  (hashtable-set! (window-props win) 'wm-frame-soon #t))
+  (hashtable-set! (window-props win) 'wm-frame-soon #t)
+  (frame-turn-soon!))
 
 ;; The frames asked for, each window's once; a minimized window's wait
 ;; until it's seen again, so one that rides frames pauses meanwhile. A
@@ -988,14 +991,12 @@
           (window-call (car ws) 'frame t)))
       (loop (cdr ws)))))
 
-;; Frames asked for, windows' ticks, the toasts' expiry, then each
-;; surface's frame, in depth order, before the frame is drawn: what it
-;; finds changed (the mouse's documentation) shows in it.
+;; The frames windows asked for, then each surface's, in depth order,
+;; before the frame is drawn: what it finds changed (the mouse's
+;; documentation) shows in it.
 (define (wm-tick!)
   (let ([t (pacer-frame-ns)])
     (wm-frames! t)
-    (for-each (lambda (w) (window-call w 'tick)) *windows*)
-    (expire-toasts!)
     (for-each (lambda (s)
                 (safely (surface-name s)
                         (lambda () (surface-call s surface-frame t))))

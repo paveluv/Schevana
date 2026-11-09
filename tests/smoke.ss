@@ -3509,7 +3509,10 @@
               (not (eqv? s (car (profile-ticks)))))))
 (let* ([target (open-window "Target"   ; drawn at every step, slowly: a top row
                  'size '(200 . 100) 'pos '(1000 . 420)
-                 'tick (lambda (win) (invalidate! win))
+                 'open window-frame-soon!
+                 'frame (lambda (win at)
+                          (window-frame-soon! win)
+                          (invalidate! win))
                  'draw (lambda (win w h)
                          (let ([t (+ (real-time) 2)])
                            (let loop () (when (< (real-time) t) (loop))))))]
@@ -3755,9 +3758,11 @@
 ;; (the frame the clock asks for once a second is the top bar's).
 (let* ([count 0]
        [w (open-window "Ticker" 'size '(260 . 120) 'pos '(400 . 100)
-                       'tick (lambda (win)
-                               (set! count (+ count 1))
-                               (invalidate! win))
+                       'open window-frame-soon!
+                       'frame (lambda (win at)
+                                (window-frame-soon! win)
+                                (set! count (+ count 1))
+                                (invalidate! win))
                        'draw (lambda (win cw ch)
                                (fill-box 0 0 cw ch (if (even? count)
                                                        #xff0000
@@ -4300,7 +4305,10 @@
 (let* ([root *schevana-root*] [ticks 0] [draws 0] [timers 0] [slices 0]
        [keys '()] [sent '()] [n 0] [done? #f] [late-held 0]
        [probe (open-window "Probe" 'size '(200 . 100)
-                           'tick (lambda (win) (set! ticks (+ ticks 1)))
+                           'open window-frame-soon!
+                           'frame (lambda (win at)
+                                    (window-frame-soon! win)
+                                    (set! ticks (+ ticks 1)))
                            'draw (lambda (win w h) (set! draws (+ draws 1)))
                            'key (lambda (win key mods)
                                   (set! keys (cons key keys))))]
@@ -4360,7 +4368,10 @@
     (tree-copy-with "loop-tree"
       '(begin (set! reload-reached #t) (let loop () (loop)))))
   (let ([p (spawn "reload" reload!)]
-        [w (open-window "Ticks" 'tick (lambda (win) (set! ticks (+ ticks 1))))])
+        [w (open-window "Ticks" 'open window-frame-soon!
+                                'frame (lambda (win at)
+                                         (window-frame-soon! win)
+                                         (set! ticks (+ ticks 1))))])
     (define (step!)
       (let ([t0 (real-time)])
         (schevana-step! 0)
@@ -4417,7 +4428,10 @@
                     (reload!)
                     (set! state *reloading*)
                     (let loop () (yield) (loop))))]
-        [w (open-window "Ticks" 'tick (lambda (win) (set! ticks (+ ticks 1))))])
+        [w (open-window "Ticks" 'open window-frame-soon!
+                                'frame (lambda (win at)
+                                         (window-frame-soon! win)
+                                         (set! ticks (+ ticks 1))))])
     (let loop ([n 0])
       (when (and (eq? state 'unset) (< n 3000))
         (schevana-step! 0)

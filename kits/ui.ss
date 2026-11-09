@@ -567,7 +567,7 @@
 ;; Opens a window as ui-open-modal's child of parent, w × h, centered over
 ;; it; opts are open-window's. => the child
 (define (ui-open-modal parent title w h . opts)
-  (let* ([close (plist-ref opts 'close #f)] [tick (plist-ref opts 'tick #f)]
+  (let* ([close (plist-ref opts 'close #f)]
          [at (let-values ([(x y pw ph) (content-rect parent)])
                (cons (exact (round (+ x (/ (- pw w) 2))))
                      (exact (round (+ y (/ (- ph h) 2))))))]
@@ -579,12 +579,7 @@
                             (when close (close win))
                             (when (memq parent (windows))
                               (invalidate! parent)))
-                   ;; its parent gone, it goes too
-                   'tick (lambda (win)
-                           (if (memq parent (windows))
-                               (when tick (tick win))
-                               (close-window! win)))
-                   (plist-remove (plist-remove opts 'close) 'tick)))])
+                   (plist-remove opts 'close)))])
     (window-set! parent 'modal-child child)
     child))
 

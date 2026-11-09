@@ -169,7 +169,10 @@
 
 (let ([slow (open-window "Slow"
               'size '(200 . 100)
-              'tick (lambda (win) (invalidate! win))
+              'open window-frame-soon!
+              'frame (lambda (win at)
+                       (window-frame-soon! win)
+                       (invalidate! win))
               'draw (lambda (win w h) (profile-test-busy 3)))]
       [life-win (life)])
   (check "a window whose draw is made slow comes first among Monitor's \
@@ -251,9 +254,11 @@
 
 (let* ([w (open-window "Inner"
             'size '(200 . 100)
-            'tick (lambda (win)
-                    (safely 'profile-test-handler
-                            (lambda () (profile-test-busy 1)))))]
+            'open window-frame-soon!
+            'frame (lambda (win at)
+                     (window-frame-soon! win)
+                     (safely 'profile-test-handler
+                             (lambda () (profile-test-busy 1)))))]
        [p (spawn "inner"
                  (lambda ()
                    (let loop ()
@@ -269,7 +274,7 @@
               (and (null? (profile-test-uses s 'profile-test-handler))
                    (null? (profile-test-uses s 'profile-test-process))
                    (exists (lambda (u)
-                             (and (eq? (profile-use-part u) 'tick)
+                             (and (eq? (profile-use-part u) 'frame)
                                   (>= (profile-use-ms u) 1)))
                            (profile-test-uses s w))
                    (pair? (profile-test-uses s p))))
@@ -344,7 +349,10 @@
 (check "the history keeps no closed window and no ended process alive: \
         each is a subject, its id, and its title or name when first seen"
        (let* ([w (open-window "Kept?" 'size '(200 . 100)
-                              'tick (lambda (win) (invalidate! win)))]
+                              'open window-frame-soon!
+                              'frame (lambda (win at)
+                                       (window-frame-soon! win)
+                                       (invalidate! win)))]
               [p (spawn "kept?" (lambda () (let loop () (yield) (loop))))]
               [w-ptr (weak-cons w #f)] [p-ptr (weak-cons p #f)])
          (steps 5)
@@ -450,9 +458,11 @@
               [busy? #t]
               [q (open-window "Quiet"
                               'size '(100 . 60)
-                              'tick (lambda (win)
-                                      (set! fake (+ fake 1000000))
-                                      (when busy? (invalidate! win)))
+                              'open window-frame-soon!
+                              'frame (lambda (win at)
+                                       (window-frame-soon! win)
+                                       (set! fake (+ fake 1000000))
+                                       (when busy? (invalidate! win)))
                               'draw (lambda (win w h)
                                       (set! fake (+ fake 1000000))))]
               [m (monitor)] [ui (window-ref m 'ui)]

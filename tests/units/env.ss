@@ -288,7 +288,7 @@
 
 (check "a dialog stays above the window that waits on it and takes its \
         keyboard, where the style says so (modal-above); else the window \
-        comes above it; closing the window closes the dialog"
+        comes above it; closing the window closes the dialog at once"
        (let* ([p (open-window "Parent" 'size '(300 . 200))]
               [c (ui-open-modal p "Child" 200 100)])
          (focus-window! p)
@@ -299,7 +299,6 @@
            (let ([up (and (eq? (focused-window) p) (eq? (car (windows)) p))])
              (override! 'modal-above)
              (close-window! p)
-             (steps 1)
              (and kept up (not (memq c (windows))))))))
 
 (check "a window's title icon is drawn by the Mac and Windows styles' \

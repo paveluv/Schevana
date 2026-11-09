@@ -23,6 +23,7 @@
 (defvar *pacer-peak* 0)    ; the most of any tick since it was last asked, ns
 (defvar *pacer-began* 0)   ; when the last tick began, ns
 (defvar *pacer-frame-ns* 0)   ; when the last tick's frame should show, ns
+(defvar *pacer-wanted?* #f)   ; a tick is asked for, to look if not to draw
 ;; which of the last frames waited for their image, a bit each; the next one
 ;; isn't drawn; how many times the screen re-timed the pacer, and how many
 ;; frames that left out
@@ -128,10 +129,10 @@
 
 ;; One turn of the world: events, mail (post-main!), timers, a tick,
 ;; processes, and on a tick a frame if something asked for one. Paced (the
-;; main loop's), it ticks only when the pacer's tick is due, and its
-;; processes run until the frame must be drawn for the next tick; else (a
-;; test's) it always ticks, and its processes run 10 ms. The profiler sums
-;; the steps between ticks into the next tick.
+;; main loop's), it ticks only when a tick is wanted (pacer-wanted?) and
+;; due, and its processes run until the frame must be drawn for the next
+;; tick; else (a test's) it always ticks, and its processes run 10 ms. The
+;; profiler sums the steps between ticks into the next tick.
 (define (schevana-turn! wait-ms paced)
   (with-profile-span 'step #f
     (let* ([hold? (reload-holding?)]
@@ -141,6 +142,8 @@
       (unless hold? (set! *held-events* '()))
       (set! *injected* '())
       (set! *input-step?* (pair? evs))
+      ;; input may change what's shown: the next tick looks
+      (when (pair? evs) (frame-turn-soon!))
       (let each ([evs evs])
         (unless (null? evs)
           (let ([ev (car evs)])
@@ -153,10 +156,13 @@
                   (run-main-mail!)
                   (safely 'timers run-timers!)
                   (let ([now (and (pair? paced) (now-ns))])
-                    (and (or (not now) (>= now (pacer-start)))
+                    (and (or (not now)
+                             (and (pacer-wanted?) (>= now (pacer-start))))
                          (begin (pacer-tick! now) #t)))))])
-      (set! *pacer-between?* (and (pair? paced) (not ticked?)))
-      (when ticked? (collector-tick!))
+      ;; a step leads up to a tick only while one is wanted; one in a quiet
+      ;; spell is its own, as a tick nothing asked for once was
+      (set! *pacer-between?* (and (pair? paced) (not ticked?) (pacer-wanted?)))
+      (when (or ticked? (not (pacer-wanted?))) (collector-tick!))
       (safely 'procs
               (lambda () (run-procs! (if (null? paced) 10 (pacer-procs-ms)))))
       ;; a frame a tick at most
@@ -164,9 +170,12 @@
         (if (and *pacer-skip?* (pair? paced))
             (pacer-frame-skipped!)
             ;; a tick nothing asked a frame of goes on with no guard
+            ;; a frame drawn may have moved what's under a still pointer:
+            ;; the next tick looks
             (when *dirty*
               (set! *dirty* #f)
-              (safely 'render render-frame!)))))))
+              (safely 'render render-frame!)
+              (frame-turn-soon!)))))))
 
 ;;; ------------------------------------------------------------------ pacer
 
@@ -210,6 +219,11 @@
 (define (pacer-ticks) *pacer-ticks*)
 (define (pacer-tick-ms) *pacer-tick-ms*)
 
+;; A tick asked for: windows' frames and the surfaces' look at what
+;; changed, and a frame if something asked for one (*dirty*).
+(define (frame-turn-soon!) (set! *pacer-wanted?* #t))
+(define (pacer-wanted?) (or *pacer-wanted?* *dirty*))
+
 ;; When the frame the last tick made should show, ns, the t of a window's
 ;; 'frame: until frames lock to the screen's beat, when the next tick is
 ;; due, about where a frame sent now shows; unpaced (a test's), the tick's
@@ -230,16 +244,17 @@
 ;; for the refresh.
 (define (pacer-start) (- *pacer-due* 2000000))
 
-;; A tick: the frames asked for, and every window's, surface's and toast's
-;; tick (wm-tick!). Paced (now, the ns it began, else #f), the next is due
-;; a period after this one was, or, when that is past already (this one a
-;; period late: its work too long), a period from now: the world slows
-;; down, no tick skipped.
+;; A tick: the frames windows asked for and the surfaces' (wm-tick!), then
+;; a frame if one is asked for. Paced (now, the ns it began, else #f), the
+;; next is due a period after this one was, or, when that is past already
+;; (this one a period late, or the first after a quiet spell), a period
+;; from now.
 (define (pacer-tick! now)
   (when now
     (set! *pacer-began* now)
     (let ([next (+ *pacer-due* (pacer-period))])
       (set! *pacer-due* (if (> next now) next (+ now (pacer-period))))))
+  (set! *pacer-wanted?* #f)
   (set! *pacer-ticks* (+ *pacer-ticks* 1))
   (set! *pacer-tick-ms* (now-ms))
   (set! *pacer-frame-ns* (if now *pacer-due* (* *pacer-tick-ms* 1000000)))
@@ -285,20 +300,26 @@
 
 ;; How long processes may run: until the next tick may begin, less what
 ;; the last frame took to draw, at most 10 ms, and at least 1 ms, so that
-;; they run however full the frames are (that 1 ms is a frame's work too).
+;; they run however full the frames are (that 1 ms is a frame's work too);
+;; with no tick wanted, 10 ms.
 (define (pacer-procs-ms)
-  (max 1 (min 10 (exact (floor (- (/ (- (pacer-start) (now-ns)) 1e6)
-                                  *frame-ms*))))))
+  (if (pacer-wanted?)
+      (max 1 (min 10 (exact (floor (- (/ (- (pacer-start) (now-ns)) 1e6)
+                                      *frame-ms*)))))
+      10))
 
 ;; How long a paced step may wait for host events (input ends the wait at
-;; once): until the next tick may begin, or the first timer's time; not
-;; at all while processes are ready. Whole ms, rounded up: a step would
-;; spin through the last ms before the tick (the 2 ms it may start early
-;; hold that one).
+;; once): until the next tick may begin, a period with none wanted (so mail
+;; is seen), or the first timer's time; not at all while processes are
+;; ready. Whole ms, rounded up: a step would spin through the last ms
+;; before the tick (the 2 ms it may start early hold that one).
 (define (pacer-wait-ms)
   (if (procs-ready?)
       0
-      (let* ([ms (ceiling (/ (- (pacer-start) (now-ns)) 1000000))]
+      (let* ([ms (ceiling (/ (if (pacer-wanted?)
+                                 (- (pacer-start) (now-ns))
+                                 (pacer-period))
+                             1000000))]
              [ms (if (pair? *timers*)
                      (min ms (- (caar *timers*) (now-ms)))
                      ms)])

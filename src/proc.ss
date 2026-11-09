@@ -101,7 +101,8 @@
        (set! *toasts*
          (append *toasts* (list (vector (+ (now-ms) 5000) text color))))
        (when (> (length *toasts*) 5) (set! *toasts* (cdr *toasts*)))
-       (request-frame!))]))
+       (request-frame!)
+       (after 5001 (lambda () (expire-toasts!))))]))
 
 (define (expire-toasts!)
   (let ([now (now-ms)])

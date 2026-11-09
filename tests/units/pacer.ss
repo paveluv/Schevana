@@ -41,13 +41,17 @@
               shown?)))
     (pacer-rate! 'screen)
     (let* ([keeper (open-window "Keeper" 'size '(80 . 60)
-                                'tick (lambda (win)
-                                        (set! ticks (cons t ticks))
-                                        (advance 3000000)))]
+                                'open window-frame-soon!
+                                'frame (lambda (win at)
+                                         (window-frame-soon! win)
+                                         (set! ticks (cons t ticks))
+                                         (advance 3000000)))]
            [mover (open-window "Mover" 'size '(80 . 60)
-                               'tick (lambda (win)
-                                       (advance 2000000)
-                                       (invalidate! win))
+                               'open window-frame-soon!
+                               'frame (lambda (win at)
+                                        (window-frame-soon! win)
+                                        (advance 2000000)
+                                        (invalidate! win))
                                'key (lambda (win k mods) (set! keyed #t))
                                'draw (lambda (win w h)
                                        (advance (* draw-ms 1000000))
@@ -221,13 +225,15 @@
             #t))
     (pacer-rate! 'screen)
     (let ([mover (open-window "Mover" 'size '(80 . 60)
-                              'tick (lambda (win)
-                                      (set! ticks (+ ticks 1))
-                                      (set! n (+ n 1))
-                                      ;; 1 to 3 ms, as it comes
-                                      (set! t (+ t 1000000
-                                                 (* 500000 (mod (* n 7) 5))))
-                                      (invalidate! win))
+                              'open window-frame-soon!
+                              'frame (lambda (win at)
+                                       (window-frame-soon! win)
+                                       (set! ticks (+ ticks 1))
+                                       (set! n (+ n 1))
+                                       ;; 1 to 3 ms, as it comes
+                                       (set! t (+ t 1000000
+                                                  (* 500000 (mod (* n 7) 5))))
+                                       (invalidate! win))
                               'draw (lambda (win w h)
                                       (set! t (+ t 1000000))))]
           [end (* ms 1000000)])
@@ -371,9 +377,11 @@
     (thunk)))
 
 (let ([win (open-window "Busy" 'size '(80 . 60)
-                        'tick (lambda (win)
-                                (pacer-test-advance! 3)
-                                (invalidate! win))
+                        'open window-frame-soon!
+                        'frame (lambda (win at)
+                                 (window-frame-soon! win)
+                                 (pacer-test-advance! 3)
+                                 (invalidate! win))
                         'key (lambda (win k mods) (pacer-test-advance! 2)))])
   (focus-window! win)
   (let* ([on #f]
@@ -434,3 +442,45 @@
                      (= after 3.0)
                      (= (pacer-peak-ms!) 0.0)))))))
   (close-window! win))
+
+;;; Ticks only when one is wanted: a redraw, a window's frame, or a look
+;;; that input or a frame drawn asks for. On a fake clock, with no timers.
+(for-each close-window! (windows))
+(let* ([t (* 3000 1000000000)] [events '()]
+       [ticks-in (lambda (n)   ; the ticks of n steps of the main loop
+                   (let ([before (pacer-ticks)])
+                     (do ([i 0 (+ i 1)]) ((= i n))
+                       (schevana-step! (pacer-wait-ms) #t))
+                     (- (pacer-ticks) before)))])
+  (fluid-let ([*timers* '()]
+              [now-ns (lambda () t)]
+              [now-ms (lambda () (quotient t 1000000))]
+              [host-events (lambda (wait-ms)
+                             (set! t (+ t (* (max 1 wait-ms) 1000000)))
+                             (let ([e events]) (set! events '()) e))])
+    (ticks-in 20)
+    (let* ([t0 t]
+           [quiet (ticks-in 20)]
+           [waited (- t t0)])
+      (check "with nothing wanted the loop ticks not at all, waiting a period \
+              a step"
+             (and (= quiet 0)
+                  (>= waited (* 19 (pacer-period))))))
+    (let ([ticks (begin (request-frame!) (ticks-in 6))])
+      (check "a frame asked for ticks once to draw it, then once more to look \
+              at what it moved, and no more"
+             (and (= ticks 2) (not (pacer-wanted?)))))
+    (let* ([seen 0]
+           [win (open-window "Asks" 'size '(80 . 60)
+                             'frame (lambda (win at) (set! seen (+ seen 1))))])
+      (ticks-in 6)
+      (window-frame-soon! win)
+      (let ([ticks (ticks-in 6)])
+        (check "a window's frame asked for ticks once, and nothing after"
+               (and (= seen 1) (= ticks 1))))
+      (close-window! win)
+      (ticks-in 6))
+    (set! events '((key-down #\z ())))
+    (let ([ticks (ticks-in 6)])
+      (check "input asks for a look: it ticks, and then the ticks stop"
+             (and (>= ticks 1) (= (ticks-in 6) 0))))))
