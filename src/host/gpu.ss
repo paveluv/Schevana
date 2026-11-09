@@ -1136,7 +1136,7 @@
 
 ;;; ------------------------------------------------------------------ facts
 ;;; What core0 says of itself, for the world to read (.work/gpu-design.md
-;;; 9.12, step 3b): an alist the world never changes, made again at the end
+;;; 9.12): an alist the world never changes, made again at the end
 ;;; of a frame only when what it's made of changed, so that a frame like the
 ;;; last allocates nothing. A frame's own state, *gpu-frame-state*, and its
 ;;; waits, *gpu-waits*, are told on their own.

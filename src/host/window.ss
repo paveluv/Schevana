@@ -1,7 +1,7 @@
-;;; host/window.ss — the host window, core0's (.work/gpu-design.md 9.12,
-;;; step 3a): SDL's window, its events and what it says of itself, as plain
-;;; data the world reads (src/host.ss), never SDL's pointers. Positions come
-;;; in the window's units, as SDL gives them; the world lays them out.
+;;; host/window.ss — the host window, core0's (.work/gpu-design.md 9.12):
+;;; SDL's window, its events and what it says of itself, as plain data the
+;;; world reads (src/host.ss), never SDL's pointers. Positions come in the
+;;; window's units, as SDL gives them; the world lays them out.
 ;;;
 ;;; *host* says what the host is:
 ;;; 'sdl      : a real resizable window, on the GPU

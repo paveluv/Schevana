@@ -14,9 +14,9 @@
 ;; styles, palettes, wallpapers, apps): see source-folders in src/system.ss.
 (define *schevana-sources*
   '("src/ffi.ss" "src/base.ss" "src/host/sdl.ss" "src/host/gpu.ss"
-    "src/host/window.ss" "src/shader.ss" "src/theme.ss" "src/gpu.ss"
-    "src/font.ss" "src/gfx.ss" "src/proc.ss" "src/host.ss" "src/wm.ss"
-    "src/system.ss"))
+    "src/host/window.ss" "src/host/boot.ss" "src/shader.ss" "src/theme.ss"
+    "src/gpu.ss" "src/font.ss" "src/gfx.ss" "src/proc.ss" "src/host.ss"
+    "src/wm.ss" "src/system.ss"))
 
 (for-each (lambda (f) (load (string-append *schevana-root* "/" f)))
           *schevana-sources*)

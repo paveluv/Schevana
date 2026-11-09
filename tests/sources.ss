@@ -178,7 +178,7 @@
 
 ;; Raise it deliberately: the core is what the desktop needs to boot and
 ;; run; everything else belongs in a folder.
-(define src-budget 28522)
+(define src-budget 28629)
 
 ;; The tokens of a datum as read; a list's end is none.
 (define (tokens x)
@@ -329,8 +329,7 @@
 ;;; loads right after the C bindings and the basics, names nothing of the
 ;;; core above it, and is the only code that names SDL. What it still
 ;;; names above it, and the SDL the core above still calls, are listed
-;;; here: the next slices of step 5 take them away, and the lists only
-;;; shrink.
+;;; here, and the lists only shrink.
 
 (define core0-files
   (filter (lambda (f) (string-prefix? "src/host/" f)) *schevana-sources*))
@@ -341,7 +340,7 @@
         (filter (lambda (f) (string-prefix? "src/" f)) *schevana-sources*)))
 
 ;; What core0 still names of the core above it: nothing since it times its
-;; own waits (step 3b); kept for what a later change may have to list.
+;; own waits; kept for what a later change may have to list.
 (define core0-reaches-up '())
 
 (check "core0 names nothing of the core above it but what's listed, on its \
@@ -359,8 +358,43 @@
                                                      (file-forms f))))))
                             core0-files)))))
 
+;; The symbols x names as code, each once: what's quoted is data, and in a
+;; quasiquote only what's unquoted is code.
+(define (code-symbols-in x)
+  (define (data x acc)
+    (cond [(and (pair? x) (memq (car x) '(unquote unquote-splicing)))
+           (code (cdr x) acc)]
+          [(pair? x) (data (cdr x) (data (car x) acc))]
+          [(vector? x) (fold-left (lambda (a y) (data y a)) acc
+                                  (vector->list x))]
+          [else acc]))
+  (define (code x acc)
+    (cond [(symbol? x) (if (memq x acc) acc (cons x acc))]
+          [(and (pair? x) (eq? (car x) 'quote)) acc]
+          [(and (pair? x) (eq? (car x) 'quasiquote)) (data (cdr x) acc)]
+          [(pair? x) (code (cdr x) (code (car x) acc))]
+          [(vector? x) (fold-left (lambda (a y) (code y a)) acc
+                                  (vector->list x))]
+          [else acc]))
+  (code x '()))
+
+;; Of core0's names, the world names only those core0 shares with it, its
+;; interface (host-interface in src/host/boot.ss).
+(check "the world names nothing of core0's but its interface"
+       (let ([own (remp (lambda (n) (memq n host-interface))
+                        (map cdr (apply append
+                                        (map definitions core0-files))))])
+         (none? (apply append
+                       (map (lambda (f)
+                              (map (lambda (s) (format "~a names ~a" f s))
+                                   (filter (lambda (s) (memq s own))
+                                           (reverse (code-symbols-in
+                                                     (file-forms f))))))
+                            (remp (lambda (f) (member f core0-files))
+                                  (append world-files '("main.ss"))))))))
+
 ;; The SDL the core above core0 still calls: none since the window went down
-;; (step 3a); kept for what a later change may have to list.
+;; to core0; kept for what a later change may have to list.
 (define core-sdl-left '())
 
 (check "only core0 names SDL's bindings, but what's listed, on its way out"
