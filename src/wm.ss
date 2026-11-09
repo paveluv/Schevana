@@ -169,7 +169,7 @@
 ;;; up at each call, so the desktop layer's procedures stay redefinable.
 
 (define-record-type surface
-  (nongenerative schevana-surface-2)
+  (nongenerative schevana-surface-3)
   (fields name depth
           draw    ; ()                           draws it
           box     ; () -> (values x y w h)       what it covers this frame
@@ -177,7 +177,8 @@
                   ;                              the point through
           mouse   ; (kind what x y button clicks)    kind: down up move
           key     ; (kind value mods) -> #t if taken; kind: key or text
-          tick    ; ()                           each step, before a frame
+          frame   ; (t)                          each frame, before it's
+                  ;                              drawn: what changed
           doc))   ; (what) -> ((L . "Apps") ...)  its mouse documentation
 
 (defvar *surfaces* '())   ; by depth
@@ -193,7 +194,7 @@
                    (plist-ref opts 'at (lambda (x y) #f))
                    (plist-ref opts 'mouse void)
                    (plist-ref opts 'key (lambda args #f))
-                   (plist-ref opts 'tick void)
+                   (plist-ref opts 'frame (lambda (t) (void)))
                    (plist-ref opts 'doc (lambda (what) '())))
                  surface-name)))
   (request-frame!)
@@ -977,27 +978,28 @@
 
 ;; The frames asked for, each window's once; a minimized window's wait
 ;; until it's seen again, so one that rides frames pauses meanwhile. A
-;; tick no window asked in allocates nothing and reads no clock.
-(define (wm-frames!)
+;; tick no window asked in allocates nothing.
+(define (wm-frames! t)
   (let loop ([ws *windows*])
     (when (pair? ws)
       (let ([props (window-props (car ws))])
         (when (and (hashtable-ref props 'wm-frame-soon #f) (visible? (car ws)))
           (hashtable-set! props 'wm-frame-soon #f)
-          (window-call (car ws) 'frame (pacer-frame-ns))))
+          (window-call (car ws) 'frame t)))
       (loop (cdr ws)))))
 
-;; Frames asked for, windows' ticks, then the toasts' expiry, then each
-;; surface, in depth order: the last may look at the frame the step will
-;; draw (*dirty*).
+;; Frames asked for, windows' ticks, the toasts' expiry, then each
+;; surface's frame, in depth order, before the frame is drawn: what it
+;; finds changed (the mouse's documentation) shows in it.
 (define (wm-tick!)
-  (wm-frames!)
-  (for-each (lambda (w) (window-call w 'tick)) *windows*)
-  (expire-toasts!)
-  (for-each (lambda (s)
-              (safely (surface-name s)
-                      (lambda () (surface-call s surface-tick))))
-            *surfaces*))
+  (let ([t (pacer-frame-ns)])
+    (wm-frames! t)
+    (for-each (lambda (w) (window-call w 'tick)) *windows*)
+    (expire-toasts!)
+    (for-each (lambda (s)
+                (safely (surface-name s)
+                        (lambda () (surface-call s surface-frame t))))
+              *surfaces*)))
 
 ;;; ------------------------------------------------------------------ drawing
 

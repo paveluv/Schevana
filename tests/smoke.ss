@@ -4207,7 +4207,7 @@
   (add-status-segment! 'probe (lambda () v))
   (steps 2)
   (set! v "probe-b")
-  (set! *status-last-second* -1)
+  (status-show!)
   (steps 1)
   (check (format "a status segment's change shows at the bar's next second ~s"
                  (shown-status-strings))

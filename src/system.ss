@@ -22,7 +22,7 @@
 (defvar *pacer-busy* 0)    ; the last tick's work, ns
 (defvar *pacer-peak* 0)    ; the most of any tick since it was last asked, ns
 (defvar *pacer-began* 0)   ; when the last tick began, ns
-(defvar *pacer-frame-ns* #f)   ; when the last tick's frame should show, ns
+(defvar *pacer-frame-ns* 0)   ; when the last tick's frame should show, ns
 ;; which of the last frames waited for their image, a bit each; the next one
 ;; isn't drawn; how many times the screen re-timed the pacer, and how many
 ;; frames that left out
@@ -212,8 +212,9 @@
 
 ;; When the frame the last tick made should show, ns, the t of a window's
 ;; 'frame: until frames lock to the screen's beat, when the next tick is
-;; due, about where a frame sent now shows; unpaced (a test's), now.
-(define (pacer-frame-ns) (or *pacer-frame-ns* (now-ns)))
+;; due, about where a frame sent now shows; unpaced (a test's), the tick's
+;; own ms, the one read of the clock it makes.
+(define (pacer-frame-ns) *pacer-frame-ns*)
 
 ;; A tick's period, ns: a little shorter than the refresh the screen reports,
 ;; 'pacer-margin. Too long and frames drift later, toward a cutoff, and one
@@ -239,9 +240,9 @@
     (set! *pacer-began* now)
     (let ([next (+ *pacer-due* (pacer-period))])
       (set! *pacer-due* (if (> next now) next (+ now (pacer-period))))))
-  (set! *pacer-frame-ns* (and now *pacer-due*))
   (set! *pacer-ticks* (+ *pacer-ticks* 1))
   (set! *pacer-tick-ms* (now-ms))
+  (set! *pacer-frame-ns* (if now *pacer-due* (* *pacer-tick-ms* 1000000)))
   (safely 'tick wm-tick!))
 
 ;;; The screen takes a frame only up to a cutoff before each refresh; a frame

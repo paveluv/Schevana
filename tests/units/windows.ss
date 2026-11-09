@@ -79,9 +79,9 @@
            (= asked (window-ref win 'wm-asked 0)))
     (steps 2)
     (check "one that asked gets one, its t when the frame shows (unpaced, \
-            the tick's now)"
+            the tick's now, to the ms)"
            (and (= (length frames) 1)
-                (<= before (car frames) (now-ns)))))
+                (<= (- before 1000000) (car frames) (now-ns)))))
   (set! again? #t)
   (window-frame-soon! win)
   (steps 3)

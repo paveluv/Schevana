@@ -58,9 +58,9 @@
       [(left) (focus-window! #f)])))
 
 ;; A new theme repaints the app icon too (icon-follow-theme!).
-(define (desktop-tick)
+(define (desktop-frame t)
   (icon-follow-theme!))
 
 (define-surface desktop -10
   'draw 'draw-desktop 'at (lambda (x y) 'desktop) 'mouse 'desktop-mouse
-  'tick 'desktop-tick 'doc (lambda (what) '((L . "Unfocus") (R . "Apps"))))
+  'frame 'desktop-frame 'doc (lambda (what) '((L . "Unfocus") (R . "Apps"))))

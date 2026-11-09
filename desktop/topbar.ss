@@ -81,14 +81,12 @@
 
 (define (topbar-draw) (unless (zero? (topbar-height)) (draw-topbar)))
 
-(define (topbar-tick)
-  (unless (zero? (topbar-height))
-    (status-tick topbar-box)
-    (mouse-doc-tick topbar-box)))
+(define (topbar-frame t)
+  (unless (zero? (topbar-height)) (mouse-doc-frame topbar-box)))
 
 (define (topbar-doc what) (if (eq? what 'launcher) '((L . "Apps")) '()))
 
 (define-surface topbar 20
   'draw 'topbar-draw 'box 'topbar-box 'at 'topbar-at 'mouse 'topbar-mouse
-  'tick 'topbar-tick 'doc 'topbar-doc)
+  'frame 'topbar-frame 'doc 'topbar-doc)
 (define-strip topbar 'top 'topbar-height)

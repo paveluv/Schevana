@@ -108,13 +108,12 @@
                                 (set! asked (+ asked 1))
                                 (format "asked ~a" asked)))
          (let ([added asked] [from (second)])
-           (set! *status-last-second* from)
            (do ([i 0 (+ i 1)]) ((= i 5))
              (request-frame!)
              (steps 1))
            ;; the clock's seconds may turn meanwhile: no more than that
            (let ([between (- asked added)] [turned (- (second) from)])
-             (set! *status-last-second* -1)
+             (status-show!)
              (steps 1)
              (let ([shown (shown-status-strings)] [last asked])
                (remove-status-segment! 'asked)
@@ -122,3 +121,46 @@
                     (<= between turned)
                     (member (format "asked ~a" last) shown)
                     (= last (+ added between 1))))))))
+
+;;; frames
+
+;; A surface's frame comes at each frame, before it's drawn, so what it
+;; finds changed shows in it; with t, when that frame shows.
+(let ([seen '()])
+  (define-surface frame-probe 90
+    'draw (lambda () (set! seen (cons 'draw seen)))
+    'frame (lambda (t) (set! seen (cons (and (number? t) 'frame) seen))))
+  (steps 1)
+  (set! seen '())
+  (request-frame!)
+  (steps 1)
+  (set! *surfaces* (remp (lambda (s) (eq? (surface-name s) 'frame-probe))
+                         *surfaces*))
+  (check "a surface's frame comes before the frame is drawn, with t"
+         (equal? seen '(draw frame))))
+
+(check "a surface that gives no frame has one that does nothing"
+       (let ([errors 0])
+         (define-surface frameless 91 'draw void)
+         (fluid-let ([report-error!
+                      (lambda (who c) (set! errors (+ errors 1)))])
+           (steps 2))
+         (set! *surfaces* (remp (lambda (s) (eq? (surface-name s) 'frameless))
+                                *surfaces*))
+         (= errors 0)))
+
+;; The bell's flash and the menu's blink end by timers, and the status
+;; clock keeps one of its own.
+(set-theme! 'bell 'screen)   ; which sets a timer of its own, to save
+(let ([before (length *timers*)])
+  (bell)
+  (check "a ring sets a timer that ends its flash"
+         (and *bell* (= (length *timers*) (+ before 1))))
+  (fluid-let ([now-ms (let ([t (+ (now-ms) 100)]) (lambda () t))])
+    (run-timers!))
+  (reset-theme!)
+  (check "and when it's due, the flash is gone"
+         (not *bell*)))
+(check "the status clock has a timer of its own"
+       (and *status-timer?*
+            (exists (lambda (t) (<= (- (car t) (now-ms)) 1000)) *timers*)))

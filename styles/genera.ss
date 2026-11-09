@@ -117,10 +117,10 @@
              'text 'mono)
   (when (memq 'hover flags) (genera-hover x y w h)))
 
-;; It shows the mouse documentation and the status (the clock).
-(define (genera-who-line-tick)
-  (status-tick taskbar-box)
-  (mouse-doc-tick taskbar-box))
+;; It shows the mouse documentation and the status (the clock, which asks
+;; for its own frames).
+(define (genera-who-line-frame t)
+  (mouse-doc-frame taskbar-box))
 
 ;; "Mouse-L: Move; Mouse-R: Window menu."
 (define (genera-mouse-doc-text doc)
@@ -694,7 +694,7 @@
   'taskbar-height (theme-rule (* 2 (genera-line)))
   'draw-taskbar 'genera-draw-who-line
   'taskbar-areas 'genera-who-line-areas
-  'taskbar-tick 'genera-who-line-tick
+  'taskbar-frame 'genera-who-line-frame
   'ui-busy-size 'genera-busy-size
   'ui-draw-busy 'genera-busy
   'mouse-doc-text 'genera-mouse-doc-text

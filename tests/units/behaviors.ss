@@ -1008,7 +1008,7 @@
              (reset-theme!)
              whole))))
 
-(check "a blinking entry asks for a frame"
+(check "a blinking entry asks for a frame at its next phase, by a timer"
        (let ([real now-ms] [t (now-ms)])
          (set! now-ms (lambda () t))
          (set-theme! 'menu-blink 2)
@@ -1020,7 +1020,7 @@
            (steps 1)
            (set! t (+ t 70))
            (set! *dirty* #f)
-           (wm-tick!)
+           (run-timers!)
            (let ([asked *dirty*])
              (set! t (+ t 300))
              (steps 1)

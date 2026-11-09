@@ -423,7 +423,7 @@
           (lambda ()
             ;; the bar reads the peak when the clock's second turns: not
             ;; here, so that only this check asks for it
-            (fluid-let ([status-tick (lambda (box) (void))])
+            (fluid-let ([refresh-status! void])
               (pacer-peak-ms!)
               (inject! '(key-down #\a ()))
               (steps 1)                   ; 3 ms and the key's 2

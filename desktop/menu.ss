@@ -136,7 +136,8 @@
     (when (and i (< i (length es)) (pair? (list-ref es i)) (not *menu-blink*))
       (let ([thunk (cdr (list-ref es i))])
         (if (> (theme 'menu-blink) 0)
-            (set! *menu-blink* (list (now-ms) i thunk))
+            (begin (set! *menu-blink* (list (now-ms) i thunk))
+                   (menu-blink!))
             (menu-run! thunk))))))
 
 (define (menu-run! thunk)
@@ -147,11 +148,15 @@
 ;; done the menu closes and the chosen entry's action runs.
 (define (menu-phase b) (quotient (- (now-ms) (car b)) 60))
 
-(define (menu-tick)
+;; A phase of the blink drawn, and a timer for the next one's start.
+(define (menu-blink!)
   (let ([b *menu-blink*])
     (when b
       (cond [(not *menu*) (set! *menu-blink* #f)]
-            [(< (menu-phase b) (* 2 (theme 'menu-blink))) (menu-request!)]
+            [(< (menu-phase b) (* 2 (theme 'menu-blink)))
+             (menu-request!)
+             (after (- (+ (car b) (* 60 (+ (menu-phase b) 1))) (now-ms))
+                    (lambda () (menu-blink!)))]
             [else (set! *menu-blink* #f) (menu-run! (caddr b))]))))
 
 (define (menu-mouse-move x y)
@@ -299,7 +304,7 @@
 
 (define-surface menu 30
   'draw 'draw-menu 'box 'menu-box 'at 'menu-at 'mouse 'menu-mouse
-  'key 'menu-takes 'tick 'menu-tick 'doc (lambda (what) '((L . "Choose"))))
+  'key 'menu-takes 'doc (lambda (what) '((L . "Choose"))))
 
 ;;; The launcher: every registered app, plus a few system actions.
 

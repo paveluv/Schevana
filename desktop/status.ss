@@ -37,18 +37,25 @@
 
 (define (shown-status-strings) (filter string? (map cdr *status-shown*)))
 
-(defvar *status-last-second* -1)
+(defvar *status-timer?* #f)   ; its timer is set: reloads set no other
 
-;; Once a second the bar that shows the status takes it again and asks for
-;; itself, box (the clock). Frames between, however many something else asks
-;; for, show the same: numbers that change every tick, the heap's and the
-;; busiest tick's, are read once a second, the busiest that second's.
-(define (status-tick box)
-  (let ([s (time-second (current-time))])
-    (unless (= s *status-last-second*)
-      (set! *status-last-second* s)
-      (refresh-status!)
-      (call-with-values box request-frame!))))
+;; The status taken again, and a frame asked for that shows it.
+(define (status-show!)
+  (refresh-status!)
+  (request-frame!))
+
+;; At the start of each second the status is shown again, the clock's.
+;; Frames between, however many something else asks for, show the same:
+;; numbers that change every tick, the heap's and the busiest tick's, are
+;; read once a second, the busiest that second's.
+(define (status-second!)
+  (status-show!)
+  (after (- 1000 (quotient (time-nanosecond (current-time)) 1000000))
+         (lambda () (status-second!))))
+
+(unless *status-timer?*
+  (set! *status-timer?* #t)
+  (status-second!))
 
 (define (status-procs)
   (let ([n (length *procs*)])

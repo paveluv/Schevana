@@ -15,7 +15,8 @@
                 [else #f])])
     (when area
       (set! *bell* (cons (+ (now-ms) 100) area))
-      (apply request-frame! area))))
+      (apply request-frame! area)
+      (after 100 (lambda () (bell-end!))))))
 
 ;; White by the difference operator: what is there, inverted, in any
 ;; palette (the CADR complemented its screen; Medley flashes the window).
@@ -27,9 +28,11 @@
 (define (bell-box)
   (if *bell* (apply values (cdr *bell*)) (values 0 0 0 0)))
 
-(define (bell-tick)
+;; The flash's timer: it ends, unless a ring since made it longer, whose
+;; own timer ends it then.
+(define (bell-end!)
   (when (and *bell* (>= (now-ms) (car *bell*)))
     (apply request-frame! (cdr *bell*))
     (set! *bell* #f)))
 
-(define-surface bell 60 'draw 'bell-draw 'box 'bell-box 'tick 'bell-tick)
+(define-surface bell 60 'draw 'bell-draw 'box 'bell-box)

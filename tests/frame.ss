@@ -344,7 +344,7 @@
     (steps 2)
     ;; the clock's second
     (set! tick 1)
-    (set! *status-last-second* -1)
+    (status-show!)
     (steps 1)
     (try! 'tick)
     (set! c-ink #x60a040)

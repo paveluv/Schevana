@@ -347,7 +347,7 @@
       (lambda () (format "Thu 29 Oct   12:00:~2,'0d" (mod second 60))))
     (frame-steps (lambda (i)
                    (set! second (+ second 1))
-                   (set! *status-last-second* -1)))))
+                   (status-show!)))))
 
 ;; A REPL alone, where it opens, typed into.
 (define (lone-keystrokes)

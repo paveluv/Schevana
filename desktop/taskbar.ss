@@ -84,10 +84,11 @@
         [(eq? what 'windows) '((L . "Choose a window"))]
         [else '()]))
 
-;; Each step: the built-in bar shows nothing that changes by itself.
-(define-part (taskbar-tick) (void))
+;; Before each frame, t when it shows: the built-in bar shows nothing that
+;; changes by itself.
+(define-part (taskbar-frame t) (void))
 
 (define-surface taskbar 10
   'draw 'draw-taskbar 'box 'taskbar-box 'at 'taskbar-at
-  'mouse 'taskbar-mouse 'tick 'taskbar-tick 'doc 'taskbar-doc)
+  'mouse 'taskbar-mouse 'frame 'taskbar-frame 'doc 'taskbar-doc)
 (define-strip taskbar 'bottom 'taskbar-height)

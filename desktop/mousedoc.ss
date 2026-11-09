@@ -54,10 +54,10 @@
 
 (defvar *mouse-doc-shown* '())
 
-;; Before a frame (a bar's tick): what shows the documentation is asked
-;; for, box, when it changed, so a move between two regions of other
-;; words redraws one thin strip, and one between the same words nothing.
-(define (mouse-doc-tick box)
+;; Before a frame (a bar's): what shows the documentation is asked for,
+;; box, when it changed, so a move between two regions of other words
+;; redraws one thin strip, and one between the same words nothing.
+(define (mouse-doc-frame box)
   (when (theme 'mouse-doc)
     (let ([d (mouse-doc)])
       (unless (equal? d *mouse-doc-shown*)
