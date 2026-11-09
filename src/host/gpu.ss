@@ -464,8 +464,19 @@
 
 ;; Main's jobs, in order: (texture id w h usage levels), (buffer id bytes),
 ;; (atlas id), the glyphs' atlas under id, (shaders vertex fragments), the
-;; core's, (target w h), the size frames draw to with no window, and
-;; (release id).
+;; core's, (target w h), the size frames draw to with no window, (release
+;; id), and (read then recs recs-n extras extras-n table table-n pieces
+;; images runs w h clear?), a drawing read back, its pixels left with then
+;; in *gpu-answers*.
+(defvar *gpu-answers* '())
+
+;; What core0 read back for main since main last took it, (then . bytes)
+;; each, in order: main hands each to its then.
+(define (gpu-take-answers!)
+  (let ([answers (reverse *gpu-answers*)])
+    (set! *gpu-answers* '())
+    answers))
+
 (define (gpu-run-jobs! jobs)
   (for-each
    (lambda (job)
@@ -496,6 +507,11 @@
           (set! *gpu-shaders* (cons (cadr job) (caddr job)))
           (gpu-forget-pipelines!)]
          [(target) (gpu-set-target! (cadr job) (caddr job))]
+         [(read)
+          (set! *gpu-answers*
+            (cons (cons (cadr job)
+                        (apply gpu-drawing->bytes '() '() '() (cddr job)))
+                  *gpu-answers*))]
          [(release)
           (gpu-list-free! (cadr job))
           (let ([o (hashtable-ref *gpu-objects* (cadr job) #f)])

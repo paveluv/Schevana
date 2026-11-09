@@ -1466,15 +1466,18 @@
 (define (rec-table-bytes) (* 4 glyph-row-words (+ *glyph-count* 1)))
 
 ;; The list written since rec-begin! goes to the screen: main publishes it,
-;; the host presents it, and what the screen held it is told after. => #t if
-;; it got there; #f if the screen had no room for it yet, and it should be
-;; tried again.
+;; the host presents it, and what the screen held it is told after, and
+;; what core0 read back handed to its then. => #t if it got there; #f if the
+;; screen had no room for it yet, and it should be tried again.
 (define (rec-present!)
   (rec-run-end!)
   (let ([shown? (gpu-present! (rec-publish))] [w *gpu-waits*])
     (unless (fx< (fxvector-ref w 0) 0)
       (host-screen-waited! 'acquire (fxvector-ref w 0) (fxvector-ref w 1))
       (host-screen-waited! 'submit (fxvector-ref w 2) (fxvector-ref w 3)))
+    (for-each (lambda (answer)
+                (safely 'readback (lambda () ((car answer) (cdr answer)))))
+              (gpu-take-answers!))
     shown?))
 
 ;; The list written since rec-begin!, as the frame main hands the host, with
@@ -1508,6 +1511,23 @@
 
 ;; What thunk draws, on an image pw × ph, scale times bigger, clear or black:
 ;; its pixels, row after row, premultiplied BGRA.
+;; The same, its pixels handed to then on main once core0 has drawn them,
+;; with a frame soon: nothing waits for them (.work/gpu-design.md 9.4). What
+;; was recorded goes to core0 as its own copy.
+(define (drawing->bytes-then pw ph scale thunk clear? then)
+  (rec-begin! (rationalize (exact scale) 1/100000))
+  (thunk)
+  (let ([copy (lambda (bv n)
+                (let ([c (make-bytevector n)])
+                  (bytevector-copy! bv 0 c 0 n)
+                  c))])
+    (gpu-ask! (list 'read then (copy *rec-bytes* *rec-at*) *rec-at*
+                    (copy *rec-extras* (* 4 *rec-extra-at*))
+                    (* 4 *rec-extra-at*) (rec-take-table!) (rec-table-bytes)
+                    (rec-take-atlas-pieces!) *rec-images* (rec-runs) pw ph
+                    clear?)))
+  (request-frame!))
+
 (define drawing->bytes
   (case-lambda
     [(pw ph scale thunk) (drawing->bytes pw ph scale thunk #t)]

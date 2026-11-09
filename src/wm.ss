@@ -1168,6 +1168,11 @@
   (set! *frame-ring-n* (+ *frame-ring-n* 1)))
 
 ;; The screen as it would be drawn now: its pixels, row after row,
-;; premultiplied BGRA. What tests and screenshots see.
+;; premultiplied BGRA. What tests and screenshots see; screen-bytes-then
+;; hands them to then on main, nothing waiting.
 (define (screen-bytes)
   (drawing->bytes *canvas-pw* *canvas-ph* *canvas-ratio* record-world! #f))
+
+(define (screen-bytes-then then)
+  (drawing->bytes-then *canvas-pw* *canvas-ph* *canvas-ratio* record-world! #f
+                       then))

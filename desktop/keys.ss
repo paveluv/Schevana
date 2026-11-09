@@ -12,8 +12,9 @@
     ((ctrl shift #\p) . ,(lambda () (app-launch! 'private-repl)))
     ((f11) . ,(lambda () (toggle-fullscreen!)))
     ((f12) . ,(lambda ()
-                (notify (format "Saved ~a"
-                                (png-write-screen (next-screenshot-path))))))))
+                (png-write-screen-then
+                 (next-screenshot-path)
+                 (lambda (path) (notify (format "Saved ~a" path))))))))
 
 (define (install-default-keys!)
   (for-each (lambda (b)

@@ -109,3 +109,11 @@
 (define (png-write-screen path)
   (png-write path (screen-bytes) (canvas-pixel-width) (canvas-pixel-height))
   path)
+
+;; The same, written once core0 has drawn it, then called with path on
+;; main: nothing waits for it.
+(define (png-write-screen-then path then)
+  (let ([w (canvas-pixel-width)] [h (canvas-pixel-height)])
+    (screen-bytes-then (lambda (bytes)
+                         (png-write path bytes w h)
+                         (then path)))))

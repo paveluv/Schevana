@@ -105,9 +105,10 @@
 ;; draw is called on a clear size × size image.
 (define (host-set-icon! size draw)
   (when (eq? *host* 'sdl)
-    (let ([bytes (drawing->bytes size size 1 (lambda () (draw size)))])
-      (unpremultiply! bytes)
-      (host-window-icon! size bytes))))
+    (drawing->bytes-then size size 1 (lambda () (draw size)) #t
+                         (lambda (bytes)
+                           (unpremultiply! bytes)
+                           (host-window-icon! size bytes)))))
 
 ;; Pixels premultiplied, as images keep them, made straight.
 (define (unpremultiply! bytes)

@@ -560,6 +560,21 @@
                (and (= first-up 1) (not after) recorded (= second-up 2)
                     (not (state lst))))))))
 
+;; A drawing read back with a then: nothing waits for it, and its pixels come
+;; on main with a frame, those a drawing read back at once has.
+(let* ([draw (lambda ()
+               (fill-box 0 0 2 2 #x112233)
+               (fill-box 2 0 2 2 #x445566))]
+       [now (drawing->bytes 4 2 1 draw)]
+       [got #f])
+  (drawing->bytes-then 4 2 1 draw #t (lambda (bytes) (set! got bytes)))
+  (let ([before got])
+    (steps 1)
+    (check "a drawing read back with a then comes on main with the next \
+            frame, the pixels a drawing read back at once has; nothing \
+            waits for it"
+           (and (not before) (bytevector? got) (equal? got now)))))
+
 (check "pixels with no chain, shown smaller, blend what they have"
        (let ([bv (make-bytevector 8 0)])
          (bytevector-u32-native-set! bv 0 #xffff0000)
