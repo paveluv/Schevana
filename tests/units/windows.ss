@@ -1,5 +1,6 @@
 ;;; tests/units/windows.ss — the window manager's stacking: a window opened
-;;; above its owner stays there, and the two move as one.
+;;; above its owner stays there, and the two move as one; the frames a
+;;; window asks for.
 
 (for-each close-window! (windows))
 
@@ -60,3 +61,41 @@
   (close-window! owner)
   (check "and all go with the owner"
          (null? (windows))))
+
+;; A window's 'frame comes once for each time it asks, at the next tick,
+;; with when that frame shows; never unasked, nor while it's minimized.
+(let* ([frames '()]
+       [again? #f]
+       [win (windows-open "Frames"
+                          'frame (lambda (w t)
+                                   (set! frames (cons t frames))
+                                   (when again? (window-frame-soon! w))))])
+  (steps 2)
+  (check "a window that didn't ask gets no 'frame"
+         (null? frames))
+  (let ([before (now-ns)] [asked (window-ref win 'wm-asked 0)])
+    (window-frame-soon! win)
+    (check "asking for a frame doesn't draw the window again"
+           (= asked (window-ref win 'wm-asked 0)))
+    (steps 2)
+    (check "one that asked gets one, its t when the frame shows (unpaced, \
+            the tick's now)"
+           (and (= (length frames) 1)
+                (<= before (car frames) (now-ns)))))
+  (set! again? #t)
+  (window-frame-soon! win)
+  (steps 3)
+  (check "asking again from its 'frame gets the next tick's too"
+         (= (length frames) 4))
+  (set! again? #f)
+  (steps 2)
+  (set! frames '())
+  (window-frame-soon! win)
+  (minimize-window! win)
+  (steps 2)
+  (let ([while-minimized (length frames)])
+    (focus-window! win)
+    (steps 1)
+    (check "a minimized window's frame waits until it's seen again"
+           (and (= while-minimized 0) (= (length frames) 1))))
+  (close-window! win))

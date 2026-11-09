@@ -32,6 +32,7 @@
      open-window
      close-window!
      invalidate!
+     window-frame-soon!
      resize-window!
      move-window!
      focus-window!

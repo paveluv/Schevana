@@ -22,6 +22,7 @@
 (defvar *pacer-busy* 0)    ; the last tick's work, ns
 (defvar *pacer-peak* 0)    ; the most of any tick since it was last asked, ns
 (defvar *pacer-began* 0)   ; when the last tick began, ns
+(defvar *pacer-frame-ns* #f)   ; when the last tick's frame should show, ns
 ;; which of the last frames waited for their image, a bit each; the next one
 ;; isn't drawn; how many times the screen re-timed the pacer, and how many
 ;; frames that left out
@@ -209,6 +210,11 @@
 (define (pacer-ticks) *pacer-ticks*)
 (define (pacer-tick-ms) *pacer-tick-ms*)
 
+;; When the frame the last tick made should show, ns, the t of a window's
+;; 'frame: until frames lock to the screen's beat, when the next tick is
+;; due, about where a frame sent now shows; unpaced (a test's), now.
+(define (pacer-frame-ns) (or *pacer-frame-ns* (now-ns)))
+
 ;; A tick's period, ns: a little shorter than the refresh the screen reports,
 ;; 'pacer-margin. Too long and frames drift later, toward a cutoff, and one
 ;; shows a refresh late; too short and they drift earlier, where a frame only
@@ -223,15 +229,17 @@
 ;; for the refresh.
 (define (pacer-start) (- *pacer-due* 2000000))
 
-;; A tick: every window's, surface's and toast's (wm-tick!). Paced (now,
-;; the ns it began, else #f), the next is due a period after this one
-;; was, or, when that is past already (this one a period late: its work
-;; too long), a period from now: the world slows down, no tick skipped.
+;; A tick: the frames asked for, and every window's, surface's and toast's
+;; tick (wm-tick!). Paced (now, the ns it began, else #f), the next is due
+;; a period after this one was, or, when that is past already (this one a
+;; period late: its work too long), a period from now: the world slows
+;; down, no tick skipped.
 (define (pacer-tick! now)
   (when now
     (set! *pacer-began* now)
     (let ([next (+ *pacer-due* (pacer-period))])
       (set! *pacer-due* (if (> next now) next (+ now (pacer-period))))))
+  (set! *pacer-frame-ns* (and now *pacer-due*))
   (set! *pacer-ticks* (+ *pacer-ticks* 1))
   (set! *pacer-tick-ms* (now-ms))
   (safely 'tick wm-tick!))

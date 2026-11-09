@@ -43,8 +43,8 @@
                  (format " ~a" (window-state w))))))
 
 (define handler-kinds
-  '(open draw tick key text mouse-down mouse-up mouse-move wheel resize focus
-    blur close))
+  '(open draw tick frame key text mouse-down mouse-up mouse-move wheel resize
+    focus blur close))
 
 (defvar *windows* '())        ; z-order, topmost first
 (defvar *focus* #f)
@@ -968,9 +968,30 @@
 
 ;;; ------------------------------------------------------------------ tick
 
-;; Windows, then the toasts' expiry, then each surface, in depth order:
-;; the last may look at the frame the step will draw (*dirty*).
+;; Asks for win's 'frame, (lambda (win t) ...), once, before the next frame
+;; it's seen in: t is when that frame shows (pacer-frame-ns). A window that
+;; goes on animating asks again from its 'frame. Asking draws nothing, so
+;; the flag isn't set by window-set!, which would draw the window again.
+(define (window-frame-soon! win)
+  (hashtable-set! (window-props win) 'wm-frame-soon #t))
+
+;; The frames asked for, each window's once; a minimized window's wait
+;; until it's seen again, so one that rides frames pauses meanwhile. A
+;; tick no window asked in allocates nothing and reads no clock.
+(define (wm-frames!)
+  (let loop ([ws *windows*])
+    (when (pair? ws)
+      (let ([props (window-props (car ws))])
+        (when (and (hashtable-ref props 'wm-frame-soon #f) (visible? (car ws)))
+          (hashtable-set! props 'wm-frame-soon #f)
+          (window-call (car ws) 'frame (pacer-frame-ns))))
+      (loop (cdr ws)))))
+
+;; Frames asked for, windows' ticks, then the toasts' expiry, then each
+;; surface, in depth order: the last may look at the frame the step will
+;; draw (*dirty*).
 (define (wm-tick!)
+  (wm-frames!)
   (for-each (lambda (w) (window-call w 'tick)) *windows*)
   (expire-toasts!)
   (for-each (lambda (s)
