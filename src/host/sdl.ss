@@ -48,6 +48,7 @@
 (define-foreign sdl-get-current-display-mode "SDL_GetCurrentDisplayMode"
   (unsigned-32) uptr)
 (define-foreign sdl-poll-event "SDL_PollEvent" (uptr) bool)
+(define-foreign sdl-push-event "SDL_PushEvent" (uptr) bool)
 (define-foreign/collect-safe sdl-wait-event-timeout "SDL_WaitEventTimeout"
   (uptr int) bool)
 (define-foreign sdl-start-text-input "SDL_StartTextInput" (uptr) bool)
@@ -104,8 +105,10 @@
   (uptr uptr) void)
 (define-foreign sdl-acquire-gpu-commands "SDL_AcquireGPUCommandBuffer"
   (uptr) uptr)
-(define-foreign sdl-acquire-swapchain "SDL_AcquireGPUSwapchainTexture"
-  (uptr uptr uptr uptr uptr) bool)
+;; The screen holds it as long as it likes: collect-safe, as every call
+;; that may block is (tests/sources.ss).
+(define-foreign/collect-safe sdl-acquire-swapchain
+  "SDL_AcquireGPUSwapchainTexture" (uptr uptr uptr uptr uptr) bool)
 (define-foreign sdl-begin-copy-pass "SDL_BeginGPUCopyPass" (uptr) uptr)
 (define-foreign sdl-end-copy-pass "SDL_EndGPUCopyPass" (uptr) void)
 (define-foreign sdl-upload-to-buffer "SDL_UploadToGPUBuffer"
@@ -147,8 +150,9 @@
   (uptr unsigned-32 unsigned-32 unsigned-32) void)
 (define-foreign sdl-generate-gpu-mipmaps "SDL_GenerateMipmapsForGPUTexture"
   (uptr uptr) void)
-(define-foreign sdl-submit-gpu "SDL_SubmitGPUCommandBuffer" (uptr) bool)
-(define-foreign sdl-submit-gpu-fence
+(define-foreign/collect-safe sdl-submit-gpu "SDL_SubmitGPUCommandBuffer"
+  (uptr) bool)
+(define-foreign/collect-safe sdl-submit-gpu-fence
   "SDL_SubmitGPUCommandBufferAndAcquireFence" (uptr) uptr)
 (define-foreign/collect-safe sdl-wait-gpu-fences "SDL_WaitForGPUFences"
   (uptr bool uptr unsigned-32) bool)

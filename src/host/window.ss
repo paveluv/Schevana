@@ -9,6 +9,7 @@
 ;;;             screenshots)
 
 (defvar *host* 'none)
+(define host-wake-type #x8000)   ; SDL_EVENT_USER: core0's wake
 (defvar *sdl-window* 0)
 (defvar *sdl-event* (foreign-alloc 128))   ; an SDL_Event
 ;; what SDL says of the window's size: a place for it, a pointer made once
@@ -365,10 +366,12 @@
                    [acc '()]
                    [types '()])
           (if more?
-              (let ([e (sdl-event->list buf)]
-                    [type (foreign-ref 'unsigned-32 buf 0)])
-                (loop (sdl-poll-event buf) (if e (cons e acc) acc)
-                      (cons type types)))
+              (let ([type (foreign-ref 'unsigned-32 buf 0)])
+                (if (= type host-wake-type)   ; a wake: no event of the world's
+                    (loop (sdl-poll-event buf) acc types)
+                    (let ([e (sdl-event->list buf)])
+                      (loop (sdl-poll-event buf) (if e (cons e acc) acc)
+                            (cons type types)))))
               (values (reverse acc) (reverse types)))))
       (values '() '())))
 
@@ -428,6 +431,14 @@
 (defvar *host-jobs* (box '()))
 (defvar *host-inbox* (box '()))
 (defvar *host-job-failed* #f)   ; (job . condition): the last job that raised
+;; A wake is in SDL's queue since the step began: one is enough.
+(defvar *host-woken* (box #f))
+;; The wake, an SDL_Event of SDL_EVENT_USER's: SDL copies it as it's pushed.
+(defvar *host-wake-event*
+  (let ([e (foreign-alloc 128)])
+    (do ([i 0 (+ i 1)]) ((= i 128)) (foreign-set! 'unsigned-8 e i 0))
+    (foreign-set! 'unsigned-32 e 0 host-wake-type)
+    e))
 
 ;; What SDL says of the window, as core0 read it last: #(flags w h pw ph
 ;; scale frame-ns display error-text). Made again whole when it changes, so
@@ -448,7 +459,18 @@
             [(box-cas! b l '()) (memory-order-acquire) (reverse l)]
             [else (loop)]))))
 
-(define (host-post! job) (host-put! *host-jobs* job))
+(define (host-post! job)
+  (host-put! *host-jobs* job)
+  (host-wake!))
+
+;; Ends core0's wait for events: a job posted, a frame published. From any
+;; thread; with no window, there's no wait to end.
+(define (host-wake!)
+  (when (eq? *host* 'sdl)
+    (let loop ()
+      (cond [(unbox *host-woken*)]
+            [(box-cas! *host-woken* #f #t) (sdl-push-event *host-wake-event*)]
+            [else (loop)]))))
 
 (define (host-run-job! job)
   (guard (c [#t (set! *host-job-failed* (cons job c))])
@@ -458,6 +480,7 @@
 ;; wait-ms for the first, into the world's inbox; then what it says of
 ;; itself, read again.
 (define (host-step! wait-ms)
+  (set-box! *host-woken* #f)
   (let ([jobs (host-take! *host-jobs*)])
     (for-each host-run-job! jobs)
     (let-values ([(events types) (host-window-pump wait-ms)])

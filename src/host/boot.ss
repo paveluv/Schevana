@@ -54,6 +54,8 @@
     ;; thread.
     host-window-minimum! host-window-fullscreen! host-window-icon!
     host-set-cursor! clipboard-set!
+    ;; and its wake, ending core0's wait: from any thread
+    host-wake!
     ;; Calls into SDL or core0's own state: safe only on core0's thread.
     ;; Until core0 has a thread of its own the world steps it (host-step!),
     ;; and boots it (opening, sizing, showing the window).

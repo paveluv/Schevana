@@ -185,7 +185,7 @@
 
 ;; Raise it deliberately: the core is what the desktop needs to boot and
 ;; run; everything else belongs in a folder.
-(define src-budget 29212)
+(define src-budget 29288)
 
 ;; The tokens of a datum as read; a list's end is none.
 (define (tokens x)
@@ -405,6 +405,32 @@
 ;; to core0; kept for what a later change may have to list.
 (define core-sdl-left '())
 
+;; SDL's calls that may block: the screen's hold, the event wait, waits for
+;; the GPU. Each is collect-safe, so that a core0 held in one stalls no
+;; collection another thread needs (.work/gpu-design.md 9.6).
+(define sdl-blocking
+  '("SDL_AcquireGPUSwapchainTexture"
+    "SDL_SubmitGPUCommandBuffer"
+    "SDL_SubmitGPUCommandBufferAndAcquireFence"
+    "SDL_WaitEventTimeout"
+    "SDL_WaitForGPUFences"
+    "SDL_WaitForGPUIdle"
+    "SDL_SetGPUSwapchainParameters"))
+
+(check "every SDL call that may block is collect-safe"
+       (let ([forms (file-forms "src/host/sdl.ss")])
+         (none? (filter-map
+                 (lambda (c)
+                   (let ([f (find (lambda (x)
+                                    (and (pair? x) (pair? (cdr x))
+                                         (pair? (cddr x))
+                                         (equal? (caddr x) c)))
+                                  forms)])
+                     (cond [(not f) (format "not bound: ~a" c)]
+                           [(eq? (car f) 'define-foreign/collect-safe) #f]
+                           [else (format "not collect-safe: ~a" c)])))
+                 sdl-blocking))))
+
 (check "only core0 names SDL's bindings, but what's listed, on its way out"
        (let ([sdl (map cdr (definitions "src/host/sdl.ss"))])
          (none? (apply append
@@ -459,7 +485,8 @@
     (crew-remove!)
     (crew-claim!)
     (host-put! memory-order-release)
-    (host-take! memory-order-acquire)))
+    (host-take! memory-order-acquire)
+    (host-wake!)))
 
 (define thread-fence-names '(memory-order-acquire memory-order-release))
 

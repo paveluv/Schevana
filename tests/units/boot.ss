@@ -66,3 +66,27 @@
             (= (host-frame-ns) (quotient 1000000000 60))
             (equal? (map car (inspect-host))
                     '(sizes scale flags frame-ns jobs events failed))))
+
+;; Core0's wake: a job posted or a frame published ends its wait for events.
+;; One is pushed until the step that takes it; the pump hands the world no
+;; event for it.
+(let ([pushed 0])
+  (fluid-let ([*host* 'sdl]
+              [*host-woken* (box #f)]
+              [sdl-push-event (lambda (e) (set! pushed (+ pushed 1)) #t)])
+    (host-wake!)
+    (host-wake!)
+    (let ([once pushed])
+      (set-box! *host-woken* #f)   ; as a step begins
+      (host-wake!)
+      (check "a wake is pushed once until the next step"
+             (and (= once 1) (= pushed 2))))))
+
+(fluid-let ([*host* 'sdl] [*host-woken* (box #f)])
+  (host-window-pump 0)   ; what headless SDL had queued
+  (host-wake!)
+  (let ([t0 (now-ms)])
+    (let-values ([(events types) (host-window-pump 1000)])
+      (check "a wake ends core0's wait at once, and is no event of the \
+              world's"
+             (and (< (- (now-ms) t0) 500) (null? events) (null? types))))))

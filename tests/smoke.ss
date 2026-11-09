@@ -3936,6 +3936,7 @@
     [(sdl-get-current-display-mode) (lambda (display) 0)]   ; none: 60 Hz
     [(sdl-get-error) (lambda () "")]
     [(sdl-get-clipboard-text) (lambda () 0)]
+    [(sdl-push-event) (lambda (e) #t)]
     [(sdl-poll-event) poll]
     [(sdl-wait-event-timeout) (lambda (buf ms) (poll buf))]
     [(sdl-get-ticks-ns) (top-level-value name core0-env)]   ; SDL's own
