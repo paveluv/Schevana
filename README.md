@@ -506,8 +506,9 @@ next boot or `(reload!)`, with no list to edit, and `(source-files)`
 lists them all. Only the core calls C: the folders draw, measure and
 save through its procedures, never through `src/ffi.ss`'s bindings, and
 `tests/sources.ss` checks that none of them names one. Below the rest of
-the core sits core0, `src/host/`: SDL's bindings and the GPU's device
-side, loaded right after the C bindings and the basics. It names nothing
+the core sits core0, `src/host/`: SDL's bindings, the GPU's device side,
+and the window and its events, loaded right after the C bindings and the
+basics. It names nothing
 of the core above it, only it names SDL, and what still crosses, on its
 way out, is listed in `tests/sources.ss` (the GPU design's step 5, in
 `.work/gpu-design.md`).

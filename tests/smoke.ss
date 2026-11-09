@@ -3809,13 +3809,14 @@
      (steps 1))))
 
 ;;; SDL3's event layout, from a hand-filled SDL_Event: the offsets are
-;;; SDL_events.h's (3.2).
+;;; SDL_events.h's (3.2). Core0 decodes it; the world lays it out.
 (define (decode-event type . fields)   ; fields: (type offset value) ...
   (do ([i 0 (+ i 1)]) ((= i 128)) (foreign-set! 'unsigned-8 *sdl-event* i 0))
   (foreign-set! 'unsigned-32 *sdl-event* 0 type)
   (for-each (lambda (f) (foreign-set! (car f) *sdl-event* (cadr f) (caddr f)))
             fields)
-  (sdl-event->list *sdl-event*))
+  (let ([e (sdl-event->list *sdl-event*)])
+    (and e (host-event->world e))))
 
 (set! *wheel-rest* '(0 . 0))
 ;; the decoded wheel events, in order (map's order is unspecified)

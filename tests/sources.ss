@@ -178,7 +178,7 @@
 
 ;; Raise it deliberately: the core is what the desktop needs to boot and
 ;; run; everything else belongs in a folder.
-(define src-budget 27957)
+(define src-budget 28076)
 
 ;; The tokens of a datum as read; a list's end is none.
 (define (tokens x)
@@ -284,17 +284,18 @@
 
 ;; The GPU layer speaks the world's terms: above it, in the core too, nothing
 ;; names SDL's windowless half, Vulkan, SPIR-V, Metal or MSL, so that another
-;; back end, or raw Vulkan, is the GPU layer's business alone. The host keeps
-;; SDL's windows, and the clock is SDL's.
+;; back end, or raw Vulkan, is the GPU layer's business alone. Core0 keeps
+;; SDL's window; the clock and the CPU count are SDL's, which any thread may
+;; call.
 (define above-gpu-files
   (remp (lambda (f)
           (member f '("src/ffi.ss" "src/shader.ss" "src/host/sdl.ss"
-                      "src/host/gpu.ss" "src/font.ss" "src/host.ss")))
+                      "src/host/gpu.ss" "src/host/window.ss" "src/font.ss")))
         (append world-files '("main.ss"))))
 
 (define (names-a-back-end? s)
   (let ([name (symbol->string s)])
-    (and (not (eq? s 'sdl-get-ticks-ns))
+    (and (not (memq s '(sdl-get-ticks-ns sdl-get-num-logical-cpu-cores)))
          (or (string-prefix? "sdl-" name)
              (string-contains-ci? name "spirv")
              (string-contains-ci? name "vulkan")
@@ -358,27 +359,9 @@
                                                      (file-forms f))))))
                             core0-files)))))
 
-;; The SDL the core above core0 still calls: the window's, in src/host.ss,
-;; until the host has a thread of its own (slice 4).
-(define core-sdl-left
-  '(sdl-get-window-display-scale sdl-set-hint sdl-create-window
-    SDL_WINDOW_RESIZABLE SDL_WINDOW_HIGH_PIXEL_DENSITY SDL_WINDOW_HIDDEN
-    SDL_WINDOW_FULLSCREEN sdl-get-error sdl-set-window-size
-    sdl-set-window-position SDL_WINDOWPOS_CENTERED sdl-show-window
-    sdl-start-text-input sdl-init SDL_INIT_VIDEO sdl-wait-gpu-idle
-    sdl-release-window sdl-destroy-window sdl-quit sdl-get-window-flags
-    sdl-set-window-fullscreen sdl-create-surface-from
-    SDL_PIXELFORMAT_ARGB8888 sdl-set-window-icon sdl-destroy-surface
-    sdl-get-window-size sdl-get-window-size-in-pixels
-    sdl-set-window-minimum-size sdl-get-current-display-mode
-    sdl-get-display-for-window SDL_EVENT_QUIT SDL_EVENT_KEY_DOWN
-    SDL_EVENT_TEXT_INPUT SDL_EVENT_MOUSE_MOTION SDL_EVENT_MOUSE_BUTTON_DOWN
-    SDL_EVENT_MOUSE_BUTTON_UP SDL_EVENT_MOUSE_WHEEL SDL_EVENT_WINDOW_RESIZED
-    SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED SDL_EVENT_WINDOW_DISPLAY_SCALE_CHANGED
-    SDL_EVENT_WINDOW_EXPOSED SDL_EVENT_WINDOW_MOUSE_LEAVE
-    sdl-wait-event-timeout sdl-poll-event sdl-set-cursor
-    sdl-create-system-cursor sdl-get-clipboard-text sdl-free
-    sdl-set-clipboard-text))
+;; The SDL the core above core0 still calls: none since the window went down
+;; (step 3a); kept for what a later change may have to list.
+(define core-sdl-left '())
 
 (check "only core0 names SDL's bindings, but what's listed, on its way out"
        (let ([sdl (map cdr (definitions "src/host/sdl.ss"))])
