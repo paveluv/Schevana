@@ -99,3 +99,12 @@
     (check "a minimized window's frame waits until it's seen again"
            (and (= while-minimized 0) (= (length frames) 1))))
   (close-window! win))
+
+(check "a closed window drawn again asks for no frame: a timer it left \
+        behind draws nothing"
+       (let ([w (windows-open "Gone")])
+         (close-window! w)
+         (steps 1)
+         (fluid-let ([*dirty* #f])
+           (invalidate! w)
+           (not *dirty*))))

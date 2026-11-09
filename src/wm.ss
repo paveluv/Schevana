@@ -94,7 +94,9 @@
 
 ;; Each (invalidate!) is a new generation, and each (invalidate! win) a new
 ;; ask of win's: a list of win's drawn before either is drawn again. Asked
-;; while it draws, it draws again the next frame.
+;; while it draws, it draws again the next frame. A window not open (closed,
+;; or one a preview draws) asks for no frame: a timer it left behind draws
+;; nothing.
 (defvar *wm-generation* 0)
 
 (define invalidate!
@@ -103,7 +105,7 @@
     [(win) (when win
              (hashtable-update! (window-props win) 'wm-asked
                                 (lambda (n) (+ n 1)) 0))
-           (request-frame!)]
+           (when (or (not win) (memq win *windows*)) (request-frame!))]
     [(win x y w h) (invalidate! win)]))
 
 ;; A window's shadow, for its style: the theme key 'shadow, half unfocused;
