@@ -163,14 +163,13 @@
               #t)))]
     [else #f]))
 
-;; With vsync on, thunk may wait for the screen: a phase of the profiler's,
-;; part saying in which call, and no work. => thunk's value.
-(define (host-screen-wait part thunk)
-  (let* ([t (now-ns)]
-         [v (with-profile-span 'vsync-wait part (thunk))])
-    (pacer-waited! t)
-    (when (eq? part 'acquire) (pacer-image-waited! t))
-    v))
+;; With vsync on, the screen held the host in its call part from start to
+;; end, on now-ns's clock (core0 times its waits, *gpu-waits*): a phase of
+;; the profiler's, and no work.
+(define (host-screen-waited! part start end)
+  (profile-span-past! 'vsync-wait part start end)
+  (pacer-held! (- end start))
+  (when (eq? part 'acquire) (pacer-image-waited! start end)))
 
 ;; How many threads this machine runs at once (logical cores).
 (define (host-cpu-count) (sdl-get-num-logical-cpu-cores))

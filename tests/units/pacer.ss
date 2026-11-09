@@ -35,9 +35,9 @@
           (lambda ()
             (let ([shown? (real-present)])
               (when vsync?   ; to the next refresh
-                (host-screen-wait
-                 'submit
-                 (lambda () (set! t (* period (+ 1 (quotient t period)))))))
+                (let ([t0 t])
+                  (set! t (* period (+ 1 (quotient t period))))
+                  (host-screen-waited! 'submit t0 t)))
               shown?)))
     (pacer-rate! 'screen)
     (let* ([keeper (open-window "Keeper" 'size '(80 . 60)
@@ -205,12 +205,10 @@
     (set! rec-present!
           (lambda ()
             (let ([t0 t])
-              (host-screen-wait
-               'acquire
-               (lambda ()
-                 (set! reports (filter (lambda (r) (> r t)) reports))
-                 (when (>= (length reports) 2)
-                   (set! t (apply min reports)))))
+              (set! reports (filter (lambda (r) (> r t)) reports))
+              (when (>= (length reports) 2)
+                (set! t (apply min reports)))
+              (host-screen-waited! 'acquire t0 t)
               (set! holds (cons (- t t0) holds)))
             (set! t (+ t 200000))
             (unless cuts (set! cuts (- t 1700000)))
@@ -263,7 +261,8 @@
         ticks vary; every tick \
         goes on; left to itself, it goes on missing"
        (let* ([timed (pacer-test-screen 4000)]
-              [untimed (fluid-let ([pacer-image-waited! (lambda (t) (void))])
+              [untimed (fluid-let ([pacer-image-waited!
+                                    (lambda (t now) (void))])
                          (pacer-test-screen 4000))]
               [period (list-ref timed 4)]
               [after (pacer-test-screen-after timed 30)]
@@ -285,7 +284,7 @@
        (let* ([t (* 1000 1000000000)] [due 123456789]
               [wait! (lambda (ms)
                        (set! t (+ t 20000000))
-                       (pacer-image-waited! (- t (* ms 1000000))))]
+                       (pacer-image-waited! (- t (* ms 1000000)) t))]
               [still? (lambda ()
                         (and (= *pacer-due* due) (not *pacer-skip?*)))]
               [retimed *pacer-retimed*])
@@ -365,8 +364,9 @@
                (let ([present rec-present!])
                  (lambda ()
                    (let ([shown? (present)])
-                     (host-screen-wait 'submit
-                                       (lambda () (pacer-test-advance! 7)))
+                     (let ([t0 pacer-test-t])
+                       (pacer-test-advance! 7)
+                       (host-screen-waited! 'submit t0 pacer-test-t))
                      shown?)))])
     (thunk)))
 

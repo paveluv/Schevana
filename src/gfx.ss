@@ -1467,11 +1467,16 @@
 (define (rec-table-bytes) (* 4 glyph-row-words (+ *glyph-count* 1)))
 
 ;; The list written since rec-begin! goes to the screen: main publishes it,
-;; and the host presents it. => #t if it got there; #f if the screen had no
-;; room for it yet, and it should be tried again.
+;; the host presents it, and what the screen held it is told after. => #t if
+;; it got there; #f if the screen had no room for it yet, and it should be
+;; tried again.
 (define (rec-present!)
   (rec-run-end!)
-  (gpu-present! (rec-publish)))
+  (let ([shown? (gpu-present! (rec-publish))] [w *gpu-waits*])
+    (unless (fx< (fxvector-ref w 0) 0)
+      (host-screen-waited! 'acquire (fxvector-ref w 0) (fxvector-ref w 1))
+      (host-screen-waited! 'submit (fxvector-ref w 2) (fxvector-ref w 3)))
+    shown?))
 
 ;; The list written since rec-begin!, as the frame main hands the host, with
 ;; the lists kept from earlier: the past one, and the preview's, which its

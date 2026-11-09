@@ -303,7 +303,21 @@
 ;; A span opens, on the stack: untimed outside a step, and past the
 ;; stack's depth. A step starts the stack afresh, closing one a raise
 ;; left open.
-(define (profile-begin! key part)
+(define profile-begin!
+  (case-lambda
+    [(key part) (profile-open! key part)]
+    ;; a span already over, from start to end on now-ns's clock: as if it
+    ;; had been open inside the one open innermost
+    [(key part start end)
+     (let ([d *profile-depth*] [past *profile-past*])
+       (profile-open! key part)
+       (if (fx> *profile-depth* d)
+           (begin
+             (fxvector-set! *profile-start* d start)
+             (profile-close-at! d end))
+           (set! *profile-past* past)))]))
+
+(define (profile-open! key part)
   (unless (profile-untimed?)
     (let ([d (if (eq? key 'step) 0 *profile-depth*)])
       (when (and (eq? key 'step) (fx> *profile-depth* 0))
@@ -347,8 +361,10 @@
 ;; up. Its self time goes to its phase (the collector's to gc, the wait
 ;; for the screen's to vsync-wait) and to its use; the step's closes the
 ;; step, and the tick with it unless the step came between ticks.
-(define (profile-close! d)
-  (let ([now (now-ns)] [inner *profile-inner*])
+(define (profile-close! d) (profile-close-at! d (now-ns)))
+
+(define (profile-close-at! d now)
+  (let ([inner *profile-inner*])
     (do ([j (fx- *profile-depth* 1) (fx- j 1)]) ((fx<= j d))
       (profile-fx+! inner d (fxvector-ref inner j)))
     (let* ([ns (fx- now (fxvector-ref *profile-start* d))]

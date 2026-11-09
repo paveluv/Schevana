@@ -33,6 +33,13 @@
 ;; run costs Chez a copy of the frame).
 (defvar *profile-span* #f)
 
+;; A span already over, from start to end on now-ns's clock, told to the
+;; profiler as if it had been open inside the one open now: the host's waits,
+;; which core0 times itself.
+(define (profile-span-past! key part start end)
+  (let ([span *profile-span*])
+    (when span ((car span) key part start end))))
+
 (define-syntax with-profile-span
   (lambda (x)
     (syntax-case x ()

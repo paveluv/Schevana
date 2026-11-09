@@ -172,8 +172,10 @@
     events))
 
 ;; What since now was a wait, for input or for the screen.
-(define (pacer-waited! since)
-  (set! *pacer-waits* (+ *pacer-waits* (- (now-ns) since))))
+(define (pacer-waited! since) (pacer-held! (- (now-ns) since)))
+
+;; ns of waiting, for input or for the screen, told after.
+(define (pacer-held! ns) (set! *pacer-waits* (+ *pacer-waits* ns)))
 
 ;; A step ended, ns long: its work sums into the tick, which ends with it
 ;; unless it came between ticks, as the profiler's do.
@@ -248,8 +250,8 @@
 (define pacer-holds-least 3)        ; of the last 8 frames: fewer are let be
 
 ;; The screen held main for its next image from t until now.
-(define (pacer-image-waited! t)
-  (let* ([now (now-ns)] [held (- now t)] [period (pacer-period)]
+(define (pacer-image-waited! t now)
+  (let* ([held (- now t)] [period (pacer-period)]
          [held? (and (eq? *pacer-rate* 'screen)
                      (>= held pacer-hold-least)
                      (< held (* 3 period)))])

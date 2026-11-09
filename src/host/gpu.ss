@@ -1159,10 +1159,16 @@
           (set! *gpu-frame-free* f)
           shown?))))
 
+;; The last frame's waits for the screen, on now-ns's clock: when the
+;; acquire began and ended, and the submit; all -1 with no window. Core0
+;; times them itself, and the world reads them after (src/host.ss).
+(defvar *gpu-waits* (make-fxvector 4 -1))
+
 ;; One frame: uploads, then the runs, to the window or the target. => #t if
 ;; it reached the screen; #f if the window had no room for it yet (a frame
 ;; still in flight, or it is hidden).
 (define (gpu-frame! f dirty)
+  (fxvector-fill! *gpu-waits* -1)
   (let* ([r *renderer*]
          [runs (gpu-frame-runs f)]
          [cb (gpu-must 'gpu-frame!
@@ -1185,20 +1191,22 @@
         ;; the driver may hold either end of this till the screen is ready
         (let* ([out gpu-swapchain-out*]
                [done? (gpu-last-frame-done? r)]
+               [waits *gpu-waits*]
                [shown?
-                (and (host-screen-wait
-                      'acquire
-                      (lambda ()
-                        (sdl-acquire-swapchain
-                         cb (renderer-sdl-window r)
-                         (ftype-pointer-address
-                          (ftype-&ref gpu-swapchain-out (texture) out))
-                         (ftype-pointer-address
-                          (ftype-&ref gpu-swapchain-out (w) out))
-                         (ftype-pointer-address
-                          (ftype-&ref gpu-swapchain-out (h) out)))))
-                     (not (eqv? 0 (ftype-ref gpu-swapchain-out (texture)
-                                             out))))])
+                (begin
+                  (fxvector-set! waits 0 (now-ns))
+                  (let ([ok (sdl-acquire-swapchain
+                             cb (renderer-sdl-window r)
+                             (ftype-pointer-address
+                              (ftype-&ref gpu-swapchain-out (texture) out))
+                             (ftype-pointer-address
+                              (ftype-&ref gpu-swapchain-out (w) out))
+                             (ftype-pointer-address
+                              (ftype-&ref gpu-swapchain-out (h) out)))])
+                    (fxvector-set! waits 1 (now-ns))
+                    (and ok
+                         (not (eqv? 0 (ftype-ref gpu-swapchain-out (texture)
+                                                 out))))))])
           (set! *gpu-frame-state*
             (cond [done? 0] [(gpu-last-frame-done? r) 1] [else 2]))
           (when shown?
@@ -1208,10 +1216,9 @@
                             (ftype-ref gpu-swapchain-out (w) out)
                             (ftype-ref gpu-swapchain-out (h) out)
                             runs #f))
-          (let ([fence (gpu-must
-                        'gpu-frame!
-                        (host-screen-wait
-                         'submit (lambda () (sdl-submit-gpu-fence cb))))])
+          (fxvector-set! waits 2 (now-ns))
+          (let ([fence (gpu-must 'gpu-frame! (sdl-submit-gpu-fence cb))])
+            (fxvector-set! waits 3 (now-ns))
             (when (renderer-fence r)
               (sdl-release-gpu-fence (renderer-device r) (renderer-fence r)))
             (renderer-fence-set! r fence))

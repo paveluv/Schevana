@@ -124,6 +124,27 @@
               (profile-test-near? (apply + (profile-test-phases s))
                                   (profile-tick-ms s)))))
 
+(check "a span already over, told after, counts as if it had been open: \
+        its length to its phase, inside the span open around it (core0's \
+        waits for the screen)"
+       (let* ([s (car (profile-test-on-clock
+                       1000
+                       (lambda ()
+                         (profile-test-ticks
+                          (lambda ()
+                            (with-profile-span 'step #f
+                              (with-profile-span 'render #f
+                                (let ([t (now-ns)])
+                                  (profile-test-busy 3)
+                                  (profile-span-past! 'vsync-wait 'acquire
+                                                      t (+ t 2000000))))))))))]
+              [use (lambda (k) (profile-use-ms
+                                (car (profile-test-uses s k))))])
+         (and (profile-test-near? (profile-tick-phase-ms s 'vsync-wait) 2.0)
+              (< 0.5 (use 'render) 1.5)
+              (profile-test-near? (apply + (profile-test-phases s))
+                                  (profile-tick-ms s)))))
+
 (let ([life-win (life)])
   (move-window! life-win 600 300)
   (check "every step of the world adds up: its phases to its time, its uses \
