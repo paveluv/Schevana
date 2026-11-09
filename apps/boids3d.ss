@@ -773,6 +773,7 @@
 ;;; ------------------------------------------------------------------ the app
 
 (define boids3d-step-ns 15000000) ; a step about 60 times a second, as Boids'
+(define boids3d-step-ms (quotient boids3d-step-ns 1000000))
 (define boids3d-count 1000)    ; how many a new window starts with
 (define boids3d-span 9.0)      ; a bird's wings, tip to tip, in units
 (define boids3d-haze 1400.0)   ; how far until half a bird is gone in it
@@ -882,12 +883,27 @@
   (let ([w 760] [h 520]
         [running? #t] [last-step (now-ns)]
         [drag #f]          ; (x y yaw pitch bearing) where a drag began
-        [rules-win #f])
+        [rules-win #f]
+        [flying? #f]       ; its timer is set: it rides one ('ride timer)
+        [closed? #f])
     (define (toggle-rules! win)
       (if rules-win
           (close-window! rules-win)
           (set! rules-win
                 (boids3d-open-rules win (lambda () (set! rules-win #f))))))
+    ;; While it rides a timer: a step every 15 ms, seen or not, until it
+    ;; rides frames again or closes. A timer more than three steps late
+    ;; starts again from now rather than catching up.
+    (define (fly! win due)
+      (after (max 0 (- due (now-ms)))
+             (lambda ()
+               (if (or closed? (not (eq? (window-ref win 'ride) 'timer)))
+                   (set! flying? #f)
+                   (let ([next (+ due boids3d-step-ms)])
+                     (when running? (boids3d-step! win))
+                     (fly! win (if (< next (- (now-ms) (* 3 boids3d-step-ms)))
+                                   (now-ms)
+                                   next)))))))
     (let* ([buffers (boids3d-buffers)]
            [win
             (open-window "Boids 3D"
@@ -902,11 +918,17 @@
               'pitch -0.17         ; from below, the sky behind the flock
               'scene-bearing 1.39  ; the shore ahead, the sun to the left
               'distance 760.0
+              'ride 'frames        ; or timer: boids3d-ride!
               'open (lambda (win) (window-frame-soon! win))
               ;; the steps due by t, three at most, so that a flock seen
-              ;; again goes on rather than jumping ahead
+              ;; again goes on rather than jumping ahead; riding a timer,
+              ;; the timer steps it and its frames only turn the camera
               'frame (lambda (win t)
                        (window-frame-soon! win)
+                       (when (and (eq? (window-ref win 'ride) 'timer)
+                                  (not flying?))
+                         (set! flying? #t)
+                         (fly! win (now-ms)))
                        (if (not running?)
                            (set! last-step t)
                            (let ([n (min 3 (quotient (- t last-step)
@@ -916,8 +938,9 @@
                                  (if (= n 3)
                                      t
                                      (+ last-step (* n boids3d-step-ns))))
-                               (do ([i 0 (+ i 1)]) ((= i n))
-                                 (boids3d-step! win))
+                               (when (eq? (window-ref win 'ride) 'frames)
+                                 (do ([i 0 (+ i 1)]) ((= i n))
+                                   (boids3d-step! win)))
                                ;; the camera goes slowly round, unless held:
                                ;; by the steps, so by time
                                (unless drag
@@ -963,12 +986,16 @@
                               (invalidate! win)))
               'mouse-up (lambda (win x y button) (set! drag #f))
               'close (lambda (win)
+                       (set! closed? #t)
+                       (when (eq? *boids3d-flock* win)
+                         (set! *boids3d-flock* #f))
                        (when rules-win (close-window! rules-win))
                        (gpu-buffer-release! (car buffers))
                        (gpu-buffer-release! (cdr buffers))
                        (gpu-buffer-release! (window-ref win 'shapes))
                        (let ([t (window-ref win 'tiles)])
                          (when t (gpu-buffer-release! (car t))))))])
+      (set! *boids3d-flock* win)
       (boids3d-scatter! win)
       (toggle-rules! win)
       (let-values ([(dx dy dw dh) (desktop-rect)])
@@ -1024,24 +1051,45 @@
     "Defaults (D)"
     "Scatter (S)"))
 
+(define boids3d-ride-label "Fly on while hidden: steps on a timer, not frames")
+
+;; The newest flock's window, while it's open: what boids3d-ride! takes
+;; with none given.
+(defvar *boids3d-flock* #f)
+
+;; Whether the flock in win steps with its frames, pausing while it's unseen
+;; (frames, the default), or on a timer, flying on while hidden (timer):
+;; (boids3d-ride! 'timer) at a REPL in Boids 3D's environment.
+(define (boids3d-ride! mode . win)
+  (let ([win (if (pair? win) (car win) *boids3d-flock*)])
+    (unless (memq mode '(frames timer))
+      (errorf 'boids3d-ride! "frames or timer, not ~s" mode))
+    (unless win (errorf 'boids3d-ride! "no Boids 3D window is open"))
+    (window-set! win 'ride mode)
+    (window-frame-soon! win)))
+
 (define (boids3d-button-width)
   (apply max (map (lambda (label)
                     (let-values ([(w h) (ui-button-size label #f)]) w))
                   boids3d-buttons)))
 
-;; The rules window's content size: room for its rows, sliders 140 wide, and
-;; three buttons as wide as the widest label.
+;; The rules window's content size: room for its rows, sliders 140 wide,
+;; three buttons as wide as the widest label, and the timer's checkbox.
 (define (boids3d-rules-size)
   (let ([pad (ui-pad)] [gap (ui-gap)] [sh (ui-slider-height)])
     (values (+ pad pad
                (max (+ (boids3d-label-width) 140 (boids3d-readout-width))
-                    (+ (* 3 (boids3d-button-width)) (* 2 gap))))
-            (+ pad (+ sh gap) (+ (ui-control-height) (* 3 gap))
+                    (+ (* 3 (boids3d-button-width)) (* 2 gap))
+                    (let-values ([(cw ch) (ui-checkbox-size
+                                           boids3d-ride-label)])
+                      cw)))
+            (+ pad (+ sh gap) (+ (ui-control-height) gap)
+               (+ (ui-control-height) (* 3 gap))
                (* (length boids3d-ranges) (+ sh gap))
                gap (font-line-height 'ui-small) pad))))
 
-;; The rows, top to bottom: the count, the buttons, a slider for each rule,
-;; and a hint.
+;; The rows, top to bottom: the count, the buttons, whether it rides a timer,
+;; a slider for each rule, and a hint.
 (define (boids3d-draw-rules ui flock-win w)
   (let* ([pad (ui-pad)] [gap (ui-gap)] [sh (ui-slider-height)]
          [lw (boids3d-label-width)] [rw (boids3d-readout-width)]
@@ -1065,6 +1113,13 @@
                           '(0 1 2) boids3d-buttons '(randomize defaults scatter)
                           (list boids3d-randomize! boids3d-defaults!
                                 boids3d-scatter!))
+                (+ y ch gap))]
+           [y (let ([ch (ui-control-height)])
+                (ui-checkbox ui 'ride pad y (- w pad pad) ch boids3d-ride-label
+                             (eq? (window-ref flock-win 'ride) 'timer)
+                             (lambda (on?)
+                               (boids3d-ride! (if on? 'timer 'frames)
+                                              flock-win)))
                 (+ y ch (* 3 gap)))]
            [y (fold-left
                (lambda (y range)
@@ -1088,7 +1143,8 @@
   (let ([ui (make-ui)]
         [shown #f])   ; the rules and the count it last drew
     (define (now-shown)
-      (list (window-ref flock-win 'rules) (window-ref flock-win 'count)))
+      (list (window-ref flock-win 'rules) (window-ref flock-win 'count)
+            (window-ref flock-win 'ride)))
     (let-values ([(w h) (boids3d-rules-size)])
       (let ([win
              (apply open-window "Boids 3D — Rules"
