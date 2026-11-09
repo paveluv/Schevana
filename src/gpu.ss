@@ -1,15 +1,71 @@
 ;;; gpu.ss — main's side of the GPU layer: what the world asks of the GPU,
-;;; kept until it hands the host a frame. Buffers' copies here and what of
-;;; them changed, the calls a paint or a compute run makes, the compute runs
-;;; to go with the next frame, and the frame filled for the host. The
-;;; device's side is core0's (src/host/gpu.ss), and no SDL is named here
+;;; kept until it hands the host a frame. Images and buffers as handles,
+;;; and the jobs that make them; buffers' copies here and what of them
+;;; changed, the calls a paint or a compute run makes, the compute runs to
+;;; go with the next frame, and the frame filled for the host. The device's
+;;; side is core0's (src/host/gpu.ss), and no SDL is named here
 ;;; (tests/sources.ss).
 
+;;; ------------------------------------------------------------------ handles
+;;; An image or a buffer main holds is a handle, with an integer id; the SDL
+;;; object behind it is core0's. Main makes the handle at once and asks for
+;;; the object by a job, which core0 runs before anything that needs it.
+
+(defvar *gpu-next-id* 1)
+
+;; The jobs asked of core0 since it last took them, the newest first.
+(defvar *gpu-jobs* '())
+
+(define (gpu-new-id!)
+  (let ([id *gpu-next-id*])
+    (set! *gpu-next-id* (+ id 1))
+    id))
+
+(define (gpu-ask! job) (set! *gpu-jobs* (cons job *gpu-jobs*)))
+
+;; The jobs asked since, in order, taken from main.
+(define (gpu-take-jobs!)
+  (let ([jobs (reverse *gpu-jobs*)])
+    (set! *gpu-jobs* '())
+    jobs))
+
 ;;; ------------------------------------------------------------------ images
+
+;; An image of w × h, premultiplied BGRA, its pixels on the GPU alone; usage
+;; and levels as the GPU layer names them.
+(define gpu-image-make
+  (case-lambda
+    [(w h) (gpu-image-make w h gpu-usage-sampler 1)]
+    [(w h usage levels)
+     (let ([id (gpu-new-id!)])
+       (gpu-ask! (list 'texture id w h usage levels))
+       (make-gpu-image id w h levels #f #f))]))
+
+;; An image that can also be drawn on. It has a chain of levels, each half the
+;; last down to a pixel, so that it can be shown smaller: a third more memory.
+(define (gpu-image-make-target w h)
+  (gpu-image-make w h (fxior gpu-usage-sampler gpu-usage-target)
+                  (fxlength (max w h))))
 
 ;; The pixels to go up with the next frame: 4·w·h bytes.
 (define (gpu-image-write! image bytes)
   (gpu-image-pending-set! image bytes))
+
+(define (gpu-image-release! image)
+  (gpu-image-gone?-set! image #t)
+  (gpu-ask! (list 'release (gpu-image-id image))))
+
+;; The glyphs' atlas as an image, to draw: one channel, coverage, as the
+;; glyph records read it. Core0's own, never let go of.
+(defvar *gpu-atlas-image* #f)
+
+(define (gpu-atlas-image)
+  (or *gpu-atlas-image*
+      (let ([id (gpu-new-id!)])
+        (gpu-ask! (list 'atlas id))
+        (set! *gpu-atlas-image*
+          (make-gpu-image id gpu-atlas-side gpu-atlas-side 1 #f #f))
+        *gpu-atlas-image*)))
 
 ;;; ------------------------------------------------------------------ buffers
 
@@ -18,7 +74,10 @@
 ;; At least a word: a read outside it reads word 0 (shader.ss). Its words go
 ;; up with the next frame.
 (define (make-gpu-buffer words)
-  (let ([b (gpu-buffer-make words)])
+  (let* ([n (* 4 (max 1 words))]
+         [b (make-gpu-buffer* (gpu-new-id!) (make-immobile-bytevector n 0)
+                              0 n #f)])
+    (gpu-ask! (list 'buffer (gpu-buffer-id b) n))
     (set! *gpu-dirty-buffers* (cons b *gpu-dirty-buffers*))
     b))
 
@@ -57,7 +116,12 @@
               (not (memv (gpu-buffer-id b)
                          (append (cadddr run) (list-ref run 4)))))
             *gpu-computes*))
-  (gpu-buffer-free! b))
+  (gpu-buffer-gone?-set! b #t)
+  (gpu-ask! (list 'release (gpu-buffer-id b))))
+
+;; What a shader left in the buffer: read back into the copy here. => its
+;; bytes
+(define (gpu-buffer-read! b) (gpu-buffer-download! (gpu-take-jobs!) b))
 
 ;;; ------------------------------------------------------------------ calls
 
@@ -112,7 +176,8 @@
 (define (gpu-compute! shader w h . args)
   (let ([dirty *gpu-dirty-buffers*])
     (set! *gpu-dirty-buffers* '())
-    (gpu-compute-now! (gpu-compute-run shader w h args) dirty)))
+    (gpu-compute-now! (gpu-compute-run shader w h args) (gpu-take-jobs!)
+                      dirty)))
 
 ;; Compute runs to go with the next frame, the newest first.
 (defvar *gpu-computes* '())
@@ -124,12 +189,12 @@
     (cons (gpu-compute-run shader w h args) *gpu-computes*)))
 
 ;; What main asked of the GPU since it last handed it on, taken from it: the
-;; dirty buffers, and the compute runs in order.
+;; jobs and the compute runs in order, and the dirty buffers.
 (define (gpu-take-asks!)
   (let ([dirty *gpu-dirty-buffers*] [runs (reverse *gpu-computes*)])
     (set! *gpu-dirty-buffers* '())
     (set! *gpu-computes* '())
-    (values dirty runs)))
+    (values (gpu-take-jobs!) dirty runs)))
 
 ;;; ------------------------------------------------------------------ frames
 
@@ -138,7 +203,8 @@
 (define (gpu-publish recs recs-n extras extras-n table table-n pieces images
                      runs mode earlier)
   (let ([f (gpu-frame-take!)])
-    (let-values ([(dirty computes) (gpu-take-asks!)])
+    (let-values ([(jobs dirty computes) (gpu-take-asks!)])
+      (gpu-frame-jobs-set! f jobs)
       (gpu-frame-dirty-set! f dirty)
       (gpu-frame-computes-set! f computes))
     (gpu-frame-recs-set! f recs)

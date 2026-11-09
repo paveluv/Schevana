@@ -494,6 +494,28 @@
   (gpu-buffer-release! b)
   (gpu-image-release! target))
 
+;; An image or a buffer is a handle with an integer id; core0 makes the SDL
+;; object behind it from a job the next frame carries, and lets it go by
+;; another.
+(let* ([b (make-gpu-buffer 1)]
+       [i (gpu-image-make 2 2)]
+       [has? (lambda (id) (hashtable-contains? *gpu-objects* id))]
+       [before (or (has? (gpu-buffer-id b)) (has? (gpu-image-id i)))])
+  (request-frame!)
+  (steps 1)
+  (let ([made (and (has? (gpu-buffer-id b)) (has? (gpu-image-id i)))])
+    (gpu-buffer-release! b)
+    (gpu-image-release! i)
+    (request-frame!)
+    (steps 1)
+    (check "an image or a buffer is a handle with an integer id: core0 makes \
+            its object from a job the next frame carries, and lets it go by \
+            another"
+           (and (fixnum? (gpu-buffer-id b)) (fixnum? (gpu-image-id i))
+                (not before) made
+                (not (has? (gpu-buffer-id b)))
+                (not (has? (gpu-image-id i)))))))
+
 (check "pixels with no chain, shown smaller, blend what they have"
        (let ([bv (make-bytevector 8 0)])
          (bytevector-u32-native-set! bv 0 #xffff0000)

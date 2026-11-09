@@ -178,7 +178,7 @@
 
 ;; Raise it deliberately: the core is what the desktop needs to boot and
 ;; run; everything else belongs in a folder.
-(define src-budget 27727)
+(define src-budget 27957)
 
 ;; The tokens of a datum as read; a list's end is none.
 (define (tokens x)
@@ -339,10 +339,9 @@
           (member f (append core0-files '("src/ffi.ss" "src/base.ss"))))
         (filter (lambda (f) (string-prefix? "src/" f)) *schevana-sources*)))
 
-;; What core0 still names of the core above it: the core's fragment shaders,
-;; which pipelines are built for (slice 2), and the profiler's wrapper of
+;; What core0 still names of the core above it: the profiler's wrapper of
 ;; the screen's waits (slice 5).
-(define core0-reaches-up '(gfx-fragments host-screen-wait))
+(define core0-reaches-up '(host-screen-wait))
 
 (check "core0 names nothing of the core above it but what's listed, on its \
         way out"

@@ -1071,7 +1071,5 @@
             [else (loop (cdr chars) (cons (car chars) line) acc)]))))
 
 ;; The glyphs' atlas as an image, to draw: one channel, coverage, as the
-;; glyph records read it. The renderer's own: it's never let go of here.
-(define (inspect-atlas-image)
-  (make-gpu-image (renderer-atlas *renderer*) gpu-atlas-side gpu-atlas-side
-                  1 #f #f))
+;; glyph records read it. Core0's own: it's never let go of here.
+(define (inspect-atlas-image) (gpu-atlas-image))

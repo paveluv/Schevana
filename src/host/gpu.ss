@@ -375,30 +375,34 @@
     (gpu-must 'gpu-make-pipeline
               (sdl-create-gpu-pipeline device (gpu-at p)))))
 
+;; The core's shaders, which records are drawn with, as main hands them
+;; over (src/gfx.ss): (vertex . fragments), a vector of the fragment
+;; shader's variants.
+(defvar *gpu-shaders* #f)
+
 ;; The pipelines drawing records to this format, made once: four by mode for
-;; each variant of the fragment shader, in gfx-fragments' order. All of them,
-;; so that a run that's the first to need one doesn't wait for it.
+;; each variant of the fragment shader, in their order. All of them, so that
+;; a run that's the first to need one doesn't wait for it.
 (define (gpu-pipelines-for format)
   (let ([r *renderer*])
     (cond
       [(assv format (renderer-pipelines r)) => cdr]
       [else
        (let* ([d (renderer-device r)]
-              [vs (gpu-make-shader d (top-level-value 'gfx-vertex))]
+              [vs (gpu-make-shader d (car *gpu-shaders*))]
               [all (apply vector
                           (apply append
-                                 (map (lambda (name)
-                                        (gpu-pipelines-of d vs name format))
-                                      (vector->list
-                                       (top-level-value 'gfx-fragments)))))])
+                                 (map (lambda (fragment)
+                                        (gpu-pipelines-of d vs fragment format))
+                                      (vector->list (cdr *gpu-shaders*)))))])
          (sdl-release-gpu-shader d vs)
          (renderer-pipelines-set!
           r (cons (cons format all) (renderer-pipelines r)))
          all)])))
 
-;; The four pipelines of the fragment shader named name, by mode.
-(define (gpu-pipelines-of d vs name format)
-  (let* ([fs (gpu-make-shader d (top-level-value name))]
+;; The four pipelines of a fragment shader, by mode.
+(define (gpu-pipelines-of d vs fragment format)
+  (let* ([fs (gpu-make-shader d fragment)]
          [ps (map (lambda (mode) (gpu-make-pipeline d vs fs format mode))
                   '(0 1 2 3))])
     (sdl-release-gpu-shader d fs)
@@ -434,7 +438,7 @@
       [(assv format ps) => cdr]
       [else
        (let* ([d (renderer-device r)]
-              [vs (gpu-make-shader d (top-level-value 'gfx-vertex))]
+              [vs (gpu-make-shader d (car *gpu-shaders*))]
               [fs (gpu-make-shader d shader)]
               [p (gpu-make-pipeline d vs fs format 0)])
          (sdl-release-gpu-shader d vs)
@@ -443,71 +447,89 @@
                          (cons (cons format p) ps))
          p)])))
 
+;;; ------------------------------------------------------------------ objects
+;;; The SDL objects behind main's handles, by id, (kind . object): made and
+;;; let go of by the jobs main asks, which core0 runs before anything that
+;;; needs them (.work/gpu-design.md 9.12).
+
+(defvar *gpu-objects* (make-eqv-hashtable))
+
+;; The SDL object behind handle id.
+(define (gpu-object id)
+  (let ([o (hashtable-ref *gpu-objects* id #f)])
+    (unless o (errorf 'gpu-object "~a has no object: its job hasn't run" id))
+    (cdr o)))
+
+;; Main's jobs, in order: (texture id w h usage levels), (buffer id bytes),
+;; (atlas id), the glyphs' atlas under id, (shaders vertex fragments), the
+;; core's, and (release id).
+(define (gpu-run-jobs! jobs)
+  (for-each
+   (lambda (job)
+     (let ([d (renderer-device *renderer*)])
+       (case (car job)
+         [(texture)
+          (let-values ([(id w h usage levels) (apply values (cdr job))])
+            (hashtable-set! *gpu-objects* id
+                            (cons 'texture
+                                  (gpu-make-texture d gpu-format-bgra8 usage
+                                                    w h levels))))]
+         [(buffer)
+          (let ([p gpu-buffer-info*])
+            (gpu-zero! p (ftype-sizeof gpu-buffer-info))
+            (ftype-set! gpu-buffer-info (usage) p
+                        (fxior gpu-usage-graphics-read gpu-usage-compute-read
+                               gpu-usage-compute-write))
+            (ftype-set! gpu-buffer-info (size) p (caddr job))
+            (hashtable-set! *gpu-objects* (cadr job)
+                            (cons 'buffer
+                                  (gpu-must 'gpu-run-jobs!
+                                            (sdl-create-gpu-buffer
+                                             d (gpu-at p))))))]
+         [(atlas)
+          (hashtable-set! *gpu-objects* (cadr job)
+                          (cons 'atlas (renderer-atlas *renderer*)))]
+         [(shaders)
+          (set! *gpu-shaders* (cons (cadr job) (caddr job)))
+          (gpu-forget-pipelines!)]
+         [(release)
+          (let ([o (hashtable-ref *gpu-objects* (cadr job) #f)])
+            (hashtable-delete! *gpu-objects* (cadr job))
+            (when o
+              (case (car o)
+                [(texture) (sdl-release-gpu-texture d (cdr o))]
+                [(buffer) (sdl-release-gpu-buffer d (cdr o))])))])))
+   jobs))
+
 ;;; ------------------------------------------------------------------ images
 ;;; An image is a texture of premultiplied BGRA, its pixels on the GPU alone.
 
-;; gone?: it's been let go of, and a list kept from before that names it
-;; draws without it.
+;; Main's handle on one: its id in *gpu-objects*, its size and levels, the
+;; pixels to go up next, and gone?, let go of, so that a list kept from
+;; before that names it draws without it.
 (define-record-type gpu-image
-  (nongenerative schevana-gpu-image-1)
-  (fields texture w h levels (mutable pending) (mutable gone?)))
+  (nongenerative schevana-gpu-image-2)
+  (fields id w h levels (mutable pending) (mutable gone?)))
 
-(define gpu-image-make
-  (case-lambda
-    [(w h) (gpu-image-make w h gpu-usage-sampler 1)]
-    [(w h usage levels)
-     (make-gpu-image
-      (gpu-make-texture (renderer-device *renderer*) gpu-format-bgra8 usage w h
-                        levels)
-      w h levels #f #f)]))
-
-;; An image that can also be drawn on. It has a chain of levels, each half the
-;; last down to a pixel, so that it can be shown smaller: a third more memory.
-(define (gpu-image-make-target w h)
-  (gpu-image-make w h (fxior gpu-usage-sampler gpu-usage-target)
-                  (fxlength (max w h))))
+(define (gpu-image-texture image) (gpu-object (gpu-image-id image)))
 
 ;; What's just been drawn on image goes down its chain.
 (define (gpu-image-fill-levels! cb image)
   (when (> (gpu-image-levels image) 1)
     (sdl-generate-gpu-mipmaps cb (gpu-image-texture image))))
 
-(define (gpu-image-release! image)
-  (gpu-image-gone?-set! image #t)
-  (sdl-release-gpu-texture (renderer-device *renderer*)
-                           (gpu-image-texture image)))
-
 ;;; ------------------------------------------------------------------ buffers
 ;;; A buffer a shader reads or writes: whole numbers or floats, 32 bits each.
 ;;; What's set here goes up with the next frame, or the next compute run; it
 ;;; costs a word's write, and the copy here only what's in the buffer.
 
+;; Main's handle on one: its id in *gpu-objects*, and its words here.
 (define-record-type (gpu-buffer make-gpu-buffer* gpu-buffer?)
-  (nongenerative schevana-gpu-buffer-1)
+  (nongenerative schevana-gpu-buffer-2)
   (fields id bytes
           (mutable from)     ; the bytes to go up: from .. to
           (mutable to)
           (mutable gone?)))  ; let go of, as an image can be
-
-;; A buffer of words, at least one: a read outside it reads word 0
-;; (shader.ss). Main's make-gpu-buffer marks it to go up.
-(define (gpu-buffer-make words)
-  (let ([p gpu-buffer-info*] [n (* 4 (max 1 words))])
-    (gpu-zero! p (ftype-sizeof gpu-buffer-info))
-    (ftype-set! gpu-buffer-info (usage) p
-                (fxior gpu-usage-graphics-read gpu-usage-compute-read
-                       gpu-usage-compute-write))
-    (ftype-set! gpu-buffer-info (size) p n)
-    (make-gpu-buffer*
-     (gpu-must 'gpu-buffer-make
-               (sdl-create-gpu-buffer (renderer-device *renderer*)
-                                      (gpu-at p)))
-     (make-immobile-bytevector n 0) 0 n #f)))
-
-;; Its GPU buffer let go of: a list kept draws without it.
-(define (gpu-buffer-free! b)
-  (gpu-buffer-gone?-set! b #t)
-  (sdl-release-gpu-buffer (renderer-device *renderer*) (gpu-buffer-id b)))
 
 ;; What a paint or a compute run is called with: its shader, its uniforms as
 ;; bytes, its buffers.
@@ -603,7 +625,8 @@
            (let ([n (- (gpu-buffer-to b) (gpu-buffer-from b))])
              (ftype-set! gpu-transfer-location (transfer) from transfer)
              (ftype-set! gpu-transfer-location (offset) from off)
-             (ftype-set! gpu-buffer-region (buffer) to (gpu-buffer-id b))
+             (ftype-set! gpu-buffer-region (buffer) to
+                          (gpu-object (gpu-buffer-id b)))
              (ftype-set! gpu-buffer-region (offset) to (gpu-buffer-from b))
              (ftype-set! gpu-buffer-region (size) to n)
              (sdl-upload-to-buffer pass (gpu-at from) (gpu-at to) #f)
@@ -659,13 +682,15 @@
      (let ([bindings gpu-buffer-bindings*] [ids gpu-storage-buffers*])
        (gpu-zero! bindings (ftype-sizeof gpu-buffer-bindings))
        (for-each (lambda (id i)
-                   (ftype-set! gpu-buffer-bindings (i buffer) bindings id))
+                   (ftype-set! gpu-buffer-bindings (i buffer) bindings
+                               (gpu-object id)))
                  writes (iota (length writes)))
        (let ([pass (sdl-begin-compute-pass cb 0 0 (gpu-at bindings)
                                            (length writes))])
          (sdl-bind-compute-pipeline
           pass (gpu-compute-pipeline (gpu-call-shader call)))
-         (for-each (lambda (id i) (ftype-set! gpu-storage-buffers (i) ids id))
+         (for-each (lambda (id i)
+                     (ftype-set! gpu-storage-buffers (i) ids (gpu-object id)))
                    reads (iota (length reads)))
          (unless (null? reads)
            (sdl-bind-compute-storage pass 0 (gpu-at ids) (length reads)))
@@ -677,8 +702,10 @@
          (sdl-end-compute-pass pass))))
    run))
 
-;; run, now, the dirty buffers going up first, and a wait for it.
-(define (gpu-compute-now! run dirty)
+;; run, now, main's jobs run and the dirty buffers going up first, and a
+;; wait for it.
+(define (gpu-compute-now! run jobs dirty)
+  (gpu-run-jobs! jobs)
   (let* ([r *renderer*]
          [cb (gpu-must 'gpu-compute-now!
                        (sdl-acquire-gpu-commands (renderer-device r)))])
@@ -690,27 +717,29 @@
 (define (gpu-run-computes! cb runs)
   (for-each (lambda (run) (gpu-dispatch! cb run)) runs))
 
-;; What a shader left in the buffer: read back into the copy here. => its
-;; bytes
-(define (gpu-buffer-read! b)
+;; What a shader left in the buffer: read back into the copy here, main's
+;; jobs run first. => its bytes
+(define (gpu-buffer-download! jobs b)
+  (gpu-run-jobs! jobs)
   (let* ([r *renderer*]
          [d (renderer-device r)]
          [n (bytevector-length (gpu-buffer-bytes b))]
          [transfer (gpu-make-transfer d 1 n)]
-         [cb (gpu-must 'gpu-buffer-read! (sdl-acquire-gpu-commands d))]
+         [cb (gpu-must 'gpu-buffer-download! (sdl-acquire-gpu-commands d))]
          [pass (sdl-begin-copy-pass cb)]
          [from gpu-buffer-region*]
          [to gpu-transfer-location*])
-    (ftype-set! gpu-buffer-region (buffer) from (gpu-buffer-id b))
+    (ftype-set! gpu-buffer-region (buffer) from
+                (gpu-object (gpu-buffer-id b)))
     (ftype-set! gpu-buffer-region (offset) from 0)
     (ftype-set! gpu-buffer-region (size) from n)
     (ftype-set! gpu-transfer-location (transfer) to transfer)
     (ftype-set! gpu-transfer-location (offset) to 0)
     (sdl-download-from-buffer pass (gpu-at from) (gpu-at to))
     (sdl-end-copy-pass pass)
-    (gpu-wait! (gpu-must 'gpu-buffer-read! (sdl-submit-gpu-fence cb)))
+    (gpu-wait! (gpu-must 'gpu-buffer-download! (sdl-submit-gpu-fence cb)))
     (gpu-copy-out (gpu-buffer-bytes b)
-                  (gpu-must 'gpu-buffer-read!
+                  (gpu-must 'gpu-buffer-download!
                             (sdl-map-gpu-transfer d transfer #f))
                   n)
     (sdl-unmap-gpu-transfer d transfer)
@@ -1033,7 +1062,7 @@
           (sdl-bind-fragment-storage pass 0 (gpu-at buffers) i)
           (begin
             (ftype-set! gpu-storage-buffers (i) buffers
-                        (gpu-buffer-id (car bs)))
+                        (gpu-object (gpu-buffer-id (car bs))))
             (loop (cdr bs) (+ i 1)))))
     (ftype-set! gpu-storage-buffers (2) buffers (car (renderer-glyphs r)))
     (bytevector-copy! gpu-list-words 0 u 0 8)
@@ -1090,7 +1119,8 @@
 ;;; A frame as main hands it to the host, which reads nothing else of main's
 ;;; (.work/gpu-design.md 9.5): the root list's records, extras and runs, the
 ;;; glyph table if it changed, the atlas's new pieces, images with pixels to
-;;; go up, the buffers made dirty and the compute runs asked for since, the
+;;; go up, the jobs, the buffers made dirty and the compute runs asked for
+;;; since, the
 ;;; present mode, and lists kept from earlier to draw on images first,
 ;;; (image recs recs-n extras extras-n runs) each. One record goes back and
 ;;; forth, filled again for each frame: a frame allocates none.
@@ -1099,8 +1129,8 @@
   (nongenerative schevana-gpu-frame-1)
   (fields (mutable recs) (mutable recs-n) (mutable extras) (mutable extras-n)
           (mutable table) (mutable table-n) (mutable pieces) (mutable images)
-          (mutable runs) (mutable dirty) (mutable computes) (mutable mode)
-          (mutable earlier)))
+          (mutable runs) (mutable jobs) (mutable dirty) (mutable computes)
+          (mutable mode) (mutable earlier)))
 
 ;; The frame the host gave back, to fill; #f while it has it.
 (defvar *gpu-frame-free* #f)
@@ -1108,15 +1138,17 @@
 ;; The frame the host gave back, taken to be filled, or a new one.
 (define (gpu-frame-take!)
   (let ([f (or *gpu-frame-free*
-               (make-gpu-frame #f 0 #f 0 #f 0 '() '() '() '() '() #f '()))])
+               (make-gpu-frame #f 0 #f 0 #f 0 '() '() '() '() '() '() #f '()))])
     (set! *gpu-frame-free* #f)
     f))
 
-;; The host's side: the lists kept from earlier on their images, then the
-;; frame, the dirty buffers going up with the first of them; f given back.
+;; The host's side: main's jobs, the lists kept from earlier on their
+;; images, then the frame, the dirty buffers going up with the first of
+;; them; f given back.
 ;; => #t if the frame reached the screen; #f if the window had no room for
 ;; it yet, and it should be tried again.
 (define (gpu-present! f)
+  (gpu-run-jobs! (gpu-frame-jobs f))
   (gpu-present-mode! (gpu-frame-mode f))
   (let loop ([earlier (gpu-frame-earlier f)] [dirty (gpu-frame-dirty f)])
     (if (pair? earlier)
@@ -1201,9 +1233,10 @@
 
 ;; The same, drawn to a new texture w × h and read back: its pixels, row
 ;; after row, premultiplied BGRA. What tests, screenshots and icons see;
-;; dirty and computes, what main asked of the GPU since, go first.
-(define (gpu-drawing->bytes dirty computes recs recs-n extras extras-n table
-                           table-n atlas-pieces images runs w h clear?)
+;; jobs, dirty and computes, what main asked of the GPU since, go first.
+(define (gpu-drawing->bytes jobs dirty computes recs recs-n extras extras-n
+                           table table-n atlas-pieces images runs w h clear?)
+  (gpu-run-jobs! jobs)
   (let* ([r *renderer*]
          [d (renderer-device r)]
          [texture (gpu-make-texture d gpu-format-bgra8 gpu-usage-target w h)]

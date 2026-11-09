@@ -1445,8 +1445,11 @@
      gfx-image-fragment
      gfx-full-fragment))
 
-;; A reload may bring new shaders.
-(gpu-forget-pipelines!)
+;; Core0 draws records with these, handed to it as they are (a reload may
+;; bring new ones), never looked up by name.
+(gpu-ask! (list 'shaders gfx-vertex
+                (vector-map (lambda (name) (top-level-value name))
+                            gfx-fragments)))
 
 ;;; ------------------------------------------------------------------ frames
 
@@ -1507,10 +1510,10 @@
     [(pw ph scale thunk clear?)
      (rec-begin! (rationalize (exact scale) 1/100000))
      (thunk)
-     (let-values ([(dirty computes) (gpu-take-asks!)])
+     (let-values ([(jobs dirty computes) (gpu-take-asks!)])
        (let ([table (rec-take-table!)]
              [pieces (rec-take-atlas-pieces!)])
-         (gpu-drawing->bytes dirty computes *rec-bytes* *rec-at*
+         (gpu-drawing->bytes jobs dirty computes *rec-bytes* *rec-at*
                             *rec-extras* (* 4 *rec-extra-at*)
                             table (rec-table-bytes) pieces *rec-images*
                             (rec-runs) pw ph clear?)))]))
