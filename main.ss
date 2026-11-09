@@ -14,6 +14,9 @@
     (if (string=? dir "") "." dir)))
 
 (load (string-append *schevana-root* "/load.ss"))
+;; Core0 made "/" and loaded the world there: the rest of this file is the
+;; world's.
+(host-enter-world!)
 ;; ~/.schevana.d's kits, desktop, styles, palettes, wallpapers and apps,
 ;; before the saved theme is loaded: it may name a style or palette of the
 ;; user's.

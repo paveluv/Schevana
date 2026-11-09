@@ -1,6 +1,8 @@
-;;; host/boot.ss — core0 as the bootloader (.work/gpu-design.md 9.13): what
-;;; it shares with the world it makes, "/". Everything of core0's not named
-;;; here is its own: the world may not name it (tests/sources.ss).
+;;; host/boot.ss — core0 as the bootloader (.work/gpu-design.md 9.13): it
+;;; makes the world's environment, "/", shares its interface there, and
+;;; loads the world into it. Everything of core0's not in the interface is
+;;; its own: the world may not name it (tests/sources.ss), and in "/" it
+;;; isn't there at all.
 
 ;; Core0's interface, the names it shares with the world, read-only, sorted
 ;; by what a thread other than core0's may do with them.
@@ -49,3 +51,26 @@
     host-window-resize! host-window-minimum! host-window-scale
     host-window-fullscreen? host-window-fullscreen! host-window-icon!
     host-window-events host-set-cursor! clipboard-get clipboard-set!))
+
+;; The world's environment, "/", once core0 has made it.
+(defvar *host-world* #f)
+
+;; Makes "/", all of Chez and of core0 only its interface, each name a
+;; read-only forwarder to core0's binding (an identifier made here names
+;; it); then loads the world's sources there, from root.
+(define (host-boot! root sources)
+  (let ([world (copy-environment (scheme-environment) #t)])
+    (for-each (lambda (name)
+                (define-top-level-syntax name
+                  (forwarder-to (datum->syntax #'host-boot! name))
+                  world))
+              host-interface)
+    (define-top-level-value '*schevana-root* root world)
+    (define-top-level-value '*schevana-sources* sources world)
+    (set! *host-world* world)
+    (parameterize ([interaction-environment world])
+      (for-each (lambda (f) (load (string-append root "/" f))) sources))))
+
+;; Moves a script that loaded the tree (main.ss, a test) into "/": its later
+;; forms evaluate there, as the world's.
+(define (host-enter-world!) (interaction-environment *host-world*))

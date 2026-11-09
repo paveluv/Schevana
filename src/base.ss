@@ -19,6 +19,19 @@
 ;; (interaction-environment), which a private REPL rebinds.
 (defvar *world-env* (interaction-environment))
 
+;; A read-only forwarder to the identifier id's binding: a macro that,
+;; installed in another environment, makes code there refer to that
+;; binding itself (live, and at no cost a call). A set! of it is refused
+;; as it expands, in the words Chez uses for an R6RS import's.
+(define (forwarder-to id)
+  (make-variable-transformer
+   (lambda (x)
+     (syntax-case x (set!)
+       [(set! name . _)
+        (syntax-error #'name "attempt to assign read-only variable")]
+       [_ (identifier? x) id]
+       [(_ . rest) #`(#,id . rest)]))))
+
 ;; The monotonic clock in ns, a fixnum: what the profiler times with.
 (define (now-ns) (sdl-get-ticks-ns))
 

@@ -50,7 +50,7 @@ before it:
 
 | Layer | What goes there |
 |---|---|
-| `src/host/` | Core0, below the core: the host's own code, SDL's bindings, the GPU's device side, and the window and its events. It loads right after `src/ffi.ss` and `src/base.ss`. |
+| `src/host/` | Core0, below the core: the host's own code, SDL's bindings, the GPU's device side, and the window and its events. It loads right after `src/ffi.ss` and `src/base.ss`, then makes the world's environment, "/", where everything below loads. |
 | `src/` | The core: the world (windows, focus, the theme's layers, processes, timers, the host's interface), the shader compiler, main's side of the GPU layer, the recorder and fonts, its registries, the hooks later layers fill, and the caches its own procedures need. |
 | `kits/` | Libraries, pure or almost. |
 | `services/` | Long-lived state with an API and no surface: the crew of worker threads, the tree of environments, the apps' sandboxes and what they are allowed, vats and their jobs, the profiler, the saved look. |
@@ -65,8 +65,10 @@ before it:
   above it, and only it names SDL, but for the clock and the CPU count,
   which any thread may call (`src/ffi.ss`). What still crosses is listed
   in `tests/sources.ss`, and the lists only shrink
-  (`.work/gpu-design.md` 9.5, 9.12).
-- **The core has a budget**, 28,631 tokens (atoms as read; comments,
+  (`.work/gpu-design.md` 9.5, 9.12). The world names of core0's only its
+  interface (`host-interface` in `src/host/boot.ss`), which "/" has
+  read-only: a new name there is a reviewed change (`tests/sources.ss`).
+- **The core has a budget**, 28,684 tokens (atoms as read; comments,
   whitespace and names' lengths are free), in `tests/sources.ss`. Don't
   join lines or shorten names to fit it. Code the core doesn't need moves
   out to the next layer, kits first; the budget is raised only on purpose.
@@ -140,7 +142,8 @@ before it:
 - A hook or a registry calls procedures by name, so a redefinition takes
   effect at the next call: `(lambda () (theme-file-save-soon!))`, not
   `theme-file-save-soon!` captured as a value.
-- `(reload!)` of the tree into itself must keep working.
+- `(reload!)` of the tree into itself must keep working. It loads the
+  world's files again; core0's change with a restart.
 
 ## Drawing and the look
 

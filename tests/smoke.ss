@@ -9,6 +9,7 @@
     (if (string=? dir "") "." dir)))
 
 (load (string-append *schevana-root* "/load.ss"))
+(load (string-append *schevana-root* "/tests/core0.ss"))
 
 (define out-dir
   (if (pair? (command-line-arguments)) (car (command-line-arguments)) "."))
@@ -3842,8 +3843,9 @@
                       '(#f #f #f #f (wheel 0 -1))))))
 
 ;;; The host's SDL code, run against a stand-in for SDL: every SDL call
-;;; src/ffi.ss and src/host/sdl.ss bind is replaced (one with no stand-in
-;;; raises), so nothing here reaches the real SDL or opens a window. The
+;;; src/ffi.ss and src/host/sdl.ss bind is replaced in core0's environment
+;;; (one with no stand-in raises), so nothing here reaches the real SDL or
+;;; opens a window. The
 ;;; fake window is fake-units window units big with fake-ratio physical
 ;;; pixels per unit, on a desktop that asks for fake-desktop (Xft.dpi / 96
 ;;; under X11), so its display scale is their product, as SDL3's is; its
@@ -3927,8 +3929,8 @@
               (* fake-ratio (cdr fake-units))))]
     [(sdl-poll-event) poll]
     [(sdl-wait-event-timeout) (lambda (buf ms) (poll buf))]
-    [(sdl-get-ticks-ns) (top-level-value name)]   ; the clock: SDL's own
-    [(sdl-get-num-logical-cpu-cores) (top-level-value name)]
+    [(sdl-get-ticks-ns) (top-level-value name core0-env)]   ; SDL's own
+    [(sdl-get-num-logical-cpu-cores) (top-level-value name core0-env)]
     [else (lambda args
             (set! fake-unfaked (cons name fake-unfaked))
             (errorf name "the fake SDL has no stand-in for this"))]))
@@ -3936,16 +3938,18 @@
 ;; Runs thunk with the fake SDL in place of the real one, the GPU's frames
 ;; going on to its target.
 (define (with-fake-sdl thunk)
-  (let ([saved (map top-level-value fake-sdl-names)]
+  (let ([saved (map (lambda (n) (top-level-value n core0-env))
+                    fake-sdl-names)]
         [claim gpu-claim-window!])
     (dynamic-wind
       (lambda ()
-        (for-each (lambda (n) (set-top-level-value! n (fake-sdl n)))
+        (for-each (lambda (n) (set-top-level-value! n (fake-sdl n) core0-env))
                   fake-sdl-names)
         (set! gpu-claim-window! (lambda (window) (void))))
       thunk
       (lambda ()
-        (for-each set-top-level-value! fake-sdl-names saved)
+        (for-each (lambda (n v) (set-top-level-value! n v core0-env))
+                  fake-sdl-names saved)
         (set! gpu-claim-window! claim)))))
 
 ;; SDL reports window events (through the host's real event loop); the

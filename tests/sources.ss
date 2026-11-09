@@ -18,6 +18,7 @@
     (if (string=? dir "") "." dir)))
 
 (load (string-append *schevana-root* "/load.ss"))
+(load (string-append *schevana-root* "/tests/core0.ss"))
 
 (define failures 0)
 
@@ -62,8 +63,14 @@
        (filter (lambda (f) (string=? (path-extension f) "ss"))
                (sort string<? (directory-list (source-path folder))))))
 
+;; Core0's own files, src/host/: load.ss lists them for core0 alone, and
+;; (source-files) is the world's.
+(define core0-files
+  (remp (lambda (f) (member f *schevana-sources*)) *schevana-core0-sources*))
+
 (define line-files
-  (append (source-files)
+  (append core0-files
+          (source-files)
           (test-files "tests")
           (test-files "tests/units")
           '("load.ss" "main.ss" "schevana")))
@@ -136,7 +143,7 @@
 ;; Names defined in two files on purpose: ((kind . name) reason) ...
 (define defined-twice '())
 
-(define world-files (append (source-files) '("load.ss")))
+(define world-files (append core0-files (source-files) '("load.ss")))
 
 ;; An app in a sandbox (services/grant.ss): what its file defines is the
 ;; sandbox's, but for the app itself, so it collides with nothing.
@@ -178,7 +185,7 @@
 
 ;; Raise it deliberately: the core is what the desktop needs to boot and
 ;; run; everything else belongs in a folder.
-(define src-budget 28631)
+(define src-budget 28684)
 
 ;; The tokens of a datum as read; a list's end is none.
 (define (tokens x)
@@ -188,8 +195,9 @@
         [else 1]))
 
 (let* ([counts (map (lambda (f) (cons f (apply + (map tokens (file-forms f)))))
-                    (filter (lambda (f) (string-prefix? "src/" f))
-                            *schevana-sources*))]
+                    (append core0-files
+                            (filter (lambda (f) (string-prefix? "src/" f))
+                                    *schevana-sources*)))]
        [n (apply + (map cdr counts))])
   (check (format "src/ is ~a tokens, within its budget of ~a (to grow the \
                   core, raise src-budget in tests/sources.ss on purpose)"
@@ -331,9 +339,6 @@
 ;;; names above it, and the SDL the core above still calls, are listed
 ;;; here, and the lists only shrink.
 
-(define core0-files
-  (filter (lambda (f) (string-prefix? "src/host/" f)) *schevana-sources*))
-
 (define above-core0-files
   (remp (lambda (f)
           (member f (append core0-files '("src/ffi.ss" "src/base.ss"))))
@@ -379,9 +384,12 @@
   (code x '()))
 
 ;; Of core0's names, the world names only those core0 shares with it, its
-;; interface (host-interface in src/host/boot.ss).
+;; interface (host-interface in src/host/boot.ss). The scripts that load the
+;; tree call core0 to make "/" and to enter it.
 (check "the world names nothing of core0's but its interface"
-       (let ([own (remp (lambda (n) (memq n host-interface))
+       (let ([own (remp (lambda (n)
+                          (memq n (append host-interface
+                                          '(host-boot! host-enter-world!))))
                         (map cdr (apply append
                                         (map definitions core0-files))))])
          (none? (apply append

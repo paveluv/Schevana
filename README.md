@@ -497,7 +497,7 @@ src/ffi      the only file that knows about C (SDL3, FreeType, fontconfig);
              only the core uses it
 ```
 
-`src/` is the core, the explicit, ordered list in `load.ss`. Its last
+`src/` is the core, the explicit, ordered lists in `load.ss`. Its last
 file loads the folders: `kits/`, `services/`, `desktop/`, `styles/`,
 `palettes/`, `wallpapers/` and `apps/`, one definition per file (`kits/`,
 `services/` and `desktop/` aside),
@@ -507,11 +507,14 @@ lists them all. Only the core calls C: the folders draw, measure and
 save through its procedures, never through `src/ffi.ss`'s bindings, and
 `tests/sources.ss` checks that none of them names one. Below the rest of
 the core sits core0, `src/host/`: SDL's bindings, the GPU's device side,
-and the window and its events, loaded right after the C bindings and the
-basics. It names nothing
-of the core above it, only it names SDL, and what still crosses, on its
-way out, is listed in `tests/sources.ss` (the GPU design's step 5, in
-`.work/gpu-design.md`).
+and the window and its events, loaded first, after the C bindings and the
+basics. It names nothing of the core above it, and only it names SDL.
+Core0 is the bootloader: it makes the world's environment, "/", shares
+there only its interface (`host-interface` in `src/host/boot.ss`),
+read-only, and loads the rest of the tree into it, the C bindings and the
+basics again as the world's own. The world names nothing else of core0's
+(`tests/sources.ss`), and `(reload!)` loads the world's files, not
+core0's, which change with a restart (`.work/gpu-design.md` 9.13).
 
 The core names nothing of the desktop layer's: the crash panel and the
 window menu are parts (`draw-crash-panel`, `open-window-menu`) whose
@@ -536,8 +539,8 @@ at each call, so redefining it at the REPL shows on the next frame.
 Decisions worth keeping in mind for the real design:
 
 - **Everything is top-level.** No R6RS libraries on purpose. Every
-  definition lives in the interaction environment (an app in a sandbox's, at
-  the top level of its own), so redefining
+  definition lives in the world's environment, "/" (an app in a sandbox's,
+  at the top level of its own), so redefining
   `draw-window` or `draw-wallpaper` at the REPL changes the running system
   on the next frame. State that must survive `(reload!)` is declared with
   `defvar`, and record types are `nongenerative`.

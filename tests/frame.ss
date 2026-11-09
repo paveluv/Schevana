@@ -41,6 +41,7 @@
     (if (string=? dir "") "." dir)))
 
 (load (string-append *schevana-root* "/load.ss"))
+(load (string-append *schevana-root* "/tests/core0.ss"))
 
 (define out-dir
   (if (pair? (command-line-arguments)) (car (command-line-arguments)) "."))
@@ -1129,12 +1130,13 @@
       (check (format "on a window, frames go through the swapchain (~a of 10 \
                       shown)" shown)
              (> shown 0))))
-  ;; a fake clock that only these two move
+  ;; a fake clock that only these two move, the world's and core0's own
   (let* ([t 0]
          [held (lambda (f ms)
                  (lambda args (set! t (+ t (* ms 1000000))) (apply f args)))]
          [waits *pacer-waits*])
     (fluid-let ([now-ns (lambda () t)]
+                [core0-now-ns (lambda () t)]
                 [sdl-acquire-swapchain (held sdl-acquire-swapchain 5)]
                 [sdl-submit-gpu-fence (held sdl-submit-gpu-fence 7)])
       (with-profile-span 'step #f (render-frame!)))
