@@ -293,7 +293,7 @@
                                  (and (= (car n) (* *scale* (window-x w)))
                                       (= (cadr n) (* *scale* (window-y w)))))
                                (inspect-list-tree))])
-               (and mine (> (caddr mine) 0) (not (list-ref mine 4))
+               (and mine (> (caddr mine) 0) (> (list-ref mine 4) 0)
                     (= 1 (length (list-ref mine 5))))))
       (let* ([span (assoc "Every kind" (inspect-list-labels l))]
              [lists (inspect-span-lists l (cadr span) (caddr span))]

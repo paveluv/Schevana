@@ -173,15 +173,15 @@
              (for-all eq? runs (gpu-list-runs old)))
         old
         (let ([copy (make-gpu-list
+                     #f
                      (inspect-bytes-copy (gpu-list-recs lst)
                                          (gpu-list-recs-n lst))
                      (gpu-list-recs-n lst)
                      (inspect-bytes-copy (gpu-list-extras lst)
                                          (gpu-list-extras-n lst))
                      (gpu-list-extras-n lst)
-                     runs (gpu-list-labels lst) #f (cons 0 0) (cons 0 0)
-                     #f #f (gpu-list-version lst) (gpu-list-recorded lst)
-                     (gpu-list-took lst))])
+                     runs (gpu-list-labels lst) (gpu-list-version lst)
+                     (gpu-list-recorded lst) (gpu-list-took lst))])
           (hashtable-set! inspect-copies lst copy)
           (hashtable-set! inspect-owners copy (inspect-list-whose lst))
           (hashtable-set! inspect-sources copy
@@ -424,9 +424,9 @@
                     acc
                     (cons (list (cdar ls) first (- end first)) acc)))))))
 
-;; The lists the last frame shows, as a tree: ((x y records bytes fresh?
+;; The lists the last frame shows, as a tree: ((x y records bytes version
 ;; children) ...) in draw order, (x, y) in device pixels from what shows it,
-;; fresh? while it hasn't gone up to the GPU yet.
+;; version how many times it's been recorded.
 (define (inspect-list-tree)
   (let walk ([runs (rec-runs)])
     (map (lambda (run)
@@ -434,7 +434,7 @@
              (list (caddr run) (cadddr run)
                    (fxquotient (gpu-list-recs-n lst) 32)
                    (+ (gpu-list-recs-n lst) (gpu-list-extras-n lst))
-                   (gpu-list-fresh? lst)
+                   (gpu-list-version lst)
                    (walk (gpu-list-runs lst)))))
          (filter gpu-show-run? runs))))
 

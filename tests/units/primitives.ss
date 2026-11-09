@@ -535,6 +535,31 @@
                      target)
              (and same changed (equal? target (cons 'texture (* 4 64 48))))))))
 
+;; A list goes up when it has a newer version than went up; core0 keeps its
+;; GPU buffers by its id, and lets them go by main's release job.
+(let ([lst (gpu-list-new)] [plain record-world!]
+      [state (lambda (l) (hashtable-ref *gpu-lists* (gpu-list-id l) #f))])
+  (record-list! lst (lambda () (fill-box 0 0 4 4 #xff0000)))
+  (set! record-world! (lambda () (show-list lst 0 0)))
+  (request-frame!)
+  (steps 1)
+  (let ([first-up (vector-ref (state lst) 2)] [after (gpu-list-fresh? lst)])
+    (record-list! lst (lambda () (fill-box 0 0 4 4 #x00ff00)))
+    (let ([recorded (gpu-list-fresh? lst)])
+      (request-frame!)
+      (steps 1)
+      (let ([second-up (vector-ref (state lst) 2)])
+        (set! record-world! plain)
+        (gpu-list-release! lst)
+        (request-frame!)
+        (steps 1)
+        (check (format "a list goes up when it has a newer version, core0 \
+                        keeping its buffers by its id (versions ~a, ~a), and \
+                        lets them go by a job"
+                       first-up second-up)
+               (and (= first-up 1) (not after) recorded (= second-up 2)
+                    (not (state lst))))))))
+
 (check "pixels with no chain, shown smaller, blend what they have"
        (let ([bv (make-bytevector 8 0)])
          (bytevector-u32-native-set! bv 0 #xffff0000)

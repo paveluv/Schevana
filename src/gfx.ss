@@ -411,7 +411,6 @@
        (gpu-list-labels-set! lst (list->vector
                                   (list-head (vector->list *rec-labels*)
                                              *rec-label-at*)))
-       (gpu-list-fresh?-set! lst #t)
        (gpu-list-version-set! lst (+ (gpu-list-version lst) 1))
        (when t0
          (let ([now (now-ns)])

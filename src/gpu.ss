@@ -67,6 +67,17 @@
           (make-gpu-image id gpu-atlas-side gpu-atlas-side 1 #f #f))
         *gpu-atlas-image*)))
 
+;;; ------------------------------------------------------------------ lists
+
+;; A list to record into (record-list!), a handle like an image's: its GPU
+;; buffers are core0's.
+(define (gpu-list-new)
+  (make-gpu-list (gpu-new-id!) (make-immobile-bytevector 1024) 0
+                 (make-immobile-bytevector 256) 4 '() '() 0 0 0))
+
+;; Its GPU buffers let go of: shown again, it goes up again.
+(define (gpu-list-release! l) (gpu-ask! (list 'release (gpu-list-id l))))
+
 ;;; ------------------------------------------------------------------ buffers
 
 (defvar *gpu-dirty-buffers* '())

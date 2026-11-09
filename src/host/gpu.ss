@@ -497,6 +497,7 @@
           (gpu-forget-pipelines!)]
          [(target) (gpu-set-target! (cadr job) (caddr job))]
          [(release)
+          (gpu-list-free! (cadr job))
           (let ([o (hashtable-ref *gpu-objects* (cadr job) #f)])
             (hashtable-delete! *gpu-objects* (cadr job))
             (when o
@@ -542,34 +543,44 @@
   (fields shader uniforms buffers))
 
 ;; A list kept to be shown by another: its records and extras, as bytes, and
-;; how many of them; its runs, and the labels the recorder gave it; fresh?
-;; until they've gone up, into GPU buffers of its own, (buffer . size) each;
-;; where its records and extras wait in the transfer while they go, or #f;
-;; how many times it's been recorded, when last (now-ns) and in how many ns,
-;; for kits/inspect.ss.
+;; how many of them; its runs, and the labels the recorder gave it; how many
+;; times it's been recorded, when last (now-ns) and in how many ns, for
+;; kits/inspect.ss. All main's: its id, a handle's, names its GPU buffers in
+;; *gpu-lists*; #f for a copy that's never shown (kits/inspect.ss).
 (define-record-type gpu-list
-  (nongenerative schevana-gpu-list-1)
-  (fields (mutable recs) (mutable recs-n) (mutable extras) (mutable extras-n)
-          (mutable runs) (mutable labels) (mutable fresh?)
-          (mutable records-on-gpu) (mutable extras-on-gpu)
-          (mutable recs-sent) (mutable extras-sent)
+  (nongenerative schevana-gpu-list-2)
+  (fields id (mutable recs) (mutable recs-n) (mutable extras)
+          (mutable extras-n) (mutable runs) (mutable labels)
           (mutable version) (mutable recorded) (mutable took)))
 
-(define (gpu-list-new)
-  (make-gpu-list (make-immobile-bytevector 1024) 0
-                 (make-immobile-bytevector 256) 4 '() '() #f
-                 (cons 0 0) (cons 0 0) #f #f 0 0 0))
+;; What core0 keeps of each list shown, by id: #(records extras version
+;; recs-at extras-at), its GPU buffers (buffer . size) each, the version
+;; that went up, and where its records and extras wait in the transfer
+;; while they go, or #f. A list goes up when it has a newer version.
+(defvar *gpu-lists* (make-eqv-hashtable))
 
-;; Its GPU buffers let go of: shown again, it goes up again.
-(define (gpu-list-release! l)
-  (for-each (lambda (pair)
-              (unless (eqv? 0 (car pair))
-                (sdl-release-gpu-buffer (renderer-device *renderer*)
-                                        (car pair))))
-            (list (gpu-list-records-on-gpu l) (gpu-list-extras-on-gpu l)))
-  (gpu-list-records-on-gpu-set! l (cons 0 0))
-  (gpu-list-extras-on-gpu-set! l (cons 0 0))
-  (gpu-list-fresh?-set! l #t))
+(define (gpu-list-state l)
+  (let ([id (or (gpu-list-id l)
+                (errorf 'gpu-list-state "a copy of a list is never shown"))])
+    (or (hashtable-ref *gpu-lists* id #f)
+        (let ([state (vector (cons 0 0) (cons 0 0) 0 #f #f)])
+          (hashtable-set! *gpu-lists* id state)
+          state))))
+
+(define (gpu-list-fresh? l)
+  (not (fx= (vector-ref (gpu-list-state l) 2) (gpu-list-version l))))
+
+;; Its GPU buffers let go of, by main's release job: shown again, it goes
+;; up again.
+(define (gpu-list-free! id)
+  (let ([state (hashtable-ref *gpu-lists* id #f)])
+    (when state
+      (hashtable-delete! *gpu-lists* id)
+      (for-each (lambda (pair)
+                  (unless (eqv? 0 (car pair))
+                    (sdl-release-gpu-buffer (renderer-device *renderer*)
+                                            (car pair))))
+                (list (vector-ref state 0) (vector-ref state 1))))))
 
 ;; A run that shows a list: (show list ox oy x0 y0 x1 y1 labels), at (ox,
 ;; oy) in device pixels from its own list's origin, inside the clip x0 y0
@@ -860,12 +871,13 @@
 (define (gpu-put-lists! mapped runs)
   (unless (null? runs)
     (when (gpu-show-run? (car runs))
-      (let ([l (cadar runs)])
-        (when (and (gpu-list-fresh? l) (not (gpu-list-recs-sent l)))
-          (gpu-list-recs-sent-set!
-           l (gpu-put! mapped (gpu-list-recs l) (gpu-list-recs-n l)))
-          (gpu-list-extras-sent-set!
-           l (gpu-put! mapped (gpu-list-extras l) (gpu-list-extras-n l))))
+      (let* ([l (cadar runs)] [state (gpu-list-state l)])
+        (when (and (gpu-list-fresh? l) (not (vector-ref state 3)))
+          (vector-set! state 3
+                       (gpu-put! mapped (gpu-list-recs l) (gpu-list-recs-n l)))
+          (vector-set! state 4
+                       (gpu-put! mapped (gpu-list-extras l)
+                                 (gpu-list-extras-n l))))
         (gpu-put-lists! mapped (gpu-list-runs l))))
     (gpu-put-lists! mapped (cdr runs))))
 
@@ -873,21 +885,21 @@
 (define (gpu-send-lists! r pass transfer runs)
   (unless (null? runs)
     (when (gpu-show-run? (car runs))
-      (let ([l (cadar runs)])
-        (when (gpu-list-recs-sent l)
-          (let ([recs-b (gpu-sized-buffer r (gpu-list-records-on-gpu l)
+      (let* ([l (cadar runs)] [state (gpu-list-state l)])
+        (when (vector-ref state 3)
+          (let ([recs-b (gpu-sized-buffer r (vector-ref state 0)
                                           (max (gpu-list-recs-n l) 32))]
-                [extras-b (gpu-sized-buffer r (gpu-list-extras-on-gpu l)
+                [extras-b (gpu-sized-buffer r (vector-ref state 1)
                                             (max (gpu-list-extras-n l) 32))])
-            (gpu-list-records-on-gpu-set! l recs-b)
-            (gpu-list-extras-on-gpu-set! l extras-b)
-            (gpu-to-buffer! pass transfer recs-b (gpu-list-recs-sent l)
+            (vector-set! state 0 recs-b)
+            (vector-set! state 1 extras-b)
+            (gpu-to-buffer! pass transfer recs-b (vector-ref state 3)
                             (gpu-list-recs-n l))
-            (gpu-to-buffer! pass transfer extras-b (gpu-list-extras-sent l)
+            (gpu-to-buffer! pass transfer extras-b (vector-ref state 4)
                             (gpu-list-extras-n l))
-            (gpu-list-recs-sent-set! l #f)
-            (gpu-list-extras-sent-set! l #f)
-            (gpu-list-fresh?-set! l #f)))
+            (vector-set! state 2 (gpu-list-version l))
+            (vector-set! state 3 #f)
+            (vector-set! state 4 #f)))
         (gpu-send-lists! r pass transfer (gpu-list-runs l))))
     (gpu-send-lists! r pass transfer (cdr runs))))
 
@@ -1008,17 +1020,17 @@
       (unless (null? runs)
         (let ([run (car runs)])
           (if (gpu-show-run? run)
-              (let ([l (cadr run)] [cx (list-ref run 4)])
+              (let* ([l (cadr run)] [cx (list-ref run 4)]
+                     [state (gpu-list-state l)])
                 (unless (or (null? (gpu-list-runs l))
-                            (eqv? 0 (car (gpu-list-records-on-gpu l))))
+                            (eqv? 0 (car (vector-ref state 0))))
                   (let ([ix0 (if cx (max x0 (+ ox cx)) x0)]
                         [iy0 (if cx (max y0 (+ oy (list-ref run 5))) y0)]
                         [ix1 (if cx (min x1 (+ ox (list-ref run 6))) x1)]
                         [iy1 (if cx (min y1 (+ oy (list-ref run 7))) y1)])
                     (gpu-scissor! pass ix0 iy0 ix1 iy1)
                     (gpu-draw-list! r cb pass pipelines format (gpu-list-runs l)
-                                    (gpu-list-records-on-gpu l)
-                                    (gpu-list-extras-on-gpu l)
+                                    (vector-ref state 0) (vector-ref state 1)
                                     (+ ox (caddr run)) (+ oy (cadddr run))
                                     ix0 iy0 ix1 iy1)
                     (gpu-scissor! pass x0 y0 x1 y1)
