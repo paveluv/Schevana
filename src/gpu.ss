@@ -611,47 +611,45 @@
     (make-gpu-call shader bytes
                    (gpu-args-of gpu-buffer-param? params args))))
 
-;; The buffers' dirty bytes, by a copy pass on cb.
-(define (gpu-upload-buffers! r cb)
-  (let ([dirty *gpu-dirty-buffers*])
-    (unless (null? dirty)
-      (let* ([total (fold-left (lambda (n b)
-                                 (+ n (- (gpu-buffer-to b)
-                                         (gpu-buffer-from b))))
-                               0 dirty)]
-             [transfer (car (gpu-sized-transfer r total))]
-             [mapped (gpu-must 'gpu-upload-buffers!
-                               (sdl-map-gpu-transfer (renderer-device r)
-                                                     transfer #t))]
-             [at 0])
-        (for-each (lambda (b)
-                    (let ([n (- (gpu-buffer-to b) (gpu-buffer-from b))])
-                      (sdl-memcpy (+ mapped at)
-                                  (+ (object->reference-address
-                                      (gpu-buffer-bytes b))
-                                     (gpu-buffer-from b))
-                                  n)
-                      (set! at (+ at n))))
-                  dirty)
-        (sdl-unmap-gpu-transfer (renderer-device r) transfer)
-        (let ([pass (sdl-begin-copy-pass cb)]
-              [from gpu-transfer-location*]
-              [to gpu-buffer-region*])
-          (fold-left
-           (lambda (off b)
-             (let ([n (- (gpu-buffer-to b) (gpu-buffer-from b))])
-               (ftype-set! gpu-transfer-location (transfer) from transfer)
-               (ftype-set! gpu-transfer-location (offset) from off)
-               (ftype-set! gpu-buffer-region (buffer) to (gpu-buffer-id b))
-               (ftype-set! gpu-buffer-region (offset) to (gpu-buffer-from b))
-               (ftype-set! gpu-buffer-region (size) to n)
-               (sdl-upload-to-buffer pass (gpu-at from) (gpu-at to) #f)
-               (gpu-buffer-from-set! b 0)
-               (gpu-buffer-to-set! b 0)
-               (+ off n)))
-           0 dirty)
-          (sdl-end-copy-pass pass)))
-      (set! *gpu-dirty-buffers* '()))))
+;; The dirty buffers' bytes, by a copy pass on cb.
+(define (gpu-upload-buffers! r cb dirty)
+  (unless (null? dirty)
+    (let* ([total (fold-left (lambda (n b)
+                               (+ n (- (gpu-buffer-to b)
+                                       (gpu-buffer-from b))))
+                             0 dirty)]
+           [transfer (car (gpu-sized-transfer r total))]
+           [mapped (gpu-must 'gpu-upload-buffers!
+                             (sdl-map-gpu-transfer (renderer-device r)
+                                                   transfer #t))]
+           [at 0])
+      (for-each (lambda (b)
+                  (let ([n (- (gpu-buffer-to b) (gpu-buffer-from b))])
+                    (sdl-memcpy (+ mapped at)
+                                (+ (object->reference-address
+                                    (gpu-buffer-bytes b))
+                                   (gpu-buffer-from b))
+                                n)
+                    (set! at (+ at n))))
+                dirty)
+      (sdl-unmap-gpu-transfer (renderer-device r) transfer)
+      (let ([pass (sdl-begin-copy-pass cb)]
+            [from gpu-transfer-location*]
+            [to gpu-buffer-region*])
+        (fold-left
+         (lambda (off b)
+           (let ([n (- (gpu-buffer-to b) (gpu-buffer-from b))])
+             (ftype-set! gpu-transfer-location (transfer) from transfer)
+             (ftype-set! gpu-transfer-location (offset) from off)
+             (ftype-set! gpu-buffer-region (buffer) to (gpu-buffer-id b))
+             (ftype-set! gpu-buffer-region (offset) to (gpu-buffer-from b))
+             (ftype-set! gpu-buffer-region (size) to n)
+             (sdl-upload-to-buffer pass (gpu-at from) (gpu-at to) #f)
+             (gpu-buffer-from-set! b 0)
+             (gpu-buffer-to-set! b 0)
+             (+ off n)))
+         0 dirty)
+        (sdl-end-copy-pass pass)))))
 
 ;;; ------------------------------------------------------------------ compute
 
@@ -733,8 +731,10 @@
 (define (gpu-compute! shader w h . args)
   (let* ([r *renderer*]
          [cb (gpu-must 'gpu-compute!
-                       (sdl-acquire-gpu-commands (renderer-device r)))])
-    (gpu-upload-buffers! r cb)
+                       (sdl-acquire-gpu-commands (renderer-device r)))]
+         [dirty *gpu-dirty-buffers*])
+    (set! *gpu-dirty-buffers* '())
+    (gpu-upload-buffers! r cb dirty)
     (gpu-dispatch! cb (gpu-compute-run shader w h args))
     (gpu-wait! (gpu-must 'gpu-compute! (sdl-submit-gpu-fence cb)))))
 
@@ -747,11 +747,17 @@
   (set! *gpu-computes*
     (cons (gpu-compute-run shader w h args) *gpu-computes*)))
 
-;; Those asked for since, in order, on cb: after its uploads, before its draws.
-(define (gpu-run-computes! cb)
-  (let ([runs (reverse *gpu-computes*)])
+;; runs, in order, on cb: after its uploads, before its draws.
+(define (gpu-run-computes! cb runs)
+  (for-each (lambda (run) (gpu-dispatch! cb run)) runs))
+
+;; What main asked of the GPU since it last handed it on, taken from it: the
+;; dirty buffers, and the compute runs in order.
+(define (gpu-take-asks!)
+  (let ([dirty *gpu-dirty-buffers*] [runs (reverse *gpu-computes*)])
+    (set! *gpu-dirty-buffers* '())
     (set! *gpu-computes* '())
-    (for-each (lambda (run) (gpu-dispatch! cb run)) runs)))
+    (values dirty runs)))
 
 ;; What a shader left in the buffer: read back into the copy here. => its
 ;; bytes
@@ -820,9 +826,9 @@
 ;; images' new pixels, and the lists the runs show that changed. All through
 ;; one transfer buffer, mapped once. A frame with none of those allocates
 ;; nothing.
-(define (gpu-upload! r cb recs recs-n extras extras-n table table-n
+(define (gpu-upload! r cb dirty recs recs-n extras extras-n table table-n
                      atlas-pieces images runs)
-  (gpu-upload-buffers! r cb)
+  (gpu-upload-buffers! r cb dirty)
   (let* ([total (+ recs-n extras-n (if table table-n 0) 8
                    (gpu-fresh-bytes runs 0)
                    (gpu-each-bytes atlas-pieces gpu-piece-bytes 0)
@@ -1149,17 +1155,76 @@
                   (cdr (assq mode gpu-present-codes))))
         (set! *gpu-present-mode* mode)))))
 
+;;; ------------------------------------------------------------------ frames
+;;; A frame as main hands it to the host, which reads nothing else of main's
+;;; (.work/gpu-design.md 9.5): the root list's records, extras and runs, the
+;;; glyph table if it changed, the atlas's new pieces, images with pixels to
+;;; go up, the buffers made dirty and the compute runs asked for since, the
+;;; present mode, and lists kept from earlier to draw on images first,
+;;; (image recs recs-n extras extras-n runs) each. One record goes back and
+;;; forth, filled again for each frame: a frame allocates none.
+
+(define-record-type gpu-frame
+  (nongenerative schevana-gpu-frame-1)
+  (fields (mutable recs) (mutable recs-n) (mutable extras) (mutable extras-n)
+          (mutable table) (mutable table-n) (mutable pieces) (mutable images)
+          (mutable runs) (mutable dirty) (mutable computes) (mutable mode)
+          (mutable earlier)))
+
+;; The frame the host gave back, to fill; #f while it has it.
+(defvar *gpu-frame-free* #f)
+
+;; Main's side: the frame filled, what it asked of the GPU since handed on
+;; with it. => the frame
+(define (gpu-publish recs recs-n extras extras-n table table-n pieces images
+                     runs mode earlier)
+  (let ([f (or *gpu-frame-free*
+               (make-gpu-frame #f 0 #f 0 #f 0 '() '() '() '() '() #f '()))])
+    (set! *gpu-frame-free* #f)
+    (let-values ([(dirty computes) (gpu-take-asks!)])
+      (gpu-frame-dirty-set! f dirty)
+      (gpu-frame-computes-set! f computes))
+    (gpu-frame-recs-set! f recs)
+    (gpu-frame-recs-n-set! f recs-n)
+    (gpu-frame-extras-set! f extras)
+    (gpu-frame-extras-n-set! f extras-n)
+    (gpu-frame-table-set! f table)
+    (gpu-frame-table-n-set! f table-n)
+    (gpu-frame-pieces-set! f pieces)
+    (gpu-frame-images-set! f images)
+    (gpu-frame-runs-set! f runs)
+    (gpu-frame-mode-set! f mode)
+    (gpu-frame-earlier-set! f earlier)
+    f))
+
+;; The host's side: the lists kept from earlier on their images, then the
+;; frame, the dirty buffers going up with the first of them; f given back.
+;; => #t if the frame reached the screen; #f if the window had no room for
+;; it yet, and it should be tried again.
+(define (gpu-present! f)
+  (gpu-present-mode! (gpu-frame-mode f))
+  (let loop ([earlier (gpu-frame-earlier f)] [dirty (gpu-frame-dirty f)])
+    (if (pair? earlier)
+        (begin
+          (apply gpu-list-on-image! dirty (car earlier))
+          (loop (cdr earlier) '()))
+        (let ([shown? (gpu-frame! f dirty)])
+          (set! *gpu-frame-free* f)
+          shown?))))
+
 ;; One frame: uploads, then the runs, to the window or the target. => #t if
 ;; it reached the screen; #f if the window had no room for it yet (a frame
-;; still in flight, or it is hidden), and it should be tried again.
-(define (gpu-frame! recs recs-n extras extras-n table table-n atlas-pieces
-                    images runs)
+;; still in flight, or it is hidden).
+(define (gpu-frame! f dirty)
   (let* ([r *renderer*]
+         [runs (gpu-frame-runs f)]
          [cb (gpu-must 'gpu-frame!
                        (sdl-acquire-gpu-commands (renderer-device r)))])
-    (gpu-upload! r cb recs recs-n extras extras-n table table-n atlas-pieces
-                 images runs)
-    (gpu-run-computes! cb)
+    (gpu-upload! r cb dirty (gpu-frame-recs f) (gpu-frame-recs-n f)
+                 (gpu-frame-extras f) (gpu-frame-extras-n f)
+                 (gpu-frame-table f) (gpu-frame-table-n f)
+                 (gpu-frame-pieces f) (gpu-frame-images f) runs)
+    (gpu-run-computes! cb (gpu-frame-computes f))
     (if (eqv? 0 (renderer-window r))
         (begin
           (gpu-draw-runs! r cb (renderer-target r) gpu-format-bgra8
@@ -1207,12 +1272,12 @@
 
 ;; A list kept from earlier drawn on image, ahead of the next frame, which sends
 ;; its own: its glyphs are all up already. Its images and paints show what
-;; they hold now, but those let go of since.
-(define (gpu-list-on-image! image recs recs-n extras extras-n runs)
+;; they hold now, but those let go of since; dirty, the buffers going up.
+(define (gpu-list-on-image! dirty image recs recs-n extras extras-n runs)
   (let* ([r *renderer*]
          [d (renderer-device r)]
          [cb (gpu-must 'gpu-list-on-image! (sdl-acquire-gpu-commands d))])
-    (gpu-upload! r cb recs recs-n extras extras-n #f 0 '() '() runs)
+    (gpu-upload! r cb dirty recs recs-n extras extras-n #f 0 '() '() runs)
     (gpu-draw-runs! r cb (gpu-image-texture image) gpu-format-bgra8
                     (gpu-image-w image) (gpu-image-h image)
                     (remp gpu-run-gone? runs) #f)
@@ -1227,9 +1292,10 @@
          [d (renderer-device r)]
          [texture (gpu-make-texture d gpu-format-bgra8 gpu-usage-target w h)]
          [cb (gpu-must 'gpu-drawing->bytes (sdl-acquire-gpu-commands d))])
-    (gpu-upload! r cb recs recs-n extras extras-n table table-n atlas-pieces
-                 images runs)
-    (gpu-run-computes! cb)
+    (let-values ([(dirty computes) (gpu-take-asks!)])
+      (gpu-upload! r cb dirty recs recs-n extras extras-n table table-n
+                   atlas-pieces images runs)
+      (gpu-run-computes! cb computes))
     (gpu-draw-runs! r cb texture gpu-format-bgra8 w h runs clear?)
     (let ([bytes (gpu-read-texture! r cb texture w h)])
       (sdl-release-gpu-texture d texture)

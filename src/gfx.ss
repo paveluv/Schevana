@@ -1460,24 +1460,28 @@
 
 (define (rec-table-bytes) (* 4 glyph-row-words (+ *glyph-count* 1)))
 
-;; The list written since rec-begin! goes to the screen. => #t if it got
-;; there; #f if the screen had no room for it yet, and it should be tried
-;; again.
+;; The list written since rec-begin! goes to the screen: main publishes it,
+;; and the host presents it. => #t if it got there; #f if the screen had no
+;; room for it yet, and it should be tried again.
 (define (rec-present!)
   (rec-run-end!)
-  (gpu-present-mode! (theme 'present-mode))
-  (when *rec-past*
-    (apply gpu-list-on-image! *rec-past*)
-    (set! *rec-past* #f))
-  (let ([preview *rec-preview*])
+  (gpu-present! (rec-publish)))
+
+;; The list written since rec-begin!, as the frame main hands the host, with
+;; the lists kept from earlier: the past one, and the preview's, which its
+;; procedure makes here, on main, of the frame just recorded.
+(define (rec-publish)
+  (let* ([preview *rec-preview*]
+         [kept (and preview
+                    (guard (c [#t (report-error! 'preview c) #f])
+                      ((cdr preview))))]
+         [earlier (append (if *rec-past* (list *rec-past*) '())
+                          (if kept (list (cons (car preview) kept)) '()))])
     (set! *rec-preview* #f)
-    (when preview
-      (let ([kept (guard (c [#t (report-error! 'preview c) #f])
-                    ((cdr preview)))])
-        (when kept (apply gpu-list-on-image! (car preview) kept)))))
-  (gpu-frame! *rec-bytes* *rec-at* *rec-extras* (* 4 *rec-extra-at*)
-              (rec-take-table!) (rec-table-bytes) (rec-take-atlas-pieces!)
-              *rec-images* (rec-runs)))
+    (set! *rec-past* #f)
+    (gpu-publish *rec-bytes* *rec-at* *rec-extras* (* 4 *rec-extra-at*)
+                 (rec-take-table!) (rec-table-bytes) (rec-take-atlas-pieces!)
+                 *rec-images* (rec-runs) (theme 'present-mode) earlier)))
 
 ;; With the next frame, a list drawn on image too, as big as the screen, for
 ;; the Pipeline: what (list-of) gives as it's sent, made of the frame just

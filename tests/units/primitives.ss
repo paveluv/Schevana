@@ -462,6 +462,38 @@
                       '(#xffff0000 #xff0000ff))))
   (gpu-image-release! target))
 
+;; Main publishes a frame, the host presents it: what main asked of the GPU
+;; goes with the frame, the preview's list is made on main as it's
+;; published, and the one frame record comes back to be filled again.
+(let ([b (make-gpu-buffer 1)] [target (gpu-image-make-target 4 4)]
+      [made #f])
+  (gpu-buffer-set! b 0 7)
+  (rec-begin! 1)
+  (fill-box 0 0 4 4 #x0000ff)
+  (rec-preview! target
+                (lambda ()
+                  (set! made #t)
+                  (list *rec-bytes* *rec-at* *rec-extras*
+                        (* 4 *rec-extra-at*) (rec-runs))))
+  (let* ([f (rec-publish)]
+         [handed (and (memq b (gpu-frame-dirty f))
+                      (null? *gpu-dirty-buffers*)
+                      made
+                      (= 1 (length (gpu-frame-earlier f))))])
+    (gpu-present! f)
+    ;; what's on the GPU, not main's copy
+    (bytevector-u32-native-set! (gpu-buffer-bytes b) 0 0)
+    (gpu-buffer-read! b)
+    (rec-begin! 1)
+    (let ([again (rec-publish)])
+      (gpu-present! again)
+      (check "main hands the host a frame with what it asked of the GPU, \
+              the preview's list made on main; the host gives the frame \
+              back"
+             (and handed (= (gpu-buffer-ref b 0) 7) (eq? again f)))))
+  (gpu-buffer-release! b)
+  (gpu-image-release! target))
+
 (check "pixels with no chain, shown smaller, blend what they have"
        (let ([bv (make-bytevector 8 0)])
          (bytevector-u32-native-set! bv 0 #xffff0000)
