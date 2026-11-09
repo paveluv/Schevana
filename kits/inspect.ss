@@ -31,45 +31,187 @@
 ;;; ---- lists
 
 ;; A copy of the last frame's list: #(records extras labels count words row
-;; runs frame), labels ((label first-record count) ...) in draw order, row the
-;; frame's in inspect-frames, runs its runs, frame its number. The lists it
-;; shows are in it, flattened: each one's records where its runs draw them,
-;; moved to where it's shown and cut to its clip, so it draws the same
-;; pixels from one list, and its records come in the order they're drawn.
+;; runs frame segments), labels ((label first-record count) ...) in draw
+;; order, row the frame's in inspect-frames, runs its runs, frame its
+;; number, segments where its records came from (inspect-record-list). The
+;; lists it shows are in it, flattened: each one's records where its runs
+;; draw them, moved to where it's shown and cut to its clip, so it draws the
+;; same pixels from one list, and its records come in the order they're
+;; drawn.
 (define (inspect-list) (inspect-list-read! (inspect-list-empty)))
 
 (define (inspect-list-empty)
-  (vector (make-bytevector 0) (make-bytevector 0) '() 0 0 #f '() -1))
+  (vector (make-bytevector 0) (make-bytevector 0) '() 0 0 #f '() -1 '()))
 
 ;; l holds the last list recorded from now on, the frame's, in its own
 ;; buffers when they're big enough: they stay where they are, and a
 ;; collection needn't copy them.
 (define (inspect-list-read! l)
-  (let* ([newest (inspect-frames 1)]
-         [row (and (pair? newest) (car newest))]
-         [count (rec-count)]
-         [words *rec-extra-at*]
-         [runs (rec-runs)]
-         [labels (list->vector (list-head (vector->list *rec-labels*)
-                                          *rec-label-at*))]
-         [need (inspect-flat-size (* 32 count) (* 4 words) runs)]
-         [fit! (lambda (slot n)
-                 (when (< (bytevector-length (vector-ref l slot)) n)
-                   (vector-set! l slot
-                                (make-immobile-bytevector
-                                 (+ n (quotient n 4))))))])
+  (let ([newest (inspect-frames 1)])
+    (inspect-list-flat! l *rec-bytes* (* 32 (rec-count)) *rec-extras*
+                        (* 4 *rec-extra-at*) (rec-runs)
+                        (list->vector (list-head (vector->list *rec-labels*)
+                                                 *rec-label-at*))
+                        (and (pair? newest) (car newest))
+                        (- *frame-ring-n* 1))))
+
+;; l as a root's records and extras, bytes long, its runs and labels,
+;; flattened, its row and frame number those given.
+(define (inspect-list-flat! l recs recs-n extras extras-n runs labels row
+                            frame)
+  (let ([need (inspect-flat-size recs-n extras-n runs)]
+        [fit! (lambda (slot n)
+                (when (< (bytevector-length (vector-ref l slot)) n)
+                  (vector-set! l slot
+                               (make-immobile-bytevector
+                                (+ n (quotient n 4))))))])
     (fit! 0 (car need))
     (fit! 1 (cdr need))
     (let ([flat (inspect-flatten! (vector-ref l 0) (vector-ref l 1)
-                                  *rec-bytes* *rec-extras* (* 4 words)
-                                  runs labels)])
+                                  recs extras extras-n runs labels)])
       (vector-set! l 2 (inspect-label-spans (car flat) (cadr flat)))
       (vector-set! l 3 (cadr flat))
       (vector-set! l 4 (caddr flat))
       (vector-set! l 5 row)
       (vector-set! l 6 (cadddr flat))
-      (vector-set! l 7 (- *frame-ring-n* 1))
+      (vector-set! l 7 frame)
+      (vector-set! l 8 (list-ref flat 4))
       l)))
+
+;; The list record i of l came from, and its place there: (values list j),
+;; list #f for the root's.
+(define (inspect-record-list l i)
+  (let ([s (find (lambda (s) (< -1 (- i (vector-ref s 1)) (vector-ref s 2)))
+                 (vector-ref l 8))])
+    (if s
+        (values (vector-ref s 0) (+ (vector-ref s 3) (- i (vector-ref s 1))))
+        (values #f i))))
+
+;; The lists records first to first + count of l came from, each once, in
+;; order: a drawer's.
+(define (inspect-span-lists l first count)
+  (fold-left (lambda (acc s)
+               (let ([lst (vector-ref s 0)])
+                 (if (and lst
+                          (< -1 (- (vector-ref s 1) first) count)
+                          (not (memq lst acc)))
+                     (append acc (list lst))
+                     acc)))
+             '() (vector-ref l 8)))
+
+;; What a list is: ((owner . name) (version . n) (records . n) (bytes . n)
+;; (recorded . ns) (took . ns)), recorded on now-ns's clock.
+(define (inspect-list-facts lst)
+  `((owner . ,(inspect-list-owner lst))
+    (version . ,(gpu-list-version lst))
+    (records . ,(fxquotient (gpu-list-recs-n lst) 32))
+    (bytes . ,(+ (gpu-list-recs-n lst) (gpu-list-extras-n lst)))
+    (recorded . ,(gpu-list-recorded lst))
+    (took . ,(gpu-list-took lst))))
+
+;; Whose a list is, in words, and which of its owner's: a window's, its
+;; frame and all, window, or its content, content; else list. A kept copy's
+;; are its list's then.
+(define (inspect-list-owner lst) (car (inspect-list-whose lst)))
+(define (inspect-list-part lst) (cdr (inspect-list-whose lst)))
+
+(define (inspect-list-whose lst)
+  (or (hashtable-ref inspect-owners lst #f)
+      (let loop ([ws *windows*])
+        (cond [(null? ws) '("a list" . list)]
+              [(eq? (window-ref (car ws) 'wm-list) lst)
+               (cons (window-title (car ws)) 'window)]
+              [(eq? (window-ref (car ws) 'wm-content-list) lst)
+               (cons (window-title (car ws)) 'content)]
+              [else (loop (cdr ws))]))))
+
+;; The lists l's records came from, each once, in order.
+(define (inspect-list-lists l)
+  (inspect-span-lists l 0 (inspect-list-count l)))
+
+;;; ---- lists kept: one copy a version
+
+;; Caches, which only save copying: each list's newest copy, and each
+;; copy's owner, said when it's made (inspect-list-whose); and each copy's
+;; list and basis, (list . basis).
+(define inspect-copies (make-weak-eq-hashtable))
+(define inspect-owners (make-weak-eq-hashtable))
+(define inspect-sources (make-weak-eq-hashtable))
+
+;; The list a copy is of; a list that isn't one, itself.
+(define (inspect-list-original copy)
+  (let ([s (hashtable-ref inspect-sources copy #f)]) (if s (car s) copy)))
+
+;; The first of the copies in a row that hold the very same records as
+;; copy: a list recorded again the same, its basis is the copy before's.
+(define (inspect-list-basis copy)
+  (let ([s (hashtable-ref inspect-sources copy #f)]) (if s (cdr s) copy)))
+
+;; Whether copies a and b hold the very same records and extras, and show
+;; the same.
+(define (inspect-copy-same? a b)
+  (and (bytevector=? (gpu-list-recs a) (gpu-list-recs b))
+       (bytevector=? (gpu-list-extras a) (gpu-list-extras b))
+       (= (length (gpu-list-runs a)) (length (gpu-list-runs b)))
+       (for-all (lambda (r s)
+                  (if (and (gpu-show-run? r) (gpu-show-run? s))
+                      (and (eq? (inspect-list-basis (cadr r))
+                                (inspect-list-basis (cadr s)))
+                           (equal? (cddr r) (cddr s)))
+                      (equal? r s)))
+                (gpu-list-runs a) (gpu-list-runs b))))
+
+;; lst as it is now, to keep: a copy of its records and extras, its runs
+;; showing copies of the lists it shows, the same copy as the last time
+;; while it and they haven't changed.
+(define (inspect-list-copy lst)
+  (let ([runs (inspect-runs-copied (gpu-list-runs lst))]
+        [old (hashtable-ref inspect-copies lst #f)])
+    (if (and old
+             (= (gpu-list-version old) (gpu-list-version lst))
+             (for-all eq? runs (gpu-list-runs old)))
+        old
+        (let ([copy (make-gpu-list
+                     (inspect-bytes-copy (gpu-list-recs lst)
+                                         (gpu-list-recs-n lst))
+                     (gpu-list-recs-n lst)
+                     (inspect-bytes-copy (gpu-list-extras lst)
+                                         (gpu-list-extras-n lst))
+                     (gpu-list-extras-n lst)
+                     runs (gpu-list-labels lst) #f (cons 0 0) (cons 0 0)
+                     #f #f (gpu-list-version lst) (gpu-list-recorded lst)
+                     (gpu-list-took lst))])
+          (hashtable-set! inspect-copies lst copy)
+          (hashtable-set! inspect-owners copy (inspect-list-whose lst))
+          (hashtable-set! inspect-sources copy
+                          (cons lst (if (and old (inspect-copy-same? copy old))
+                                        (inspect-list-basis old)
+                                        copy)))
+          copy))))
+
+;; runs, those that show a list showing its copy instead: the same run
+;; objects otherwise, and a show run the same as the last time while its
+;; copy is.
+(define (inspect-runs-copied runs)
+  (map (lambda (run)
+         (if (gpu-show-run? run)
+             (let ([copy (inspect-list-copy (cadr run))]
+                   [old (hashtable-ref inspect-shows run #f)])
+               (if (and old (eq? (cadr old) copy))
+                   old
+                   (let ([new (cons* 'show copy (cddr run))])
+                     (hashtable-set! inspect-shows run new)
+                     new)))
+             run))
+       runs))
+
+;; Each show run's copy that shows a copy: a cache too.
+(define inspect-shows (make-weak-eq-hashtable))
+
+(define (inspect-bytes-copy bv n)
+  (let ([c (make-bytevector n)])
+    (bytevector-copy! bv 0 c 0 n)
+    c))
 
 ;; The bytes the flattened list takes: (records . extras), each list as
 ;; often as it's shown, and a clip row for each show.
@@ -87,10 +229,13 @@
 
 ;; Writes the list (recs, extras, its runs and labels, as the recorder keeps
 ;; them) and those it shows into to and to-extras, flattened. =>
-;; (labels count words runs): labels a list ((first . label) ...) in order,
-;; count the records, words the extras' words.
+;; (labels count words runs segments): labels a list ((first . label) ...)
+;; in order, count the records, words the extras' words, segments where
+;; each stretch of records came from, #(list first count its-first), list
+;; #f for the root's.
 (define (inspect-flatten! to to-extras recs extras extras-n runs labels)
-  (let ([count 0] [words 1] [out-runs '()] [out-labels '()])
+  (let ([count 0] [words 1] [out-runs '()] [out-labels '()]
+        [segments '()])
     (define (word bv i) (bytevector-s32-native-ref bv (fx* 4 i)))
     (define (word! bv i v) (bytevector-s32-native-set! bv (fx* 4 i) v))
     ;; a label the same as the one before goes on
@@ -159,7 +304,8 @@
           (recs-of at sr clip! paint! points!))))
     ;; a list's records first to first + n, at the end of to, moved by
     ;; (dx, dy) in 256ths, their rows by at
-    (define (records! from first n dx dy at sr clip! paint! points!)
+    (define (records! lst from first n dx dy at sr clip! paint! points!)
+      (set! segments (cons (vector lst count n first) segments))
       (bytevector-copy! from (fx* 32 first) to (fx* 32 count) (fx* 32 n))
       (do ([i count (fx+ i 1)]) ((fx= i (fx+ count n)))
         (let* ([o (fx* i rec-row-words)]
@@ -200,7 +346,7 @@
     ;; a list at (ox, oy) device pixels, inside box or none, its runs in
     ;; order; its labels where they fall among them, none being outer, the
     ;; label of what shows it
-    (define (flatten! recs extras extras-n runs labels ox oy box outer)
+    (define (flatten! lst recs extras extras-n runs labels ox oy box outer)
       (let ([dx (fx* ox 256)] [dy (fx* oy 256)] [li 0]
             [label-n (vector-length labels)])
         (define (labels-upto! k at-record)
@@ -234,7 +380,7 @@
                        (labels-upto! (list-ref run 8) (most-positive-fixnum))
                        (let ([shown (and (pair? out-labels)
                                          (cdar out-labels))])
-                         (flatten! (gpu-list-recs lst) (gpu-list-extras lst)
+                         (flatten! lst (gpu-list-recs lst) (gpu-list-extras lst)
                                    (gpu-list-extras-n lst) (gpu-list-runs lst)
                                    (gpu-list-labels lst)
                                    (+ ox (caddr run)) (+ oy (cadddr run))
@@ -248,10 +394,10 @@
                                           (vector-ref labels li))])
                            (if (and next (fx< next (fx+ first n)))
                                (let ([k (fx- next first)])
-                                 (records! recs first k dx dy at sr clip!
+                                 (records! lst recs first k dx dy at sr clip!
                                            paint! points!)
                                  (split next (fx- n k)))
-                               (records! recs first n dx dy at sr clip!
+                               (records! lst recs first n dx dy at sr clip!
                                          paint! points!))))
                        (set! out-runs
                          (cons (list (car run) (cadr run)
@@ -259,8 +405,9 @@
                                out-runs)))))
                runs)
               (labels-upto! label-n (most-positive-fixnum)))))))
-    (flatten! recs extras extras-n runs labels 0 0 #f #f)
-    (list (reverse out-labels) count words (reverse out-runs))))
+    (flatten! #f recs extras extras-n runs labels 0 0 #f #f)
+    (list (reverse out-labels) count words (reverse out-runs)
+          (reverse segments))))
 
 ;; The labels' spans of the first count records, from ((first . label) ...)
 ;; in order: a label holds until the next, and a span of none, or of no
@@ -317,39 +464,130 @@
 
 ;;; ---- the frames kept
 
-;; The last frames' lists, as many as it was made for, by frame number: a ring
-;; its caller holds, whose slots' buffers are used again.
+;; The last frames, as many as it was made for, by frame number: a ring its
+;; caller holds. A frame keeps the root's records, in its slot's buffers used
+;; again, and copies of the lists it shows, a list unchanged since the
+;; frame before the same copy; flattened as it's asked for, the last few
+;; flattened kept.
 (define-record-type inspect-history
-  (fields slots (mutable newest)))
+  (fields slots (mutable newest) (mutable flat)))
 
-(define (inspect-history-new n) (make-inspect-history (make-vector n #f) -1))
+(define (inspect-history-new n)
+  (make-inspect-history (make-vector n #f) -1 '()))
+
+;; A slot: #(records records-n extras extras-n runs labels row frame).
+(define (inspect-history-slot-empty)
+  (vector (make-bytevector 0) 0 (make-bytevector 0) 0 '() '#() #f -1))
 
 ;; Keeps the frame drawn last, unless it's kept already.
 (define (inspect-history-add! h)
   (let ([frame (- *frame-ring-n* 1)] [slots (inspect-history-slots h)])
     (when (> frame (inspect-history-newest h))
-      (let ([i (modulo frame (vector-length slots))])
-        (vector-set! slots i
-                     (inspect-list-read! (or (vector-ref slots i)
-                                             (inspect-list-empty))))
+      (let* ([i (modulo frame (vector-length slots))]
+             [slot (or (vector-ref slots i) (inspect-history-slot-empty))]
+             [recs-n (* 32 (rec-count))]
+             [extras-n (* 4 *rec-extra-at*)]
+             [newest (inspect-frames 1)])
+        (define (fit! k n)
+          (when (< (bytevector-length (vector-ref slot k)) n)
+            (vector-set! slot k (make-bytevector (+ n (quotient n 4))))))
+        (fit! 0 recs-n)
+        (fit! 2 extras-n)
+        (bytevector-copy! *rec-bytes* 0 (vector-ref slot 0) 0 recs-n)
+        (bytevector-copy! *rec-extras* 0 (vector-ref slot 2) 0 extras-n)
+        (vector-set! slot 1 recs-n)
+        (vector-set! slot 3 extras-n)
+        (vector-set! slot 4 (inspect-runs-copied (rec-runs)))
+        (vector-set! slot 5 (list->vector
+                             (list-head (vector->list *rec-labels*)
+                                        *rec-label-at*)))
+        (vector-set! slot 6 (and (pair? newest) (car newest)))
+        (vector-set! slot 7 frame)
+        (vector-set! slots i slot)
         (inspect-history-newest-set! h frame)))))
 
-;; Frame n's list, while it's kept; or #f.
-(define (inspect-history-ref h n)
+;; Frame n's slot while it's kept, or #f; whether it is, without flattening
+;; it.
+(define (inspect-history-slot h n)
   (let* ([slots (inspect-history-slots h)]
-         [l (and (>= n 0) (vector-ref slots (modulo n (vector-length slots))))])
-    (and l (= (inspect-list-frame l) n) l)))
+         [slot (and (>= n 0)
+                    (vector-ref slots (modulo n (vector-length slots))))])
+    (and slot (= (vector-ref slot 7) n) slot)))
 
-;; How many frames are kept, and the bytes they hold now.
+(define (inspect-history-kept? h n) (and (inspect-history-slot h n) #t))
+
+;; Frame n's list, flattened, while it's kept; or #f. A list asked for is
+;; one of its own, which a later ask doesn't touch.
+(define (inspect-history-ref h n)
+  (let ([slot (inspect-history-slot h n)])
+    (and slot
+         (cond
+           [(assv n (inspect-history-flat h)) => cdr]
+           [else
+            (let ([l (inspect-list-flat! (inspect-list-empty)
+                                         (vector-ref slot 0) (vector-ref slot 1)
+                                         (vector-ref slot 2) (vector-ref slot 3)
+                                         (vector-ref slot 4) (vector-ref slot 5)
+                                         (vector-ref slot 6) n)]
+                  [flat (inspect-history-flat h)])
+              (inspect-history-flat-set!
+               h (cons (cons n l)
+                       (if (< (length flat) 3) flat (list-head flat 2))))
+              l)]))))
+
+;; The lists the frames kept up to frame upto showed, frame by frame,
+;; none of them flattened: (values n table), n how many frames, and table
+;; each list's copies, a vector of n, the oldest frame first, #f where it
+;; wasn't shown.
+(define (inspect-history-copies h upto)
+  (let* ([len (vector-length (inspect-history-slots h))]
+         [slots (filter values
+                        (map (lambda (k)
+                               (inspect-history-slot h (+ upto (- len) 1 k)))
+                             (iota len)))]
+         [n (length slots)]
+         [table (make-eq-hashtable)])
+    (for-each
+     (lambda (slot k)
+       (let walk ([runs (vector-ref slot 4)])
+         (for-each (lambda (run)
+                     (when (gpu-show-run? run)
+                       (let* ([copy (cadr run)]
+                              [lst (inspect-list-original copy)]
+                              [copies (or (hashtable-ref table lst #f)
+                                          (let ([v (make-vector n #f)])
+                                            (hashtable-set! table lst v)
+                                            v))])
+                         (vector-set! copies k copy)
+                         (walk (gpu-list-runs copy)))))
+                   runs)))
+     slots (iota n))
+    (values n table)))
+
+;; How many frames are kept, and the bytes they hold now: each slot's, and
+;; each list's copy once.
 (define (inspect-history-count h)
   (length (filter values (vector->list (inspect-history-slots h)))))
+
 (define (inspect-history-bytes h)
-  (fold-left (lambda (n l)
-               (if l
-                   (+ n (bytevector-length (vector-ref l 0))
-                      (bytevector-length (vector-ref l 1)))
-                   n))
-             0 (vector->list (inspect-history-slots h))))
+  (let ([seen (make-eq-hashtable)] [n 0])
+    (define (lists! runs)
+      (for-each (lambda (run)
+                  (let ([copy (and (gpu-show-run? run) (cadr run))])
+                    (when (and copy (not (hashtable-contains? seen copy)))
+                      (hashtable-set! seen copy #t)
+                      (set! n (+ n (gpu-list-recs-n copy)
+                                 (gpu-list-extras-n copy)))
+                      (lists! (gpu-list-runs copy)))))
+                runs))
+    (vector-for-each
+     (lambda (slot)
+       (when slot
+         (lists! (vector-ref slot 4))
+         (set! n (+ n (bytevector-length (vector-ref slot 0))
+                    (bytevector-length (vector-ref slot 2))))))
+     (inspect-history-slots h))
+    n))
 
 (define (inspect-word l i k)
   (bytevector-s32-native-ref (vector-ref l 0)
@@ -424,9 +662,44 @@
           [(glyph) `((char . ,(integer->char (inspect-glyph-char l i))))]
           [else '()]))))
 
+;; The font glyph g was made in, and at what scale: (font . key), key num ×
+;; 65536 + den as its pages are kept; or #f. A glyph's number is in one
+;; font's pages, at its character.
+(define (inspect-glyph-font g)
+  (let* ([c (glyph-row-ref g glyph-row-character)]
+         [at (fx* 4 (fxand c 255))]
+         [in? (lambda (page)
+                (and page
+                     (exists (lambda (k) (fx= (fxvector-ref page (fx+ at k)) g))
+                             '(0 1 2 3))))])
+    (exists (lambda (f)
+              (let ([sized (find (lambda (s)
+                                   (in? (vector-ref (cdr s) (fxsrl c 8))))
+                                 (font-sized f))])
+                (and sized (cons f (car sized)))))
+            (vector->list (hashtable-values *font-specs*)))))
+
+;; How many spaces lie between glyph records i and j on a line: how far the
+;; pen went past i's advance, in spaces of i's font, whose pen moves only by
+;; advances; 0 when its font is gone.
+(define (inspect-glyph-spaces l i j)
+  (let ([found (inspect-glyph-font (inspect-word l i rec-glyph-number))])
+    (if (not found)
+        0
+        (let* ([f (car found)]
+               [scale (/ (fxsrl (cdr found) 16)
+                         (* 256 (fxand (cdr found) 65535)))]
+               [advance (lambda (c)
+                          (* scale (font-advance f (font-ready f) c)))]
+               [gap (- (inspect-word l j rec-glyph-pen-x)
+                       (inspect-word l i rec-glyph-pen-x)
+                       (advance (inspect-glyph-char l i)))])
+          (exact (round (/ gap (advance 32))))))))
+
 ;; The records first .. first + count - 1 as rows for reading: #(first count
 ;; kind what), a run of glyphs on one baseline in one paint being one row
-;; whose what is its text.
+;; whose what is its text, its spaces read back from where its glyphs are.
+;; A gap of more than a few spaces, or back, is another text's.
 (define (inspect-rows l first count)
   (let loop ([i first] [end (+ first count)] [acc '()])
     (cond
@@ -434,31 +707,45 @@
       [(eq? (inspect-kind l i) 'glyph)
        (let run ([j (+ i 1)]
                  [chars (list (inspect-glyph-char l i))])
-         (if (and (< j end) (eq? (inspect-kind l j) 'glyph)
-                  (= (inspect-word l j rec-glyph-pen-y)
-                     (inspect-word l i rec-glyph-pen-y))
-                  (= (inspect-word l j rec-row-paint)
-                     (inspect-word l i rec-row-paint)))
-             (run (+ j 1) (cons (inspect-glyph-char l j) chars))
-             (loop j end
-                   (cons (vector i (- j i) 'text
-                                 (list->string
-                                  (map integer->char (reverse chars))))
-                         acc))))]
+         (let ([spaces (and (< j end) (eq? (inspect-kind l j) 'glyph)
+                            (= (inspect-word l j rec-glyph-pen-y)
+                               (inspect-word l i rec-glyph-pen-y))
+                            (= (inspect-word l j rec-row-paint)
+                               (inspect-word l i rec-row-paint))
+                            (inspect-glyph-spaces l (- j 1) j))])
+           (if (and spaces (<= 0 spaces 4))
+               (run (+ j 1) (cons (inspect-glyph-char l j)
+                                  (append (make-list spaces 32) chars)))
+               (loop j end
+                     (cons (vector i (- j i) 'text
+                                   (list->string
+                                    (map integer->char (reverse chars))))
+                           acc)))))]
       [else
        (loop (+ i 1) end
              (cons (vector i 1 (inspect-kind l i) (inspect-what l i)) acc))])))
 
-;; A record's paint and size, in words.
+;; A record's size, in words.
 (define (inspect-what l i)
-  (let ([r (inspect-reach l i)] [paint (inspect-paint l i)])
-    (format "~a × ~a  ~a"
+  (let ([r (inspect-reach l i)])
+    (format "~a × ~a"
             (exact (round (- (caddr r) (car r))))
-            (exact (round (- (cadddr r) (cadr r))))
-            (if (eq? paint 'solid)
-                (format "#~8,'0x"
-                        (fxand (inspect-word l i rec-row-paint) #xffffffff))
-                paint))))
+            (exact (round (- (cadddr r) (cadr r)))))))
+
+;; A record's paint: a solid one's color, its word #xAARRGGBB; another's
+;; kind, as inspect-paint names it.
+(define (inspect-record-paint l i)
+  (let ([paint (inspect-paint l i)])
+    (if (eq? paint 'solid)
+        (fxand (inspect-word l i rec-row-paint) #xffffffff)
+        paint)))
+
+;; A paint, as inspect-record-paint gives it, in words: a color #RRGGBB,
+;; its alpha first only when it isn't opaque.
+(define (inspect-paint-text paint)
+  (cond [(not (fixnum? paint)) (symbol->string paint)]
+        [(= (fxsrl paint 24) 255) (format "#~6,'0x" (fxand paint #xffffff))]
+        [else (format "#~8,'0x" paint)]))
 
 ;; Does record i touch the device pixel x, y, as far as its reach and clip
 ;; tell?

@@ -34,6 +34,12 @@
                         (if y0 (min y0 ay) ay)
                         (max y1 (+ ay (* h scale)))))))))))
 
+;; s at most n characters, its last an ellipsis when it's cut.
+(define (text-shorten s n)
+  (if (<= (string-length s) n)
+      s
+      (string-append (substring s 0 (max 0 (- n 1))) "…")))
+
 ;; Width of the widest of strs (0 for none).
 (define (text-widest strs font)
   (apply max 0 (map (lambda (s) (text-width s font)) strs)))

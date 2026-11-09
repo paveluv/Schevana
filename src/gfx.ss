@@ -369,9 +369,11 @@
 
 ;; What thunk draws, recorded into lst (gpu-list-new) in place of what it
 ;; held, from its own origin, at this list's scale: then a show-list of it
-;; draws it. The list being recorded goes on after, as it was.
+;; draws it. The list being recorded goes on after, as it was. lst counts
+;; the time, and when and how long it took.
 (define (record-list! lst thunk)
-  (let ([outer (vector *rec-bytes* *rec-at* *rec-extras* *rec-extra-at*
+  (let ([t0 (now-ns)]
+        [outer (vector *rec-bytes* *rec-at* *rec-extras* *rec-extra-at*
                        *rec-labels* *rec-label-at* *rec-label* *rec-runs*
                        *rec-mode* *rec-image* *rec-variant* *rec-run-first*
                        *rec-area* *rec-runs-was* *rec-runs-same* *rec-num*
@@ -409,6 +411,9 @@
                                   (list-head (vector->list *rec-labels*)
                                              *rec-label-at*)))
        (gpu-list-fresh?-set! lst #t)
+       (gpu-list-version-set! lst (+ (gpu-list-version lst) 1))
+       (gpu-list-recorded-set! lst (now-ns))
+       (gpu-list-took-set! lst (- (now-ns) t0))
        (set! *rec-bytes* (vector-ref outer 0))
        (set! *rec-at* (vector-ref outer 1))
        (set! *rec-extras* (vector-ref outer 2))

@@ -40,7 +40,7 @@
           (mutable stage)      ; lists, who, course, inside or memory
           (mutable shown)      ; (inspect-list), the one on view
           (mutable held?)      ; it stays
-          (mutable looked)     ; when it was read (now-ms)
+          (mutable looked)     ; when it was read, or due to be (now-ms)
           (mutable groups)     ; its spans: (label first count) ...
           (mutable selected)   ; a drawer's node or a record's row, or #f
           (mutable traced)     ; the records at a pixel, or #f: (x y n ...)
@@ -72,9 +72,10 @@
           (mutable who)        ; what each drew cost: (list . rows)
           (mutable course)     ; a tick's stages: (list . (seq items))
           (mutable course-sort) ; (key . up|down), or #f: in their order
+          (mutable who-sort)   ; (key . up|down), or #f: in draw order
           colors))             ; each drawer's color, by node: an index
 
-(define pipeline-period-ms 250)
+(define pipeline-period-ms 1000)
 
 ;; About 5 seconds at 60 Hz.
 (define pipeline-frames-kept 300)
@@ -300,7 +301,7 @@
       (when (>= i 0)
         (let ([seq (+ newest (- i count -1))])
           (if (and (profile-tick-kept? seq)
-                   (inspect-history-ref history (pipeline-tick-frame seq)))
+                   (inspect-history-kept? history (pipeline-tick-frame seq)))
               (loop (- i 1))
               (let-values ([(bx bw) (ui-bar-chart-bar areas count i)])
                 (when (and (< i (- count 1)) (>= bx (car plot)))
@@ -452,7 +453,9 @@
 
 (define (pipeline-tape-tip l i)
   (let ([label (inspect-label-at l i)])
-    (format "record ~a, a ~a: ~a~a" i (inspect-kind l i) (inspect-what l i)
+    (format "record ~a, a ~a: ~a, ~a~a" i (inspect-kind l i)
+            (inspect-what l i)
+            (inspect-paint-text (inspect-record-paint l i))
             (if label (format "\ndrawn by ~a" label) ""))))
 
 ;; The marks on the Tape, where its records are: what's selected, and those at
@@ -760,8 +763,40 @@
            (if (string? label) label (format "~a" label)))]
         [else (format "~a" (vector-ref node 2))]))
 
-(define (pipeline-node-what node)
-  (if (pair? node) "" (vector-ref node 3)))
+;; What a node is: a record's decoding; a drawer's lists, each its part and
+;; how many records it holds; or the screen's, for a drawer drawn on it.
+(define (pipeline-node-what v node)
+  (if (pair? node)
+      (let ([span (pipeline-node-span v node)])
+        (let ([lists (and span
+                          (inspect-span-lists (pipeline-view-shown v)
+                                              (cadr span) (caddr span)))])
+          (cond [(not span) ""]
+                [(null? lists) "the screen's list"]
+                [else (pipeline-lists-text lists)])))
+      (vector-ref node 3)))
+
+(define (pipeline-lists-text lists)
+  (fold-left (lambda (text lst)
+               (format "~a~a~a ~a records" text (if (equal? text "") "" ", ")
+                       (inspect-list-part lst)
+                       (cdr (assq 'records (inspect-list-facts lst)))))
+             "" lists))
+
+;; Whether lst, of the frame on view, wasn't in the frame before: a list
+;; unchanged is the same copy in both.
+(define (pipeline-list-changed? v lst)
+  (let* ([l (pipeline-view-shown v)]
+         [before (inspect-history-ref (pipeline-view-history v)
+                                      (- (inspect-list-frame l) 1))])
+    (and before (not (memq lst (inspect-list-lists before))))))
+
+;; How long ago, on now-ns's clock, ns was.
+(define (pipeline-ago ns)
+  (let ([d (- (now-ns) ns)])
+    (if (< d 1000000000)
+        (format "~a ms ago" (quotient d 1000000))
+        (format "~,1f s ago" (/ d 1e9)))))
 
 ;; The records at a device pixel, as nodes.
 (define (pipeline-trace! v x y)
@@ -908,39 +943,84 @@
               (loop (fx- seq 1) n ms))))))
 
 ;; What each span of the list on view cost, in draw order, a row each:
-;; #(node i ms records pixels runs changed), i its color's index, ms
-;; what main took to draw it a frame, up to the frame's tick, or #f,
-;; changed how many of its records differ from the frame before's, #f when
-;; that one isn't kept. Made again for each list.
+;; #(node i ms records pixels runs changed redrawn same marks), i its
+;; color's index, ms what main took to draw it a frame, up to the frame's
+;; tick, or #f, changed how many of its records differ from the frame
+;; before's, #f when that one isn't kept; redrawn, same and marks as
+;; pipeline-redraws says. Made again for each list.
 (define (pipeline-who-rows v)
   (let ([l (pipeline-view-shown v)] [who (pipeline-view-who v)])
     (if (and who (eq? (car who) l))
         (cdr who)
-        (let* ([spans (inspect-list-labels l)]
-               [before (inspect-history-ref (pipeline-view-history v)
+        (let*-values
+            ([(spans) (inspect-list-labels l)]
+             [(before) (inspect-history-ref (pipeline-view-history v)
                                             (- (inspect-list-frame l) 1))]
-               [newest (or (pipeline-view-tick v) (profile-newest-tick))]
-               [row (lambda (span node i)
-                      (let-values ([(pixels runs)
-                                    (inspect-span-cost l (cadr span)
-                                                       (caddr span))])
-                        (let ([subject (pipeline-span-subject node)]
-                              [b (and before
-                                      (pipeline-span-in
-                                       (inspect-list-labels before) node))])
-                          (vector node i
-                                  (and subject newest
-                                       (pipeline-drawing-ms subject newest))
-                                  (caddr span) pixels runs
-                                  (and b (inspect-span-changed
-                                          l (cadr span) (caddr span)
-                                          before (cadr b) (caddr b)))))))]
-               [nodes (pipeline-span-nodes spans)]
-               [rows (map row spans nodes
+             [(newest) (or (pipeline-view-tick v) (profile-newest-tick))]
+             [(n copies) (inspect-history-copies (pipeline-view-history v)
+                                                 (inspect-list-frame l))]
+             [(row)
+              (lambda (span node i)
+                (let-values ([(pixels runs)
+                              (inspect-span-cost l (cadr span) (caddr span))]
+                             [(redrawn same marks)
+                              (pipeline-redraws
+                               n (map (lambda (lst)
+                                        (hashtable-ref
+                                         copies (inspect-list-original lst)
+                                         #f))
+                                      (inspect-span-lists l (cadr span)
+                                                          (caddr span))))])
+                  (let ([subject (pipeline-span-subject node)]
+                        [b (and before
+                                (pipeline-span-in
+                                 (inspect-list-labels before) node))])
+                    (vector node i
+                            (and subject newest
+                                 (pipeline-drawing-ms subject newest))
+                            (caddr span) pixels runs
+                            (and b (inspect-span-changed
+                                    l (cadr span) (caddr span)
+                                    before (cadr b) (caddr b)))
+                            redrawn same marks))))]
+             [(nodes) (pipeline-span-nodes spans)]
+             [(rows) (map row spans nodes
                           (map (lambda (n) (pipeline-color-index v n))
                                nodes))])
           (pipeline-view-who-set! v (cons l rows))
           rows))))
+
+;; How often a drawer was recorded again in the n frames kept, from its
+;; lists' copies, a vector of n each, #f for a list not kept: (values
+;; redrawn same marks), redrawn in how many frames one of its lists was
+;; another copy than the frame before's, same in how many of those each such
+;; copy held the very same records, and marks a frame's: 0, not redrawn, 1,
+;; redrawn, 2, redrawn the same. Redrawn is #f with fewer than two frames or
+;; no list of its own; same, while it wasn't redrawn.
+(define (pipeline-redraws n copies)
+  (let ([copies (filter values copies)] [marks (make-vector n 0)])
+    (if (or (< n 2) (null? copies))
+        (values #f #f marks)
+        (let loop ([k 1] [redrawn 0] [same 0])
+          (if (= k n)
+              (values redrawn (and (> redrawn 0) same) marks)
+              (let ([new (filter (lambda (v)
+                                   (let ([a (vector-ref v (- k 1))]
+                                         [b (vector-ref v k)])
+                                     (and a b (not (eq? a b)))))
+                                 copies)])
+                (cond
+                  [(null? new) (loop (+ k 1) redrawn same)]
+                  [(for-all (lambda (v)
+                              (eq? (inspect-list-basis (vector-ref v k))
+                                   (inspect-list-basis
+                                    (vector-ref v (- k 1)))))
+                            new)
+                   (vector-set! marks k 2)
+                   (loop (+ k 1) (+ redrawn 1) (+ same 1))]
+                  [else
+                   (vector-set! marks k 1)
+                   (loop (+ k 1) (+ redrawn 1) same)])))))))
 
 ;; A count of pixels, short.
 (define (pipeline-pixels-text n)
@@ -948,14 +1028,26 @@
         [(>= n 10000) (format "~a K" (round (/ n 1000)))]
         [else (number->string n)]))
 
+;; Where a row keeps a column's number.
+(define (pipeline-who-field key)
+  (case key
+    [(ms) 2]
+    [(records) 3]
+    [(pixels) 4]
+    [(runs) 5]
+    [(changed) 6]
+    [(redrawn) 7]
+    [else 8]))
+
 ;; A row's cell's text, and its share of its column's most, for its bar.
 (define (pipeline-who-cell row key most)
   (let* ([records (vector-ref row 3)]
-         [k (case key [(ms) 2] [(records) 3] [(pixels) 4] [(runs) 5] [else 6])]
+         [k (pipeline-who-field key)]
          [n (vector-ref row k)]
          [share (and n (> (most k) 0) (/ n (most k)))])
     (case key
       [(ms) (values (if n (format "~,2f" n) "—") share)]
+      [(redrawn same) (values (if n (number->string n) "—") #f)]
       [(pixels) (values (pipeline-pixels-text n) share)]
       [(changed)
        (if (and n (> records 0))
@@ -964,17 +1056,44 @@
            (values "—" #f))]
       [else (values (number->string n) share)])))
 
-;; Who: a row a drawer, in draw order, what it cost; its checkbox leaves it
-;; out as the tree's does, and selecting it selects its span everywhere.
+;; Who's rows sorted ((key . up|down), or #f: in draw order) by what their
+;; cells say, changed by its share; a row whose cell has nothing to say
+;; last, either way.
+(define (pipeline-who-sorted rows sort)
+  (define (value row)
+    (let ([key (car sort)])
+      (case key
+        [(name) (pipeline-node-name (vector-ref row 0))]
+        [(changed)
+         (let ([n (vector-ref row 6)] [records (vector-ref row 3)])
+           (and n (> records 0) (/ n records)))]
+        [else (vector-ref row (pipeline-who-field key))])))
+  (if (not sort)
+      rows
+      (let ([up? (eq? (cdr sort) 'up)])
+        (list-sort (lambda (a b)
+                     (let ([x (value a)] [y (value b)])
+                       (cond [(not x) #f]
+                             [(not y) #t]
+                             [(string? x)
+                              (if up? (string<? x y) (string>? x y))]
+                             [else (if up? (< x y) (> x y))])))
+                   rows))))
+
+;; Who: a row a drawer, in draw order or as sorted, what it cost; its
+;; checkbox leaves it out as the tree's does, and selecting it selects its
+;; span everywhere.
 (define (pipeline-who-pane v x y w h)
   (let* ([ui (pipeline-view-ui v)]
-         [rows (pipeline-who-rows v)]
+         [rows (pipeline-who-sorted (pipeline-who-rows v)
+                                    (pipeline-view-who-sort v))]
          [most (lambda (k)
                  (fold-left (lambda (m r) (max m (or (vector-ref r k) 0)))
                             0 rows))]
          [span (pipeline-selected-span v)]
          [columns
-          `((name "Who" ,(max 140 (- (ui-table-room w) 72 76 84 60 84 32)))
+          `((name "Who" ,(max 140 (- (ui-table-room w) 72 76 84 60 84 84 64
+                                     32)))
             (ms "Main" 72 right
                 "What main took to draw it, ms a frame over its last 30")
             (records "Records" 76 right)
@@ -985,7 +1104,13 @@
                   "The runs that start among its records: a draw call each, \
                    and a new one where a record needs another shader")
             (changed "Changed" 84 right
-                     "Its records that differ from the frame before"))]
+                     "Its records that differ from the frame before")
+            (redrawn "Redrawn" 84 right
+                     "In how many of the frames kept, up to this one, it was \
+                      recorded again: a mark each, the oldest left")
+            (same "Same" 64 right
+                  "How many of those recorded the very same records again: \
+                   work for nothing"))]
          [cell (lambda (row key cx cy cw ch flags)
                  (if (eq? key 'name)
                      (pipeline-draw-who-name
@@ -993,7 +1118,16 @@
                       (pipeline-node-name (vector-ref row 0)))
                      (let-values ([(text share) (pipeline-who-cell row key
                                                                    most)])
-                       (when share (pipeline-draw-share cx cy cw ch share))
+                       (case key
+                         [(redrawn)
+                          (pipeline-draw-marks cx cy cw ch (vector-ref row 9)
+                                               1)]
+                         [(same)
+                          (pipeline-draw-marks cx cy cw ch (vector-ref row 9)
+                                               2)]
+                         [else
+                          (when share
+                            (pipeline-draw-share cx cy cw ch share))])
                        (ui-draw-cell cx cy cw ch flags text))))])
     (ui-table ui '(pipeline who) x y w h columns rows
               (find (lambda (r) (equal? (vector-ref r 0) span)) rows)
@@ -1006,7 +1140,12 @@
                           (let ([node (vector-ref row 0)])
                             (pipeline-show-span!
                              v node
-                             (and (member node (pipeline-view-off v)) #t)))))))
+                             (and (member node (pipeline-view-off v)) #t))))
+              'sort (pipeline-view-who-sort v)
+              'on-sort (lambda (key)
+                         (pipeline-view-who-sort-set!
+                          v (pipeline-sort-next (pipeline-view-who-sort v)
+                                                key))))))
 
 ;; The small screen showing list l another way than its picture, each record
 ;; solid in a color of what's asked: who drew it, the others dim while a
@@ -1232,19 +1371,18 @@
                                                  (/ (* 100 (vector-ref row 1))
                                                     period)))))]))
                     'sort (pipeline-view-course-sort v)
-                    ;; a number the most first, a name from A; again, the
-                    ;; other way; a third time, in order
                     'on-sort (lambda (key)
-                               (let ([s (pipeline-view-course-sort v)]
-                                     [first (if (eq? key 'name) 'up 'down)])
-                                 (pipeline-view-course-sort-set!
-                                  v (cond [(not (and s (eq? (car s) key)))
-                                           (cons key first)]
-                                          [(eq? (cdr s) first)
-                                           (cons key (if (eq? first 'up)
-                                                         'down
-                                                         'up))]
-                                          [else #f])))))))))
+                               (pipeline-view-course-sort-set!
+                                v (pipeline-sort-next
+                                   (pipeline-view-course-sort v) key))))))))
+
+;; A table's sort after a press on key's heading: a number the most first, a
+;; name from A; again, the other way; a third time, in order.
+(define (pipeline-sort-next s key)
+  (let ([first (if (eq? key 'name) 'up 'down)])
+    (cond [(not (and s (eq? (car s) key))) (cons key first)]
+          [(eq? (cdr s) first) (cons key (if (eq? first 'up) 'down 'up))]
+          [else #f])))
 
 ;;; ---- inside: a record decoded, and the shader it's drawn with
 
@@ -1291,6 +1429,18 @@
                                        (fxand (inspect-word l i k)
                                               #xffffffff)))
                              (iota rec-row-words)))))
+     (let-values ([(lst j) (inspect-record-list l i)])
+       (list
+        (cons "List"
+              (if lst
+                  (let ([f (inspect-list-facts lst)])
+                    (format "~a's ~a, version ~a, its record ~a; recorded \
+                             ~a in ~,2f ms"
+                            (inspect-list-owner lst) (inspect-list-part lst)
+                            (cdr (assq 'version f)) j
+                            (pipeline-ago (cdr (assq 'recorded f)))
+                            (/ (cdr (assq 'took f)) 1e6)))
+                  (format "the screen's own, its record ~a" j)))))
      (if run
          (list (cons "Run"
                      (format "~a of ~a: records ~a–~a, ~a"
@@ -1428,14 +1578,46 @@
 
 ;; A stage's card: its name and what it holds, lines of text; pressed, it
 ;; opens.
+;; Its lines cut to fit, however narrow the window makes it.
 (define (pipeline-draw-card x y w h selected? name lines)
   (fill-box x y w h (if selected? 'bg-3 'bg-1) 4)
   (when selected? (stroke-box x y w h 'accent 1 4))
-  (let ([lh (font-line-height 'ui)])
-    (draw-text (+ x 10) (+ y 6) name 'text 'ui-bold)
+  (let ([lh (font-line-height 'ui)] [tw (max 0 (- w 20))])
+    (draw-text (+ x 10) (+ y 6) (text-fit name tw 'ui-bold) 'text 'ui-bold)
     (for-each (lambda (line i)
-                (draw-text (+ x 10) (+ y 6 (* lh (+ i 1))) line 'text-dim 'ui))
+                (draw-text (+ x 10) (+ y 6 (* lh (+ i 1)))
+                           (text-fit line tw 'ui) 'text-dim 'ui))
               lines (iota (length lines)))))
+
+;; A record's paint in a cell: a solid one as a swatch of its color, alpha
+;; and all, and its word; another by its kind.
+(define (pipeline-draw-paint x y w h flags paint)
+  (if (fixnum? paint)
+      (let ([s 12] [sy (+ y (/ (- h 12) 2))])
+        (fill-box (+ x 6) sy s s
+                  (alpha (fxand paint #xffffff) (/ (fxsrl paint 24) 255.0)) 2)
+        (stroke-box (+ x 6) sy s s (alpha 'text 0.35) 1 2)
+        (ui-draw-cell (+ x s 12) y (max 0 (- w s 12)) h flags
+                      (inspect-paint-text paint)))
+      (ui-draw-cell x y w h flags (inspect-paint-text paint))))
+
+;; A row's frames kept as marks across its cell, inside it as a share's bar
+;; is, the oldest left: those marked at least least, run together where they
+;; touch, a pixel wide at the least.
+(define (pipeline-draw-marks x y w h marks least)
+  (let ([n (vector-length marks)]
+        [x (+ x pipeline-draw-inset)]
+        [w (- w pipeline-draw-inset pipeline-draw-inset)])
+    (let loop ([k 0] [from #f])
+      (let ([on? (and (< k n) (>= (vector-ref marks k) least))])
+        (cond
+          [(and on? (not from)) (loop (+ k 1) k)]
+          [(and from (not on?))
+           (let ([x0 (+ x (* w (/ from n)))])
+             (fill-box x0 (+ y 3) (max 1 (- (+ x (* w (/ k n))) x0)) (- h 6)
+                       (alpha 'accent 0.22) 2))
+           (when (< k n) (loop (+ k 1) #f))]
+          [(< k n) (loop (+ k 1) from)])))))
 
 ;; Who drew span i, a color: the Tape's, so that a drawer's is the same
 ;; everywhere.
@@ -1448,11 +1630,16 @@
     (fill-box (+ x 6) (+ y (/ (- h s) 2)) s s (pipeline-draw-who-color i) 2)
     (ui-draw-cell (+ x s 8) y (max 0 (- w s 8)) h flags name)))
 
-;; A number's share of its column's most, a bar behind it; none for a share
-;; too small to tell from a line between columns.
+;; A number's share of its column's most, a bar behind it, inside the cell by
+;; pipeline-draw-inset so that full ones side by side stay apart; none for a
+;; share too small to tell from a line between columns.
 (define (pipeline-draw-share x y w h share)
   (when (>= share 0.03)
-    (fill-box x (+ y 3) (* w (min 1 share)) (- h 6) (alpha 'accent 0.22) 2)))
+    (let ([d pipeline-draw-inset])
+      (fill-box (+ x d) (+ y 3) (* (- w d d) (min 1 share)) (- h 6)
+                (alpha 'accent 0.22) 2))))
+
+(define pipeline-draw-inset 3)
 
 ;; The words the small screen paints spans' records with, who drew them: dim
 ;; but the one selected, while one is. => (values words other), other for a
@@ -1818,7 +2005,7 @@
   (case stage
     [(who)
      (let ([rows (pipeline-who-rows v)])
-       (list (format "main ~,2f ms a frame drawing"
+       (list (format "main drew in ~,2f ms"
                      (fold-left (lambda (ms r) (+ ms (or (vector-ref r 2) 0.0)))
                                 0.0 rows))
              (if (null? rows)
@@ -1834,12 +2021,15 @@
                                       (car rows) (cdr rows))
                            0))))))]
     [(lists)
-     (let* ([l (pipeline-view-shown v)] [row (inspect-list-row l)])
+     (let ([l (pipeline-view-shown v)])
        (list (format "~a records, ~a KB" (inspect-list-count l)
                      (quotient (inspect-list-bytes l) 1024))
-             (format "~a drew, ~a runs"
-                     (length (inspect-list-labels l))
-                     (if row (cadddr row) 0))))]
+             (let ([lists (inspect-list-lists l)])
+               (format "~a drew, ~a lists, ~a changed"
+                       (length (inspect-list-labels l)) (length lists)
+                       (length (filter (lambda (lst)
+                                         (pipeline-list-changed? v lst))
+                                       lists))))))]
     [(course)
      (let ([c (pipeline-course v)])
        (if c
@@ -1916,7 +2106,9 @@
          [columns `((name "Who" 190)
                     (first "Record" 72 right)
                     (count "Count" 64 right)
-                    (what "What" ,(max 80 (- (ui-table-room w) 190 72 64))))]
+                    (paint "Paint" 140)
+                    (what "What" ,(max 80 (- (ui-table-room w) 190 72 64
+                                             140))))]
          [box (ui-checkbox-box)]
          ;; a span's name has its checkbox: off, it's left out
          [cell (lambda (node key cx cy cw ch flags)
@@ -1931,7 +2123,12 @@
                                           Tape")
                        (ui-draw-cell (+ cx box 6) cy (max 0 (- cw box 6)) ch
                                      flags (pipeline-node-name node)))
-                     (ui-draw-cell
+                     (if (and (eq? key 'paint) (vector? node))
+                         (pipeline-draw-paint
+                          cx cy cw ch flags
+                          (inspect-record-paint (pipeline-view-shown v)
+                                                (vector-ref node 0)))
+                         (ui-draw-cell
                       cx cy cw ch flags
                       (case key
                         [(name) (pipeline-node-name node)]
@@ -1939,7 +2136,8 @@
                          (number->string (pipeline-node-first v node))]
                         [(count)
                          (number->string (pipeline-node-count v node))]
-                        [else (pipeline-node-what node)]))))]
+                        [(paint) ""]
+                        [else (pipeline-node-what v node)])))))]
          [select! (lambda (node) (pipeline-select! v node))])
     (if traced
         (let ([ch (ui-control-height)])
@@ -2084,9 +2282,15 @@
       (when (and newest
                  (not (eqv? newest (ui-stream-sent (pipeline-view-river v)))))
         (invalidate! win)))
-    (when (> (- (now-ms) (pipeline-view-looked v)) pipeline-period-ms)
-      (pipeline-look! v)
-      (invalidate! win))))
+    ;; a period after the last read was due, not after it was done, so that
+    ;; reads keep in step with the clock; one a period late or more starts
+    ;; again from then
+    (let* ([due (+ (pipeline-view-looked v) pipeline-period-ms)]
+           [late (- (now-ms) due)])
+      (when (>= late 0)
+        (pipeline-look! v)
+        (when (< late pipeline-period-ms) (pipeline-view-looked-set! v due))
+        (invalidate! win)))))
 
 (define-app (pipeline) "Pipeline"
   (let ([existing (find-window 'pipeline)])
@@ -2101,7 +2305,7 @@
                                       #f #f #f #f #f #f '() 0.0 #f 1
                                       (pipeline-tape-new 0) #f #f 5
                                       #f #f #f #f '() #f #f 'picture
-                                      (inspect-list-empty) #f #f #f
+                                      (inspect-list-empty) #f #f #f #f
                                       (make-hashtable equal-hash equal?))])
           (pipeline-look! v)
           (apply open-window "Pipeline"

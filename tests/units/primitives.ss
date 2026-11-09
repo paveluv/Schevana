@@ -424,6 +424,13 @@
          (and (equal? first (list red red black black red black))
               (equal? moved (list red red black))
               (equal? nested (list red black black))))
+  (let ([before (gpu-list-recorded inner)])
+    (record-list! inner (lambda () (fill-box 0 0 1 1 #xff0000)))
+    (check "a list counts the times it's recorded, and says when and in how \
+            long"
+           (and (= (gpu-list-version inner) 2) (= (gpu-list-version outer) 1)
+                (> (gpu-list-recorded inner) before)
+                (>= (gpu-list-took inner) 0))))
   (gpu-list-release! inner)
   (gpu-list-release! outer))
 

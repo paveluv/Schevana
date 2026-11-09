@@ -26,10 +26,7 @@
 ;;; gets into the language.
 
 ;; This machine's back end: a Mac has Metal, everything else Vulkan.
-(define shader-target
-  (if (string-contains-ci? (symbol->string (machine-type)) "osx")
-      'msl
-      'spirv))
+(define shader-target (if host-mac? 'msl 'spirv))
 
 ;; What a shader's entry is called: main is no function's name in MSL.
 (define shader-entry (if (eq? shader-target 'msl) "main0" "main"))

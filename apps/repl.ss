@@ -624,7 +624,7 @@
              (values (format "(~a …)" name)
                      (arity-description (procedure-arity-mask v)))
              (values (string-append name " = "
-                                    (truncate-string
+                                    (text-shorten
                                      (parameterize ([print-length 6]
                                                     [print-level 3])
                                        (format "~s" v))

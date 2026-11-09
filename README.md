@@ -1011,13 +1011,19 @@ Decisions worth keeping in mind for the real design:
   data that a REPL or a test can read too: the frame's list by who drew it,
   each record decoded in draw order and a run of glyphs as its text, and
   each drawer with a checkbox that leaves it out of the small screen and the
-  Tape (the core's preview takes a cut of the frame's runs); Who, what each
-  drawer cost, a row each in draw order: main's time drawing it a frame, its
-  records, the pixels they may touch, the runs they start and how many
-  changed since the frame before, each with a bar for its share; Course,
+  Tape (the core's preview takes a cut of the frame's runs), and the lists
+  it drew from, each with how many records it holds; Who, what each
+  drawer cost, a row each in draw order or sorted by any column: main's time
+  drawing it a frame, its records, the pixels they may touch, the runs they
+  start and how many changed since the frame before, each with a bar for its
+  share, and in how many of the frames kept it was recorded again, and of
+  those how many recorded the very same records, work for nothing, each
+  with a mark a frame; Course,
   a tick's stages in order, each as wide as its time, render split into
   each drawer's draw and the rest; Inside, the record selected decoded, its
-  words and its run, and its shader's source with its helpers written out;
+  words, the list it's in (whose, which version, its place there, when and
+  in how long it was recorded) and its run, and its shader's source with its
+  helpers written out;
   Memory, what the GPU holds as bars, and the glyphs' atlas live; the
   screen small, drawn again every tick unless told otherwise and showing
   itself in its own box, a tick older each time round, with what's selected
@@ -1043,7 +1049,9 @@ Decisions worth keeping in mind for the real design:
   where all's well, a
   label's tooltip saying what its colors mean. A press holds it and goes back
   to that tick's frame, the whole app showing it, and a drag moves through
-  them: the last 300 frames are kept while it's open, the images and paints
+  them: the last 300 frames are kept while it's open, each the screen's own
+  records and copies of the lists it showed, a list the same as in the
+  frame before the same copy, the images and paints
   they showed drawn again as they are now (the River's rows are kept by tick,
   so its bands come back as they were), and left out once they're let go
   of. While it flows it asks for a

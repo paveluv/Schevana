@@ -523,18 +523,21 @@
 ;; A list kept to be shown by another: its records and extras, as bytes, and
 ;; how many of them; its runs, and the labels the recorder gave it; fresh?
 ;; until they've gone up, into GPU buffers of its own, (buffer . size) each;
-;; where its records and extras wait in the transfer while they go, or #f.
+;; where its records and extras wait in the transfer while they go, or #f;
+;; how many times it's been recorded, when last (now-ns) and in how many ns,
+;; for kits/inspect.ss.
 (define-record-type gpu-list
   (nongenerative schevana-gpu-list-1)
   (fields (mutable recs) (mutable recs-n) (mutable extras) (mutable extras-n)
           (mutable runs) (mutable labels) (mutable fresh?)
           (mutable records-on-gpu) (mutable extras-on-gpu)
-          (mutable recs-sent) (mutable extras-sent)))
+          (mutable recs-sent) (mutable extras-sent)
+          (mutable version) (mutable recorded) (mutable took)))
 
 (define (gpu-list-new)
   (make-gpu-list (make-immobile-bytevector 1024) 0
                  (make-immobile-bytevector 256) 4 '() '() #f
-                 (cons 0 0) (cons 0 0) #f #f))
+                 (cons 0 0) (cons 0 0) #f #f 0 0 0))
 
 ;; Its GPU buffers let go of: shown again, it goes up again.
 (define (gpu-list-release! l)

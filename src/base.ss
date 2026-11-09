@@ -63,11 +63,6 @@
                (at? i (+ j 1)))))
     (let loop ([i 0]) (and (<= (+ i m) n) (or (at? i 0) (loop (+ i 1)))))))
 
-(define (truncate-string s n)
-  (if (<= (string-length s) n)
-      s
-      (string-append (substring s 0 (max 0 (- n 1))) "…")))
-
 ;; Property lists: '(key val key val ...)
 (define (plist-ref plist key default)
   (cond
@@ -100,11 +95,15 @@
         (map (lambda (e) (if (eq? (name-of e) name) entry e)) entries)
         (append entries (list entry)))))
 
+;; Whether the host is a Mac: Metal, its fonts, its clocks' numbers.
+(define host-mac?
+  (string-contains-ci? (symbol->string (machine-type)) "osx"))
+
 ;; The CPU time this thread has had, in ns: a number, read into memory
 ;; kept for it, so that reading it allocates nothing. The clock's number is
 ;; the system's.
 (define thread-cpu-clock
-  (if (string-contains-ci? (symbol->string (machine-type)) "osx") 16 3))
+  (if host-mac? 16 3))
 (define thread-cpu-time (foreign-alloc 16))   ; a timespec
 (define (thread-cpu-ns)
   (c-clock-gettime thread-cpu-clock thread-cpu-time)

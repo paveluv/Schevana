@@ -539,7 +539,7 @@
          [length (+ n 3)] [a host-sockaddr*])
     (unless (< n 104) (errorf 'host-socket "too long a path: ~a" path))
     (ftype-set! host-sockaddr (family) a
-                (if (string-contains-ci? (symbol->string (machine-type)) "osx")
+                (if host-mac?
                     (+ 256 length)
                     1))
     (do ([i 0 (+ i 1)]) ((= i n))

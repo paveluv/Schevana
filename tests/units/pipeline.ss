@@ -79,6 +79,18 @@
               (eq? (pipeline-test-field (record 3) 'paint) 'stipple)
               (eq? (pipeline-test-field (record 4) 'kind) 'segment)
               (eq? (pipeline-test-field (record 5) 'kind) 'polygon)))
+  (check "a record's paint reads back as the Paint column shows it, a solid \
+          one by its color's word, another by its kind; What is its size"
+         (and (= (inspect-record-paint l 0) #xff112233)
+              (equal? (inspect-paint-text (inspect-record-paint l 0))
+                      "#112233")
+              (equal? (inspect-paint-text #x1c000000) "#1C000000")
+              (eq? (inspect-record-paint l 2) 'gradient)
+              (equal? (inspect-paint-text (inspect-record-paint l 2))
+                      "gradient")
+              (equal? (inspect-what l 0)
+                      (format "~a × ~a" (exact (round (* 30 *scale*)))
+                              (exact (round (* 40 *scale*)))))))
   (check (format "a record that needs another variant of the fragment shader \
                   starts a run, which draws with that one: ~s"
                  (inspect-list-runs l))
@@ -99,6 +111,16 @@
          (equal? (map (lambda (row) (vector-ref row 3))
                       (inspect-rows l 6 4))
                  '("Hi" "Lo")))
+  (let ([l (pipeline-test-list
+            (lambda ()
+              (draw-text 10 10 "To try it, press  F1" 'text 'ui)
+              (draw-text 400 10 "far" 'text 'ui)
+              (draw-text 10 40 "(define x  1)" 'text 'mono)))])
+    (check "a run of glyphs reads back its spaces, in any font; a text \
+            further along the line is a row of its own"
+           (equal? (map (lambda (row) (vector-ref row 3))
+                        (inspect-rows l 0 (inspect-list-count l)))
+                   '("To try it, press  F1" "far" "(define x  1)"))))
   (check "the records at a pixel come with the one on top first"
          (equal? (inspect-records-at l (exact (round (* 16 *scale*)))
                                      (exact (round (* 26 *scale*))))
@@ -273,6 +295,70 @@
                                (inspect-list-tree))])
                (and mine (> (caddr mine) 0) (not (list-ref mine 4))
                     (= 1 (length (list-ref mine 5))))))
+      (let* ([span (assoc "Every kind" (inspect-list-labels l))]
+             [lists (inspect-span-lists l (cadr span) (caddr span))]
+             [i (+ (cadr span) (caddr span) -1)])
+        (let-values ([(lst j) (inspect-record-list l i)])
+          (check (format "a window's records come from its two lists, named \
+                          by it, ~s; a record from its place in one (~a of \
+                          ~a)" (map inspect-list-part lists) j
+                          (and lst (inspect-list-part lst)))
+                 (and (equal? (map inspect-list-part lists) '(window content))
+                      (for-all (lambda (x)
+                                 (equal? (inspect-list-owner x) "Every kind"))
+                               lists)
+                      (memq lst lists)
+                      ;; its head's kind and paint, as the list has them
+                      (= (fxand (inspect-word l i rec-row-head) 255)
+                         (fxand (bytevector-u32-native-ref
+                                 (gpu-list-recs lst) (* 32 j))
+                                255))))))
+      (let* ([h (inspect-history-new 8)]
+             [keep! (lambda (thunk)
+                      (thunk)
+                      (steps 1)
+                      (inspect-history-add! h)
+                      (cons (inspect-history-bytes h)
+                            (inspect-history-ref
+                             h (inspect-history-newest h))))]
+             [mine (lambda (k)
+                     (filter (lambda (x) (equal? (inspect-list-owner x)
+                                                 "Every kind"))
+                             (inspect-list-lists (cdr k))))]
+             [a (keep! request-frame!)]
+             [b (keep! request-frame!)]
+             [c (keep! (lambda () (invalidate! w)))]
+             [bytes (lambda (x) (+ (gpu-list-recs-n x) (gpu-list-extras-n x)))])
+        (check (format "frames kept share a list's copy while it's the same: \
+                        a frame kept adds ~a bytes, and after the window \
+                        changed ~a, its lists' new copies"
+                       (- (car b) (car a)) (- (car c) (car b)))
+               (and (= 2 (length (mine a)))
+                    (for-all eq? (mine a) (mine b))
+                    (not (exists (lambda (x) (memq x (mine a))) (mine c)))
+                    (= (gpu-list-version (cadr (mine c)))
+                       (+ 1 (gpu-list-version (cadr (mine a)))))
+                    (= (- (car c) (car b))
+                       (+ (- (car b) (car a))
+                          (apply + (map bytes (mine c)))))))
+        (let-values ([(n copies) (inspect-history-copies
+                                  h (inspect-history-newest h))])
+          (check "a list recorded again the very same keeps the basis of the \
+                  copy before, and the frames kept give each list's copies, \
+                  frame by frame, none of them flattened"
+                 (and (for-all (lambda (x y)
+                                 (and (not (eq? x y))
+                                      (eq? (inspect-list-basis x)
+                                           (inspect-list-basis y))))
+                               (mine c) (mine a))
+                      (= n 3)
+                      (let ([v (hashtable-ref
+                                copies (inspect-list-original (car (mine c)))
+                                #f)])
+                        (and v
+                             (eq? (vector-ref v 0) (car (mine a)))
+                             (eq? (vector-ref v 1) (car (mine a)))
+                             (eq? (vector-ref v 2) (car (mine c)))))))))
       (check (format "the screen's lists, read as one, draw its pixels: ~a \
                       of ~a differ, in ~a records"
                      differ (* *canvas-pw* *canvas-ph*) (inspect-list-count l))
@@ -365,7 +451,10 @@
   (draw! (box-of #xff0000))
   (inspect-history-add! h)
   (let* ([a (inspect-history-newest h)] [la (inspect-history-ref h a)]
-         [a-bytes (vector-ref la 0)]
+         ;; the root's records, as the slot keeps them
+         [a-bytes (vector-ref (vector-ref (inspect-history-slots h)
+                                          (modulo a 8))
+                              0)]
          [a-color (cdr (assq 'color (inspect-record la 0)))])
     (inspect-history-add! h)
     (check "a frame is kept once, with its records and who drew them"
@@ -442,6 +531,19 @@
   (steps 1))
 
 ;;; The app.
+
+(let* ([l (pipeline-test-list
+           (lambda ()
+             (pipeline-draw-card 10 10 120 60 #t "Who drew the frame"
+                                 '("main 0.43 ms a frame drawing"
+                                   "the most pixels: Pipeline"))))]
+       [right (apply max (map (lambda (i) (caddr (inspect-reach l i)))
+                              (filter (lambda (i)
+                                        (eq? (inspect-kind l i) 'glyph))
+                                      (iota (inspect-list-count l)))))])
+  (check (format "a stage's card cuts its lines to fit it (glyphs to ~a of \
+                  ~a)" right (* 130 *scale*))
+         (<= right (* 130 *scale*))))
 
 (let* ([w (pipeline)] [v (window-ref w 'state)] [ui (window-ref w 'ui)]
        [press! (lambda (id)
@@ -682,6 +784,34 @@
                   (= ((pipeline-river-word (pacer-period)) seq
                       (length monitor-phases))
                      (if (profile-tick-late? seq (pacer-period)) 1 0)))))
+    ;; the River's line where the frames kept end asks only whether they are
+    (steps 6)
+    (let* ([n 0]
+           [flat inspect-list-flat!]
+           [kept (inspect-history-count history)])
+      (fluid-let ([inspect-list-flat! (lambda args
+                                        (set! n (+ n 1))
+                                        (apply flat args))])
+        (invalidate! w)
+        (steps 3))
+      (check (format "drawn, it flattens a frame or two a step, however \
+                      many it keeps (~a flattened in 3 steps, ~a kept)"
+                     n kept)
+             (and (> kept 8) (<= n 6))))
+    ;; its reads a period apart on the clock
+    (let ([at (now-ms)] [period pipeline-period-ms])
+      (pipeline-view-looked-set! v (- at period 500))
+      (pipeline-tick! v w)
+      (let ([paced (pipeline-view-looked v)])
+        (pipeline-view-looked-set! v (- at period period 500))
+        (pipeline-tick! v w)
+        (check (format "a read is due a period after the last was due, not \
+                        after it was done (~a ms from then); one a period \
+                        late or more starts again from then (~a)"
+                       (- paced at) (- (pipeline-view-looked v) at))
+               (and (not (pipeline-view-held? v))
+                    (= paced (- at 500))
+                    (>= (pipeline-view-looked v) at)))))
     (check "the River's lanes say all's well in the chart-ok color, and each \
             label says what its colors mean, a bar's tooltip what they read"
            (let ([seq (profile-newest-tick)])
@@ -872,7 +1002,75 @@
                           (cadr (assoc "Pipeline" (pipeline-view-groups v)))
                           1)))
     (check "and a record selected shows as its drawer's"
-           (equal? (pipeline-selected-span v) '("Pipeline" 0))))
+           (equal? (pipeline-selected-span v) '("Pipeline" 0)))
+    (check "Who sorts its rows by a column, changed by its share, a row with \
+            nothing to say last; a heading's press sorts, again the other \
+            way, a third time in draw order"
+           (let* ([rows (list (vector '("b" 0) 0 0.5 10 100 2 5 3 0 #f)
+                              (vector '("a" 0) 1 #f 40 50 1 #f 0 #f #f)
+                              (vector '("c" 0) 2 0.2 20 300 3 2 5 2 #f))]
+                  [names (lambda (sort)
+                           (map (lambda (r) (car (vector-ref r 0)))
+                                (pipeline-who-sorted rows sort)))]
+                  [sorts (map (lambda (k)
+                                (press! '((pipeline who) header pixels))
+                                (pipeline-view-who-sort v))
+                              '(1 2 3))])
+             (and (not (window-error w))
+                  (equal? (names #f) '("b" "a" "c"))
+                  (equal? (names '(ms . down)) '("b" "c" "a"))
+                  (equal? (names '(ms . up)) '("c" "b" "a"))
+                  (equal? (names '(name . up)) '("a" "b" "c"))
+                  (equal? (names '(pixels . down)) '("c" "b" "a"))
+                  (equal? (names '(changed . down)) '("b" "c" "a"))
+                  (equal? (names '(redrawn . down)) '("c" "b" "a"))
+                  (equal? (names '(redrawn . up)) '("a" "b" "c"))
+                  (equal? (names '(same . down)) '("c" "b" "a"))
+                  (equal? (names '(same . up)) '("b" "c" "a"))
+                  (equal? sorts '((pixels . down) (pixels . up) #f)))))
+    ;; three windows: one still, one drawn again the same each tick, one
+    ;; drawn another color each tick
+    (let* ([k 0]
+           [open (lambda (title x again? draw)
+                   (apply open-window title 'size '(120 . 80)
+                          'pos (cons x 500) 'draw draw
+                          (if again?
+                              (list 'tick (lambda (win) (invalidate! win)))
+                              '())))]
+           [still (open "Still" 40 #f
+                        (lambda (win cw ch) (fill-box 0 0 cw ch 'accent)))]
+           [same (open "Again" 200 #t
+                       (lambda (win cw ch) (fill-box 0 0 cw ch 'accent)))]
+           [moving (open "Moving" 360 #t
+                         (lambda (win cw ch)
+                           (set! k (+ k 1))
+                           (fill-box 0 0 cw ch (if (even? k) 'accent 'text))))])
+      (steps 12)
+      (pipeline-look! v)
+      (let* ([rows (pipeline-who-rows v)]
+             [of (lambda (title)
+                   (find (lambda (r) (equal? (car (vector-ref r 0)) title))
+                         rows))]
+             [says (lambda (title)
+                     (let ([r (of title)])
+                       (and r (list (vector-ref r 7) (vector-ref r 8)))))])
+        (check (format "Who says how often each was recorded again in the \
+                        frames kept, and how often the very same: still ~s, \
+                        again ~s, moving ~s"
+                       (says "Still") (says "Again") (says "Moving"))
+               (let ([n (vector-length (vector-ref (of "Still") 9))])
+                 (and (equal? (says "Still") '(0 #f))
+                      (> (car (says "Again")) 5)
+                      (= (car (says "Again")) (cadr (says "Again")))
+                      (> (car (says "Moving")) 5)
+                      (= (cadr (says "Moving")) 0)
+                      (= n (vector-length (vector-ref (of "Moving") 9)))
+                      (= (car (says "Moving"))
+                         (length (filter (lambda (m) (= m 1))
+                                         (vector->list
+                                          (vector-ref (of "Moving") 9)))))))))
+      (for-each close-window! (list still same moving))
+      (steps 1)))
   (pipeline-view-selected-set! v #f)
   (check "Show offers the small screen's views"
          (equal? (map cdr pipeline-looks) '(picture who kind heat changed)))
@@ -997,7 +1195,16 @@
                                              #\space)))
                   (< -1 (- i (caddr run)) (cadddr run))
                   (member ";; gfx-helpers" lines)
-                  (> (length lines) 50)))))
+                  (> (length lines) 50)))
+      (let ([said (cdr (assoc "List" facts))]
+            [what (pipeline-node-what
+                   v (pipeline-span-node-at v i))])
+        (check (format "Inside names the record's list, ~s, and Lists a \
+                        drawer's, by size, ~s" said what)
+               (and (string-contains-ci? said "Pipeline's window, version")
+                    (string-contains-ci? what "window ")
+                    (string-contains-ci? what " records, content ")
+                    (not (string-contains-ci? what " v")))))))
   (pipeline-select! v #f)
   (press! '(pipeline memory))
   (check "Memory shows what the GPU holds, and the atlas"
