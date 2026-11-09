@@ -58,7 +58,8 @@
            (steps 3)
            (press! ui win '(tab display))
            (let ([no-window (shown ui)])
-             (fluid-let ([gpu-present-modes (lambda () '(vsync mailbox))]
+             (fluid-let ([*gpu-facts* (cons '(present-modes vsync mailbox)
+                                            *gpu-facts*)]
                          [sdl-set-swapchain-parameters (lambda args #t)])
                (invalidate! win)
                (steps 3)

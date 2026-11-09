@@ -32,8 +32,8 @@
     (set! *canvas-h* (exact (floor (/ ph scale))))
     (set! *scale* (inexact scale))
     (set! *canvas-ratio* (rationalize (exact scale) 1/100000))
-    (when (and *renderer* (eqv? 0 (renderer-sdl-window *renderer*)))
-      (gpu-set-target! pw ph))
+    ;; with no window, frames draw to a target this big
+    (when (eq? *host* 'headless) (gpu-ask! (list 'target pw ph)))
     (request-frame!)
     (when rescaled? (theme-changed!))))
 

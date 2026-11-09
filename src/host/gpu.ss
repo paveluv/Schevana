@@ -274,6 +274,7 @@
               '() (make-weak-eq-hashtable)
               (cons 0 0) (cons 0 0) (cons 0 0) (cons 0 0) 0 0 0 0 #f)])
       (set! *renderer* r)
+      (gpu-facts-refresh!)
       r)))
 
 ;; The host window this renderer draws to from now on.
@@ -282,7 +283,8 @@
     (errorf 'gpu-claim-window! "~a" (sdl-get-error)))
   (set! *gpu-present-mode* 'vsync)   ; as a claim leaves it
   (set! *gpu-present-asked* 'vsync)
-  (renderer-sdl-window-set! *renderer* sdl-window))
+  (renderer-sdl-window-set! *renderer* sdl-window)
+  (gpu-facts-refresh!))
 
 ;; What frames draw to with no window: a texture w × h.
 (define (gpu-set-target! w h)
@@ -462,7 +464,8 @@
 
 ;; Main's jobs, in order: (texture id w h usage levels), (buffer id bytes),
 ;; (atlas id), the glyphs' atlas under id, (shaders vertex fragments), the
-;; core's, and (release id).
+;; core's, (target w h), the size frames draw to with no window, and
+;; (release id).
 (define (gpu-run-jobs! jobs)
   (for-each
    (lambda (job)
@@ -492,6 +495,7 @@
          [(shaders)
           (set! *gpu-shaders* (cons (cadr job) (caddr job)))
           (gpu-forget-pipelines!)]
+         [(target) (gpu-set-target! (cadr job) (caddr job))]
          [(release)
           (let ([o (hashtable-ref *gpu-objects* (cadr job) #f)])
             (hashtable-delete! *gpu-objects* (cadr job))
@@ -1102,6 +1106,55 @@
 (defvar *gpu-present-mode* 'vsync)
 (defvar *gpu-present-asked* 'vsync)
 
+;;; ------------------------------------------------------------------ facts
+;;; What core0 says of itself, for the world to read (.work/gpu-design.md
+;;; 9.12, step 3b): an alist the world never changes, made again at the end
+;;; of a frame only when what it's made of changed, so that a frame like the
+;;; last allocates nothing. A frame's own state, *gpu-frame-state*, and its
+;;; waits, *gpu-waits*, are told on their own.
+
+(defvar *gpu-facts* '())
+
+;; What they were made of: records', extras', glyphs' and the transfer's
+;; capacity, the target's size, whether there's a window; and the mode.
+(defvar *gpu-facts-of* (make-fxvector 7 -1))
+(defvar *gpu-facts-mode* #f)
+
+(define (gpu-facts-refresh!)
+  (let ([r *renderer*] [of *gpu-facts-of*])
+    (unless (and (fx= (fxvector-ref of 0) (cdr (renderer-records r)))
+                 (fx= (fxvector-ref of 1) (cdr (renderer-extras r)))
+                 (fx= (fxvector-ref of 2) (cdr (renderer-glyphs r)))
+                 (fx= (fxvector-ref of 3) (cdr (renderer-transfer r)))
+                 (fx= (fxvector-ref of 4) (renderer-target-w r))
+                 (fx= (fxvector-ref of 5) (renderer-target-h r))
+                 (fx= (fxvector-ref of 6) (if (eqv? 0 (renderer-sdl-window r))
+                                              0
+                                              1))
+                 (eq? *gpu-facts-mode* *gpu-present-mode*))
+      (fxvector-set! of 0 (cdr (renderer-records r)))
+      (fxvector-set! of 1 (cdr (renderer-extras r)))
+      (fxvector-set! of 2 (cdr (renderer-glyphs r)))
+      (fxvector-set! of 3 (cdr (renderer-transfer r)))
+      (fxvector-set! of 4 (renderer-target-w r))
+      (fxvector-set! of 5 (renderer-target-h r))
+      (fxvector-set! of 6 (if (eqv? 0 (renderer-sdl-window r)) 0 1))
+      (set! *gpu-facts-mode* *gpu-present-mode*)
+      (set! *gpu-facts*
+        `((renderer . ,(renderer-kind r))
+          (windowed? . ,(not (eqv? 0 (renderer-sdl-window r))))
+          (driver . ,(gpu-driver-name))
+          (present-mode . ,*gpu-present-mode*)
+          (present-modes . ,(gpu-present-modes))
+          (objects
+           (records buffer . ,(cdr (renderer-records r)))
+           (extras buffer . ,(cdr (renderer-extras r)))
+           (glyphs buffer . ,(cdr (renderer-glyphs r)))
+           (atlas texture . ,(* gpu-atlas-side gpu-atlas-side))
+           (transfer buffer . ,(cdr (renderer-transfer r)))
+           (target texture
+                   . ,(* 4 (renderer-target-w r) (renderer-target-h r)))))))))
+
 ;; Between frames, the window presents by mode from now on. A mode it doesn't
 ;; offer leaves it as it is, and is asked once a change: a choice saved on
 ;; another machine costs this one's frames nothing.
@@ -1157,6 +1210,7 @@
           (loop (cdr earlier) '()))
         (let ([shown? (gpu-frame! f dirty)])
           (set! *gpu-frame-free* f)
+          (gpu-facts-refresh!)
           shown?))))
 
 ;; The last frame's waits for the screen, on now-ns's clock: when the

@@ -1032,7 +1032,7 @@
                                   More keeps a wider margin; less makes the \
                                   screen pull them back less often."))]
          [present-choices
-          (let ([offered (gpu-present-modes)])
+          (let ([offered (cdr (assq 'present-modes *gpu-facts*))])
             (filter (lambda (c) (memq (cdr c) offered))
                     settings-present-choices))])
     (if (< (length present-choices) 2)

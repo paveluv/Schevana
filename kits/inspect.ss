@@ -772,17 +772,17 @@
 
 ;;; ---- the screen
 
-;; What draws: ((renderer . gpu) (window? . #t) (pixels w . h) ...). The
-;; display is host-display's, or #f.
+;; What draws: ((renderer . gpu) (window? . #t) (pixels w . h) ...), as
+;; core0 says it (*gpu-facts*). The display is host-display's, or #f.
 (define (inspect-device)
-  (let ([r *renderer*])
-    `((renderer . ,(renderer-kind r))
-      (window? . ,(not (eqv? 0 (renderer-sdl-window r))))
+  (let ([fact (lambda (k) (cdr (assq k *gpu-facts*)))])
+    `((renderer . ,(fact 'renderer))
+      (window? . ,(fact 'windowed?))
       (pixels ,*canvas-pw* . ,*canvas-ph*)
       (scale . ,*canvas-ratio*)
-      (driver . ,(gpu-driver-name))
-      (present-mode . ,*gpu-present-mode*)
-      (present-modes . ,(gpu-present-modes))
+      (driver . ,(fact 'driver))
+      (present-mode . ,(fact 'present-mode))
+      (present-modes . ,(fact 'present-modes))
       (display . ,(host-display)))))
 
 ;; The glyphs made, and how full the atlas is, of 1.
@@ -791,15 +791,9 @@
     (atlas-side . ,gpu-atlas-side)
     (atlas-used . ,(/ (+ *atlas-y* *atlas-row*) (inexact gpu-atlas-side)))))
 
-;; What's held on the GPU for frames: ((name kind . bytes) ...).
-(define (inspect-gpu-objects)
-  (let ([r *renderer*])
-    `((records buffer . ,(cdr (renderer-records r)))
-      (extras buffer . ,(cdr (renderer-extras r)))
-      (glyphs buffer . ,(cdr (renderer-glyphs r)))
-      (atlas texture . ,(* gpu-atlas-side gpu-atlas-side))
-      (transfer buffer . ,(cdr (renderer-transfer r)))
-      (target texture . ,(* 4 (renderer-target-w r) (renderer-target-h r))))))
+;; What's held on the GPU for frames: ((name kind . bytes) ...), as core0
+;; says it.
+(define (inspect-gpu-objects) (cdr (assq 'objects *gpu-facts*)))
 
 ;;; ---- the pacer
 

@@ -723,7 +723,8 @@
      (let ([p (inspect-pacer)])
        (list (format "the pacer: re-timed ~a times, left out ~a frames"
                      (cdr (assq 'retimed p)) (cdr (assq 'skipped p)))
-             (format "presenting by ~a" *gpu-present-mode*)))
+             (format "presenting by ~a"
+                      (cdr (assq 'present-mode *gpu-facts*)))))
      (if loaded (list (format "the machine's load: ~a" loaded)) '())
      (if (string=? wrong "")
          '()

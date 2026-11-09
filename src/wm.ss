@@ -1133,7 +1133,7 @@
     [() (render-frame! #t)]
     [(asked?)
      (cond
-       [(or (not asked?) (not *renderer*) (eqv? *canvas-pw* 0)) (void)]
+       [(or (not asked?) (eq? *host* 'none) (eqv? *canvas-pw* 0)) (void)]
        [(in-engine?) (request-frame!)]
        [(host-hidden?) (request-frame!)]
        [else

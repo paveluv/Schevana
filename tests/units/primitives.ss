@@ -516,6 +516,25 @@
                 (not (has? (gpu-buffer-id b)))
                 (not (has? (gpu-image-id i)))))))
 
+;; Core0 says what it is as an alist it makes again only when that changes.
+(let ([before (begin (request-frame!) (steps 1) *gpu-facts*)])
+  (request-frame!)
+  (steps 1)
+  (let ([same (eq? before *gpu-facts*)])
+    (gpu-ask! (list 'target 64 48))
+    (request-frame!)
+    (steps 1)
+    (let ([target (cdr (assq 'target (cdr (assq 'objects *gpu-facts*))))]
+          [changed (not (eq? before *gpu-facts*))])
+      (gpu-ask! (list 'target *canvas-pw* *canvas-ph*))
+      (request-frame!)
+      (steps 1)
+      (check (format "core0 says its facts as an alist it makes again only \
+                      when they change: a frame like the last leaves it as \
+                      it was, another target size makes a new one (~s)"
+                     target)
+             (and same changed (equal? target (cons 'texture (* 4 64 48))))))))
+
 (check "pixels with no chain, shown smaller, blend what they have"
        (let ([bv (make-bytevector 8 0)])
          (bytevector-u32-native-set! bv 0 #xffff0000)
