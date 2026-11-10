@@ -558,33 +558,56 @@
   (nongenerative schevana-gpu-call-1)
   (fields shader uniforms buffers))
 
-;; A list kept to be shown by another: its records and extras, as bytes, and
-;; how many of them; its runs, and the labels the recorder gave it; how many
-;; times it's been recorded, when last (now-ns) and in how many ns, for
-;; kits/inspect.ss. All main's: its id, a handle's, names its GPU buffers in
+;; What a recording left, "/recorder"'s (src/recorder/bytes.ss), the only
+;; code that writes one: its records and extras, as bytes, and how many of
+;; them; its runs; its version, its list's count of recordings. Frozen once
+;; recorded, it's what core0 reads, whole: a list or a frame swaps to a
+;; newer one by one store. until and next are the recorder's own: when it
+;; may be written again, and its list's other recordings.
+(define-record-type gpu-recording
+  (nongenerative schevana-gpu-recording-1)
+  (fields (mutable recs) (mutable recs-n) (mutable extras) (mutable extras-n)
+          (mutable runs) (mutable version) (mutable until) (mutable next)))
+
+;; A list kept to be shown by another: its recording, and the labels the
+;; recorder gave it; when it was last recorded (now-ns) and in how many ns,
+;; for kits/inspect.ss. Its id, a handle's, names its GPU buffers in
 ;; *gpu-lists*; #f for a copy that's never shown (kits/inspect.ss).
 (define-record-type gpu-list
-  (nongenerative schevana-gpu-list-2)
-  (fields id (mutable recs) (mutable recs-n) (mutable extras)
-          (mutable extras-n) (mutable runs) (mutable labels)
-          (mutable version) (mutable recorded) (mutable took)))
+  (nongenerative schevana-gpu-list-3)
+  (fields id (mutable recording) (mutable labels) (mutable recorded)
+          (mutable took)))
 
 ;; What core0 keeps of each list shown, by id: #(records extras version
-;; recs-at extras-at), its GPU buffers (buffer . size) each, the version
-;; that went up, and where its records and extras wait in the transfer
-;; while they go, or #f. A list goes up when it has a newer version.
+;; recs-at extras-at seen seen-in), its GPU buffers (buffer . size) each,
+;; the version that went up, where its records and extras wait in the
+;; transfer while they go, or #f, and the recording this pass reads.
+;; A list goes up when it has a newer version.
 (defvar *gpu-lists* (make-eqv-hashtable))
 
 (define (gpu-list-state l)
   (let ([id (or (gpu-list-id l)
                 (errorf 'gpu-list-state "a copy of a list is never shown"))])
     (or (hashtable-ref *gpu-lists* id #f)
-        (let ([state (vector (cons 0 0) (cons 0 0) 0 #f #f)])
+        (let ([state (vector (cons 0 0) (cons 0 0) 0 #f #f #f -1)])
           (hashtable-set! *gpu-lists* id state)
           state))))
 
+;; Each upload and the drawing after it is a pass, which reads each list's
+;; recording once, the first time it meets it: a list recorded again while
+;; core0 reads it shows the same recording in every step of the pass.
+(defvar *gpu-pass* 0)
+
+(define (gpu-list-seen l)
+  (let ([state (gpu-list-state l)])
+    (unless (fx= (vector-ref state 6) *gpu-pass*)
+      (vector-set! state 5 (gpu-list-recording l))
+      (vector-set! state 6 *gpu-pass*))
+    (vector-ref state 5)))
+
 (define (gpu-list-fresh? l)
-  (not (fx= (vector-ref (gpu-list-state l) 2) (gpu-list-version l))))
+  (not (fx= (vector-ref (gpu-list-state l) 2)
+            (gpu-recording-version (gpu-list-seen l)))))
 
 ;; Its GPU buffers let go of, by main's release job: shown again, it goes
 ;; up again.
@@ -609,12 +632,12 @@
   (cond
     [(null? runs) n]
     [(gpu-show-run? (car runs))
-     (let ([l (cadar runs)])
+     (let ([rec (gpu-list-seen (cadar runs))])
        (gpu-fresh-bytes (cdr runs)
-                        (gpu-fresh-bytes (gpu-list-runs l)
-                                         (if (gpu-list-fresh? l)
-                                             (+ n 8 (gpu-list-recs-n l)
-                                                (gpu-list-extras-n l))
+                        (gpu-fresh-bytes (gpu-recording-runs rec)
+                                         (if (gpu-list-fresh? (cadar runs))
+                                             (+ n 8 (gpu-recording-recs-n rec)
+                                                (gpu-recording-extras-n rec))
                                              n))))]
     [else (gpu-fresh-bytes (cdr runs) n)]))
 
@@ -832,6 +855,7 @@
 (define (gpu-upload! r cb dirty recs recs-n extras extras-n table table-n
                      atlas-pieces images runs)
   (gpu-upload-buffers! r cb dirty)
+  (set! *gpu-pass* (fx+ *gpu-pass* 1))
   (let* ([total (+ recs-n extras-n (if table table-n 0) 8
                    (gpu-fresh-bytes runs 0)
                    (gpu-each-bytes atlas-pieces gpu-piece-bytes 0)
@@ -899,36 +923,37 @@
 (define (gpu-put-lists! mapped runs)
   (unless (null? runs)
     (when (gpu-show-run? (car runs))
-      (let* ([l (cadar runs)] [state (gpu-list-state l)])
+      (let* ([l (cadar runs)] [state (gpu-list-state l)]
+             [rec (gpu-list-seen l)])
         (when (and (gpu-list-fresh? l) (not (vector-ref state 3)))
           (vector-set! state 3
-                       (gpu-put! mapped (gpu-list-recs l) (gpu-list-recs-n l)))
+                       (gpu-put! mapped (gpu-recording-recs rec)
+                                 (gpu-recording-recs-n rec)))
           (vector-set! state 4
-                       (gpu-put! mapped (gpu-list-extras l)
-                                 (gpu-list-extras-n l))))
-        (gpu-put-lists! mapped (gpu-list-runs l))))
+                       (gpu-put! mapped (gpu-recording-extras rec)
+                                 (gpu-recording-extras-n rec))))
+        (gpu-put-lists! mapped (gpu-recording-runs rec))))
     (gpu-put-lists! mapped (cdr runs))))
 
 ;; Those lists from the transfer into their own buffers, in pass.
 (define (gpu-send-lists! r pass transfer runs)
   (unless (null? runs)
     (when (gpu-show-run? (car runs))
-      (let* ([l (cadar runs)] [state (gpu-list-state l)])
+      (let* ([l (cadar runs)] [state (gpu-list-state l)]
+             [rec (gpu-list-seen l)] [rn (gpu-recording-recs-n rec)]
+             [en (gpu-recording-extras-n rec)])
         (when (vector-ref state 3)
-          (let ([recs-b (gpu-sized-buffer r (vector-ref state 0)
-                                          (max (gpu-list-recs-n l) 32))]
+          (let ([recs-b (gpu-sized-buffer r (vector-ref state 0) (max rn 32))]
                 [extras-b (gpu-sized-buffer r (vector-ref state 1)
-                                            (max (gpu-list-extras-n l) 32))])
+                                            (max en 32))])
             (vector-set! state 0 recs-b)
             (vector-set! state 1 extras-b)
-            (gpu-to-buffer! pass transfer recs-b (vector-ref state 3)
-                            (gpu-list-recs-n l))
-            (gpu-to-buffer! pass transfer extras-b (vector-ref state 4)
-                            (gpu-list-extras-n l))
-            (vector-set! state 2 (gpu-list-version l))
+            (gpu-to-buffer! pass transfer recs-b (vector-ref state 3) rn)
+            (gpu-to-buffer! pass transfer extras-b (vector-ref state 4) en)
+            (vector-set! state 2 (gpu-recording-version rec))
             (vector-set! state 3 #f)
             (vector-set! state 4 #f)))
-        (gpu-send-lists! r pass transfer (gpu-list-runs l))))
+        (gpu-send-lists! r pass transfer (gpu-recording-runs rec))))
     (gpu-send-lists! r pass transfer (cdr runs))))
 
 (define (gpu-send-pieces! r pass transfer pieces offs)
@@ -1049,15 +1074,16 @@
         (let ([run (car runs)])
           (if (gpu-show-run? run)
               (let* ([l (cadr run)] [cx (list-ref run 4)]
-                     [state (gpu-list-state l)])
-                (unless (or (null? (gpu-list-runs l))
+                     [state (gpu-list-state l)]
+                     [lruns (gpu-recording-runs (gpu-list-seen l))])
+                (unless (or (null? lruns)
                             (eqv? 0 (car (vector-ref state 0))))
                   (let ([ix0 (if cx (max x0 (+ ox cx)) x0)]
                         [iy0 (if cx (max y0 (+ oy (list-ref run 5))) y0)]
                         [ix1 (if cx (min x1 (+ ox (list-ref run 6))) x1)]
                         [iy1 (if cx (min y1 (+ oy (list-ref run 7))) y1)])
                     (gpu-scissor! pass ix0 iy0 ix1 iy1)
-                    (gpu-draw-list! r cb pass pipelines format (gpu-list-runs l)
+                    (gpu-draw-list! r cb pass pipelines format lruns
                                     (vector-ref state 0) (vector-ref state 1)
                                     (+ ox (caddr run)) (+ oy (cadddr run))
                                     ix0 iy0 ix1 iy1)
@@ -1210,38 +1236,31 @@
 
 ;;; ------------------------------------------------------------------ frames
 ;;; A frame as main hands it to the host, which reads nothing else of main's
-;;; (.work/gpu-design.md 9.5): the root list's records, extras and runs, the
-;;; glyph table if it changed, the atlas's new pieces, images with pixels to
-;;; go up, the jobs, the buffers made dirty and the compute runs asked for
-;;; since, the
+;;; (.work/gpu-design.md 9.5): the root's recording and the frame's number,
+;;; "/recorder"'s to set (src/recorder/bytes.ss), the glyph table if it
+;;; changed, the atlas's new pieces, images with pixels to go up, the jobs,
+;;; the buffers made dirty and the compute runs asked for since, the
 ;;; present mode, and lists kept from earlier to draw on images first,
 ;;; (image recs recs-n extras extras-n runs) each. One record goes back and
 ;;; forth, filled again for each frame: a frame allocates none.
 
-;; Bytes the world lends core0 with a frame, as a block: the world writes
-;; them only while it owns the block (owner 'world), and only the world
-;; writes the owner. Lent, a block is frozen: core0 reads it, the world may
-;; too, nobody writes it, until core0 gives the frame back with it.
-(define-record-type gpu-block
-  (nongenerative schevana-gpu-block-1)
-  (fields (mutable bytes) (mutable owner)))
-
 (define-record-type gpu-frame
-  (nongenerative schevana-gpu-frame-2)
-  (fields (mutable recs) (mutable recs-n) (mutable extras) (mutable extras-n)
-          (mutable table) (mutable table-n) (mutable pieces) (mutable images)
-          (mutable runs) (mutable jobs) (mutable dirty) (mutable computes)
-          (mutable mode) (mutable earlier)
-          (mutable blocks)))   ; what it was lent, given back with it
+  (nongenerative schevana-gpu-frame-3)
+  (fields (mutable root) (mutable number) (mutable table) (mutable table-n)
+          (mutable pieces) (mutable images) (mutable jobs) (mutable dirty)
+          (mutable computes) (mutable mode) (mutable earlier)))
 
 ;; The frame the host gave back, to fill; #f while it has it.
 (defvar *gpu-frame-free* #f)
 
+;; The number of the last frame the host gave back: what it read of the
+;; recorder's is free to write again once a later frame doesn't show it.
+(defvar *gpu-frame-back* 0)
+
 ;; The frame the host gave back, taken to be filled, or a new one.
 (define (gpu-frame-take!)
   (let ([f (or *gpu-frame-free*
-               (make-gpu-frame #f 0 #f 0 #f 0 '() '() '() '() '() '() #f '()
-                               '()))])
+               (make-gpu-frame #f 0 #f 0 '() '() '() '() '() #f '()))])
     (set! *gpu-frame-free* #f)
     f))
 
@@ -1261,7 +1280,8 @@
           (apply gpu-list-on-image! dirty (car earlier))
           (loop (cdr earlier) '()))
         (let ([shown? (gpu-frame! f dirty)])
-          ;; read and gone up: the frame goes back, its blocks with it
+          ;; read and gone up: the frame goes back, and what it read
+          (set! *gpu-frame-back* (gpu-frame-number f))
           (set! *gpu-frame-free* f)
           (gpu-facts-refresh!)
           shown?))))
@@ -1277,13 +1297,15 @@
 (define (gpu-frame! f dirty)
   (fxvector-fill! *gpu-waits* -1)
   (let* ([r *renderer*]
-         [runs (gpu-frame-runs f)]
+         [root (gpu-frame-root f)]
+         [runs (gpu-recording-runs root)]
          [cb (gpu-must 'gpu-frame!
                        (sdl-acquire-gpu-commands (renderer-device r)))])
-    (gpu-upload! r cb dirty (gpu-frame-recs f) (gpu-frame-recs-n f)
-                 (gpu-frame-extras f) (gpu-frame-extras-n f)
-                 (gpu-frame-table f) (gpu-frame-table-n f)
-                 (gpu-frame-pieces f) (gpu-frame-images f) runs)
+    (gpu-upload! r cb dirty (gpu-recording-recs root)
+                 (gpu-recording-recs-n root) (gpu-recording-extras root)
+                 (gpu-recording-extras-n root) (gpu-frame-table f)
+                 (gpu-frame-table-n f) (gpu-frame-pieces f)
+                 (gpu-frame-images f) runs)
     (gpu-run-computes! cb (gpu-frame-computes f))
     (if (eqv? 0 (renderer-sdl-window r))
         (begin

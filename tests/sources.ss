@@ -192,7 +192,7 @@
 
 ;; Raise it deliberately: the core is what the desktop needs to boot and
 ;; run; everything else belongs in a folder.
-(define src-budget 29749)
+(define src-budget 29913)
 
 ;; The tokens of a datum as read; a list's end is none.
 (define (tokens x)
@@ -411,8 +411,8 @@
                                                   (member f recorder-files)))
                                   (append world-files '("main.ss"))))))))
 
-;; "/recorder" is given core0's interface and, alone, a frame's bytes and the
-;; blocks they're lent in (host-recorder-share in src/host/boot.ss).
+;; "/recorder" is given core0's interface and, alone, recordings and what
+;; holds them (host-recorder-share in src/host/boot.ss).
 (check "the recorder names nothing of core0's but its interface and its share"
        (let ([own (remp (lambda (n)
                           (memq n (append host-interface host-recorder-share)))

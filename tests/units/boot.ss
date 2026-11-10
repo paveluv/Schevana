@@ -29,11 +29,12 @@
           none of the bytes it hands core0, nor what writes them"
          (and (procedure? (eval 'rec-write! world))
               (raises? (lambda () (eval '(set! rec-write! #f) world)))
-              (not (named? '*rec-bytes*))
-              (not (named? '*rec-pairs*))
-              (not (named? 'rec-block-writable))
-              (not (named? 'gpu-block-bytes-set!))
-              (not (named? 'gpu-frame-recs-set!))
+              (not (named? '*rec-now*))
+              (not (named? 'rec-take!))
+              (not (named? 'gpu-recording-recs))
+              (not (named? 'gpu-list-recording-set!))
+              (not (named? 'make-gpu-list))
+              (not (named? 'gpu-frame-root-set!))
               (eq? (env-kind (env-find "/recorder")) 'recorder))))
 
 (check "the world runs in an environment of its own, not core0's"

@@ -1185,8 +1185,10 @@
   (let ([at (* frame-ring-words (modulo *frame-ring-n* frame-ring-rows))]
         [ring *frame-ring*])
     (fxvector-set! ring at (flonum->fixnum (flround (fl* 1000.0 *frame-ms*))))
-    (fxvector-set! ring (+ at 1) (rec-count))
-    (fxvector-set! ring (+ at 2) (rec-extra-at))
+    ;; the frame's, published: the recorder writes nothing now
+    (let-values ([(recs-n extras-n) (rec-last-sizes)])
+      (fxvector-set! ring (+ at 1) (fxquotient recs-n 32))
+      (fxvector-set! ring (+ at 2) (fxquotient extras-n 4)))
     (fxvector-set! ring (+ at 3) (length (rec-runs)))
     (fxvector-set! ring (+ at 4) *glyph-count*)
     (fxvector-set! ring (+ at 5) (if shown? 1 0)))

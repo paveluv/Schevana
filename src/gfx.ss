@@ -363,13 +363,11 @@
      ;; its bytes, "/recorder"'s, written there; its runs end while they're
      ;; the ones written
      (lambda ()
-       (rec-into-list! lst thunk
-                       (lambda () (gpu-list-runs-set! lst (rec-runs)))))
+       (rec-into-list! lst thunk (lambda () (rec-runs))))
      (lambda ()
        (gpu-list-labels-set! lst (list->vector
                                   (list-head (vector->list *rec-labels*)
                                              *rec-label-at*)))
-       (gpu-list-version-set! lst (+ (gpu-list-version lst) 1))
        (when t0
          (let ([now (now-ns)])
            (gpu-list-recorded-set! lst now)
@@ -1436,7 +1434,7 @@
 ;; the lists kept from earlier: the past one, and the preview's, which its
 ;; procedure makes here, on main, of the frame just recorded.
 (define (rec-publish)
-  (rec-freeze!)
+  (rec-freeze! (rec-runs))
   (let* ([preview *rec-preview*]
          [kept (and preview
                     (guard (c [#t (report-error! 'preview c) #f])
@@ -1445,9 +1443,9 @@
                           (if kept (list (cons (car preview) kept)) '()))])
     (set! *rec-preview* #f)
     (set! *rec-past* #f)
-    ;; its records and extras, the frozen ones, it's lent by "/recorder"
+    ;; its recording, the frozen one, it's lent by "/recorder"
     (let ([f (gpu-publish (rec-take-table!) (rec-table-bytes)
-                          (rec-take-atlas-pieces!) *rec-images* (rec-runs)
+                          (rec-take-atlas-pieces!) *rec-images*
                           (theme 'present-mode) earlier)])
       (rec-lend! f)
       f)))

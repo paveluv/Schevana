@@ -71,9 +71,7 @@
 
 ;; A list to record into (record-list!), a handle like an image's: its GPU
 ;; buffers are core0's.
-(define (gpu-list-new)
-  (make-gpu-list (gpu-new-id!) (make-immobile-bytevector 1024) 0
-                 (make-immobile-bytevector 256) 4 '() '() 0 0 0))
+(define (gpu-list-new) (rec-list-new (gpu-new-id!)))
 
 ;; Its GPU buffers let go of: shown again, it goes up again.
 (define (gpu-list-release! l) (gpu-ask! (list 'release (gpu-list-id l))))
@@ -219,8 +217,7 @@
 
 ;; Main's side: the frame filled, what it asked of the GPU since handed on
 ;; with it. => the frame
-(define (gpu-publish table table-n pieces images
-                     runs mode earlier)
+(define (gpu-publish table table-n pieces images mode earlier)
   (let ([f (gpu-frame-take!)])
     (let-values ([(jobs dirty computes) (gpu-take-asks!)])
       (gpu-frame-jobs-set! f jobs)
@@ -230,7 +227,6 @@
     (gpu-frame-table-n-set! f table-n)
     (gpu-frame-pieces-set! f pieces)
     (gpu-frame-images-set! f images)
-    (gpu-frame-runs-set! f runs)
     (gpu-frame-mode-set! f mode)
     (gpu-frame-earlier-set! f earlier)
     f))

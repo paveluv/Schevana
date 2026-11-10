@@ -165,6 +165,13 @@
 
 (define (bytes-total) (+ (bytes-allocated) (bytes-deallocated)))
 
+;; The last frame published, its bytes as "/recorder" holds them (tests
+;; reach inside the seal): (values recs recs-n extras extras-n).
+(define (rec-last)
+  (let ([r *rec-root*])
+    (values (gpu-recording-recs r) (gpu-recording-recs-n r)
+            (gpu-recording-extras r) (gpu-recording-extras-n r))))
+
 ;; The screen's pixel at logical point (x, y).
 (define (canvas-pixel x y)
   (pixel-at (screen-picture) (exact (floor (* x *scale*)))

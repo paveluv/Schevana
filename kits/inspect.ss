@@ -126,6 +126,14 @@
     (recorded . ,(gpu-list-recorded lst))
     (took . ,(gpu-list-took lst))))
 
+;; The recordings a list holds, "/recorder"'s (#f: the root's, the frames'),
+;; newest first: ((version . n) (until . frame) (free . bool)) each, until
+;; #f for the newest, which nothing has replaced.
+(define (inspect-recordings lst)
+  (map (lambda (r)
+         `((version . ,(car r)) (until . ,(cadr r)) (free . ,(caddr r))))
+       (rec-recordings lst)))
+
 ;; Whose a list is, in words, and which of its owner's: a window's, its
 ;; frame and all, window, or its content, content; else list. A kept copy's
 ;; are its list's then.
@@ -189,16 +197,7 @@
              (= (gpu-list-version old) (gpu-list-version lst))
              (for-all eq? runs (gpu-list-runs old)))
         old
-        (let ([copy (make-gpu-list
-                     #f
-                     (inspect-bytes-copy (gpu-list-recs lst)
-                                         (gpu-list-recs-n lst))
-                     (gpu-list-recs-n lst)
-                     (inspect-bytes-copy (gpu-list-extras lst)
-                                         (gpu-list-extras-n lst))
-                     (gpu-list-extras-n lst)
-                     runs (gpu-list-labels lst) (gpu-list-version lst)
-                     (gpu-list-recorded lst) (gpu-list-took lst))])
+        (let ([copy (rec-list-copy lst runs)])
           (hashtable-set! inspect-copies lst copy)
           (hashtable-set! inspect-owners copy (inspect-list-whose lst))
           (hashtable-set! inspect-sources copy
@@ -225,11 +224,6 @@
 
 ;; Each show run's copy that shows a copy: a cache too.
 (define inspect-shows (make-ephemeron-eq-hashtable))
-
-(define (inspect-bytes-copy bv n)
-  (let ([c (make-bytevector n)])
-    (bytevector-copy! bv 0 c 0 n)
-    c))
 
 ;; The bytes the flattened list takes: (records . extras), each list as
 ;; often as it's shown, and a clip row for each show.
@@ -398,11 +392,17 @@
                        (labels-upto! (list-ref run 8) (most-positive-fixnum))
                        (let ([shown (and (pair? out-labels)
                                          (cdar out-labels))])
-                         (flatten! lst (gpu-list-recs lst) (gpu-list-extras lst)
-                                   (gpu-list-extras-n lst) (gpu-list-runs lst)
-                                   (gpu-list-labels lst)
-                                   (+ ox (caddr run)) (+ oy (cadddr run))
-                                   inner shown)
+                         ;; a list shown has its bytes read from its
+                         ;; copy, kept while it's the same
+                         (let ([own (if (gpu-list-id lst)
+                                        (inspect-list-copy lst)
+                                        lst)])
+                           (flatten! lst (gpu-list-recs own)
+                                     (gpu-list-extras own)
+                                     (gpu-list-extras-n own)
+                                     (gpu-list-runs lst) (gpu-list-labels lst)
+                                     (+ ox (caddr run)) (+ oy (cadddr run))
+                                     inner shown))
                          (label! shown)))
                      (let ([first (caddr run)] [n (cadddr run)])
                        (let split ([first first] [n n])

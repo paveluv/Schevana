@@ -78,7 +78,8 @@
 (set! rec-present!
       (lambda ()
         (set! *upload-bytes*
-          (+ *upload-bytes* *rec-at* (* 4 *rec-extra-at*)))
+          (+ *upload-bytes* (gpu-recording-recs-n *rec-now*)
+             (gpu-recording-extras-n *rec-now*)))
         (plain-present)))
 
 ;;; ------------------------------------------------------------------ scenes

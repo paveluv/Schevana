@@ -164,9 +164,10 @@
        (begin
          (request-frame!)
          (steps 1)
-         (let ([f (car (inspect-frames 1))])
-           (and (= (cadr f) (rec-count))
-                (= (caddr f) *rec-extra-at*)
+         (let-values ([(f) (car (inspect-frames 1))]
+                      [(recs-n extras-n) (rec-last-sizes)])
+           (and (= (cadr f) (/ recs-n 32))
+                (= (caddr f) (/ extras-n 4))
                 (> (list-ref f 4) 0)
                 (list-ref f 5)
                 (<= (length (inspect-frames 100000)) frame-ring-rows)))))
@@ -311,7 +312,8 @@
                       ;; its head's kind and paint, as the list has them
                       (= (fxand (inspect-word l i rec-row-head) 255)
                          (fxand (bytevector-u32-native-ref
-                                 (gpu-list-recs lst) (* 32 j))
+                                 (gpu-list-recs (inspect-list-copy lst))
+                                 (* 32 j))
                                 255))))))
       (let* ([h (inspect-history-new 8)]
              [keep! (lambda (thunk)

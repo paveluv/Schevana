@@ -543,9 +543,11 @@
   (set! record-world! (lambda () (show-list lst 0 0)))
   (request-frame!)
   (steps 1)
-  (let ([first-up (vector-ref (state lst) 2)] [after (gpu-list-fresh? lst)])
+  (let* ([newer? (lambda ()
+                   (not (= (vector-ref (state lst) 2) (gpu-list-version lst))))]
+         [first-up (vector-ref (state lst) 2)] [after (newer?)])
     (record-list! lst (lambda () (fill-box 0 0 4 4 #x00ff00)))
-    (let ([recorded (gpu-list-fresh? lst)])
+    (let ([recorded (newer?)])
       (request-frame!)
       (steps 1)
       (let ([second-up (vector-ref (state lst) 2)])

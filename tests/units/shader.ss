@@ -411,7 +411,7 @@
             (lambda ()
               (let* ([note! (lambda (name . values)
                               (set! found (cons (cons name values) found)))]
-                     [at (lambda () *rec-extra-at*)]
+                     [at (lambda () (rec-extra-at))]
                      [red (color-word #xff0000)]
                      [green (color-word #x00ff00)])
                 (let* ([row (rec-gradient
@@ -460,8 +460,10 @@
                              (- (at) start)))))
                 (let* ([word (lambda (k)
                                (bytevector-s32-native-ref
-                                *rec-bytes*
-                                (+ (- *rec-at* (* 4 rec-row-words)) (* 4 k))))]
+                                (gpu-recording-recs *rec-now*)
+                                (+ (- (gpu-recording-recs-n *rec-now*)
+                                      (* 4 rec-row-words))
+                                   (* 4 k))))]
                        [kind (lambda () (fxand (word rec-row-head) 15))])
                   (fill-box 1 2 3 4 #xff0000)
                   (note! 'record

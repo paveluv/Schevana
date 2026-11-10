@@ -18,13 +18,10 @@
     shader make-shader shader-name shader-stage shader-coords shader-params
     shader-source shader-code shader-price shader-target shader-entry
     shader-group-x shader-uniforms shader-words
-    ;; lists, and the runs that show them
-    make-gpu-list gpu-list-id gpu-list-recs gpu-list-recs-set! gpu-list-recs-n
-    gpu-list-recs-n-set! gpu-list-extras gpu-list-extras-set!
-    gpu-list-extras-n gpu-list-extras-n-set! gpu-list-runs gpu-list-runs-set!
-    gpu-list-labels gpu-list-labels-set! gpu-list-version
-    gpu-list-version-set! gpu-list-recorded gpu-list-recorded-set!
-    gpu-list-took gpu-list-took-set!
+    ;; lists, and the runs that show them; their recordings are the
+    ;; recorder's alone (host-recorder-share)
+    gpu-list-id gpu-list-labels gpu-list-labels-set! gpu-list-recorded
+    gpu-list-recorded-set! gpu-list-took gpu-list-took-set!
     ;; images, buffers and the calls that name them
     make-gpu-image gpu-image-id gpu-image-w gpu-image-h gpu-image-levels
     gpu-image-pending-set! gpu-image-gone?-set! make-gpu-buffer*
@@ -33,7 +30,7 @@
     gpu-call? gpu-call-shader
     ;; frames
     gpu-frame-table-set! gpu-frame-table-n-set!
-    gpu-frame-pieces-set! gpu-frame-images-set! gpu-frame-runs-set!
+    gpu-frame-pieces-set! gpu-frame-images-set!
     gpu-frame-jobs-set! gpu-frame-dirty-set! gpu-frame-computes-set!
     gpu-frame-mode-set! gpu-frame-earlier-set!
     ;; What core0 says of itself, in variables it sets whole: another thread
@@ -74,14 +71,20 @@
 (define host-environment
   (let ([e (interaction-environment)]) (lambda () e)))
 
-;; What core0 shares with "/recorder" alone, beside its interface: a frame's
-;; records and extras, and the blocks they're lent in. The world never has
-;; them, so it can't name a byte core0 reads.
+;; What core0 shares with "/recorder" alone, beside its interface:
+;; recordings, the lists and the frame that hold them, and how far frames
+;; have come back. The world never has them, so it can't name a byte core0
+;; reads, or hand core0 a recording the recorder didn't freeze.
 (define host-recorder-share
-  '(gpu-frame-recs-set! gpu-frame-recs-n-set! gpu-frame-extras-set!
-    gpu-frame-extras-n-set! gpu-frame-blocks gpu-frame-blocks-set!
-    make-gpu-block gpu-block? gpu-block-bytes gpu-block-bytes-set!
-    gpu-block-owner gpu-block-owner-set!))
+  '(make-gpu-recording gpu-recording-recs gpu-recording-recs-set!
+    gpu-recording-recs-n gpu-recording-recs-n-set! gpu-recording-extras
+    gpu-recording-extras-set! gpu-recording-extras-n
+    gpu-recording-extras-n-set! gpu-recording-runs gpu-recording-runs-set!
+    gpu-recording-version gpu-recording-version-set! gpu-recording-until
+    gpu-recording-until-set! gpu-recording-next gpu-recording-next-set!
+    make-gpu-list gpu-list-recording gpu-list-recording-set!
+    gpu-frame-root gpu-frame-root-set! gpu-frame-number
+    gpu-frame-number-set! *gpu-frame-back*))
 
 ;; "/recorder", sealed (.work/gpu-design.md 9.14): the bytes of frames and
 ;; their writers, below the world, which names only its interface.
