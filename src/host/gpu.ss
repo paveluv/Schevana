@@ -1241,7 +1241,7 @@
 ;;; changed, the atlas's new pieces, images with pixels to go up, the jobs,
 ;;; the buffers made dirty and the compute runs asked for since, the
 ;;; present mode, and lists kept from earlier to draw on images first,
-;;; (image recs recs-n extras extras-n runs) each. One record goes back and
+;;; (image . recording) each, the recorder's copies. One record goes back and
 ;;; forth, filled again for each frame: a frame allocates none.
 
 (define-record-type gpu-frame
@@ -1277,7 +1277,7 @@
   (let loop ([earlier (gpu-frame-earlier f)] [dirty (gpu-frame-dirty f)])
     (if (pair? earlier)
         (begin
-          (apply gpu-list-on-image! dirty (car earlier))
+          (gpu-list-on-image! dirty (caar earlier) (cdar earlier))
           (loop (cdr earlier) '()))
         (let ([shown? (gpu-frame! f dirty)])
           ;; read and gone up: the frame goes back, and what it read
@@ -1356,11 +1356,14 @@
 ;; A list kept from earlier drawn on image, ahead of the next frame, which sends
 ;; its own: its glyphs are all up already. Its images and paints show what
 ;; they hold now, but those let go of since; dirty, the buffers going up.
-(define (gpu-list-on-image! dirty image recs recs-n extras extras-n runs)
+(define (gpu-list-on-image! dirty image rec)
   (let* ([r *renderer*]
          [d (renderer-device r)]
+         [runs (gpu-recording-runs rec)]
          [cb (gpu-must 'gpu-list-on-image! (sdl-acquire-gpu-commands d))])
-    (gpu-upload! r cb dirty recs recs-n extras extras-n #f 0 '() '() runs)
+    (gpu-upload! r cb dirty (gpu-recording-recs rec) (gpu-recording-recs-n rec)
+                 (gpu-recording-extras rec) (gpu-recording-extras-n rec) #f 0
+                 '() '() runs)
     (gpu-draw-runs! r cb (gpu-image-texture image) gpu-format-bgra8
                     (gpu-image-w image) (gpu-image-h image)
                     (remp gpu-run-gone? runs) #f)

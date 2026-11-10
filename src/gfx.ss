@@ -1438,15 +1438,17 @@
   (let* ([preview *rec-preview*]
          [kept (and preview
                     (guard (c [#t (report-error! 'preview c) #f])
-                      ((cdr preview))))]
-         [earlier (append (if *rec-past* (list *rec-past*) '())
-                          (if kept (list (cons (car preview) kept)) '()))])
+                      ((cdr preview))))])
+    ;; the past one first; each copied by "/recorder" as it's handed
+    (when *rec-past* (apply rec-earlier-add! *rec-past*))
+    (when kept (apply rec-earlier-add! (car preview) kept))
     (set! *rec-preview* #f)
     (set! *rec-past* #f)
-    ;; its recording, the frozen one, it's lent by "/recorder"
+    ;; its recording, the frozen one, and those copies it's lent by
+    ;; "/recorder"
     (let ([f (gpu-publish (rec-take-table!) (rec-table-bytes)
                           (rec-take-atlas-pieces!) *rec-images*
-                          (theme 'present-mode) earlier)])
+                          (theme 'present-mode))])
       (rec-lend! f)
       f)))
 

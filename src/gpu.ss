@@ -217,7 +217,7 @@
 
 ;; Main's side: the frame filled, what it asked of the GPU since handed on
 ;; with it. => the frame
-(define (gpu-publish table table-n pieces images mode earlier)
+(define (gpu-publish table table-n pieces images mode)
   (let ([f (gpu-frame-take!)])
     (let-values ([(jobs dirty computes) (gpu-take-asks!)])
       (gpu-frame-jobs-set! f jobs)
@@ -228,5 +228,4 @@
     (gpu-frame-pieces-set! f pieces)
     (gpu-frame-images-set! f images)
     (gpu-frame-mode-set! f mode)
-    (gpu-frame-earlier-set! f earlier)
     f))

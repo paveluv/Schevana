@@ -68,6 +68,34 @@
                   (eq? (gpu-list-seen lst) (gpu-list-recording lst))
                   (not (eq? was (gpu-list-recording lst))))))))
 
+;; A list the world made of its own bytes, drawn ahead of a frame (the
+;; Pipeline's flattened frames): copied as it's handed, so what the world
+;; does to its bytes after can't reach what core0 reads.
+(let ([target (gpu-image-make-target 8 8)]
+      [recs (make-bytevector 64 7)] [extras (make-bytevector 8 9)])
+  (rec-past! target recs 64 extras 8 '())
+  (request-frame!)
+  (steps 1)
+  (let ([lent (gpu-frame-earlier *gpu-frame-free*)])
+    (bytevector-fill! recs 0)
+    (check (format "a list drawn ahead of a frame is the recorder's copy, \
+                    read by that frame alone, free once it's back ~s"
+                   (inspect-recordings 'earlier))
+           (and (= (length lent) 1)
+                (eq? (caar lent) target)
+                (let ([r (cdar lent)])
+                  (and (not (eq? (gpu-recording-recs r) recs))
+                       (= (gpu-recording-recs-n r) 64)
+                       (= (bytevector-u8-ref (gpu-recording-recs r) 63) 7)
+                       (rec-free? r)))
+                (for-all (lambda (r) (cdr (assq 'free r)))
+                         (inspect-recordings 'earlier))))
+    (request-frame!)
+    (steps 1)
+    (check "the next frame draws nothing ahead unless handed something"
+           (null? (gpu-frame-earlier *gpu-frame-free*))))
+  (gpu-image-release! target))
+
 ;; A frame drawn on a target, as the Pipeline's small screen draws it, from
 ;; the frozen frame: poisoned or not, the pixels are the same; poisoned, a
 ;; recording taken to write is garbage past what's written.

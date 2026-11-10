@@ -21,7 +21,7 @@
     rec-last-sizes rec-last-copy! rec-drawing->bytes rec-bytes-copies
     rec-list-new rec-list-copy gpu-list-recs-n gpu-list-extras-n
     gpu-list-runs gpu-list-version gpu-list-recs gpu-list-extras
-    rec-recordings))
+    rec-earlier-add! rec-recordings))
 
 ;; Written to between a publish and the next list: a write there raises.
 (define rec-nothing
@@ -31,6 +31,7 @@
 (defvar *rec-root* #f)       ; the root's newest, the last frame's, or #f
 (defvar *rec-root-next* #f)  ; the root's being written, or #f
 (defvar *rec-published* 0)   ; frames lent so far, the last one's number
+
 (defvar *rec-poison?* #f)    ; tests: a recording taken is garbage first
 
 (define (rec-count) (fxquotient (gpu-recording-recs-n *rec-now*) 32))
@@ -179,10 +180,43 @@
     (set! *rec-root-next* #f)
     (when (eq? *rec-now* r) (set! *rec-now* rec-nothing))))
 
-;; Frame f is lent the root's newest recording, numbered the next.
+;; The copies drawn ahead of frames, each read by one: chained after a head
+;; that's never written; and those the next frame is lent, (image .
+;; recording), newest first.
+(defvar *rec-earlier* (rec-make #f))
+(defvar *rec-earlier-next* '())
+
+;; A list the world made of its own bytes (the Pipeline's flattened frames),
+;; drawn on image ahead of the next frame: copied as it's handed, into a
+;; recording only that frame reads, free once core0 gave it back. The copy
+;; is the Pipeline's cost alone; if another app needs a list drawn on an
+;; image, make it zero copy: hand core0 a recorded list (a gpu-list), whose
+;; frozen recording it draws as it draws any list, and no bytes.
+(define (rec-earlier-add! image recs recs-n extras extras-n runs)
+  (let ([r (rec-take! *rec-earlier*)]
+        [fit (lambda (bv n)
+               (if (< (bytevector-length bv) n)
+                   (make-immobile-bytevector (* 2 n))
+                   bv))])
+    (gpu-recording-recs-set! r (fit (gpu-recording-recs r) recs-n))
+    (gpu-recording-extras-set! r (fit (gpu-recording-extras r) extras-n))
+    (bytevector-copy! recs 0 (gpu-recording-recs r) 0 recs-n)
+    (bytevector-copy! extras 0 (gpu-recording-extras r) 0 extras-n)
+    (gpu-recording-recs-n-set! r recs-n)
+    (gpu-recording-extras-n-set! r extras-n)
+    (gpu-recording-runs-set! r runs)
+    (gpu-recording-until-set! r (fx+ *rec-published* 1))
+    (gpu-recording-next-set! r (gpu-recording-next *rec-earlier*))
+    (gpu-recording-next-set! *rec-earlier* r)
+    (set! *rec-earlier-next* (cons (cons image r) *rec-earlier-next*))))
+
+;; Frame f is lent the root's newest recording, numbered the next, and the
+;; copies to draw ahead of it.
 (define (rec-lend! f)
   (set! *rec-published* (fx+ *rec-published* 1))
   (gpu-frame-number-set! f *rec-published*)
+  (gpu-frame-earlier-set! f (reverse *rec-earlier-next*))
+  (set! *rec-earlier-next* '())
   (gpu-frame-root-set! f (or *rec-root*
                              (errorf 'rec-lend! "no frame was recorded"))))
 
@@ -234,10 +268,13 @@
 
 ;;; ------------------------------------------------------------------ reading
 
-;; The recordings lst holds (a gpu-list, or #f for the root), newest first:
-;; (version until free?) each, until #f for the newest.
+;; The recordings lst holds (a gpu-list, #f for the root, or 'earlier for
+;; the copies drawn ahead of frames), newest first: (version until free?)
+;; each, until #f for the newest of a list or the root.
 (define (rec-recordings lst)
-  (let loop ([r (if lst (gpu-list-recording lst) *rec-root*)])
+  (let loop ([r (cond [(eq? lst 'earlier) (gpu-recording-next *rec-earlier*)]
+                      [lst (gpu-list-recording lst)]
+                      [else *rec-root*])])
     (if r
         (cons (list (gpu-recording-version r) (gpu-recording-until r)
                     (rec-free? r))

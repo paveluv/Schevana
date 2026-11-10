@@ -35,6 +35,7 @@
               (not (named? 'gpu-list-recording-set!))
               (not (named? 'make-gpu-list))
               (not (named? 'gpu-frame-root-set!))
+              (not (named? 'gpu-frame-earlier-set!))
               (eq? (env-kind (env-find "/recorder")) 'recorder))))
 
 (check "the world runs in an environment of its own, not core0's"

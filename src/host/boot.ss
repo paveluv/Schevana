@@ -32,7 +32,7 @@
     gpu-frame-table-set! gpu-frame-table-n-set!
     gpu-frame-pieces-set! gpu-frame-images-set!
     gpu-frame-jobs-set! gpu-frame-dirty-set! gpu-frame-computes-set!
-    gpu-frame-mode-set! gpu-frame-earlier-set!
+    gpu-frame-mode-set!
     ;; What core0 says of itself, in variables it sets whole: another thread
     ;; reads each whole (Chez lets no thread see an object half made), but
     ;; not in step with the others, as ARM keeps no order between stores.
@@ -84,7 +84,7 @@
     gpu-recording-until-set! gpu-recording-next gpu-recording-next-set!
     make-gpu-list gpu-list-recording gpu-list-recording-set!
     gpu-frame-root gpu-frame-root-set! gpu-frame-number
-    gpu-frame-number-set! *gpu-frame-back*))
+    gpu-frame-number-set! gpu-frame-earlier-set! *gpu-frame-back*))
 
 ;; "/recorder", sealed (.work/gpu-design.md 9.14): the bytes of frames and
 ;; their writers, below the world, which names only its interface.
