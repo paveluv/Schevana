@@ -50,6 +50,11 @@
     ;; thread
     host-wake! gpu-publish! gpu-frame-waiting? gpu-frames-back!
     gpu-take-answers!
+    ;; whether core0 has a thread of its own; main's wait, and its wake from
+    ;; any thread; and quitting, a job
+    host-forked? host-world-wait! host-world-wake! host-quit!
+    ;; and how far the world has loaded, for the boot screen
+    host-loaded!
     ;; Calls into SDL or core0's own state: safe only on core0's thread.
     ;; Until core0 has a thread of its own the world steps it (host-step!),
     ;; and boots it (opening, sizing, showing the window).
@@ -84,7 +89,7 @@
     gpu-frame-root gpu-frame-root-set! gpu-frame-number
     gpu-frame-number-set! gpu-frame-earlier-set! gpu-frame-writes-set!
     *gpu-frame-back* gpu-drawing->bytes gpu-compute-now!
-    gpu-submit-computes! gpu-buffer-download!))
+    gpu-submit-computes! gpu-buffer-download! host-post-submit!))
 
 ;; "/recorder", sealed (.work/gpu-design.md 9.14): the bytes of frames and
 ;; their writers, below the world, which names only its interface.
@@ -124,6 +129,10 @@
 ;; sources there; then "/", shared core0's interface and the recorder's,
 ;; and loads the world's sources there, from root.
 (define (host-boot! root recorder-sources sources)
+  (host-load! (host-make-world! root recorder-sources sources) root sources))
+
+;; The environments, "/recorder" loaded: => "/", empty.
+(define (host-make-world! root recorder-sources sources)
   (let* ([core0 (cons host-interface #'host-boot!)]
          [recorder (host-sealed
                     (list (cons (append host-interface host-recorder-share)
@@ -137,7 +146,40 @@
       (define-top-level-value '*schevana-root* root world)
       (define-top-level-value '*schevana-sources* sources world)
       (set! *host-world* world)
-      (host-load! world root sources))))
+      world)))
+
+;; Core0 on this thread, the world on its own: with a window (mode 'sdl),
+;; core0 opens it, w × h logical pixels at the desktop's scale, or full
+;; screen, and clears it; with none ('headless, for the tests), its GPU
+;; draws to a target. Then it makes the environments; forks main, which
+;; loads the world's sources and then script into "/"; and goes on as the
+;; host, on this thread, till main quits. Main asks core0 to quit when
+;; script returns, or raises.
+(define (host-fork! root recorder-sources sources script mode w h full?)
+  (if (eq? mode 'headless)
+      (host-window-headless!)
+      (begin
+        (host-window-open! w h full?)
+        (unless full?
+          (let-values ([(uw uh pw ph) (host-window-sizes)])
+            (let ([s (/ (if (> (host-window-scale) 0) (host-window-scale) 1)
+                        (/ pw (max uw 1)))])
+              (host-resize-now! (exact (round (* w s)))
+                                (exact (round (* h s)))))))
+        (host-window-show!)
+        (set! *gpu-booting* #t)
+        (gpu-boot-screen!)))
+  (let ([world (host-make-world! root recorder-sources sources)])
+    (set! *host-forked* #t)
+    (fork-thread
+     (lambda ()
+       (guard (c [#t (display-condition c (console-error-port))
+                     (newline (console-error-port))])
+         (interaction-environment world)
+         (host-load! world root sources)
+         (load (string-append root "/" script)))
+       (host-quit!))))
+  (host-loop!))
 
 ;; Moves a script that loaded the tree (main.ss, a test) into "/": its later
 ;; forms evaluate there, as the world's.

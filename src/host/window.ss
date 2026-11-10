@@ -93,7 +93,13 @@
   (values (ftype-ref host-size (w) host-size*)
           (ftype-ref host-size (h) host-size*)))
 
+;; To w × h window units: from main, once core0 has a thread of its own, a
+;; job of core0's.
 (define (host-window-resize! w h)
+  (if *host-forked*
+      (host-post! (list 'host-resize-now! w h))
+      (host-resize-now! w h)))
+(define (host-resize-now! w h)
   (sdl-set-window-size *sdl-window* w h)
   (host-facts-refresh! #t))
 
@@ -356,8 +362,13 @@
 
 ;; Waits up to wait-ms for the first event, then drains the queue: (values
 ;; events types), the events as sdl-event->list gives them, and every
-;; event's number in order, whether it means anything or not.
+;; event's number in order, whether it means anything or not. With no
+;; window, core0 on a thread of its own waits up to wait-ms to be woken.
 (define (host-window-pump wait-ms)
+  (when (and *host-forked* (not (eq? *host* 'sdl)))
+    (with-mutex *host-world-mutex*
+      (unless (unbox *host-woken*)
+        (condition-wait *host-ready* *host-world-mutex* (host-ms wait-ms)))))
   (if (eq? *host* 'sdl)
       (let ([buf *sdl-event*])
         (let loop ([more? (if (> wait-ms 0)
@@ -463,14 +474,71 @@
   (host-put! *host-jobs* job)
   (host-wake!))
 
+;;; ------------------------------------------------------------------ main
+;;; With a window core0 runs on the OS's main thread and the world on a
+;;; thread of its own, main (.work/gpu-design.md 9.4): main waits for
+;;; core0's events, frames given back and mail here, woken by whoever
+;;; brings them. Headless, one thread plays both, and core0's step is the
+;;; wait.
+
+(defvar *host-forked* #f)
+(define (host-forked?) *host-forked*)
+
+(defvar *host-world-mutex* (make-mutex))
+(defvar *host-world-ready* (make-condition))
+(defvar *host-ready* (make-condition))   ; core0's, with no window
+(defvar *host-world-woken* #f)   ; under the mutex
+
+;; Ends main's wait, or the next one: from any thread.
+(define (host-world-wake!)
+  (when *host-forked*
+    (with-mutex *host-world-mutex*
+      (set! *host-world-woken* #t)
+      (condition-signal *host-world-ready*))))
+
+;; Main waits up to ms, or till it's woken.
+(define (host-world-wait! ms)
+  (with-mutex *host-world-mutex*
+    (unless (or *host-world-woken* (<= ms 0))
+      (condition-wait *host-world-ready* *host-world-mutex* (host-ms ms)))
+    (set! *host-world-woken* #f)))
+
+(define (host-ms ms)
+  (make-time 'time-duration (* 1000000 (modulo ms 1000)) (quotient ms 1000)))
+
+;; Compute runs and writes no frame took, sent by a job, "/recorder"'s.
+(define (host-post-submit! runs jobs writes)
+  (host-post! (list 'gpu-submit-computes! runs jobs writes)))
+
+;; Main is done: core0 closes the window and ends the process.
+(define (host-quit!) (host-post! '(host-quit-now!)))
+(defvar *host-quit* #f)
+(define (host-quit-now!) (set! *host-quit* #t))
+
+;; Core0's loop, on its own thread: its steps till main quits.
+(define (host-loop!)
+  (let loop ()
+    ;; while it boots, the boot screen at each refresh
+    (host-step! (if *gpu-booting* 16 100))
+    (when *gpu-booting* (gpu-boot-screen!))
+    (if *host-quit*
+        (begin (when (eq? *host* 'sdl) (host-window-close!)) (exit 0))
+        (loop))))
+
 ;; Ends core0's wait for events: a job posted, a frame published. From any
-;; thread; with no window, there's no wait to end.
+;; thread. With no window, core0 on a thread of its own waits on its
+;; condition instead; on main's, there's no wait to end.
 (define (host-wake!)
-  (when (eq? *host* 'sdl)
-    (let loop ()
-      (cond [(unbox *host-woken*)]
-            [(box-cas! *host-woken* #f #t) (sdl-push-event *host-wake-event*)]
-            [else (loop)]))))
+  (cond
+    [(eq? *host* 'sdl)
+     (let loop ()
+       (cond [(unbox *host-woken*)]
+             [(box-cas! *host-woken* #f #t) (sdl-push-event *host-wake-event*)]
+             [else (loop)]))]
+    [*host-forked*
+     (with-mutex *host-world-mutex*
+       (set-box! *host-woken* #t)
+       (condition-signal *host-ready*))]))
 
 (define (host-run-job! job)
   (guard (c [#t (set! *host-job-failed* (cons job c))])
@@ -487,7 +555,8 @@
     (let-values ([(events types) (host-window-pump wait-ms)])
       (unless (null? types)
         (when (memv #x900 types) (host-clipboard-read!))   ; clipboard-update
-        (host-put! *host-inbox* (cons events types)))
+        (host-put! *host-inbox* (cons events types))
+        (host-world-wake!))
       (host-facts-refresh! (or (pair? types) (pair? jobs))))))
 
 ;; The events core0's steps have put in the inbox since it was last taken,

@@ -115,8 +115,11 @@
     (if like (bytevector-length (gpu-recording-extras like)) 256) 0)
    4 '() 0 #f #f))
 
+;; Free once core0 says it's done reading it, by a frame back or by
+;; setting its until itself: what it read before, read before this.
 (define (rec-free? r)
   (let ([until (gpu-recording-until r)])
+    (memory-order-acquire)
     (and until (fx<= until *gpu-frame-back*))))
 
 ;; Of the recordings chained after head (#f for none), one that's free,
@@ -230,7 +233,7 @@
 (define (rec-lend! f)
   (set! *rec-published* (fx+ *rec-published* 1))
   (gpu-frame-number-set! f *rec-published*)
-  (gpu-frame-writes-set! f (rec-writes-take! *rec-published*))
+  (gpu-frame-writes-set! f (rec-writes-take!))
   (gpu-frame-earlier-set! f (reverse *rec-earlier-next*))
   (set! *rec-earlier-next* '())
   (gpu-frame-root-set! f (or *rec-root*
@@ -358,16 +361,15 @@
         (gpu-recording-next-set! loan (gpu-recording-next head))
         (gpu-recording-next-set! head loan)))))
 
-;; The writes, to hand core0 with frame n, or 0 for a call that sends them
-;; now: free again, with their loans, once that frame is back. => them, or
-;; #f for none.
-(define (rec-writes-take! n)
+;; The writes, to hand core0: free again, with their loans, once core0 has
+;; sent them, which it says itself. => them, or #f for none.
+(define (rec-writes-take!)
   (let ([r *rec-writes*])
     (when r
-      (gpu-recording-until-set! r n)
+      (gpu-recording-until-set! r (greatest-fixnum))
       (let loop ([loan (gpu-recording-runs r)])
         (when (gpu-recording? loan)
-          (gpu-recording-until-set! loan n)
+          (gpu-recording-until-set! loan (greatest-fixnum))
           (loop (gpu-recording-runs loan))))
       (gpu-recording-next-set! r (gpu-recording-next *rec-writes-head*))
       (gpu-recording-next-set! *rec-writes-head* r)
@@ -375,15 +377,29 @@
       (set! *rec-writes-last* #f))
     r))
 
-;; Calls that hand core0 the writes with no frame, run now: a compute run,
-;; and those no frame took; and buffer id's bytes, read back (#f if id
-;; names none).
+;; Calls that hand core0 the writes with no frame, run now while one thread
+;; plays both: a compute run; and buffer id's bytes, read back (#f if id
+;; names none). On a world of its own thread they'd hold main till core0
+;; answered: they raise.
+(define (rec-one-thread who)
+  (when (host-forked?)
+    (errorf who "readbacks never hold main: on a world of its own thread, \
+                 use what hands the bytes to a then")))
+
 (define (rec-compute-now! run jobs)
-  (gpu-compute-now! run jobs (rec-writes-take! 0)))
-(define (rec-submit-computes! runs jobs)
-  (gpu-submit-computes! runs jobs (rec-writes-take! 0)))
+  (rec-one-thread 'gpu-compute!)
+  (gpu-compute-now! run jobs (rec-writes-take!)))
 (define (rec-buffer-read! jobs id)
-  (gpu-buffer-download! jobs (rec-writes-take! 0) id))
+  (rec-one-thread 'gpu-buffer-read!)
+  (gpu-buffer-download! jobs (rec-writes-take!) id))
+
+;; The compute runs no frame took, and the writes, sent with no frame: by a
+;; job of core0's, or at once while one thread plays both.
+(define (rec-submit-computes! runs jobs)
+  (let ([writes (rec-writes-take!)])
+    (if (host-forked?)
+        (host-post-submit! runs jobs writes)
+        (gpu-submit-computes! runs jobs writes))))
 
 ;;; ------------------------------------------------------------------ lists
 
@@ -474,8 +490,9 @@
 ;; (gpu-drawing->bytes).
 (define (rec-drawing->bytes jobs computes table table-n pieces runs pw ph
                             clear?)
+  (rec-one-thread 'drawing->bytes)
   (let ([r *rec-now*])
-    (gpu-drawing->bytes jobs (rec-writes-take! 0) computes
+    (gpu-drawing->bytes jobs (rec-writes-take!) computes
                         (gpu-recording-recs r) (gpu-recording-recs-n r)
                         (gpu-recording-extras r) (gpu-recording-extras-n r)
                         table table-n pieces runs pw ph clear?)))

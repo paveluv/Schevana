@@ -109,3 +109,27 @@
       (check "a wake ends core0's wait at once, and is no event of the \
               world's"
              (and (< (- (now-ms) t0) 500) (null? events) (null? types))))))
+
+;; The boot screen, which draws only with a window, by its blits onto a
+;; texture: the λ scaled up four times, sharp, on the ground; under it the
+;; bar's track, its first half filled.
+(let* ([r *renderer*]
+       [d (renderer-device r)]
+       [t (gpu-make-texture d gpu-format-bgra8
+                            (fxior gpu-usage-sampler gpu-usage-target) 36 52)]
+       [cb (sdl-acquire-gpu-commands d)])
+  (gpu-boot-blit! cb t 0 0 9 12 0 0 36 48 #t)
+  (gpu-boot-blit! cb t 0 12 1 1 0 50 36 2 #f)
+  (gpu-boot-blit! cb t 1 12 1 1 0 50 18 2 #f)
+  (let* ([bytes (gpu-read-texture! r cb t 36 52)]
+         [px (lambda (x y)
+               (bytevector-u32-native-ref bytes (* 4 (+ x (* y 36)))))]
+         [color (lambda (c) (cdr (assv c gpu-boot-colors)))])
+    (sdl-release-gpu-texture d t)
+    (check "the boot screen's blits: the λ scaled up sharp on the ground, \
+            the bar's track under it, filled as far as asked"
+           (and (= (px 0 0) (px 7 3) (color #\#))
+                (= (px 8 0) (px 35 0) (px 0 49) (color #\.))
+                (= (px 0 50) (px 17 51) (color #\f))
+                (= (px 18 50) (px 35 51) (color #\t))
+                (= (px 32 47) (color #\#))))))

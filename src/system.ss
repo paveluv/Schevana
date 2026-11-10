@@ -76,7 +76,8 @@
   (memory-order-release)
   (let loop ()
     (let ([mail (unbox *main-mail*)])
-      (unless (box-cas! *main-mail* mail (cons thunk mail)) (loop)))))
+      (unless (box-cas! *main-mail* mail (cons thunk mail)) (loop))))
+  (host-world-wake!))
 
 (define (run-main-mail!)
   (let loop ()
@@ -161,6 +162,9 @@
             (safely 'event
                     (lambda () (if hold? (hold-event! ev) (handle-event! ev)))))
           (each (cdr evs)))))
+    ;; frames core0 gave back, on its own thread since; on main's, they
+    ;; come back as they're published
+    (when (host-forked?) (safely 'render render-frames-back!))
     (let ([ticked?
            (and (not (reload-holding?))
                 (begin
@@ -349,6 +353,13 @@
 
 (define (quit!) (set! *running* #f))
 
+;; The run is over, and the process ends: at once on one thread; with core0
+;; on its own, once it has closed the window, main waiting for it.
+(define (schevana-end!)
+  (if (host-forked?)
+      (let wait () (host-world-wait! 1000) (wait))
+      (exit 0)))
+
 (define (uptime-ms) (- (now-ms) *boot-ms*))
 
 ;;; ------------------------------------------------------------------ boot
@@ -532,10 +543,12 @@
                          (format "Reload failed in ~a: ~a"
                                  (cdr *reloading*) (condition->string c)))
                         (raise c)])
-        (for-each (lambda (f)
+        (for-each (lambda (f i)
                     (when p (set! *reloading* (cons p f)))
-                    (load-source f))
-                  files)
+                    (load-source f)
+                    ;; the boot screen's bar
+                    (host-loaded! (+ i 1) (length files)))
+                  files (iota (length files)))
         (when outer? (set! *reloading* #f))))))
 
 ;; The user's folders, after the built-in ones (main.ss, before the saved

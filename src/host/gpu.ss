@@ -194,6 +194,14 @@
   (struct [texture void*] [w unsigned-32] [h unsigned-32]))
 (gpu-struct gpu-fence-list gpu-fence-list* 736
   (array 1 void*))
+(define-ftype gpu-blit-region
+  (struct [texture void*] [level unsigned-32] [layer unsigned-32]
+          [x unsigned-32] [y unsigned-32] [w unsigned-32] [h unsigned-32]))
+(gpu-struct gpu-blit-info gpu-blit-info* 1104
+  (struct [from gpu-blit-region] [to gpu-blit-region] [load-op int]
+          [r float] [g float] [b float] [a float] [flip int] [filter int]
+          [cycle unsigned-8] [pad1 unsigned-8] [pad2 unsigned-8]
+          [pad3 unsigned-8]))
 
 ;; Where a struct is, for the C call that takes it.
 (define (gpu-at pointer) (ftype-pointer-address pointer))
@@ -623,9 +631,20 @@
 
 ;; Main's writes (writes, or #f for none) into their objects, by a copy
 ;; pass of their own sent now, ahead of anything that reads them, through
-;; one transfer.
+;; one transfer; then free for the recorder to write again, loans and all,
+;; core0 done reading them.
 (define (gpu-send-writes! writes)
-  (when (and writes (fx> (gpu-recording-recs-n writes) 0))
+  (when writes
+    (gpu-writes-copy! writes)
+    (memory-order-release)
+    (gpu-recording-until-set! writes 0)
+    (let loop ([loan (gpu-recording-runs writes)])
+      (when (gpu-recording? loan)
+        (gpu-recording-until-set! loan 0)
+        (loop (gpu-recording-runs loan))))))
+
+(define (gpu-writes-copy! writes)
+  (when (fx> (gpu-recording-recs-n writes) 0)
     (let* ([r *renderer*]
            [d (renderer-device r)]
            [transfer (car (gpu-sized-transfer
@@ -1352,8 +1371,10 @@
     (when f
       (memory-order-acquire)
       (let loop () (unless (box-cas! *gpu-published* f #f) (loop)))
+      (set! *gpu-booting* #f)
       (gpu-frame-shown?-set! f (gpu-present! f))
-      (host-put! *gpu-given-back* f))))
+      (host-put! *gpu-given-back* f)
+      (host-world-wake!))))
 
 ;; Main's jobs and writes, the lists kept from earlier on their images,
 ;; then the frame. => #t if the frame reached the screen; #f if the window
@@ -1368,6 +1389,7 @@
           (loop (cdr earlier)))
         (let ([shown? (gpu-frame! f)])
           ;; read and gone up: what it read goes back
+          (memory-order-release)
           (set! *gpu-frame-back* (gpu-frame-number f))
           (gpu-facts-refresh!)
           shown?))))
@@ -1435,6 +1457,130 @@
               (sdl-release-gpu-fence (renderer-device r) (renderer-fence r)))
             (renderer-fence-set! r fence))
           shown?))))
+
+;;; ---- the boot screen
+;;; What shows till the world's first frame, drawn with none of our shaders
+;;; (.work/gpu-design.md 9.13): SDL's blits from a picture of a few dozen
+;;; pixels, scaled up with nearest filtering, blocky on purpose. The λ, and
+;;; under it a bar, the share of the world's files loaded.
+
+;; The λ, a row a string; under it, the bar's track and fill. Each pixel a
+;; color: the ground, the λ, the track, the fill.
+(define gpu-boot-picture
+  '("##......."
+    ".##......"
+    "..##....."
+    "..##....."
+    "...##...."
+    "...##...."
+    "..####..."
+    "..##.##.."
+    ".##..##.."
+    ".##...##."
+    "##....##."
+    "##.....##"
+    "tf......."))
+(define gpu-boot-colors
+  '((#\. . #xff14141e) (#\# . #xff8aa8ff) (#\t . #xff2c2c40)
+    (#\f . #xff8aa8ff)))
+
+;; How far the world has loaded, (done . total) files of its folders, set
+;; whole by main as it loads them; and whether core0 still boots, till the
+;; world publishes its first frame.
+(defvar *gpu-boot-loaded* '(0 . 0))
+(defvar *gpu-booting* #f)
+(define (host-loaded! done total) (set! *gpu-boot-loaded* (cons done total)))
+
+;; The picture as a texture, made and sent up once.
+(defvar *gpu-boot-texture* #f)
+(define (gpu-boot-texture)
+  (or *gpu-boot-texture*
+      (let* ([d (renderer-device *renderer*)]
+             [w (string-length (car gpu-boot-picture))]
+             [h (length gpu-boot-picture)]
+             [texture (gpu-make-texture d gpu-format-bgra8 gpu-usage-sampler
+                                        w h)]
+             [n (* 4 w h)]
+             [bytes (make-bytevector n)]
+             [transfer (gpu-make-transfer d 0 n)])
+        (for-each (lambda (row y)
+                    (do ([x 0 (+ x 1)]) ((= x w))
+                      (bytevector-u32-native-set!
+                       bytes (* 4 (+ x (* y w)))
+                       (cdr (assv (string-ref row x) gpu-boot-colors)))))
+                  gpu-boot-picture (iota h))
+        (gpu-copy-in (gpu-must 'gpu-boot-texture
+                               (sdl-map-gpu-transfer d transfer #f))
+                     bytes n)
+        (sdl-unmap-gpu-transfer d transfer)
+        (let* ([cb (gpu-must 'gpu-boot-texture (sdl-acquire-gpu-commands d))]
+               [pass (sdl-begin-copy-pass cb)])
+          (gpu-to-texture! pass transfer texture 0 0 0 w h)
+          (sdl-end-copy-pass pass)
+          (sdl-submit-gpu cb))
+        (sdl-release-gpu-transfer d transfer)
+        (set! *gpu-boot-texture* texture)
+        texture)))
+
+;; Of the picture, the w × h pixels at (u, v), onto target at (x, y),
+;; scaled to xw × xh; the target cleared first if clear?.
+(define (gpu-boot-blit! cb target u v w h x y xw xh clear?)
+  (let ([b gpu-blit-info*])
+    (gpu-zero! b (ftype-sizeof gpu-blit-info))
+    (ftype-set! gpu-blit-info (from texture) b (gpu-boot-texture))
+    (ftype-set! gpu-blit-info (from x) b u)
+    (ftype-set! gpu-blit-info (from y) b v)
+    (ftype-set! gpu-blit-info (from w) b w)
+    (ftype-set! gpu-blit-info (from h) b h)
+    (ftype-set! gpu-blit-info (to texture) b target)
+    (ftype-set! gpu-blit-info (to x) b x)
+    (ftype-set! gpu-blit-info (to y) b y)
+    (ftype-set! gpu-blit-info (to w) b xw)
+    (ftype-set! gpu-blit-info (to h) b xh)
+    (when clear?
+      (let ([c (cdr (assv #\. gpu-boot-colors))])
+        (ftype-set! gpu-blit-info (load-op) b gpu-load-clear)
+        (ftype-set! gpu-blit-info (r) b (/ (fxand (fxsrl c 16) 255) 255.0))
+        (ftype-set! gpu-blit-info (g) b (/ (fxand (fxsrl c 8) 255) 255.0))
+        (ftype-set! gpu-blit-info (b) b (/ (fxand c 255) 255.0))
+        (ftype-set! gpu-blit-info (a) b 1.0)))
+    (sdl-blit-gpu-texture cb (gpu-at b))))
+
+;; The boot screen, once: the λ in the middle, a tenth of the window high,
+;; and the bar under it.
+(define (gpu-boot-screen!)
+  (let* ([r *renderer*]
+         [cb (gpu-must 'gpu-boot-screen!
+                       (sdl-acquire-gpu-commands (renderer-device r)))]
+         [out gpu-swapchain-out*])
+    (when (and (sdl-acquire-swapchain
+                cb (renderer-sdl-window r)
+                (ftype-pointer-address (ftype-&ref gpu-swapchain-out (texture)
+                                                   out))
+                (ftype-pointer-address (ftype-&ref gpu-swapchain-out (w) out))
+                (ftype-pointer-address (ftype-&ref gpu-swapchain-out (h) out)))
+               (not (eqv? 0 (ftype-ref gpu-swapchain-out (texture) out))))
+      (let* ([t (ftype-ref gpu-swapchain-out (texture) out)]
+             [w (ftype-ref gpu-swapchain-out (w) out)]
+             [h (ftype-ref gpu-swapchain-out (h) out)]
+             [pw (string-length (car gpu-boot-picture))]
+             [ph (- (length gpu-boot-picture) 1)]
+             [k (max 1 (quotient h (* 10 ph)))]
+             [x (quotient (- w (* k pw)) 2)]
+             [y (- (quotient h 2) (* k ph))]
+             [bw (quotient w 4)]
+             [bx (quotient (- w bw) 2)]
+             [by (+ (quotient h 2) (* 2 k))]
+             [bh (max 2 (quotient k 2))]
+             [loaded *gpu-boot-loaded*]
+             [fill (if (> (cdr loaded) 0)
+                       (quotient (* bw (min (car loaded) (cdr loaded)))
+                                 (cdr loaded))
+                       0)])
+        (gpu-boot-blit! cb t 0 0 pw ph x y (* k pw) (* k ph) #t)
+        (gpu-boot-blit! cb t 0 ph 1 1 bx by bw bh #f)
+        (when (> fill 0) (gpu-boot-blit! cb t 1 ph 1 1 bx by fill bh #f))))
+    (sdl-submit-gpu cb)))
 
 ;; A list kept from earlier drawn on image, ahead of the next frame, which sends
 ;; its own: its glyphs are all up already. Its images and paints show what

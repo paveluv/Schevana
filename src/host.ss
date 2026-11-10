@@ -60,27 +60,30 @@
   (case mode
     [(headless)
      (set! *headless-size* (cons w h))
-     (host-window-headless!)
+     (unless (host-forked?) (host-window-headless!))
      (set! *host-scale* (wanted-scale))
      (canvas-create! w h *host-scale*)]
     [(sdl)
      ;; w × h are logical pixels. How many physical pixels a window unit
      ;; holds, and the desktop's scale, are known once the window is there,
      ;; so it opens hidden, a unit per logical pixel, and is sized and
-     ;; centered before it is shown.
-     (host-window-open! w h *host-fullscreen*)
+     ;; centered before it is shown. Core0 with a thread of its own opened
+     ;; it already, at the desktop's scale.
+     (unless (host-forked?) (host-window-open! w h *host-fullscreen*))
      (let*-values ([(uw uh pw ph) (host-read-sizes)]
                    [(nw nh)
                     (host-window-size w h (wanted-scale) *pixel-ratio*)])
        (unless (or *host-fullscreen* (and (= nw uw) (= nh uh)))
          (host-window-resize! nw nh)))
-     (host-window-show!)
+     (unless (host-forked?) (host-window-show!))
      (host-sync-size!)
-     (host-step! 0)]   ; what it posted (the least size) goes to the window
+     ;; what it posted (the least size) goes to the window
+     (unless (host-forked?) (host-step! 0))]
     [else (errorf 'host-init! "unknown host mode ~s" mode)]))
 
 (define (host-shutdown!)
-  (when (eq? *host* 'sdl) (host-window-close!)))
+  (cond [(host-forked?) (host-quit!)]
+        [(eq? *host* 'sdl) (host-window-close!)]))
 
 ;;; ------------------------------------------------------------------
 ;;; full screen
@@ -179,11 +182,11 @@
 ;;; ------------------------------------------------------------------ events
 
 ;; Steps core0, which waits up to wait-ms for the first event and drains the
-;; queue into the world's inbox; then the inbox: the host's events, each
-;; told to *host-event-seen*, as the world's. Once core0 has a thread, its
-;; loop steps it, and this only takes the inbox.
+;; queue into the world's inbox; or, core0 on a thread of its own, waits up
+;; to wait-ms till it's woken. Then the inbox: the host's events, each told
+;; to *host-event-seen*, as the world's.
 (define (host-events wait-ms)
-  (host-step! wait-ms)
+  (if (host-forked?) (host-world-wait! wait-ms) (host-step! wait-ms))
   (let-values ([(events types) (host-window-events)])
     (for-each (lambda (type) (*host-event-seen* type)) types)
     (filter values (map host-event->world events))))

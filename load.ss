@@ -33,4 +33,10 @@
 
 (for-each (lambda (f) (load (string-append *schevana-root* "/" f)))
           *schevana-core0-sources*)
-(host-boot! *schevana-root* *schevana-recorder-sources* *schevana-sources*)
+;; main.ss with a window: core0 forks the world (src/host/boot.ss) and
+;; never comes back; else this thread loads it.
+(if (and (top-level-bound? '*schevana-fork*) (top-level-value '*schevana-fork*))
+    (apply host-fork! *schevana-root* *schevana-recorder-sources*
+           *schevana-sources* "world.ss" (top-level-value '*schevana-window*))
+    (host-boot! *schevana-root* *schevana-recorder-sources*
+                *schevana-sources*))

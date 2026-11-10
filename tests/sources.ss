@@ -79,7 +79,7 @@
           (source-files)
           (test-files "tests")
           (test-files "tests/units")
-          '("load.ss" "main.ss" "schevana")))
+          '("load.ss" "main.ss" "world.ss" "schevana")))
 
 (define (long-lines f)
   (let loop ([ls (file-lines f)] [n 1] [acc '()])
@@ -192,7 +192,7 @@
 
 ;; Raise it deliberately: the core is what the desktop needs to boot and
 ;; run; everything else belongs in a folder.
-(define src-budget 30770)
+(define src-budget 31648)
 
 ;; The tokens of a datum as read; a list's end is none.
 (define (tokens x)
@@ -295,7 +295,7 @@
 
 (define outside-src
   (remp (lambda (f) (equal? (file-folder f) "src"))
-        (append world-files '("main.ss"))))
+        (append world-files '("main.ss" "world.ss"))))
 
 ;; The GPU layer speaks the world's terms: above it, in the core too, nothing
 ;; names SDL's windowless half, Vulkan, SPIR-V, Metal or MSL, so that another
@@ -306,7 +306,7 @@
   (remp (lambda (f)
           (member f '("src/ffi.ss" "src/shader.ss" "src/host/sdl.ss"
                       "src/host/gpu.ss" "src/host/window.ss" "src/font.ss")))
-        (append world-files '("main.ss"))))
+        (append world-files '("main.ss" "world.ss"))))
 
 (define (names-a-back-end? s)
   (let ([name (symbol->string s)])
@@ -394,11 +394,13 @@
 
 ;; Of core0's names, the world names only those core0 shares with it, its
 ;; interface (host-interface in src/host/boot.ss). The scripts that load the
-;; tree call core0 to make "/" and to enter it.
+;; tree call core0 to make "/", or to fork the world into it, and to enter
+;; it.
 (check "the world names nothing of core0's but its interface"
        (let ([own (remp (lambda (n)
                           (memq n (append host-interface
-                                          '(host-boot! host-enter-world!))))
+                                          '(host-boot! host-fork!
+                                            host-enter-world!))))
                         (map cdr (apply append
                                         (map definitions core0-files))))])
          (none? (apply append
@@ -409,7 +411,8 @@
                                                      (file-forms f))))))
                             (remp (lambda (f) (or (member f core0-files)
                                                   (member f recorder-files)))
-                                  (append world-files '("main.ss"))))))))
+                                  (append world-files
+                                          '("main.ss" "world.ss"))))))))
 
 ;; "/recorder" is given core0's interface and, alone, recordings and what
 ;; holds them (host-recorder-share in src/host/boot.ss).
@@ -440,7 +443,8 @@
                                            (reverse (code-symbols-in
                                                      (file-forms f))))))
                             (remp (lambda (f) (member f recorder-files))
-                                  (append world-files '("main.ss"))))))))
+                                  (append world-files
+                                          '("main.ss" "world.ss"))))))))
 
 ;; The SDL the core above core0 still calls: none since the window went down
 ;; to core0; kept for what a later change may have to list.
@@ -483,7 +487,8 @@
                                            (reverse (symbols-in
                                                      (file-forms f))))))
                             (remp (lambda (f) (member f core0-files))
-                                  (append world-files '("main.ss"))))))))
+                                  (append world-files
+                                          '("main.ss" "world.ss"))))))))
 
 ;;; ------------------------------------------------------------------
 ;;; sharing the whole world
@@ -529,7 +534,10 @@
     (host-take! memory-order-acquire)
     (host-wake!)
     (gpu-publish! memory-order-release)
-    (gpu-present-published! memory-order-acquire)))
+    (gpu-present-published! memory-order-acquire)
+    (gpu-send-writes! memory-order-release)
+    (gpu-present! memory-order-release)
+    (rec-free? memory-order-acquire)))
 
 (define thread-fence-names '(memory-order-acquire memory-order-release))
 
@@ -549,7 +557,7 @@
         fences"
        (let ([found (apply append
                            (map file-thread-fences
-                                (append world-files '("main.ss"))))])
+                                (append world-files '("main.ss" "world.ss"))))])
          (none? (append
                  (filter-map (lambda (p)
                                (and (not (member p thread-fences))
@@ -864,17 +872,18 @@
     (printf "all checks passed\n")
     (printf "~a check(s) FAILED\n" failures))
 (exit ;; Chez reads a script a form at a time, so a run has to end by exiting:
-;; main.ss may have been edited during it, and what's read next would be
+;; world.ss may have been edited during it, and what's read next would be
 ;; nonsense.
 (let ()
   (define (run-then-exit? x)
     (and (pair? x)
          (or (and (equal? (car x) '(schevana-run!))
                   (pair? (cdr x))
-                  (equal? (cadr x) '(exit 0)))
+                  (equal? (cadr x) '(schevana-end!)))
              (run-then-exit? (car x))
              (run-then-exit? (cdr x)))))
-  (check "main.ss exits when its run ends, reading no more of itself"
-         (exists run-then-exit? (file-forms "main.ss"))))
+  (check "world.ss ends the process when its run ends, reading no more of \
+          itself"
+         (exists run-then-exit? (file-forms "world.ss"))))
 
 (if (zero? failures) 0 1))

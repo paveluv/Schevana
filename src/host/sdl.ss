@@ -111,6 +111,7 @@
 (define-foreign/collect-safe sdl-acquire-swapchain
   "SDL_AcquireGPUSwapchainTexture" (uptr uptr uptr uptr uptr) bool)
 (define-foreign sdl-begin-copy-pass "SDL_BeginGPUCopyPass" (uptr) uptr)
+(define-foreign sdl-blit-gpu-texture "SDL_BlitGPUTexture" (uptr uptr) void)
 (define-foreign sdl-end-copy-pass "SDL_EndGPUCopyPass" (uptr) void)
 (define-foreign sdl-upload-to-buffer "SDL_UploadToGPUBuffer"
   (uptr uptr uptr bool) void)
