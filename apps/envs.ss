@@ -780,7 +780,10 @@
 ;; path it will have; what it is shared; a REPL in it.
 (define (envs-fork-sheet v)
   (let* ([ui (envs-view-ui v)] [e (envs-view-selected v)]
-         [kind (envs-view-kind v)] [forks (env-forks e)] [kinds (env-kinds)]
+         [kind (envs-view-kind v)] [forks (env-forks e)]
+         ;; what may be forked by hand at all: those code makes (an app's
+         ;; sandbox) or core0 does ("/host") aren't offered
+         [kinds (filter (lambda (k) (env-kind-ref k 'fork #t)) (env-kinds))]
          [bw (envs-sheet-width)] [ch (ui-control-height)]
          [radio-h (lambda (w k)   ; and 2 below
                     (let-values ([(rw rh) (ui-radio-size
