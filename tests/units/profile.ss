@@ -145,6 +145,23 @@
               (profile-test-near? (apply + (profile-test-phases s))
                                   (profile-tick-ms s)))))
 
+(check "a wait for the screen at a step's top (main's wait for core0) is \
+        a phase of its own in its use too, not other's"
+       (let* ([s (car (profile-test-on-clock
+                       1000
+                       (lambda ()
+                         (profile-test-ticks
+                          (lambda ()
+                            (with-profile-span 'step #f
+                              (with-profile-span 'vsync-wait 'acquire
+                                (profile-test-busy 2))))))))]
+              [waits (profile-test-uses s 'vsync-wait)])
+         (and (pair? waits)
+              (for-all (lambda (u) (eq? (profile-use-phase u) 'vsync-wait))
+                       waits)
+              (< 1.9 (profile-tick-phase-ms s 'vsync-wait) 2.1)
+              (zero? (profile-tick-phase-ms s 'other)))))
+
 (let ([life-win (life)])
   (move-window! life-win 600 300)
   (check "every step of the world adds up: its phases to its time, its uses \

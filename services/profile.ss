@@ -60,7 +60,7 @@
 (define (profile-phase-index key)
   (case key
     [(event) 1] [(timers) 2] [(procs) 3] [(tick) 4] [(render) 5]
-    [(gc) 6] [else 7]))
+    [(gc) 6] [(vsync-wait) 8] [else 7]))
 
 ;;; ------------------------------------------------------------------ tables
 ;;; Open addressing in vectors made once: a slot a (key part phase), its
