@@ -297,8 +297,21 @@
   (let ([win (current-window)])
     (unless (or (ui-state-fresh? ui) (not win))
       (let-values ([(w h) (window-content-size win)])
-        ((hashtable-ref (window-handlers win) 'draw (lambda a #f)) win w h)
+        ;; a layout pass, recorded into a list of the ui's own that nothing
+        ;; shows, never into a frame's bytes
+        (record-list! (ui-layout-list ui)
+                      (lambda ()
+                        ((hashtable-ref (window-handlers win) 'draw
+                                        (lambda a #f))
+                         win w h)))
         (ui-state-fresh?-set! ui #t)))))
+
+;; The list ui-fresh! records into, the ui's, made once.
+(define (ui-layout-list ui)
+  (or (ui-memo ui 'ui-layout-list #f)
+      (let ([l (gpu-list-new)])
+        (ui-memo! ui 'ui-layout-list l)
+        l)))
 
 ;; The held region as the latest layout drew it (as it was pressed, if
 ;; it is gone or no longer takes events: a button that disabled itself).
