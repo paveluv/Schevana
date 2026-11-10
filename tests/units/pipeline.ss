@@ -330,7 +330,16 @@
              [a (keep! request-frame!)]
              [b (keep! request-frame!)]
              [c (keep! (lambda () (invalidate! w)))]
-             [bytes (lambda (x) (+ (gpu-list-recs-n x) (gpu-list-extras-n x)))])
+             [bytes (lambda (x) (+ (gpu-list-recs-n x) (gpu-list-extras-n x)))]
+             ;; the bytes of the copies in k not in the frame before, the
+             ;; window's and any other's (the top bar's clock, when its
+             ;; second turns)
+             [new (lambda (k before)
+                    (apply + (map bytes
+                                  (remp (lambda (x)
+                                          (memq x (inspect-list-lists
+                                                   (cdr before))))
+                                        (inspect-list-lists (cdr k))))))])
         (check (format "frames kept share a list's copy while it's the same: \
                         a frame kept adds ~a bytes, and after the window \
                         changed ~a, its lists' new copies"
@@ -340,9 +349,9 @@
                     (not (exists (lambda (x) (memq x (mine a))) (mine c)))
                     (= (gpu-list-version (cadr (mine c)))
                        (+ 1 (gpu-list-version (cadr (mine a)))))
-                    (= (- (car c) (car b))
-                       (+ (- (car b) (car a))
-                          (apply + (map bytes (mine c)))))))
+                    (>= (new c b) (apply + (map bytes (mine c))))
+                    (= (- (car c) (car b) (new c b))
+                       (- (car b) (car a) (new b a)))))
         (let-values ([(n copies) (inspect-history-copies
                                   h (inspect-history-newest h))])
           (check "a list recorded again the very same keeps the basis of the \

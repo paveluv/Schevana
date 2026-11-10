@@ -79,6 +79,7 @@
           (source-files)
           (test-files "tests")
           (test-files "tests/units")
+          (test-files "tests/fork")
           '("load.ss" "main.ss" "world.ss" "schevana")))
 
 (define (long-lines f)

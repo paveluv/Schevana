@@ -15,7 +15,8 @@
                                        (drawing->bytes 2 2 1 (lambda () #t)))))
                  (cons 'compute
                        (fork-raises? (lambda ()
-                                       (gpu-buffer-read! (make-gpu-buffer 1))))))])
+                                       (gpu-buffer-read!
+                                        (make-gpu-buffer 1))))))])
       (screen-bytes-then
        (lambda (bytes)
          (call-with-output-file *fork-out*
