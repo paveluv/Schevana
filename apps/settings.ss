@@ -977,9 +977,9 @@
 (define (settings-display ui x y w)
   (let* ([y (+ 6 (settings-heading x y w "Display"
                    "How big everything is drawn, full screen, and how \
-                    frames are timed and shown."))]
+                    frames are shown."))]
          [label-w (settings-label-width '("Scale" "Full screen"
-                                          "Frame timing" "Presenting"))]
+                                          "Presenting"))]
          [h (ui-control-height)]
          [segmented-w (lambda (choices)
                         (* (length choices)
@@ -1008,29 +1008,6 @@
                              (min (max 160 (segmented-w fs-choices)) sw)
                              h fs-choices (fullscreen?)
                              (lambda (v) (set-fullscreen! v)))))]
-         [v (theme 'pacer-margin)]
-         [rw (max (settings-readout-width)
-                  (+ 24 (text-width "1000 ns" 'ui)))]
-         [y (settings-row ui x (+ y 18) w label-w "Frame timing" '(dim)
-                          (ui-slider-height) (+ w 1) 0
-                          (lambda (sx sy sw)
-                            (ui-slider ui '(option pacer-margin) sx sy
-                                       (- sw rw) v 0 1000
-                                       (lambda (nv)
-                                         (let ([nv (exact (round nv))])
-                                           (unless (= nv v)
-                                             (settings-set! 'pacer-margin
-                                                            nv)))))
-                            (ui-draw-label (+ sx (- sw rw) 18) sy (- rw 18)
-                                           (ui-slider-height) '(dim)
-                                           (format "~a ns" v))))]
-         [y (+ 22 (ui-draw-label x (+ y 10) w 0 '(hint wrap)
-                                 "Ticks run this much shorter than the \
-                                  refresh the display reports, so frames \
-                                  drift early, where they only wait, and not \
-                                  late, where one would show a refresh late. \
-                                  More keeps a wider margin; less makes the \
-                                  screen pull them back less often."))]
          [present-choices
           (let ([offered (cdr (assq 'present-modes *gpu-facts*))])
             (filter (lambda (c) (memq (cdr c) offered))
@@ -1038,7 +1015,7 @@
     (if (< (length present-choices) 2)
         y
         (let ([y (settings-row
-                  ui x y w label-w "Presenting" '(dim) h
+                  ui x (+ y 18) w label-w "Presenting" '(dim) h
                   (if stack? (+ w 1) (segmented-w present-choices)) 0
                   (lambda (sx sy sw)
                     (ui-segmented

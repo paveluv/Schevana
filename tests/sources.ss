@@ -451,14 +451,15 @@
 ;; to core0; kept for what a later change may have to list.
 (define core-sdl-left '())
 
-;; SDL's calls that may block: the screen's hold, the event wait, waits for
-;; the GPU. Each is collect-safe, so that a core0 held in one stalls no
+;; SDL's calls that may block: the screen's hold, the event poll (SDL's
+;; handlers inside it took 65 ms over a window's change), waits for the
+;; GPU. Each is collect-safe, so that a core0 held in one stalls no
 ;; collection another thread needs (.work/gpu-design.md 9.6).
 (define sdl-blocking
   '("SDL_AcquireGPUSwapchainTexture"
     "SDL_SubmitGPUCommandBuffer"
     "SDL_SubmitGPUCommandBufferAndAcquireFence"
-    "SDL_WaitEventTimeout"
+    "SDL_PollEvent"
     "SDL_WaitForGPUFences"
     "SDL_WaitForGPUIdle"
     "SDL_SetGPUSwapchainParameters"))
@@ -533,7 +534,6 @@
     (crew-claim!)
     (host-put! memory-order-release)
     (host-take! memory-order-acquire)
-    (host-wake!)
     (gpu-publish! memory-order-release)
     (gpu-present-published! memory-order-acquire)
     (gpu-send-writes! memory-order-release)

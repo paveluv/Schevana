@@ -49,10 +49,10 @@
                 (= (length monitor-phases) profile-phase-count)
                 (for-all (lambda (p) (assq p monitor-phases))
                          (vector->list profile-phase-names))
-                ;; 16 ms, its wait for input too: late past periods of
-                ;; 32/3 ms
-                (member seq (profile-slow-ticks 10666666))
-                (not (member seq (profile-slow-ticks 10666667)))
+                ;; 16 ms, its wait for input too, but the screen's 2 ms,
+                ;; which aren't main's: late past periods of 28/3 ms
+                (member seq (profile-slow-ticks 9333333))
+                (not (member seq (profile-slow-ticks 9333334)))
                 (not (member seq (profile-slow-ticks 16666666)))
                 ;; the work by what it spent, the waits above it
                 (equal? order (map index '(render tick input-wait vsync-wait)))
@@ -110,9 +110,7 @@
          (steps 3)
          (let ([none (ui-find ui '(monitor-flags row 0))])
            (fluid-let ([now-ns (lambda () (+ (real) held))])
-             (with-profile-span 'step #f
-               (with-profile-span 'vsync-wait 'submit
-                 (set! held (* 8671932088 1000))))
+             (with-profile-span 'step #f (set! held (* 8671932088 1000)))
              (steps 5)
              (invalidate! m)
              (steps 2))
@@ -124,8 +122,7 @@
              (and (not none) rows (not crashed) (pair? flags)
                   (equal? (profile-why-text
                            (profile-flag-why (car (reverse flags))))
-                          "the screen held main 8671.9 s, taking the \
-                           frame"))))))
+                          "main woke 8671.9 s past its time"))))))
 
 (check "a bar chart flags at its top the bars 'flagged says, in chart-flag"
        (let* ([ui (make-ui)] [seen '()]

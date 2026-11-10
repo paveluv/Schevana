@@ -1130,42 +1130,21 @@
       (check (format "on a window, frames go through the swapchain (~a of 10 \
                       shown)" shown)
              (> shown 0))))
-  ;; a fake clock that only these two move, the world's and core0's own
-  (let* ([t 0]
-         [held (lambda (f ms)
-                 (lambda args (set! t (+ t (* ms 1000000))) (apply f args)))]
-         [waits *pacer-waits*])
-    (fluid-let ([now-ns (lambda () t)]
-                [core0-now-ns (lambda () t)]
-                [sdl-acquire-swapchain (held sdl-acquire-swapchain 5)]
-                [sdl-submit-gpu-fence (held sdl-submit-gpu-fence 7)])
-      (with-profile-span 'step #f (render-frame!)))
-    (let ([seq (profile-newest-tick)])
-      (check "the profiler keeps what each swapchain call held main for, \
-              when its frame went, and that the frame reached the screen"
-             (and (= (profile-tick-ns seq 'acquire) 5000000)
-                  (= (profile-tick-ns seq 'submit) 7000000)
-                  (= (profile-tick-ns seq 'sent) 5000000)
-                  (= (profile-tick-ns seq 'shown) 1))))
-    (check (format "what the swapchain holds a frame for is a wait (~a ms), \
-                    not its work (~a ms)"
-                   (/ (- *pacer-waits* waits) 1000000) *frame-ms*)
-           (and (= (- *pacer-waits* waits) 12000000) (zero? *frame-ms*)))
-    ;; the GPU's work told from the screen's hold, by the last frame's fence
-    (let ([state-when
-           (lambda answers
-             (fluid-let ([sdl-query-gpu-fence
-                          (lambda (d f)
-                            (let ([a (car answers)])
-                              (set! answers (cdr answers))
-                              a))])
-               (render-frame!)
-               *gpu-frame-state*))])
-      (check "a frame says where the GPU stood with the last one as main asked \
-              for its image: finished, finishing during the wait, or not yet"
-             (and (= (state-when #t #t) 0)
-                  (= (state-when #f #t) 1)
-                  (= (state-when #f #f) 2))))))
+  ;; the GPU's work told from the screen's hold, by the last frame's fence
+  (let ([state-when
+         (lambda answers
+           (fluid-let ([sdl-query-gpu-fence
+                        (lambda (d f)
+                          (let ([a (car answers)])
+                            (set! answers (cdr answers))
+                            a))])
+             (render-frame!)
+             *gpu-frame-state*))])
+    (check "a frame says where the GPU stood with the last one as main asked \
+            for its image: finished, finishing during the wait, or not yet"
+           (and (= (state-when #t #t) 0)
+                (= (state-when #f #t) 1)
+                (= (state-when #f #f) 2)))))
 
 (if (zero? failures)
     (printf "all checks passed\n")

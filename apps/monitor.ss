@@ -230,7 +230,9 @@
              (monitor-clock-text
               (+ zero (quotient (profile-tick-ns seq 'end) 1000000))))
      (format "~a, ~a (a tick is ~a)" (monitor-ns-text ns)
-             (if (profile-tick-late? seq period) "late" "in time")
+             (cond [(profile-tick-late? seq period) "late"]
+                   [(profile-tick-held? seq period) "held by the screen"]
+                   [else "in time"])
              (monitor-ns-text period))
      (if (profile-tick-late? seq period)
          (format "\n~a" (profile-why-text (profile-tick-why seq period)))
@@ -865,7 +867,7 @@
                        (case key
                          [(when) (profile-flag-clock f)]
                          [(took) (profile-ns-text (profile-flag-ns f))]
-                         [(why) (profile-flag-why-text f)]
+                         [(why) (profile-why-text (profile-flag-why f))]
                          [(before) (profile-flag-before-text f)]
                          [else (profile-flag-ticks-text f)])))
                     'tip (lambda (f)

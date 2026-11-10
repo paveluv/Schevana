@@ -537,43 +537,39 @@
     (do ([i 0 (+ i 1)]) ((= i 3)) (profile-test-calm!))
     (profile-flags)))
 
-(check "a late tick stays as a flag, with the ticks about it, what each \
-        swapchain call held main for and when its frame went; the ticks in \
-        time don't"
-       (let* ([sent #f]
-              [flags (profile-test-flags
+(check "a late tick stays as a flag, with the ticks about it and what the \
+        screen held the host for; the ticks in time don't"
+       (let* ([flags (profile-test-flags
                       (lambda ()
                         (profile-test-calm!)
                         (profile-test-calm!)
                         (with-profile-span 'step #f
                           (with-profile-span 'vsync-wait 'acquire
                             (profile-test-pass! 2))
+                          (profile-test-pass! 30)   ; asleep
                           (with-profile-span 'render #f (profile-test-pass! 1))
-                          (set! sent profile-test-t)
                           (with-profile-span 'vsync-wait 'submit
-                            (profile-test-pass! 30)))))]
+                            (profile-test-pass! 2)))))]
               [f (car flags)]
               [lines (profile-flag-lines f)])
          (for-each (lambda (l) (printf "  ~a\n" l)) lines)
          (and (= (length flags) 1)
               (= (profile-flag-count) 1)
-              (equal? (profile-flag-why f) '(submit 30000000))
-              (= (profile-flag-ns f) 33000000)
-              (= (profile-flag-acquire f) 2000000)
-              (= (profile-flag-submit f) 30000000)
+              (equal? (profile-flag-why f) '(asleep 14000000))
+              (= (profile-flag-ns f) 35000000)
               (equal? (map cadr (profile-flag-beside f))
-                      '(16000000 16000000 16000000 33000000 16000000 16000000
+                      '(16000000 16000000 16000000 35000000 16000000 16000000
                         16000000))
-              (equal? (caddr (list-ref (profile-flag-beside f) 3)) sent)
+              (equal? (list-ref lines 3)
+                      "slept 30.0 ms; the screen 4.0 ms (0.3 refreshes)")
               (equal? (profile-flag-ticks-text f)
-                      "16.0 16.0 16.0 [33.0] 16.0 16.0 16.0")
-              (equal? (cadr lines)
-                      "the screen held main 30.0 ms, taking the frame")
-              (equal? (profile-flag-summary) "1 flag: 1 submit")
+                      "16.0 16.0 16.0 [35.0] 16.0 16.0 16.0")
+              (equal? (cadr lines) "main woke 14.0 ms past its time")
+              (equal? (profile-flag-summary) "1 flag: 1 asleep")
               (let-values ([(port get) (open-string-output-port)])
                 (profile-flag-report port)
                 (let* ([out (get)]
-                       [want (format "1 flag: 1 submit\n\n~a\n"
+                       [want (format "1 flag: 1 asleep\n\n~a\n"
                                      (string-join lines "\n"))]
                        [from (- (string-length out) (string-length want))])
                   (and (> from 0)
@@ -581,8 +577,10 @@
                                  want)))))))
 
 (check "a flag's why is the biggest thing in the tick that could have made it \
-        late: a call of the screen's, a sleep past its period, the collector \
-        or someone's work, not the sleep that was only its tick's wait"
+        late: a sleep past its period, the collector or someone's work, not \
+        the sleep that was only its tick's wait; a hold of the screen's \
+        alone is no flag, the tick held, not late, nor the why of a late \
+        tick however long"
        (let* ([win (open-window "Slow" 'size '(120 . 80) 'pos '(600 . 400))]
               [why (lambda (thunk)
                      (let ([flags (profile-test-flags
@@ -595,10 +593,15 @@
               [acquire (why (lambda ()
                               (with-profile-span 'vsync-wait 'acquire
                                 (profile-test-pass! 30))))]
+              [held (profile-tick-held? (profile-newest-tick) 16000000)]
               [unclaimed (why (lambda ()
                                 (with-profile-span 'vsync-wait #f
                                   (profile-test-pass! 30))))]
               [asleep (why (lambda () (profile-test-pass! 40)))]
+              [asleep-held (why (lambda ()
+                                  (profile-test-pass! 40)
+                                  (with-profile-span 'vsync-wait 'acquire
+                                    (profile-test-pass! 50))))]
               [gc (why (lambda ()
                          (with-profile-span 'gc #f (profile-test-pass! 30))))]
               [work (why (lambda ()
@@ -607,9 +610,9 @@
                              (with-profile-span (window-id win) 'draw
                                (profile-test-pass! 12)))))])
          (close-window! win)
-         (and (equal? acquire '(acquire 30000000))
-              (equal? unclaimed '(screen 30000000))
+         (and (not acquire) (not unclaimed)
               (equal? asleep '(asleep 24000000))
+              (equal? asleep-held '(asleep 24000000))
               (equal? gc '(gc 30000000))
               (eq? (car work) 'work)
               (equal? (profile-why-text work) "Slow's draw took 12.0 ms"))))
@@ -624,8 +627,7 @@
                           (set! hidden? #f)
                           (profile-test-pass! 2000)   ; shown for 2 s and more
                           (with-profile-span 'step #f
-                            (with-profile-span 'vsync-wait 'submit
-                              (profile-test-pass! 30))))))]
+                            (profile-test-pass! 30)))))]
               [f (car flags)]
               [seq (profile-flag-seq f)]
               [gone (fluid-let ([now-ns (lambda () profile-test-t)]
@@ -638,8 +640,7 @@
                      (lambda ()
                        (do ([i 0 (+ i 1)]) ((= i (+ profile-flags-kept 6)))
                          (with-profile-span 'step #f
-                           (with-profile-span 'vsync-wait 'submit
-                             (profile-test-pass! 30))))))]
+                           (profile-test-pass! 30)))))]
               [count (profile-flag-count)]
               [summary (profile-flag-summary)])
          (profile-clear!)
@@ -649,7 +650,7 @@
               gone still
               (= (length many) profile-flags-kept)
               (= count (+ profile-flags-kept 6))
-              (equal? summary "1030 flags, the last 1024: 1024 submit")
+              (equal? summary "1030 flags, the last 1024: 1024 asleep")
               (> (profile-flag-seq (car many))
                  (profile-flag-seq (cadr many)))
               (null? (profile-flags)))))
@@ -676,6 +677,7 @@
                           (profile-test-pass! 5)
                           (*host-event-seen* #x400)   ; motion: counted
                           (with-profile-span 'step #f
+                            (profile-test-pass! 25)   ; asleep: late
                             (with-profile-span 'vsync-wait 'acquire
                               (profile-test-pass! 30))))))]
               [more (begin
@@ -693,16 +695,15 @@
          (for-each (lambda (l) (printf "  ~a\n" l)) lines)
          (delete-file path)
          (and (equal? (car (profile-flag-events f))
-                      (cons 'focus-gained -35000000))
+                      (cons 'focus-gained -60000000))
               (= 1 (length (profile-flag-events f)))
-              (equal? (profile-flag-before-text f) "focus-gained, 35.0 ms ago")
-              (line? "the host said: focus-gained -35.0 ms")
-              (line? "next image: 0.0 0.0 [30.0] 0.0 0.0 0.0")
+              (equal? (profile-flag-before-text f) "focus-gained, 60.0 ms ago")
+              (line? "the host said: focus-gained -60.0 ms")
+              (line? "the screen: 0.0 0.0 [30.0] 0.0 0.0 0.0")
               (line? "host events: 0 0 [2] 0 0 0")
               (line? "memory: heap")
               (line? "records: ")
               (line? "the host window:")
-              (has? "; the GPU" (cadr lines))
               (has? "=== a run" more)
               (has? "presenting by vsync, present modes offered" more)
               (line? "presenting by vsync")

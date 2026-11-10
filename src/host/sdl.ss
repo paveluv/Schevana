@@ -47,10 +47,7 @@
   (uptr) unsigned-32)
 (define-foreign sdl-get-current-display-mode "SDL_GetCurrentDisplayMode"
   (unsigned-32) uptr)
-(define-foreign sdl-poll-event "SDL_PollEvent" (uptr) bool)
-(define-foreign sdl-push-event "SDL_PushEvent" (uptr) bool)
-(define-foreign/collect-safe sdl-wait-event-timeout "SDL_WaitEventTimeout"
-  (uptr int) bool)
+(define-foreign/collect-safe sdl-poll-event "SDL_PollEvent" (uptr) bool)
 (define-foreign sdl-start-text-input "SDL_StartTextInput" (uptr) bool)
 (define-foreign sdl-get-clipboard-text "SDL_GetClipboardText" () uptr)
 (define-foreign sdl-set-clipboard-text "SDL_SetClipboardText" (string) bool)
@@ -163,6 +160,8 @@
 (define-foreign sdl-gpu-driver "SDL_GetGPUDeviceDriver" (uptr) string)
 (define-foreign sdl-window-supports-present-mode
   "SDL_WindowSupportsGPUPresentMode" (uptr uptr int) bool)
+(define-foreign/collect-safe sdl-set-frames-in-flight
+  "SDL_SetGPUAllowedFramesInFlight" (uptr unsigned-32) bool)
 (define-foreign/collect-safe sdl-set-swapchain-parameters
   "SDL_SetGPUSwapchainParameters" (uptr uptr int int) bool)
 (define-foreign/collect-safe sdl-wait-gpu-idle "SDL_WaitForGPUIdle" (uptr) bool)

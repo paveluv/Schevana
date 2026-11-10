@@ -9,10 +9,13 @@
 ;; for its scroll bar) waits, so that input's frame comes first
 (defvar *input-step?* #f)
 (defvar *boot-ms* (now-ms))
-;; The pacer: the world's ticks come from it, exactly one a period while
-;; a tick's work and its frame fit in one. Its rate: screen (a tick a
-;; refresh of the screen's) or ticks a second; when the next tick is due
-;; (now-ns); the ticks so far, and when the last began (now-ms).
+;; The pacer: the world's ticks, its frame turns, come from it. Ticks keep
+;; to a grid a period apart. With core0 on a thread of its own a tick also
+;; waits till core0 has taken the last frame (.work/gpu-design.md 9.12),
+;; and once a frame of its has reached the screen by vsync, the screen
+;; sets the pace instead (pacer-start). Its rate: screen (a tick a refresh
+;; of the screen's) or ticks a second; when the next tick may come on the
+;; grid (now-ns); the ticks so far, and when the last began (now-ms).
 (defvar *pacer-rate* 'screen)
 (defvar *pacer-due* 0)
 (defvar *pacer-ticks* 0)
@@ -24,13 +27,9 @@
 (defvar *pacer-began* 0)   ; when the last tick began, ns
 (defvar *pacer-frame-ns* 0)   ; when the last tick's frame should show, ns
 (defvar *pacer-wanted?* #f)   ; a tick is asked for, to look if not to draw
-;; which of the last frames waited for their image, a bit each; the next one
-;; isn't drawn; how many times the screen re-timed the pacer, and how many
-;; frames that left out
-(defvar *pacer-holds* 0)
-(defvar *pacer-skip?* #f)
-(defvar *pacer-retimed* 0)
-(defvar *pacer-skipped* 0)
+;; since the last tick, a frame core0 gave back reached the screen, which
+;; held it (vsync, at the screen's rate)
+(defvar *pacer-shown?* #f)
 ;; this step is paced and came between ticks: the profiler sums it into
 ;; the next tick
 (defvar *pacer-between?* #f)
@@ -172,7 +171,8 @@
                   (safely 'timers run-timers!)
                   (let ([now (and (pair? paced) (now-ns))])
                     (and (or (not now)
-                             (and (pacer-wanted?) (>= now (pacer-start))))
+                             (and (pacer-wanted?) (>= now (pacer-start))
+                                  (not (gpu-frame-waiting?))))
                          (begin (pacer-tick! now) #t)))))])
       ;; a step leads up to a tick only while one is wanted; one in a quiet
       ;; spell is its own, as a tick nothing asked for once was
@@ -181,16 +181,13 @@
       (safely 'procs
               (lambda () (run-procs! (if (null? paced) 10 (pacer-procs-ms)))))
       ;; a frame a tick at most
-      (when (and ticked? (not (reload-holding?)))
-        (if (and *pacer-skip?* (pair? paced))
-            (pacer-frame-skipped!)
-            ;; a tick nothing asked a frame of goes on with no guard
-            ;; a frame drawn may have moved what's under a still pointer:
-            ;; the next tick looks
-            (when *dirty*
-              (set! *dirty* #f)
-              (safely 'render render-frame!)
-              (frame-turn-soon!))))
+      ;; a tick nothing asked a frame of goes on with no guard
+      ;; a frame drawn may have moved what's under a still pointer: the next
+      ;; tick looks
+      (when (and ticked? *dirty* (not (reload-holding?)))
+        (set! *dirty* #f)
+        (safely 'render render-frame!)
+        (frame-turn-soon!))
       ;; compute runs and writes no frame took go on their own
       (when (and (gpu-asks-pending?) (not (reload-holding?)))
         (safely 'render gpu-computes-send!)))))
@@ -243,78 +240,85 @@
 (define (pacer-wanted?) (or *pacer-wanted?* *dirty*))
 
 ;; When the frame the last tick made should show, ns, the t of a window's
-;; 'frame: until frames lock to the screen's beat, when the next tick is
-;; due, about where a frame sent now shows; unpaced (a test's), the tick's
-;; own ms, the one read of the clock it makes.
+;; 'frame: a period after the last one's, a few after the tick; unpaced (a
+;; test's), the tick's own ms, the one read of the clock it makes.
 (define (pacer-frame-ns) *pacer-frame-ns*)
 
-;; A tick's period, ns: a little shorter than the refresh the screen reports,
-;; 'pacer-margin. Too long and frames drift later, toward a cutoff, and one
-;; shows a refresh late; too short and they drift earlier, where a frame only
-;; waits, until the screen holds main and brings it back.
+;; How many periods after its tick t sits while frames flow; they show
+;; later still.
+(define pacer-lead-frames 2)
+
+;; When this tick's frame shows: a whole number of periods after the last
+;; tick's, so that what moves by it moves as evenly as the screen shows its
+;; frames, a refresh apart. The tick, which runs as core0 takes the last
+;; frame, says where that grid lies only to a millisecond or so, so t
+;; follows pacer-lead-frames periods past it slowly, a 256th of the way a
+;; tick and never more than 0.1 ms; a period a tick, unless that would put
+;; it behind the tick itself (ticks slower than the screen, a frame on
+;; every other refresh), when it steps as many whole periods as keep it
+;; ahead. After a pause, a period from the tick: the frames that follow
+;; fill the screen's queue faster than a period apart, and carry t further
+;; ahead of its tick, toward where it follows.
+(define (pacer-next-frame-ns now)
+  (let* ([p (if (eq? *pacer-rate* 'screen) (host-frame-ns) (pacer-period))]
+         [next (+ *pacer-frame-ns* p)]
+         [behind (- (+ now (* pacer-lead-frames p)) next)])
+    (cond [(> (- now *pacer-frame-ns*) (* 3 p)) (+ now p)]
+          [(< next now) (+ next (* p (quotient (+ (- now next) p -1) p)))]
+          [else (+ next (max -100000 (min 100000 (quotient behind 256))))])))
+
+;; A tick's period, ns: a 500th shorter than the refresh the screen
+;; reports, more than a report is off (a rate truncated to the mHz, or
+;; rounded to the Hz), so that the grid never holds back a tick the screen
+;; is ready for; and less than the 0.1 ms a tick's t may move, so that
+;; with no screen to hold the ticks t keeps to the clock. Or a fixed
+;; rate's.
 (define (pacer-period)
   (if (eq? *pacer-rate* 'screen)
-      (- (host-frame-ns) (theme 'pacer-margin))
+      (let ([p (host-frame-ns)]) (- p (quotient p 500)))
       (quotient 1000000000 *pacer-rate*)))
 
 ;; When the next tick may begin: a little before its time (2 ms), room
 ;; for the clock's and the screen's jitter, so that its frame is in time
-;; for the refresh.
-(define (pacer-start) (- *pacer-due* 2000000))
+;; for the refresh. Once a frame has reached the screen by vsync since this
+;; tick, the screen sets the pace: the next tick also waits till core0
+;; takes the frame this one sent, so it may come as soon as half a period
+;; after this one, and a screen a little faster than its report, or a
+;; queue refilling after a pause, is never held back by the grid. Frames
+;; the screen had no room for come back at once, and leave the grid on.
+(define (pacer-start)
+  (- (if *pacer-shown?*
+         (+ *pacer-began* (quotient (pacer-period) 2))
+         *pacer-due*)
+     2000000))
 
 ;; A tick: the frames windows asked for and the surfaces' (wm-tick!), then
 ;; a frame if one is asked for. Paced (now, the ns it began, else #f), the
-;; next is due a period after this one was, or, when that is past already
-;; (this one a period late, or the first after a quiet spell), a period
-;; from now.
+;; next may come a period after this one was due, or, when that is past
+;; already (this one held for core0, or the first after a quiet spell), a
+;; period from now.
 (define (pacer-tick! now)
   (when now
     (set! *pacer-began* now)
     (let ([next (+ *pacer-due* (pacer-period))])
       (set! *pacer-due* (if (> next now) next (+ now (pacer-period))))))
   (set! *pacer-wanted?* #f)
+  (set! *pacer-shown?* #f)
   (set! *pacer-ticks* (+ *pacer-ticks* 1))
   (set! *pacer-tick-ms* (now-ms))
-  (set! *pacer-frame-ns* (if now *pacer-due* (* *pacer-tick-ms* 1000000)))
+  (set! *pacer-frame-ns*
+    (if now (pacer-next-frame-ns now) (* *pacer-tick-ms* 1000000)))
   (safely 'tick wm-tick!))
 
-;;; The screen takes a frame only up to a cutoff before each refresh; a frame
-;;; a little past it shows a refresh late, and the screen shows the last one
-;;; again, and from then on one frame more is waiting: main waits for nearly
-;;; every image, paced by the screen, with no time to sleep. The pacer can't
-;;; see that cutoff, but such a wait ends about there. So after a few among the
-;;; last frames, it re-times itself, to send each frame half a period from that
-;;; moment, as far as it can be from the next cutoff on either side, and leaves
-;;; one frame out, so that what's waiting drains while the world ticks on.
-;;;
-;;; Not after one: a lone wait says little, and to move the frames for it is
-;;; what makes the next one wait. The screen's own rate may differ from the one
-;;; it reports by a little, and the pacer drifts until it's held again. A wait
-;;; far longer than a frame isn't this: the screen isn't showing the window.
-
-(define pacer-hold-least 2000000)   ; ns: shorter than this is no wait
-(define pacer-holds-least 3)        ; of the last 8 frames: fewer are let be
-
-;; The screen held main for its next image from t until now.
-(define (pacer-image-waited! t now)
-  (let* ([held (- now t)] [period (pacer-period)]
-         [held? (and (eq? *pacer-rate* 'screen)
-                     (>= held pacer-hold-least)
-                     (< held (* 3 period)))])
-    (set! *pacer-holds*
-      (fxand 255 (fx+ (fx* 2 *pacer-holds*) (if held? 1 0))))
-    (when (and held? (>= (fxpopcount *pacer-holds*) pacer-holds-least))
-      ;; what the tick takes to get here is before its frame goes
-      (set! *pacer-due*
-        (+ now 2000000
-           (mod (- (quotient period 2) (- t *pacer-began*)) period)))
-      (set! *pacer-retimed* (+ *pacer-retimed* 1))
-      (set! *pacer-skip?* #t)
-      (set! *pacer-holds* 0))))
-
-(define (pacer-frame-skipped!)
-  (set! *pacer-skip?* #f)
-  (set! *pacer-skipped* (+ *pacer-skipped* 1)))
+;; Core0, on a thread of its own, gave back a frame that reached the screen
+;; (shown?) or not: by vsync, at the screen's rate, the screen held it, and
+;; so paces the next tick (pacer-start).
+(define (pacer-frame-back! shown?)
+  (set! *pacer-shown?*
+    (and shown?
+         (host-forked?)
+         (eq? *pacer-rate* 'screen)
+         (equal? (assq 'present-mode *gpu-facts*) '(present-mode . vsync)))))
 
 ;; How long processes may run: until the next tick may begin, less what
 ;; the last frame took to draw, at most 10 ms, and at least 1 ms, so that
@@ -328,13 +332,15 @@
 
 ;; How long a paced step may wait for host events (input ends the wait at
 ;; once): until the next tick may begin, a period with none wanted (so mail
-;; is seen), or the first timer's time; not at all while processes are
-;; ready. Whole ms, rounded up: a step would spin through the last ms
+;; is seen) or while core0 still has the last frame to take (it wakes main
+;; as it takes it), or the first timer's time; not at all while processes
+;; are ready. Whole ms, rounded up: a step would spin through the last ms
 ;; before the tick (the 2 ms it may start early hold that one).
 (define (pacer-wait-ms)
   (if (procs-ready?)
       0
-      (let* ([ms (ceiling (/ (if (pacer-wanted?)
+      (let* ([ms (ceiling (/ (if (and (pacer-wanted?)
+                                      (not (gpu-frame-waiting?)))
                                  (- (pacer-start) (now-ns))
                                  (pacer-period))
                              1000000))]

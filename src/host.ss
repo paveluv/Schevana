@@ -78,7 +78,7 @@
      (unless (host-forked?) (host-window-show!))
      (host-sync-size!)
      ;; what it posted (the least size) goes to the window
-     (unless (host-forked?) (host-step! 0))]
+     (unless (host-forked?) (host-step!))]
     [else (errorf 'host-init! "unknown host mode ~s" mode)]))
 
 (define (host-shutdown!)
@@ -168,25 +168,22 @@
               #t)))]
     [else #f]))
 
-;; With vsync on, the screen held the host in its call part from start to
-;; end, on now-ns's clock (core0 times its waits, a frame's): a phase of
-;; the profiler's, and no work.
-(define (host-screen-waited! part start end)
-  (profile-span-past! 'vsync-wait part start end)
-  (pacer-held! (- end start))
-  (when (eq? part 'acquire) (pacer-image-waited! start end)))
-
 ;; How many threads this machine runs at once (logical cores).
 (define (host-cpu-count) (sdl-get-num-logical-cpu-cores))
 
 ;;; ------------------------------------------------------------------ events
 
-;; Steps core0, which waits up to wait-ms for the first event and drains the
-;; queue into the world's inbox; or, core0 on a thread of its own, waits up
-;; to wait-ms till it's woken. Then the inbox: the host's events, each told
-;; to *host-event-seen*, as the world's.
+;; Steps core0, which drains its events into the world's inbox: on one
+;; thread, headless, there is nothing to wait for. Or, core0 on a thread
+;; of its own, waits up to wait-ms till it's woken: with a frame of main's
+;; waiting for core0, a wait for the screen, which holds core0 meanwhile.
+;; Then the inbox: the host's events, each told to *host-event-seen*, as
+;; the world's.
 (define (host-events wait-ms)
-  (if (host-forked?) (host-world-wait! wait-ms) (host-step! wait-ms))
+  (cond [(not (host-forked?)) (host-step!)]
+        [(gpu-frame-waiting?)
+         (with-profile-span 'vsync-wait 'acquire (host-world-wait! wait-ms))]
+        [else (host-world-wait! wait-ms)])
   (let-values ([(events types) (host-window-events)])
     (for-each (lambda (type) (*host-event-seen* type)) types)
     (filter values (map host-event->world events))))

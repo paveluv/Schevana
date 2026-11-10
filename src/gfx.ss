@@ -1400,7 +1400,7 @@
 (define (rec-present!)
   (rec-run-end!)
   (gpu-publish! (rec-publish))
-  (unless (host-forked?) (host-step! 0)))
+  (unless (host-forked?) (host-step!)))
 
 ;; The list written since rec-begin!, as the frame main hands the host, with
 ;; the lists kept from earlier: the past one, and the preview's, which its

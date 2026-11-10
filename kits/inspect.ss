@@ -814,8 +814,6 @@
 
 ;;; ---- the pacer
 
-;; What times the frames: its period and when the next tick is due (ns), and
-;; how often the screen has re-timed it and frames were left out for it.
 ;; Core0's step: the window's facts as it last read them, the jobs posted
 ;; to it and the steps' events not yet taken, and the last job that raised.
 (define (inspect-host)
@@ -828,12 +826,13 @@
       (events . ,(cdr (assq 'events state)))
       (failed . ,(cdr (assq 'failed state))))))
 
+;; The pacer: its period and its grid's next tick (ns), whether a frame
+;; has reached the screen by vsync since the last tick, and its t.
 (define (inspect-pacer)
   `((period . ,(pacer-period))
-    (margin . ,(theme 'pacer-margin))
     (due . ,*pacer-due*)
-    (retimed . ,*pacer-retimed*)
-    (skipped . ,*pacer-skipped*)))
+    (shown . ,*pacer-shown?*)
+    (frame . ,*pacer-frame-ns*)))
 
 ;;; ---- what shaders share
 

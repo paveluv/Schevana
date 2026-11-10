@@ -9,7 +9,6 @@
 ;;;             screenshots)
 
 (defvar *host* 'none)
-(define host-wake-type #x8000)   ; SDL_EVENT_USER: core0's wake
 (defvar *sdl-window* 0)
 (defvar *sdl-event* (foreign-alloc 128))   ; an SDL_Event
 ;; what SDL says of the window's size: a place for it, a pointer made once
@@ -360,29 +359,18 @@
     (set! *wheel-rest* (cons (- x dx) (- y dy)))
     (and (not (= 0 dx dy)) (list 'wheel dx dy))))
 
-;; Waits up to wait-ms for the first event, then drains the queue: (values
-;; events types), the events as sdl-event->list gives them, and every
-;; event's number in order, whether it means anything or not. With no
-;; window, core0 on a thread of its own waits up to wait-ms to be woken.
-(define (host-window-pump wait-ms)
-  (when (and *host-forked* (not (eq? *host* 'sdl)))
-    (with-mutex *host-world-mutex*
-      (unless (unbox *host-woken*)
-        (condition-wait *host-ready* *host-world-mutex* (host-ms wait-ms)))))
+;; The queue drained, with no wait: (values events types), the events as
+;; sdl-event->list gives them, and every event's number in order, whether
+;; it means anything or not.
+(define (host-window-pump)
   (if (eq? *host* 'sdl)
       (let ([buf *sdl-event*])
-        (let loop ([more? (if (> wait-ms 0)
-                              (sdl-wait-event-timeout buf wait-ms)
-                              (sdl-poll-event buf))]
-                   [acc '()]
-                   [types '()])
+        (let loop ([more? (sdl-poll-event buf)] [acc '()] [types '()])
           (if more?
-              (let ([type (foreign-ref 'unsigned-32 buf 0)])
-                (if (= type host-wake-type)   ; a wake: no event of the world's
-                    (loop (sdl-poll-event buf) acc types)
-                    (let ([e (sdl-event->list buf)])
-                      (loop (sdl-poll-event buf) (if e (cons e acc) acc)
-                            (cons type types)))))
+              (let ([type (foreign-ref 'unsigned-32 buf 0)]
+                    [e (sdl-event->list buf)])
+                (loop (sdl-poll-event buf) (if e (cons e acc) acc)
+                      (cons type types)))
               (values (reverse acc) (reverse types)))))
       (values '() '())))
 
@@ -442,14 +430,6 @@
 (defvar *host-jobs* (box '()))
 (defvar *host-inbox* (box '()))
 (defvar *host-job-failed* #f)   ; (job . condition): the last job that raised
-;; A wake is in SDL's queue since the step began: one is enough.
-(defvar *host-woken* (box #f))
-;; The wake, an SDL_Event of SDL_EVENT_USER's: SDL copies it as it's pushed.
-(defvar *host-wake-event*
-  (let ([e (foreign-alloc 128)])
-    (do ([i 0 (+ i 1)]) ((= i 128)) (foreign-set! 'unsigned-8 e i 0))
-    (foreign-set! 'unsigned-32 e 0 host-wake-type)
-    e))
 
 ;; What SDL says of the window, as core0 read it last: #(flags w h pw ph
 ;; scale frame-ns display error-text). Made again whole when it changes, so
@@ -486,8 +466,9 @@
 
 (defvar *host-world-mutex* (make-mutex))
 (defvar *host-world-ready* (make-condition))
-(defvar *host-ready* (make-condition))   ; core0's, with no window
 (defvar *host-world-woken* #f)   ; under the mutex
+(defvar *host-ready* (make-condition))   ; core0's own
+(defvar *host-woken* #f)                 ; under the mutex
 
 ;; Ends main's wait, or the next one: from any thread.
 (define (host-world-wake!)
@@ -515,44 +496,53 @@
 (defvar *host-quit* #f)
 (define (host-quit-now!) (set! *host-quit* #t))
 
+;; How long core0 sleeps with nothing to do: input waits that long at most.
+(define host-idle-ms 4)
+
 ;; Core0's loop, on its own thread: its steps till main quits.
 (define (host-loop!)
   (let loop ()
+    (host-step!)
     ;; while it boots, the boot screen at each refresh
-    (host-step! (if *gpu-booting* 16 100))
     (when *gpu-booting* (gpu-boot-screen!))
     (if *host-quit*
         (begin (when (eq? *host* 'sdl) (host-window-close!)) (exit 0))
         (loop))))
 
-;; Ends core0's wait for events: a job posted, a frame published. From any
-;; thread. With no window, core0 on a thread of its own waits on its
-;; condition instead; on main's, there's no wait to end.
+;; Ends core0's sleep, or the next one: a job posted, a frame published.
+;; From any thread; on main's own, core0 never sleeps.
 (define (host-wake!)
-  (cond
-    [(eq? *host* 'sdl)
-     (let loop ()
-       (cond [(unbox *host-woken*)]
-             [(box-cas! *host-woken* #f #t) (sdl-push-event *host-wake-event*)]
-             [else (loop)]))]
-    [*host-forked*
-     (with-mutex *host-world-mutex*
-       (set-box! *host-woken* #t)
-       (condition-signal *host-ready*))]))
+  (when *host-forked*
+    (with-mutex *host-world-mutex*
+      (set! *host-woken* #t)
+      (condition-signal *host-ready*))))
+
+;; Core0 sleeps up to ms, or till it's woken. Its events aren't a wake:
+;; it looks for them each time it wakes, so ms bounds how long input
+;; waits while nothing else comes (host-idle-ms).
+(define (host-sleep! ms)
+  (with-mutex *host-world-mutex*
+    (unless (or *host-woken* (<= ms 0))
+      (condition-wait *host-ready* *host-world-mutex* (host-ms ms)))
+    (set! *host-woken* #f)))
 
 (define (host-run-job! job)
   (guard (c [#t (set! *host-job-failed* (cons job c))])
     (apply (top-level-value (car job) (host-environment)) (cdr job))))
 
 ;; One step of core0's: the jobs posted, in order; the frame published, if
-;; one is; the events, waiting up to wait-ms for the first, into the
-;; world's inbox; then what it says of itself, read again.
-(define (host-step! wait-ms)
-  (set-box! *host-woken* #f)
+;; one is; with none, on a thread of its own, a sleep of up to
+;; host-idle-ms, which a job or a frame ends; the events into the world's
+;; inbox; then what it says of itself, read again. The sleep comes before
+;; the pump, so that input that came while it slept goes in before the
+;; next present can wait for the screen.
+(define (host-step!)
   (let ([jobs (host-take! *host-jobs*)])
     (for-each host-run-job! jobs)
     (unless (eq? *host* 'none) (gpu-present-published!))
-    (let-values ([(events types) (host-window-pump wait-ms)])
+    (when (and *host-forked* (not (unbox *gpu-published*)))
+      (host-sleep! host-idle-ms))
+    (let-values ([(events types) (host-window-pump)])
       (unless (null? types)
         (when (memv #x900 types) (host-clipboard-read!))   ; clipboard-update
         (host-put! *host-inbox* (cons events types))

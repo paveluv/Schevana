@@ -1172,19 +1172,14 @@
                                   1e6))
             (frame-ring-add! shown?)))])]))
 
-;; The frames core0 gave back: each counted if it reached the screen, else
-;; one asked again, its waits for the screen told while they were main's
-;; too, with core0 on main's thread; then what core0 read back, handed to
-;; its then. => whether the last reached the screen, #f for none
+;; The frames core0 gave back: each told to the pacer, and counted if it
+;; reached the screen, else one asked again; then what core0 read back,
+;; handed to its then.
+;; => whether the last reached the screen, #f for none
 (define (render-frames-back!)
   (let ([shown? (fold-left
                  (lambda (shown? f)
-                   (let ([w (gpu-frame-waits f)])
-                     (unless (or (host-forked?) (fx< (fxvector-ref w 0) 0))
-                       (host-screen-waited! 'acquire (fxvector-ref w 0)
-                                            (fxvector-ref w 1))
-                       (host-screen-waited! 'submit (fxvector-ref w 2)
-                                            (fxvector-ref w 3))))
+                   (pacer-frame-back! (gpu-frame-shown? f))
                    (if (gpu-frame-shown? f)
                        (set! *frames-drawn* (+ *frames-drawn* 1))
                        (request-frame!))

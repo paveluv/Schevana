@@ -283,8 +283,12 @@ The Ticks tab has three parts:
   it, so that a bar past the top loses a wait, never work. A line marks
   the pacer's period (16.7 ms at 60 Hz, a refresh of the screen's by
   default) and the top is two. A tick that came late is flagged at the
-  top: past one and a half periods after the last
-  (`profile-tick-late?`). Not just past one, for a tick ends about at a
+  top: past one and a half periods, its wait for the screen left out
+  (`profile-tick-late?`). That wait, with core0 on a thread of its own
+  main's wait for core0 to take its frame, is the screen's or core0's,
+  which main can't shorten; past one and a half periods the tick was
+  held instead, which the Pipeline shows in orange
+  (`profile-tick-held?`). Not just past one, for a tick ends about at a
   refresh, a little before or after it, and one that missed a refresh
   waited for the next. All of it is whole ns and pixels, no float.
   Hover a bar for where its time went: its tick, how long it took and
@@ -317,21 +321,17 @@ after its bar has flowed past, the newest first: when it ended, what it
 took, what made it late, what the host said last before it and the ticks
 about it; `(profile-flag-report)` prints the same. What made it late is
 the biggest single thing in the tick that could have
-(`profile-tick-why`): a swapchain call the screen held main in, a wait
-for events past its period (asleep, or running in SDL), the collector or
-someone's work. When the screen held main for its next image, the last
-frame's fence says where the GPU stood: finished already, finishing
-during the wait, or not yet; so the GPU's work is told from the screen's
-hold, on any back end.
+(`profile-tick-why`) of what counts as late: a wait for events past its
+period (asleep, or running in SDL), the collector or someone's work,
+never what the screen held the host for.
 
 A row's tooltip says all that's known of it: for each tick about it, how
-long it slept and worked, what each swapchain call held main for, where
-the GPU stood and when its frame went against the period; the host's
-events for the 10 seconds before it; its frame, the host window's state,
-the windows and processes, its memory, the machine's load and SDL's last
-error. `(profile-flag-log! path)` adds each flag to the end of a file as
-it comes, to outlive a run; a run from a checkout with a `.work` folder
-logs to `.work/flags.log`.
+long it slept and worked, what the screen held the host for and where
+the GPU stood; the host's events for the 10 seconds before it; its
+frame, the host window's state, the windows and processes, its memory,
+the machine's load and SDL's last error. `(profile-flag-log! path)`
+adds each flag to the end of a file as it comes, to outlive a run; a run
+from a checkout with a `.work` folder logs to `.work/flags.log`.
 
 The history is data, read in place: `(profile-ticks)` and
 `(profile-seconds)` give the ticks kept and the seconds done as seqs,
@@ -709,41 +709,42 @@ Decisions worth keeping in mind for the real design:
   holds what SDL and the drivers keep outside the heap, which neither
   reports. Monitor shows both. The bar reads its numbers once a second,
   however many frames are drawn between.
-- **A pacer gives the ticks.** Every window's, surface's and toast's
-  `'tick` runs exactly once a period, whether it draws or not, while a
-  tick's work and its frame fit in one: bookkeeping or a check on
-  something can count on a steady beat. The period is a refresh of the
-  screen's by default, so apps that move by time still read the clock
-  (`(pacer-tick-ms)`, when this tick began); `(pacer-rate! 60)` makes it
-  60 a second from then on, and `(pacer-rate! 'screen)` brings the
-  screen's back. `(pacer-ticks)` counts them. Past a period of work the world slows down: the next tick comes
-  right after, none skipped. Processes run in the time left before the
-  next tick's frame, at least 1 ms a step. The screen's wait never holds
-  the ticks back: while the host window is hidden, minimized or covered
-  nothing is presented, and while it lacks the focus frames are presented
-  without that wait. With the focus, the wait paces frames, and input is
-  handled and drawn as it comes, between ticks; without it, the ticks
-  pace both: the loop sleeps until the next, and takes input then.
-  It also keeps frames off the screen's cutoff: a frame sent a little too
-  close to a refresh shows a refresh late, and the screen shows the last
-  one again. The pacer can't see that cutoff, but a wait for the screen's
-  next image ends about there. So when three of the last eight frames have
-  waited, it re-times itself to send each frame half a period after that moment,
-  and leaves one out, so that what's queued drains while the world ticks
-  on. A lone wait moves nothing: reacting to it is what makes the next
-  frame wait. `(inspect-pacer)` says how often. Between waits it runs on
-  its own clock, and can drift until the next one.
-  Its period is a little shorter than the refresh the display reports
-  (`'pacer-margin`, 300 ns, in Settings' Display tab), because a report can
-  be a little too long: drifting early costs a frame nothing, where drifting
-  late would show one a refresh late.
-  How a frame reaches the screen is `'present-mode`, in the same tab, or
-  `(override! 'present-mode 'mailbox)`; it changes live, at the next frame,
-  among what the window offers (`(inspect-device)`). With `vsync`, the
-  default, main can wait for the screen, and a frame that misses it shows as
-  a flag. With `mailbox` main seldom waits and a newer frame replaces one not
-  shown yet, which SDL doesn't report: no flag says so, and the pacer hardly
-  re-times, having few waits to go by.
+- **A pacer gives the ticks.** A tick is a frame turn: the windows that
+  asked for their `'frame` (`window-frame-soon!`) get it, once each, then
+  each surface its own, then a frame is drawn if something asked for one
+  (`invalidate!`). Ticks run only while one is wanted (a `'frame` asked
+  for, something to draw, input), on a grid a period apart: a refresh of
+  the screen's by default, a 500th shorter than the one the display
+  reports. `(pacer-rate! 30)` makes it 30 a second from then on, and
+  `(pacer-rate! 'screen)` brings the screen's back. `(pacer-ticks)`
+  counts the ticks, and `(pacer-tick-ms)` says when this one began. Past
+  a period of work the world slows down: the next tick comes right
+  after, none skipped. Processes run in the time left before the next
+  tick's frame, at least 1 ms a step.
+  With a window, the screen sets the frames' pace: core0 presents them
+  on a thread of its own, holding at most the one it presents and one
+  more, and no tick runs while the last frame published waits for core0
+  to take it, which it does as the screen frees an image. After a tick
+  that sent the screen a frame it holds (`vsync`, at the screen's rate),
+  the next may come as soon as half a period later, once core0 has taken
+  that frame, so that neither a screen a little faster than it says nor
+  the screen's queue refilling after a pause is held back by the grid.
+  So each refresh gets a new frame, never one drawn on a clock of main's
+  that drifts against the screen's. A window's `'frame` is told `t`, its
+  frame's time: a refresh after the last one's (a period, at a rate of
+  its own), a few refreshes after the tick, so that what moves by `t`
+  moves as evenly as the screen shows its frames. While the host window
+  is hidden, minimized or covered no frame is drawn, and core0 keeps the
+  last; input, timers and processes go on. `(inspect-pacer)` gives the
+  period, the grid's next tick, whether the last tick sent the screen a
+  frame it holds, and the last `t`.
+  How a frame reaches the screen is `'present-mode`, in Settings'
+  Display tab, or `(override! 'present-mode 'mailbox)`; it changes live,
+  at the next frame, among what the window offers (`(inspect-device)`).
+  With `vsync`, the default, the screen holds core0 for each image, and
+  that hold paces the frames. With `mailbox` core0 seldom waits and a
+  newer frame replaces one not shown yet, which SDL doesn't report: no
+  flag says so, and the ticks keep to the grid.
 - **Kernel vs user space via engines.** Each app handler runs in a Chez
   engine with a fuel budget (`safe-call`). An error or an infinite loop
   "crashes" only that window, which then shows the condition and can be

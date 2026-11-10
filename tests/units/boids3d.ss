@@ -160,7 +160,7 @@
   (let* ([n (length flock)]
          [in (b3-bytes flock)]
          [out (make-bytevector (bytevector-length in) 0)]
-         [args (append (boids3d-steering rules) (list boids3d-space))])
+         [args (append (boids3d-steering rules) (list boids3d-space 1.0))])
     (do ([i 0 (+ i 1)]) ((= i n))
       (apply (twin-procedure boids3d-steer) i 0 n 1 in out n args))
     (b3-flock out n)))
@@ -266,7 +266,7 @@
       (do ([i 0 (+ i 1)]) ((= i (* boids3d-words n)))
         (gpu-buffer-set! in i (bytevector-s32-native-ref bytes (* 4 i)))))
     (apply gpu-compute! boids3d-steer n 1 in out n
-           (append (boids3d-steering rules) (list boids3d-space)))
+           (append (boids3d-steering rules) (list boids3d-space 1.0)))
     (let ([next (b3-flock (gpu-buffer-read! out) n)])
       (gpu-buffer-release! in)
       (gpu-buffer-release! out)
@@ -459,8 +459,9 @@
               (= (list-ref steering 5) -2.0)
               (= (list-ref steering 7) 0.0))))
 
-(check "Boids 3D: its frames step the flock by time, 15 ms a step, three at \
-        most however long since; the camera turns by the steps"
+(check "Boids 3D: its frames step the flock by time, a step a frame as far \
+        as the time since the last, three steps' worth at most however \
+        long; the camera turns by the same time"
        (let* ([win (boids3d)]
               [yaw (lambda () (window-ref win 'yaw))]
               [t (+ (now-ns) 1000000000)])
@@ -474,7 +475,7 @@
                             (- (yaw) y1))])
            (close-window! win)
            (and (< (abs (- late (* 3 0.0015))) 1e-12)
-                (= soon 0)
+                (< (abs (- soon (/ 0.0015 3))) 1e-12)
                 (< (abs (- two (* 2 0.0015))) 1e-12)
                 (not (hashtable-contains? (window-handlers win) 'tick))))))
 

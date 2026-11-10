@@ -486,13 +486,13 @@
                       (= 1 (length (gpu-frame-earlier f))))])
     (gpu-publish! f)
     (let ([waiting (gpu-frame-waiting?)])
-      (host-step! 0)
+      (host-step!)
       (render-frames-back!)
       (rec-begin! 1)
       (let ([again (rec-publish)])
         (gpu-publish! again)
         (let ([refused (raises? (lambda () (gpu-publish! (gpu-frame-make))))])
-          (host-step! 0)
+          (host-step!)
           (render-frames-back!)
           (check "main publishes a frame with what it asked of the GPU, the \
                   preview's list made on main; it waits till core0's step \
@@ -627,22 +627,3 @@
                   (and (= (cadr row2) 255) (= (caddr row2) 0)
                        (< 120 (list-ref row2 4) 135)))))))
 
-;; A frame given back with its waits for the screen, held a period: on one
-;; thread they were main's, and the pacer counts them; with core0 on a
-;; thread of its own, main never waited, and the pacer is left alone.
-(define (primitives-waits-told forked?)
-  (let ([f (gpu-frame-make)] [t (now-ns)])
-    (gpu-frame-shown?-set! f #t)
-    (fxvector-set! (gpu-frame-waits f) 0 t)
-    (fxvector-set! (gpu-frame-waits f) 1 (+ t 16000000))
-    (fxvector-set! (gpu-frame-waits f) 2 (+ t 16000000))
-    (fxvector-set! (gpu-frame-waits f) 3 (+ t 16100000))
-    (host-put! *gpu-given-back* f)
-    (fluid-let ([*host-forked* forked?] [*pacer-waits* 0])
-      (render-frames-back!)
-      *pacer-waits*)))
-
-(check "core0's waits for the screen go to the pacer only while core0 is \
-        on main's thread"
-       (and (> (primitives-waits-told #f) 0)
-            (= (primitives-waits-told #t) 0)))

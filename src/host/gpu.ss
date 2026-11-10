@@ -285,8 +285,16 @@
       (gpu-facts-refresh!)
       r)))
 
-;; The host window this renderer draws to from now on.
+;; Three frames in flight, the most SDL allows, and as many images in the
+;; swapchain: with two, GPU work of most of a refresh missed refreshes, and
+;; the compositor's queue covers a stall of core0's of up to about two
+;; refreshes. A refresh more of latency.
+(define gpu-frames-in-flight 3)
+
+;; The host window this renderer draws to from now on. The count goes
+;; first: on a claimed window, setting it builds the swapchain again.
 (define (gpu-claim-window! sdl-window)
+  (sdl-set-frames-in-flight (renderer-device *renderer*) gpu-frames-in-flight)
   (unless (sdl-claim-window (renderer-device *renderer*) sdl-window)
     (errorf 'gpu-claim-window! "~a" (sdl-get-error)))
   (set! *gpu-present-mode* 'vsync)   ; as a claim leaves it
@@ -1261,7 +1269,7 @@
 ;;; 9.12): an alist the world never changes, made again at the end
 ;;; of a frame only when what it's made of changed, so that a frame like the
 ;;; last allocates nothing. A frame's own state, *gpu-frame-state*, is told
-;;; on its own, and its waits go back with it.
+;;; on its own.
 
 (defvar *gpu-facts* '())
 
@@ -1325,19 +1333,19 @@
 ;;; changed, the atlas's new pieces, the jobs, the writes and the compute
 ;;; runs asked for since, the present mode, and lists kept from earlier to
 ;;; draw on images first, (image . recording) each, the recorder's copies.
-;;; It comes back with whether it reached the screen and its waits for it.
+;;; It comes back with whether it reached the screen.
 ;;; The same few records go back and forth, filled again for each frame: a
 ;;; frame allocates none.
 
 (define-record-type gpu-frame
-  (nongenerative schevana-gpu-frame-5)
+  (nongenerative schevana-gpu-frame-6)
   (fields (mutable root) (mutable number) (mutable table) (mutable table-n)
           (mutable pieces) (mutable jobs) (mutable writes) (mutable computes)
-          (mutable mode) (mutable earlier) (mutable shown?) waits))
+          (mutable mode) (mutable earlier) (mutable shown?)))
 
 ;; A frame to fill: main keeps those given back to fill again.
 (define (gpu-frame-make)
-  (make-gpu-frame #f 0 #f 0 '() '() #f '() #f '() #f (make-fxvector 4 -1)))
+  (make-gpu-frame #f 0 #f 0 '() '() #f '() #f '() #f))
 
 ;; The number of the last frame the host gave back: what it read of the
 ;; recorder's is free to write again once a later frame doesn't show it.
@@ -1372,8 +1380,12 @@
       (memory-order-acquire)
       (let loop () (unless (box-cas! *gpu-published* f #f) (loop)))
       (set! *gpu-booting* #f)
+      ;; taken: main may make the next (.work/gpu-design.md 9.12)
+      (host-world-wake!)
       (gpu-frame-shown?-set! f (gpu-present! f))
       (host-put! *gpu-given-back* f)
+      ;; given back, with what it read: main takes them at once, whether
+      ;; or not a frame follows
       (host-world-wake!))))
 
 ;; Main's jobs and writes, the lists kept from earlier on their images,
@@ -1394,14 +1406,18 @@
           (gpu-facts-refresh!)
           shown?))))
 
+;; With no window, core0 on a thread of its own holds each frame till the
+;; next refresh of a screen of its own, at the window's rate, as a screen
+;; holds the acquire: the screen of a forked run's tests. Its refreshes
+;; fall on whole periods of now-ns's clock.
+(define (gpu-headless-hold!)
+  (let ([p (host-frame-ns)])
+    (sleep (make-time 'time-duration (- p (mod (now-ns) p)) 0))))
+
 ;; One frame: uploads, then the runs, to the window or the target. => #t if
 ;; it reached the screen; #f if the window had no room for it yet (a frame
 ;; still in flight, or it is hidden).
-;; Its waits for the screen, on now-ns's clock, in its waits: when the
-;; acquire began and ended, and the submit; all -1 with no window. Core0
-;; times them itself, and the world reads them after (src/host.ss).
 (define (gpu-frame! f)
-  (fxvector-fill! (gpu-frame-waits f) -1)
   (let* ([r *renderer*]
          [root (gpu-frame-root f)]
          [runs (gpu-recording-runs root)]
@@ -1414,6 +1430,7 @@
     (gpu-run-computes! cb (gpu-frame-computes f))
     (if (eqv? 0 (renderer-sdl-window r))
         (begin
+          (when *host-forked* (gpu-headless-hold!))
           (gpu-draw-runs! r cb (renderer-target r) gpu-format-bgra8
                           (renderer-target-w r) (renderer-target-h r) runs #f)
           ;; no screen paces these, and frames sent faster than they're drawn
@@ -1425,22 +1442,18 @@
         ;; the driver may hold either end of this till the screen is ready
         (let* ([out gpu-swapchain-out*]
                [done? (gpu-last-frame-done? r)]
-               [waits (gpu-frame-waits f)]
                [shown?
-                (begin
-                  (fxvector-set! waits 0 (now-ns))
-                  (let ([ok (sdl-acquire-swapchain
-                             cb (renderer-sdl-window r)
-                             (ftype-pointer-address
-                              (ftype-&ref gpu-swapchain-out (texture) out))
-                             (ftype-pointer-address
-                              (ftype-&ref gpu-swapchain-out (w) out))
-                             (ftype-pointer-address
-                              (ftype-&ref gpu-swapchain-out (h) out)))])
-                    (fxvector-set! waits 1 (now-ns))
-                    (and ok
-                         (not (eqv? 0 (ftype-ref gpu-swapchain-out (texture)
-                                                 out))))))])
+                (let ([ok (sdl-acquire-swapchain
+                           cb (renderer-sdl-window r)
+                           (ftype-pointer-address
+                            (ftype-&ref gpu-swapchain-out (texture) out))
+                           (ftype-pointer-address
+                            (ftype-&ref gpu-swapchain-out (w) out))
+                           (ftype-pointer-address
+                            (ftype-&ref gpu-swapchain-out (h) out)))])
+                  (and ok
+                       (not (eqv? 0 (ftype-ref gpu-swapchain-out (texture)
+                                               out)))))])
           (set! *gpu-frame-state*
             (cond [done? 0] [(gpu-last-frame-done? r) 1] [else 2]))
           (when shown?
@@ -1450,9 +1463,7 @@
                             (ftype-ref gpu-swapchain-out (w) out)
                             (ftype-ref gpu-swapchain-out (h) out)
                             runs #f))
-          (fxvector-set! waits 2 (now-ns))
           (let ([fence (gpu-must 'gpu-frame! (sdl-submit-gpu-fence cb))])
-            (fxvector-set! waits 3 (now-ns))
             (when (renderer-fence r)
               (sdl-release-gpu-fence (renderer-device r) (renderer-fence r)))
             (renderer-fence-set! r fence))

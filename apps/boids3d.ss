@@ -156,7 +156,8 @@
    [home flonum]
    [min-speed flonum]
    [max-speed flonum]
-   [space flonum])
+   [space flonum]
+   [dt flonum])               ; how much: a step's worth is 1.0
   (define (at j k) (fl-ref flock (fx+ (fx* j 8) k)))
   (define (on c) (if c 1.0 0.0))
   (let* ([x (at i 0)]
@@ -222,22 +223,23 @@
          [py 0.0 (fl+ py (push j (dy j) 1))]
          [pz 0.0 (fl+ pz (push j (dz j) 2))])
       ((fx>= j n)
-       (let* ([nx (fl+ (fl+ (fl+ vx (toward cx cn x cohesion))
-                            (toward ax an vx alignment))
-                       px)]
-              [ny (fl+ (fl+ (fl+ vy (toward cy cn y cohesion))
-                            (toward ay an vy alignment))
-                       py)]
-              [nz (fl+ (fl+ (fl+ vz (toward cz cn z cohesion))
-                            (toward az an vz alignment))
-                       pz)]
-              ;; out of the ball, back toward its middle, the harder the
+       (let* (;; out of the ball, back toward its middle, the harder the
               ;; farther out
               [r (flsqrt (fl+ (fl+ (fl* x x) (fl* y y)) (fl* z z)))]
               [pull (fl/ (fl* home (flmax (fl- r space) 0.0)) (flmax r 1.0))]
-              [nx (fl- nx (fl* x pull))]
-              [ny (fl- ny (fl* y pull))]
-              [nz (fl- nz (fl* z pull))]
+              ;; the rules' steering, dt steps' worth of it
+              [nx (fl+ vx (fl* dt (fl- (fl+ (fl+ (toward cx cn x cohesion)
+                                                 (toward ax an vx alignment))
+                                            px)
+                                       (fl* x pull))))]
+              [ny (fl+ vy (fl* dt (fl- (fl+ (fl+ (toward cy cn y cohesion)
+                                                 (toward ay an vy alignment))
+                                            py)
+                                       (fl* y pull))))]
+              [nz (fl+ vz (fl* dt (fl- (fl+ (fl+ (toward cz cn z cohesion)
+                                                 (toward az an vz alignment))
+                                            pz)
+                                       (fl* z pull))))]
               ;; the speed limits; standing still, it stays put
               [s (flsqrt (fl+ (fl+ (fl* nx nx) (fl* ny ny)) (fl* nz nz)))]
               [k (if (fl> s max-speed)
@@ -253,21 +255,22 @@
               ;; banks it, round the way it turns
               [climb (if (fl> s 0.0) (fl/ ny s) 0.0)]
               [beat (flmin (flmax (fl+ 0.45 (fl* 0.3 climb)) 0.2) 0.8)]
-              [wing (fl+ (at i 6) beat)]
+              [wing (fl+ (at i 6) (fl* beat dt))]
               [wing (fl- wing (fl* 6.2831853 (flfloor (fl* wing 0.15915494))))]
-              [turn (if (fl> (fl* h2 (fl* s s)) 0.0)
+              ;; a step's worth of turning, however much this is
+              [turn (if (fl> (fl* (fl* h2 (fl* s s)) dt) 0.0)
                         (fl/ (fl- (fl* vz nx) (fl* vx nz))
-                             (flsqrt (fl* h2 (fl* s s))))
+                             (fl* (flsqrt (fl* h2 (fl* s s))) dt))
                         0.0)]
               [bank (at i 7)]
-              [bank (fl+ bank (fl* 0.1 (fl- (flmin (flmax (fl* turn 12.0)
-                                                           -1.0)
-                                                     1.0)
-                                               bank)))]
+              [bank (fl+ bank (fl* (fl* 0.1 dt)
+                                   (fl- (flmin (flmax (fl* turn 12.0) -1.0)
+                                               1.0)
+                                        bank)))]
               [o (fx* i 8)])
-         (fl-set! next o (fl+ x nx))
-         (fl-set! next (fx+ o 1) (fl+ y ny))
-         (fl-set! next (fx+ o 2) (fl+ z nz))
+         (fl-set! next o (fl+ x (fl* nx dt)))
+         (fl-set! next (fx+ o 1) (fl+ y (fl* ny dt)))
+         (fl-set! next (fx+ o 2) (fl+ z (fl* nz dt)))
          (fl-set! next (fx+ o 3) nx)
          (fl-set! next (fx+ o 4) ny)
          (fl-set! next (fx+ o 5) nz)
@@ -804,15 +807,17 @@
     (if (window-ref win 'flipped?) (cdr b) (car b))))
 
 ;; A step of the flock in win, with the next frame: the current buffer into
-;; the other, which is current then.
-(define (boids3d-step! win)
+;; the other, which is current then: dt steps' worth of it (1.0, a whole
+;; step), steering and flight, so that the flock turns and flies as far
+;; as the time that passed, however often it's stepped.
+(define (boids3d-step! win . dt)
   (let* ([b (window-ref win 'buffers)]
          [from (boids3d-current win)]
          [to (if (eq? from (car b)) (cdr b) (car b))]
          [n (window-ref win 'count)])
     (apply gpu-compute-soon! boids3d-steer n 1 from to n
            (append (boids3d-steering (window-ref win 'rules))
-                   (list boids3d-space)))
+                   (list boids3d-space (if (pair? dt) (car dt) 1.0))))
     (window-set! win 'flipped? (not (window-ref win 'flipped?)))))
 
 ;; The tiles' buffer for at least words, made again when the field outgrows
@@ -920,7 +925,9 @@
               'distance 760.0
               'ride 'frames        ; or timer: boids3d-ride!
               'open (lambda (win) (window-frame-soon! win))
-              ;; the steps due by t, three at most, so that a flock seen
+              ;; one step a frame, as far as the time since the last
+              ;; frame's t, so that the flock moves as evenly as the screen
+              ;; shows it; three steps' worth at most, so that a flock seen
               ;; again goes on rather than jumping ahead; riding a timer,
               ;; the timer steps it and its frames only turn the camera
               'frame (lambda (win t)
@@ -929,25 +936,19 @@
                                   (not flying?))
                          (set! flying? #t)
                          (fly! win (now-ms)))
-                       (if (not running?)
-                           (set! last-step t)
-                           (let ([n (min 3 (quotient (- t last-step)
-                                                     boids3d-step-ns))])
-                             (when (> n 0)
-                               (set! last-step
-                                 (if (= n 3)
-                                     t
-                                     (+ last-step (* n boids3d-step-ns))))
-                               (when (eq? (window-ref win 'ride) 'frames)
-                                 (do ([i 0 (+ i 1)]) ((= i n))
-                                   (boids3d-step! win)))
-                               ;; the camera goes slowly round, unless held:
-                               ;; by the steps, so by time
-                               (unless drag
-                                 (window-set! win 'yaw
-                                              (+ (window-ref win 'yaw)
-                                                 (* n 0.0015))))
-                               (invalidate! win)))))
+                       (let ([k (min 3.0 (/ (- t last-step)
+                                            (inexact boids3d-step-ns)))])
+                         (set! last-step t)
+                         (when (and running? (> k 0.0))
+                           (when (eq? (window-ref win 'ride) 'frames)
+                             (boids3d-step! win k))
+                           ;; the camera goes slowly round, unless held: by
+                           ;; time
+                           (unless drag
+                             (window-set! win 'yaw
+                                          (+ (window-ref win 'yaw)
+                                             (* k 0.0015))))
+                           (invalidate! win))))
               'draw (lambda (win w h)
                       (let ([bar (boids3d-bar-height)])
                         (boids3d-draw-field win w (- h bar))

@@ -11,12 +11,12 @@
 ;;; tick, a process's turn, the collector) keeps its self time: its time
 ;;; less the spans inside it, so that the parts add up to the tick; two
 ;;; are waits, input-wait the steps' own (mostly the wait for host
-;;; events) and vsync-wait the screen's (taking its image and sending it
-;;; a frame, with vsync on), for a wait delays the next tick as much as
-;;; work. Each tick's sums go into a ring of the last 30 seconds (at most
-;;; 100 ticks a second, and as many uses as its ring holds), and into
-;;; per-second sums kept for 10
-;;; minutes, with what each key spent for the last minute.
+;;; events) and vsync-wait the screen's (with core0 on a thread of its
+;;; own, main's wait for core0 to take its frame), for a wait delays the
+;;; next tick as much as work. Each tick's sums go into a ring of the
+;;; last 30 seconds (at most 100 ticks a second, and as many uses as its
+;;; ring holds), and into per-second sums kept for 10 minutes, with what
+;;; each key spent for the last minute.
 ;;;
 ;;;   (profile-on! #f)           off: no records, no clock reads; #t: on
 ;;;   (profile-history! 30 10)   seconds of ticks, minutes of seconds
@@ -171,15 +171,13 @@
 
 ;; A tick's fields: its end and length (ns), collections, their ns, bytes
 ;; allocated, heap, where its uses start in their ring and how many; then
-;; how long the screen held main in each of its calls (ns), when its frame
-;; went (by the clock; 0, none), the frames that reached the screen, what
-;; main itself ran (ns, by the thread's CPU clock), the host window's flags,
-;; the host's events, the frames tried so far, where the GPU stood with the
-;; frame before (*gpu-frame-state*), how long after that frame went its own
-;; did (0, no frame), and the records of the frame last recorded.
+;; the frames that reached the screen, what main itself ran (ns, by the
+;; thread's CPU clock), the host window's flags, the host's events, the
+;; frames tried so far, where the GPU stood with the frame before
+;; (*gpu-frame-state*), and the records of the frame last recorded.
 (define profile-tick-fields
   '(end ns gcs gc-ns allocated heap start count
-    acquire submit sent shown cpu flags input frames gpu gap records))
+    shown cpu flags input frames gpu records))
 ;; A second's: its clock second, ticks, ns, the longest tick's ns, the
 ;; rest as a tick's, and its subjects' start and count.
 (define profile-second-fields
@@ -271,14 +269,11 @@
 ;; at the last tick's end: collections, bytes allocated, the collector's
 (defvar *profile-gc-ns* 0)
 (defvar *profile-memory* (make-fxvector 3 0))
-;; this tick's waits for the screen: ns in acquire, ns in submit, when the
-;; frame went; at the last tick's end, the frames drawn and main's CPU ns;
-;; and when the host window was last seen hidden
-(defvar *profile-screen* (make-fxvector 3 0))
+;; at the last tick's end, the frames drawn and main's CPU ns; and when
+;; the host window was last seen hidden
 (defvar *profile-frames* 0)
 (defvar *profile-cpu* 0)
 (defvar *profile-hidden-at* 0)
-(defvar *profile-last-sent* 0)   ; when the last frame went
 ;; the thread profiled; Chez's own handler of a collect request
 (defvar *profile-thread* 0)
 (defvar *profile-plain-collect* (collect-request-handler))
@@ -347,15 +342,6 @@
           [(fx> *profile-past* 0) (set! *profile-past* (fx- *profile-past* 1))]
           [(fx> *profile-depth* 1) (profile-close! (fx- *profile-depth* 1))])))
 
-;; The screen held main ns, till now, in its call part.
-(define (profile-screen-held! part now ns)
-  (let ([v *profile-screen*])
-    (case part
-      [(acquire) (profile-fx+! v 0 ns)]
-      [(submit)
-       (profile-fx+! v 1 ns)
-       (fxvector-set! v 2 (fx- now ns))])))
-
 ;; The span at depth d closes, and those above it with it: their time is
 ;; its own, and what closed inside them is inside it, so the books add
 ;; up. Its self time goes to its phase (the collector's to gc, the wait
@@ -377,8 +363,6 @@
           (profile-end-step! now ns self)
           (begin
             (profile-fx+! inner (fx- d 1) ns)
-            (when (eq? key 'vsync-wait)
-              (profile-screen-held! (vector-ref *profile-parts* d) now self))
             (profile-fx+! *profile-phase-ns*
                           (case key [(gc) 6] [(vsync-wait) 8] [else phase])
                           self)
@@ -411,7 +395,6 @@
       (profile-clear-table! *profile-tick-table*)
       (do ([i 0 (fx+ i 1)]) ((fx= i profile-phase-count))
         (fxvector-set! *profile-phase-ns* i 0))
-      (fxvector-fill! *profile-screen* 0)
       (profile-trim-ticks! now))))
 
 ;; The tick's slot in the ring: its fields and phases, its uses into the
@@ -437,9 +420,6 @@
     (profile-ring-set! r names 'heap slot (bytes-allocated))
     (profile-ring-set! r names 'start slot at)
     (profile-ring-set! r names 'count slot count)
-    (profile-ring-set! r names 'acquire slot (fxvector-ref *profile-screen* 0))
-    (profile-ring-set! r names 'submit slot (fxvector-ref *profile-screen* 1))
-    (profile-ring-set! r names 'sent slot (fxvector-ref *profile-screen* 2))
     (profile-ring-set! r names 'shown slot (- *frames-drawn* *profile-frames*))
     (set! *profile-frames* *frames-drawn*)
     (let ([cpu (profile-thread-cpu)])
@@ -452,10 +432,6 @@
     (profile-ring-set! r names 'frames slot *frame-ring-n*)
     (profile-ring-set! r names 'gpu slot *gpu-frame-state*)
     (profile-ring-set! r names 'records slot (rec-count))
-    (let ([sent (fxvector-ref *profile-screen* 2)])
-      (profile-ring-set! r names 'gap slot
-                         (if (zero? sent) 0 (- sent *profile-last-sent*)))
-      (unless (zero? sent) (set! *profile-last-sent* sent)))
     (fxvector-set! m 0 gcs)
     (fxvector-set! m 1 allocated)
     (fxvector-set! m 2 *profile-gc-ns*)
@@ -619,15 +595,15 @@
 
 ;; A flag: tick seq, the date it ended, what it took and the period it's
 ;; late against (ns), why (profile-tick-why), its phases ((phase . ns) ...),
-;; what the screen held main for in each call, what main ran, the frames
-;; that reached the screen, how long the host window had been showing (ns),
+;; what main ran, the frames that reached the screen, how long the host
+;; window had been showing (ns),
 ;; the ticks about it (profile-tick-row), oldest first, what the host said
 ;; about then ((name . ns after its end) ...) and lines of what else there
 ;; was to see.
 (define-record-type profile-flag
-  (nongenerative schevana-profile-flag-2)
-  (fields seq date ns period why phases acquire submit cpu shown shown-for
-          beside events notes))
+  (nongenerative schevana-profile-flag-3)
+  (fields seq date ns period why phases cpu shown shown-for beside events
+          notes))
 
 (defvar *profile-flags* (make-vector profile-flags-kept #f))
 (defvar *profile-flag-count* 0)   ; all told, since the history was cleared
@@ -648,7 +624,6 @@
          [f (make-profile-flag
              seq (profile-date-at end) (profile-tick-ns seq 'ns) period
              (profile-tick-why seq period) (profile-tick-phases seq)
-             (profile-tick-ns seq 'acquire) (profile-tick-ns seq 'submit)
              (profile-tick-ns seq 'cpu) (profile-tick-ns seq 'shown)
              (- end *profile-hidden-at*)
              (map profile-tick-row
@@ -670,19 +645,17 @@
                         (make-time 'time-duration (remainder ago 1000000000)
                                    (quotient ago 1000000000))))))
 
-;; A tick as a flag keeps those about it: its seq, what it took, when its
-;; frame went, how long it slept and worked, what the screen held main for
-;; in each call (all ns), where the GPU stood with the frame before
-;; (*gpu-frame-state*), its events, how long after the last frame its own
-;; went (ns; 0, none), the records of the frame last recorded.
+;; A tick as a flag keeps those about it: its seq, what it took, how long
+;; it slept, worked and the screen held the host (all ns), where the GPU
+;; stood with the frame before (*gpu-frame-state*), its events, the records
+;; of the frame last recorded.
 (define (profile-tick-row seq)
   (let ([slept (profile-tick-phase-ns seq 'input-wait)]
+        [screen (profile-tick-phase-ns seq 'vsync-wait)]
         [ns (profile-tick-ns seq 'ns)])
-    (list seq ns (profile-tick-ns seq 'sent) slept
-          (- ns slept (profile-tick-phase-ns seq 'vsync-wait))
-          (profile-tick-ns seq 'acquire) (profile-tick-ns seq 'submit)
+    (list seq ns slept (- ns slept screen) screen
           (profile-tick-ns seq 'gpu) (profile-tick-ns seq 'input)
-          (profile-tick-ns seq 'gap) (profile-tick-ns seq 'records))))
+          (profile-tick-ns seq 'records))))
 
 ;; What else there is to see of tick seq, as lines: its frame, the host
 ;; window, the world's windows and processes, its memory, the machine's load
@@ -720,11 +693,8 @@
               (/ (profile-tick-ns seq 'heap) 1048576.0)
               (/ (profile-tick-ns seq 'allocated) 1048576.0)
               (profile-tick-ns seq 'gcs)))
-     (let ([p (inspect-pacer)])
-       (list (format "the pacer: re-timed ~a times, left out ~a frames"
-                     (cdr (assq 'retimed p)) (cdr (assq 'skipped p)))
-             (format "presenting by ~a"
-                      (cdr (assq 'present-mode *gpu-facts*)))))
+     (list (format "presenting by ~a"
+                   (cdr (assq 'present-mode *gpu-facts*))))
      (if loaded (list (format "the machine's load: ~a" loaded)) '())
      (if (string=? wrong "")
          '()
@@ -747,28 +717,22 @@
 
 (define (profile-flag-count) *profile-flag-count*)
 
-;; What made tick seq late: the biggest single thing in it that could. Each
-;; call the screen held main in; the wait for events, but only past a
-;; period, for up to that is the wait for its tick, and in two kinds: main
-;; asleep, or running in it (in SDL, for no span covers that); the collector;
-;; or someone's work. => (kind ns . who): kind acquire, submit, screen (a
-;; wait no call claims), asleep, pump, gc or work; who, work's (subject .
-;; part).
+;; What made tick seq late: the biggest single thing in it that could, of
+;; what profile-tick-late? counts, so never the screen's hold. The wait for
+;; events, but only past a period, for up to that is the wait for its tick,
+;; and in two kinds: main asleep, or running in it (in SDL, for no span
+;; covers that); the collector; or someone's work. => (kind ns . who): kind
+;; asleep, pump, gc or work; who, work's (subject . part).
 (define (profile-tick-why seq period)
   (let* ([phase (lambda (p) (profile-tick-phase-ns seq p))]
-         [acquire (profile-tick-ns seq 'acquire)]
-         [submit (profile-tick-ns seq 'submit)]
          [over (max 0 (- (phase 'input-wait) period))]
          [work (- (profile-tick-ns seq 'ns) (phase 'input-wait)
                   (phase 'vsync-wait))]
          [ran (- (profile-tick-ns seq 'cpu) work)])
     (fold-left
      (lambda (best c) (if (> (cadr c) (cadr best)) c best))
-     (list 'screen (- (phase 'vsync-wait) acquire submit))
-     (cons* (list 'acquire acquire)
-            (list 'submit submit)
-            (list (if (> (* 2 ran) over) 'pump 'asleep) over)
-            (list 'gc (phase 'gc))
+     (list (if (> (* 2 ran) over) 'pump 'asleep) over)
+     (cons* (list 'gc (phase 'gc))
             (map (lambda (u)
                    (cons* 'work (* 1e6 (profile-use-ms u))
                           (profile-use-subject u) (profile-use-part u)))
@@ -786,9 +750,6 @@
 (define (profile-why-text why)
   (let ([took (profile-ns-text (cadr why))])
     (case (car why)
-      [(acquire) (format "the screen held main ~a, for its next image" took)]
-      [(submit) (format "the screen held main ~a, taking the frame" took)]
-      [(screen) (format "the screen held main ~a" took)]
       [(asleep) (format "main woke ~a past its time" took)]
       [(pump) (format "main ran ~a past its time, waiting for events" took)]
       [(gc) (format "the collector took ~a" took)]
@@ -800,25 +761,6 @@
                  (if (symbol? part) (format "~a's ~a" name part) name)
                  took))])))
 
-;; A flag's why, with where the GPU stood when main asked for its image.
-(define (profile-flag-why-text f)
-  (let ([why (profile-flag-why f)])
-    (if (eq? (car why) 'acquire)
-        (format "~a; ~a" (profile-why-text why)
-                (profile-gpu-text
-                 (list-ref (profile-flag-row f) 7)))
-        (profile-why-text why))))
-
-(define (profile-gpu-text state)
-  (vector-ref '#("the GPU had already finished the last frame"
-                 "the GPU finished the last frame during the wait"
-                 "the GPU hadn't finished the last frame")
-              state))
-
-;; The flag's own tick among those about it.
-(define (profile-flag-row f)
-  (find (lambda (b) (= (car b) (profile-flag-seq f))) (profile-flag-beside f)))
-
 ;; The ticks about a flag: "16.7 16.6 [31.2] 2.4 16.8", in ms.
 (define (profile-flag-ticks-text f)
   (profile-flag-ms-text f 1))
@@ -826,16 +768,6 @@
 (define (profile-flag-ms-text f k)
   (profile-flag-row-text
    f (lambda (b) (format "~,1f" (/ (list-ref b k) 1e6)))))
-
-;; When their frames went, ms into a period by the clock: a frame that
-;; misses a refresh should show where they lie against it. "-", no frame.
-(define (profile-flag-sent-text f)
-  (profile-flag-row-text
-   f (lambda (b)
-       (if (zero? (caddr b))
-           "-"
-           (format "~,1f"
-                   (/ (modulo (caddr b) (profile-flag-period f)) 1e6))))))
 
 (define (profile-flag-row-text f text-of)
   (string-join
@@ -881,36 +813,30 @@
       (format "~a, tick ~a: ~a (a tick is ~a)" (profile-flag-clock f)
               (profile-flag-seq f) (text (profile-flag-ns f))
               (text (profile-flag-period f)))
-      (profile-flag-why-text f)
+      (profile-why-text (profile-flag-why f))
       (format "work ~a, of which the collector ~a; main ran ~a" (text work)
               (text (of 'gc)) (text (profile-flag-cpu f)))
-      (format "slept ~a; the screen ~a: next image ~a (~,1f refreshes), \
-               taking the frame ~a"
+      (format "slept ~a; the screen ~a (~,1f refreshes)"
               (text (of 'input-wait)) (text (of 'vsync-wait))
-              (text (profile-flag-acquire f))
-              (/ (profile-flag-acquire f) (profile-flag-period f) 1.0)
-              (text (profile-flag-submit f)))
+              (/ (of 'vsync-wait) (profile-flag-period f) 1.0))
       (format "~a; the window showing for ~a"
               (if (zero? (profile-flag-shown f))
                   "no frame reached the screen"
                   "its frame reached the screen")
               (text (profile-flag-shown-for f)))
       (format "ticks about it, ms: ~a" (profile-flag-ticks-text f))
-      (format "  slept: ~a" (profile-flag-ms-text f 3))
-      (format "  work: ~a" (profile-flag-ms-text f 4))
-      (format "  next image: ~a" (profile-flag-ms-text f 5))
-      (format "  taking the frame: ~a" (profile-flag-ms-text f 6))
+      (format "  slept: ~a" (profile-flag-ms-text f 2))
+      (format "  work: ~a" (profile-flag-ms-text f 3))
+      (format "  the screen: ~a" (profile-flag-ms-text f 4))
       (format "  the last frame on the GPU: ~a"
               (profile-flag-row-text
-               f (lambda (b) (vector-ref states (list-ref b 7)))))
+               f (lambda (b) (vector-ref states (list-ref b 5)))))
       (format "  host events: ~a"
               (profile-flag-row-text
-               f (lambda (b) (number->string (list-ref b 8)))))
-      (format "  frames went, ms into a tick: ~a" (profile-flag-sent-text f))
-      (format "  ms after the frame before: ~a" (profile-flag-ms-text f 9))
+               f (lambda (b) (number->string (list-ref b 6)))))
       (format "  records: ~a"
               (profile-flag-row-text
-               f (lambda (b) (number->string (list-ref b 10)))))
+               f (lambda (b) (number->string (list-ref b 7)))))
       (format "the host said: ~a"
               (if (null? (profile-flag-events f))
                   "nothing for 10 s"
@@ -932,13 +858,13 @@
                    (caddr d) (cadddr d) (list-ref d 4))
            "no display")))))
 
-;; The flags in a line: "12 flags: 9 submit, 3 work"; past what's kept,
-;; "5936 flags, the last 1024: 1024 acquire".
+;; The flags in a line: "12 flags: 9 asleep, 3 work"; past what's kept,
+;; "5936 flags, the last 1024: 1024 asleep".
 (define (profile-flag-summary)
   (let* ([kinds (map (lambda (f) (car (profile-flag-why f))) (profile-flags))]
          [counts (map (lambda (k)
                         (cons k (length (filter (lambda (x) (eq? x k)) kinds))))
-                      '(submit acquire screen asleep pump gc work))]
+                      '(asleep pump gc work))]
          [some (filter (lambda (c) (> (cdr c) 0)) counts)])
     (format "~a flag~a~a~a" *profile-flag-count*
             (if (= *profile-flag-count* 1) "" "s")
@@ -1006,7 +932,6 @@
     (profile-clear-table! *profile-tick-table*)
     (do ([i 0 (fx+ i 1)]) ((fx= i profile-phase-count))
       (fxvector-set! *profile-phase-ns* i 0))
-    (fxvector-fill! *profile-screen* 0)
     (set! *profile-frames* *frames-drawn*)
     (set! *profile-cpu* (profile-thread-cpu))
     (fxvector-set! *profile-memory* 0 (collections))
@@ -1119,12 +1044,20 @@
                             (cons phase (profile-tick-phase-ns seq phase)))
                           (vector->list profile-phase-names)))))
 
-;; Did tick seq come late: past one and a half periods of period-ns
-;; after the last? Half past, not just past: a tick ends about at a
-;; refresh, a little before or after it, and one that missed a refresh
-;; waited for the next.
+;; Did tick seq come late: its time but its wait for the screen, past one
+;; and a half periods of period-ns? Half past, not just past: a tick ends
+;; about at a refresh, a little before or after it, and one that missed a
+;; refresh waited for the next. The wait for the screen (vsync-wait; with
+;; core0 on a thread of its own, main's wait for core0 to take its frame)
+;; is the screen's or core0's, which main can't shorten: past one and a
+;; half periods the tick was held instead, which is shown apart.
 (define (profile-tick-late? seq period-ns)
-  (fx> (fx* 2 (profile-tick-ns seq 'ns)) (fx* 3 period-ns)))
+  (fx> (fx* 2 (fx- (profile-tick-ns seq 'ns)
+                   (profile-tick-phase-ns seq 'vsync-wait)))
+       (fx* 3 period-ns)))
+
+(define (profile-tick-held? seq period-ns)
+  (fx> (fx* 2 (profile-tick-phase-ns seq 'vsync-wait)) (fx* 3 period-ns)))
 
 ;; The ticks kept that came late (period-ns, by default the pacer's:
 ;; pacer-period), the newest first.

@@ -54,7 +54,7 @@
     (host-post! '(boot-test-job! 1))
     (host-post! '(boot-test-job! 2))
     (let ([before ran])
-      (host-step! 0)
+      (host-step!)
       (check "a job posted runs at core0's next step, not before, in order"
              (and (null? before) (equal? ran '(2 1)))))
     (define-top-level-value 'boot-test-job!
@@ -62,7 +62,7 @@
     (host-post! '(boot-test-job! 3))
     (host-post! '(car ()))
     (host-post! '(boot-test-job! 4))
-    (host-step! 0)
+    (host-step!)
     (check "by name, so a redefinition takes; one that raises is kept, and \
             the rest run"
            (and (equal? (list-head ran 2) '((again 4) (again 3)))
@@ -86,29 +86,25 @@
             (equal? (map car (inspect-host))
                     '(sizes scale flags frame-ns jobs events failed))))
 
-;; Core0's wake: a job posted or a frame published ends its wait for events.
-;; One is pushed until the step that takes it; the pump hands the world no
-;; event for it.
-(let ([pushed 0])
-  (fluid-let ([*host* 'sdl]
-              [*host-woken* (box #f)]
-              [sdl-push-event (lambda (e) (set! pushed (+ pushed 1)) #t)])
-    (host-wake!)
-    (host-wake!)
-    (let ([once pushed])
-      (set-box! *host-woken* #f)   ; as a step begins
-      (host-wake!)
-      (check "a wake is pushed once until the next step"
-             (and (= once 1) (= pushed 2))))))
-
-(fluid-let ([*host* 'sdl] [*host-woken* (box #f)])
-  (host-window-pump 0)   ; what headless SDL had queued
+;; Core0's sleep, on a thread of its own: a job posted or a frame published
+;; wakes it, at once or from the next sleep; its events never do, so a
+;; sleep with nothing to wake it lasts its whole time.
+(fluid-let ([*host-forked* #t] [*host-woken* #f])
   (host-wake!)
   (let ([t0 (now-ms)])
-    (let-values ([(events types) (host-window-pump 1000)])
-      (check "a wake ends core0's wait at once, and is no event of the \
-              world's"
-             (and (< (- (now-ms) t0) 500) (null? events) (null? types))))))
+    (host-sleep! 1000)
+    (let ([before (- (now-ms) t0)] [t1 (now-ms)])
+      (host-sleep! 20)
+      (let ([alone (- (now-ms) t1)] [t2 (now-ms)])
+        (fork-thread (lambda ()
+                       (sleep (make-time 'time-duration 30000000 0))
+                       (host-wake!)))
+        (host-sleep! 1000)
+        (let ([during (- (now-ms) t2)])
+          (check (format "a wake ends core0's sleep, before it or during it, \
+                          and nothing else does (~a ~a ~a ms)"
+                         before alone during)
+                 (and (< before 100) (>= alone 15) (< 25 during 500))))))))
 
 ;; The boot screen, which draws only with a window, by its blits onto a
 ;; texture: the λ scaled up four times, sharp, on the ground; under it the

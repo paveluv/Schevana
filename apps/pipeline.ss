@@ -215,11 +215,11 @@
                  pipeline-collector-full-ns)))
 
 ;; Bottom up, as monitor-bars-order stacks them, what main did; over them, the
-;; lanes, a word each: late; a frame sent, shown or not; where the GPU stood
-;; with the frame before: done, finishing, or not yet; the collector, by how
-;; long; input.
+;; lanes, a word each: late, or held by the screen; a frame sent, shown or
+;; not; where the GPU stood with the frame before: done, finishing, or not
+;; yet; the collector, by how long; input.
 (define pipeline-draw-lanes
-  `(("late" chart-flag)
+  `(("late" chart-flag chart-2)
     ("frame" chart-ok chart-flag)
     ("GPU" chart-ok chart-2 chart-flag)
     ("collector"
@@ -231,8 +231,9 @@
 
 ;; What a lane's colors say, on its label.
 (define pipeline-lane-tips
-  `("Red: this tick came late, past one and a half periods. None: it was in \
-     time."
+  `("Red: this tick came late, its own time past one and a half periods. \
+     Orange: the screen held the host that long, which main doesn't count \
+     as late. None: it was in time."
     "Green: the tick's frame reached the screen. Red: the window had no room \
      for it. None: no frame was drawn."
     "Where the GPU stood with the frame before, as main asked for the next \
@@ -272,7 +273,9 @@
                            (> (profile-tick-ns seq 'frames)
                               (profile-tick-ns (- seq 1) 'frames)))])
             (case (- j phases)
-              [(0) (if (profile-tick-late? seq period) 1 0)]
+              [(0) (cond [(profile-tick-late? seq period) 1]
+                         [(profile-tick-held? seq period) 2]
+                         [else 0])]
               [(1) (cond [(not drew?) 0]
                          [(> (profile-tick-ns seq 'shown) 0) 1]
                          [else 2])]
