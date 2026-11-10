@@ -332,16 +332,20 @@
                             (radial-gradient 40 30 35 (alpha 'accent 0.3)
                                              (alpha (alpha 'accent 0.3) 0)))))))
 
-(check "draw-pixels draws raw pixels as sharp blocks, and nothing at no size"
-       (let ([bv (make-bytevector 8 0)])
-         (bytevector-u32-native-set! bv 0 #xffff0000)
-         (bytevector-u32-native-set! bv 4 #xff0000ff)
-         (equal? (pixels-of 8 4 1
-                            (lambda ()
-                              (draw-pixels bv 2 1 1 1 4 2)
-                              (draw-pixels bv 2 1 6 0 0 3))
-                            '(1 1) '(2 2) '(3 1) '(4 2) '(5 1) '(6 1))
-                 '(#xffff0000 #xffff0000 #xff0000ff #xff0000ff 0 0))))
+;; An image 2 × 1 of a red pixel and a blue one, set one by one.
+(define (primitives-two-pixels)
+  (let ([image (gpu-image-make 2 1)])
+    (rec-pixel-set! (gpu-image-id image) 0 0 #xffff0000)
+    (rec-pixel-set! (gpu-image-id image) 1 0 #xff0000ff)
+    image))
+
+(check "an image's pixels set show bigger as sharp blocks"
+       (let ([image (primitives-two-pixels)])
+         (and (equal? (pixels-of 8 4 1
+                                 (lambda () (draw-image image 1 1 4 2))
+                                 '(1 1) '(2 2) '(3 1) '(4 2) '(5 1))
+                      '(#xffff0000 #xffff0000 #xff0000ff #xff0000ff 0))
+              (begin (gpu-image-release! image) #t))))
 
 ;; Stripes a pixel wide on an image that's drawn on: white, black, white...
 (define (primitives-stripes n)
@@ -476,21 +480,20 @@
                   (let-values ([(recs n extras extras-n) (rec-last)])
                     (list recs n extras extras-n (rec-runs)))))
   (let* ([f (rec-publish)]
-         [handed (and (memq b (gpu-frame-dirty f))
-                      (null? *gpu-dirty-buffers*)
+         [handed (and (gpu-frame-writes f)
+                      (not (rec-writes-pending?))
                       made
                       (= 1 (length (gpu-frame-earlier f))))])
     (gpu-present! f)
-    ;; what's on the GPU, not main's copy
-    (bytevector-u32-native-set! (gpu-buffer-bytes b) 0 0)
-    (gpu-buffer-read! b)
     (rec-begin! 1)
     (let ([again (rec-publish)])
       (gpu-present! again)
       (check "main hands the host a frame with what it asked of the GPU, \
               the preview's list made on main; the host gives the frame \
               back"
-             (and handed (= (gpu-buffer-ref b 0) 7) (eq? again f)))))
+             (and handed
+                  (= (bytevector-s32-native-ref (gpu-buffer-read! b) 0) 7)
+                  (eq? again f)))))
   (gpu-buffer-release! b)
   (gpu-image-release! target))
 
@@ -578,13 +581,12 @@
            (and (not before) (bytevector? got) (equal? got now)))))
 
 (check "pixels with no chain, shown smaller, blend what they have"
-       (let ([bv (make-bytevector 8 0)])
-         (bytevector-u32-native-set! bv 0 #xffff0000)
-         (bytevector-u32-native-set! bv 4 #xff0000ff)
-         (let ([p (car (pixels-of 1 1 1 (lambda () (draw-pixels bv 2 1 0 0 1 1))
-                                  '(0 0)))])
-           (and (<= 126 (logand (ash p -16) 255) 129)
-                (<= 126 (logand p 255) 129)))))
+       (let* ([image (primitives-two-pixels)]
+              [p (car (pixels-of 1 1 1 (lambda () (draw-image image 0 0 1 1))
+                                 '(0 0)))])
+         (gpu-image-release! image)
+         (and (<= 126 (logand (ash p -16) 255) 129)
+              (<= 126 (logand p 255) 129))))
 
 ;; A PNG file of stored blocks read back: (w h . the first row's bytes).
 (define (png-file-rows path)

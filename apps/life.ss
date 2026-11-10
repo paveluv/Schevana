@@ -29,10 +29,10 @@
 ;;; and allocate nothing.
 
 ;; Rows [y0, y1) of the next generation on a torus into next, and one pixel
-;; per cell into pix. Fixnum operations, at most three arguments to fx+ (a
-;; + or fx+ of four or more allocates its arguments: an 8-argument + took
-;; 300 KB a generation).
-(define-worklet (life-step-rows! y0 y1 grid next pix row-px dead cols rows)
+;; per cell into pix, the pixmap's (pixmap-rows!). Fixnum operations, at
+;; most three arguments to fx+ (a + or fx+ of four or more allocates its
+;; arguments: an 8-argument + took 300 KB a generation).
+(define-worklet (life-step-rows! y0 y1 pix grid next row-px dead cols rows)
   (let ([last-x (fx- cols 1)] [last-y (fx- rows 1)])
     (do ([y y0 (fx+ y 1)]) ((fx= y y1))
       (let* ([mid (fx* y cols)]
@@ -67,8 +67,8 @@
                               (if (fx< (fxsrl s 16) 14418) 1 0))
           (loop (fx+ x 1) (fxlogand (fx+ (fx* s 69069) 1) #xffffffff)))))))
 
-;; Rows [y0, y1) of pix: each cell's pixel.
-(define-worklet (life-paint-rows! y0 y1 grid pix row-px dead cols)
+;; Rows [y0, y1) of pix, the pixmap's: each cell's pixel.
+(define-worklet (life-paint-rows! y0 y1 pix grid row-px dead cols)
   (do ([y y0 (fx+ y 1)]) ((fx= y y1))
     (let ([mid (fx* y cols)] [live (fxvector-ref row-px y)])
       (do ([x 0 (fx+ x 1)]) ((fx= x cols))
@@ -188,7 +188,6 @@
          [grid (make-bytevector 0)]    ; a byte per cell, 1 for alive
          [next (make-bytevector 0)]
          [pixels #f]                   ; a pixmap, one pixel per cell: shown
-         [back #f]                     ; a step writes the next pixels here
          [row-px #f] [dead 0] [palette-key #f]
          [running? #t] [generation 0] [last-step 0]
          [speed life-default-speed]    ; an index into life-speeds
@@ -206,8 +205,7 @@
           (fxvector-ref row-px (fxquotient i cols))
           dead))
     (define (repaint-pixels!)
-      (crew-for* (life-chunk-rows cols) 0 rows life-paint-rows!
-                 grid (pixmap-bytes pixels) row-px dead cols))
+      (pixmap-rows! pixels 0 rows life-paint-rows! grid row-px dead cols))
     ;; Colors for every row: again only when one it uses changed (by any
     ;; means: a raw hashtable-set! of *theme* too)
     (define (palette!)
@@ -233,7 +231,6 @@
         (set! grid g)
         (set! next (make-bytevector (* c r) 0))
         (set! pixels (make-pixmap c r))
-        (set! back (make-pixmap-bytevector pixels))
         (set! palette-key #f)
         (palette!)))
     ;; The grid for a field fw × fh; sets a cell's logical size and the
@@ -248,11 +245,10 @@
         (set! oy 0)))
     (define (step!)
       (let ([t0 (now-ns)])
-        (crew-for* (life-chunk-rows cols) 0 rows life-step-rows!
-                   grid next back row-px dead cols rows)
+        (pixmap-rows! pixels 0 rows life-step-rows! grid next row-px dead
+                      cols rows)
         (set! step-ns (+ step-ns (- (now-ns) t0))))
       (let ([t grid]) (set! grid next) (set! next t))
-      (set! back (pixmap-swap-bytes! pixels back))
       (set! gens (+ gens 1))
       (set! generation (+ generation 1)))
     ;; What the speed owes this tick.

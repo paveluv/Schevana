@@ -1094,7 +1094,7 @@
 
 ;;; ------------------------------------------------------------------ Life
 
-;; Each Life window steps a generation (its pixmap's buffers swap), twice:
+;; Each Life window steps a generation (its pixmap's rows painted), twice:
 ;; each next frame shows it.
 (set-theme! 'scale 200)
 (scene! 'S30T)

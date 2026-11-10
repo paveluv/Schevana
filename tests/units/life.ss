@@ -60,7 +60,7 @@
     (let loop ([i 0] [g grid])
       (or (= i k)
           (let ([next (make-bytevector (* cols rows) 0)])
-            (life-step-rows! 0 rows g next pix row-px dead cols rows)
+            (life-step-rows! 0 rows pix g next row-px dead cols rows)
             (and (equal? next (life-reference g cols rows))
                  (for-all (lambda (c)
                             (= (bytevector-u32-native-ref pix (* 4 c))
@@ -78,7 +78,7 @@
       (if (= i k)
           g
           (let ([next (make-bytevector (* cols rows) 0)])
-            (life-step-rows! 0 rows g next pix row-px 0 cols rows)
+            (life-step-rows! 0 rows pix g next row-px 0 cols rows)
             (loop (+ i 1) next))))))
 
 (let ([block (life-grid "......" ".##..." ".##..." "......" "......")]
@@ -113,7 +113,7 @@
               [whole (life-reference g 72 44)]
               [part (make-bytevector (* 72 44) 9)]
               [pix (make-bytevector (* 4 72 44) 0)])
-         (life-step-rows! 10 27 g part pix (life-row-pixels 44) 0 72 44)
+         (life-step-rows! 10 27 pix g part (life-row-pixels 44) 0 72 44)
          (for-all (lambda (i)
                     (= (bytevector-u8-ref part i)
                        (if (<= (* 10 72) i (- (* 27 72) 1))
@@ -126,10 +126,10 @@
        [pix (make-bytevector (* 4 72 44) 0)]
        [row-px (life-row-pixels 44)]
        [dead (color->pixel 'bg-0)])
-  (life-step-rows! 0 44 g next pix row-px dead 72 44)
+  (life-step-rows! 0 44 pix g next row-px dead 72 44)
   (let ([b0 (bytes-total)])
     (do ([i 0 (fx+ i 1)]) ((fx= i 20))
-      (life-step-rows! 0 44 g next pix row-px dead 72 44))
+      (life-step-rows! 0 44 pix g next row-px dead 72 44))
     (let ([b (- (bytes-total) b0)])
       ;; an 8-argument + made each generation allocate about 300 KB
       (check (format "Life's kernel allocates nothing (~a bytes in 20 \
@@ -165,10 +165,10 @@
     (picture-free! a)
     (apply (lambda (pixels cols rows cell ox oy)
              (let ([g (make-bytevector (* cols rows) 0)]
-                   [dead (color->pixel 'bg-0)])
+                   [dead (color->pixel 'bg-0)]
+                   [p (pixmap-picture pixels)])
                (do ([i 0 (+ i 1)]) ((= i (* cols rows)) g)
-                 (unless (= dead
-                            (pixmap-ref pixels (mod i cols) (quotient i cols)))
+                 (unless (= dead (pixel-at p (mod i cols) (quotient i cols)))
                    (bytevector-u8-set! g i 1)))))
            seen)))
 
@@ -195,17 +195,20 @@
              [ph (picture-h a)]
              [dead (color->pixel 'bg-0)] [live 0]
              [b (apply (lambda (pixels cols rows cell ox oy)
-                         (image pw ph s
-                                (lambda ()
-                                  (fill-box 0 0 cw ch 'bg-0)
-                                  (do ([y 0 (+ y 1)]) ((= y rows))
-                                    (do ([x 0 (+ x 1)]) ((= x cols))
-                                      (unless (= dead (pixmap-ref pixels x y))
-                                        (set! live (+ live 1))
-                                        (fill-box
-                                         (+ ox (* x cell) 1) (+ oy (* y cell) 1)
-                                         (- cell 1) (- cell 1)
-                                         (mix 'green 'cyan (/ y rows)))))))))
+                         (let ([p (pixmap-picture pixels)])
+                           (image pw ph s
+                                  (lambda ()
+                                    (fill-box 0 0 cw ch 'bg-0)
+                                    (do ([y 0 (+ y 1)]) ((= y rows))
+                                      (do ([x 0 (+ x 1)]) ((= x cols))
+                                        (unless (= dead (pixel-at p x y))
+                                          (set! live (+ live 1))
+                                          (fill-box
+                                           (+ ox (* x cell) 1)
+                                           (+ oy (* y cell) 1)
+                                           (- cell 1) (- cell 1)
+                                           (mix 'green 'cyan
+                                                (/ y rows))))))))))
                        seen)]
              [grid-bottom (exact (floor (* s (- ch (life-bar-height)))))]
              [ok (and (> live 100)
@@ -340,14 +343,15 @@
              [ok (and (= (car size) (* s cw)) (= (cadr size) (* s gh))
                       (apply
                        (lambda (pixels cols rows cell ox oy)
-                         (let rows-loop ([y 0])
-                           (or (= y rows)
-                               (and (let cols-loop ([x 0])
-                                      (or (= x cols)
-                                          (and (= (pixel-at a x y)
-                                                  (pixmap-ref pixels x y))
-                                               (cols-loop (+ x 1)))))
-                                    (rows-loop (+ y 1))))))
+                         (let ([p (pixmap-picture pixels)])
+                           (let rows-loop ([y 0])
+                             (or (= y rows)
+                                 (and (let cols-loop ([x 0])
+                                        (or (= x cols)
+                                            (and (= (pixel-at a x y)
+                                                    (pixel-at p x y))
+                                                 (cols-loop (+ x 1)))))
+                                      (rows-loop (+ y 1)))))))
                        seen))])
         (picture-free! a)
         (close-window! win)
@@ -415,7 +419,7 @@
                       (let ([r (make-bytevector cols)])
                         (bytevector-copy! g (* y cols) r 0 cols)
                         r))])
-           (crew-for* chunk 0 rows life-step-rows! g next pix
+           (crew-for* chunk 0 rows life-step-rows! pix g next
                       (life-row-pixels rows) 0 cols rows)
            (and (< 0.2 (/ alive n 1.0) 0.24)
                 (not (equal? (row 0) (row 1)))

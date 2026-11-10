@@ -192,7 +192,7 @@
 
 ;; Raise it deliberately: the core is what the desktop needs to boot and
 ;; run; everything else belongs in a folder.
-(define src-budget 30011)
+(define src-budget 30663)
 
 ;; The tokens of a datum as read; a list's end is none.
 (define (tokens x)
@@ -223,7 +223,7 @@
 
 (define core-hooks
   '(*profile-span* *theme-saver* *window-gone* *app-loader*
-    *host-event-seen*))
+    *host-event-seen* *worklet-spread*))
 
 ;; The names a file defines at its top level.
 (define (top-level-names f)

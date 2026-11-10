@@ -65,6 +65,7 @@
 (define-foreign sdl-destroy-surface "SDL_DestroySurface" (uptr) void)
 (define-foreign sdl-set-window-icon "SDL_SetWindowIcon" (uptr uptr) bool)
 (define-foreign sdl-memcpy "SDL_memcpy" (uptr uptr size_t) uptr)
+(define-foreign sdl-memset "SDL_memset" (uptr int size_t) uptr)
 
 ;;; ------------------------------------------------------------------ SDL GPU
 ;;; Only src/gpu.ss uses these: above it no SDL name for the GPU appears.

@@ -10,6 +10,9 @@
               words (iota (length words)))
     b))
 
+;; Word i of a buffer's bytes read back.
+(define (shader-test-word bytes i) (bytevector-s32-native-ref bytes (* 4 i)))
+
 ;; every operation; one per cell, chosen by the cell's number
 (define shader-test-ops
   '((fx+ v w) (fx- v w) (fx* v w) (fxquotient v w) (fxmod v w)
@@ -49,15 +52,15 @@
                   [out (make-gpu-buffer n)]
                   [expected (make-bytevector (* 4 n) 0)])
               (gpu-compute! shader-test-ints n 1 in out 5)
-              (gpu-buffer-read! out)
-              (do ([x 0 (+ x 1)]) ((= x n))
-                (twin x 0 n 1 (gpu-buffer-bytes in) expected 5)
-                (unless (= (gpu-buffer-ref out x)
-                           (bytevector-s32-native-ref expected (* 4 x)))
-                  (set! bad (cons (list p x (gpu-buffer-ref out x)
-                                        (bytevector-s32-native-ref expected
-                                                                   (* 4 x)))
-                                  bad))))
+              (let ([got (gpu-buffer-read! out)] [given (gpu-buffer-read! in)])
+                (do ([x 0 (+ x 1)]) ((= x n))
+                  (twin x 0 n 1 given expected 5)
+                  (unless (= (shader-test-word got x)
+                             (bytevector-s32-native-ref expected (* 4 x)))
+                    (set! bad (cons (list p x (shader-test-word got x)
+                                          (bytevector-s32-native-ref
+                                           expected (* 4 x)))
+                                    bad)))))
               (gpu-buffer-release! in)
               (gpu-buffer-release! out)))
           shader-test-pairs)
@@ -129,9 +132,9 @@
 (check "a parameter may be called anything, on the device"
        (let ([out (make-gpu-buffer 4)])
          (gpu-compute! shader-test-odd 4 1 7 out)
-         (gpu-buffer-read! out)
-         (let ([ok (for-all (lambda (i) (= 7 (gpu-buffer-ref out i)))
-                            (iota 4))])
+         (let* ([got (gpu-buffer-read! out)]
+                [ok (for-all (lambda (i) (= 7 (shader-test-word got i)))
+                             (iota 4))])
            (gpu-buffer-release! out)
            ok)))
 
@@ -226,9 +229,9 @@
               [mine (make-bytevector (* 4 n) 0)]
               [twin (twin-procedure shader-test-branches)])
          (gpu-compute! shader-test-branches n 1 out)
-         (gpu-buffer-read! out)
          (do ([x 0 (+ x 1)]) ((= x n)) (twin x 0 n 1 mine))
-         (let ([device (map (lambda (i) (gpu-buffer-ref out i)) (iota n))]
+         (let ([device (let ([got (gpu-buffer-read! out)])
+                         (map (lambda (i) (shader-test-word got i)) (iota n)))]
                [other (map (lambda (i)
                              (bytevector-s32-native-ref mine (* 4 i)))
                            (iota n))])
@@ -314,9 +317,9 @@
               [twin (twin-procedure shader-test-shared)]
               [expected '(7 8 9 10)])
          (gpu-compute! shader-test-shared n 1 out)
-         (gpu-buffer-read! out)
          (do ([x 0 (+ x 1)]) ((= x n)) (twin x 0 n 1 mine))
-         (let ([device (map (lambda (i) (gpu-buffer-ref out i)) (iota n))]
+         (let ([device (let ([got (gpu-buffer-read! out)])
+                         (map (lambda (i) (shader-test-word got i)) (iota n)))]
                [other (map (lambda (i)
                              (bytevector-s32-native-ref mine (* 4 i)))
                            (iota n))])
@@ -388,10 +391,10 @@
               [mine (make-bytevector (* 4 n) 0)]
               [twin (twin-procedure shader-test-layout)])
          (gpu-compute! shader-test-layout n 1 in out)
-         (gpu-buffer-read! out)
-         (do ([x 0 (+ x 1)]) ((= x n))
-           (twin x 0 n 1 (gpu-buffer-bytes in) mine))
-         (let ([device (map (lambda (i) (gpu-buffer-ref out i)) (iota n))]
+         (let ([given (gpu-buffer-read! in)])
+           (do ([x 0 (+ x 1)]) ((= x n)) (twin x 0 n 1 given mine)))
+         (let ([device (let ([got (gpu-buffer-read! out)])
+                         (map (lambda (i) (shader-test-word got i)) (iota n)))]
                [other (map (lambda (i)
                              (bytevector-s32-native-ref mine (* 4 i)))
                            (iota n))])
@@ -576,12 +579,12 @@
                        (flsingle (* (- (random 2000.0) 1000.0)
                                     (if (even? i) 1.0 0.001)))))
     (gpu-compute! s cells 1 in out)
-    (gpu-buffer-read! out)
-    (do ([x 0 (+ x 1)]) ((= x cells))
-      ((twin-procedure s) x 0 cells 1 (gpu-buffer-bytes in) expected))
+    (let ([given (gpu-buffer-read! in)])
+      (do ([x 0 (+ x 1)]) ((= x cells))
+        ((twin-procedure s) x 0 cells 1 given expected)))
     (check "on Metal, floats add, multiply and divide exactly as the twin \
             does, a product and a sum, (a + b) - a and a constant among them"
-           (bytevector=? (gpu-buffer-bytes out) expected))
+           (bytevector=? (gpu-buffer-read! out) expected))
     (gpu-buffer-release! in)
     (gpu-buffer-release! out)))
 
@@ -600,15 +603,17 @@
        [expected (make-bytevector 64 0)])
   (do ([i 0 (+ i 1)]) ((= i 8)) (gpu-buffer-set! in i (* 11 (+ i 1))))
   (gpu-compute! s 16 1 in out)
-  (gpu-buffer-read! out)
-  (do ([x 0 (+ x 1)]) ((= x 16))
-    ((twin-procedure s) x 0 16 1 (gpu-buffer-bytes in) expected))
-  (check (format "a read outside a buffer reads its last word and a write \
-                  outside it is left out, on the device as on the twin: ~s"
-                 (map (lambda (i) (gpu-buffer-ref out i)) (iota 16)))
-         (and (bytevector=? (gpu-buffer-bytes out) expected)
-              (equal? (map (lambda (i) (gpu-buffer-ref out i)) (iota 16))
-                      '(88 88 88 88 11 22 33 44 55 66 77 88 88 88 88 88))))
+  (let ([given (gpu-buffer-read! in)])
+    (do ([x 0 (+ x 1)]) ((= x 16))
+      ((twin-procedure s) x 0 16 1 given expected)))
+  (let* ([got (gpu-buffer-read! out)]
+         [words (map (lambda (i) (shader-test-word got i)) (iota 16))])
+    (check (format "a read outside a buffer reads its last word and a write \
+                    outside it is left out, on the device as on the twin: ~s"
+                   words)
+           (and (bytevector=? got expected)
+                (equal? words
+                        '(88 88 88 88 11 22 33 44 55 66 77 88 88 88 88 88)))))
   (gpu-buffer-release! in)
   (gpu-buffer-release! out))
 
@@ -843,10 +848,9 @@
          (fluid-let ([*dirty* #f] [*timers* '()])
            (gpu-compute-soon! shader-test-mark 8 1 out 41)
            (schevana-step! 0))
-         (let ([sent (null? *gpu-computes*)])
-           (gpu-buffer-read! out)
+         (let ([sent (null? *gpu-computes*)] [got (gpu-buffer-read! out)])
            (let ([ok (and sent (= *frames-drawn* frames)
-                          (for-all (lambda (i) (= 41 (gpu-buffer-ref out i)))
+                          (for-all (lambda (i) (= 41 (shader-test-word got i)))
                                    (iota 8)))])
              (gpu-buffer-release! out)
              ok))))

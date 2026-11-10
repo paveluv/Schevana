@@ -1,10 +1,10 @@
 ;;; gpu.ss — main's side of the GPU layer: what the world asks of the GPU,
 ;;; kept until it hands the host a frame. Images and buffers as handles,
-;;; and the jobs that make them; buffers' copies here and what of them
-;;; changed, the calls a paint or a compute run makes, the compute runs to
-;;; go with the next frame, and the frame filled for the host. The device's
-;;; side is core0's (src/host/gpu.ss), and no SDL is named here
-;;; (tests/sources.ss).
+;;; and the jobs that make them; the calls a paint or a compute run makes,
+;;; the compute runs to go with the next frame, and the frame filled for
+;;; the host. What's written into buffers and images "/recorder" keeps
+;;; (src/recorder/bytes.ss). The device's side is core0's (src/host/gpu.ss),
+;;; and no SDL is named here (tests/sources.ss).
 
 ;;; ------------------------------------------------------------------ handles
 ;;; An image or a buffer main holds is a handle, with an integer id; the SDL
@@ -39,6 +39,7 @@
     [(w h usage levels)
      (let ([id (gpu-new-id!)])
        (gpu-ask! (list 'texture id w h usage levels))
+       (gpu-images-sweep!)
        (make-gpu-image id w h levels #f #f))]))
 
 ;; An image that can also be drawn on. It has a chain of levels, each half the
@@ -47,13 +48,23 @@
   (gpu-image-make w h (fxior gpu-usage-sampler gpu-usage-target)
                   (fxlength (max w h))))
 
-;; The pixels to go up with the next frame: 4·w·h bytes.
-(define (gpu-image-write! image bytes)
-  (gpu-image-pending-set! image bytes))
-
 (define (gpu-image-release! image)
   (gpu-image-gone?-set! image #t)
   (gpu-ask! (list 'release (gpu-image-id image))))
+
+;; Images whose holders are gone, let go of: (gpu-image-held! holder image)
+;; lets image go once nothing holds holder, if it wasn't already; a second
+;; release finds nothing. Swept as images are made.
+(defvar *gpu-images-held* (make-guardian))
+
+(define (gpu-image-held! holder image) (*gpu-images-held* holder image))
+
+(define (gpu-images-sweep!)
+  (let loop ()
+    (let ([image (*gpu-images-held*)])
+      (when image
+        (gpu-image-release! image)
+        (loop)))))
 
 ;; The glyphs' atlas as an image, to draw: one channel, coverage, as the
 ;; glyph records read it. Core0's own, never let go of.
@@ -78,27 +89,14 @@
 
 ;;; ------------------------------------------------------------------ buffers
 
-(defvar *gpu-dirty-buffers* '())
-
-;; At least a word: a read outside it reads word 0 (shader.ss). Its words go
-;; up with the next frame.
+;; At least a word: a read outside it reads word 0 (shader.ss). Zeroed.
 (define (make-gpu-buffer words)
   (let* ([n (* 4 (max 1 words))]
-         [b (make-gpu-buffer* (gpu-new-id!) (make-immobile-bytevector n 0)
-                              0 n #f)])
+         [b (make-gpu-buffer* (gpu-new-id!) n #f)])
     (gpu-ask! (list 'buffer (gpu-buffer-id b) n))
-    (set! *gpu-dirty-buffers* (cons b *gpu-dirty-buffers*))
     b))
 
-(define (gpu-buffer-dirty! b from to)
-  (if (fx= (gpu-buffer-from b) (gpu-buffer-to b))
-      (begin
-        (gpu-buffer-from-set! b from)
-        (gpu-buffer-to-set! b to)
-        (set! *gpu-dirty-buffers* (cons b *gpu-dirty-buffers*)))
-      (begin
-        (gpu-buffer-from-set! b (fxmin from (gpu-buffer-from b)))
-        (gpu-buffer-to-set! b (fxmax to (gpu-buffer-to b))))))
+(define (gpu-buffer-words b) (fxquotient (gpu-buffer-size b) 4))
 
 ;; A float, or a whole number that fits 32 bits, a color's word with its top
 ;; bit, too.
@@ -108,17 +106,14 @@
     [(fx< v 0) (bytevector-s32-native-set! bytes at v)]
     [else (bytevector-u32-native-set! bytes at v)]))
 
-;; Word i.
+;; Word i: it goes up with the next frame, or the next compute run.
 (define (gpu-buffer-set! b i v)
-  (let ([at (fx* 4 i)])
-    (gpu-word-set! (gpu-buffer-bytes b) at v)
-    (gpu-buffer-dirty! b at (fx+ at 4))))
-
-(define (gpu-buffer-ref b i)
-  (bytevector-s32-native-ref (gpu-buffer-bytes b) (fx* 4 i)))
+  (unless (fx< -1 i (gpu-buffer-words b))
+    (errorf 'gpu-buffer-set! "~s isn't a word of a buffer of ~a" i
+            (gpu-buffer-words b)))
+  (rec-buffer-set! (gpu-buffer-id b) i v))
 
 (define (gpu-buffer-release! b)
-  (set! *gpu-dirty-buffers* (remq b *gpu-dirty-buffers*))
   ;; a run waiting for the frame would name it
   (set! *gpu-computes*
     (filter (lambda (run)
@@ -128,9 +123,10 @@
   (gpu-buffer-gone?-set! b #t)
   (gpu-ask! (list 'release (gpu-buffer-id b))))
 
-;; What a shader left in the buffer: read back into the copy here. => its
-;; bytes
-(define (gpu-buffer-read! b) (gpu-buffer-download! (gpu-take-jobs!) b))
+;; What the buffer holds, what was set and what shaders wrote, read back
+;; now: => its bytes, a copy of the world's own, or #f once it's let go of.
+(define (gpu-buffer-read! b)
+  (rec-buffer-read! (gpu-take-jobs!) (gpu-buffer-id b)))
 
 ;;; ------------------------------------------------------------------ calls
 
@@ -154,11 +150,7 @@
                                       params args)
                          (map (lambda (p)
                                 (let ([a (assq (car p) given)])
-                                  (if a
-                                      (fxquotient (bytevector-length
-                                                   (gpu-buffer-bytes (cdr a)))
-                                                  4)
-                                      0)))
+                                  (if a (gpu-buffer-words (cdr a)) 0)))
                               (filter gpu-buffer-param?
                                       (shader-params shader))))]
          [bytes (make-bytevector (max 4 (* 4 (length values))) 0)])
@@ -183,10 +175,7 @@
 ;; Runs a compute shader over w × h cells, now, and waits for it: its buffers
 ;; are then ready to read with gpu-buffer-read!.
 (define (gpu-compute! shader w h . args)
-  (let ([dirty *gpu-dirty-buffers*])
-    (set! *gpu-dirty-buffers* '())
-    (gpu-compute-now! (gpu-compute-run shader w h args) (gpu-take-jobs!)
-                      dirty)))
+  (rec-compute-now! (gpu-compute-run shader w h args) (gpu-take-jobs!)))
 
 ;; Compute runs to go with the next frame, the newest first.
 (defvar *gpu-computes* '())
@@ -199,33 +188,35 @@
     (cons (gpu-compute-run shader w h args) *gpu-computes*)))
 
 ;; What main asked of the GPU since it last handed it on, taken from it: the
-;; jobs and the compute runs in order, and the dirty buffers.
+;; jobs and the compute runs, in order.
 (define (gpu-take-asks!)
-  (let ([dirty *gpu-dirty-buffers*] [runs (reverse *gpu-computes*)])
-    (set! *gpu-dirty-buffers* '())
+  (let ([runs (reverse *gpu-computes*)])
     (set! *gpu-computes* '())
-    (values (gpu-take-jobs!) dirty runs)))
+    (values (gpu-take-jobs!) runs)))
 
-;; At a turn's end: compute runs no frame took go now, on their own, so
-;; that one an app steps on a timer, its window unseen, isn't kept waiting.
+;; Is there what a turn's end sends, with no frame: compute runs or writes?
+(define (gpu-asks-pending?)
+  (or (pair? *gpu-computes*) (rec-writes-pending?)))
+
+;; At a turn's end: compute runs and writes no frame took go now, on their
+;; own, so that one an app steps on a timer, its window unseen, isn't kept
+;; waiting, and what's written is held no longer than a turn.
 (define (gpu-computes-send!)
   (unless (eq? *host* 'none)
-    (let-values ([(jobs dirty runs) (gpu-take-asks!)])
-      (gpu-submit-computes! runs jobs dirty))))
+    (let-values ([(jobs runs) (gpu-take-asks!)])
+      (rec-submit-computes! runs jobs))))
 
 ;;; ------------------------------------------------------------------ frames
 
 ;; Main's side: the frame filled, what it asked of the GPU since handed on
-;; with it. => the frame
-(define (gpu-publish table table-n pieces images mode)
+;; with it; its writes "/recorder"'s to hand (rec-lend!). => the frame
+(define (gpu-publish table table-n pieces mode)
   (let ([f (gpu-frame-take!)])
-    (let-values ([(jobs dirty computes) (gpu-take-asks!)])
+    (let-values ([(jobs computes) (gpu-take-asks!)])
       (gpu-frame-jobs-set! f jobs)
-      (gpu-frame-dirty-set! f dirty)
       (gpu-frame-computes-set! f computes))
     (gpu-frame-table-set! f table)
     (gpu-frame-table-n-set! f table-n)
     (gpu-frame-pieces-set! f pieces)
-    (gpu-frame-images-set! f images)
     (gpu-frame-mode-set! f mode)
     f))

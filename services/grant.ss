@@ -85,18 +85,13 @@
      font-ascent
      font-descent
      make-pixmap
-     make-pixmap-bytevector
-     pixmap-from-bytevector
      pixmap?
      pixmap-w
      pixmap-h
-     pixmap-bytes
-     pixmap-ref
      pixmap-set!
      pixmap-set-pixel!
      pixmap-fill!
-     pixmap-load!
-     pixmap-swap-bytes!
+     pixmap-rows!
      pixmap-draw)
     (ui "Use buttons, sliders and fields"
      make-ui

@@ -309,6 +309,18 @@
      (worklet-compile 'worklet '(lambda formals body ...)
                       *worklet-environment*)]))
 
+;; (worklet-spread chunk start end worklet arg ...): (worklet lo hi arg
+;; ...) over [start, end), in chunks of at least chunk, the crew's threads
+;; sharing them once services/crew.ss sets the hook; on this one till
+;; then.
+(defvar *worklet-spread* #f)
+
+(define (worklet-spread chunk start end proc . args)
+  (let ([spread *worklet-spread*])
+    (if spread
+        (apply spread chunk start end proc args)
+        (when (< start end) (apply proc start end args)))))
+
 ;; (define-worklet (name . formals) body ...): a worklet, defined where the
 ;; form is, and forwarded to from the worklet environment before it
 ;; compiles, so it may recur and the others see it redefined.

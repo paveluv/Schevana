@@ -262,13 +262,12 @@
   (let* ([n (length flock)]
          [in (make-gpu-buffer (* boids3d-words n))]
          [out (make-gpu-buffer (* boids3d-words n))])
-    (bytevector-copy! (b3-bytes flock) 0 (gpu-buffer-bytes in) 0
-                      (* 4 boids3d-words n))
-    (gpu-buffer-dirty! in 0 (* 4 boids3d-words n))
+    (let ([bytes (b3-bytes flock)])
+      (do ([i 0 (+ i 1)]) ((= i (* boids3d-words n)))
+        (gpu-buffer-set! in i (bytevector-s32-native-ref bytes (* 4 i)))))
     (apply gpu-compute! boids3d-steer n 1 in out n
            (append (boids3d-steering rules) (list boids3d-space)))
-    (gpu-buffer-read! out)
-    (let ([next (b3-flock (gpu-buffer-bytes out) n)])
+    (let ([next (b3-flock (gpu-buffer-read! out) n)])
       (gpu-buffer-release! in)
       (gpu-buffer-release! out)
       next)))

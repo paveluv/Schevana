@@ -637,8 +637,10 @@ Decisions worth keeping in mind for the real design:
   every device, each buffer's length a uniform of its own. A compute run asked
   for with `(gpu-compute-soon! shader w h arg ...)` goes with the next frame,
   ahead of its drawing, so a paint shows what it wrote, and nothing waits
-  for it; `gpu-compute!`, which waits, and `gpu-buffer-read!` are the world's
-  alone. `(inspect-computes)` lists the runs waiting for the frame.
+  for it; `gpu-compute!`, which waits, and `gpu-buffer-read!`, which reads
+  a buffer back, are the world's alone. What's set goes up with the next
+  frame or compute run, and core0 checks every write against the sizes it
+  made the buffer or image with. `(inspect-computes)` lists the runs waiting for the frame.
 - **Life and Boids run on the crew.** Life's grid is as many cells as its
   window has room for: a new size keeps what fits and seeds the new ground.
   Its panel sets the cell size (in the screen's own pixels: 1 px is one),
@@ -870,10 +872,15 @@ Decisions worth keeping in mind for the real design:
   box the core gives: `invert-box` (reverse video, the bell's flash; with a
   pattern, inverted where it shows), `add-box`, `with-turn` (Spine's title),
   `draw-scale` (how many device pixels a logical one is where we draw:
-  Curses draws in whole ones, under `with-scale`), `draw-pixels` (raw pixels,
-  which the pixmap kit's `pixmap-draw` draws; bigger than they are each is a
-  sharp block, smaller they blend, an image that's drawn on from a chain of
+  Curses draws in whole ones, under `with-scale`), `draw-image` (an image,
+  the pixmap kit's among them; bigger than it is each pixel is a sharp
+  block, smaller they blend, an image that's drawn on from a chain of
   half-size copies of itself) and `png-write-drawing` (the app icon's file).
+  A pixmap's pixels are on the GPU: `pixmap-set-pixel!` sets one, and
+  `(pixmap-rows! pm from to worklet arg ...)` has the crew paint rows,
+  `(worklet y0 y1 bytes arg ...)` writing every pixel of its rows in bytes,
+  which "/recorder" lends and hands core0 with the next frame, unchanged
+  while core0 reads it.
   `kits/px.ss` draws pictures of boxes: `px-bevel` (Motif's
   corners or the Mac's), `px-bits` for small pictures,
   `px-invert` (reverse video: ink and paper swap, in any palette),

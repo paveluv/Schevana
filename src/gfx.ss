@@ -220,7 +220,6 @@
 (defvar *rec-image* #f)
 (defvar *rec-variant* 0)
 (defvar *rec-run-first* 0)
-(defvar *rec-images* '())         ; images with pixels to go up
 ;; what shaders' cost a list adds up to, as it's written: area in pixels
 (defvar *rec-area* 0)
 
@@ -259,7 +258,6 @@
   (set! *rec-image* #f)
   (set! *rec-variant* 0)
   (set! *rec-run-first* 0)
-  (set! *rec-images* '())
   (set! *rec-area* 0))
 
 
@@ -723,25 +721,6 @@
       (exact (floor (* (exact x) 256)))))
 
 ;;; ---- images
-
-;; An image for pixels a Scheme bytevector holds, by the bytevector, while
-;; it lives; each drawing sends its pixels up again.
-(defvar *pixel-images* (make-weak-eq-hashtable))
-
-;; Draws the pw × ph pixels in bytes scaled to w × h at (x, y), each pixel
-;; a sharp block.
-(define (draw-pixels bytes pw ph x y w h)
-  (when (and (> w 0) (> h 0))
-    (let* ([image (let ([i (hashtable-ref *pixel-images* bytes #f)])
-                    (if (and i (= (gpu-image-w i) pw) (= (gpu-image-h i) ph))
-                        i
-                        (let ([i (gpu-image-make pw ph)])
-                          (hashtable-set! *pixel-images* bytes i)
-                          i)))])
-      (unless (memq image *rec-images*)
-        (set! *rec-images* (cons image *rec-images*)))
-      (gpu-image-write! image bytes)
-      (draw-image image x y w h))))
 
 ;; The level of image's chain to show it w × h in device pixels: the last at
 ;; least that big. Two of its pixels blended cover more than a step between
@@ -1447,8 +1426,7 @@
     ;; its recording, the frozen one, and those copies it's lent by
     ;; "/recorder"
     (let ([f (gpu-publish (rec-take-table!) (rec-table-bytes)
-                          (rec-take-atlas-pieces!) *rec-images*
-                          (theme 'present-mode))])
+                          (rec-take-atlas-pieces!) (theme 'present-mode))])
       (rec-lend! f)
       f)))
 
@@ -1475,8 +1453,8 @@
   (thunk)
   (let-values ([(recs recs-n extras extras-n) (rec-bytes-copies)])
     (gpu-ask! (list 'read then recs recs-n extras extras-n (rec-take-table!)
-                    (rec-table-bytes) (rec-take-atlas-pieces!) *rec-images*
-                    (rec-runs) pw ph clear?)))
+                    (rec-table-bytes) (rec-take-atlas-pieces!) (rec-runs) pw ph
+                    clear?)))
   (request-frame!))
 
 (define drawing->bytes
@@ -1485,8 +1463,8 @@
     [(pw ph scale thunk clear?)
      (rec-begin! (rationalize (exact scale) 1/100000))
      (thunk)
-     (let-values ([(jobs dirty computes) (gpu-take-asks!)])
+     (let-values ([(jobs computes) (gpu-take-asks!)])
        (let ([table (rec-take-table!)]
              [pieces (rec-take-atlas-pieces!)])
-         (rec-drawing->bytes jobs dirty computes table (rec-table-bytes)
-                             pieces *rec-images* (rec-runs) pw ph clear?)))]))
+         (rec-drawing->bytes jobs computes table (rec-table-bytes) pieces
+                             (rec-runs) pw ph clear?)))]))

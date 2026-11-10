@@ -3305,10 +3305,12 @@
                    [(eqv? v 0) 0]
                    [else (+ v (list-ref bases (- j columns)))]))))))))
 
-;; What the rows hold of a moment, for reading: its words.
+;; What the rows hold of a moment, read back from the GPU now, for a
+;; test: its words.
 (define (ui-stream-row s seq)
-  (let ([at (* (ui-stream-words s) (modulo seq (ui-stream-rows s)))])
-    (map (lambda (j) (gpu-buffer-ref (ui-stream-buffer s) (+ at j)))
+  (let ([at (* (ui-stream-words s) (modulo seq (ui-stream-rows s)))]
+        [bytes (gpu-buffer-read! (ui-stream-buffer s))])
+    (map (lambda (j) (bytevector-s32-native-ref bytes (* 4 (+ at j))))
          (iota (ui-stream-words s)))))
 
 ;; From the right, a bar a moment; up each, its columns as the palette stacks

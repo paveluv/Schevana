@@ -361,6 +361,11 @@
              [(crew-cancelled? r)
               (raise (make-timeout-condition 'crew-for))]))]))
 
+;; What the core spreads over threads, the crew's to share.
+(set! *worklet-spread*
+  (lambda (chunk start end proc . args)
+    (apply crew-for* chunk start end proc args)))
+
 ;; A chunk of crew-map: f of in's items, into out.
 (define-worklet (crew-map-chunk lo hi f in out)
   (do ([i lo (fx+ i 1)]) ((fx= i hi))

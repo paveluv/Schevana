@@ -24,15 +24,11 @@
     gpu-list-recorded-set! gpu-list-took gpu-list-took-set!
     ;; images, buffers and the calls that name them
     make-gpu-image gpu-image-id gpu-image-w gpu-image-h gpu-image-levels
-    gpu-image-pending-set! gpu-image-gone?-set! make-gpu-buffer*
-    gpu-buffer-id gpu-buffer-bytes gpu-buffer-from gpu-buffer-from-set!
-    gpu-buffer-to gpu-buffer-to-set! gpu-buffer-gone?-set! make-gpu-call
-    gpu-call? gpu-call-shader
-    ;; frames
-    gpu-frame-table-set! gpu-frame-table-n-set!
-    gpu-frame-pieces-set! gpu-frame-images-set!
-    gpu-frame-jobs-set! gpu-frame-dirty-set! gpu-frame-computes-set!
-    gpu-frame-mode-set!
+    gpu-image-gone?-set! make-gpu-buffer* gpu-buffer-id gpu-buffer-size
+    gpu-buffer-gone?-set! make-gpu-call gpu-call? gpu-call-shader
+    ;; frames; what they write is the recorder's (host-recorder-share)
+    gpu-frame-table-set! gpu-frame-table-n-set! gpu-frame-pieces-set!
+    gpu-frame-jobs-set! gpu-frame-computes-set! gpu-frame-mode-set!
     ;; What core0 says of itself, in variables it sets whole: another thread
     ;; reads each whole (Chez lets no thread see an object half made), but
     ;; not in step with the others, as ARM keeps no order between stores.
@@ -56,8 +52,7 @@
     ;; Until core0 has a thread of its own the world steps it (host-step!),
     ;; and boots it (opening, sizing, showing the window).
     host-step! gpu-frame-take! gpu-present! gpu-take-answers!
-    gpu-drawing->bytes gpu-compute-now! gpu-submit-computes!
-    gpu-buffer-download! host-environment host-recorder-environment
+    host-environment host-recorder-environment
     host-window-headless!
     host-window-open! host-window-show! host-window-close!
     host-window-resize!))
@@ -72,9 +67,10 @@
   (let ([e (interaction-environment)]) (lambda () e)))
 
 ;; What core0 shares with "/recorder" alone, beside its interface:
-;; recordings, the lists and the frame that hold them, and how far frames
-;; have come back. The world never has them, so it can't name a byte core0
-;; reads, or hand core0 a recording the recorder didn't freeze.
+;; recordings, the lists, images and frame that hold them, how far frames
+;; have come back, and the calls that hand core0 writes with no frame. The
+;; world never has them, so it can't name a byte core0 reads, or hand
+;; core0 a recording the recorder didn't freeze.
 (define host-recorder-share
   '(make-gpu-recording gpu-recording-recs gpu-recording-recs-set!
     gpu-recording-recs-n gpu-recording-recs-n-set! gpu-recording-extras
@@ -83,8 +79,11 @@
     gpu-recording-version gpu-recording-version-set! gpu-recording-until
     gpu-recording-until-set! gpu-recording-next gpu-recording-next-set!
     make-gpu-list gpu-list-recording gpu-list-recording-set!
+    gpu-recording? gpu-image? gpu-image-loans gpu-image-loans-set!
     gpu-frame-root gpu-frame-root-set! gpu-frame-number
-    gpu-frame-number-set! gpu-frame-earlier-set! *gpu-frame-back*))
+    gpu-frame-number-set! gpu-frame-earlier-set! gpu-frame-writes-set!
+    *gpu-frame-back* gpu-drawing->bytes gpu-compute-now!
+    gpu-submit-computes! gpu-buffer-download!))
 
 ;; "/recorder", sealed (.work/gpu-design.md 9.14): the bytes of frames and
 ;; their writers, below the world, which names only its interface.

@@ -110,6 +110,10 @@
   (bytevector-u32-native-ref (picture-bytes p)
                              (* 4 (+ x (* y (picture-w p))))))
 
+;; What the GPU holds of a pixmap's pixels, drawn at its size: a picture.
+(define (pixmap-picture pm)
+  (image (pixmap-w pm) (pixmap-h pm) 1 (lambda () (pixmap-draw pm 0 0))))
+
 ;; The largest channel difference between two images of the same size,
 ;; outside the mask rects ((x0 y0 x1 y1) ...).
 (define (max-diff a b . mask)

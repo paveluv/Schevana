@@ -126,13 +126,15 @@
     (recorded . ,(gpu-list-recorded lst))
     (took . ,(gpu-list-took lst))))
 
-;; The recordings a list holds, "/recorder"'s (#f: the root's, the frames'),
-;; newest first: ((version . n) (until . frame) (free . bool)) each, until
-;; #f for the newest, which nothing has replaced.
-(define (inspect-recordings lst)
+;; The recordings x holds, "/recorder"'s, newest first: a list's, the
+;; root's (#f, the frames'), the copies drawn ahead of frames ('earlier),
+;; the writes handed to core0 ('writes), or an image's loans.
+;; ((version . n) (until . frame) (free . bool)) each, until #f for the
+;; newest, which nothing has replaced, or a loan not yet handed.
+(define (inspect-recordings x)
   (map (lambda (r)
          `((version . ,(car r)) (until . ,(cadr r)) (free . ,(caddr r))))
-       (rec-recordings lst)))
+       (rec-recordings x)))
 
 ;; Whose a list is, in words, and which of its owner's: a window's, its
 ;; frame and all, window, or its content, content; else list. A kept copy's

@@ -450,9 +450,11 @@
          p)])))
 
 ;;; ------------------------------------------------------------------ objects
-;;; The SDL objects behind main's handles, by id, (kind . object): made and
-;;; let go of by the jobs main asks, which core0 runs before anything that
-;;; needs them (.work/gpu-design.md 9.12).
+;;; The SDL objects behind main's handles, by id, (kind object . sizes):
+;;; (texture object w h), (buffer object bytes), (atlas object). Made and let
+;;; go of by the jobs main asks, which core0 runs before anything that needs
+;;; them (.work/gpu-design.md 9.12); the sizes are core0's own, which every
+;;; write main hands it must fit.
 
 (defvar *gpu-objects* (make-eqv-hashtable))
 
@@ -460,14 +462,14 @@
 (define (gpu-object id)
   (let ([o (hashtable-ref *gpu-objects* id #f)])
     (unless o (errorf 'gpu-object "~a has no object: its job hasn't run" id))
-    (cdr o)))
+    (cadr o)))
 
 ;; Main's jobs, in order: (texture id w h usage levels), (buffer id bytes),
-;; (atlas id), the glyphs' atlas under id, (shaders vertex fragments), the
-;; core's, (target w h), the size frames draw to with no window, (release
-;; id), and (read then recs recs-n extras extras-n table table-n pieces
-;; images runs w h clear?), a drawing read back, its pixels left with then
-;; in *gpu-answers*.
+;; zeroed, (atlas id), the glyphs' atlas under id, (shaders vertex
+;; fragments), the core's, (target w h), the size frames draw to with no
+;; window, (release id), and (read then recs recs-n extras extras-n table
+;; table-n pieces runs w h clear?), a drawing read back, its pixels left with
+;; then in *gpu-answers*.
 (defvar *gpu-answers* '())
 
 ;; What core0 read back for main since main last took it, (then . bytes)
@@ -477,60 +479,183 @@
     (set! *gpu-answers* '())
     answers))
 
-(define (gpu-run-jobs! jobs)
-  (for-each
-   (lambda (job)
-     (let ([d (renderer-device *renderer*)])
-       (case (car job)
-         [(texture)
-          (let-values ([(id w h usage levels) (apply values (cdr job))])
-            (hashtable-set! *gpu-objects* id
-                            (cons 'texture
-                                  (gpu-make-texture d gpu-format-bgra8 usage
-                                                    w h levels))))]
-         [(buffer)
-          (let ([p gpu-buffer-info*])
-            (gpu-zero! p (ftype-sizeof gpu-buffer-info))
-            (ftype-set! gpu-buffer-info (usage) p
-                        (fxior gpu-usage-graphics-read gpu-usage-compute-read
-                               gpu-usage-compute-write))
-            (ftype-set! gpu-buffer-info (size) p (caddr job))
-            (hashtable-set! *gpu-objects* (cadr job)
-                            (cons 'buffer
-                                  (gpu-must 'gpu-run-jobs!
-                                            (sdl-create-gpu-buffer
-                                             d (gpu-at p))))))]
-         [(atlas)
-          (hashtable-set! *gpu-objects* (cadr job)
-                          (cons 'atlas (renderer-atlas *renderer*)))]
-         [(shaders)
-          (set! *gpu-shaders* (cons (cadr job) (caddr job)))
-          (gpu-forget-pipelines!)]
-         [(target) (gpu-set-target! (cadr job) (caddr job))]
-         [(read)
-          (set! *gpu-answers*
-            (cons (cons (cadr job)
-                        (apply gpu-drawing->bytes '() '() '() (cddr job)))
-                  *gpu-answers*))]
-         [(release)
-          (gpu-list-free! (cadr job))
-          (let ([o (hashtable-ref *gpu-objects* (cadr job) #f)])
-            (hashtable-delete! *gpu-objects* (cadr job))
-            (when o
-              (case (car o)
-                [(texture) (sdl-release-gpu-texture d (cdr o))]
-                [(buffer) (sdl-release-gpu-buffer d (cdr o))])))])))
-   jobs))
+;; The jobs, and main's writes since it last handed them on (writes, a
+;; recording of "/recorder"'s, or #f): what makes objects first, then the
+;; writes into them, then the reads that see them and the releases.
+(define (gpu-run-jobs! jobs writes)
+  (for-each (lambda (job)
+              (unless (memq (car job) '(read release)) (gpu-run-job! job)))
+            jobs)
+  (gpu-send-writes! writes)
+  (for-each (lambda (job)
+              (when (memq (car job) '(read release)) (gpu-run-job! job)))
+            jobs))
+
+(define (gpu-run-job! job)
+  (let ([d (renderer-device *renderer*)])
+    (case (car job)
+      [(texture)
+       (let-values ([(id w h usage levels) (apply values (cdr job))])
+         (hashtable-set! *gpu-objects* id
+                         (list 'texture
+                               (gpu-make-texture d gpu-format-bgra8 usage w h
+                                                 levels)
+                               w h)))]
+      [(buffer)
+       (let ([p gpu-buffer-info*] [n (caddr job)])
+         (gpu-zero! p (ftype-sizeof gpu-buffer-info))
+         (ftype-set! gpu-buffer-info (usage) p
+                     (fxior gpu-usage-graphics-read gpu-usage-compute-read
+                            gpu-usage-compute-write))
+         (ftype-set! gpu-buffer-info (size) p n)
+         (let ([b (gpu-must 'gpu-run-jobs!
+                            (sdl-create-gpu-buffer d (gpu-at p)))])
+           (gpu-buffer-zero! d b n)
+           (hashtable-set! *gpu-objects* (cadr job) (list 'buffer b n))))]
+      [(atlas)
+       (hashtable-set! *gpu-objects* (cadr job)
+                       (list 'atlas (renderer-atlas *renderer*)))]
+      [(shaders)
+       (set! *gpu-shaders* (cons (cadr job) (caddr job)))
+       (gpu-forget-pipelines!)]
+      [(target) (gpu-set-target! (cadr job) (caddr job))]
+      [(read)
+       (set! *gpu-answers*
+         (cons (cons (cadr job)
+                     (apply gpu-drawing->bytes '() #f '() (cddr job)))
+               *gpu-answers*))]
+      [(release)
+       (gpu-list-free! (cadr job))
+       (let ([o (hashtable-ref *gpu-objects* (cadr job) #f)])
+         (hashtable-delete! *gpu-objects* (cadr job))
+         (when o
+           (case (car o)
+             [(texture) (sdl-release-gpu-texture d (cadr o))]
+             [(buffer) (sdl-release-gpu-buffer d (cadr o))])))])))
+
+;; A new buffer's n bytes zeroed, by a copy of its own sent now: what's
+;; written into it after goes after.
+(define (gpu-buffer-zero! d buffer n)
+  (let* ([transfer (gpu-make-transfer d 0 n)]
+         [mapped (gpu-must 'gpu-buffer-zero!
+                           (sdl-map-gpu-transfer d transfer #f))])
+    (sdl-memset mapped 0 n)
+    (sdl-unmap-gpu-transfer d transfer)
+    (let* ([cb (gpu-must 'gpu-buffer-zero! (sdl-acquire-gpu-commands d))]
+           [pass (sdl-begin-copy-pass cb)])
+      (gpu-to-region! pass transfer 0 buffer 0 n)
+      (sdl-end-copy-pass pass)
+      (sdl-submit-gpu cb))
+    (sdl-release-gpu-transfer d transfer)))
+
+;; n bytes from off in the transfer to buffer at at, what's around them
+;; kept.
+(define (gpu-to-region! pass transfer off buffer at n)
+  (let ([from gpu-transfer-location*] [to gpu-buffer-region*])
+    (ftype-set! gpu-transfer-location (transfer) from transfer)
+    (ftype-set! gpu-transfer-location (offset) from off)
+    (ftype-set! gpu-buffer-region (buffer) to buffer)
+    (ftype-set! gpu-buffer-region (offset) to at)
+    (ftype-set! gpu-buffer-region (size) to n)
+    (sdl-upload-to-buffer pass (gpu-at from) (gpu-at to) #f)))
+
+;;; ------------------------------------------------------------------ writes
+;;; What main writes into buffers and images goes in a recording of
+;;; "/recorder"'s, the frame's writes: its records spans of 32 bytes, (kind
+;;; id x y src n 0 0), its extras the words they name. Kind 0, n words into
+;;; buffer id from word x, from src in the extras; kind 1, n pixels into
+;;; image id at (x, y), from src; kind 2, rows y .. y + n of image id from
+;;; the next of the recording's loans, each a recording whose records are
+;;; the image's pixels, chained through their runs from the recording's.
+;;; Core0 checks each against the sizes it made the object with, and skips
+;;; one that doesn't fit.
+
+;; What span (kind id x y n, loan its loan's bytes, or #f) writes into:
+;; (kind object . sizes), or #f if it doesn't fit it.
+(define (gpu-write-fits kind id x y n loan)
+  (let ([o (hashtable-ref *gpu-objects* id #f)])
+    (and o
+         (fx> n 0)
+         (case kind
+           [(0) (and (eq? (car o) 'buffer) (fx>= x 0)
+                     (<= (* 4 (+ x n)) (caddr o)))]
+           [(1) (and (eq? (car o) 'texture) (fx>= x 0) (fx>= y 0)
+                     (fx< y (cadddr o)) (<= (+ x n) (caddr o)))]
+           [(2) (and (eq? (car o) 'texture) loan (fx>= y 0)
+                     (<= (+ y n) (cadddr o))
+                     (= (bytevector-length loan)
+                        (* 4 (caddr o) (cadddr o))))]
+           [else #f])
+         o)))
+
+;; Each span of writes that fits, in order, each kind 2 the next loan's:
+;; with mapped, its loan's rows copied into the transfer mapped there; with
+;; pass, it goes into its object from the transfer, by pass. The rows go
+;; after the extras, which go first, whole. => where they end
+(define (gpu-writes-walk! writes mapped pass transfer)
+  (let ([recs (gpu-recording-recs writes)] [n (gpu-recording-recs-n writes)])
+    (let loop ([at 0] [loans (gpu-recording-runs writes)]
+               [off (gpu-recording-extras-n writes)])
+      (if (fx>= at n)
+          off
+          (let* ([word (lambda (k) (bytevector-s32-native-ref recs (fx+ at k)))]
+                 [kind (word 0)] [x (word 8)] [y (word 12)] [src (word 16)]
+                 [count (word 20)]
+                 [loan (and (fx= kind 2) (gpu-recording? loans) loans)]
+                 [o (gpu-write-fits kind (word 4) x y count
+                                    (and loan (gpu-recording-recs loan)))]
+                 [row (if o (* 4 (caddr o)) 0)]
+                 [size (if (fx= kind 2) (* row count) 0)])
+            (when (and o mapped (fx= kind 2))
+              (sdl-memcpy (+ mapped off)
+                          (+ (object->reference-address
+                              (gpu-recording-recs loan))
+                             (* row y))
+                          size))
+            (when (and o pass)
+              (case kind
+                [(0) (gpu-to-region! pass transfer src (cadr o) (* 4 x)
+                                     (* 4 count))]
+                [(1) (gpu-to-texture! pass transfer (cadr o) src x y count 1)]
+                [else (gpu-to-texture! pass transfer (cadr o) off 0 y
+                                       (caddr o) count)]))
+            (loop (fx+ at 32)
+                  (cond [loan (gpu-recording-runs loan)]
+                        [(fx= kind 2) '()]
+                        [else loans])
+                  (+ off size)))))))
+
+;; Main's writes (writes, or #f for none) into their objects, by a copy
+;; pass of their own sent now, ahead of anything that reads them, through
+;; one transfer.
+(define (gpu-send-writes! writes)
+  (when (and writes (fx> (gpu-recording-recs-n writes) 0))
+    (let* ([r *renderer*]
+           [d (renderer-device r)]
+           [transfer (car (gpu-sized-transfer
+                           r (max 16 (gpu-writes-walk! writes #f #f #f))))]
+           [mapped (gpu-must 'gpu-send-writes!
+                             (sdl-map-gpu-transfer d transfer #t))])
+      (gpu-copy-in mapped (gpu-recording-extras writes)
+                   (gpu-recording-extras-n writes))
+      (gpu-writes-walk! writes mapped #f transfer)
+      (sdl-unmap-gpu-transfer d transfer)
+      (let* ([cb (gpu-must 'gpu-send-writes! (sdl-acquire-gpu-commands d))]
+             [pass (sdl-begin-copy-pass cb)])
+        (gpu-writes-walk! writes #f pass transfer)
+        (sdl-end-copy-pass pass)
+        (sdl-submit-gpu cb)))))
 
 ;;; ------------------------------------------------------------------ images
 ;;; An image is a texture of premultiplied BGRA, its pixels on the GPU alone.
 
 ;; Main's handle on one: its id in *gpu-objects*, its size and levels, the
-;; pixels to go up next, and gone?, let go of, so that a list kept from
-;; before that names it draws without it.
+;; recording its loans are chained after, "/recorder"'s (#f till it lends
+;; one), and gone?, let go of, so that a list kept from before that names it
+;; draws without it.
 (define-record-type gpu-image
-  (nongenerative schevana-gpu-image-2)
-  (fields id w h levels (mutable pending) (mutable gone?)))
+  (nongenerative schevana-gpu-image-3)
+  (fields id w h levels (mutable loans) (mutable gone?)))
 
 (define (gpu-image-texture image) (gpu-object (gpu-image-id image)))
 
@@ -540,17 +665,15 @@
     (sdl-generate-gpu-mipmaps cb (gpu-image-texture image))))
 
 ;;; ------------------------------------------------------------------ buffers
-;;; A buffer a shader reads or writes: whole numbers or floats, 32 bits each.
-;;; What's set here goes up with the next frame, or the next compute run; it
-;;; costs a word's write, and the copy here only what's in the buffer.
+;;; A buffer a shader reads or writes: whole numbers or floats, 32 bits each,
+;;; on the GPU alone. What's set goes up with the next frame, or the next
+;;; compute run, among main's writes.
 
-;; Main's handle on one: its id in *gpu-objects*, and its words here.
+;; Main's handle on one: its id in *gpu-objects*, its size in bytes, and
+;; gone?, let go of, as an image can be.
 (define-record-type (gpu-buffer make-gpu-buffer* gpu-buffer?)
-  (nongenerative schevana-gpu-buffer-2)
-  (fields id bytes
-          (mutable from)     ; the bytes to go up: from .. to
-          (mutable to)
-          (mutable gone?)))  ; let go of, as an image can be
+  (nongenerative schevana-gpu-buffer-3)
+  (fields id size (mutable gone?)))
 
 ;; What a paint or a compute run is called with: its shader, its uniforms as
 ;; bytes, its buffers.
@@ -649,47 +772,6 @@
           [(gpu-call? x) (exists gpu-buffer-gone? (gpu-call-buffers x))]
           [else #f])))
 
-;; The dirty buffers' bytes, by a copy pass on cb.
-(define (gpu-upload-buffers! r cb dirty)
-  (unless (null? dirty)
-    (let* ([total (fold-left (lambda (n b)
-                               (+ n (- (gpu-buffer-to b)
-                                       (gpu-buffer-from b))))
-                             0 dirty)]
-           [transfer (car (gpu-sized-transfer r total))]
-           [mapped (gpu-must 'gpu-upload-buffers!
-                             (sdl-map-gpu-transfer (renderer-device r)
-                                                   transfer #t))]
-           [at 0])
-      (for-each (lambda (b)
-                  (let ([n (- (gpu-buffer-to b) (gpu-buffer-from b))])
-                    (sdl-memcpy (+ mapped at)
-                                (+ (object->reference-address
-                                    (gpu-buffer-bytes b))
-                                   (gpu-buffer-from b))
-                                n)
-                    (set! at (+ at n))))
-                dirty)
-      (sdl-unmap-gpu-transfer (renderer-device r) transfer)
-      (let ([pass (sdl-begin-copy-pass cb)]
-            [from gpu-transfer-location*]
-            [to gpu-buffer-region*])
-        (fold-left
-         (lambda (off b)
-           (let ([n (- (gpu-buffer-to b) (gpu-buffer-from b))])
-             (ftype-set! gpu-transfer-location (transfer) from transfer)
-             (ftype-set! gpu-transfer-location (offset) from off)
-             (ftype-set! gpu-buffer-region (buffer) to
-                          (gpu-object (gpu-buffer-id b)))
-             (ftype-set! gpu-buffer-region (offset) to (gpu-buffer-from b))
-             (ftype-set! gpu-buffer-region (size) to n)
-             (sdl-upload-to-buffer pass (gpu-at from) (gpu-at to) #f)
-             (gpu-buffer-from-set! b 0)
-             (gpu-buffer-to-set! b 0)
-             (+ off n)))
-         0 dirty)
-        (sdl-end-copy-pass pass)))))
-
 ;;; ------------------------------------------------------------------ compute
 
 (define (gpu-make-compute device shader)
@@ -756,14 +838,12 @@
          (sdl-end-compute-pass pass))))
    run))
 
-;; run, now, main's jobs run and the dirty buffers going up first, and a
-;; wait for it.
-(define (gpu-compute-now! run jobs dirty)
-  (gpu-run-jobs! jobs)
+;; run, now, main's jobs and writes first, and a wait for it.
+(define (gpu-compute-now! run jobs writes)
+  (gpu-run-jobs! jobs writes)
   (let* ([r *renderer*]
          [cb (gpu-must 'gpu-compute-now!
                        (sdl-acquire-gpu-commands (renderer-device r)))])
-    (gpu-upload-buffers! r cb dirty)
     (gpu-dispatch! cb run)
     (gpu-wait! (gpu-must 'gpu-compute-now! (sdl-submit-gpu-fence cb)))))
 
@@ -771,32 +851,33 @@
 (define (gpu-run-computes! cb runs)
   (for-each (lambda (run) (gpu-dispatch! cb run)) runs))
 
-;; runs that no frame took, main's jobs run and the dirty buffers going up
-;; first, sent with no frame and waited for by nobody. The queue keeps the
-;; order: what a frame sent after them reads finds them done.
-(define (gpu-submit-computes! runs jobs dirty)
-  (gpu-run-jobs! jobs)
+;; runs that no frame took, main's jobs and writes first, sent with no
+;; frame and waited for by nobody. The queue keeps the order: what a frame
+;; sent after them reads finds them done.
+(define (gpu-submit-computes! runs jobs writes)
+  (gpu-run-jobs! jobs writes)
   (let* ([r *renderer*]
          [cb (gpu-must 'gpu-submit-computes!
                        (sdl-acquire-gpu-commands (renderer-device r)))])
-    (gpu-upload-buffers! r cb dirty)
     (gpu-run-computes! cb runs)
     (sdl-submit-gpu cb)))
 
-;; What a shader left in the buffer: read back into the copy here, main's
-;; jobs run first. => its bytes
-(define (gpu-buffer-download! jobs b)
-  (gpu-run-jobs! jobs)
+;; What's in buffer id now, main's jobs and writes first: => its bytes, a
+;; copy of its own, or #f if id names no buffer.
+(define (gpu-buffer-download! jobs writes id)
+  (gpu-run-jobs! jobs writes)
+  (let ([o (hashtable-ref *gpu-objects* id #f)])
+    (and o (eq? (car o) 'buffer) (gpu-buffer-copy-down (cadr o) (caddr o)))))
+
+(define (gpu-buffer-copy-down buffer n)
   (let* ([r *renderer*]
          [d (renderer-device r)]
-         [n (bytevector-length (gpu-buffer-bytes b))]
          [transfer (gpu-make-transfer d 1 n)]
          [cb (gpu-must 'gpu-buffer-download! (sdl-acquire-gpu-commands d))]
          [pass (sdl-begin-copy-pass cb)]
          [from gpu-buffer-region*]
          [to gpu-transfer-location*])
-    (ftype-set! gpu-buffer-region (buffer) from
-                (gpu-object (gpu-buffer-id b)))
+    (ftype-set! gpu-buffer-region (buffer) from buffer)
     (ftype-set! gpu-buffer-region (offset) from 0)
     (ftype-set! gpu-buffer-region (size) from n)
     (ftype-set! gpu-transfer-location (transfer) to transfer)
@@ -804,13 +885,14 @@
     (sdl-download-from-buffer pass (gpu-at from) (gpu-at to))
     (sdl-end-copy-pass pass)
     (gpu-wait! (gpu-must 'gpu-buffer-download! (sdl-submit-gpu-fence cb)))
-    (gpu-copy-out (gpu-buffer-bytes b)
-                  (gpu-must 'gpu-buffer-download!
-                            (sdl-map-gpu-transfer d transfer #f))
-                  n)
-    (sdl-unmap-gpu-transfer d transfer)
-    (sdl-release-gpu-transfer d transfer)
-    (gpu-buffer-bytes b)))
+    (let ([bytes (make-bytevector n)])
+      (gpu-copy-out bytes
+                    (gpu-must 'gpu-buffer-download!
+                              (sdl-map-gpu-transfer d transfer #f))
+                    n)
+      (sdl-unmap-gpu-transfer d transfer)
+      (sdl-release-gpu-transfer d transfer)
+      bytes)))
 
 ;;; ------------------------------------------------------------------ frames
 
@@ -849,17 +931,14 @@
 
 ;; Uploads what a frame needs, in a copy pass of cb: the records and extras,
 ;; the glyph table if it changed, new atlas pieces ((u v w h bytes) ...),
-;; images' new pixels, and the lists the runs show that changed. All through
-;; one transfer buffer, mapped once. A frame with none of those allocates
-;; nothing.
-(define (gpu-upload! r cb dirty recs recs-n extras extras-n table table-n
-                     atlas-pieces images runs)
-  (gpu-upload-buffers! r cb dirty)
+;; and the lists the runs show that changed. All through one transfer
+;; buffer, mapped once. A frame with none of those allocates nothing.
+(define (gpu-upload! r cb recs recs-n extras extras-n table table-n
+                     atlas-pieces runs)
   (set! *gpu-pass* (fx+ *gpu-pass* 1))
   (let* ([total (+ recs-n extras-n (if table table-n 0) 8
                    (gpu-fresh-bytes runs 0)
-                   (gpu-each-bytes atlas-pieces gpu-piece-bytes 0)
-                   (gpu-each-bytes images gpu-image-pending 0))]
+                   (gpu-each-bytes atlas-pieces gpu-piece-bytes 0))]
          [transfer (car (gpu-sized-transfer r (max total 16)))]
          [mapped (gpu-must 'gpu-upload!
                            (sdl-map-gpu-transfer (renderer-device r) transfer
@@ -868,8 +947,7 @@
     (let* ([recs-at (gpu-put! mapped recs recs-n)]
            [extras-at (gpu-put! mapped extras extras-n)]
            [table-at (and table (gpu-put! mapped table table-n))]
-           [piece-ats (gpu-put-each! mapped atlas-pieces gpu-piece-bytes)]
-           [image-ats (gpu-put-each! mapped images gpu-image-pending)])
+           [piece-ats (gpu-put-each! mapped atlas-pieces gpu-piece-bytes)])
       (gpu-put-lists! mapped runs)
       (sdl-unmap-gpu-transfer (renderer-device r) transfer)
       (let ([pass (sdl-begin-copy-pass cb)]
@@ -886,15 +964,14 @@
         (when table-at (gpu-to-buffer! pass transfer table-b table-at table-n))
         (gpu-send-lists! r pass transfer runs)
         (gpu-send-pieces! r pass transfer atlas-pieces piece-ats)
-        (gpu-send-images! pass transfer images image-ats)
         (sdl-end-copy-pass pass)))))
 
 ;; Where the next bytes go in the transfer being filled.
 (define gpu-put-at 0)
 
-;; n of bv's bytes into the mapped transfer, each on a word: an image's
-;; pixels are words, whatever a piece of the atlas before them left, and
-;; Metal shifts them otherwise. => where they went
+;; n of bv's bytes into the mapped transfer, each on a word: a piece of
+;; the atlas leaves any length, and what follows starts on a word. => where
+;; they went
 (define (gpu-put! mapped bv n)
   (let ([off (logand (+ gpu-put-at 3) -4)])
     (gpu-copy-in (+ mapped off) bv n)
@@ -962,14 +1039,6 @@
       (gpu-to-texture! pass transfer (renderer-atlas r) (car offs)
                        (car p) (cadr p) (caddr p) (cadddr p)))
     (gpu-send-pieces! r pass transfer (cdr pieces) (cdr offs))))
-
-(define (gpu-send-images! pass transfer images offs)
-  (unless (null? images)
-    (let ([i (car images)])
-      (gpu-to-texture! pass transfer (gpu-image-texture i) (car offs) 0 0
-                       (gpu-image-w i) (gpu-image-h i))
-      (gpu-image-pending-set! i #f))
-    (gpu-send-images! pass transfer (cdr images) (cdr offs))))
 
 ;; n bytes from off in the transfer to the start of a buffer, (id . size).
 (define (gpu-to-buffer! pass transfer pair off n)
@@ -1245,10 +1314,10 @@
 ;;; forth, filled again for each frame: a frame allocates none.
 
 (define-record-type gpu-frame
-  (nongenerative schevana-gpu-frame-3)
+  (nongenerative schevana-gpu-frame-4)
   (fields (mutable root) (mutable number) (mutable table) (mutable table-n)
-          (mutable pieces) (mutable images) (mutable jobs) (mutable dirty)
-          (mutable computes) (mutable mode) (mutable earlier)))
+          (mutable pieces) (mutable jobs) (mutable writes) (mutable computes)
+          (mutable mode) (mutable earlier)))
 
 ;; The frame the host gave back, to fill; #f while it has it.
 (defvar *gpu-frame-free* #f)
@@ -1260,26 +1329,25 @@
 ;; The frame the host gave back, taken to be filled, or a new one.
 (define (gpu-frame-take!)
   (let ([f (or *gpu-frame-free*
-               (make-gpu-frame #f 0 #f 0 '() '() '() '() '() #f '()))])
+               (make-gpu-frame #f 0 #f 0 '() '() #f '() #f '()))])
     (set! *gpu-frame-free* #f)
     f))
 
 
 
-;; The host's side: main's jobs, the lists kept from earlier on their
-;; images, then the frame, the dirty buffers going up with the first of
-;; them; f given back.
+;; The host's side: main's jobs and writes, the lists kept from earlier on
+;; their images, then the frame; f given back.
 ;; => #t if the frame reached the screen; #f if the window had no room for
 ;; it yet, and it should be tried again.
 (define (gpu-present! f)
-  (gpu-run-jobs! (gpu-frame-jobs f))
+  (gpu-run-jobs! (gpu-frame-jobs f) (gpu-frame-writes f))
   (gpu-present-mode! (gpu-frame-mode f))
-  (let loop ([earlier (gpu-frame-earlier f)] [dirty (gpu-frame-dirty f)])
+  (let loop ([earlier (gpu-frame-earlier f)])
     (if (pair? earlier)
         (begin
-          (gpu-list-on-image! dirty (caar earlier) (cdar earlier))
-          (loop (cdr earlier) '()))
-        (let ([shown? (gpu-frame! f dirty)])
+          (gpu-list-on-image! (caar earlier) (cdar earlier))
+          (loop (cdr earlier)))
+        (let ([shown? (gpu-frame! f)])
           ;; read and gone up: the frame goes back, and what it read
           (set! *gpu-frame-back* (gpu-frame-number f))
           (set! *gpu-frame-free* f)
@@ -1294,18 +1362,17 @@
 ;; One frame: uploads, then the runs, to the window or the target. => #t if
 ;; it reached the screen; #f if the window had no room for it yet (a frame
 ;; still in flight, or it is hidden).
-(define (gpu-frame! f dirty)
+(define (gpu-frame! f)
   (fxvector-fill! *gpu-waits* -1)
   (let* ([r *renderer*]
          [root (gpu-frame-root f)]
          [runs (gpu-recording-runs root)]
          [cb (gpu-must 'gpu-frame!
                        (sdl-acquire-gpu-commands (renderer-device r)))])
-    (gpu-upload! r cb dirty (gpu-recording-recs root)
-                 (gpu-recording-recs-n root) (gpu-recording-extras root)
-                 (gpu-recording-extras-n root) (gpu-frame-table f)
-                 (gpu-frame-table-n f) (gpu-frame-pieces f)
-                 (gpu-frame-images f) runs)
+    (gpu-upload! r cb (gpu-recording-recs root) (gpu-recording-recs-n root)
+                 (gpu-recording-extras root) (gpu-recording-extras-n root)
+                 (gpu-frame-table f) (gpu-frame-table-n f) (gpu-frame-pieces f)
+                 runs)
     (gpu-run-computes! cb (gpu-frame-computes f))
     (if (eqv? 0 (renderer-sdl-window r))
         (begin
@@ -1355,15 +1422,15 @@
 
 ;; A list kept from earlier drawn on image, ahead of the next frame, which sends
 ;; its own: its glyphs are all up already. Its images and paints show what
-;; they hold now, but those let go of since; dirty, the buffers going up.
-(define (gpu-list-on-image! dirty image rec)
+;; they hold now, but those let go of since.
+(define (gpu-list-on-image! image rec)
   (let* ([r *renderer*]
          [d (renderer-device r)]
          [runs (gpu-recording-runs rec)]
          [cb (gpu-must 'gpu-list-on-image! (sdl-acquire-gpu-commands d))])
-    (gpu-upload! r cb dirty (gpu-recording-recs rec) (gpu-recording-recs-n rec)
+    (gpu-upload! r cb (gpu-recording-recs rec) (gpu-recording-recs-n rec)
                  (gpu-recording-extras rec) (gpu-recording-extras-n rec) #f 0
-                 '() '() runs)
+                 '() runs)
     (gpu-draw-runs! r cb (gpu-image-texture image) gpu-format-bgra8
                     (gpu-image-w image) (gpu-image-h image)
                     (remp gpu-run-gone? runs) #f)
@@ -1372,16 +1439,16 @@
 
 ;; The same, drawn to a new texture w × h and read back: its pixels, row
 ;; after row, premultiplied BGRA. What tests, screenshots and icons see;
-;; jobs, dirty and computes, what main asked of the GPU since, go first.
-(define (gpu-drawing->bytes jobs dirty computes recs recs-n extras extras-n
-                           table table-n atlas-pieces images runs w h clear?)
-  (gpu-run-jobs! jobs)
+;; jobs, writes and computes, what main asked of the GPU since, go first.
+(define (gpu-drawing->bytes jobs writes computes recs recs-n extras extras-n
+                           table table-n atlas-pieces runs w h clear?)
+  (gpu-run-jobs! jobs writes)
   (let* ([r *renderer*]
          [d (renderer-device r)]
          [texture (gpu-make-texture d gpu-format-bgra8 gpu-usage-target w h)]
          [cb (gpu-must 'gpu-drawing->bytes (sdl-acquire-gpu-commands d))])
-    (gpu-upload! r cb dirty recs recs-n extras extras-n table table-n
-                 atlas-pieces images runs)
+    (gpu-upload! r cb recs recs-n extras extras-n table table-n atlas-pieces
+                 runs)
     (gpu-run-computes! cb computes)
     (gpu-draw-runs! r cb texture gpu-format-bgra8 w h runs clear?)
     (let ([bytes (gpu-read-texture! r cb texture w h)])
