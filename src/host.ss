@@ -166,7 +166,7 @@
     [else #f]))
 
 ;; With vsync on, the screen held the host in its call part from start to
-;; end, on now-ns's clock (core0 times its waits, *gpu-waits*): a phase of
+;; end, on now-ns's clock (core0 times its waits, a frame's): a phase of
 ;; the profiler's, and no work.
 (define (host-screen-waited! part start end)
   (profile-span-past! 'vsync-wait part start end)

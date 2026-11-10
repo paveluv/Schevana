@@ -14,14 +14,14 @@
   (check "the frame just published is the root's newest, frozen, and lent \
           to the frame"
          (and (not (gpu-recording-until r))
-              (eq? (gpu-frame-root *gpu-frame-free*) r)))
+              (eq? (gpu-frame-root *gpu-frame-last*) r)))
   (request-frame!)
   (steps 1)
   (check "replaced, it retires after the frame that showed it, and is free \
           once core0 gave that frame back"
          (and (not (eq? r *rec-root*))
               (eqv? (gpu-recording-until r)
-                    (- (gpu-frame-number *gpu-frame-free*) 1))
+                    (- (gpu-frame-number *gpu-frame-last*) 1))
               (rec-free? r))))
 
 ;; A list recorded again and again, a frame between: written in turn in its
@@ -76,7 +76,7 @@
   (rec-past! target recs 64 extras 8 '())
   (request-frame!)
   (steps 1)
-  (let ([lent (gpu-frame-earlier *gpu-frame-free*)])
+  (let ([lent (gpu-frame-earlier *gpu-frame-last*)])
     (bytevector-fill! recs 0)
     (check (format "a list drawn ahead of a frame is the recorder's copy, \
                     read by that frame alone, free once it's back ~s"
@@ -93,7 +93,7 @@
     (request-frame!)
     (steps 1)
     (check "the next frame draws nothing ahead unless handed something"
-           (null? (gpu-frame-earlier *gpu-frame-free*))))
+           (null? (gpu-frame-earlier *gpu-frame-last*))))
   (gpu-image-release! target))
 
 ;; A frame drawn on a target, as the Pipeline's small screen draws it, from

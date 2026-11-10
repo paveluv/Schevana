@@ -484,16 +484,25 @@
                       (not (rec-writes-pending?))
                       made
                       (= 1 (length (gpu-frame-earlier f))))])
-    (gpu-present! f)
-    (rec-begin! 1)
-    (let ([again (rec-publish)])
-      (gpu-present! again)
-      (check "main hands the host a frame with what it asked of the GPU, \
-              the preview's list made on main; the host gives the frame \
-              back"
-             (and handed
-                  (= (bytevector-s32-native-ref (gpu-buffer-read! b) 0) 7)
-                  (eq? again f)))))
+    (gpu-publish! f)
+    (let ([waiting (gpu-frame-waiting?)])
+      (host-step! 0)
+      (render-frames-back!)
+      (rec-begin! 1)
+      (let ([again (rec-publish)])
+        (gpu-publish! again)
+        (let ([refused (raises? (lambda () (gpu-publish! (gpu-frame-make))))])
+          (host-step! 0)
+          (render-frames-back!)
+          (check "main publishes a frame with what it asked of the GPU, the \
+                  preview's list made on main; it waits till core0's step \
+                  presents it and gives it back, to be filled again; one \
+                  more published while it waits is refused"
+                 (and handed waiting (not (gpu-frame-waiting?))
+                      (gpu-frame-shown? f)
+                      (= (bytevector-s32-native-ref (gpu-buffer-read! b) 0)
+                         7)
+                      (eq? again f) refused))))))
   (gpu-buffer-release! b)
   (gpu-image-release! target))
 

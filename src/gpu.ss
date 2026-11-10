@@ -208,10 +208,22 @@
 
 ;;; ------------------------------------------------------------------ frames
 
+;; The frames core0 gave back, to fill again, and the last of them.
+(defvar *gpu-frames-free* '())
+(defvar *gpu-frame-last* #f)
+
+(define (gpu-frame-free! f)
+  (set! *gpu-frames-free* (cons f *gpu-frames-free*))
+  (set! *gpu-frame-last* f))
+
 ;; Main's side: the frame filled, what it asked of the GPU since handed on
 ;; with it; its writes "/recorder"'s to hand (rec-lend!). => the frame
 (define (gpu-publish table table-n pieces mode)
-  (let ([f (gpu-frame-take!)])
+  (let ([f (if (pair? *gpu-frames-free*)
+               (let ([f (car *gpu-frames-free*)])
+                 (set! *gpu-frames-free* (cdr *gpu-frames-free*))
+                 f)
+               (gpu-frame-make))])
     (let-values ([(jobs computes) (gpu-take-asks!)])
       (gpu-frame-jobs-set! f jobs)
       (gpu-frame-computes-set! f computes))

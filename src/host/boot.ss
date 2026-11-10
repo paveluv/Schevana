@@ -12,8 +12,8 @@
     host-flag-names host-event-name gpu-show-run? gpu-run-gone?
     ;; The records the two share. Their procedures touch nothing else, so
     ;; what's safe is who holds the record: a thread writes only those it
-    ;; holds, and a frame is the world's from gpu-frame-take! until
-    ;; gpu-present!.
+    ;; holds, and a frame is the world's from gpu-frame-make, or
+    ;; gpu-frames-back!, until gpu-publish!.
     ;; compiled shaders
     shader make-shader shader-name shader-stage shader-coords shader-params
     shader-source shader-code shader-price shader-target shader-entry
@@ -27,14 +27,13 @@
     gpu-image-gone?-set! make-gpu-buffer* gpu-buffer-id gpu-buffer-size
     gpu-buffer-gone?-set! make-gpu-call gpu-call? gpu-call-shader
     ;; frames; what they write is the recorder's (host-recorder-share)
-    gpu-frame-table-set! gpu-frame-table-n-set! gpu-frame-pieces-set!
-    gpu-frame-jobs-set! gpu-frame-computes-set! gpu-frame-mode-set!
+    gpu-frame-make gpu-frame-table-set! gpu-frame-table-n-set!
+    gpu-frame-pieces-set! gpu-frame-jobs-set! gpu-frame-computes-set!
+    gpu-frame-mode-set! gpu-frame-number gpu-frame-shown? gpu-frame-waits
     ;; What core0 says of itself, in variables it sets whole: another thread
     ;; reads each whole (Chez lets no thread see an object half made), but
     ;; not in step with the others, as ARM keeps no order between stores.
-    ;; *gpu-waits* is filled in place, so its slots may come from two
-    ;; frames.
-    *gpu-facts* *gpu-frame-state* *gpu-waits* *host*
+    *gpu-facts* *gpu-frame-state* *host*
     ;; The same, read through procedures: the window's facts as core0's
     ;; step last read them, made again whole when they change; and the
     ;; events its steps put in the world's inbox, taken.
@@ -46,13 +45,15 @@
     ;; thread.
     host-window-minimum! host-window-fullscreen! host-window-icon!
     host-set-cursor! clipboard-set!
-    ;; and its wake, ending core0's wait: from any thread
-    host-wake!
+    ;; and its wake, ending core0's wait; frames published, whether the last
+    ;; waits still, those given back, and what core0 read back: from any
+    ;; thread
+    host-wake! gpu-publish! gpu-frame-waiting? gpu-frames-back!
+    gpu-take-answers!
     ;; Calls into SDL or core0's own state: safe only on core0's thread.
     ;; Until core0 has a thread of its own the world steps it (host-step!),
     ;; and boots it (opening, sizing, showing the window).
-    host-step! gpu-frame-take! gpu-present! gpu-take-answers!
-    host-environment host-recorder-environment
+    host-step! host-environment host-recorder-environment
     host-window-headless!
     host-window-open! host-window-show! host-window-close!
     host-window-resize!))

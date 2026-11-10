@@ -7,8 +7,8 @@
 
 (check "reload leaves core0 as it booted: none of its files is the world's \
         to load, and its procedures stay the same"
-       (let ([present gpu-present!])
+       (let ([present gpu-publish!])
          (reload!)
          (and (not (exists (lambda (f) (string-prefix? "src/host/" f))
                            *schevana-sources*))
-              (eq? gpu-present! present))))
+              (eq? gpu-publish! present))))

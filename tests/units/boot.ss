@@ -11,11 +11,11 @@
   (check "core0 makes \"/\" with all of Chez and, of its own names, only its \
           interface: each core0's binding itself, and read-only"
          (and (eq? (in-world 'car) car)
-              (eq? (in-world 'gpu-present!) gpu-present!)
+              (eq? (in-world 'gpu-publish!) gpu-publish!)
               (eq? (in-world '*gpu-facts*) *gpu-facts*)
               (raises? (lambda () (in-world 'gpu-frame!)))
               (raises? (lambda () (in-world '*sdl-window*)))
-              (raises? (lambda () (in-world '(set! gpu-present! #f))))
+              (raises? (lambda () (in-world '(set! gpu-publish! #f))))
               (raises? (lambda () (in-world '(fluid-let ([*host* 'sdl]) #t))))
               (equal? (in-world '*schevana-sources*) '())
               (not (eq? world core0-env)))))

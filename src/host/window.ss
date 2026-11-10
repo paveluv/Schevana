@@ -476,13 +476,14 @@
   (guard (c [#t (set! *host-job-failed* (cons job c))])
     (apply (top-level-value (car job) (host-environment)) (cdr job))))
 
-;; One step of core0's: the jobs posted, in order; the events, waiting up to
-;; wait-ms for the first, into the world's inbox; then what it says of
-;; itself, read again.
+;; One step of core0's: the jobs posted, in order; the frame published, if
+;; one is; the events, waiting up to wait-ms for the first, into the
+;; world's inbox; then what it says of itself, read again.
 (define (host-step! wait-ms)
   (set-box! *host-woken* #f)
   (let ([jobs (host-take! *host-jobs*)])
     (for-each host-run-job! jobs)
+    (unless (eq? *host* 'none) (gpu-present-published!))
     (let-values ([(events types) (host-window-pump wait-ms)])
       (unless (null? types)
         (when (memv #x900 types) (host-clipboard-read!))   ; clipboard-update

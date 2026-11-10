@@ -1160,19 +1160,41 @@
      (cond
        [(or (not asked?) (eq? *host* 'none) (eqv? *canvas-pw* 0)) (void)]
        [(in-engine?) (request-frame!)]
-       [(host-hidden?) (request-frame!)]
+       [(or (host-hidden?) (gpu-frame-waiting?)) (request-frame!)]
        [else
         (let ([t0 (now-ns)] [waits *pacer-waits*])
           (rec-begin! *canvas-ratio*)
           (record-world!)
-          (let ([shown? (rec-present!)])
-            (if shown?
-                (set! *frames-drawn* (+ *frames-drawn* 1))
-                (request-frame!))
+          (rec-present!)
+          (let ([shown? (render-frames-back!)])
             (set! *frame-ms* (fl/ (fixnum->flonum
                                    (- (now-ns) t0 (- *pacer-waits* waits)))
                                   1e6))
             (frame-ring-add! shown?)))])]))
+
+;; The frames core0 gave back: each counted if it reached the screen, else
+;; one asked again, its waits for the screen told; then what core0 read
+;; back, handed to its then. => whether the last reached the screen, #f
+;; for none
+(define (render-frames-back!)
+  (let ([shown? (fold-left
+                 (lambda (shown? f)
+                   (let ([w (gpu-frame-waits f)])
+                     (unless (fx< (fxvector-ref w 0) 0)
+                       (host-screen-waited! 'acquire (fxvector-ref w 0)
+                                            (fxvector-ref w 1))
+                       (host-screen-waited! 'submit (fxvector-ref w 2)
+                                            (fxvector-ref w 3))))
+                   (if (gpu-frame-shown? f)
+                       (set! *frames-drawn* (+ *frames-drawn* 1))
+                       (request-frame!))
+                   (gpu-frame-free! f)
+                   (gpu-frame-shown? f))
+                 #f (gpu-frames-back!))])
+    (for-each (lambda (answer)
+                (safely 'readback (lambda () ((car answer) (cdr answer)))))
+              (gpu-take-answers!))
+    shown?))
 
 ;; The last frames, for kits/inspect.ss: what each took and held. Always
 ;; kept: a few numbers a frame.

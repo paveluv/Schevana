@@ -469,15 +469,12 @@
 ;; fragments), the core's, (target w h), the size frames draw to with no
 ;; window, (release id), and (read then recs recs-n extras extras-n table
 ;; table-n pieces runs w h clear?), a drawing read back, its pixels left with
-;; then in *gpu-answers*.
-(defvar *gpu-answers* '())
+;; then in *gpu-answers*, newest first.
+(defvar *gpu-answers* (box '()))
 
 ;; What core0 read back for main since main last took it, (then . bytes)
-;; each, in order: main hands each to its then.
-(define (gpu-take-answers!)
-  (let ([answers (reverse *gpu-answers*)])
-    (set! *gpu-answers* '())
-    answers))
+;; each, in order: main hands each to its then. From any thread.
+(define (gpu-take-answers!) (host-take! *gpu-answers*))
 
 ;; The jobs, and main's writes since it last handed them on (writes, a
 ;; recording of "/recorder"'s, or #f): what makes objects first, then the
@@ -520,10 +517,9 @@
        (gpu-forget-pipelines!)]
       [(target) (gpu-set-target! (cadr job) (caddr job))]
       [(read)
-       (set! *gpu-answers*
-         (cons (cons (cadr job)
-                     (apply gpu-drawing->bytes '() #f '() (cddr job)))
-               *gpu-answers*))]
+       (host-put! *gpu-answers*
+                  (cons (cadr job)
+                        (apply gpu-drawing->bytes '() #f '() (cddr job))))]
       [(release)
        (gpu-list-free! (cadr job))
        (let ([o (hashtable-ref *gpu-objects* (cadr job) #f)])
@@ -1245,8 +1241,8 @@
 ;;; What core0 says of itself, for the world to read (.work/gpu-design.md
 ;;; 9.12): an alist the world never changes, made again at the end
 ;;; of a frame only when what it's made of changed, so that a frame like the
-;;; last allocates nothing. A frame's own state, *gpu-frame-state*, and its
-;;; waits, *gpu-waits*, are told on their own.
+;;; last allocates nothing. A frame's own state, *gpu-frame-state*, is told
+;;; on its own, and its waits go back with it.
 
 (defvar *gpu-facts* '())
 
@@ -1307,38 +1303,61 @@
 ;;; A frame as main hands it to the host, which reads nothing else of main's
 ;;; (.work/gpu-design.md 9.5): the root's recording and the frame's number,
 ;;; "/recorder"'s to set (src/recorder/bytes.ss), the glyph table if it
-;;; changed, the atlas's new pieces, images with pixels to go up, the jobs,
-;;; the buffers made dirty and the compute runs asked for since, the
-;;; present mode, and lists kept from earlier to draw on images first,
-;;; (image . recording) each, the recorder's copies. One record goes back and
-;;; forth, filled again for each frame: a frame allocates none.
+;;; changed, the atlas's new pieces, the jobs, the writes and the compute
+;;; runs asked for since, the present mode, and lists kept from earlier to
+;;; draw on images first, (image . recording) each, the recorder's copies.
+;;; It comes back with whether it reached the screen and its waits for it.
+;;; The same few records go back and forth, filled again for each frame: a
+;;; frame allocates none.
 
 (define-record-type gpu-frame
-  (nongenerative schevana-gpu-frame-4)
+  (nongenerative schevana-gpu-frame-5)
   (fields (mutable root) (mutable number) (mutable table) (mutable table-n)
           (mutable pieces) (mutable jobs) (mutable writes) (mutable computes)
-          (mutable mode) (mutable earlier)))
+          (mutable mode) (mutable earlier) (mutable shown?) waits))
 
-;; The frame the host gave back, to fill; #f while it has it.
-(defvar *gpu-frame-free* #f)
+;; A frame to fill: main keeps those given back to fill again.
+(define (gpu-frame-make)
+  (make-gpu-frame #f 0 #f 0 '() '() #f '() #f '() #f (make-fxvector 4 -1)))
 
 ;; The number of the last frame the host gave back: what it read of the
 ;; recorder's is free to write again once a later frame doesn't show it.
 (defvar *gpu-frame-back* 0)
 
-;; The frame the host gave back, taken to be filled, or a new one.
-(define (gpu-frame-take!)
-  (let ([f (or *gpu-frame-free*
-               (make-gpu-frame #f 0 #f 0 '() '() #f '() #f '()))])
-    (set! *gpu-frame-free* #f)
-    f))
+;; The frame main published, till core0 takes it, else #f; and those core0
+;; gave back since main last took them, newest first.
+(defvar *gpu-published* (box #f))
+(defvar *gpu-given-back* (box '()))
 
+;; Main's side: f to the screen, core0 woken. One waits at a time: main
+;; publishes again once core0 has taken it (gpu-frame-waiting?).
+(define (gpu-publish! f)
+  (memory-order-release)
+  (let loop ()
+    (cond [(unbox *gpu-published*)
+           (errorf 'gpu-publish! "the frame published last waits for core0 \
+                                  still")]
+          [(not (box-cas! *gpu-published* #f f)) (loop)]))
+  (host-wake!))
 
+(define (gpu-frame-waiting?) (and (unbox *gpu-published*) #t))
 
-;; The host's side: main's jobs and writes, the lists kept from earlier on
-;; their images, then the frame; f given back.
-;; => #t if the frame reached the screen; #f if the window had no room for
-;; it yet, and it should be tried again.
+;; The frames core0 gave back since main last took them, oldest first.
+(define (gpu-frames-back!) (host-take! *gpu-given-back*))
+
+;; Core0's side, in its step: the frame published, if one is, presented
+;; and given back.
+(define (gpu-present-published!)
+  (let ([f (unbox *gpu-published*)])
+    (when f
+      (memory-order-acquire)
+      (let loop () (unless (box-cas! *gpu-published* f #f) (loop)))
+      (gpu-frame-shown?-set! f (gpu-present! f))
+      (host-put! *gpu-given-back* f))))
+
+;; Main's jobs and writes, the lists kept from earlier on their images,
+;; then the frame. => #t if the frame reached the screen; #f if the window
+;; had no room for it yet, and it should be tried again.
 (define (gpu-present! f)
   (gpu-run-jobs! (gpu-frame-jobs f) (gpu-frame-writes f))
   (gpu-present-mode! (gpu-frame-mode f))
@@ -1348,22 +1367,19 @@
           (gpu-list-on-image! (caar earlier) (cdar earlier))
           (loop (cdr earlier)))
         (let ([shown? (gpu-frame! f)])
-          ;; read and gone up: the frame goes back, and what it read
+          ;; read and gone up: what it read goes back
           (set! *gpu-frame-back* (gpu-frame-number f))
-          (set! *gpu-frame-free* f)
           (gpu-facts-refresh!)
           shown?))))
-
-;; The last frame's waits for the screen, on now-ns's clock: when the
-;; acquire began and ended, and the submit; all -1 with no window. Core0
-;; times them itself, and the world reads them after (src/host.ss).
-(defvar *gpu-waits* (make-fxvector 4 -1))
 
 ;; One frame: uploads, then the runs, to the window or the target. => #t if
 ;; it reached the screen; #f if the window had no room for it yet (a frame
 ;; still in flight, or it is hidden).
+;; Its waits for the screen, on now-ns's clock, in its waits: when the
+;; acquire began and ended, and the submit; all -1 with no window. Core0
+;; times them itself, and the world reads them after (src/host.ss).
 (define (gpu-frame! f)
-  (fxvector-fill! *gpu-waits* -1)
+  (fxvector-fill! (gpu-frame-waits f) -1)
   (let* ([r *renderer*]
          [root (gpu-frame-root f)]
          [runs (gpu-recording-runs root)]
@@ -1387,7 +1403,7 @@
         ;; the driver may hold either end of this till the screen is ready
         (let* ([out gpu-swapchain-out*]
                [done? (gpu-last-frame-done? r)]
-               [waits *gpu-waits*]
+               [waits (gpu-frame-waits f)]
                [shown?
                 (begin
                   (fxvector-set! waits 0 (now-ns))
