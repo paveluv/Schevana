@@ -2081,6 +2081,7 @@
                   [(root) (values 'globe 'accent)]
                   [(worklets) (values 'gear 'yellow)]
                   [(host) (values 'chip 'red)]   ; core0, the REPL's red
+                  [(recorder) (values 'drive 'red)]   ; sealed bytes
                   [(thread) (values 'gear 'orange)]
                   [(sandbox) (values 'box 'teal)]
                   [(apps) (values 'folder 'magenta)]

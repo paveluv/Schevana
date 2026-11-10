@@ -114,8 +114,8 @@
               "/worklets holds worklets only: define-worklet puts them there"]
              [(and (eq? what 'share) (memq kind '(apps app)))
               "An app holds the bundles it is allowed, and no more"]
-             [(and (eq? what 'share) (eq? kind 'host))
-              "Core0 names nothing of the world's: it sits below the core"]
+             [(and (eq? what 'share) (memq kind '(host recorder)))
+              "It names nothing of the world's: it sits below it"]
              [vat? "Its sandbox is its vat's: share and load before its \
                     thread starts"]
              [(and (eq? what 'share) (not (env-parent e)))
@@ -782,7 +782,7 @@
   (let* ([ui (envs-view-ui v)] [e (envs-view-selected v)]
          [kind (envs-view-kind v)] [forks (env-forks e)]
          ;; what may be forked by hand at all: those code makes (an app's
-         ;; sandbox) or core0 does ("/host") aren't offered
+         ;; sandbox) or core0 does ("/host", "/recorder") aren't offered
          [kinds (filter (lambda (k) (env-kind-ref k 'fork #t)) (env-kinds))]
          [bw (envs-sheet-width)] [ch (ui-control-height)]
          [radio-h (lambda (w k)   ; and 2 below

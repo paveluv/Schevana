@@ -1186,7 +1186,7 @@
         [ring *frame-ring*])
     (fxvector-set! ring at (flonum->fixnum (flround (fl* 1000.0 *frame-ms*))))
     (fxvector-set! ring (+ at 1) (rec-count))
-    (fxvector-set! ring (+ at 2) *rec-extra-at*)
+    (fxvector-set! ring (+ at 2) (rec-extra-at))
     (fxvector-set! ring (+ at 3) (length (rec-runs)))
     (fxvector-set! ring (+ at 4) *glyph-count*)
     (fxvector-set! ring (+ at 5) (if shown? 1 0)))

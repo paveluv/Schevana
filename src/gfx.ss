@@ -189,10 +189,9 @@
   (x0 y0 x1 y1 radius parent rx0 ry0 rx1 ry1))
 (define rec-most-points 256)
 
-(defvar *rec-bytes* (make-immobile-bytevector (* 32 16384) 0))
-(defvar *rec-at* 0)               ; bytes written
-(defvar *rec-extras* (make-immobile-bytevector (* 4 65536) 0))
-(defvar *rec-extra-at* 1)         ; words written
+;; The bytes recorded into, records and extras, are "/recorder"'s, sealed
+;; (src/recorder/bytes.ss): written only through rec-write!, rec-extra! and
+;; rec-extra-u32!, read through rec-extra-ref, rec-extra-at and rec-count.
 ;; the transform: num/den device pixels a logical pixel, the origin in
 ;; 1/256ths of a device pixel; a turn, as cos and sin, or #f
 (defvar *rec-num* 1)
@@ -225,11 +224,6 @@
 ;; what shaders' cost a list adds up to, as it's written: area in pixels
 (defvar *rec-area* 0)
 
-(define (rec-records-grow!)
-  (let ([new (make-immobile-bytevector (* 2 (bytevector-length *rec-bytes*)))])
-    (bytevector-copy! *rec-bytes* 0 new 0 *rec-at*)
-    (set! *rec-bytes* new)))
-
 ;; Which of the fragment shader's variants a record needs, by its head: an
 ;; index in gfx-fragments. A box or glyph in a solid color needs the plain
 ;; one; a line, a shadow or a paint the one with its code; a line or shadow
@@ -245,41 +239,12 @@
     (unless (fx= v *rec-variant*)
       (rec-run-end!)
       (set! *rec-variant* v)))
-  (let ([at *rec-at*])
-    (when (fx= at (bytevector-length *rec-bytes*)) (rec-records-grow!))
-    (let ([bv *rec-bytes*])
-      (bytevector-u32-native-set! bv at w0)
-      (bytevector-u32-native-set! bv (fx+ at 4) w1)
-      (bytevector-s32-native-set! bv (fx+ at 8) x0)
-      (bytevector-s32-native-set! bv (fx+ at 12) y0)
-      (bytevector-s32-native-set! bv (fx+ at 16) x1)
-      (bytevector-s32-native-set! bv (fx+ at 20) y1)
-      (bytevector-s32-native-set! bv (fx+ at 24) a)
-      (bytevector-s32-native-set! bv (fx+ at 28) b)
-      (set! *rec-at* (fx+ at 32)))))
+  (rec-write! w0 w1 x0 y0 x1 y1 a b))
 
-(define (rec-extras-room! n)
-  (when (> (* 4 (+ *rec-extra-at* n)) (bytevector-length *rec-extras*))
-    (let ([new (make-immobile-bytevector
-                (* 2 (+ (bytevector-length *rec-extras*) (* 4 n))))])
-      (bytevector-copy! *rec-extras* 0 new 0 (* 4 *rec-extra-at*))
-      (set! *rec-extras* new))))
-
-(define (rec-extra! v)
-  (rec-extras-room! 1)
-  (bytevector-s32-native-set! *rec-extras* (fx* 4 *rec-extra-at*) v)
-  (set! *rec-extra-at* (fx+ *rec-extra-at* 1)))
-
-(define (rec-extra-u32! v)
-  (rec-extras-room! 1)
-  (bytevector-u32-native-set! *rec-extras* (fx* 4 *rec-extra-at*) v)
-  (set! *rec-extra-at* (fx+ *rec-extra-at* 1)))
-
-;; Starts a list at a scale. A new list resets everything, so a draw that
-;; crashed leaves nothing to unwind.
+;; Starts the root's list at a scale, in bytes the world owns. A new list
+;; resets everything, so a draw that crashed leaves nothing to unwind.
 (define (rec-begin! ratio)
-  (set! *rec-at* 0)
-  (set! *rec-extra-at* 1)
+  (rec-bytes-begin!)
   (set! *rec-num* (numerator ratio))
   (set! *rec-den* (denominator ratio))
   (set! *rec-ox* 0)
@@ -297,7 +262,6 @@
   (set! *rec-images* '())
   (set! *rec-area* 0))
 
-(define (rec-count) (fxquotient *rec-at* 32))
 
 ;; Whether the run recorded before at this place is the list of the
 ;; values e ..., each compared once, nothing made.
@@ -374,18 +338,13 @@
 ;; only the pacer reads the clock.
 (define (record-list! lst thunk)
   (let ([t0 (and *profile-span* (now-ns))]
-        [outer (vector *rec-bytes* *rec-at* *rec-extras* *rec-extra-at*
-                       *rec-labels* *rec-label-at* *rec-label* *rec-runs*
+        [outer (vector *rec-labels* *rec-label-at* *rec-label* *rec-runs*
                        *rec-mode* *rec-image* *rec-variant* *rec-run-first*
                        *rec-area* *rec-runs-was* *rec-runs-same* *rec-num*
                        *rec-den* *rec-ox* *rec-oy* *rec-turn* *rec-clip*
                        *rec-cx0* *rec-cy0* *rec-cx1* *rec-cy1*)])
     (dynamic-wind
      (lambda ()
-       (set! *rec-bytes* (gpu-list-recs lst))
-       (set! *rec-at* 0)
-       (set! *rec-extras* (gpu-list-extras lst))
-       (set! *rec-extra-at* 1)
        (set! *rec-labels* (make-vector 16 #f))
        (set! *rec-label-at* 0)
        (set! *rec-label* #f)
@@ -401,13 +360,12 @@
        (set! *rec-oy* 0)
        (set! *rec-turn* #f)
        (set! *rec-clip* 0))
-     thunk
+     ;; its bytes, "/recorder"'s, written there; its runs end while they're
+     ;; the ones written
      (lambda ()
-       (gpu-list-runs-set! lst (rec-runs))
-       (gpu-list-recs-set! lst *rec-bytes*)
-       (gpu-list-recs-n-set! lst *rec-at*)
-       (gpu-list-extras-set! lst *rec-extras*)
-       (gpu-list-extras-n-set! lst (* 4 *rec-extra-at*))
+       (rec-into-list! lst thunk
+                       (lambda () (gpu-list-runs-set! lst (rec-runs)))))
+     (lambda ()
        (gpu-list-labels-set! lst (list->vector
                                   (list-head (vector->list *rec-labels*)
                                              *rec-label-at*)))
@@ -416,22 +374,18 @@
          (let ([now (now-ns)])
            (gpu-list-recorded-set! lst now)
            (gpu-list-took-set! lst (- now t0))))
-       (set! *rec-bytes* (vector-ref outer 0))
-       (set! *rec-at* (vector-ref outer 1))
-       (set! *rec-extras* (vector-ref outer 2))
-       (set! *rec-extra-at* (vector-ref outer 3))
-       (set! *rec-labels* (vector-ref outer 4))
-       (set! *rec-label-at* (vector-ref outer 5))
-       (set! *rec-label* (vector-ref outer 6))
-       (set! *rec-runs* (vector-ref outer 7))
-       (set! *rec-mode* (vector-ref outer 8))
-       (set! *rec-image* (vector-ref outer 9))
-       (set! *rec-variant* (vector-ref outer 10))
-       (set! *rec-run-first* (vector-ref outer 11))
-       (set! *rec-area* (vector-ref outer 12))
-       (set! *rec-runs-was* (vector-ref outer 13))
-       (set! *rec-runs-same* (vector-ref outer 14))
-       (apply rec-state-restore! (list-tail (vector->list outer) 15))))))
+       (set! *rec-labels* (vector-ref outer 0))
+       (set! *rec-label-at* (vector-ref outer 1))
+       (set! *rec-label* (vector-ref outer 2))
+       (set! *rec-runs* (vector-ref outer 3))
+       (set! *rec-mode* (vector-ref outer 4))
+       (set! *rec-image* (vector-ref outer 5))
+       (set! *rec-variant* (vector-ref outer 6))
+       (set! *rec-run-first* (vector-ref outer 7))
+       (set! *rec-area* (vector-ref outer 8))
+       (set! *rec-runs-was* (vector-ref outer 9))
+       (set! *rec-runs-same* (vector-ref outer 10))
+       (apply rec-state-restore! (list-tail (vector->list outer) 11))))))
 
 ;; lst drawn with its origin at (x, y), inside the clip: no record, a run
 ;; that shows it, and how many labels came before it, for kits/inspect.ss.
@@ -500,7 +454,7 @@
          [colors (list-tail c (if radial? 4 5))]
          [n (length colors)]
          [words (map color-word colors)]
-         [row *rec-extra-at*])
+         [row (rec-extra-at)])
     (rec-extra! (if radial? rec-gradient-radial 0))
     (if radial?
         (apply (lambda (cx cy r)
@@ -534,7 +488,7 @@
                      t))]
          [ink (color-word (cadr c))]
          [paper (if (caddr c) (color-word (caddr c)) 0)]
-         [row *rec-extra-at*])
+         [row (rec-extra-at)])
     (for-each rec-extra! tile)
     (rec-extra-u32! ink)
     (rec-extra-u32! paper)
@@ -667,7 +621,7 @@
                        points)]
            [xs (map (lambda (p) (rec-point-x (car p) (cdr p))) points)]
            [ys (map (lambda (p) (rec-point-y (car p) (cdr p))) points)]
-           [row *rec-extra-at*])
+           [row (rec-extra-at)])
       (for-each (lambda (x y) (rec-extra! x) (rec-extra! y)) xs ys)
       (rec-put! head paint
                 (apply min xs) (apply min ys) (apply max xs) (apply max ys)
@@ -807,7 +761,7 @@
 ;; one. Given 'gray, its first channel shows as gray: an image of one
 ;; channel, as a texture viewer shows it.
 (define (draw-image image x y w h . gray)
-  (let ([row *rec-extra-at*]
+  (let ([row (rec-extra-at)]
         [x0 (rec-snap (rec-device x *rec-ox*))]
         [y0 (rec-snap (rec-device y *rec-oy*))]
         [x1 (rec-snap (rec-device (+ x w) *rec-ox*))]
@@ -963,7 +917,7 @@
          [y1 (fxmax y0 (if (fx= clip 0) by (fxmin by *rec-cy1*)))]
          [radius (rec-radius r w h)]
          [own? (or (fx= clip 0) (not (eqv? radius 0)))]
-         [row *rec-extra-at*])
+         [row (rec-extra-at)])
     (rec-extra! x0)
     (rec-extra! y0)
     (rec-extra! x1)
@@ -980,8 +934,6 @@
     (set! *rec-cx1* x1)
     (set! *rec-cy1* y1)))
 
-(define (rec-extra-ref row k)
-  (bytevector-s32-native-ref *rec-extras* (fx* 4 (fx+ row k))))
 
 (define (rec-clip-leave!)
   (let ([clip (rec-extra-ref *rec-clip* clip-row-parent)])
@@ -1484,6 +1436,7 @@
 ;; the lists kept from earlier: the past one, and the preview's, which its
 ;; procedure makes here, on main, of the frame just recorded.
 (define (rec-publish)
+  (rec-freeze!)
   (let* ([preview *rec-preview*]
          [kept (and preview
                     (guard (c [#t (report-error! 'preview c) #f])
@@ -1492,9 +1445,12 @@
                           (if kept (list (cons (car preview) kept)) '()))])
     (set! *rec-preview* #f)
     (set! *rec-past* #f)
-    (gpu-publish *rec-bytes* *rec-at* *rec-extras* (* 4 *rec-extra-at*)
-                 (rec-take-table!) (rec-table-bytes) (rec-take-atlas-pieces!)
-                 *rec-images* (rec-runs) (theme 'present-mode) earlier)))
+    ;; its records and extras, the frozen ones, it's lent by "/recorder"
+    (let ([f (gpu-publish (rec-take-table!) (rec-table-bytes)
+                          (rec-take-atlas-pieces!) *rec-images* (rec-runs)
+                          (theme 'present-mode) earlier)])
+      (rec-lend! f)
+      f)))
 
 ;; With the next frame, a list drawn on image too, as big as the screen, for
 ;; the Pipeline: what (list-of) gives as it's sent, made of the frame just
@@ -1517,15 +1473,10 @@
 (define (drawing->bytes-then pw ph scale thunk clear? then)
   (rec-begin! (rationalize (exact scale) 1/100000))
   (thunk)
-  (let ([copy (lambda (bv n)
-                (let ([c (make-bytevector n)])
-                  (bytevector-copy! bv 0 c 0 n)
-                  c))])
-    (gpu-ask! (list 'read then (copy *rec-bytes* *rec-at*) *rec-at*
-                    (copy *rec-extras* (* 4 *rec-extra-at*))
-                    (* 4 *rec-extra-at*) (rec-take-table!) (rec-table-bytes)
-                    (rec-take-atlas-pieces!) *rec-images* (rec-runs) pw ph
-                    clear?)))
+  (let-values ([(recs recs-n extras extras-n) (rec-bytes-copies)])
+    (gpu-ask! (list 'read then recs recs-n extras extras-n (rec-take-table!)
+                    (rec-table-bytes) (rec-take-atlas-pieces!) *rec-images*
+                    (rec-runs) pw ph clear?)))
   (request-frame!))
 
 (define drawing->bytes
@@ -1537,7 +1488,5 @@
      (let-values ([(jobs dirty computes) (gpu-take-asks!)])
        (let ([table (rec-take-table!)]
              [pieces (rec-take-atlas-pieces!)])
-         (gpu-drawing->bytes jobs dirty computes *rec-bytes* *rec-at*
-                            *rec-extras* (* 4 *rec-extra-at*)
-                            table (rec-table-bytes) pieces *rec-images*
-                            (rec-runs) pw ph clear?)))]))
+         (rec-drawing->bytes jobs dirty computes table (rec-table-bytes)
+                             pieces *rec-images* (rec-runs) pw ph clear?)))]))

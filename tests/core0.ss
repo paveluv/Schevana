@@ -35,4 +35,18 @@
   (core0-forwarder (datum->syntax #'core0-env 'now-ns))
   *host-world*)
 
+;; The recorder's names too, sealed from the world but not from the tests
+;; (poisoning, its pools, the last frame): each forwarded, and settable.
+(let ([recorder (host-recorder-environment)]
+      [world (make-eq-hashtable)])
+  (for-each (lambda (n) (hashtable-set! world n #t))
+            (environment-symbols *host-world*))
+  (let ([anchor (host-anchor recorder)])
+    (for-each (lambda (n)
+                (unless (hashtable-ref world n #f)
+                  (define-top-level-syntax n
+                    (core0-forwarder (datum->syntax anchor n))
+                    *host-world*)))
+              (environment-symbols recorder))))
+
 (host-enter-world!)

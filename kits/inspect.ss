@@ -46,10 +46,27 @@
 ;; l holds the last list recorded from now on, the frame's, in its own
 ;; buffers when they're big enough: they stay where they are, and a
 ;; collection needn't copy them.
+;; The last frame's records and extras as the kit reads them: its own copy
+;; ("/recorder" lends a frame's bytes to no one), its buffers kept to grow.
+(define inspect-last-bytes (vector (make-bytevector 0) (make-bytevector 0)))
+(define (inspect-last-read!)
+  (let-values ([(recs-n extras-n) (rec-last-sizes)])
+    (let ([fit (lambda (k n)
+                 (when (< (bytevector-length (vector-ref inspect-last-bytes k))
+                          n)
+                   (vector-set! inspect-last-bytes k
+                                (make-bytevector (+ n (quotient n 4))))))])
+      (fit 0 recs-n)
+      (fit 1 extras-n)
+      (rec-last-copy! (vector-ref inspect-last-bytes 0)
+                      (vector-ref inspect-last-bytes 1))
+      (values (vector-ref inspect-last-bytes 0) recs-n
+              (vector-ref inspect-last-bytes 1) extras-n))))
+
 (define (inspect-list-read! l)
-  (let ([newest (inspect-frames 1)])
-    (inspect-list-flat! l *rec-bytes* (* 32 (rec-count)) *rec-extras*
-                        (* 4 *rec-extra-at*) (rec-runs)
+  (let-values ([(newest) (inspect-frames 1)]
+               [(recs recs-n extras extras-n) (inspect-last-read!)])
+    (inspect-list-flat! l recs recs-n extras extras-n (rec-runs)
                         (list->vector (list-head (vector->list *rec-labels*)
                                                  *rec-label-at*))
                         (and (pair? newest) (car newest))
@@ -486,18 +503,16 @@
     (when (> frame (inspect-history-newest h))
       (let* ([i (modulo frame (vector-length slots))]
              [slot (or (vector-ref slots i) (inspect-history-slot-empty))]
-             [recs-n (* 32 (rec-count))]
-             [extras-n (* 4 *rec-extra-at*)]
              [newest (inspect-frames 1)])
         (define (fit! k n)
           (when (< (bytevector-length (vector-ref slot k)) n)
             (vector-set! slot k (make-bytevector (+ n (quotient n 4))))))
-        (fit! 0 recs-n)
-        (fit! 2 extras-n)
-        (bytevector-copy! *rec-bytes* 0 (vector-ref slot 0) 0 recs-n)
-        (bytevector-copy! *rec-extras* 0 (vector-ref slot 2) 0 extras-n)
-        (vector-set! slot 1 recs-n)
-        (vector-set! slot 3 extras-n)
+        (let-values ([(recs-n extras-n) (rec-last-sizes)])
+          (fit! 0 recs-n)
+          (fit! 2 extras-n)
+          (rec-last-copy! (vector-ref slot 0) (vector-ref slot 2))
+          (vector-set! slot 1 recs-n)
+          (vector-set! slot 3 extras-n))
         (vector-set! slot 4 (inspect-runs-copied (rec-runs)))
         (vector-set! slot 5 (list->vector
                              (list-head (vector->list *rec-labels*)

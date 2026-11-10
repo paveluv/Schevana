@@ -352,8 +352,8 @@
         (do ([x 0 (+ x 2)]) ((>= x n)) (fill-box x 0 1 n #xffffff))))
     (rec-preview! target
                   (lambda ()
-                    (list *rec-bytes* *rec-at* *rec-extras*
-                          (* 4 *rec-extra-at*) (rec-runs))))
+                    (let-values ([(recs n extras extras-n) (rec-last)])
+                      (list recs n extras extras-n (rec-runs)))))
     (request-frame!)
     (steps 1)
     (set! record-world! plain)
@@ -444,8 +444,8 @@
       (fill-box 2 0 1 4 #xff4000)))
   (rec-preview! target
                   (lambda ()
-                    (list *rec-bytes* *rec-at* *rec-extras*
-                          (* 4 *rec-extra-at*) (rec-runs))))
+                    (let-values ([(recs n extras extras-n) (rec-last)])
+                      (list recs n extras extras-n (rec-runs)))))
   (request-frame!)
   (steps 1)
   (set! record-world! plain)
@@ -473,8 +473,8 @@
   (rec-preview! target
                 (lambda ()
                   (set! made #t)
-                  (list *rec-bytes* *rec-at* *rec-extras*
-                        (* 4 *rec-extra-at*) (rec-runs))))
+                  (let-values ([(recs n extras extras-n) (rec-last)])
+                    (list recs n extras extras-n (rec-runs)))))
   (let* ([f (rec-publish)]
          [handed (and (memq b (gpu-frame-dirty f))
                       (null? *gpu-dirty-buffers*)

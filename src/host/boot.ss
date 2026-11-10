@@ -32,8 +32,7 @@
     gpu-buffer-to gpu-buffer-to-set! gpu-buffer-gone?-set! make-gpu-call
     gpu-call? gpu-call-shader
     ;; frames
-    gpu-frame-recs-set! gpu-frame-recs-n-set! gpu-frame-extras-set!
-    gpu-frame-extras-n-set! gpu-frame-table-set! gpu-frame-table-n-set!
+    gpu-frame-table-set! gpu-frame-table-n-set!
     gpu-frame-pieces-set! gpu-frame-images-set! gpu-frame-runs-set!
     gpu-frame-jobs-set! gpu-frame-dirty-set! gpu-frame-computes-set!
     gpu-frame-mode-set! gpu-frame-earlier-set!
@@ -61,7 +60,8 @@
     ;; and boots it (opening, sizing, showing the window).
     host-step! gpu-frame-take! gpu-present! gpu-take-answers!
     gpu-drawing->bytes gpu-compute-now! gpu-submit-computes!
-    gpu-buffer-download! host-environment host-window-headless!
+    gpu-buffer-download! host-environment host-recorder-environment
+    host-window-headless!
     host-window-open! host-window-show! host-window-close!
     host-window-resize!))
 
@@ -74,21 +74,67 @@
 (define host-environment
   (let ([e (interaction-environment)]) (lambda () e)))
 
-;; Makes "/", all of Chez and of core0 only its interface, each name a
-;; read-only forwarder to core0's binding (an identifier made here names
-;; it); then loads the world's sources there, from root.
-(define (host-boot! root sources)
-  (let ([world (copy-environment (scheme-environment) #t)])
-    (for-each (lambda (name)
-                (define-top-level-syntax name
-                  (forwarder-to (datum->syntax #'host-boot! name))
-                  world))
-              host-interface)
-    (define-top-level-value '*schevana-root* root world)
-    (define-top-level-value '*schevana-sources* sources world)
-    (set! *host-world* world)
-    (parameterize ([interaction-environment world])
-      (for-each (lambda (f) (load (string-append root "/" f))) sources))))
+;; What core0 shares with "/recorder" alone, beside its interface: a frame's
+;; records and extras, and the blocks they're lent in. The world never has
+;; them, so it can't name a byte core0 reads.
+(define host-recorder-share
+  '(gpu-frame-recs-set! gpu-frame-recs-n-set! gpu-frame-extras-set!
+    gpu-frame-extras-n-set! gpu-frame-blocks gpu-frame-blocks-set!
+    make-gpu-block gpu-block? gpu-block-bytes gpu-block-bytes-set!
+    gpu-block-owner gpu-block-owner-set!))
+
+;; "/recorder", sealed (.work/gpu-design.md 9.14): the bytes of frames and
+;; their writers, below the world, which names only its interface.
+(defvar *host-recorder* #f)
+(define (host-recorder-environment) *host-recorder*)
+
+;; An identifier at environment's top level: a forwarder made from it names
+;; that environment's binding. A macro there, under a name no code can type,
+;; hands back the identifier it is used with.
+(define (host-anchor environment)
+  (let ([grab (gensym "host-anchor")] [got #f])
+    (define-top-level-syntax grab
+      (lambda (x)
+        (syntax-case x () [(_ id) (begin (set! got #'id) #''anchor)]))
+      environment)
+    (eval (list grab 'host-anchor) environment)
+    got))
+
+;; A sealed environment: all of Chez and, of each (names . anchor) shared,
+;; each name a read-only forwarder to the binding anchor's environment has.
+(define (host-sealed shares)
+  (let ([e (copy-environment (scheme-environment) #t)])
+    (for-each (lambda (share)
+                (for-each (lambda (name)
+                            (define-top-level-syntax name
+                              (forwarder-to (datum->syntax (cdr share) name))
+                              e))
+                          (car share)))
+              shares)
+    e))
+
+(define (host-load! e root sources)
+  (parameterize ([interaction-environment e])
+    (for-each (lambda (f) (load (string-append root "/" f))) sources)))
+
+;; Makes "/recorder", sealed, shared core0's interface, and loads its
+;; sources there; then "/", shared core0's interface and the recorder's,
+;; and loads the world's sources there, from root.
+(define (host-boot! root recorder-sources sources)
+  (let* ([core0 (cons host-interface #'host-boot!)]
+         [recorder (host-sealed
+                    (list (cons (append host-interface host-recorder-share)
+                                #'host-boot!)))])
+    (set! *host-recorder* recorder)
+    (host-load! recorder root recorder-sources)
+    (let ([world (host-sealed
+                  (list core0
+                        (cons (top-level-value 'recorder-interface recorder)
+                              (host-anchor recorder))))])
+      (define-top-level-value '*schevana-root* root world)
+      (define-top-level-value '*schevana-sources* sources world)
+      (set! *host-world* world)
+      (host-load! world root sources))))
 
 ;; Moves a script that loaded the tree (main.ss, a test) into "/": its later
 ;; forms evaluate there, as the world's.

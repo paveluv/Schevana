@@ -74,14 +74,16 @@
             (make-eq-hashtable) (make-eq-hashtable) '() #f kind may-fork
             #f (make-eq-hashtable) ""))
 
-;; Root, with the worklets' environment its first child, and core0's,
-;; "/host", its second.
+;; Root, with the worklets' environment its first child, core0's, "/host",
+;; its second, and the recorder's, "/recorder", sealed, its third.
 (defvar *env-root*
   (let ([root (env-new 'root #f #f *world-env* 'root 'all)])
     (env-children-set! root
       (list (env-new 'worklets root 'core *worklet-environment*
                      'worklets '())
-            (env-new 'host root 'chez (host-environment) 'host '())))
+            (env-new 'host root 'chez (host-environment) 'host '())
+            (env-new 'recorder root 'chez (host-recorder-environment)
+                     'recorder '())))
     root))
 
 (define (env-root) *env-root*)
@@ -794,6 +796,17 @@
   'doc "Core0, below the core: the window, its events and the GPU's \
         device side. Of the world's names it holds none; what is defined \
         here changes the host at its next call")
+
+(env-register-kind! 'recorder
+  'title "The recorder"
+  'base 'chez
+  'forks '()
+  'fork #f
+  'kept "the bytes of frames are written there, and nowhere else; its \
+         files load again into it, or with a restart"
+  'doc "Sealed: the bytes of what the world records and hands core0 with \
+        a frame, and the only code that writes them. The world names only \
+        its interface")
 
 (env-register-kind! 'sandbox
   'title "Sandbox"

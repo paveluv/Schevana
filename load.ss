@@ -15,6 +15,12 @@
   '("src/ffi.ss" "src/base.ss" "src/host/sdl.ss" "src/host/gpu.ss"
     "src/host/window.ss" "src/host/boot.ss"))
 
+;; "/recorder", sealed, made by core0 before "/": the basics, then the bytes
+;; of frames and their writers (src/recorder/). Like core0's, these change
+;; with a restart.
+(define *schevana-recorder-sources*
+  '("src/base.ss" "src/recorder/bytes.ss"))
+
 ;; The world's core, in load order, in "/": the C bindings and the basics,
 ;; a copy of its own, then the core above core0. Its last file loads the
 ;; folders (kits, desktop, styles, palettes, wallpapers, apps): see
@@ -27,4 +33,4 @@
 
 (for-each (lambda (f) (load (string-append *schevana-root* "/" f)))
           *schevana-core0-sources*)
-(host-boot! *schevana-root* *schevana-sources*)
+(host-boot! *schevana-root* *schevana-recorder-sources* *schevana-sources*)

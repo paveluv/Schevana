@@ -3,8 +3,9 @@
 
 ;; The tests' "/" forwards every name of core0's (tests/core0.ss), so a "/"
 ;; made again, with no sources, shows what the world is given.
-(let ([world (fluid-let ([*host-world* *host-world*])
-               (host-boot! *schevana-root* '())
+(let ([world (fluid-let ([*host-world* *host-world*]
+                         [*host-recorder* *host-recorder*])
+               (host-boot! *schevana-root* *schevana-recorder-sources* '())
                *host-world*)])
   (define (in-world form) (eval form world))
   (check "core0 makes \"/\" with all of Chez and, of its own names, only its \
@@ -18,6 +19,22 @@
               (raises? (lambda () (in-world '(fluid-let ([*host* 'sdl]) #t))))
               (equal? (in-world '*schevana-sources*) '())
               (not (eq? world core0-env)))))
+
+(let ([world (fluid-let ([*host-world* *host-world*]
+                         [*host-recorder* *host-recorder*])
+               (host-boot! *schevana-root* *schevana-recorder-sources* '())
+               *host-world*)])
+  (define (named? name) (guard (c [#t #f]) (eval name world) #t))
+  (check "\"/recorder\" is sealed: \"/\" holds its interface, read-only, and \
+          none of the bytes it hands core0, nor what writes them"
+         (and (procedure? (eval 'rec-write! world))
+              (raises? (lambda () (eval '(set! rec-write! #f) world)))
+              (not (named? '*rec-bytes*))
+              (not (named? '*rec-pairs*))
+              (not (named? 'rec-block-writable))
+              (not (named? 'gpu-block-bytes-set!))
+              (not (named? 'gpu-frame-recs-set!))
+              (eq? (env-kind (env-find "/recorder")) 'recorder))))
 
 (check "the world runs in an environment of its own, not core0's"
        (and (eq? *world-env* *host-world*)

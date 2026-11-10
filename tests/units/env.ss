@@ -368,7 +368,8 @@
               (equal? (envs-chip-picked "a") '(a "" "")))))
 
 (check "dropping a child takes it, and its children, out of the tree and \
-        marks them dropped; not the world, nor /worklets, /host or /apps"
+        marks them dropped; not the world, nor /worklets, /host, /recorder \
+        or /apps"
        (let ([g (env-child units-env-world 'grand 'chez)])
          (env-drop! units-env-world)
          (env-drop! units-env)
@@ -378,12 +379,13 @@
               (raises? (lambda () (env-drop! (env-root))))
               (raises? (lambda () (env-drop! (env-worklets))))
               (raises? (lambda () (env-drop! (env-find "/host"))))
+              (raises? (lambda () (env-drop! (env-find "/recorder"))))
               (raises? (lambda () (env-drop! (grant-apps-env))))
               (not (env-find "/units-world/grand"))
               (not (env-find "/units"))
               (not (memq units-env (env-children (env-root))))
               (equal? (map env-name (env-children (env-root)))
-                      '(worklets host apps)))))
+                      '(worklets host recorder apps)))))
 
 ;;; The confined base (services/env.ss): what is always safe, for apps.
 

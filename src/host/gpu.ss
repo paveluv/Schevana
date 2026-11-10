@@ -1218,12 +1218,21 @@
 ;;; (image recs recs-n extras extras-n runs) each. One record goes back and
 ;;; forth, filled again for each frame: a frame allocates none.
 
+;; Bytes the world lends core0 with a frame, as a block: the world writes
+;; them only while it owns the block (owner 'world), and only the world
+;; writes the owner. Lent, a block is frozen: core0 reads it, the world may
+;; too, nobody writes it, until core0 gives the frame back with it.
+(define-record-type gpu-block
+  (nongenerative schevana-gpu-block-1)
+  (fields (mutable bytes) (mutable owner)))
+
 (define-record-type gpu-frame
-  (nongenerative schevana-gpu-frame-1)
+  (nongenerative schevana-gpu-frame-2)
   (fields (mutable recs) (mutable recs-n) (mutable extras) (mutable extras-n)
           (mutable table) (mutable table-n) (mutable pieces) (mutable images)
           (mutable runs) (mutable jobs) (mutable dirty) (mutable computes)
-          (mutable mode) (mutable earlier)))
+          (mutable mode) (mutable earlier)
+          (mutable blocks)))   ; what it was lent, given back with it
 
 ;; The frame the host gave back, to fill; #f while it has it.
 (defvar *gpu-frame-free* #f)
@@ -1231,9 +1240,12 @@
 ;; The frame the host gave back, taken to be filled, or a new one.
 (define (gpu-frame-take!)
   (let ([f (or *gpu-frame-free*
-               (make-gpu-frame #f 0 #f 0 #f 0 '() '() '() '() '() '() #f '()))])
+               (make-gpu-frame #f 0 #f 0 #f 0 '() '() '() '() '() '() #f '()
+                               '()))])
     (set! *gpu-frame-free* #f)
     f))
+
+
 
 ;; The host's side: main's jobs, the lists kept from earlier on their
 ;; images, then the frame, the dirty buffers going up with the first of
@@ -1249,6 +1261,7 @@
           (apply gpu-list-on-image! dirty (car earlier))
           (loop (cdr earlier) '()))
         (let ([shown? (gpu-frame! f dirty)])
+          ;; read and gone up: the frame goes back, its blocks with it
           (set! *gpu-frame-free* f)
           (gpu-facts-refresh!)
           shown?))))

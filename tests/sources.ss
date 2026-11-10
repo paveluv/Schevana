@@ -68,8 +68,14 @@
 (define core0-files
   (remp (lambda (f) (member f *schevana-sources*)) *schevana-core0-sources*))
 
+;; "/recorder"'s own files, src/recorder/, sealed between core0 and the
+;; world.
+(define recorder-files
+  (remp (lambda (f) (member f *schevana-sources*))
+        *schevana-recorder-sources*))
+
 (define line-files
-  (append core0-files
+  (append core0-files recorder-files
           (source-files)
           (test-files "tests")
           (test-files "tests/units")
@@ -143,7 +149,8 @@
 ;; Names defined in two files on purpose: ((kind . name) reason) ...
 (define defined-twice '())
 
-(define world-files (append core0-files (source-files) '("load.ss")))
+(define world-files
+  (append core0-files recorder-files (source-files) '("load.ss")))
 
 ;; An app in a sandbox (services/grant.ss): what its file defines is the
 ;; sandbox's, but for the app itself, so it collides with nothing.
@@ -185,7 +192,7 @@
 
 ;; Raise it deliberately: the core is what the desktop needs to boot and
 ;; run; everything else belongs in a folder.
-(define src-budget 29288)
+(define src-budget 29749)
 
 ;; The tokens of a datum as read; a list's end is none.
 (define (tokens x)
@@ -195,7 +202,7 @@
         [else 1]))
 
 (let* ([counts (map (lambda (f) (cons f (apply + (map tokens (file-forms f)))))
-                    (append core0-files
+                    (append core0-files recorder-files
                             (filter (lambda (f) (string-prefix? "src/" f))
                                     *schevana-sources*)))]
        [n (apply + (map cdr counts))])
@@ -340,13 +347,15 @@
 ;;; here, and the lists only shrink.
 
 (define above-core0-files
-  (remp (lambda (f)
-          (member f (append core0-files '("src/ffi.ss" "src/base.ss"))))
-        (filter (lambda (f) (string-prefix? "src/" f)) *schevana-sources*)))
+  (append recorder-files
+          (remp (lambda (f)
+                  (member f (append core0-files '("src/ffi.ss" "src/base.ss"))))
+                (filter (lambda (f) (string-prefix? "src/" f))
+                        *schevana-sources*))))
 
-;; What core0 still names of the core above it: nothing since it times its
-;; own waits; kept for what a later change may have to list.
-(define core0-reaches-up '())
+;; What core0 names of the core above it: only the recorder's interface,
+;; which it reads by name as it makes "/" and shares it there.
+(define core0-reaches-up '(recorder-interface))
 
 (check "core0 names nothing of the core above it but what's listed, on its \
         way out"
@@ -398,7 +407,39 @@
                                    (filter (lambda (s) (memq s own))
                                            (reverse (code-symbols-in
                                                      (file-forms f))))))
-                            (remp (lambda (f) (member f core0-files))
+                            (remp (lambda (f) (or (member f core0-files)
+                                                  (member f recorder-files)))
+                                  (append world-files '("main.ss"))))))))
+
+;; "/recorder" is given core0's interface and, alone, a frame's bytes and the
+;; blocks they're lent in (host-recorder-share in src/host/boot.ss).
+(check "the recorder names nothing of core0's but its interface and its share"
+       (let ([own (remp (lambda (n)
+                          (memq n (append host-interface host-recorder-share)))
+                        (map cdr (apply append
+                                        (map definitions core0-files))))])
+         (none? (apply append
+                       (map (lambda (f)
+                              (map (lambda (s) (format "~a names ~a" f s))
+                                   (filter (lambda (s) (memq s own))
+                                           (reverse (code-symbols-in
+                                                     (file-forms f))))))
+                            recorder-files)))))
+
+;; "/recorder" is sealed (.work/gpu-design.md 9.14): of its names the world
+;; names only its interface (recorder-interface in src/recorder/bytes.ss),
+;; so nothing the world does can write a byte it hands core0.
+(check "the world names nothing of the recorder's but its interface"
+       (let ([own (remp (lambda (n) (memq n recorder-interface))
+                        (map cdr (apply append
+                                        (map definitions recorder-files))))])
+         (none? (apply append
+                       (map (lambda (f)
+                              (map (lambda (s) (format "~a names ~a" f s))
+                                   (filter (lambda (s) (memq s own))
+                                           (reverse (code-symbols-in
+                                                     (file-forms f))))))
+                            (remp (lambda (f) (member f recorder-files))
                                   (append world-files '("main.ss"))))))))
 
 ;; The SDL the core above core0 still calls: none since the window went down
