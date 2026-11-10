@@ -51,6 +51,35 @@
            (and (= (bytes-allocated 1) before)
                 (= 1 (bytevector-u8-ref kept 0))))))
 
+(let* ([counts '()]
+       [note! (lambda () (set! counts (cons (collections) counts)))]
+       [win (open-window "Hog" 'size '(80 . 60)
+                         ;; some 17 MB, past the trip many times over
+                         'draw (lambda (win w h)
+                                 (note!)
+                                 (let loop ([i 0] [keep '()])
+                                   (when (< i 200000)
+                                     (loop (+ i 1)
+                                           (cons (make-vector 8)
+                                                 (if (> (length keep) 10)
+                                                     '()
+                                                     keep)))))
+                                 (note!)))])
+  (steps 1)
+  (set! counts '())
+  (let ([present rec-present!])
+    (fluid-let ([rec-present! (lambda () (note!) (present))])
+      (invalidate! win)
+      (steps 1)))
+  (let ([after (collections)] [seen (reverse counts)])
+    (close-window! win)
+    (check (format "a collection asked for in a frame turn waits till its \
+                    frame is out (collections at the draw's start and \
+                    end, at the publish, after: ~a ~a)" seen after)
+           (and (= (length seen) 3)
+                (apply = seen)
+                (> after (car seen))))))
+
 (check "a deep pass never touches the world"
        (let ([world (bytes-allocated 4)])
          (collector-pass! 3 3)

@@ -370,13 +370,18 @@
                             (fx+ *profile-tick-newest* 1) key
                             (vector-ref *profile-parts* d) phase self 1))))))
 
-;; The collector's work: timed in all, and a span of its own, gc.
+;; The collector's work: timed in all, and a span of its own, gc; a
+;; request the collector holds off for later (collector-declining?) is
+;; neither.
 (define (profile-collect)
-  (profile-begin! 'gc #f)
-  (let ([t0 (now-ns)])
-    (*profile-plain-collect*)
-    (set! *profile-gc-ns* (fx+ *profile-gc-ns* (fx- (now-ns) t0))))
-  (profile-end! #f))
+  (if (collector-declining?)
+      (*profile-plain-collect*)
+      (begin
+        (profile-begin! 'gc #f)
+        (let ([t0 (now-ns)])
+          (*profile-plain-collect*)
+          (set! *profile-gc-ns* (fx+ *profile-gc-ns* (fx- (now-ns) t0))))
+        (profile-end! #f))))
 
 ;;; ------------------------------------------------------------------ ticks
 

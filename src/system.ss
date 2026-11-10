@@ -173,11 +173,11 @@
                     (and (or (not now)
                              (and (pacer-wanted?) (>= now (pacer-start))
                                   (not (gpu-frame-waiting?))))
-                         (begin (pacer-tick! now) #t)))))])
+                         (begin (collector-hold!) (pacer-tick! now) #t)))))])
       ;; a step leads up to a tick only while one is wanted; one in a quiet
       ;; spell is its own, as a tick nothing asked for once was
       (set! *pacer-between?* (and (pair? paced) (not ticked?) (pacer-wanted?)))
-      (when (or ticked? (not (pacer-wanted?))) (collector-tick!))
+      (unless (or ticked? (pacer-wanted?)) (collector-tick!))
       (safely 'procs
               (lambda () (run-procs! (if (null? paced) 10 (pacer-procs-ms)))))
       ;; a frame a tick at most
@@ -188,6 +188,9 @@
         (set! *dirty* #f)
         (safely 'render render-frame!)
         (frame-turn-soon!))
+      ;; the frame is out: the collections it held off, and the older
+      ;; generations' passes
+      (when ticked? (collector-after-frame!))
       ;; compute runs and writes no frame took go on their own
       (when (and (gpu-asks-pending?) (not (reload-holding?)))
         (safely 'render gpu-computes-send!)))))
@@ -415,15 +418,38 @@
 
 ;; What the next rendezvous collects, (generation . target); #f, the young.
 (defvar *collector-pass* #f)
+;; A frame turn, from its tick to its frame's publish, holds the young
+;; generation's collections off: one asked for then waits till after, where
+;; its pause costs the frame nothing, the heap growing meanwhile by what the
+;; turn allocates. Whether a turn holds them, and whether one was asked for.
+(defvar *collector-holding?* #f)
+(defvar *collector-held?* #f)
 (defvar *collector-check-ms* 0)
 (defvar *collector-input-ms* 0)
 ;; generations 2 and 3 when last collected
 (defvar *collector-old-kept* 0)
 
 (define (collector-collect!)
-  (let ([pass *collector-pass*])
-    (set! *collector-pass* #f)
-    (if pass (collect (car pass) (cdr pass)) (collect 0 1))))
+  (if (collector-declining?)
+      (set! *collector-held?* #t)
+      (let ([pass *collector-pass*])
+        (set! *collector-pass* #f)
+        (if pass (collect (car pass) (cdr pass)) (collect 0 1)))))
+
+;; A request now is held off: a frame turn's, and no pass of main's asked.
+(define (collector-declining?)
+  (and *collector-holding?* (not *collector-pass*)))
+
+(define (collector-hold!) (set! *collector-holding?* #t))
+
+;; After a frame turn: the collection it held off, if one was asked for,
+;; then the older generations' passes.
+(define (collector-after-frame!)
+  (set! *collector-holding?* #f)
+  (when *collector-held?*
+    (set! *collector-held?* #f)
+    (collect-rendezvous))
+  (collector-tick!))
 
 (defvar *collector-handler*
   (let ([handler (lambda () (collector-collect!))])
