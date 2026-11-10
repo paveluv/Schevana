@@ -29,7 +29,10 @@ Requirements: Chez Scheme 10, SDL 3.2 or later, FreeType and fontconfig
 Debian 13, SDL3 is `sudo apt install libsdl3-0`, and `mesa-vulkan-drivers`
 holds lavapipe, the Vulkan driver on the CPU that the tests use and that takes
 over when no GPU can open. SDL chooses between Wayland and X11 by itself;
-`SDL_VIDEO_DRIVER=x11 ./schevana` (or `wayland`) chooses for it.
+`SDL_VIDEO_DRIVER=x11 ./schevana` (or `wayland`) chooses for it. With
+NVIDIA's driver on Wayland, set the one module option in
+[docs/LINUX_NVIDIA_TUNING.md](docs/LINUX_NVIDIA_TUNING.md), or the
+compositor now and then shows a frame again although the next was ready.
 
 On a Mac, install them from [Homebrew](https://brew.sh):
 
