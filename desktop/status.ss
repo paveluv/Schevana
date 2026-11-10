@@ -38,6 +38,7 @@
 (define (shown-status-strings) (filter string? (map cdr *status-shown*)))
 
 (defvar *status-timer?* #f)   ; its timer is set: reloads set no other
+(defvar *status-second* #f)   ; the wall clock's second last shown
 
 ;; The status taken again, and a frame asked for that shows it.
 (define (status-show!)
@@ -47,11 +48,16 @@
 ;; At the start of each second the status is shown again, the clock's.
 ;; Frames between, however many something else asks for, show the same:
 ;; numbers that change every tick, the heap's and the busiest tick's, are
-;; read once a second, the busiest that second's.
+;; read once a second, the busiest that second's. Timers run by the
+;; monotonic clock, which may fire this a little before the wall clock's
+;; second turns: then it only waits for the turn, showing nothing twice.
 (define (status-second!)
-  (status-show!)
-  (after (- 1000 (quotient (time-nanosecond (current-time)) 1000000))
-         (lambda () (status-second!))))
+  (let ([t (current-time)])
+    (unless (eqv? (time-second t) *status-second*)
+      (set! *status-second* (time-second t))
+      (status-show!))
+    (after (- 1000 (quotient (time-nanosecond t) 1000000))
+           (lambda () (status-second!)))))
 
 (unless *status-timer?*
   (set! *status-timer?* #t)
