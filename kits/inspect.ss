@@ -52,6 +52,14 @@
 
 (define (inspect-frame-shown? i) (eqv? (inspect-frame-report i 1) 1))
 
+;; What core0 did with frame i: sent it to the screen, or found the window
+;; had no room for it; #f till it gives it back.
+(define (inspect-frame-sent i)
+  (case (inspect-frame-ref i 5)
+    [(1) 'sent]
+    [(2) 'no-room]
+    [else #f]))
+
 ;; The refreshes that showed frame i-1 again before i, while frames came a
 ;; period apart, sent within one and a half refreshes of each other: the
 ;; screen frozen where an update was due. 0 when it showed in time; #f when
@@ -128,9 +136,9 @@
       (if (= k n)
           (values n not-shown)
           (loop (+ k 1)
-                (if (eqv? 1 (inspect-frame-ref (- *frame-ring-n* k 1) 5))
-                    not-shown
-                    (+ not-shown 1)))))))
+                (if (eqv? 2 (inspect-frame-ref (- *frame-ring-n* k 1) 5))
+                    (+ not-shown 1)
+                    not-shown))))))
 
 ;; Of the frames shown in the last ms: their input-to-screen times' 50th
 ;; and 99th percentiles (ns, #f with none), the input by point (as
@@ -1057,6 +1065,10 @@
 ;; What's held on the GPU for frames: ((name kind . bytes) ...), as core0
 ;; says it.
 (define (inspect-gpu-objects) (cdr (assq 'objects *gpu-facts*)))
+
+;; How core0 presents now: vsync, mailbox or immediate.
+(define (inspect-present-mode)
+  (let ([f (assq 'present-mode *gpu-facts*)]) (and f (cdr f))))
 
 ;;; ---- the pacer
 

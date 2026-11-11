@@ -809,7 +809,7 @@
                                       (length pipeline-draw-lanes)))
                   (= ((pipeline-river-word (pacer-period)) seq
                       (length monitor-phases))
-                     (if (profile-tick-late? seq (pacer-period)) 1 0)))))
+                     (if (profile-tick-late? seq (pacer-period)) 2 1)))))
     ;; the River's line where the frames kept end asks only whether they are
     (steps 6)
     (let* ([n 0]
@@ -876,6 +876,53 @@
                                  (opacity (car (last-pair colors))))
                               (for-all fixnum? (map color-word colors))))))
                    *styles*))))
+    (let* ([word (pipeline-river-word (pacer-period))]
+           [lane (lambda (seq k) (word seq (+ (length monitor-phases) k)))]
+           [drew (let loop ([seq (profile-newest-tick)] [k 0])
+                   (cond
+                     [(or (> k 50) (not (profile-tick-kept? seq))) '()]
+                     [(pipeline-tick-drew? seq)
+                      (cons seq (loop (- seq 1) (+ k 1)))]
+                     [else (loop (- seq 1) (+ k 1))]))]
+           [old (filter (lambda (seq)
+                          (< (pipeline-tick-frame-index seq)
+                             (- *frame-ring-n* 4)))
+                        drew)]
+           [seq (and (pair? old) (car old))]
+           [n (and seq (inspect-frame-ref (pipeline-tick-frame-index seq) 6))])
+      (check (format "the River's frame lane reads the tick's own frame, by \
+                      its number: green once core0 sent it, nothing while \
+                      it's on its way, red only when the window had no room \
+                      for it (~a ticks that drew, ~a given back)"
+                     (length drew) (length old))
+             (and seq
+                  (for-all (lambda (seq) (= 1 (lane seq 1))) old)
+                  (let-values ([(kept not-shown) (inspect-frames-kept)])
+                    (= not-shown 0))
+                  (dynamic-wind
+                   void
+                   (lambda ()
+                     (frame-ring-set! n 5 0)
+                     (let ([on-its-way (lane seq 1)])
+                       (frame-ring-set! n 5 2)
+                       (and (= on-its-way 0)
+                            (= (lane seq 1) 2)
+                            (let-values ([(kept not-shown)
+                                          (inspect-frames-kept)])
+                              (= not-shown 1)))))
+                   (lambda () (frame-ring-set! n 5 1)))))
+      (check "the River's tick lane is green when main's own work was in \
+              time, held by the screen or not, and red only when late; a \
+              drop on the screen lane is red by VSync, orange by Mailbox"
+             (and seq
+                  (= (lane seq 0)
+                     (if (profile-tick-late? seq (pacer-period)) 2 1))
+                  (fluid-let ([inspect-frame-screen (lambda (i) 'dropped)])
+                    (and (fluid-let ([inspect-present-mode (lambda () 'vsync)])
+                           (= (lane seq 3) 2))
+                         (fluid-let ([inspect-present-mode
+                                      (lambda () 'mailbox)])
+                           (= (lane seq 3) 3)))))))
     ;; a press on the bar before the newest
     (let* ([r (ui-find ui '(pipeline-river))]
            [right (+ (ui-region-x r) (ui-region-w r) -1)])

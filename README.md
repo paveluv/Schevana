@@ -1129,8 +1129,9 @@ Decisions worth keeping in mind for the real design:
   and in lanes over it whether the tick came late, the frame it sent, what
   the screen says became of it (shown in time, a refresh or more late, or
   dropped), whether its GPU work was done in time, the collector, as
-  bright as it took long, and input, green where all's well, a label's
-  tooltip saying what its colors mean, and a bar's how long its frame
+  bright as it took long, and input, green where all's well and red where
+  something wants looking into (a drop is orange where the present mode
+  drops by design), a label's tooltip saying what its colors mean, and a bar's how long its frame
   showed after the input it shows. A tick's lanes fill in as the screen's
   report on its frame comes, a few refreshes on. A press holds it and goes back
   to that tick's frame, the whole app showing it, and a drag moves through

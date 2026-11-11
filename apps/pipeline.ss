@@ -217,12 +217,12 @@
                  pipeline-collector-full-ns)))
 
 ;; Bottom up, as monitor-bars-order stacks them, what main did; over them, the
-;; lanes, a word each: late, or held by the screen; then a frame's way out:
-;; sent, or no room; its GPU work, done in time or late; what the screen
-;; says of it, shown in time, late, or dropped; then the collector, by how
-;; long; input.
+;; lanes, a word each, green where all's well and red where something wants
+;; looking into: the tick, in time or late; then a frame's way out: sent, or
+;; no room; its GPU work, done in time or late; what the screen says of it,
+;; shown in time, late, or dropped; then the collector, by how long; input.
 (define pipeline-draw-lanes
-  `(("late" chart-flag chart-2)
+  `(("tick" chart-ok chart-flag)
     ("frame" chart-ok chart-flag)
     ("GPU" chart-ok chart-flag)
     ("screen" chart-ok chart-flag chart-2)
@@ -235,18 +235,21 @@
 
 ;; What a lane's colors say, on its label.
 (define pipeline-lane-tips
-  `("Red: this tick came late, its own time past one and a half periods. \
-     Orange: the screen held the host that long, which main doesn't count \
-     as late. None: it was in time."
+  `("Green: main's own work in this tick took less than one and a half \
+     periods, however long the screen held it. Red: it took longer, and came \
+     late."
     "Green: core0 sent the tick's frame to the screen. Red: the window had no \
-     room for it. None: no frame was drawn."
+     room for it, and it was drawn for nothing. None: no frame was drawn, or \
+     core0 hasn't given it back yet."
     "When core0 saw the frame's GPU work done. Green: in time for its \
      refresh. Red: after the refresh it missed, the GPU's fault, not the \
      screen's. None: not seen."
     "What the screen says of the tick's frame. Green: it showed a refresh \
      after the one before. Red: the one before showed again first, while \
-     frames came a refresh apart. Orange: the compositor dropped it. None: \
-     no frame, or no word from the screen (only Wayland's compositors say)."
+     frames came a refresh apart; or, by VSync, the compositor dropped it, \
+     two frames having come in one refresh. Orange: the compositor dropped \
+     it for a newer one, as Mailbox does. None: no frame, or no word from \
+     the screen (only Wayland's compositors say)."
     ,(format "A collection ran in this tick: the longer it took, the brighter, \
               at its brightest from ~a."
              (monitor-ns-text pipeline-collector-full-ns))
@@ -268,9 +271,10 @@
     (string-append
      (if drew?
          (format "\nframe ~a~a~a~a"
-                 (if (> (profile-tick-ns seq 'shown) 0)
-                     "sent"
-                     "had no room")
+                 (case (inspect-frame-sent i)
+                   [(sent) "sent"]
+                   [(no-room) "drawn, but the window had no room for it"]
+                   [else "on its way to the screen"])
                  (case (inspect-frame-screen i)
                    [(shown) "; it showed in time"]
                    [(late) (format "; it showed late, ~a refresh~a missed"
@@ -308,19 +312,23 @@
           (let ([drew? (pipeline-tick-drew? seq)]
                 [i (pipeline-tick-frame-index seq)])
             (case (- j phases)
-              [(0) (cond [(profile-tick-late? seq period) 1]
-                         [(profile-tick-held? seq period) 2]
-                         [else 0])]
-              [(1) (cond [(not drew?) 0]
-                         [(> (profile-tick-ns seq 'shown) 0) 1]
-                         [else 2])]
+              [(0) (if (profile-tick-late? seq period) 2 1)]
+              [(1) (if drew?
+                       (case (inspect-frame-sent i)
+                         [(sent) 1] [(no-room) 2] [else 0])
+                       0)]
               [(2) (if drew?
                        (case (inspect-frame-gpu i)
                          [(done) 1] [(late) 2] [else 0])
                        0)]
               [(3) (if drew?
                        (case (inspect-frame-screen i)
-                         [(shown) 1] [(late) 2] [(dropped) 3] [else 0])
+                         [(shown) 1]
+                         [(late) 2]
+                         [(dropped) (if (eq? (inspect-present-mode) 'vsync)
+                                        2
+                                        3)]
+                         [else 0])
                        0)]
               [(4) (if (> (profile-tick-ns seq 'gcs) 0)
                        (pipeline-collector-level (profile-tick-ns seq 'gc-ns))

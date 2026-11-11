@@ -1170,39 +1170,42 @@
           (frame-number-set! (rec-present!))
           (set! *frame-publish-ns* (now-ns))
           (host-trace! 24 *frame-number*)
-          (let ([shown? (render-frames-back!)])
-            (set! *frame-ms* (fl/ (fixnum->flonum
-                                   (- (now-ns) t0 (- *pacer-waits* waits)))
-                                  1e6))
-            (frame-ring-add! shown?)))])]))
+          ;; its row first, for core0 may give it back at once
+          (frame-ring-add!)
+          (render-frames-back!)
+          (set! *frame-ms* (fl/ (fixnum->flonum
+                                 (- (now-ns) t0 (- *pacer-waits* waits)))
+                                1e6))
+          (frame-ring-set! *frame-number* 0
+                           (flonum->fixnum
+                            (flround (fl* 1000.0 *frame-ms*)))))])]))
 
-;; The frames core0 gave back: each told to the pacer, and counted if it
-;; reached the screen, else one asked again; then what core0 read back,
-;; handed to its then.
-;; => whether the last reached the screen, #f for none
+;; The frames core0 gave back: each told to the pacer, and marked in its row
+;; as having reached the screen or not; counted if it did, else one asked
+;; again. Then what core0 read back, handed to its then.
 (define (render-frames-back!)
-  (let ([shown? (fold-left
-                 (lambda (shown? f)
-                   (pacer-frame-back! (gpu-frame-shown? f))
-                   (pacer-latch! (gpu-frame-number f))
-                   (if (gpu-frame-shown? f)
-                       (set! *frames-drawn* (+ *frames-drawn* 1))
-                       (request-frame!))
-                   (gpu-frame-free! f)
-                   (gpu-frame-shown? f))
-                 #f (gpu-frames-back!))])
-    (for-each (lambda (answer)
-                (safely 'readback (lambda () ((car answer) (cdr answer)))))
-              (gpu-take-answers!))
-    shown?))
+  (for-each (lambda (f)
+              (let ([shown? (gpu-frame-shown? f)])
+                (pacer-frame-back! shown?)
+                (pacer-latch! (gpu-frame-number f))
+                (frame-ring-set! (gpu-frame-number f) 5 (if shown? 1 2))
+                (if shown?
+                    (set! *frames-drawn* (+ *frames-drawn* 1))
+                    (request-frame!))
+                (gpu-frame-free! f)))
+            (gpu-frames-back!))
+  (for-each (lambda (answer)
+              (safely 'readback (lambda () ((car answer) (cdr answer)))))
+            (gpu-take-answers!)))
 
-;; The last frames, for kits/inspect.ss: what each took and held, its
-;; number (its report's, host-frame-report), and when the oldest input it
-;; shows came (now-ns; 0, none) by SDL's stamp; then when its tick began,
-;; its draw began and it was published, and when that input came by core0's
-;; pump and by the compositor's time; and the latch its tick aimed at (0,
-;; none). Always kept: a few numbers a frame, for as many frames as the
-;; reports keep.
+;; The last frames, for kits/inspect.ss: what each took and held, and what
+;; became of it (1 it reached the screen, 2 the window had no room, 0 not
+;; given back yet); its number (its report's, host-frame-report), and when
+;; the oldest input it shows came (now-ns; 0, none) by SDL's stamp; then
+;; when its tick began, its draw began and it was published, and when that
+;; input came by core0's pump and by the compositor's time; and the latch
+;; its tick aimed at (0, none). Always kept: a few numbers a frame, for as
+;; many frames as the reports keep.
 (define frame-ring-rows 2048)
 (define frame-ring-words 14)
 (defvar *frame-ring* (make-fxvector (* frame-ring-rows frame-ring-words) 0))
@@ -1238,7 +1241,7 @@
   (set! *frame-input-pumped* 0)
   (set! *frame-input-wl* 0))
 
-(define (frame-ring-add! shown?)
+(define (frame-ring-add!)
   (let ([at (* frame-ring-words (modulo *frame-ring-n* frame-ring-rows))]
         [ring *frame-ring*])
     (fxvector-set! ring (+ at 6) *frame-number*)
@@ -1250,15 +1253,30 @@
     (fxvector-set! ring (+ at 12) *frame-input-wl*)
     (fxvector-set! ring (+ at 13) *pacer-aimed*)
     (frame-input-drop!)
-    (fxvector-set! ring at (flonum->fixnum (flround (fl* 1000.0 *frame-ms*))))
+    (fxvector-set! ring at 0)
     ;; the frame's, published: the recorder writes nothing now
     (let-values ([(recs-n extras-n) (rec-last-sizes)])
       (fxvector-set! ring (+ at 1) (fxquotient recs-n 32))
       (fxvector-set! ring (+ at 2) (fxquotient extras-n 4)))
     (fxvector-set! ring (+ at 3) (length (rec-runs)))
     (fxvector-set! ring (+ at 4) *glyph-count*)
-    (fxvector-set! ring (+ at 5) (if shown? 1 0)))
+    (fxvector-set! ring (+ at 5) 0))
   (set! *frame-ring-n* (+ *frame-ring-n* 1)))
+
+;; Where frame n's row starts, among the newest sixteen, which hold every
+;; frame not given back or judged yet; else #f.
+(define (frame-ring-at n)
+  (let loop ([i (- *frame-ring-n* 1)] [j 0])
+    (and (< j 16) (>= i 0)
+         (let ([at (* frame-ring-words (modulo i frame-ring-rows))])
+           (if (eqv? (fxvector-ref *frame-ring* (+ at 6)) n)
+               at
+               (loop (- i 1) (+ j 1)))))))
+
+;; Word k of frame n's row set to v, while the ring has it.
+(define (frame-ring-set! n k v)
+  (let ([at (frame-ring-at n)])
+    (when at (fxvector-set! *frame-ring* (+ at k) v))))
 
 ;; The screen as it would be drawn now: its pixels, row after row,
 ;; premultiplied BGRA. What tests and screenshots see; screen-bytes-then

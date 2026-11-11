@@ -444,15 +444,10 @@
 ;; When main published frame n (now-ns), among the last few; else #f.
 (define (pacer-published n) (pacer-frame-word n 10))
 
-;; Word k of frame n's row in the frame ring, among the last sixteen; else
-;; #f.
+;; Word k of frame n's row in the frame ring (frame-ring-at); else #f.
 (define (pacer-frame-word n k)
-  (let loop ([i (- *frame-ring-n* 1)] [j 0])
-    (and (< j 16) (>= i 0)
-         (let ([at (* frame-ring-words (modulo i frame-ring-rows))])
-           (if (eqv? (fxvector-ref *frame-ring* (+ at 6)) n)
-               (fxvector-ref *frame-ring* (+ at k))
-               (loop (- i 1) (+ j 1)))))))
+  (let ([at (frame-ring-at n)])
+    (and at (fxvector-ref *frame-ring* (+ at k)))))
 
 ;; The refresh frame n showed at (now-ns), the screen's report on it in;
 ;; else #f.
