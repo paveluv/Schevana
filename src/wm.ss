@@ -1184,6 +1184,7 @@
   (let ([shown? (fold-left
                  (lambda (shown? f)
                    (pacer-frame-back! (gpu-frame-shown? f))
+                   (pacer-latch! (gpu-frame-number f))
                    (if (gpu-frame-shown? f)
                        (set! *frames-drawn* (+ *frames-drawn* 1))
                        (request-frame!))
@@ -1199,10 +1200,11 @@
 ;; number (its report's, host-frame-report), and when the oldest input it
 ;; shows came (now-ns; 0, none) by SDL's stamp; then when its tick began,
 ;; its draw began and it was published, and when that input came by core0's
-;; pump and by the compositor's time. Always kept: a few numbers a frame,
-;; for as many frames as the reports keep.
+;; pump and by the compositor's time; and the latch its tick aimed at (0,
+;; none). Always kept: a few numbers a frame, for as many frames as the
+;; reports keep.
 (define frame-ring-rows 2048)
-(define frame-ring-words 13)
+(define frame-ring-words 14)
 (defvar *frame-ring* (make-fxvector (* frame-ring-rows frame-ring-words) 0))
 (defvar *frame-ring-n* 0)   ; frames so far
 ;; the frame being drawn's number, its times, and the oldest input not
@@ -1246,6 +1248,7 @@
     (fxvector-set! ring (+ at 10) *frame-publish-ns*)
     (fxvector-set! ring (+ at 11) *frame-input-pumped*)
     (fxvector-set! ring (+ at 12) *frame-input-wl*)
+    (fxvector-set! ring (+ at 13) *pacer-aimed*)
     (frame-input-drop!)
     (fxvector-set! ring at (flonum->fixnum (flround (fl* 1000.0 *frame-ms*))))
     ;; the frame's, published: the recorder writes nothing now

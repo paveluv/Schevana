@@ -12,16 +12,22 @@
 ;;; row's kind says so, written after it.
 
 (define present-rows 2048)
-(define present-words 8)
+(define present-words 10)
 ;; A row: the frame's number; its kind (0 sent, 1 shown, 2 dropped); when
 ;; it was sent (now-ns); when it showed (now-ns); the refresh (ns); the
 ;; display's sequence; when its GPU work was seen done (now-ns; 0, not
-;; yet); when core0 took it from main (now-ns).
+;; yet); when core0 took it from main, and when its acquire of a swapchain
+;; image began and returned (now-ns).
 (defvar *present-ring* (make-fxvector (* present-rows present-words) 0))
 
-;; When core0 took the frame it presents now from main.
+;; When core0 took the frame it presents now from main, and when it asked
+;; for an image for it and had one.
 (defvar *present-taken* 0)
+(defvar *present-acquiring* 0)
+(defvar *present-acquired* 0)
 (define (present-taken!) (set! *present-taken* (now-ns)))
+(define (present-acquiring!) (set! *present-acquiring* (now-ns)))
+(define (present-acquired!) (set! *present-acquired* (now-ns)))
 
 (define (present-at frame) (fx* present-words (fxmodulo frame present-rows)))
 
@@ -40,6 +46,8 @@
     (do ([k 3 (fx+ k 1)]) ((fx= k 7))
       (fxvector-set! r (fx+ at k) 0))
     (fxvector-set! r (fx+ at 7) *present-taken*)
+    (fxvector-set! r (fx+ at 8) *present-acquiring*)
+    (fxvector-set! r (fx+ at 9) *present-acquired*)
     (memory-order-release)
     (fxvector-set! r at frame))
   (platform-report-ask! frame))

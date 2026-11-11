@@ -535,8 +535,12 @@
 (defvar *host-quit* #f)
 (define (host-quit-now!) (set! *host-quit* #t))
 
-;; How long core0 sleeps with nothing to do: input waits that long at most.
+;; How long core0 sleeps with nothing to do: input waits that long at most;
+;; while frames flow (one taken in the last 100 ms), a ms, so that main's
+;; turn, which begins just in time for the screen, finds the newest.
 (define host-idle-ms 4)
+(define (host-idle-ms-now)
+  (if (< (- (now-ns) *present-taken*) 100000000) 1 host-idle-ms))
 
 ;; Core0's loop, on its own thread: its steps till main quits.
 (define (host-loop!)
@@ -589,7 +593,7 @@
     (for-each host-run-job! jobs)
     (unless (eq? *host* 'none) (gpu-present-published!))
     (when (and *host-forked* (not (unbox *gpu-published*)))
-      (host-sleep! host-idle-ms))
+      (host-sleep! (host-idle-ms-now)))
     (present-poll!)
     (host-facts-refresh! (or (host-events-pumped!) (pair? jobs)))))
 

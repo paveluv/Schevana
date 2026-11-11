@@ -1378,6 +1378,9 @@
       (host-events-pumped!)
       (host-world-wake!)
       (gpu-frame-shown?-set! f (gpu-present! f))
+      ;; the input that came while the acquire held core0, read before main
+      ;; hears the frame is back and may begin its next turn
+      (host-events-pumped!)
       (host-put! *gpu-given-back* f)
       (host-trace! 6 (gpu-frame-number f))
       ;; given back, with what it read: main takes them at once, whether
@@ -1440,6 +1443,7 @@
                [shown?
                 (let ([ok (begin
                             (host-trace! 3 (gpu-frame-number f))
+                            (present-acquiring!)
                             (sdl-acquire-swapchain
                            cb (renderer-sdl-window r)
                            (ftype-pointer-address
@@ -1448,6 +1452,7 @@
                             (ftype-&ref gpu-swapchain-out (w) out))
                            (ftype-pointer-address
                             (ftype-&ref gpu-swapchain-out (h) out))))])
+                  (present-acquired!)
                   (host-trace! 4 (if ok 1 0))
                   (and ok
                        (not (eqv? 0 (ftype-ref gpu-swapchain-out (texture)

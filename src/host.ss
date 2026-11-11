@@ -176,7 +176,8 @@
 ;; Steps core0, which drains its events into the world's inbox: on one
 ;; thread, headless, there is nothing to wait for. Or, core0 on a thread
 ;; of its own, waits up to wait-ms till it's woken: with a frame of main's
-;; waiting for core0, a wait for the screen, which holds core0 meanwhile.
+;; waiting for core0, a wait for the screen, which holds core0 meanwhile;
+;; or, ticks keeping to the compositor's latches, for the next latch.
 ;; Then the inbox: the host's events, each told to *host-event-seen*, as
 ;; the world's.
 (define (host-events wait-ms)
@@ -184,6 +185,9 @@
   (cond [(not (host-forked?)) (host-step!)]
         [(gpu-frame-waiting?)
          (with-profile-span 'vsync-wait 'acquire (host-world-wait! wait-ms))]
+        ;; till the next latch: the screen's, though input wakes it
+        [(and (pacer-wanted?) (pacer-on-latch?))
+         (with-profile-span 'vsync-wait 'latch (host-world-wait! wait-ms))]
         [else (host-world-wait! wait-ms)])
   (host-trace! 21 0)
   (let-values ([(events types) (host-window-events)])

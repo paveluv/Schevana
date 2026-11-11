@@ -531,11 +531,12 @@
                           (let ([t (inspect-frame-at i point)])
                             (and t (format "~a: ~,2f ms" label
                                            (/ (- t publish) 1e6)))))
-                        '(wl sdl pumped tick draw publish taken sent gpu
-                          shown)
+                        '(wl sdl pumped tick draw publish taken acquiring
+                          acquired sent gpu shown)
                         '("input, by the compositor" "input, by SDL"
                           "input, seen by core0" "tick" "draw" "publish"
-                          "core0's take" "sent" "GPU done" "on screen"))))
+                          "core0's take" "asked for an image" "had one"
+                          "sent" "GPU done" "on screen"))))
           "\n"))))
 
 ;; Input to screen over the last 10 s, ms at the median and the 99th, by
@@ -577,8 +578,10 @@
        [(after) (list-tail keys 5)]
        [(gw gh) (ui-label-size '(group) "Latency" w)]
        [(kw kh) (ui-legend-size keys)]
-       [(sy) (+ y gh 4)]
-       [(sh) (- h gh 4 4 kh 2 kh)])
+       [(th) (max pipeline-clock-size (pipeline-timeline-height))]
+       [(ty) (+ y gh 4)]
+       [(sy) (+ ty th 6)]
+       [(sh) (- h gh 4 th 6 4 kh 2 kh)])
     (ui-draw-label x y w gh '(group) "Latency")
     ;; with no small screen beside it, Hold is here
     (let-values ([(tw th) (ui-label-size '(group) "Latency" w)]
@@ -593,6 +596,30 @@
                                    the median and the 99th: "
                                   (string-join (pipeline-latency-words v)
                                                "; ")))
+    (pipeline-draw-refresh-clock x ty pipeline-clock-size
+                                 (pipeline-timeline-last v))
+    (ui-region! ui '(pipeline clock) x ty pipeline-clock-size
+                pipeline-clock-size
+      'tip "A lap is a refresh, the screen's at the top. The newest frames \
+            wind out from their oldest input, or their tick, to the screen, \
+            in the lanes' colors, the newest bright: the laps a frame takes \
+            are the refreshes it shows old. The square on the rim is where \
+            the latch falls.")
+    (pipeline-draw-timeline (+ x pipeline-clock-size 8) ty
+                            (- w pipeline-clock-size 8)
+                            (pipeline-timeline-height) v)
+    (pipeline-draw-readout (+ x pipeline-clock-size 8)
+                           (+ ty (pipeline-timeline-height) 8)
+                           (- w pipeline-clock-size 8)
+                           (pipeline-latency-readout
+                            (pipeline-timeline-last v)))
+    (ui-region! ui '(pipeline timeline) (+ x pipeline-clock-size 8) ty
+                (- w pipeline-clock-size 8) (pipeline-timeline-height)
+      'tip "The last six refreshes as they went, a frame a color: its \
+            oldest input, main drawing it, its wait in the box, core0's \
+            wait for an image (a mark at the latch its tick aimed at), its \
+            time on the screen, red where a refresh repeated. Lines are \
+            the screen's refreshes. Held, it ends with the tick picked.")
     (when (and newest (not held?))
       ;; the screen reports a few refreshes on
       (ui-stream-resend! s (+ 1 (or (pipeline-settled-tick p) (- oldest 1))))
@@ -619,6 +646,222 @@
                                                (pipeline-view-tick v)))))
     (ui-draw-legend x (+ sy sh 4) w kh '() before)
     (ui-draw-legend x (+ sy sh 4 kh 2) w kh '() after)))
+
+;; The live strip over Latency's bars: the last six refreshes, each frame
+;; across its lanes as it went, its oldest input, main's draw, its wait in
+;; the box, core0's wait for an image, and its time on the screen, a
+;; refresh repeated red; the refreshes the screen reported, and the latch
+;; each tick aimed at. Held, it shows the frame of the tick picked.
+(define pipeline-timeline-lanes '("input" "main" "box" "core0" "screen"))
+(define pipeline-timeline-refreshes 6)
+
+(define (pipeline-timeline-height)
+  (+ 4 (* (length pipeline-timeline-lanes)
+          (+ 4 (font-line-height 'ui-small)))))
+
+;; The refresh clock's width and height.
+(define pipeline-clock-size 150)
+
+;; The frame the strip ends with: the picked tick's, held; else the newest.
+(define (pipeline-timeline-last v)
+  (let ([tick (and (pipeline-view-held? v) (pipeline-view-tick v))])
+    (if (and tick (profile-tick-kept? tick) (pipeline-tick-drew? tick))
+        (pipeline-tick-frame-index tick)
+        (- *frame-ring-n* 1))))
+
+;; When the strip ends (now-ns): a refresh after the newest frame shown
+;; among the last few up to frame last; else a refresh after its publish.
+(define (pipeline-timeline-end last r)
+  (let loop ([i last] [k 0])
+    (cond
+      [(or (= k 8) (< i 0))
+       (+ r (or (inspect-frame-at last 'publish) (now-ns)))]
+      [(inspect-frame-at i 'shown) => (lambda (shown) (+ shown r))]
+      [else (loop (- i 1) (+ k 1))])))
+
+(define (pipeline-draw-timeline x y w h v)
+  (let* ([r (host-frame-ns)]
+         [span (* pipeline-timeline-refreshes r)]
+         [last (pipeline-timeline-last v)]
+         [end (pipeline-timeline-end last r)]
+         [start (- end span)]
+         [lh (+ 4 (font-line-height 'ui-small))]
+         [gutter (+ 12 (text-widest pipeline-timeline-lanes 'ui-small))]
+         [px (+ x gutter)]
+         [pw (max 1 (- w gutter 4))]
+         [at (lambda (t) (+ px (quotient (* (- (max start (min end t)) start)
+                                            pw)
+                                         span)))]
+         [lane-y (lambda (k) (+ y 2 (* k lh)))]
+         ;; a span of lane k, from t0 to t1, its part of the window
+         [span! (lambda (k t0 t1 color)
+                  (when (and t0 t1 (< t0 end) (> t1 start))
+                    (let ([a (at t0)] [b (at t1)])
+                      (fill-box a (+ (lane-y k) 2) (max 1 (- b a)) (- lh 4)
+                                color))))])
+    (ui-draw-surface x y w h '(well))
+    (for-each (lambda (name k)
+                (draw-text (+ x 6) (lane-y k) name 'text-faint 'ui-small))
+              pipeline-timeline-lanes (iota (length pipeline-timeline-lanes)))
+    ;; the refreshes, a reported one and a period apart from it
+    (let ([seen (inspect-frame-at last 'shown)])
+      (when seen
+        (do ([t (- seen (* r (quotient (- seen start) r))) (+ t r)])
+            ((> t end))
+          (let ([a (at t)])
+            (draw-line a (+ y 2) a (+ y h -2) 'chart-rule)))))
+    (let loop ([i last] [next-shown #f])
+      (let ([publish (inspect-frame-at i 'publish)])
+        (when (and publish (> publish (- start (* 2 r))))
+          (let ([input (or (inspect-frame-at i 'wl) (inspect-frame-at i 'sdl))]
+                [tick (inspect-frame-at i 'tick)]
+                [taken (inspect-frame-at i 'taken)]
+                [acquired (inspect-frame-at i 'acquired)]
+                [shown (inspect-frame-at i 'shown)]
+                [aimed (inspect-frame-ref i 13)]
+                [color (if (even? i) 'chart-8 'chart-5)])
+            (when (and input tick (< start tick) (< input end))
+              (let ([a (at input)])
+                (fill-box (- a 2) (+ (lane-y 0) 3) 4 (- lh 6) 'chart-7)
+                (draw-line a (+ (lane-y 0) (quotient lh 2)) (at tick)
+                           (+ (lane-y 1) (quotient lh 2)) 'text-faint)))
+            (span! 1 tick publish 'chart-1)
+            (span! 2 publish taken 'chart-2)
+            (span! 3 taken acquired 'chart-3)
+            (when (and aimed (> aimed start) (< aimed end))
+              (fill-box (- (at aimed) 1) (lane-y 3) 2 lh 'text))
+            (when shown
+              (let ([until (or next-shown end)])
+                (span! 4 shown (min until (+ shown r)) color)
+                ;; the screen showed it longer than a refresh: it froze
+                (when (> until (+ shown (quotient (* 3 r) 2)))
+                  (span! 4 (+ shown r) until 'chart-flag))))
+            (loop (- i 1) (or shown next-shown))))))))
+
+;; The refresh clock, left of the strip: a lap is a refresh, the screen's
+;; at the top. The newest frames each wind out from their oldest input (or
+;; their tick) to the screen, a lap a refresh, their parts in the lanes'
+;; colors, the newest reported bright and the rest faint: how many laps a
+;; frame takes is how many refreshes old it shows. A mark on the rim where
+;; the latch falls.
+(define pipeline-clock-frames 8)
+(define pipeline-clock-steps 64)    ; points a lap
+(define pipeline-clock-laps 3)      ; the most the clock holds
+;; The unit circle, a point a step, from the top clockwise, scaled 4096.
+(define pipeline-clock-unit
+  (let ([v (make-vector (* 2 pipeline-clock-steps))])
+    (do ([k 0 (+ k 1)]) ((= k pipeline-clock-steps) v)
+      (let ([a (* 2 3.141592653589793 (/ k pipeline-clock-steps))])
+        (vector-set! v (* 2 k) (exact (round (* 4096 (sin a)))))
+        (vector-set! v (+ 1 (* 2 k)) (exact (round (* -4096 (cos a)))))))))
+
+(define (pipeline-draw-refresh-clock x y d last)
+  (let* ([r (host-frame-ns)]
+         [cx (+ x (quotient d 2))] [cy (+ y (quotient d 2))]
+         [rim (- (quotient d 2) 4)] [hub (quotient rim 4)]
+         [ring (quotient (- rim hub) pipeline-clock-laps)]
+         ;; the newest frame the screen reported on, and when it showed
+         [newest (let loop ([i last] [k 0])
+                   (and (< k 8) (>= i 0)
+                        (if (inspect-frame-at i 'shown)
+                            i
+                            (loop (- i 1) (+ k 1)))))]
+         [seen (and newest (inspect-frame-at newest 'shown))]
+         [step (quotient r 16)])
+    (stroke-circle cx cy hub 'chart-rule)
+    (stroke-circle cx cy rim 'chart-rule)
+    (when seen
+      ;; a point t ns after from: k 0 its x, 1 its y; a lap a refresh out
+      (let ([point (lambda (t from k)
+                     (let ([unit (vector-ref
+                                  pipeline-clock-unit
+                                  (+ k (* 2 (quotient
+                                             (* pipeline-clock-steps
+                                                (modulo (- t seen) r))
+                                             r))))]
+                           [rad (if from
+                                    (min rim
+                                         (+ hub (quotient (* (- t from) ring)
+                                                          r)))
+                                    rim)])
+                       (+ (if (= k 0) cx cy) (quotient (* rad unit) 4096))))])
+        ;; the screen's refresh at the top; the latch on the rim
+        (draw-line cx (- cy rim 3) cx (- cy rim -5) 'text 2)
+        (when *pacer-latch*
+          (fill-box (- (point *pacer-latch* #f 0) 3)
+                    (- (point *pacer-latch* #f 1) 3) 6 6 'chart-3))
+        ;; its age at the hub, in refreshes
+        (let* ([from (or (inspect-frame-at newest 'wl)
+                         (inspect-frame-at newest 'sdl)
+                         (inspect-frame-at newest 'tick))]
+               [laps (and from (format "~,1f" (/ (- seen from) r)))])
+          (when laps
+            (draw-text (- cx (quotient (text-width laps 'ui-small) 2))
+                       (- cy (quotient (font-line-height 'ui-small) 2))
+                       laps 'text 'ui-small)))
+        (do ([i (- newest pipeline-clock-frames -1) (+ i 1)]) ((> i newest))
+          (let ([from (or (inspect-frame-at i 'wl) (inspect-frame-at i 'sdl)
+                          (inspect-frame-at i 'tick))]
+                [shown (inspect-frame-at i 'shown)]
+                [newest? (= i newest)])
+            (when (and from shown (< from shown))
+              (let wind ([t from]
+                         [px (point from from 0)] [py (point from from 1)])
+                (when (< t shown)
+                  (let* ([u (min shown (+ t step))]
+                         [nx (point u from 0)] [ny (point u from 1)])
+                    (draw-line px py nx ny
+                               (if newest?
+                                   (pipeline-draw-clock-color i t)
+                                   'text-faint)
+                               (if newest? 3 1))
+                    (wind u nx ny)))))))))))
+
+;; The lane's color frame i is in at t: its input's wait, main's draw, the
+;; box, the wait for an image, then the compositor and the screen.
+(define (pipeline-draw-clock-color i t)
+  (cond [(< t (or (inspect-frame-at i 'tick) 0)) 'chart-7]
+        [(< t (or (inspect-frame-at i 'publish) 0)) 'chart-1]
+        [(< t (or (inspect-frame-at i 'taken) 0)) 'chart-2]
+        [(< t (or (inspect-frame-at i 'acquired) 0)) 'chart-3]
+        [else 'chart-8]))
+
+;; The numbers under the strip, of the newest frame the screen reported
+;; on, and the pacer's now: (label . words) each.
+(define (pipeline-latency-readout last)
+  (let* ([r (host-frame-ns)]
+         [i (let loop ([i last] [k 0])
+              (and (< k 8) (>= i 0)
+                   (if (inspect-frame-at i 'shown) i (loop (- i 1) (+ k 1)))))]
+         [ms (lambda (a b)
+               (if (and i (inspect-frame-at i a) (inspect-frame-at i b))
+                   (format "~,1f ms" (/ (- (inspect-frame-at i b)
+                                           (inspect-frame-at i a))
+                                        1e6))
+                   "–"))]
+         [input (and i (if (inspect-frame-at i 'wl) 'wl 'sdl))])
+    (list (cons "input to screen" (if input (ms input 'shown) "–"))
+          (cons "publish to screen" (ms 'publish 'shown))
+          (cons "in the box" (ms 'publish 'taken))
+          (cons "for an image" (ms 'acquiring 'acquired))
+          (cons "tick before latch" (format "~,1f ms" (/ *pacer-lead* 1e6)))
+          (cons "deadline margin" (format "~,1f ms" (/ *pacer-deadline* 1e6)))
+          (cons "latch before refresh"
+                (if (and i *pacer-latch*)
+                    (format "~,1f ms"
+                            (/ (modulo (- (inspect-frame-at i 'shown)
+                                          *pacer-latch*)
+                                       r)
+                               1e6))
+                    "–")))))
+
+(define (pipeline-draw-readout x y w items)
+  (let ([cw (quotient w (length items))] [lh (font-line-height 'ui-small)])
+    (for-each (lambda (item k)
+                (let ([ix (+ x (* k cw))])
+                  (draw-text ix y (car item) 'text-faint 'ui-small)
+                  (draw-text ix (+ y lh 2) (cdr item) 'text 'ui)))
+              items (iota (length items)))))
 
 ;; Latency's rules: the publish, and refreshes before and after it.
 (define (pipeline-latency-rules p)

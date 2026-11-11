@@ -741,9 +741,25 @@ Decisions worth keeping in mind for the real design:
   its own), a few refreshes after the tick, so that what moves by `t`
   moves as evenly as the screen shows its frames. While the host window
   is hidden, minimized or covered no frame is drawn, and core0 keeps the
-  last; input, timers and processes go on. `(inspect-pacer)` gives the
-  period, the grid's next tick, whether the last tick sent the screen a
-  frame it holds, and the last `t`.
+  last; input, timers and processes go on.
+  Where the screen's reports place the compositor's latches (Wayland's),
+  a tick begins just in time instead, aimed at a latch: its lead before
+  it, the lead what a tick takes to its publish lately, a margin for the
+  compositor's deadline, and 3 ms. Its frame goes straight to the screen
+  with the input that came till then, not a refresh early, waiting for an
+  image. The reports say how many refreshes after the one aimed for each
+  frame showed: late, the margin grows 2 ms, and a tick skips one latch to
+  drain the frame now queued ahead, which that frame covers; in time, it
+  shrinks 5 µs a frame, slowly enough that one comes late only now and
+  then. A frame that waited half a refresh more than its lead from its
+  publish to its image drains one too. Core0 reads input as soon as its
+  acquire returns, and every ms while frames flow. On GNOME 48 with NVIDIA
+  this took a frame from its publish to the screen from 58 ms to 24 under
+  the Pipeline and Boids 3D, and 7.4 for a light window, with no refresh
+  missed in 2 × 21 s each. `(inspect-pacer)` gives the period, the grid's
+  next tick, whether the last tick sent the screen a frame it holds, the
+  last `t`, the latch, the lead, the margin, the latch aimed at, and when
+  the next tick may begin.
   How a frame reaches the screen is `'present-mode`, in Settings'
   Display tab, or `(override! 'present-mode 'mailbox)`; it changes live,
   at the next frame, among what the window offers (`(inspect-device)`).
