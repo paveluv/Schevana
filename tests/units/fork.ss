@@ -5,16 +5,19 @@
 
 (let* ([home (string-append out-dir "/fork-home")]
        [out (string-append out-dir "/fork-seen.ss")]
+       [run (string-append *schevana-root* "/tests/fork/run.ss")]
        [status
         (begin
           (unless (file-directory? home) (mkdir home))
           (when (file-exists? out) (delete-file out))
-          (system
-           (format "HOME=\"~a\" timeout 120 $(command -v chez || echo scheme) \
-                    --script \"~a/main.ss\" --headless --fork --size 400x300 \
-                    --eval '(define *fork-out* \"~a\")' \
-                    --eval '(load \"~a/tests/fork/run.ss\")' > /dev/null"
-                   home *schevana-root* out *schevana-root*)))]
+          (units-system-within 120
+            (string-append
+              (units-chez (list (cons "HOME" home))
+                          (string-append *schevana-root* "/main.ss")
+                          "--headless" "--fork" "--size" "400x300"
+                          "--eval" (format "(define *fork-out* ~s)" out)
+                          "--eval" (format "(load ~s)" run))
+              " > /dev/null")))]
        [seen (and (file-exists? out) (call-with-input-file out read))])
   (define (saw key) (and (pair? seen) (cdr (assq key seen))))
   (check (format "a forked world loads on its own thread, draws frames \
@@ -35,3 +38,17 @@
                   phases sum to its time (~a ticks, ~a not)"
                  (saw 'ticks) (saw 'unsummed))
          (and (saw 'ticks) (> (saw 'ticks) 30) (= (saw 'unsummed) 0))))
+
+;; The guard on that run: a run that hangs is killed in its time, and what
+;; a word holds reaches sh whole.
+(let ([began (real-time)])
+  (check "a run still going after its time is killed, not waited for"
+         (and (eqv? (units-system-within 1 "exec sleep 30") 137)
+              (< (- (real-time) began) 5000))))
+(let ([word "it's \"$HOME\" `x` \\ ~"]
+      [file (string-append out-dir "/fork-word.txt")])
+  (check "a word reaches sh whole, whatever it holds"
+         (and (eqv? (system (format "printf %s ~a > ~a" (units-sh-word word)
+                                    (units-sh-word file)))
+                    0)
+              (equal? (call-with-input-file file get-string-all) word))))

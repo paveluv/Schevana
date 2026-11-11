@@ -25,17 +25,53 @@
        (sort string<?
              (directory-list (string-append *schevana-root* "/tests/units")))))
 
+;; s as one word of /bin/sh's, whatever it holds.
+(define (units-sh-word s)
+  (let ([o (open-output-string)])
+    (put-char o #\')
+    (string-for-each
+      (lambda (c) (if (char=? c #\') (put-string o "'\\''") (put-char o c)))
+      s)
+    (put-char o #\')
+    (get-output-string o)))
+
+;; The loader's variables that macOS drops on the way into /bin/sh: set
+;; here, they're handed on by name.
+(define units-loader-variables
+  '("DYLD_LIBRARY_PATH" "DYLD_FALLBACK_LIBRARY_PATH"))
+
+;; /bin/sh's command that becomes a run of Chez on script with args, with
+;; env's variables, (name . value), and the loader's set. Chez is "chez"
+;; where Homebrew installs it, as in ./schevana, else "scheme".
+(define (units-chez env script . args)
+  (format "exec env~{ ~a~} \"$(command -v chez || echo scheme)\" \
+           --script~{ ~a~}"
+          (map (lambda (v)
+                 (string-append (car v) "=" (units-sh-word (cdr v))))
+               (append env
+                       (filter cdr
+                               (map (lambda (name) (cons name (getenv name)))
+                                    units-loader-variables))))
+          (map units-sh-word (cons script args))))
+
+;; command's exit status, or 137 if it still ran after seconds and was
+;; killed, lest a hang hold up the suite. GNU's timeout isn't everywhere (a
+;; Mac has none), so this is plain sh; command execs, so the process killed
+;; is its own.
+(define (units-system-within seconds command)
+  (system
+    (format "(~a) & p=$!; i=0; while kill -0 $p 2> /dev/null; do \
+             if [ $i -ge ~a ]; then kill -9 $p; break; fi; \
+             sleep 1; i=$((i + 1)); done; wait $p 2> /dev/null"
+            command seconds)))
+
 ;; Whether topic passes, run by this file in a process of its own.
 (define (units-run topic)
   (printf "--- ~a\n" topic)
   (flush-output-port (current-output-port))
-  ;; Chez is "chez" where Homebrew installs it, as in ./schevana, and macOS
-  ;; drops the library path on the way into /bin/sh: it's handed on.
-  (zero? (system (format "DYLD_FALLBACK_LIBRARY_PATH=\"~a\" \
-                          $(command -v chez || echo scheme) --script \
-                          \"~a/tests/units.ss\" \"~a\" \"~a\""
-                         (or (getenv "DYLD_FALLBACK_LIBRARY_PATH") "")
-                         *schevana-root* out-dir topic))))
+  (zero? (system (units-chez '() (string-append *schevana-root*
+                                                "/tests/units.ss")
+                             out-dir topic))))
 
 ;; All of them, or those asked for: here only the topics' verdicts.
 (unless (= (length units-asked) 1)
