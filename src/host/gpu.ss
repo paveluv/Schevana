@@ -15,7 +15,7 @@
 ;;; device's contract, and which back end this machine speaks.
 
 ;; This machine's back end: a Mac has Metal, everything else Vulkan.
-(define shader-target (if host-mac? 'msl 'spirv))
+(define shader-target (if (host-mac?) 'msl 'spirv))
 
 ;; What a shader's entry is called: main is no function's name in MSL.
 (define shader-entry (if (eq? shader-target 'msl) "main0" "main"))
@@ -1235,15 +1235,6 @@
                       8)
     (sdl-push-fragment-uniform cb 0 u (bytevector-length u))))
 
-;; Where the GPU stood with the last frame, as main asked the window for its
-;; next image: what tells the GPU's work from the screen's hold. 0, it had
-;; finished already; 1, it finished during the wait; 2, it hadn't yet.
-(defvar *gpu-frame-state* 0)
-
-(define (gpu-last-frame-done? r)
-  (let ([fence (renderer-fence r)])
-    (or (not fence) (sdl-query-gpu-fence (renderer-device r) fence))))
-
 ;; The driver's name, and how this window may present.
 (define (gpu-driver-name) (sdl-gpu-driver (renderer-device *renderer*)))
 
@@ -1268,8 +1259,8 @@
 ;;; What core0 says of itself, for the world to read (.work/gpu-design.md
 ;;; 9.12): an alist the world never changes, made again at the end
 ;;; of a frame only when what it's made of changed, so that a frame like the
-;;; last allocates nothing. A frame's own state, *gpu-frame-state*, is told
-;;; on its own.
+;;; last allocates nothing. What became of each frame is in its report
+;;; (src/host/present.ss).
 
 (defvar *gpu-facts* '())
 
@@ -1379,11 +1370,15 @@
     (when f
       (memory-order-acquire)
       (let loop () (unless (box-cas! *gpu-published* f #f) (loop)))
+      (host-trace! 2 (gpu-frame-number f))
       (set! *gpu-booting* #f)
-      ;; taken: main may make the next (.work/gpu-design.md 9.12)
+      ;; taken: main may make the next (.work/gpu-design.md 9.12), with the
+      ;; input that came till now, not only till the last step's pump
+      (host-events-pumped!)
       (host-world-wake!)
       (gpu-frame-shown?-set! f (gpu-present! f))
       (host-put! *gpu-given-back* f)
+      (host-trace! 6 (gpu-frame-number f))
       ;; given back, with what it read: main takes them at once, whether
       ;; or not a frame follows
       (host-world-wake!))))
@@ -1441,21 +1436,21 @@
           #t)
         ;; the driver may hold either end of this till the screen is ready
         (let* ([out gpu-swapchain-out*]
-               [done? (gpu-last-frame-done? r)]
                [shown?
-                (let ([ok (sdl-acquire-swapchain
+                (let ([ok (begin
+                            (host-trace! 3 (gpu-frame-number f))
+                            (sdl-acquire-swapchain
                            cb (renderer-sdl-window r)
                            (ftype-pointer-address
                             (ftype-&ref gpu-swapchain-out (texture) out))
                            (ftype-pointer-address
                             (ftype-&ref gpu-swapchain-out (w) out))
                            (ftype-pointer-address
-                            (ftype-&ref gpu-swapchain-out (h) out)))])
+                            (ftype-&ref gpu-swapchain-out (h) out))))])
+                  (host-trace! 4 (if ok 1 0))
                   (and ok
                        (not (eqv? 0 (ftype-ref gpu-swapchain-out (texture)
                                                out)))))])
-          (set! *gpu-frame-state*
-            (cond [done? 0] [(gpu-last-frame-done? r) 1] [else 2]))
           (when shown?
             (gpu-draw-runs! r cb (ftype-ref gpu-swapchain-out (texture) out)
                             (sdl-swapchain-format (renderer-device r)
@@ -1463,10 +1458,11 @@
                             (ftype-ref gpu-swapchain-out (w) out)
                             (ftype-ref gpu-swapchain-out (h) out)
                             runs #f))
-          (let ([fence (gpu-must 'gpu-frame! (sdl-submit-gpu-fence cb))])
-            (when (renderer-fence r)
-              (sdl-release-gpu-fence (renderer-device r) (renderer-fence r)))
-            (renderer-fence-set! r fence))
+          ;; the screen asked to report on it, before the submit presents it
+          (when shown? (present-sent! (gpu-frame-number f)))
+          (present-fence! (gpu-frame-number f)
+                          (gpu-must 'gpu-frame! (sdl-submit-gpu-fence cb)))
+          (host-trace! 5 (gpu-frame-number f))
           shown?))))
 
 ;;; ---- the boot screen

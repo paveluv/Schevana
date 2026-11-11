@@ -180,11 +180,15 @@
 ;; Then the inbox: the host's events, each told to *host-event-seen*, as
 ;; the world's.
 (define (host-events wait-ms)
+  (host-trace! 20 wait-ms)
   (cond [(not (host-forked?)) (host-step!)]
         [(gpu-frame-waiting?)
          (with-profile-span 'vsync-wait 'acquire (host-world-wait! wait-ms))]
         [else (host-world-wait! wait-ms)])
+  (host-trace! 21 0)
   (let-values ([(events types) (host-window-events)])
+    (unless (null? types) (host-trace! 27 (length types)))
+    (frame-input-came! (host-input-ns-take!))
     (for-each (lambda (type) (*host-event-seen* type)) types)
     (filter values (map host-event->world events))))
 
@@ -229,7 +233,7 @@
          [length (+ n 3)] [a host-sockaddr*])
     (unless (< n 104) (errorf 'host-socket "too long a path: ~a" path))
     (ftype-set! host-sockaddr (family) a
-                (if host-mac?
+                (if (host-mac?)
                     (+ 256 length)
                     1))
     (do ([i 0 (+ i 1)]) ((= i n))

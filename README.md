@@ -43,6 +43,9 @@ brew install chezscheme sdl3 freetype fontconfig
 On a Mac the world draws on Metal, its shaders written out as Metal's language
 and compiled by the system when a pipeline is made, so Xcode isn't needed.
 
+What has run where, and which features differ by platform, is in
+[docs/PLATFORMS.md](docs/PLATFORMS.md).
+
 For the fonts Linux has, install DejaVu too. Without it, `sans-serif` and
 `monospace` are Lucida Grande and Menlo, not what fontconfig would choose.
 
@@ -329,8 +332,8 @@ period (asleep, or running in SDL), the collector or someone's work,
 never what the screen held the host for.
 
 A row's tooltip says all that's known of it: for each tick about it, how
-long it slept and worked, what the screen held the host for and where
-the GPU stood; the host's events for the 10 seconds before it; its
+long it slept and worked and what the screen held the host for; the
+host's events for the 10 seconds before it; its
 frame, the host window's state, the windows and processes, its memory,
 the machine's load and SDL's last error. `(profile-flag-log! path)`
 adds each flag to the end of a file as it comes, to outlive a run; a run
@@ -748,6 +751,34 @@ Decisions worth keeping in mind for the real design:
   that hold paces the frames. With `mailbox` core0 seldom waits and a
   newer frame replaces one not shown yet, which SDL doesn't report: no
   flag says so, and the ticks keep to the grid.
+- **The screen says what became of each frame.** On Wayland core0 asks
+  the compositor to report on each frame it presents (`wp_presentation`),
+  and reads the reports on an event queue of its own: the vblank the frame
+  showed at, the refresh and the display's sequence, or that it was
+  dropped; it also sees each frame's GPU fence signal. The world reads
+  them by frame number (`inspect-frame-screen`, `inspect-frame-gpu`,
+  `inspect-frame-latency`), and joins them to the input each frame shows,
+  stamped by SDL as core0 pumps it. So a refresh frozen where an update was
+  due is counted from the screen's own sequence, not guessed from waits,
+  and Monitor's Overview and the Pipeline say how long input takes to
+  reach the screen. A report's time is read on the clock the compositor
+  names, unless its frame would then show before it was sent: GNOME with
+  NVIDIA names `CLOCK_MONOTONIC` and reports on `CLOCK_MONOTONIC_RAW`. X11,
+  headless runs and the Mac report nothing yet.
+- **What the host is, said in one place.** Which OS, CPU, windowing
+  system and GPU API this is comes from predicates (`host-mac?`,
+  `host-wayland?`, `host-vulkan?`) and facts that core0 learns as SDL and
+  the GPU start; code for one platform lives in the platform files and asks
+  what it needs of the thing itself. Monitor's Platform tab lists it all,
+  the system's and libraries' versions, the screen's reports and their
+  clock, and copies the run as a row of
+  [docs/PLATFORMS.md](docs/PLATFORMS.md).
+- **A trace of each frame.** In a checkout with a `.work` folder, core0
+  and main stamp their steps around each frame (take, acquire, submit,
+  tick, draw, publish, collect) on rings of their own, the last few
+  minutes of them; closing the window, or `(host-trace-dump!)`, writes them
+  by time with the screen's reports on the frames still kept to
+  `.work/traces/trace-<date>-<time>.txt`.
 - **Kernel vs user space via engines.** Each app handler runs in a Chez
   engine with a fuel budget (`safe-call`). An error or an infinite loop
   "crashes" only that window, which then shows the condition and can be
@@ -1064,10 +1095,13 @@ Decisions worth keeping in mind for the real design:
   its drawer in the tree and stays with its drawer, at its place in it, as
   the frame changes, and a drawer keeps its color, whatever its place, while
   the Pipeline is open. Below, the River flows, a bar a tick: what main did,
-  and in lanes over it whether the tick came late, the frame it sent, where
-  the GPU stood, the collector, as bright as it took long, and input, green
-  where all's well, a
-  label's tooltip saying what its colors mean. A press holds it and goes back
+  and in lanes over it whether the tick came late, the frame it sent, what
+  the screen says became of it (shown in time, a refresh or more late, or
+  dropped), whether its GPU work was done in time, the collector, as
+  bright as it took long, and input, green where all's well, a label's
+  tooltip saying what its colors mean, and a bar's how long its frame
+  showed after the input it shows. A tick's lanes fill in as the screen's
+  report on its frame comes, a few refreshes on. A press holds it and goes back
   to that tick's frame, the whole app showing it, and a drag moves through
   them: the last 300 frames are kept while it's open, each the screen's own
   records and copies of the lists it showed, a list the same as in the

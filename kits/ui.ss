@@ -3266,6 +3266,11 @@
 ;; sent before.
 (define (ui-stream-restart! s) (ui-stream-sent-set! s -1))
 
+;; The moments from seq on are sent again at the next send, their words
+;; read again: those still changing.
+(define (ui-stream-resend! s seq)
+  (when (>= (ui-stream-sent s) seq) (ui-stream-sent-set! s (- seq 1))))
+
 (define (ui-stream-release! s)
   (when (ui-stream-buffer s)
     (gpu-buffer-release! (ui-stream-buffer s))

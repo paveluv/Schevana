@@ -173,11 +173,11 @@
 ;; allocated, heap, where its uses start in their ring and how many; then
 ;; the frames that reached the screen, what main itself ran (ns, by the
 ;; thread's CPU clock), the host window's flags, the host's events, the
-;; frames tried so far, where the GPU stood with the frame before
-;; (*gpu-frame-state*), and the records of the frame last recorded.
+;; frames tried so far (what became of each is inspect-frame-…'s), and the
+;; records of the frame last recorded.
 (define profile-tick-fields
   '(end ns gcs gc-ns allocated heap start count
-    shown cpu flags input frames gpu records))
+    shown cpu flags input frames records))
 ;; A second's: its clock second, ticks, ns, the longest tick's ns, the
 ;; rest as a tick's, and its subjects' start and count.
 (define profile-second-fields
@@ -435,7 +435,6 @@
     (profile-ring-set! r names 'input slot *profile-input*)
     (set! *profile-input* 0)
     (profile-ring-set! r names 'frames slot *frame-ring-n*)
-    (profile-ring-set! r names 'gpu slot *gpu-frame-state*)
     (profile-ring-set! r names 'records slot (rec-count))
     (fxvector-set! m 0 gcs)
     (fxvector-set! m 1 allocated)
@@ -651,16 +650,14 @@
                                    (quotient ago 1000000000))))))
 
 ;; A tick as a flag keeps those about it: its seq, what it took, how long
-;; it slept, worked and the screen held the host (all ns), where the GPU
-;; stood with the frame before (*gpu-frame-state*), its events, the records
-;; of the frame last recorded.
+;; it slept, worked and the screen held the host (all ns), its events, the
+;; records of the frame last recorded.
 (define (profile-tick-row seq)
   (let ([slept (profile-tick-phase-ns seq 'input-wait)]
         [screen (profile-tick-phase-ns seq 'vsync-wait)]
         [ns (profile-tick-ns seq 'ns)])
     (list seq ns slept (- ns slept screen) screen
-          (profile-tick-ns seq 'gpu) (profile-tick-ns seq 'input)
-          (profile-tick-ns seq 'records))))
+          (profile-tick-ns seq 'input) (profile-tick-ns seq 'records))))
 
 ;; What else there is to see of tick seq, as lines: its frame, the host
 ;; window, the world's windows and processes, its memory, the machine's load
@@ -677,7 +674,7 @@
                            (format "~a*" (window-title w))
                            (window-title w)))
                      (windows))]
-         [loaded (profile-machine-load)]
+         [loaded (host-machine-load)]
          [wrong (host-error-text)])
     (append
      (list
@@ -704,11 +701,6 @@
      (if (string=? wrong "")
          '()
          (list (format "SDL's last error, maybe an old one: ~a" wrong))))))
-
-;; The machine's load as the system says it, where it says it so.
-(define (profile-machine-load)
-  (and (file-exists? "/proc/loadavg")
-       (call-with-input-file "/proc/loadavg" get-line)))
 
 ;; The flags kept, the newest first.
 (define (profile-flags)
@@ -811,8 +803,7 @@
   (let* ([of (lambda (p)
                (let ([x (assq p (profile-flag-phases f))]) (if x (cdr x) 0)))]
          [work (- (profile-flag-ns f) (of 'input-wait) (of 'vsync-wait))]
-         [text profile-ns-text]
-         [states '#("done" "during" "not yet")])
+         [text profile-ns-text])
     (append
      (list
       (format "~a, tick ~a: ~a (a tick is ~a)" (profile-flag-clock f)
@@ -833,15 +824,12 @@
       (format "  slept: ~a" (profile-flag-ms-text f 2))
       (format "  work: ~a" (profile-flag-ms-text f 3))
       (format "  the screen: ~a" (profile-flag-ms-text f 4))
-      (format "  the last frame on the GPU: ~a"
-              (profile-flag-row-text
-               f (lambda (b) (vector-ref states (list-ref b 5)))))
       (format "  host events: ~a"
               (profile-flag-row-text
-               f (lambda (b) (number->string (list-ref b 6)))))
+               f (lambda (b) (number->string (list-ref b 5)))))
       (format "  records: ~a"
               (profile-flag-row-text
-               f (lambda (b) (number->string (list-ref b 7)))))
+               f (lambda (b) (number->string (list-ref b 6)))))
       (format "the host said: ~a"
               (if (null? (profile-flag-events f))
                   "nothing for 10 s"

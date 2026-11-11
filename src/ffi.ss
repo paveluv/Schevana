@@ -108,6 +108,8 @@
 ;;; ------------------------------------------------------------------ FreeType
 
 (define-foreign ft-init-freetype "FT_Init_FreeType" (uptr) int)
+(define-foreign ft-library-version "FT_Library_Version"
+  (uptr uptr uptr uptr) void)
 (define-foreign ft-new-face "FT_New_Face" (uptr string long uptr) int)
 (define-foreign ft-set-char-size "FT_Set_Char_Size"
   (uptr long long unsigned unsigned) int)
@@ -121,6 +123,7 @@
 ;;; ----------------------------------------------------------------- fontconfig
 
 (define-foreign fc-config-get-current "FcConfigGetCurrent" () uptr)
+(define-foreign fc-get-version "FcGetVersion" () int)
 (define-foreign fc-name-parse "FcNameParse" (string) uptr)
 (define-foreign fc-config-substitute "FcConfigSubstitute"
   (uptr uptr int) int)

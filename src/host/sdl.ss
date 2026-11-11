@@ -157,7 +157,18 @@
   (uptr bool uptr unsigned-32) bool)
 (define-foreign sdl-query-gpu-fence "SDL_QueryGPUFence" (uptr uptr) bool)
 (define-foreign sdl-release-gpu-fence "SDL_ReleaseGPUFence" (uptr uptr) void)
+;; a window's properties: its Wayland display and surface, for their reports
+(define-foreign sdl-get-window-properties "SDL_GetWindowProperties" (uptr)
+  unsigned-32)
+(define-foreign sdl-get-pointer-property "SDL_GetPointerProperty"
+  (unsigned-32 string uptr) uptr)
 (define-foreign sdl-gpu-driver "SDL_GetGPUDeviceDriver" (uptr) string)
+;; what the host is: SDL's version, its video driver (#f before its start)
+(define-foreign sdl-get-version "SDL_GetVersion" () int)
+(define-foreign sdl-get-current-video-driver "SDL_GetCurrentVideoDriver" ()
+  string)
+(define-foreign sdl-get-string-property "SDL_GetStringProperty"
+  (unsigned-32 string string) string)
 (define-foreign sdl-window-supports-present-mode
   "SDL_WindowSupportsGPUPresentMode" (uptr uptr int) bool)
 (define-foreign/collect-safe sdl-set-frames-in-flight

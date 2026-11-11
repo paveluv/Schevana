@@ -342,8 +342,10 @@
                                         (inspect-list-lists (cdr k))))))])
         (check (format "frames kept share a list's copy while it's the same: \
                         a frame kept adds ~a bytes, and after the window \
-                        changed ~a, its lists' new copies"
-                       (- (car b) (car a)) (- (car c) (car b)))
+                        changed ~a, its lists' new copies (new ~a then ~a, \
+                        the window's ~a)"
+                       (- (car b) (car a)) (- (car c) (car b))
+                       (new b a) (new c b) (apply + (map bytes (mine c))))
                (and (= 2 (length (mine a)))
                     (for-all eq? (mine a) (mine b))
                     (not (exists (lambda (x) (memq x (mine a))) (mine c)))
@@ -799,9 +801,9 @@
          [river (pipeline-view-river v)])
     (check "the River flows while it's open: the frames are kept, the ticks \
             sent, each with its lanes"
-           (let* ([seq (profile-newest-tick)]
-                  [row (and (ui-stream-buffer river)
-                            (ui-stream-row river (ui-stream-sent river)))])
+           (let* ([seq (ui-stream-sent river)]
+                  [row (and (ui-stream-buffer river) (>= seq 0)
+                            (ui-stream-row river seq))])
              (and row (> (inspect-history-count history) 3)
                   (= (length row) (+ (length monitor-phases)
                                       (length pipeline-draw-lanes)))
@@ -853,7 +855,7 @@
                   [colors (cdr (assoc "collector" pipeline-draw-lanes))]
                   [opacity (lambda (c)
                              (let-values ([(r g b a) (color-rgba c)]) a))]
-                  [j (+ (length monitor-phases) 3)]
+                  [j (+ (length monitor-phases) 4)]
                   [seq (profile-newest-tick)]
                   [word ((pipeline-river-word (pacer-period)) seq j)])
              (and (= (pipeline-collector-level 0) 1)

@@ -37,12 +37,14 @@
   ;; on a Mac, no Dock icon and no taking the focus from what you're doing
   (sdl-set-hint "SDL_MAC_BACKGROUND_APP" "1")
   (host-window-init! gpu-windowless-video)
-  (unless *renderer* (gpu-open! gpu-windowless-kind)))
+  (unless *renderer* (gpu-open! gpu-windowless-kind))
+  (host-platform-read!))
 
 ;; The window, w × h window units, hidden till it's sized and shown, full
 ;; screen if asked; the GPU draws to it from then on.
 (define (host-window-open! w h full?)
   (set! *host* 'sdl)
+  (host-trace-start!)
   (sdl-set-hint "SDL_VIDEO_X11_NET_WM_BYPASS_COMPOSITOR" "0")
   (sdl-set-hint "SDL_MOUSE_FOCUS_CLICKTHROUGH" "1")
   (sdl-set-hint "SDL_APP_ID" host-app-id)
@@ -58,6 +60,7 @@
             (sdl-get-error)))
   (unless *renderer* (gpu-open! 'gpu))
   (gpu-claim-window! *sdl-window*)
+  (host-platform-read!)
   (host-facts-refresh! #t))
 
 ;; Centered on its display and shown, taking text from then on.
@@ -67,6 +70,7 @@
   (sdl-show-window *sdl-window*)
   (sdl-start-text-input *sdl-window*)
   (host-clipboard-read!)
+  (platform-reports-start! *sdl-window*)
   (host-facts-refresh! #t))
 
 (define (host-window-close!)
@@ -359,20 +363,44 @@
     (set! *wheel-rest* (cons (- x dx) (- y dy)))
     (and (not (= 0 dx dy)) (list 'wheel dx dy))))
 
-;; The queue drained, with no wait: (values events types), the events as
-;; sdl-event->list gives them, and every event's number in order, whether
-;; it means anything or not.
+;; The queue drained, with no wait: (values events types first), the
+;; events as sdl-event->list gives them, every event's number in order,
+;; whether it means anything or not, and when SDL took the first that came
+;; from the keyboard or the mouse (now-ns; 0, none).
 (define (host-window-pump)
   (if (eq? *host* 'sdl)
       (let ([buf *sdl-event*])
-        (let loop ([more? (sdl-poll-event buf)] [acc '()] [types '()])
+        (let loop ([more? (sdl-poll-event buf)] [acc '()] [types '()]
+                   [first 0])
           (if more?
               (let ([type (foreign-ref 'unsigned-32 buf 0)]
                     [e (sdl-event->list buf)])
                 (loop (sdl-poll-event buf) (if e (cons e acc) acc)
-                      (cons type types)))
-              (values (reverse acc) (reverse types)))))
-      (values '() '())))
+                      (cons type types)
+                      (if (and (eqv? first 0)
+                               (memv type '(#x300 #x301 #x303 #x400 #x401
+                                            #x402 #x403)))
+                          (ftype-ref sdl-event-head (timestamp)
+                                     (make-ftype-pointer sdl-event-head buf))
+                          first)))
+              (values (reverse acc) (reverse types) first))))
+      (values '() '() 0)))
+
+;; When the oldest input not yet taken came (now-ns; 0, none): core0's
+;; pump sets it, the world takes it with the events, both by box-cas!.
+(defvar *host-input-ns* (box 0))
+
+(define (host-input-came! ns)
+  (let loop ()
+    (let ([old (unbox *host-input-ns*)])
+      (unless (or (not (eqv? old 0)) (box-cas! *host-input-ns* old ns))
+        (loop)))))
+
+;; When the oldest input since the last take came, taken: 0, none.
+(define (host-input-ns-take!)
+  (let loop ()
+    (let ([old (unbox *host-input-ns*)])
+      (if (box-cas! *host-input-ns* old 0) old (loop)))))
 
 ;;; ------------------------------------------------------------------
 ;;; cursor & clipboard
@@ -506,7 +534,12 @@
     ;; while it boots, the boot screen at each refresh
     (when *gpu-booting* (gpu-boot-screen!))
     (if *host-quit*
-        (begin (when (eq? *host* 'sdl) (host-window-close!)) (exit 0))
+        (begin
+          (when (eq? *host* 'sdl)
+            ;; a trace that fails to write never keeps the window open
+            (guard (c [#t #f]) (host-trace-write!))
+            (host-window-close!))
+          (exit 0))
         (loop))))
 
 ;; Ends core0's sleep, or the next one: a job posted, a frame published.
@@ -523,7 +556,9 @@
 (define (host-sleep! ms)
   (with-mutex *host-world-mutex*
     (unless (or *host-woken* (<= ms 0))
-      (condition-wait *host-ready* *host-world-mutex* (host-ms ms)))
+      (host-trace! 7 ms)
+      (condition-wait *host-ready* *host-world-mutex* (host-ms ms))
+      (host-trace! 8 0))
     (set! *host-woken* #f)))
 
 (define (host-run-job! job)
@@ -532,25 +567,37 @@
 
 ;; One step of core0's: the jobs posted, in order; the frame published, if
 ;; one is; with none, on a thread of its own, a sleep of up to
-;; host-idle-ms, which a job or a frame ends; the events into the world's
-;; inbox; then what it says of itself, read again. The sleep comes before
+;; host-idle-ms, which a job or a frame ends; the frames' GPU fences looked
+;; at and the screen's reports read; the events into the world's inbox;
+;; then what it says of itself, read again. The sleep comes before
 ;; the pump, so that input that came while it slept goes in before the
 ;; next present can wait for the screen.
 (define (host-step!)
   (let ([jobs (host-take! *host-jobs*)])
+    (host-trace! 1 (length jobs))
     (for-each host-run-job! jobs)
     (unless (eq? *host* 'none) (gpu-present-published!))
     (when (and *host-forked* (not (unbox *gpu-published*)))
       (host-sleep! host-idle-ms))
-    (let-values ([(events types) (host-window-pump)])
-      (unless (null? types)
-        (when (memv #x900 types) (host-clipboard-read!))   ; clipboard-update
-        (host-put! *host-inbox* (cons events types))
-        (host-world-wake!))
-      (host-facts-refresh! (or (pair? types) (pair? jobs))))))
+    (present-poll!)
+    (platform-reports-pump!)
+    (host-facts-refresh! (or (host-events-pumped!) (pair? jobs)))))
+
+;; The events come since the last pump into the world's inbox, main woken
+;; for them, and when the oldest input came. => whether any came.
+(define (host-events-pumped!)
+  (let-values ([(events types first) (host-window-pump)])
+    (unless (eqv? first 0) (host-input-came! first))
+    (unless (null? types)
+      (host-trace! 9 (length types))
+      (when (memv #x900 types) (host-clipboard-read!))   ; clipboard-update
+      (host-put! *host-inbox* (cons events types))
+      (host-world-wake!))
+    (pair? types)))
 
 ;; The events core0's steps have put in the inbox since it was last taken,
-;; as host-window-pump gives them: (values events types).
+;; as host-window-pump gives them: (values events types); when the oldest
+;; input came, host-input-ns-take!.
 (define (host-window-events)
   (let ([steps (host-take! *host-inbox*)])
     (if (null? steps)

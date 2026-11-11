@@ -1130,21 +1130,28 @@
       (check (format "on a window, frames go through the swapchain (~a of 10 \
                       shown)" shown)
              (> shown 0))))
-  ;; the GPU's work told from the screen's hold, by the last frame's fence
-  (let ([state-when
-         (lambda answers
-           (fluid-let ([sdl-query-gpu-fence
-                        (lambda (d f)
-                          (let ([a (car answers)])
-                            (set! answers (cdr answers))
-                            a))])
-             (render-frame!)
-             *gpu-frame-state*))])
-    (check "a frame says where the GPU stood with the last one as main asked \
-            for its image: finished, finishing during the wait, or not yet"
-           (and (= (state-when #t #t) 0)
-                (= (state-when #f #t) 1)
-                (= (state-when #f #f) 2)))))
+  ;; each frame's report begun as it's sent, and its GPU work seen done at
+  ;; a later step of core0's; the offscreen driver says nothing of the
+  ;; screen
+  (let ([n *frame-ring-n*])
+    (do ([i 0 (+ i 1)]) ((= i 6))
+      (request-frame!)
+      (steps 1))
+    ;; one shown, with steps after it
+    (let* ([i (let find ([i (- *frame-ring-n* 3)])
+                (if (or (< i n) (eqv? (inspect-frame-ref i 5) 1))
+                    i
+                    (find (- i 1))))]
+           [sent (inspect-frame-report i 2)]
+           [done (inspect-frame-report i 6)])
+      (check (format "a frame on a window has its report begun as it's \
+                      sent, its GPU work seen done after (~a ns), and no \
+                      word from a screen that gives none (~a)"
+                     (and sent done (- done sent)) (inspect-frame-screen i))
+             (and (> *frame-ring-n* n)
+                  sent (> sent 0) done (>= done sent)
+                  (eqv? (inspect-frame-report i 1) 0)
+                  (not (inspect-frame-screen i)))))))
 
 (if (zero? failures)
     (printf "all checks passed\n")

@@ -220,11 +220,12 @@
   (steps 1)
   (check "typing narrows the list"
          (for-all (lambda (n) (string-contains-ci? n "l")) (offered)))
-  (let ([lines (length (repl-lines r))])
+  ;; the first offered, whichever: the test's world has core0's names too
+  (let ([lines (length (repl-lines r))] [choice (car (offered))])
     (press! 'return)
     (steps 1)
     (check "enter takes the choice instead of evaluating"
-           (and (string=? "(set-theme-plist!" (repl-input r))
+           (and (string=? (string-append "(" choice) (repl-input r))
                 (= lines (length (repl-lines r))))))
   (fresh! "(theme 'acc")
   (press! 'tab)
@@ -3926,6 +3927,11 @@
     [(sdl-set-window-minimum-size)
      (lambda (win w h) (fake-log! 'minimum w h) #t)]
     [(sdl-get-window-flags) (lambda (win) fake-flags)]
+    [(sdl-get-window-properties) (lambda (win) 0)]
+    [(sdl-get-pointer-property) (lambda (props name default) default)]
+    [(sdl-get-current-video-driver) (lambda () "dummy")]
+    [(sdl-get-version) (lambda () 3002010)]
+    [(sdl-get-string-property) (lambda (props name default) default)]
     [(sdl-get-window-size)
      (lambda (win w h) (pair! w h (car fake-units) (cdr fake-units)))]
     [(sdl-get-window-size-in-pixels)

@@ -10,9 +10,11 @@
       "."))
 
 ;; Core0, below the core: the C bindings and the basics, then the host's
-;; own code (src/host/: SDL, the GPU's device side, the window, the boot).
+;; own code (src/host/: SDL, what differs by platform, the GPU's device
+;; side, the screen's reports, the trace, the window, the boot).
 (define *schevana-core0-sources*
-  '("src/ffi.ss" "src/base.ss" "src/host/sdl.ss" "src/host/gpu.ss"
+  '("src/ffi.ss" "src/base.ss" "src/host/sdl.ss" "src/host/platform.ss"
+    "src/host/gpu.ss" "src/host/present.ss" "src/host/trace.ss"
     "src/host/window.ss" "src/host/boot.ss"))
 
 ;; "/recorder", sealed, made by core0 before "/": the basics, then the bytes
@@ -27,7 +29,8 @@
 ;; source-folders in src/system.ss. (reload!) loads these again, read from
 ;; this file; core0's stay as they are.
 (define *schevana-sources*
-  '("src/ffi.ss" "src/base.ss" "src/shader.ss" "src/theme.ss" "src/gpu.ss"
+  '("src/ffi.ss" "src/base.ss" "src/platform.ss" "src/shader.ss"
+    "src/theme.ss" "src/gpu.ss"
     "src/font.ss" "src/gfx.ss" "src/proc.ss" "src/host.ss" "src/wm.ss"
     "src/system.ss"))
 

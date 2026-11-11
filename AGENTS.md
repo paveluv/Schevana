@@ -68,7 +68,22 @@ before it:
   (`.work/gpu-design.md` 9.5, 9.12). The world names of core0's only its
   interface (`host-interface` in `src/host/boot.ss`), which "/" has
   read-only: a new name there is a reviewed change (`tests/sources.ss`).
-- **The core has a budget**, 31,650 tokens (atoms as read; comments,
+- **What differs by platform lives in the platform files**:
+  `src/host/platform.ss` for core0's (a folder, `src/host/platform/`, once
+  it outgrows a file), `src/platform.ss` for the core's. A stack differs
+  by OS, windowing system, compositor, SDL, GPU API, driver and monitor.
+  Which one this is comes from their predicates and facts alone
+  (`host-mac?`, `host-wayland?`, `host-vulkan?`, `host-windowing`; the OS
+  and CPU's in `src/base.ss`), which say what the host is: what it can do
+  is asked of the thing (a library that loads, a protocol the compositor
+  lists), never assumed, and nothing crashes without it. What the
+  platform says (its clock, its refresh) beats what was measured on one
+  machine, and is checked where it can be. What sits elsewhere today is
+  listed in `docs/PLATFORMS.md` and moves there (`tests/sources.ss`). A
+  change to such a feature updates `docs/PLATFORMS.md`: where it ran,
+  where it should work, what happens without it. Monitor's Platform tab
+  shows it all, and copies a run as a row of it.
+- **The core has a budget**, 33,996 tokens (atoms as read; comments,
   whitespace and names' lengths are free), in `tests/sources.ss`. Don't
   join lines or shorten names to fit it. Code the core doesn't need moves
   out to the next layer, kits first; the budget is raised only on purpose.

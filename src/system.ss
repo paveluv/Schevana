@@ -173,7 +173,11 @@
                     (and (or (not now)
                              (and (pacer-wanted?) (>= now (pacer-start))
                                   (not (gpu-frame-waiting?))))
-                         (begin (collector-hold!) (pacer-tick! now) #t)))))])
+                         (begin
+                           (host-trace! 22 0)
+                           (collector-hold!)
+                           (pacer-tick! now)
+                           #t)))))])
       ;; a step leads up to a tick only while one is wanted; one in a quiet
       ;; spell is its own, as a tick nothing asked for once was
       (set! *pacer-between?* (and (pair? paced) (not ticked?) (pacer-wanted?)))
@@ -189,8 +193,12 @@
         (safely 'render render-frame!)
         (frame-turn-soon!))
       ;; the frame is out: the collections it held off, and the older
-      ;; generations' passes
-      (when ticked? (collector-after-frame!))
+      ;; generations' passes; input that asked for no frame shows in none
+      (when ticked?
+        (host-trace! 25 0)
+        (collector-after-frame!)
+        (host-trace! 26 0)
+        (unless *dirty* (frame-input-drop!)))
       ;; compute runs and writes no frame took go on their own
       (when (and (gpu-asks-pending?) (not (reload-holding?)))
         (safely 'render gpu-computes-send!)))))

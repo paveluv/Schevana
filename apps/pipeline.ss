@@ -215,13 +215,15 @@
                  pipeline-collector-full-ns)))
 
 ;; Bottom up, as monitor-bars-order stacks them, what main did; over them, the
-;; lanes, a word each: late, or held by the screen; a frame sent, shown or
-;; not; where the GPU stood with the frame before: done, finishing, or not
-;; yet; the collector, by how long; input.
+;; lanes, a word each: late, or held by the screen; then a frame's way out:
+;; sent, or no room; its GPU work, done in time or late; what the screen
+;; says of it, shown in time, late, or dropped; then the collector, by how
+;; long; input.
 (define pipeline-draw-lanes
   `(("late" chart-flag chart-2)
     ("frame" chart-ok chart-flag)
-    ("GPU" chart-ok chart-2 chart-flag)
+    ("GPU" chart-ok chart-flag)
+    ("screen" chart-ok chart-flag chart-2)
     ("collector"
      ,@(map (lambda (i)
               (alpha 'chart-7
@@ -234,30 +236,62 @@
   `("Red: this tick came late, its own time past one and a half periods. \
      Orange: the screen held the host that long, which main doesn't count \
      as late. None: it was in time."
-    "Green: the tick's frame reached the screen. Red: the window had no room \
-     for it. None: no frame was drawn."
-    "Where the GPU stood with the frame before, as main asked for the next \
-     image. Green: it had finished. Orange: it finished during the wait. Red: \
-     it hadn't yet."
+    "Green: core0 sent the tick's frame to the screen. Red: the window had no \
+     room for it. None: no frame was drawn."
+    "When core0 saw the frame's GPU work done. Green: in time for its \
+     refresh. Red: after the refresh it missed, the GPU's fault, not the \
+     screen's. None: not seen."
+    "What the screen says of the tick's frame. Green: it showed a refresh \
+     after the one before. Red: the one before showed again first, while \
+     frames came a refresh apart. Orange: the compositor dropped it. None: \
+     no frame, or no word from the screen (only Wayland's compositors say)."
     ,(format "A collection ran in this tick: the longer it took, the brighter, \
               at its brightest from ~a."
              (monitor-ns-text pipeline-collector-full-ns))
     "The keyboard or the mouse sent something."))
 
+;; Whether tick seq drew a frame.
+(define (pipeline-tick-drew? seq)
+  (or (not (profile-tick-kept? (- seq 1)))
+      (> (profile-tick-ns seq 'frames) (profile-tick-ns (- seq 1) 'frames))))
+
+;; The frame tick seq drew, counting from 0 (inspect-frame-ref).
+(define (pipeline-tick-frame-index seq) (- (profile-tick-ns seq 'frames) 1))
+
 ;; The lanes' readings of tick seq, in words, for its tooltip.
 (define (pipeline-tick-lanes seq)
-  (let ([drew? (or (not (profile-tick-kept? (- seq 1)))
-                   (> (profile-tick-ns seq 'frames)
-                      (profile-tick-ns (- seq 1) 'frames)))])
+  (let* ([drew? (pipeline-tick-drew? seq)]
+         [i (pipeline-tick-frame-index seq)]
+         [ms (lambda (ns) (/ ns 1e6))])
     (string-append
      (if drew?
-         (format "\nframe ~a; GPU ~a with the one before"
+         (format "\nframe ~a~a~a~a"
                  (if (> (profile-tick-ns seq 'shown) 0)
-                     "reached the screen"
+                     "sent"
                      "had no room")
-                 (vector-ref '#("had finished" "finished during the wait"
-                                "hadn't finished")
-                             (profile-tick-ns seq 'gpu)))
+                 (case (inspect-frame-screen i)
+                   [(shown) "; it showed in time"]
+                   [(late) (format "; it showed late, ~a refresh~a missed"
+                                   (inspect-frame-missed i)
+                                   (if (eqv? (inspect-frame-missed i) 1)
+                                       ""
+                                       "es"))]
+                   [(dropped) "; the compositor dropped it"]
+                   [else ""])
+                 (let ([l (inspect-frame-latency i)])
+                   (if l
+                       (format ", ~,1f ms after the input it shows" (ms l))
+                       ""))
+                 (let ([done (inspect-frame-report i 6)]
+                       [sent (inspect-frame-report i 2)])
+                   (if (and done (> done 0))
+                       (format "; its GPU work seen done ~,1f ms after it \
+                                was sent~a"
+                               (ms (- done sent))
+                               (if (eq? (inspect-frame-gpu i) 'late)
+                                   ", too late"
+                                   ""))
+                       "")))
          "\nno frame drawn")
      (if (> (profile-tick-ns seq 'gcs) 0)
          (format "\ncollected for ~,2f ms"
@@ -269,9 +303,8 @@
     (lambda (seq j)
       (if (< j phases)
           (quotient (monitor-tick-phase-ns seq j) 1000)
-          (let ([drew? (or (not (profile-tick-kept? (- seq 1)))
-                           (> (profile-tick-ns seq 'frames)
-                              (profile-tick-ns (- seq 1) 'frames)))])
+          (let ([drew? (pipeline-tick-drew? seq)]
+                [i (pipeline-tick-frame-index seq)])
             (case (- j phases)
               [(0) (cond [(profile-tick-late? seq period) 1]
                          [(profile-tick-held? seq period) 2]
@@ -279,8 +312,15 @@
               [(1) (cond [(not drew?) 0]
                          [(> (profile-tick-ns seq 'shown) 0) 1]
                          [else 2])]
-              [(2) (if drew? (+ 1 (profile-tick-ns seq 'gpu)) 0)]
-              [(3) (if (> (profile-tick-ns seq 'gcs) 0)
+              [(2) (if drew?
+                       (case (inspect-frame-gpu i)
+                         [(done) 1] [(late) 2] [else 0])
+                       0)]
+              [(3) (if drew?
+                       (case (inspect-frame-screen i)
+                         [(shown) 1] [(late) 2] [(dropped) 3] [else 0])
+                       0)]
+              [(4) (if (> (profile-tick-ns seq 'gcs) 0)
                        (pipeline-collector-level (profile-tick-ns seq 'gc-ns))
                        0)]
               [else (if (> (profile-tick-ns seq 'input) 0) 1 0)]))))))
@@ -344,6 +384,16 @@
                 (inspect-history-count (pipeline-view-history v))
                 (pipeline-view-own v)))))
 
+;; The newest tick whose frame the screen has had time to report on, six
+;; periods back: the River sends those after it again each time, till what
+;; became of their frames is known. #f with none yet.
+(define (pipeline-settled-tick period)
+  (let ([oldest (profile-oldest-tick)] [since (- (now-ns) (* 6 period))])
+    (let loop ([seq (profile-newest-tick)])
+      (cond [(or (not seq) (not oldest) (< seq oldest)) #f]
+            [(> (profile-tick-ns seq 'end) since) (loop (- seq 1))]
+            [else seq]))))
+
 (define (pipeline-river-pane v x y w h)
   (let*-values
       ([(ui) (pipeline-view-ui v)]
@@ -364,6 +414,8 @@
     (ui-draw-label x y w gh '(group) "River")
     (ui-draw-label x y w gh '(dim right) (pipeline-river-words v))
     (when (and newest (not held?))
+      (ui-stream-resend! river (+ 1 (or (pipeline-settled-tick period)
+                                        (- oldest 1))))
       (ui-stream-send! river oldest newest (pipeline-river-word period)))
     (ui-stream ui 'pipeline-river river x sy w sh newest oldest top rules
                (map (lambda (j) (cons j (cadr (list-ref monitor-phases j))))
@@ -2067,9 +2119,10 @@
 
 ;; Screen's pane: one fact a line.
 (define (pipeline-screen-facts v)
-  (let ([d (inspect-device)] [g (inspect-glyphs)]
-        [frames (inspect-frames frame-ring-rows)]
-        [image (pipeline-view-image v)])
+  (let-values ([(d) (inspect-device)] [(g) (inspect-glyphs)]
+               [(image) (pipeline-view-image v)]
+               [(kept not-shown) (inspect-frames-kept)]
+               [(p50 p99 missed) (inspect-frames-truth 10000)])
     (append
      (list (cons "Renderer" (if (eq? (cdr (assq 'renderer d)) 'cpu)
                                 "lavapipe, on the CPU"
@@ -2085,9 +2138,15 @@
                          (cadr (assq 'pixels d)) (cddr (assq 'pixels d))
                          (exact (round (* 100 (cdr (assq 'scale d)))))))
            (cons "Frames kept"
-                 (format "~a, ~a of them not shown"
-                         (length frames)
-                         (length (remp (lambda (f) (list-ref f 5)) frames))))
+                 (format "~a, ~a of them not shown" kept not-shown))
+           (cons "Input to screen"
+                 (if p50
+                     (format "~,1f ms at the median, ~,1f at the 99th, the \
+                              last 10 s"
+                             (/ p50 1e6) (/ p99 1e6))
+                     "no word from the screen in the last 10 s"))
+           (cons "Refreshes missed"
+                 (format "~a in the last 10 s, by the screen" missed))
            (cons "Glyphs"
                  (format "~a, the atlas ~a% used"
                          (cdr (assq 'glyphs g))

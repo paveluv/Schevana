@@ -1396,11 +1396,14 @@
 
 ;; The list written since rec-begin! goes to the screen: main publishes it,
 ;; and core0 presents it, at once while it has no thread of its own
-;; (render-frames-back! tells what came of it).
+;; (render-frames-back! tells what came of it). => the frame's number, its
+;; report's (host-frame-report).
 (define (rec-present!)
   (rec-run-end!)
-  (gpu-publish! (rec-publish))
-  (unless (host-forked?) (host-step!)))
+  (let ([f (rec-publish)])
+    (gpu-publish! f)
+    (unless (host-forked?) (host-step!))
+    (gpu-frame-number f)))
 
 ;; The list written since rec-begin!, as the frame main hands the host, with
 ;; the lists kept from earlier: the past one, and the preview's, which its

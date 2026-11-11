@@ -230,6 +230,21 @@
            (ui-stream-release! s)
            (and (= once 10) (= calls 20)))))
 
+(check "asked to, a stream sends again the moments from one on, their words \
+        read again, and only those"
+       (let* ([s (ui-stream-new 16 1 '())] [asked '()]
+              [word (lambda (seq j) (set! asked (cons seq asked)) seq)])
+         (ui-stream-send! s 0 9 word)
+         (set! asked '())
+         (ui-stream-resend! s 7)
+         (ui-stream-send! s 0 9 word)
+         (let ([again (reverse asked)])
+           (set! asked '())
+           (ui-stream-resend! s 12)
+           (ui-stream-send! s 0 9 word)
+           (ui-stream-release! s)
+           (and (equal? again '(7 8 9)) (null? asked)))))
+
 (check "a stream sends only what's new, as much as it holds, and starts again \
         when the history does; numbers stay what a paint can add up, and a \
         strip's word says which of its colors, among all the strips'"

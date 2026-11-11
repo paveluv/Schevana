@@ -1163,9 +1163,11 @@
        [(or (host-hidden?) (gpu-frame-waiting?)) (request-frame!)]
        [else
         (let ([t0 (now-ns)] [waits *pacer-waits*])
+          (host-trace! 23 0)
           (rec-begin! *canvas-ratio*)
           (record-world!)
-          (rec-present!)
+          (frame-number-set! (rec-present!))
+          (host-trace! 24 *frame-number*)
           (let ([shown? (render-frames-back!)])
             (set! *frame-ms* (fl/ (fixnum->flonum
                                    (- (now-ns) t0 (- *pacer-waits* waits)))
@@ -1191,16 +1193,35 @@
               (gpu-take-answers!))
     shown?))
 
-;; The last frames, for kits/inspect.ss: what each took and held. Always
-;; kept: a few numbers a frame.
-(define frame-ring-rows 256)
-(define frame-ring-words 6)
+;; The last frames, for kits/inspect.ss: what each took and held, its
+;; number (its report's, host-frame-report), and when the oldest input it
+;; shows came (now-ns; 0, none). Always kept: a few numbers a frame, for as
+;; many frames as the reports keep.
+(define frame-ring-rows 2048)
+(define frame-ring-words 8)
 (defvar *frame-ring* (make-fxvector (* frame-ring-rows frame-ring-words) 0))
 (defvar *frame-ring-n* 0)   ; frames so far
+;; the frame being drawn's number, and the oldest input not drawn yet
+(defvar *frame-number* 0)
+(defvar *frame-input-ns* 0)
+
+(define (frame-number-set! n) (set! *frame-number* n))
+
+;; Input came at ns (now-ns; 0, none): the next frame shows it, if no
+;; older input waits.
+(define (frame-input-came! ns)
+  (unless (or (eqv? ns 0) (not (eqv? *frame-input-ns* 0)))
+    (set! *frame-input-ns* ns)))
+
+;; Input that asked for no frame: no frame shows it.
+(define (frame-input-drop!) (set! *frame-input-ns* 0))
 
 (define (frame-ring-add! shown?)
   (let ([at (* frame-ring-words (modulo *frame-ring-n* frame-ring-rows))]
         [ring *frame-ring*])
+    (fxvector-set! ring (+ at 6) *frame-number*)
+    (fxvector-set! ring (+ at 7) *frame-input-ns*)
+    (set! *frame-input-ns* 0)
     (fxvector-set! ring at (flonum->fixnum (flround (fl* 1000.0 *frame-ms*))))
     ;; the frame's, published: the recorder writes nothing now
     (let-values ([(recs-n extras-n) (rec-last-sizes)])

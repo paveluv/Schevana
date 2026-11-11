@@ -82,14 +82,14 @@
 
 (check "the top bar's memory is the heap's and the process's, or the heap's \
         alone where the system doesn't say"
-       (let* ([process (status-process-bytes)]
+       (let* ([process (host-process-bytes)]
               [heap (bytes-allocated)]
               [number (lambda (s)
                         (string->number
                          (car (string-split s #\space))))]
-              [heap-only (fluid-let ([status-process-bytes (lambda () #f)])
+              [heap-only (fluid-let ([host-process-bytes (lambda () #f)])
                            (status-memory))]
-              [whole (fluid-let ([status-process-bytes (lambda () 1073741824)])
+              [whole (fluid-let ([host-process-bytes (lambda () 1073741824)])
                        (status-memory))])
          (and (or (not process)       ; no /proc here
                   (> process (* 1/2 heap)))

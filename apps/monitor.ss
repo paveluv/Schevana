@@ -269,6 +269,16 @@
           [(< h 1) (format "~a min ~a s" m (remainder s 60))]
           [else (format "~a h ~a min" h (remainder m 60))])))
 
+;; Input to the screen, by the screen's reports, the last 10 s: the median
+;; and the 99th percentile, and the refreshes missed.
+(define (monitor-input-text)
+  (let-values ([(p50 p99 missed) (inspect-frames-truth 10000)])
+    (if p50
+        (format "~,1f ms, ~,1f at the 99th; ~a refresh~a missed, the last \
+                 10 s"
+                (/ p50 1e6) (/ p99 1e6) missed (if (= missed 1) "" "es"))
+        "no word from the screen")))
+
 ;; The World's facts, (label . words) a pair each, in reading order.
 (define (monitor-world-facts)
   (let ([hz (exact (round (/ 1e9 (host-frame-ns))))]
@@ -285,7 +295,8 @@
                          (monitor-count (pacer-ticks))))
            (cons "Last tick" (format "~,1f ms busy" (pacer-busy-ms)))
            (cons "Last frame" (format "~,1f ms" *frame-ms*))
-           (cons "Process" (let ([b (status-process-bytes)])
+           (cons "Input to screen" (monitor-input-text))
+           (cons "Process" (let ([b (host-process-bytes)])
                              (if b
                                  (format "~,1f MB" (/ b 1048576.0))
                                  "not known here")))
@@ -303,6 +314,128 @@
                              (monitor-span-text (- (now-ms) (cdr err)))
                              (car err))))
          '()))))
+
+;; A group's facts from y in a column x w wide, under its title and words:
+;; a label and its words a row, in two columns where they fit (the first,
+;; its words the longer, wider), a last error across both. => the y below
+(define (monitor-draw-facts x y w title words facts)
+  (let* ([lh (font-line-height 'ui)]
+         [err (and (pair? facts)
+                   (equal? (car (car (last-pair facts))) "Last error")
+                   (car (last-pair facts)))]
+         [facts (if err (list-head facts (- (length facts) 1)) facts)]
+         [lw (+ 16 (apply max (map (lambda (f) (text-width (car f) 'ui))
+                                   (cons '("Last error") facts))))]
+         [cols (if (>= w (* 2 (+ lw 220))) 2 1)]
+         [colx (if (= cols 2) (* w 0.58) w)]   ; where the second starts
+         [row-h (+ lh 6)]
+         [y (let-values ([(gw gh) (ui-label-size '(group) title w)])
+              (ui-draw-label x y w gh '(group) title)
+              (ui-draw-label x y w gh '(dim right) words)
+              (+ y gh 8))]
+         [rows (quotient (+ (length facts) cols -1) cols)])
+    (define (fact! f fx fy fw)
+      (ui-draw-label fx fy lw row-h '(dim) (car f))
+      (ui-draw-label (+ fx lw) fy (- fw lw 8) row-h '() (cdr f)))
+    (let loop ([fs facts] [i 0])
+      (unless (null? fs)
+        (let ([second? (>= i rows)])
+          (fact! (car fs) (if second? (+ x colx) x)
+                 (+ y (* row-h (remainder i rows)))
+                 (if second? (- w colx) colx)))
+        (loop (cdr fs) (+ i 1))))
+    (let ([y (+ y (* row-h rows))])
+      (when err (fact! err x y w))
+      (+ y (if err row-h 0)))))
+
+;; The Platform's groups, each (title words facts), the facts (label .
+;; words) as the World's: what the host is (inspect-platform), so that a
+;; run on another machine is told apart, and its predicates.
+(define (monitor-platform-groups)
+  (let* ([p (inspect-platform)]
+         [of (lambda (k) (cdr (assq k p)))]
+         [known (lambda (x) (if x (format "~a" x) "not known here"))]
+         [display (of 'display)]
+         [device (of 'gpu-device)]
+         [reports (of 'reports)]
+         [commit (of 'commit)])
+    (list
+     (list "System" ""
+           (list (cons "OS" (known (or (of 'system) (of 'os))))
+                 (cons "Kernel" (known (of 'kernel)))
+                 (cons "CPU" (format "~a, ~a threads" (of 'cpu) (of 'threads)))
+                 (cons "Chez Scheme"
+                       (format "~a, ~a" (of 'chez) (of 'chez-machine)))))
+     (list "Window" ""
+           (list (cons "Windowing" (format "~a" (of 'windowing)))
+                 (cons "Desktop"
+                       (if (of 'desktop)
+                           (format "~a, as the session names it"
+                                   (of 'desktop))
+                           "not known here"))
+                 (cons "Display"
+                       (if display
+                           (format "~a pixels, ~a Hz; ~a × ~a at density ~a"
+                                   (inspect-display-pixels display)
+                                   (inspect-display-hz display) (car display)
+                                   (cadr display) (list-ref display 4))
+                           "none"))
+                 (cons "Scale" (format "~a" (of 'scale)))))
+     (list "Drawing" ""
+           (list (cons "GPU's API" (known (of 'gpu-api)))
+                 (cons "Device"
+                       (if (and device (car device))
+                           (string-join (filter values device) ", ")
+                           (format "not told by SDL ~a" (of 'sdl))))
+                 (cons "Renderer" (known (of 'renderer)))
+                 (cons "Presenting"
+                       (format "~a, of ~a" (of 'present-mode)
+                               (if (pair? (of 'present-modes))
+                                   (string-join
+                                    (map symbol->string (of 'present-modes))
+                                    ", ")
+                                   "none")))))
+     (list "Screen reports" ""
+           (if reports
+               (list (cons "Source" (format "~a" (car reports)))
+                     (cons "Clock"
+                           (if (eq? (cadr reports) (caddr reports))
+                               (format "~a" (cadr reports))
+                               (format "~a, it says; its times fit ~a"
+                                       (cadr reports) (caddr reports))))
+                     (cons "Flags"
+                           (if (pair? (cadddr reports))
+                               (string-join (map symbol->string
+                                                 (cadddr reports))
+                                            ", ")
+                               "none yet")))
+               (list (cons "Source"
+                           "none here: the screen's lanes stay empty"))))
+     (list "Libraries" ""
+           (list (cons "SDL" (known (of 'sdl)))
+                 (cons "FreeType" (of 'freetype))
+                 (cons "fontconfig" (of 'fontconfig))
+                 (cons "Commit"
+                       (if commit
+                           (format "~a (~a)" (cdr commit)
+                                   (or (car commit) "detached"))
+                           "not known here"))))
+     (list "Predicates" "those that hold"
+           (list (cons "True"
+                       (string-join (map symbol->string (of 'predicates))
+                                    " ")))))))
+
+;; The Platform, from y in a column x w wide: its groups, then a button that
+;; copies the run as a row of docs/PLATFORMS.md.
+(define (monitor-draw-platform ui x y w)
+  (let loop ([gs (monitor-platform-groups)] [y y])
+    (if (pair? gs)
+        (loop (cdr gs)
+              (+ 12 (apply monitor-draw-facts x y w (car gs))))
+        (let-values ([(bw bh) (ui-button-size "Copy as a row" #f)])
+          (ui-button ui 'monitor-platform-copy x y bw bh "Copy as a row"
+                     (lambda () (clipboard-set! (inspect-platform-row)))
+                     'tip "This run as a row of docs/PLATFORMS.md's Runs")))))
 
 ;; The Overview, from y in a column x w wide: the World's facts in a grid,
 ;; then the windows (a click focuses one) and the processes (each with
@@ -322,105 +455,80 @@
                    (ui-draw-cell cx cy cw ch '() (text-of row key))))]
          [wins (sort (lambda (a b) (< (window-id a) (window-id b))) (windows))]
          [ps (procs)])
-    ;; the World: a label and its words a row, in two columns where they
-    ;; fit (the first, its words the longer, wider), the last error across
-    ;; both
-    (let* ([facts (monitor-world-facts)]
-           [err (and (equal? (car (last-pair facts)) "Last error")
-                     (last-pair facts))]
-           [facts (if err (list-head facts (- (length facts) 1)) facts)]
-           [lw (+ 16 (apply max (map (lambda (f) (text-width (car f) 'ui))
-                                     (cons '("Last error") facts))))]
-           [cols (if (>= w (* 2 (+ lw 220))) 2 1)]
-           [colx (if (= cols 2) (* w 0.58) w)]   ; where the second starts
-           [row-h (+ lh 6)]
-           [y (heading y "World" "")]
-           [rows (quotient (+ (length facts) cols -1) cols)])
-      (define (fact! f fx fy fw)
-        (ui-draw-label fx fy lw row-h '(dim) (car f))
-        (ui-draw-label (+ fx lw) fy (- fw lw 8) row-h '() (cdr f)))
-      (let loop ([fs facts] [i 0])
-        (unless (null? fs)
-          (let ([second? (>= i rows)])
-            (fact! (car fs) (if second? (+ x colx) x)
-                   (+ y (* row-h (remainder i rows)))
-                   (if second? (- w colx) colx)))
-          (loop (cdr fs) (+ i 1))))
-      (let ([y (+ y (* row-h rows))])
-        (when err (fact! (car err) x y w))
-        (let* ([y (+ y (if err row-h 0) 16)]
-               [y (heading y "Windows"
-                           (format "~a open · a click focuses one"
-                                   (length wins)))]
-               [wh (table-h (length wins) 8)])
-          (ui-table ui 'monitor-windows x y w wh
-                    (let ([w (ui-table-room w)])
-                      `((id "Id" ,(* w 0.08)) (title "Title" ,(* w 0.32))
-                        (app "App" ,(* w 0.17)) (state "State" ,(* w 0.15))
-                        (size "Size" ,(* w 0.14))
-                        (position "Position" ,(* w 0.14))))
-                    wins (focused-window) focus-window!
-                    (cell (lambda (win key)
-                            (case key
-                              [(id) (number->string (window-id win))]
-                              [(title) (window-title win)]
-                              [(app) (format "~a" (or (window-app win) "–"))]
-                              [(state) (if (window-error win)
-                                           "crashed"
-                                           (symbol->string
-                                            (window-state win)))]
-                              [(size) (format "~a × ~a" (window-w win)
-                                              (window-h win))]
-                              [else (format "~a, ~a" (window-x win)
-                                            (window-y win))]))))
-          (let* ([y (heading (+ y wh 16) "Processes"
-                             (if (null? ps)
-                                 "none"
-                                 (format "~a running" (length ps))))])
-            (if (null? ps)
-                (ui-draw-label x y w lh '(hint)
-                               "Try (spawn \"x\" (lambda () (let l () \
-                                (l)))) in a REPL")
-                (let ([ph (table-h (length ps) 4)]
-                      [picked (ui-memo ui 'monitor-proc #f)])
-                  (ui-table ui 'monitor-procs x y w ph
-                            (let ([w (ui-table-room w)])
-                              `((id "Id" ,(* w 0.08))
-                                (name "Name" ,(* w 0.32))
-                                (state "State" ,(* w 0.17))
-                                (ticks "Ticks" ,(* w 0.15))
-                                (age "Running" ,(* w 0.14))
-                                (kill "" ,(* w 0.14))))
-                            ps (and (memq picked ps) picked)
-                            (lambda (p) (ui-memo! ui 'monitor-proc p))
-                            (lambda (p key cx cy cw ch flags)
-                              (if (eq? key 'kill)
-                                  (ui-button ui (list 'monitor-proc-kill
-                                                      (proc-id p))
-                                             (+ cx 4) (+ cy 3) (- cw 8)
-                                             (- ch 6) "Kill"
-                                             (lambda () (kill! p))
-                                             'danger #t 'quiet #t)
-                                  ((cell (lambda (p key)
-                                           (case key
-                                             [(id) (number->string
-                                                    (proc-id p))]
-                                             [(name) (proc-name p)]
-                                             [(state)
-                                              (if (> (proc-wake p) (now-ms))
-                                                  "sleeping"
-                                                  "running")]
-                                             [(ticks)
-                                              (format "~,1fM"
-                                                      (/ (proc-ticks p) 1e6))]
-                                             [else (monitor-span-text
-                                                    (- (now-ms)
-                                                       (proc-started p)))])))
-                                   p key cx cy cw ch flags))))))))))))
+    (let ([y (+ 16 (monitor-draw-facts x y w "World" ""
+                                         (monitor-world-facts)))])
+      (let* ([y (heading y "Windows"
+                         (format "~a open · a click focuses one"
+                                 (length wins)))]
+             [wh (table-h (length wins) 8)])
+        (ui-table ui 'monitor-windows x y w wh
+                  (let ([w (ui-table-room w)])
+                    `((id "Id" ,(* w 0.08)) (title "Title" ,(* w 0.32))
+                      (app "App" ,(* w 0.17)) (state "State" ,(* w 0.15))
+                      (size "Size" ,(* w 0.14))
+                      (position "Position" ,(* w 0.14))))
+                  wins (focused-window) focus-window!
+                  (cell (lambda (win key)
+                          (case key
+                            [(id) (number->string (window-id win))]
+                            [(title) (window-title win)]
+                            [(app) (format "~a" (or (window-app win) "–"))]
+                            [(state) (if (window-error win)
+                                         "crashed"
+                                         (symbol->string
+                                          (window-state win)))]
+                            [(size) (format "~a × ~a" (window-w win)
+                                            (window-h win))]
+                            [else (format "~a, ~a" (window-x win)
+                                          (window-y win))]))))
+        (let* ([y (heading (+ y wh 16) "Processes"
+                           (if (null? ps)
+                               "none"
+                               (format "~a running" (length ps))))])
+          (if (null? ps)
+              (ui-draw-label x y w lh '(hint)
+                             "Try (spawn \"x\" (lambda () (let l () \
+                              (l)))) in a REPL")
+              (let ([ph (table-h (length ps) 4)]
+                    [picked (ui-memo ui 'monitor-proc #f)])
+                (ui-table ui 'monitor-procs x y w ph
+                          (let ([w (ui-table-room w)])
+                            `((id "Id" ,(* w 0.08))
+                              (name "Name" ,(* w 0.32))
+                              (state "State" ,(* w 0.17))
+                              (ticks "Ticks" ,(* w 0.15))
+                              (age "Running" ,(* w 0.14))
+                              (kill "" ,(* w 0.14))))
+                          ps (and (memq picked ps) picked)
+                          (lambda (p) (ui-memo! ui 'monitor-proc p))
+                          (lambda (p key cx cy cw ch flags)
+                            (if (eq? key 'kill)
+                                (ui-button ui (list 'monitor-proc-kill
+                                                    (proc-id p))
+                                           (+ cx 4) (+ cy 3) (- cw 8)
+                                           (- ch 6) "Kill"
+                                           (lambda () (kill! p))
+                                           'danger #t 'quiet #t)
+                                ((cell (lambda (p key)
+                                         (case key
+                                           [(id) (number->string
+                                                  (proc-id p))]
+                                           [(name) (proc-name p)]
+                                           [(state)
+                                            (if (> (proc-wake p) (now-ms))
+                                                "sleeping"
+                                                "running")]
+                                           [(ticks)
+                                            (format "~,1fM"
+                                                    (/ (proc-ticks p) 1e6))]
+                                           [else (monitor-span-text
+                                                  (- (now-ms)
+                                                     (proc-started p)))])))
+                                 p key cx cy cw ch flags)))))))))))
 
 (define-app (monitor) "Monitor"
   (let ([ui (make-ui)]
-        [tab 'overview]    ; the tab shown: overview, ticks or flags
+        [tab 'overview]    ; the tab shown: overview, ticks, flags, platform
         [view #f]          ; the history shown: (newest tick . seconds)
         [last 0]           ; when it moved on (now-ms): twice a second
         [paused? #f]
@@ -469,7 +577,7 @@
            [(pw ph) (ui-button-size "Resume" #f)]
            [(cw ch) (ui-button-size "Clear" #f)]
            [(dw dh) (ui-dropdown-size (list ticks-label minutes-label))]
-           [(tw th) (ui-tabs-size '("Overview" "Ticks" "Flags"))]
+           [(tw th) (ui-tabs-size '("Overview" "Ticks" "Flags" "Platform"))]
            [(none?) (not (car (history)))]   ; no tick yet
            [(items)   ; the tabs, then the Ticks' own controls
             (list
@@ -477,7 +585,7 @@
                    (lambda (x y w h)
                      (ui-tabs ui 'tab x y h
                               '(("Overview" . overview) ("Ticks" . ticks)
-                                ("Flags" . flags))
+                                ("Flags" . flags) ("Platform" . platform))
                               tab
                               (lambda (t) (set! tab t)))))
              (list kw kh
@@ -522,7 +630,7 @@
                                   'tip "How long each second's sums are \
                                         kept"))))]
            [(items) (case tab
-                      [(overview) (list (car items))]
+                      [(overview platform) (list (car items))]
                       [(flags) (list (car items) (cadddr items))]
                       [else items])])
         (ui-toolbar 0 0 w items)))
@@ -879,6 +987,8 @@
         (cond
           [(eq? tab 'overview)
            (monitor-draw-overview ui pad (+ y 12) (- w pad pad))]
+          [(eq? tab 'platform)
+           (monitor-draw-platform ui pad (+ y 12) (- w pad pad))]
           [(eq? tab 'flags)
            (let* ([cw (- w pad pad)]
                   [y (section pad (+ y 4) cw "Flags" (profile-flag-summary))])

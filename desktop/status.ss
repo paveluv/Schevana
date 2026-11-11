@@ -67,28 +67,10 @@
   (let ([n (length *procs*)])
     (and (> n 0) (format "⚙ ~a running" n))))
 
-;; The process's memory in RAM, bytes: the heap, and what SDL and the drivers
-;; hold
-;; outside it, which neither reports. #f where the system doesn't say: /proc
-;; is Linux's.
-(define (status-process-bytes)
-  (guard (c [#t #f])
-    (call-with-input-file "/proc/self/status"
-      (lambda (p)
-        (let loop ()
-          (let ([l (get-line p)])
-            (cond
-              [(eof-object? l) #f]
-              [(string-prefix? "VmRSS:" l)
-               (* 1024 (string->number
-                        (list->string (filter char-numeric?
-                                              (string->list l)))))]
-              [else (loop)])))))))
-
 ;; The heap, and the process's resident memory where the system says it.
 (define (status-memory)
   (let ([heap (/ (bytes-allocated) 1048576.0)]
-        [process (status-process-bytes)])
+        [process (host-process-bytes)])
     (if process
         (format "~,1f/~,1f MB" heap (/ process 1048576.0))
         (format "~,1f MB" heap))))

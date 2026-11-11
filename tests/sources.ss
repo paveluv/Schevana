@@ -193,7 +193,7 @@
 
 ;; Raise it deliberately: the core is what the desktop needs to boot and
 ;; run; everything else belongs in a folder.
-(define src-budget 31650)
+(define src-budget 33996)
 
 ;; The tokens of a datum as read; a list's end is none.
 (define (tokens x)
@@ -302,11 +302,14 @@
 ;; names SDL's windowless half, Vulkan, SPIR-V, Metal or MSL, so that another
 ;; back end, or raw Vulkan, is the GPU layer's business alone. Core0 keeps
 ;; SDL's window; the clock and the CPU count are SDL's, which any thread may
-;; call.
+;; call. What the host is, its GPU's API among it, is named only where it's
+;; said, src/platform.ss.
 (define above-gpu-files
   (remp (lambda (f)
           (member f '("src/ffi.ss" "src/shader.ss" "src/host/sdl.ss"
-                      "src/host/gpu.ss" "src/host/window.ss" "src/font.ss")))
+                      "src/host/platform.ss" "src/host/gpu.ss"
+                      "src/host/present.ss" "src/host/window.ss"
+                      "src/font.ss" "src/platform.ss")))
         (append world-files '("main.ss" "world.ss"))))
 
 (define (names-a-back-end? s)
@@ -338,6 +341,45 @@
                                                   (symbols-in
                                                    (file-forms f))))))
                           outside-src))))
+
+;;; ------------------------------------------------------------------
+;;; what the host is, said in one place
+;;; Which OS, windowing system or desktop this is, and where the system
+;;; keeps what it says of itself, are read only in the platform files
+;;; (AGENTS.md); the rest asks their predicates and facts. Monitor's
+;;; Platform tab shows Chez's machine type as it is.
+
+;; and src/host/sdl.ss, which binds SDL's video driver for core0's to read
+(define platform-files
+  '("src/base.ss" "src/platform.ss" "src/host/sdl.ss" "src/host/platform.ss"
+    "kits/inspect.ss"))
+
+;; The strings in x.
+(define (strings-in x)
+  (cond [(string? x) (list x)]
+        [(pair? x) (append (strings-in (car x)) (strings-in (cdr x)))]
+        [(vector? x) (apply append (map strings-in (vector->list x)))]
+        [else '()]))
+
+(define (reads-the-platform? x)
+  (or (and (symbol? x)
+           (memq x '(machine-type sdl-get-current-video-driver)))
+      (and (string? x)
+           (or (string-prefix? "/proc/" x)
+               (string-prefix? "/etc/os-release" x)
+               (string=? "XDG_CURRENT_DESKTOP" x)))))
+
+(check "only the platform files read which platform this is"
+       (none? (apply append
+                     (map (lambda (f)
+                            (map (lambda (x) (format "~a reads ~s" f x))
+                                 (filter reads-the-platform?
+                                         (append (symbols-in (file-forms f))
+                                                 (strings-in
+                                                  (file-forms f))))))
+                          (remp (lambda (f) (member f platform-files))
+                                (append world-files
+                                        '("main.ss" "world.ss")))))))
 
 ;;; ------------------------------------------------------------------
 ;;; core0 below the core
@@ -538,6 +580,13 @@
     (gpu-present-published! memory-order-acquire)
     (gpu-send-writes! memory-order-release)
     (gpu-present! memory-order-release)
+    (host-frame-report memory-order-acquire)
+    (present-sent! memory-order-release)
+    (present-reported! memory-order-release)
+    (host-trace! memory-order-release)
+    (host-trace-rows-of memory-order-acquire)
+    (host-input-came!)
+    (host-input-ns-take!)
     (rec-free? memory-order-acquire)))
 
 (define thread-fence-names '(memory-order-acquire memory-order-release))

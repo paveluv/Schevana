@@ -33,18 +33,21 @@
     ;; What core0 says of itself, in variables it sets whole: another thread
     ;; reads each whole (Chez lets no thread see an object half made), but
     ;; not in step with the others, as ARM keeps no order between stores.
-    *gpu-facts* *gpu-frame-state* *host*
+    *gpu-facts* *host* *host-platform*
     ;; The same, read through procedures: the window's facts as core0's
-    ;; step last read them, made again whole when they change; and the
-    ;; events its steps put in the world's inbox, taken.
+    ;; step last read them, made again whole when they change; what became
+    ;; of each frame, by its report; and the events its steps put in the
+    ;; world's inbox, taken.
     host-display host-frame-ns host-hidden? host-flags host-error-text
-    host-step-state
+    host-step-state host-frame-report
     host-window-sizes host-window-scale host-window-fullscreen?
-    clipboard-get host-window-events
+    clipboard-get host-window-events host-input-ns-take!
     ;; Jobs: posted to core0's mailbox, run at its next step; safe from any
     ;; thread.
     host-window-minimum! host-window-fullscreen! host-window-icon!
-    host-set-cursor! clipboard-set!
+    host-set-cursor! clipboard-set! host-trace-dump!
+    ;; a step of the calling thread's, on its own ring
+    host-trace!
     ;; and its wake, ending core0's wait; frames published, whether the last
     ;; waits still, those given back, and what core0 read back: from any
     ;; thread

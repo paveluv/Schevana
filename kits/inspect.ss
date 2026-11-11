@@ -13,20 +13,117 @@
 ;;; ---- frames
 
 ;; The newest n frames at most, newest first: each (us records extras runs
-;; glyphs shown?).
+;; glyphs shown? screen latency), screen and latency what the screen said
+;; of it (inspect-frame-screen, inspect-frame-latency).
 (define (inspect-frames n)
   (let ([have (min n *frame-ring-n* frame-ring-rows)])
-    (map (lambda (i)
-           (let ([at (* frame-ring-words
-                        (modulo (- *frame-ring-n* i 1) frame-ring-rows))]
-                 [ring *frame-ring*])
+    (map (lambda (k)
+           (let* ([i (- *frame-ring-n* k 1)]
+                  [at (* frame-ring-words (modulo i frame-ring-rows))]
+                  [ring *frame-ring*])
              (list (fxvector-ref ring at)
                    (fxvector-ref ring (+ at 1))
                    (fxvector-ref ring (+ at 2))
                    (fxvector-ref ring (+ at 3))
                    (fxvector-ref ring (+ at 4))
-                   (= 1 (fxvector-ref ring (+ at 5))))))
+                   (= 1 (fxvector-ref ring (+ at 5)))
+                   (inspect-frame-screen i)
+                   (inspect-frame-latency i))))
          (iota have))))
+
+;;; ---- what became of each frame
+;;; Frame i, counting from 0 for the first drawn, as long as the ring keeps
+;;; it; its report, the screen's (host-frame-report), by its number.
+
+;; Word k of frame i's row (inspect-frames' order, then its number and when
+;; the oldest input it shows came), or #f once it's gone.
+(define (inspect-frame-ref i k)
+  (and (< -1 i *frame-ring-n*)
+       (> i (- *frame-ring-n* frame-ring-rows 1))
+       (fxvector-ref *frame-ring*
+                     (+ k (* frame-ring-words (modulo i frame-ring-rows))))))
+
+;; Word k of frame i's report: 1 its kind (0 sent, 1 shown, 2 dropped), 2
+;; when sent, 3 when shown (now-ns), 4 the refresh, 5 the display's
+;; sequence, 6 when its GPU work was seen done (0, not yet); or #f.
+(define (inspect-frame-report i k)
+  (let ([n (inspect-frame-ref i 6)])
+    (and n (> n 0) (host-frame-report n k))))
+
+(define (inspect-frame-shown? i) (eqv? (inspect-frame-report i 1) 1))
+
+;; The refreshes that showed frame i-1 again before i, while frames came a
+;; period apart, sent within one and a half refreshes of each other: the
+;; screen frozen where an update was due. 0 when it showed in time; #f when
+;; it can't be told (no report, or frames apart).
+(define (inspect-frame-missed i)
+  (and (inspect-frame-shown? i) (inspect-frame-shown? (- i 1))
+       (let ([p (inspect-frame-report i 4)]
+             [gap (- (inspect-frame-report i 2)
+                     (inspect-frame-report (- i 1) 2))])
+         (and (> p 0) (< (* 2 gap) (* 3 p))
+              (max 0 (- (inspect-frame-report i 5)
+                        (inspect-frame-report (- i 1) 5)
+                        1))))))
+
+;; Frame i on the screen: shown, late (inspect-frame-missed), dropped by the
+;; compositor, or #f (no report, none yet).
+(define (inspect-frame-screen i)
+  (case (inspect-frame-report i 1)
+    [(1) (let ([m (inspect-frame-missed i)])
+           (if (and m (> m 0)) 'late 'shown))]
+    [(2) 'dropped]
+    [else #f]))
+
+;; Frame i's GPU: late when the frame came late and its work was seen done
+;; only after the refresh it missed; done when seen done otherwise; #f when
+;; not seen.
+(define (inspect-frame-gpu i)
+  (let ([done (inspect-frame-report i 6)])
+    (and done (> done 0)
+         (if (and (eq? (inspect-frame-screen i) 'late)
+                  (> done (+ (inspect-frame-report (- i 1) 3)
+                             (inspect-frame-report i 4))))
+             'late
+             'done))))
+
+;; From the oldest input frame i shows to its showing, ns; #f when it shows
+;; no input or hasn't shown.
+(define (inspect-frame-latency i)
+  (let ([in (inspect-frame-ref i 7)])
+    (and in (> in 0) (inspect-frame-shown? i)
+         (- (inspect-frame-report i 3) in))))
+
+;; The frames kept, and how many of them had no room on the screen.
+;; => (values kept not-shown)
+(define (inspect-frames-kept)
+  (let ([n (min *frame-ring-n* frame-ring-rows)])
+    (let loop ([k 0] [not-shown 0])
+      (if (= k n)
+          (values n not-shown)
+          (loop (+ k 1)
+                (if (eqv? 1 (inspect-frame-ref (- *frame-ring-n* k 1) 5))
+                    not-shown
+                    (+ not-shown 1)))))))
+
+;; Of the frames shown in the last ms: their input-to-screen times' 50th
+;; and 99th percentiles (ns, #f with none), and the refreshes they missed.
+;; => (values p50 p99 missed)
+(define (inspect-frames-truth ms)
+  (let ([since (- (now-ns) (* ms 1000000))])
+    (let loop ([i (- *frame-ring-n* 1)] [lats '()] [missed 0])
+      (let ([sent (inspect-frame-report i 2)])
+        (if (and sent (> sent since))
+            (loop (- i 1)
+                  (let ([l (inspect-frame-latency i)])
+                    (if l (cons l lats) lats))
+                  (+ missed (or (inspect-frame-missed i) 0)))
+            (let* ([v (list->vector (sort < lats))] [n (vector-length v)]
+                   [at (lambda (q)
+                         (and (> n 0)
+                              (vector-ref v (min (- n 1)
+                                                 (exact (floor (* q n)))))))])
+              (values (at 0.5) (at 0.99) missed)))))))
 
 ;;; ---- lists
 
@@ -788,6 +885,122 @@
     (and span (car span))))
 
 ;;; ---- the screen
+
+;;; ---- the platform
+
+;; What the host is, an alist, its keys in reading order: the system, the
+;; window, the drawing, the screen's reports, the libraries, the predicates
+;; that hold, and the checkout's commit. #f where it isn't known here.
+(define (inspect-platform)
+  (let ([fact host-platform-fact]
+        [gpu (lambda (k) (let ([f (assq k *gpu-facts*)]) (and f (cdr f))))])
+    (let-values ([(ft fc) (font-library-versions)])
+      `((os . ,(host-os))
+        (system . ,(fact 'system))
+        (kernel . ,(fact 'kernel))
+        (cpu . ,(host-cpu))
+        (threads . ,(host-cpu-count))
+        (chez . ,(inspect-chez-version))
+        (chez-machine . ,(machine-type))
+        (windowing . ,(host-windowing))
+        (desktop . ,(fact 'desktop))
+        (display . ,(host-display))
+        (scale . ,*canvas-ratio*)
+        (gpu-api . ,(host-gpu-api))
+        (gpu-device . ,(fact 'gpu-device))
+        (renderer . ,(gpu 'renderer))
+        (present-mode . ,(gpu 'present-mode))
+        (present-modes . ,(gpu 'present-modes))
+        (reports . ,(fact 'reports))
+        (sdl . ,(fact 'sdl))
+        (freetype . ,ft)
+        (fontconfig . ,fc)
+        (predicates . ,(map car (filter cdr (host-predicates))))
+        (commit . ,(inspect-commit))))))
+
+;; The checkout's commit, (branch . short hash), from its .git folder; #f
+;; with none, or a detached head's branch as #f.
+(define (inspect-commit)
+  (let ([git (string-append *schevana-root* "/.git")]
+        [line (lambda (path)
+                (and (file-exists? path)
+                     (call-with-input-file path get-line)))])
+    (and (file-directory? git)
+         (let ([head (line (string-append git "/HEAD"))])
+           (cond
+             [(not (string? head)) #f]
+             [(string-prefix? "ref: " head)
+              (let* ([ref (substring head 5 (string-length head))]
+                     [hash (or (line (string-append git "/" ref))
+                               (inspect-packed-ref git ref))])
+                (and (string? hash) (>= (string-length hash) 7)
+                     (cons (path-last ref) (substring hash 0 7))))]
+             [(>= (string-length head) 7) (cons #f (substring head 0 7))]
+             [else #f])))))
+
+;; ref's hash in git's packed-refs, or #f.
+(define (inspect-packed-ref git ref)
+  (let ([path (string-append git "/packed-refs")])
+    (and (file-exists? path)
+         (call-with-input-file path
+           (lambda (in)
+             (let loop ()
+               (let ([l (get-line in)])
+                 (cond [(eof-object? l) #f]
+                       [(string-suffix? (string-append " " ref) l)
+                        (substring l 0 40)]
+                       [else (loop)]))))))))
+
+;; Chez's version alone, as "10.0.0".
+(define (inspect-chez-version)
+  (let ([v (scheme-version)])
+    (if (string-prefix? "Chez Scheme Version " v)
+        (substring v 20 (string-length v))
+        v)))
+
+;; The display in pixels, as "3840 × 2160", from (w h numerator denominator
+;; density): SDL gives its size in points.
+(define (inspect-display-pixels display)
+  (format "~a × ~a" (exact (round (* (car display) (list-ref display 4))))
+          (exact (round (* (cadr display) (list-ref display 4))))))
+
+;; The display's refresh, Hz, from (w h numerator denominator density).
+(define (inspect-display-hz display)
+  (and display (> (cadddr display) 0)
+       (/ (round (* 100 (/ (caddr display) (cadddr display)))) 100.0)))
+
+;; This run, as a row of docs/PLATFORMS.md's Runs: what ran and its result
+;; left for the person to say.
+(define (inspect-platform-row)
+  (let* ([p (inspect-platform)]
+         [of (lambda (k) (cdr (assq k p)))]
+         [d (current-date)]
+         [display (of 'display)]
+         [device (of 'gpu-device)]
+         [commit (of 'commit)])
+    (format "| ~4,'0d-~2,'0d-~2,'0d | ~a | ~a | ~a | ~a | ~a | ~a | ~a | \
+             a real window | |"
+            (date-year d) (date-month d) (date-day d)
+            (if commit
+                (format "`~a` (~a)" (cdr commit) (or (car commit) "detached"))
+                "not recorded")
+            (string-join (filter values (list (of 'system) (of 'kernel)))
+                         ", ")
+            (string-join (filter values
+                                 (list (of 'desktop)
+                                       (symbol->string (of 'windowing))))
+                         ", ")
+            (if (and device (car device))
+                (format "~a, ~a ~a" (car device) (or (cadr device) "")
+                        (or (caddr device) ""))
+                (format "~a, its driver not told by SDL ~a" (of 'gpu-api)
+                        (of 'sdl)))
+            (if display
+                (format "~a, ~a Hz" (inspect-display-pixels display)
+                        (inspect-display-hz display))
+                "none")
+            (of 'sdl)
+            (of 'chez))))
 
 ;; What draws: ((renderer . gpu) (window? . #t) (pixels w . h) ...), as
 ;; core0 says it (*gpu-facts*). The display is host-display's, or #f.

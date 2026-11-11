@@ -70,6 +70,18 @@
     (ftype-ref ft-scratch (pointer) ft-scratch*)))
 (defvar *font-files* (make-hashtable string-hash string=?))
 
+;; FreeType's version and fontconfig's, as "2.13.3": (values ft fc).
+(define (font-library-versions)
+  (let ([p (foreign-alloc 12)])
+    (ft-library-version *ft-library* p (+ p 4) (+ p 8))
+    (let ([ft (format "~a.~a.~a" (foreign-ref 'int p 0) (foreign-ref 'int p 4)
+                      (foreign-ref 'int p 8))]
+          [fc (let ([v (fc-get-version)])
+                (format "~a.~a.~a" (quotient v 10000)
+                        (remainder (quotient v 100) 100) (remainder v 100)))])
+      (foreign-free p)
+      (values ft fc))))
+
 (define ft-load-no-scale 1)
 (define ft-load-render 4)
 (define ft-load-target-light (ash 1 16))
@@ -81,7 +93,7 @@
 ;; no λ and a sans-serif taller than the layouts here are made for: DejaVu, as
 ;; on Linux, or where it isn't installed the nearest the system has.
 (define font-generic-families
-  (if host-mac?
+  (if (host-mac?)
       '(("sans-serif" . "DejaVu Sans,Lucida Grande")
         ("serif" . "DejaVu Serif,serif")
         ("monospace" . "DejaVu Sans Mono,Menlo"))
