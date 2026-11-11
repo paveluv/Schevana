@@ -501,24 +501,32 @@
               [box (env-environment boids3d-box)]
               [flips 0])
          (close-window! (find-window "Boids 3D — Rules"))
-         (eval '(boids3d-ride! 'timer) box)
-         (window-call win 'frame (now-ns))   ; its timer set
          (minimize-window! win)
          (steps 1)
-         (let ([t (now-ms)] [timers (length *timers*)])
-           (fluid-let ([now-ms (lambda () t)] [*dirty* #f])
-             (do ([i 0 (+ i 1)]) ((= i 4))
-               (let ([was (window-ref win 'flipped?)])
+         ;; its timers alone: the top bar's, once a second, asks for a
+         ;; frame of its own
+         (let ([before *timers*])
+           (eval '(boids3d-ride! 'timer) box)
+           (window-call win 'frame (now-ns))   ; its timer set
+           (let* ([own (remp (lambda (x) (memq x before)) *timers*)]
+                  ;; the first of its 15 ms steps finds it due
+                  [t (if (pair? own)
+                         (- (vector-ref (car own) 0) 15)
+                         (now-ms))])
+             (fluid-let ([*timers* own] [now-ms (lambda () t)] [*dirty* #f])
+               (do ([i 0 (+ i 1)]) ((= i 4))
+                 (let ([was (window-ref win 'flipped?)])
+                   (set! t (+ t 15))
+                   (run-timers!)
+                   (unless (eq? was (window-ref win 'flipped?))
+                     (set! flips (+ flips 1)))))
+               (let ([quiet (not *dirty*)] [queued (pair? *gpu-computes*)])
+                 (eval '(boids3d-ride! 'frames) box)
                  (set! t (+ t 15))
                  (run-timers!)
-                 (unless (eq? was (window-ref win 'flipped?))
-                   (set! flips (+ flips 1)))))
-             (let ([quiet (not *dirty*)] [queued (pair? *gpu-computes*)])
-               (eval '(boids3d-ride! 'frames) box)
-               (set! t (+ t 15))
-               (run-timers!)
-               (let ([stopped (= (length *timers*) (- timers 1))])
-                 (steps 1)   ; the steps queued go to the GPU
-                 (let ([sent (null? *gpu-computes*)])
-                   (close-window! win)
-                   (and (= flips 4) quiet queued stopped sent))))))))
+                 (let ([stopped (null? *timers*)] [had (pair? own)])
+                   (steps 1)   ; the steps queued go to the GPU
+                   (let ([sent (null? *gpu-computes*)])
+                     (close-window! win)
+                     (and had (= flips 4) quiet queued stopped
+                          sent)))))))))
