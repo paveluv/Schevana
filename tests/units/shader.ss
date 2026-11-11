@@ -87,6 +87,28 @@
               (apply append (map (lambda (x) (shader-test-nodes x head)) t)))
       '()))
 
+;; The GLSL.std.450 instructions a SPIR-V module calls, by number.
+(define (shader-test-spirv-math bytes)
+  (let loop ([at 20] [found '()])
+    (if (>= at (bytevector-length bytes))
+        found
+        (let ([w (bytevector-u32-native-ref bytes at)])
+          (loop (+ at (* 4 (fxsrl w 16)))
+                (if (= (fxand w #xffff) 12)        ; OpExtInst
+                    (cons (bytevector-u32-native-ref bytes (+ at 16)) found)
+                    found))))))
+
+(check "flround is SPIR-V's RoundEven, never Round, which leaves which way a \
+        half goes to the driver"
+       (let ([math (shader-test-spirv-math
+                    (shader-spirv 'compute '(x y) '((out fl-buffer write))
+                                  (shader-lower
+                                   'compute '(x y) '((out fl-buffer write))
+                                   '((fl-set! out 0
+                                              (flround
+                                               (fixnum->flonum x)))))))])
+         (and (memv 2 math) (not (memv 1 math)))))
+
 (check "a float constant is 32 bits on the twin, as on the device"
        (let* ([s (eval '(let ()
                           (define-compute-shader (shader-test-tenth x y)

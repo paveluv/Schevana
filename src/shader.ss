@@ -532,9 +532,10 @@
 (define spirv-unary-ops
   '((fxneg . 126) (flneg . 127) (fxnot . 200) (not . 168)
     (fixnum->flonum . 111) (flonum->fixnum . 110)))
-;; GLSL.std.450's numbers
+;; GLSL.std.450's numbers; flround is RoundEven, for Round leaves which way a
+;; half goes to the driver
 (define spirv-math-ops
-  '((flround . 1) (flabs . 4) (flfloor . 8) (flceiling . 9)
+  '((flround . 2) (flabs . 4) (flfloor . 8) (flceiling . 9)
     (flsin . 13) (flcos . 14) (flsqrt . 31) (flmin . 37) (fxumin . 38)
     (flmax . 40)))
 
