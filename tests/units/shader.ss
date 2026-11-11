@@ -38,7 +38,7 @@
 
 (define shader-test-pairs
   '((7 2) (-7 2) (7 -2) (-7 -2) (7 0) (2147483647 1) (-2147483648 -1)
-    (100000 100000) (3 33) (-8 1) (0 0) (1 31)))
+    (100000 100000) (3 33) (-8 1) (0 0) (1 31) (5 3) (-5 3)))
 
 (check "every operation gives the same on the device as on the twin, for \
         every pair, division by nothing and overflow among them"
@@ -86,6 +86,62 @@
       (append (if (eq? (car t) head) (list t) '())
               (apply append (map (lambda (x) (shader-test-nodes x head)) t)))
       '()))
+
+;; Division by what the cell is handed and by constants, and a half rounded.
+(define-compute-shader (shader-test-divide x y)
+  ([in fx-buffer] [out fx-buffer write])
+  (let ([v (fx-ref in 0)] [w (fx-ref in 1)])
+    (fx-set! out 0 (fxquotient v w))
+    (fx-set! out 1 (fxmod v w))
+    (fx-set! out 2 (fxquotient v -1))
+    (fx-set! out 3 (fxmod v -1))
+    (fx-set! out 4 (fxquotient v 0))
+    (fx-set! out 5 (fxmod v 0))
+    (fx-set! out 6 (fxmod v -3))
+    (fx-set! out 7 (flonum->fixnum (flround (fl* 0.5 (fixnum->flonum v)))))))
+
+;; What the language says they give, worked out by Chez.
+(define (shader-test-divided v w)
+  (let ([wrap (lambda (n)
+                (let ([x (logand n #xffffffff)])
+                  (if (>= x #x80000000) (- x #x100000000) x)))]
+        [q (lambda (w) (if (= w 0) 0 (quotient v w)))]
+        [m (lambda (w) (if (= w 0) 0 (modulo v w)))])
+    (map wrap
+         (list (q w) (m w) (q -1) (m -1) (q 0) (m 0) (m -3)
+               (flonum->fixnum
+                (flround (fl* 0.5 (flsingle (fixnum->flonum v)))))))))
+
+(check "the device and the twin divide and round as the language says: by 0 \
+        gives 0, by -1 negates and wraps, fxmod floors, a half goes to even"
+       (let ([twin (twin-procedure shader-test-divide)] [bad '()])
+         (for-each
+          (lambda (p)
+            (let ([in (shader-test-buffer p)]
+                  [out (make-gpu-buffer 8)]
+                  [twin-out (make-bytevector 32 0)])
+              (gpu-compute! shader-test-divide 1 1 in out)
+              (twin 0 0 1 1 (gpu-buffer-read! in) twin-out)
+              (let* ([got (gpu-buffer-read! out)]
+                     [words (lambda (b) (map (lambda (i) (shader-test-word b i))
+                                             (iota 8)))]
+                     [want (apply shader-test-divided p)])
+                (unless (and (equal? (words got) want)
+                             (equal? (words twin-out) want))
+                  (set! bad (cons (list p (words got) (words twin-out) want)
+                                  bad))))
+              (gpu-buffer-release! in)
+              (gpu-buffer-release! out)))
+          shader-test-pairs)
+         (printf "  ~s\n" bad)
+         (null? bad)))
+
+(check "a tree has no remainder, which Vulkan leaves undefined for a \
+        negative, and a constant divisor of 0 or -1 divides nothing"
+       (let ([ops (map caddr (shader-test-nodes (shader-tree shader-test-divide)
+                                                'op))])
+         (and (not (memq 'fxrem ops))
+              (= 3 (length (filter (lambda (o) (eq? o 'fxquotient)) ops))))))
 
 ;; The GLSL.std.450 instructions a SPIR-V module calls, by number.
 (define (shader-test-spirv-math bytes)
@@ -725,7 +781,7 @@
                        (has? i 'const                      ; a gradient's dither
                              (lambda (t) (eqv? (caddr t) 52.9829189)))
                        (has? i 'op                         ; a stipple's tile
-                             (lambda (t) (eq? (caddr t) 'fxrem)))
+                             (lambda (t) (eq? (caddr t) 'fxquotient)))
                        (has? i 'fetch (lambda (t) (eq? (cadr t) 'image)))))]
               [size (lambda (i) (shader-test-size (shader-tree (variant i))))])
          (printf "  ~s\n" (map size (iota 7)))

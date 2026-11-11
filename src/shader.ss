@@ -2,12 +2,13 @@
 ;;;
 ;;; The language is a contract: a new back end must always be possible.
 ;;; It defines its own meaning (ints are 32 bits and wrap; fxmod floors;
-;;; dividing by 0 gives 0; a shift's count is taken mod 32; a read outside a
-;;; buffer reads its last word, and a write outside is left out), and asks only
-;;; for what every GPU API has: three stages, scalars, buffers of 4-byte
-;;; elements by index, a 2D texture by integer fetch at a level, a uniform
-;;; block of scalars, if and bounded loops. No structs, pointers, recursion or
-;;; shared memory; a buffer is read or written in a run, never both.
+;;; dividing an int by 0 gives 0; a shift's count is taken mod 32; a read
+;;; outside a buffer reads its last word, and a write outside is left out),
+;;; and asks only for what every GPU API has: three stages, scalars, buffers
+;;; of 4-byte elements by index, a 2D texture by integer fetch at a level, a
+;;; uniform block of scalars, if and bounded loops. No structs, pointers,
+;;; recursion or shared memory; a buffer is read or written in a run, never
+;;; both.
 ;;;
 ;;; The front end checks types, inlines local functions, prices the shader
 ;;; and gives a small typed tree with no target in it:
@@ -180,8 +181,10 @@
     (list 'op 'boolean name
           (want type (lower (car args) env) form)
           (want type (lower (cadr args) env) form)))
-  ;; A divisor that isn't a nonzero constant is tested: targets leave
-  ;; dividing by 0 undefined, and here it gives 0.
+  ;; Targets leave dividing by 0, and the smallest int by -1, undefined, and
+  ;; Vulkan a remainder of a negative: here by 0 gives 0, by -1 negates, and a
+  ;; remainder is a - d(a/d). A divisor that isn't a constant divides as 1
+  ;; where it's 0 or -1, and the quotient is multiplied by it there.
   (define (divide name args env form)
     (let ([a (want 'fixnum (lower (car args) env) form)]
           [b (want 'fixnum (lower (cadr args) env) form)])
@@ -189,18 +192,40 @@
         (lambda (a)
           (bound b
             (lambda (b)
-              (let ([q (if (eq? name 'fxmod)
-                           (floored a b)
-                           (list 'op 'fixnum name a b))])
-                (if (and (eq? (car b) 'const) (not (eqv? (caddr b) 0)))
-                    q
-                    (list 'if 'fixnum
-                          (list 'op 'boolean 'fx= b '(const fixnum 0))
-                          '(const fixnum 0)
-                          q)))))))))
-  ;; fxmod floors, from a remainder that truncates: all a back end provides.
-  (define (floored a b)
-    (bound (list 'op 'fixnum 'fxrem a b)
+              (let ([n (and (eq? (car b) 'const) (caddr b))])
+                (cond
+                  [(not n) (divide-guarded name a b)]
+                  [(and (eqv? n -1) (eq? name 'fxquotient))
+                   (list 'op 'fixnum 'fxneg a)]
+                  [(memv n '(0 -1)) '(const fixnum 0)]
+                  [else (divided name a b #f)]))))))))
+  (define (divide-guarded name a b)
+    (define (is n) (list 'op 'boolean 'fx= b (list 'const 'fixnum n)))
+    (bound (is 0)
+      (lambda (zero)
+        (bound (is -1)
+          (lambda (minus)
+            (bound (list 'if 'boolean zero '(const boolean #t) minus)
+              (lambda (edge)
+                (bound (list 'if 'fixnum edge '(const fixnum 1) b)
+                  (lambda (d)
+                    (divided name a d
+                             (list 'if 'fixnum edge b
+                                   '(const fixnum 1))))))))))))
+  ;; by d, never 0 or -1; the quotient times k, if any
+  (define (divided name a d k)
+    (let ([q (list 'op 'fixnum 'fxquotient a d)])
+      (cond
+        [(eq? name 'fxmod)
+         (bound q
+           (lambda (q)
+             (floored (list 'op 'fixnum 'fx- a (list 'op 'fixnum 'fx* d q))
+                      d)))]
+        [k (list 'op 'fixnum 'fx* q k)]
+        [else q])))
+  ;; fxmod floors: a remainder that truncates, given the divisor's sign
+  (define (floored r b)
+    (bound r
       (lambda (r)
         (list 'if 'fixnum
               (list 'if 'boolean
@@ -524,7 +549,7 @@
 
 (define spirv-binary-ops
   '((fx+ . 128) (fl+ . 129) (fx- . 130) (fl- . 131) (fx* . 132) (fl* . 133)
-    (fxquotient . 135) (fl/ . 136) (fxrem . 138)
+    (fxquotient . 135) (fl/ . 136)
     (fxand . 199) (fxior . 197) (fxxor . 198)
     (fxsll . 196) (fxsrl . 194) (fxsra . 195)
     (fx= . 170) (fx> . 173) (fx>= . 175) (fx< . 177) (fx<= . 179)
@@ -892,6 +917,7 @@
 (define msl-ops
   '((fx+ . "int(uint(~a) + uint(~a))") (fx- . "int(uint(~a) - uint(~a))")
     (fx* . "int(uint(~a) * uint(~a))") (fxneg . "int(0u - uint(~a))")
+    (fxquotient . "~a / ~a")
     (fxnot . "~~~a") (fxand . "~a & ~a") (fxior . "~a | ~a")
     (fxxor . "~a ^ ~a")
     (fxsll . "int(uint(~a) << uint(~a))")
@@ -909,18 +935,10 @@
     (flmin . "min(~a, ~a)") (flmax . "max(~a, ~a)")
     (fxumin . "int(min(uint(~a), uint(~a)))")))
 
-;; The smallest int by -1 overflows, which % and / leave undefined.
 (define (msl-op name args)
-  (case name
-    [(fxquotient)
-     (format "~a == -1 ? int(0u - uint(~a)) : ~a / ~a"
-             (cadr args) (car args) (car args) (cadr args))]
-    [(fxrem)
-     (format "~a == -1 ? 0 : ~a % ~a" (cadr args) (car args) (cadr args))]
-    [else
-     (let ([o (assq name msl-ops)])
-       (unless o (shader-error "no MSL for ~a" name))
-       (apply format (cdr o) args))]))
+  (let ([o (assq name msl-ops)])
+    (unless o (shader-error "no MSL for ~a" name))
+    (apply format (cdr o) args)))
 
 (define (msl-type t)
   (case t

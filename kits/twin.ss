@@ -49,7 +49,6 @@
       [(fxsrl) `(twin-wrap (ash (logand ,a #xffffffff) (- ,b)))]
       [(fxsra) `(ash ,a (- ,b))]
       [(fxquotient) `(twin-wrap (quotient ,a ,b))]
-      [(fxrem) `(remainder ,a ,b)]
       [(fxumin)
        `(twin-wrap (min (logand ,a #xffffffff) (logand ,b #xffffffff)))]
       [(fl+ fl- fl* fl/ flmin flmax)
