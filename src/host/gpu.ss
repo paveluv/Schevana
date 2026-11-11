@@ -474,6 +474,9 @@
 
 (defvar *gpu-objects* (make-eqv-hashtable))
 
+;; Whether core0 has made the object behind handle id.
+(define (gpu-object-made? id) (and (hashtable-ref *gpu-objects* id #f) #t))
+
 ;; The SDL object behind handle id.
 (define (gpu-object id)
   (let ([o (hashtable-ref *gpu-objects* id #f)])
@@ -794,6 +797,19 @@
     (cond [(gpu-image? x) (gpu-image-gone? x)]
           [(gpu-call? x) (exists gpu-buffer-gone? (gpu-call-buffers x))]
           [else #f])))
+
+;; Can core0 draw a run now: not gone, and every object it names made? A
+;; list recorded again for the next frame, which core0 may read before it
+;; takes that frame, can name what that frame's jobs make: the run waits
+;; for them, a frame.
+(define (gpu-run-drawable? run)
+  (and (not (gpu-run-gone? run))
+       (let ([x (cadr run)])
+         (cond [(gpu-image? x) (gpu-object-made? (gpu-image-id x))]
+               [(gpu-call? x)
+                (for-all (lambda (b) (gpu-object-made? (gpu-buffer-id b)))
+                         (gpu-call-buffers x))]
+               [else #t]))))
 
 ;;; ------------------------------------------------------------------ compute
 
@@ -1186,7 +1202,7 @@
                      [count (cadddr run)]
                      [call (and (gpu-call? image) image)]
                      [pipeline (+ (car run) (* 4 (list-ref run 4)))])
-                (when (> count 0)
+                (when (and (> count 0) (gpu-run-drawable? run))
                   (ftype-set! gpu-frame-uniforms (first) uniforms (caddr run))
                   (cond
                     [call (gpu-draw-call! r cb pass call format)]
@@ -1608,7 +1624,7 @@
                  '() runs)
     (gpu-draw-runs! r cb (gpu-image-texture image) gpu-format-bgra8
                     (gpu-image-w image) (gpu-image-h image)
-                    (remp gpu-run-gone? runs) #f)
+                    (filter gpu-run-drawable? runs) #f)
     (gpu-image-fill-levels! cb image)
     (sdl-submit-gpu cb)))
 

@@ -1531,3 +1531,25 @@
                                 (quotient (- p 3000000) 1000)))
                         1)
                     (= 0 (word i (length pipeline-draw-latency-parts)))))))))
+
+(check "a list not recorded yet, with no extras at all, flattens to \
+        nothing: the Pipeline opened at boot reads one"
+       (let ([l (inspect-list-flat! (inspect-list-empty) (make-bytevector 0) 0
+                                    (make-bytevector 0) 0 '() '#() 0 0)])
+         (= 0 (inspect-list-count l))))
+
+(check "the last frame read pairs its records with its own runs, not those \
+        of a drawing recorded since"
+       (begin
+         (request-frame!)
+         (steps 1)
+         (let ([runs (rec-last-runs)])
+           ;; a drawing records into the same recorder, its runs its own
+           (drawing->bytes 8 8 1 (lambda () (fill-box 0 0 4 4 'accent)
+                                   (fill-box 4 4 4 4 'text)))
+           (let ([l (inspect-list)])
+             (and (eq? runs (rec-last-runs))
+                  (= (inspect-list-count l)
+                     (fold-left + 0 (map (lambda (r)
+                                           (if (gpu-show-run? r) 0 (cadddr r)))
+                                         runs))))))))

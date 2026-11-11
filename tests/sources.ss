@@ -193,7 +193,7 @@
 
 ;; Raise it deliberately: the core is what the desktop needs to boot and
 ;; run; everything else belongs in a folder.
-(define src-budget 34988)
+(define src-budget 35041)
 
 ;; The tokens of a datum as read; a list's end is none.
 (define (tokens x)

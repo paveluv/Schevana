@@ -22,7 +22,8 @@
 (define recorder-interface
   '(rec-write! rec-extra! rec-extra-u32! rec-extra-ref rec-extra-at
     rec-count rec-bytes-begin! rec-into-list! rec-freeze! rec-lend!
-    rec-last-sizes rec-last-copy! rec-drawing->bytes rec-bytes-copies
+    rec-last-sizes rec-last-copy! rec-last-runs rec-drawing->bytes
+    rec-bytes-copies
     rec-list-new rec-list-copy gpu-list-recs-n gpu-list-extras-n
     gpu-list-runs gpu-list-version gpu-list-recs gpu-list-extras
     rec-earlier-add! rec-recordings rec-buffer-set! rec-pixel-set!
@@ -474,6 +475,10 @@
     (if r
         (values (gpu-recording-recs-n r) (gpu-recording-extras-n r))
         (values 0 0))))
+
+;; The last frame's runs, those its records go with; none before one.
+(define (rec-last-runs)
+  (let ([r *rec-root*]) (if r (gpu-recording-runs r) '())))
 
 ;; The last frame's records and extras copied into recs and extras, each
 ;; big enough (rec-last-sizes): the world reads a frame only so.

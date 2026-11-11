@@ -192,7 +192,9 @@
 (define (inspect-list-read! l)
   (let-values ([(newest) (inspect-frames 1)]
                [(recs recs-n extras extras-n) (inspect-last-read!)])
-    (inspect-list-flat! l recs recs-n extras extras-n (rec-runs)
+    ;; the runs of the frame its records are, not of what was recorded
+    ;; since (a drawing, a window's icon)
+    (inspect-list-flat! l recs recs-n extras extras-n (rec-last-runs)
                         (list->vector (list-head (vector->list *rec-labels*)
                                                  *rec-label-at*))
                         (and (pair? newest) (car newest))
@@ -384,12 +386,14 @@
         (set! out-labels (cons (cons count text) out-labels))))
     ;; a list's extras, bytes long, after those so far, its rows moved by
     ;; (dx, dy) in 256ths, a clip's cut to box; then its records, by
-    ;; recs-of, handed how to find and move its rows
+    ;; recs-of, handed how to find and move its rows. Its first word is
+    ;; the reserved one, and a list not recorded yet has none at all.
     (define (extras! from bytes dx dy box recs-of)
       (let ([base (fx- words 1)] [seen (make-eqv-hashtable)]
-            [n (fxquotient bytes 4)])
-        (bytevector-copy! from 4 to-extras (fx* 4 words) (fx* 4 (fx- n 1)))
-        (set! words (fx+ words (fx- n 1)))
+            [n (fxmax 0 (fx- (fxquotient bytes 4) 1))])
+        (when (fx> n 0)
+          (bytevector-copy! from 4 to-extras (fx* 4 words) (fx* 4 n)))
+        (set! words (fx+ words n))
         (let ([sr (and box
                        (let ([r words])
                          (for-each (lambda (k v) (word! to-extras (+ r k) v))
@@ -573,7 +577,7 @@
 ;; children) ...) in draw order, (x, y) in device pixels from what shows it,
 ;; version how many times it's been recorded.
 (define (inspect-list-tree)
-  (let walk ([runs (rec-runs)])
+  (let walk ([runs (rec-last-runs)])
     (map (lambda (run)
            (let ([lst (cadr run)])
              (list (caddr run) (cadddr run)
@@ -641,7 +645,7 @@
           (rec-last-copy! (vector-ref slot 0) (vector-ref slot 2))
           (vector-set! slot 1 recs-n)
           (vector-set! slot 3 extras-n))
-        (vector-set! slot 4 (inspect-runs-copied (rec-runs)))
+        (vector-set! slot 4 (inspect-runs-copied (rec-last-runs)))
         (vector-set! slot 5 (list->vector
                              (list-head (vector->list *rec-labels*)
                                         *rec-label-at*)))

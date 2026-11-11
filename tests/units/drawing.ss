@@ -148,3 +148,17 @@
   (check "handlers run with (current-window) set"
          (and (eq? w (window-call w 'key #\a '())) (not (current-window))))
   (close-window! w))
+
+;;; what core0 draws: a run waits for the objects it names
+
+(check "core0 draws a run only once the objects it names are made and not \
+        let go of: a list recorded for the next frame can name what that \
+        frame's jobs make, which core0 hasn't run yet"
+       (let* ([made (gpu-image-make-target 4 4)]
+              [later (make-gpu-image 999999 4 4 1 #f #f)]
+              [run (lambda (image) (list 0 image 0 1 0))])
+         (steps 1)   ; the frame that carries made's job
+         (and (gpu-run-drawable? (run made))
+              (not (gpu-run-drawable? (run later)))
+              (begin (gpu-image-release! made)
+                     (not (gpu-run-drawable? (run made)))))))
