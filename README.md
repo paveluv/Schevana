@@ -28,7 +28,8 @@ Requirements: Chez Scheme 10, SDL 3.2 or later, FreeType and fontconfig
 (usually installed already on a Linux desktop), and a Vulkan driver. On
 Debian 13, SDL3 is `sudo apt install libsdl3-0`, and `mesa-vulkan-drivers`
 holds lavapipe, the Vulkan driver on the CPU that the tests use and that takes
-over when no GPU can open. SDL chooses between Wayland and X11 by itself;
+over when no GPU can open; the tests want `spirv-tools` too (see Tests). SDL
+chooses between Wayland and X11 by itself;
 `SDL_VIDEO_DRIVER=x11 ./schevana` (or `wayland`) chooses for it. With
 NVIDIA's driver on Wayland, set the one module option in
 [docs/LINUX_NVIDIA_TUNING.md](docs/LINUX_NVIDIA_TUNING.md), or the
@@ -1267,6 +1268,12 @@ a child may do with its shares, the confined base, vats and their jobs,
 and apps in sandboxes (their bundles and stubs, a decision saved, read back
 and denied, an app of yours that requests nothing, an app's own worklets
 and what they are refused).
+
+The shaders' topic hands every shader the world and its checks compile to
+`spirv-val`, SPIR-V's own checker, which finds what no picture would: a
+module a driver may take and do anything with. On Debian 13 it is
+`sudo apt install spirv-tools`; without it, or on a Mac, whose shaders are
+Metal's language, that check says it was skipped.
 
 ```bash
 scheme --script tests/frame.ss out

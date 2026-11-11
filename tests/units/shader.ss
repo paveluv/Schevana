@@ -975,3 +975,34 @@
                                    (iota 8)))])
              (gpu-buffer-release! out)
              ok))))
+
+;; Every shader the world and these checks made, to SPIR-V's own checker
+;; where it is installed (Debian's spirv-tools): what the suites can't see,
+;; a module a driver may take and do anything with.
+(check "every shader is a valid SPIR-V module for Vulkan 1.0"
+       (let ([shaders
+              (filter shader?
+                      (map (lambda (n)
+                             (and (top-level-bound? n) (top-level-value n)))
+                           (environment-symbols (interaction-environment))))]
+             [file (string-append out-dir "/shader-check.spv")])
+         (cond
+           [(not (eq? shader-target 'spirv))
+            (printf "  skipped: shaders here are ~a\n" shader-target)
+            #t]
+           [(not (eqv? 0 (system "command -v spirv-val > /dev/null")))
+            (printf "  skipped: no spirv-val (Debian's spirv-tools)\n")
+            #t]
+           [else
+            (let ([bad (filter
+                        (lambda (s)
+                          (when (file-exists? file) (delete-file file))
+                          (call-with-port (open-file-output-port file)
+                            (lambda (p) (put-bytevector p (shader-code s))))
+                          (not (eqv? 0 (system
+                                        (format "spirv-val --target-env \
+                                                 vulkan1.0 ~a" file)))))
+                        shaders)])
+              (printf "  ~a shaders, ~a invalid: ~s\n" (length shaders)
+                      (length bad) (map shader-name bad))
+              (null? bad))])))
