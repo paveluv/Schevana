@@ -255,7 +255,8 @@
                   [full? (pacer-frame-back! #f)]
                   [held-to (set! boxed? #t)]
                   [else
-                   (set! held-to (refresh-from (* p (+ 1 (quotient t p)))))])))
+                   (set! held-to (refresh-from (* p (+ 1 (quotient t p)))))])
+            0))   ; its number: none the screen reports on
     (pacer-rate! (plist-ref opts 'rate 'screen))
     (let ([mover (open-window "Mover" 'size '(80 . 60)
                               'open window-frame-soon!
@@ -486,7 +487,7 @@
                             (if (event! ev) (set! woken? #f) (loop))))))))
             '()))
     (set! rec-present!
-          (lambda () (screen!) (set! boxed? #t) (set! box-t t)))
+          (lambda () (screen!) (set! boxed? #t) (set! box-t t) 0))
     (pacer-rate! 'screen)
     (let ([mover (open-window "Mover" 'size '(80 . 60)
                               'open window-frame-soon!
