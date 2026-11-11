@@ -177,6 +177,7 @@
                            (host-trace! 22 0)
                            (collector-hold!)
                            (pacer-tick! now)
+                           (frame-ticked! now)
                            #t)))))])
       ;; a step leads up to a tick only while one is wanted; one in a quiet
       ;; spell is its own, as a tick nothing asked for once was

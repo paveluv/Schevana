@@ -386,21 +386,32 @@
               (values (reverse acc) (reverse types) first))))
       (values '() '() 0)))
 
-;; When the oldest input not yet taken came (now-ns; 0, none): core0's
-;; pump sets it, the world takes it with the events, both by box-cas!.
+;; When the oldest input not yet taken came (now-ns; 0, none), three ways:
+;; by SDL's stamp; when core0's pump first saw it; by the compositor's own
+;; time where core0 reads it (src/host/platform.ss). Core0's pump sets them,
+;; the world takes them with the events, both by box-cas!.
 (defvar *host-input-ns* (box 0))
+(defvar *host-input-pumped* (box 0))
+(defvar *host-input-wl* (box 0))
 
-(define (host-input-came! ns)
+;; Box b holds ns, unless it holds an older input's.
+(define (host-input-set! b ns)
   (let loop ()
-    (let ([old (unbox *host-input-ns*)])
-      (unless (or (not (eqv? old 0)) (box-cas! *host-input-ns* old ns))
+    (let ([old (unbox b)])
+      (unless (or (not (eqv? old 0)) (box-cas! b old ns))
         (loop)))))
 
-;; When the oldest input since the last take came, taken: 0, none.
-(define (host-input-ns-take!)
+(define (host-input-take! b)
   (let loop ()
-    (let ([old (unbox *host-input-ns*)])
-      (if (box-cas! *host-input-ns* old 0) old (loop)))))
+    (let ([old (unbox b)])
+      (if (box-cas! b old 0) old (loop)))))
+
+;; When the oldest input since the last take came, taken, by SDL, core0's
+;; pump and the compositor: (values sdl pumped compositor), 0 for none.
+(define (host-input-ns-take!)
+  (values (host-input-take! *host-input-ns*)
+          (host-input-take! *host-input-pumped*)
+          (host-input-take! *host-input-wl*)))
 
 ;;; ------------------------------------------------------------------
 ;;; cursor & clipboard
@@ -580,14 +591,18 @@
     (when (and *host-forked* (not (unbox *gpu-published*)))
       (host-sleep! host-idle-ms))
     (present-poll!)
-    (platform-reports-pump!)
     (host-facts-refresh! (or (host-events-pumped!) (pair? jobs)))))
 
 ;; The events come since the last pump into the world's inbox, main woken
 ;; for them, and when the oldest input came. => whether any came.
 (define (host-events-pumped!)
   (let-values ([(events types first) (host-window-pump)])
-    (unless (eqv? first 0) (host-input-came! first))
+    ;; core0's queue, which SDL's pump read into: the screen's reports, and
+    ;; the compositor's input times
+    (platform-reports-pump!)
+    (unless (eqv? first 0)
+      (host-input-set! *host-input-ns* first)
+      (host-input-set! *host-input-pumped* (now-ns)))
     (unless (null? types)
       (host-trace! 9 (length types))
       (when (memv #x900 types) (host-clipboard-read!))   ; clipboard-update

@@ -1473,3 +1473,61 @@
            (profile-on! was)
            (ui-stream-release! ring)
            (and (= sent newest) (equal? row want)))))
+
+;; A frame's report, as the screen would write it: sent, taken, its GPU
+;; done and shown, a refresh after its publish.
+(let* ([w (pipeline)] [v (window-ref w 'state)] [p (pacer-period)])
+  (request-frame!)
+  (steps 1)
+  (let* ([i (- *frame-ring-n* 1)]
+         [n (inspect-frame-ref i 6)]
+         [publish (inspect-frame-at i 'publish)]
+         [at (present-at n)]
+         [r *present-ring*])
+    (fxvector-set! r at n)
+    (fxvector-set! r (+ at 1) 1)
+    (fxvector-set! r (+ at 2) (+ publish 2000000))
+    (fxvector-set! r (+ at 3) (+ publish p))
+    (fxvector-set! r (+ at 4) p)
+    (fxvector-set! r (+ at 6) (+ publish 3000000))
+    (fxvector-set! r (+ at 7) (+ publish 1000000))
+    (let* ([word (pipeline-latency-frame-word p)]
+           [parts (map (lambda (j) (word i j))
+                       (iota (length pipeline-draw-latency-parts)))]
+           [under (apply + (list-head parts 6))])
+      (pipeline-view-stage-set! v 'latency)
+      (invalidate! w)
+      (steps 2)
+      (let ([crashed (window-error w)]
+            [lat (ui-find (window-ref w 'ui) '(pipeline-latency))]
+            [river (ui-find (window-ref w 'ui) '(pipeline-river))]
+            [hold (ui-find (window-ref w 'ui) '(pipeline hold))]
+            [resumed (begin
+                       (pipeline-select! v #f)
+                       (pipeline-hold! v)
+                       (focus-window! w)
+                       (inject! '(key-down escape ()))
+                       (steps 1)
+                       (not (pipeline-view-held? v)))])
+        (close-window! w)
+        (check "on Latency, with no small screen beside it, Hold is in its \
+                heading; Esc lets a held flow go"
+               (and hold resumed))
+        (check "Latency's bars stand over the River's, a tick each: the two \
+                charts' bars start at one x and are as wide"
+               (and lat river
+                    (= (ui-region-x lat) (ui-region-x river))
+                    (= (ui-region-w lat) (ui-region-w river))))
+        (check (format "Latency's bar for a frame stacks its parts up to \
+                        the publish line, three refreshes up, and on to the \
+                        screen a refresh over it (~a)" parts)
+               (and (not crashed)
+                    (for-all (lambda (k) (>= k 0)) parts)
+                    (<= (abs (- under (quotient (* 3 p) 1000))) 6)
+                    (= (list-ref parts 6) 1000)    ; publish to core0's take
+                    (= (list-ref parts 7) 1000)    ; to its send
+                    (= (list-ref parts 8) 1000)    ; to the GPU's done
+                    (<= (abs (- (list-ref parts 9)
+                                (quotient (- p 3000000) 1000)))
+                        1)
+                    (= 0 (word i (length pipeline-draw-latency-parts)))))))))

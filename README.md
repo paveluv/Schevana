@@ -765,6 +765,17 @@ Decisions worth keeping in mind for the real design:
   names, unless its frame would then show before it was sent: GNOME with
   NVIDIA names `CLOCK_MONOTONIC` and reports on `CLOCK_MONOTONIC_RAW`. X11,
   headless runs and the Mac report nothing yet.
+- **Latency, a frame at a time.** The Pipeline's Latency stage draws a
+  bar a frame, its points stacked on one line, the frame's publish: below
+  it what led up to it, its oldest input by the compositor's own time
+  (core0 reads the same events on a pointer and keyboard of its own), by
+  SDL's stamp and as core0 first saw it, then main's tick and draw; above
+  it core0 taking it, sending it, its GPU work done and the screen showing
+  it, with the refreshes a frame apart as rules and the frames the screen
+  froze a refresh for over the bars. Its words give input to screen at
+  the median and the 99th, all three ways: SDL's stamp runs late by the
+  shortest delivery it has seen, so the gap between the first two is
+  SDL's guess.
 - **What the host is, said in one place.** Which OS, CPU, windowing
   system and GPU API this is comes from predicates (`host-mac?`,
   `host-wayland?`, `host-vulkan?`) and facts that core0 learns as SDL and

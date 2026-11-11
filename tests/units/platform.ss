@@ -123,3 +123,20 @@
            (host-trace! 22 0)
            (and (= n (unbox (vector-ref *host-trace-rings* 1)))
                 (not (host-trace-write!))))))
+
+;; CLOCK_MONOTONIC is 1 on Linux alone: elsewhere there's no Wayland.
+(check "an input's ms on the compositor's clock reads as its time on \
+        now-ns's, to the ms, across the clock's 32-bit wrap; one a second \
+        ahead fits no clock"
+       (or (not (host-linux?))
+           (let* ([at (now-ns)]
+                  [ms (quotient (- at (platform-clock-offset 1) 5000000)
+                                1000000)])
+             (fluid-let ([*wayland-input-clock* #f]
+                         [*host-input-wl* (box 0)])
+               (wayland-input! (modulo ms 4294967296))
+               (let ([t (unbox *host-input-wl*)])
+                 (and (<= (- at 7000000) t (- at 4000000))
+                      (eqv? *wayland-input-clock* 1)
+                      (not (wayland-input-on 1 (modulo (+ ms 2000) 4294967296)
+                                             at))))))))

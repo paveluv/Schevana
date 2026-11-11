@@ -37,7 +37,7 @@
 
 (define-record-type pipeline-view
   (fields ui history river
-          (mutable stage)      ; lists, who, course, inside or memory
+          (mutable stage)      ; lists, who, course, inside, memory, latency
           (mutable shown)      ; (inspect-list), the one on view
           (mutable held?)      ; it stays
           (mutable looked)     ; when it was read, or due to be (now-ms)
@@ -73,6 +73,8 @@
           (mutable course)     ; a tick's stages: (list . (seq items))
           (mutable course-sort) ; (key . up|down), or #f: in their order
           (mutable who-sort)   ; (key . up|down), or #f: in draw order
+          latency              ; the Latency's stream, a tick a bar
+          (mutable latency-words) ; (when . words), read twice a second
           colors))             ; each drawer's color, by node: an index
 
 (define pipeline-period-ms 1000)
@@ -400,8 +402,8 @@
        [(river) (pipeline-view-river v)]
        [(period) (pacer-period)]
        [(top) (quotient (* 2 period) 1000)]
-       [(rules) (list (cons (quotient period 1000) (monitor-ns-text period))
-                      (cons top (monitor-ns-text (* 2 period))))]
+       [(rules) (append (pipeline-river-rules period)
+                        (pipeline-gutter-rules period))]
        [(reach) (pipeline-view-reach v)]
        [(held?) (pipeline-view-held? v)]
        [(newest) (if held? (car reach) (profile-newest-tick))]
@@ -437,6 +439,209 @@
                            (pipeline-draw-picked areas count newest
                                                  (pipeline-view-tick v))))))
     (ui-draw-legend x (+ sy sh 4) w kh '() keys)))
+
+;;; ---- Latency
+;;; A bar a tick, over the River's and as wide, its frame's points stacked
+;;; on one line, the publish: below it what led up to it, from its oldest
+;;; input (by the compositor's own time, then SDL's stamp, then when core0
+;;; first saw it) through main's tick and draw; above it what came after,
+;;; core0 taking it, sending it, its GPU work done, and the screen showing
+;;; it. Over the bars, the frames the screen froze a refresh for, or dropped.
+
+;; The parts of a bar bottom up, each from the point before it: (point
+;; color . label); the first, clear, lifts the bar to the publish line.
+(define pipeline-draw-latency-parts
+  '((#f #f . #f)
+    (sdl chart-muted-1 . "the compositor's time to SDL's stamp")
+    (pumped chart-7 . "to core0's pump")
+    (tick chart-6 . "to main's tick")
+    (draw chart-5 . "to its draw")
+    (publish chart-1 . "drawing")
+    (taken chart-2 . "to core0's take")
+    (sent chart-3 . "to its send")
+    (gpu chart-4 . "to the GPU's done")
+    (shown chart-8 . "to the screen")))
+(define pipeline-draw-latency-strips '(("screen" chart-flag text-faint)))
+(define pipeline-latency-below 3)   ; refreshes under the publish line
+(define pipeline-latency-above 4)   ; and over it
+
+(define (pipeline-latency-new)
+  (ui-stream-new pipeline-river-rows (length pipeline-draw-latency-parts)
+                 pipeline-draw-latency-strips))
+
+;; Frame i's point k of its bar (now-ns), lifted to the one before it when
+;; missing or earlier: 0 its floor, the publish less the room below; 1 its
+;; oldest input, or what comes first; then pipeline-draw-latency-parts'; all
+;; within the bar's room.
+(define (pipeline-latency-at i k p)
+  (let* ([publish (inspect-frame-at i 'publish)]
+         [low (- publish (* pipeline-latency-below p))]
+         [high (+ publish (* pipeline-latency-above p))])
+    (let loop ([j 1]
+               [at (max low (or (inspect-frame-at i 'wl)
+                                (inspect-frame-at i 'sdl)
+                                (inspect-frame-at i 'pumped)
+                                (inspect-frame-at i 'tick)
+                                (inspect-frame-at i 'draw)
+                                publish))])
+      (cond
+        [(= k 0) low]
+        [(= j k) (min high at)]
+        [else
+         (loop (+ j 1)
+               (max at (or (inspect-frame-at
+                            i (car (list-ref pipeline-draw-latency-parts j)))
+                           at)))]))))
+
+;; Tick seq's word j, µs: a part of its frame's bar, then the screen's
+;; strip (1 froze a refresh, 2 dropped); 0 with no frame.
+(define (pipeline-latency-word p)
+  (let ([word (pipeline-latency-frame-word p)])
+    (lambda (seq j)
+      (if (and (profile-tick-kept? seq) (pipeline-tick-drew? seq))
+          (word (pipeline-tick-frame-index seq) j)
+          0))))
+
+;; The same of frame i.
+(define (pipeline-latency-frame-word p)
+  (lambda (i j)
+    (cond
+      [(not (inspect-frame-at i 'publish)) 0]
+      [(= j (length pipeline-draw-latency-parts))
+       (cond [(eqv? (inspect-frame-report i 1) 2) 2]
+             [(let ([m (inspect-frame-missed i)]) (and m (> m 0))) 1]
+             [else 0])]
+      [else (quotient (- (pipeline-latency-at i (+ j 1) p)
+                         (pipeline-latency-at i j p))
+                      1000)])))
+
+;; Frame i's points as a tooltip: each that came, ms from its publish.
+(define (pipeline-latency-tip i)
+  (let ([publish (inspect-frame-at i 'publish)])
+    (and publish
+         (string-join
+          (cons
+           (format "frame ~a~a" (inspect-frame-ref i 6)
+                   (case (inspect-frame-screen i)
+                     [(late) ", the screen froze a refresh before it"]
+                     [(dropped) ", dropped by the screen"]
+                     [else ""]))
+           (filter values
+                   (map (lambda (point label)
+                          (let ([t (inspect-frame-at i point)])
+                            (and t (format "~a: ~,2f ms" label
+                                           (/ (- t publish) 1e6)))))
+                        '(wl sdl pumped tick draw publish taken sent gpu
+                          shown)
+                        '("input, by the compositor" "input, by SDL"
+                          "input, seen by core0" "tick" "draw" "publish"
+                          "core0's take" "sent" "GPU done" "on screen"))))
+          "\n"))))
+
+;; Input to screen over the last 10 s, ms at the median and the 99th, by
+;; the compositor's time, SDL's stamp and core0's pump: a phrase each, read
+;; twice a second at most.
+(define (pipeline-latency-words v)
+  (let ([was (pipeline-view-latency-words v)])
+    (if (and was (< (- (now-ms) (car was)) 500))
+        (cdr was)
+        (let ([words
+               (map (lambda (point name)
+                      (let-values ([(p50 p99 missed)
+                                    (inspect-frames-truth 10000 point)])
+                        (if p50
+                            (format "~a ~,1f, ~,1f" name (/ p50 1e6)
+                                    (/ p99 1e6))
+                            (format "~a none" name))))
+                    '(wl sdl pumped)
+                    '("compositor" "SDL" "core0's pump"))])
+          (pipeline-view-latency-words-set! v (cons (now-ms) words))
+          words))))
+
+(define (pipeline-latency-pane v x y w h)
+  (let*-values
+      ([(ui) (pipeline-view-ui v)]
+       [(s) (pipeline-view-latency v)]
+       [(p) (pacer-period)]
+       [(top) (quotient (* (+ pipeline-latency-below pipeline-latency-above) p)
+                        1000)]
+       [(rules) (append (pipeline-latency-rules p)
+                        (pipeline-gutter-rules p))]
+       [(reach) (pipeline-view-reach v)]
+       [(held?) (pipeline-view-held? v)]
+       [(newest) (if held? (car reach) (profile-newest-tick))]
+       [(oldest) (if held? (cdr reach) (profile-oldest-tick))]
+       ;; a row before the publish, a row after
+       [(keys) (map cdr (cdr pipeline-draw-latency-parts))]
+       [(before) (list-head keys 5)]
+       [(after) (list-tail keys 5)]
+       [(gw gh) (ui-label-size '(group) "Latency" w)]
+       [(kw kh) (ui-legend-size keys)]
+       [(sy) (+ y gh 4)]
+       [(sh) (- h gh 4 4 kh 2 kh)])
+    (ui-draw-label x y w gh '(group) "Latency")
+    ;; with no small screen beside it, Hold is here
+    (let-values ([(tw th) (ui-label-size '(group) "Latency" w)]
+                 [(cw chh) (ui-checkbox-size "Hold")])
+      (ui-checkbox ui '(pipeline hold) (+ x tw 16) y cw gh "Hold" held?
+                   (lambda (on?)
+                     (if on? (pipeline-hold! v) (pipeline-resume! v)))
+                   'tip "Hold the flow still, as a press on a bar does; \
+                         Esc lets it go"))
+    (ui-draw-label x y w gh '(dim right)
+                   (string-append "input to screen, the last 10 s, ms at \
+                                   the median and the 99th: "
+                                  (string-join (pipeline-latency-words v)
+                                               "; ")))
+    (when (and newest (not held?))
+      ;; the screen reports a few refreshes on
+      (ui-stream-resend! s (+ 1 (or (pipeline-settled-tick p) (- oldest 1))))
+      (ui-stream-send! s oldest newest (pipeline-latency-word p)))
+    (ui-stream ui 'pipeline-latency s x sy w sh newest oldest top rules
+               (map (lambda (part j) (cons j (cadr part)))
+                    pipeline-draw-latency-parts
+                    (iota (length pipeline-draw-latency-parts)))
+               pipeline-bar-px
+               'doc '((L . "Go back to this tick"))
+               'strip-tips '("Frames the screen froze a refresh for, \
+                              in red; dropped ones, faint.")
+               'tip (lambda (seq)
+                      (and (profile-tick-kept? seq) (pipeline-tick-drew? seq)
+                           (pipeline-latency-tip
+                            (pipeline-tick-frame-index seq))))
+               'on-pick (lambda (seq) (pipeline-pick! v seq))
+               'marked (if (pipeline-view-tick v)
+                           (list (pipeline-view-tick v))
+                           '())
+               'over (lambda (areas count)
+                       (when (and newest (pipeline-view-tick v))
+                         (pipeline-draw-picked areas count newest
+                                               (pipeline-view-tick v)))))
+    (ui-draw-legend x (+ sy sh 4) w kh '() before)
+    (ui-draw-legend x (+ sy sh 4 kh 2) w kh '() after)))
+
+;; Latency's rules: the publish, and refreshes before and after it.
+(define (pipeline-latency-rules p)
+  (map (lambda (k)
+         (cons (quotient (+ (* pipeline-latency-below p) (* k p)) 1000)
+               (if (= k 0)
+                   "publish"
+                   (format "~a~,1f ms" (if (> k 0) "+" "") (/ (* k p) 1e6)))))
+       '(-2 -1 0 1 2 3)))
+
+;; Rules at #f, the River's labels and Latency's both, so that the two
+;; charts' bars start at one x and line up a tick to a tick.
+(define (pipeline-gutter-rules p)
+  (map (lambda (label) (cons #f label))
+       (append (map cdr (pipeline-latency-rules p))
+               (map car pipeline-draw-latency-strips)
+               (map cdr (pipeline-river-rules p))
+               (map car pipeline-draw-lanes))))
+
+;; The River's rules: a period and two.
+(define (pipeline-river-rules period)
+  (list (cons (quotient period 1000) (monitor-ns-text period))
+        (cons (quotient (* 2 period) 1000) (monitor-ns-text (* 2 period)))))
 
 ;;; ---- the Tape
 
@@ -961,9 +1166,12 @@
                    (ui-memo! ui '(pipeline opened) node)))))))
 
 ;; Esc, in either window, selects nothing.
+;; Esc: the selection cleared, or with none, the flow going on again.
 (define (pipeline-key v win key mods)
-  (and (eq? key 'escape) (null? mods) (pipeline-view-selected v)
-       (begin (pipeline-select! v #f) #t)))
+  (and (eq? key 'escape) (null? mods)
+       (cond [(pipeline-view-selected v) (pipeline-select! v #f) #t]
+             [(pipeline-view-held? v) (pipeline-resume! v) #t]
+             [else #f])))
 
 ;;; ---- who: what each drew cost
 
@@ -2108,6 +2316,7 @@
                        (format "~a" (shader-name (inspect-run-fragment run)))
                        "")))
            (list "a record selected," "decoded")))]
+    [(latency) (list-head (pipeline-latency-words v) 2)]
     [else
      (let ([d (inspect-device)] [g (inspect-glyphs)])
        (list (format "~a MB on the GPU"
@@ -2248,7 +2457,11 @@
          [tape-h (pipeline-tape-height v (- w pad pad))]
          [side (min 360 (quotient w 2))]
          [top (+ pad card-h gap)]
-         [bottom (max top (- h pad river-h gap tape-h gap))]
+         ;; Latency's bars stand over the River's, a tick each, as wide: no
+         ;; small screen beside it, no Tape under it
+         [latency? (eq? (pipeline-view-stage v) 'latency)]
+         [bottom (max top (- h pad river-h gap
+                             (if latency? 0 (+ tape-h gap))))]
          [l (pipeline-view-shown v)]
          [ch (ui-control-height)]
          [screen-w (- side pad)]
@@ -2260,7 +2473,7 @@
                                 (- bottom top gap bh gap
                                    (* 2 (+ ch gap)))))])
     (ui-begin! ui)
-    (let ([card-w (quotient (- w pad pad (* 4 gap)) 5)])
+    (let ([card-w (quotient (- w pad pad (* 5 gap)) 6)])
       (for-each
        (lambda (stage name i)
          (let ([cx (+ pad (* i (+ card-w gap)))])
@@ -2269,58 +2482,64 @@
            (pipeline-draw-card cx pad card-w card-h
                                (eq? stage (pipeline-view-stage v)) name
                                (pipeline-card-lines v stage))))
-       '(lists who course inside memory)
-       '("Lists" "Who" "Course" "Inside" "Memory")
-       '(0 1 2 3 4)))
-    (let ([pane-w (- w pad pad side gap)])
+       '(lists who course inside memory latency)
+       '("Lists" "Who" "Course" "Inside" "Memory" "Latency")
+       '(0 1 2 3 4 5)))
+    (let ([pane-w (if latency? (- w pad pad) (- w pad pad side gap))])
       (with-clip (pad top pane-w (- bottom top))
         (case (pipeline-view-stage v)
           [(lists) (pipeline-lists-pane v pad top pane-w (- bottom top))]
           [(who) (pipeline-who-pane v pad top pane-w (- bottom top))]
           [(course) (pipeline-course-pane v pad top pane-w (- bottom top))]
           [(inside) (pipeline-inside-pane v pad top pane-w (- bottom top))]
+          [(latency)
+           (pipeline-latency-pane v pad top pane-w (- bottom top))]
           [else (pipeline-memory-pane v pad top pane-w (- bottom top))]))
       ;; the small screen, or its place while it's out; its bar, Hold
-      (pipeline-image! v)
-      (let* ([sx (+ pad pane-w gap)]
-             [sy (+ top screen-h gap)]
-             [hy (+ sy bh gap)])
-        (if (pipeline-view-popped v)
-            (let ([bw (+ 24 (text-width "Bring it back" 'ui))])
-              (pipeline-draw-popped-out sx top screen-w screen-h)
-              (ui-draw-label sx (+ top (/ (- screen-h ch ch gap) 2)) screen-w
-                             ch '(dim center) "In a window of its own")
-              (ui-button ui '(pipeline unpop) (+ sx (/ (- screen-w bw) 2))
-                         (+ top (/ (+ (- screen-h ch ch gap) ch ch gap) 2))
-                         bw ch "Bring it back"
-                         (lambda () (close-window! (pipeline-view-popped v)))))
-            (begin
-              (pipeline-viewer v ui '(pipeline viewer) sx top screen-w screen-h)
-              (pipeline-viewer-bar v ui sx sy screen-w screen-w screen-h #f)))
-        (ui-checkbox ui '(pipeline hold) sx hy
-                     screen-w ch "Hold this frame" (pipeline-view-held? v)
-                     (lambda (on?)
-                       (if on? (pipeline-hold! v) (pipeline-resume! v))))
-        (let* ([ey (+ hy ch gap)]
-               [every (pipeline-view-every v)]
-               [label "Draw it every"]
-               [lw (+ 8 (text-width label 'ui))])
-          (ui-draw-label sx ey lw ch '(dim) label)
-          (let ([sw (ui-stepper
-                     ui '(pipeline every) (+ sx lw) ey every 1 60
-                     (lambda (n) (pipeline-view-every-set! v n))
-                     'tip "How often the small screen draws again, in frames: \
-                           each time, the GPU goes over the whole frame once \
-                           more")])
-            (ui-draw-label (+ sx lw sw 8) ey (max 0 (- screen-w lw sw 8)) ch
-                           '(dim) (if (= every 1) "tick" "ticks"))))
-        ;; what a frame kept can't show
-        (when (and (pipeline-view-held? v) (> (inspect-list-left-out l) 0))
-          (ui-draw-label sx (+ hy ch gap ch gap)
-                         screen-w 0 '(hint wrap)
-                         "An image or a paint let go of since this frame \
-                          is left out of it here."))))
-    (pipeline-tape-pane v pad (+ bottom gap) (- w pad pad) tape-h)
+      (unless latency? (pipeline-image! v))
+      (unless latency?
+        (let* ([sx (+ pad pane-w gap)]
+               [sy (+ top screen-h gap)]
+               [hy (+ sy bh gap)])
+          (if (pipeline-view-popped v)
+              (let ([bw (+ 24 (text-width "Bring it back" 'ui))])
+                (pipeline-draw-popped-out sx top screen-w screen-h)
+                (ui-draw-label sx (+ top (/ (- screen-h ch ch gap) 2)) screen-w
+                               ch '(dim center) "In a window of its own")
+                (ui-button ui '(pipeline unpop) (+ sx (/ (- screen-w bw) 2))
+                           (+ top (/ (+ (- screen-h ch ch gap) ch ch gap) 2))
+                           bw ch "Bring it back"
+                           (lambda ()
+                             (close-window! (pipeline-view-popped v)))))
+              (begin
+                (pipeline-viewer v ui '(pipeline viewer) sx top screen-w
+                                 screen-h)
+                (pipeline-viewer-bar v ui sx sy screen-w screen-w screen-h #f)))
+          (ui-checkbox ui '(pipeline hold) sx hy
+                       screen-w ch "Hold this frame" (pipeline-view-held? v)
+                       (lambda (on?)
+                         (if on? (pipeline-hold! v) (pipeline-resume! v))))
+          (let* ([ey (+ hy ch gap)]
+                 [every (pipeline-view-every v)]
+                 [label "Draw it every"]
+                 [lw (+ 8 (text-width label 'ui))])
+            (ui-draw-label sx ey lw ch '(dim) label)
+            (let ([sw (ui-stepper
+                       ui '(pipeline every) (+ sx lw) ey every 1 60
+                       (lambda (n) (pipeline-view-every-set! v n))
+                       'tip "How often the small screen draws again, in \
+                             frames: each time, the GPU goes over the whole \
+                             frame once more")])
+              (ui-draw-label (+ sx lw sw 8) ey (max 0 (- screen-w lw sw 8)) ch
+                             '(dim) (if (= every 1) "tick" "ticks"))))
+          ;; what a frame kept can't show
+          (when (and (pipeline-view-held? v) (> (inspect-list-left-out l) 0))
+            (ui-draw-label sx (+ hy ch gap ch gap)
+                           screen-w 0 '(hint wrap)
+                           "An image or a paint let go of since this frame \
+                            is left out of it here.")))))
+    (unless latency?
+      (pipeline-tape-pane v pad (+ bottom gap) (- w pad pad) tape-h))
     (pipeline-river-pane v pad (- h pad river-h) (- w pad pad) river-h)
     (ui-end! ui w h)))
 
@@ -2335,8 +2554,11 @@
     (pipeline-flip! v)
     (let ([history (pipeline-view-history v)])
       (inspect-history-add! history)
-      (when (zero? (modulo (inspect-history-newest history)
-                           (pipeline-view-every v)))
+      ;; the small screen, while it's shown: Latency has none beside it
+      (when (and (zero? (modulo (inspect-history-newest history)
+                                (pipeline-view-every v)))
+                 (or (pipeline-view-popped v)
+                     (not (eq? (pipeline-view-stage v) 'latency))))
         (pipeline-preview-back! v)))
     (let ([newest (profile-newest-tick)])
       (when (and newest
@@ -2366,6 +2588,7 @@
                                       (pipeline-tape-new 0) #f #f 5
                                       #f #f #f #f '() #f #f 'picture
                                       (inspect-list-empty) #f #f #f #f
+                                      (pipeline-latency-new) #f
                                       (make-hashtable equal-hash equal?))])
           (pipeline-look! v)
           (apply open-window "Pipeline"
@@ -2381,7 +2604,8 @@
                             (pipeline-view-image-set! v #f)
                             (pipeline-view-back-set! v #f))
                           (ui-stream-release! river)
-                          (ui-stream-release! (pipeline-view-tape v)))
+                          (ui-stream-release! (pipeline-view-tape v))
+                          (ui-stream-release! (pipeline-view-latency v)))
                  (append
                   (ui-handlers ui
                                'key (lambda (win key mods)

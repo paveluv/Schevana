@@ -188,7 +188,7 @@
   (host-trace! 21 0)
   (let-values ([(events types) (host-window-events)])
     (unless (null? types) (host-trace! 27 (length types)))
-    (frame-input-came! (host-input-ns-take!))
+    (call-with-values host-input-ns-take! frame-input-came!)
     (for-each (lambda (type) (*host-event-seen* type)) types)
     (filter values (map host-event->world events))))
 

@@ -281,6 +281,10 @@
 (defvar *wayland-used* #f)
 (defvar *wayland-flags* 0)
 (defvar *wayland-found* #f)   ; wp_presentation's (name . version)
+(defvar *wayland-seat-found* #f)   ; the seat's name
+(defvar *wayland-pointer* 0)
+(defvar *wayland-keyboard* 0)
+(defvar *wayland-input-clock* #f)   ; the clock input's times fit
 
 (define-syntax define-wayland-callback
   (syntax-rules ()
@@ -328,21 +332,104 @@
 ;; says (GNOME's with NVIDIA's vblank stamps, on CLOCK_MONOTONIC_RAW) is
 ;; read on the first of Linux's clocks that fits.
 (define (wayland-shown-ns frame t)
-  (let ([sent (fxvector-ref *present-ring* (fx+ (present-at frame) 2))]
-        [on (lambda (clock) (+ t (platform-clock-offset clock)))])
-    (define (fits? clock)
-      (<= (- sent 1000000) (on clock) (+ sent 1000000000)))
-    (unless (fits? *wayland-used*)
-      (let ([clock (find fits? (list *wayland-clock* 4 1 7 0))])
+  (let ([sent (fxvector-ref *present-ring* (fx+ (present-at frame) 2))])
+    (unless (platform-fits? t *wayland-used* (- sent 1000000)
+                            (+ sent 1000000000))
+      (let ([clock (platform-fitting t *wayland-clock* (- sent 1000000)
+                                     (+ sent 1000000000))])
         (when clock
           (set! *wayland-used* clock)
           (host-platform-read!))))
-    (on *wayland-used*)))
+    (+ t (platform-clock-offset *wayland-used*))))
+
+;; Whether time t on clock falls from low to high on now-ns's; the first of
+;; said and Linux's clocks on which it does, or #f. Numbers alone: no
+;; allocation a report or an input.
+(define (platform-fits? t clock low high)
+  (and clock (<= low (+ t (platform-clock-offset clock)) high)))
+(define (platform-fitting t said low high)
+  (cond [(platform-fits? t said low high) said]
+        [(platform-fits? t 4 low high) 4]
+        [(platform-fits? t 1 low high) 1]
+        [(platform-fits? t 7 low high) 7]
+        [(platform-fits? t 0 low high) 0]
+        [else #f]))
+
+;; An input's time, its event's ms on the compositor's clock (which wraps
+;; at 32 bits), as core0 reads the event at now-ns at: on the clock under
+;; which it came within the last second, to the ms. Into the oldest not
+;; yet taken (host-input-set!).
+(define (wayland-input! ms)
+  (let* ([at (now-ns)]
+         [t (or (wayland-input-on *wayland-input-clock* ms at)
+                (wayland-input-on 1 ms at)
+                (wayland-input-on 4 ms at)
+                (wayland-input-on 7 ms at))])
+    (when t (host-input-set! *host-input-wl* t))))
+
+;; ms, read on clock and kept as the clock it fits, on now-ns's; or #f.
+(define (wayland-input-on clock ms at)
+  (and clock
+       (let* ([off (platform-clock-offset clock)]
+              [now-ms (quotient (- at off) 1000000)]
+              [t (+ off (* 1000000 (- now-ms (modulo (- now-ms ms)
+                                                      4294967296))))])
+         (and (<= (- at 1000000000) t (+ at 1000000))
+              (begin (set! *wayland-input-clock* clock) t)))))
 (define-wayland-callback wayland-global-code
   (lambda (data registry name interface version)
-    (when (string=? (platform-c->string interface) "wp_presentation")
-      (set! *wayland-found* (cons name version))))
+    (let ([named (platform-c->string interface)])
+      (cond [(string=? named "wp_presentation")
+             (set! *wayland-found* (cons name version))]
+            [(and (string=? named "wl_seat") (not *wayland-seat-found*))
+             (set! *wayland-seat-found* name)])))
   (uptr uptr unsigned-32 uptr unsigned-32))
+
+;; The seat's pointer and keyboard of core0's own, version 1, for their
+;; events' times alone: the same events SDL reads, on core0's queue.
+(define-wayland-callback wayland-seat-code
+  (lambda (data seat caps)
+    (when (and (logtest caps 1) (eqv? *wayland-pointer* 0))
+      (set! *wayland-pointer*
+        (wayland-marshal-1 seat 0 (foreign-entry "wl_pointer_interface") 1 0
+                           0))
+      (wayland-add-listener *wayland-pointer* wayland-pointer-listener 0))
+    (when (and (logtest caps 2) (eqv? *wayland-keyboard* 0))
+      (set! *wayland-keyboard*
+        (wayland-marshal-1 seat 1 (foreign-entry "wl_keyboard_interface") 1 0
+                           0))
+      (wayland-add-listener *wayland-keyboard* wayland-keyboard-listener 0)))
+  (uptr uptr unsigned-32))
+;; pointer: enter, leave, motion, button, axis
+(define-wayland-callback wayland-enter-code
+  (lambda (data p serial wl-surface x y) (void))
+  (uptr uptr unsigned-32 uptr int int))
+(define-wayland-callback wayland-leave-code
+  (lambda (data p serial wl-surface) (void))
+  (uptr uptr unsigned-32 uptr))
+(define-wayland-callback wayland-motion-code
+  (lambda (data p ms x y) (wayland-input! ms))
+  (uptr uptr unsigned-32 int int))
+(define-wayland-callback wayland-button-code
+  (lambda (data p serial ms button state) (wayland-input! ms))
+  (uptr uptr unsigned-32 unsigned-32 unsigned-32 unsigned-32))
+(define-wayland-callback wayland-axis-code
+  (lambda (data p ms axis value) (wayland-input! ms))
+  (uptr uptr unsigned-32 unsigned-32 int))
+;; keyboard: keymap (its file closed: SDL has its own), enter, leave, key,
+;; modifiers
+(define-wayland-callback wayland-keymap-code
+  (lambda (data k format fd size) (c-close fd))
+  (uptr uptr unsigned-32 int unsigned-32))
+(define-wayland-callback wayland-keys-code
+  (lambda (data k serial wl-surface keys) (void))
+  (uptr uptr unsigned-32 uptr uptr))
+(define-wayland-callback wayland-key-code
+  (lambda (data k serial ms key state) (wayland-input! ms))
+  (uptr uptr unsigned-32 unsigned-32 unsigned-32 unsigned-32))
+(define-wayland-callback wayland-modifiers-code
+  (lambda (data k serial depressed latched locked group) (void))
+  (uptr uptr unsigned-32 unsigned-32 unsigned-32 unsigned-32 unsigned-32))
 (define-wayland-callback wayland-global-gone-code
   (lambda (data registry name) (void))
   (uptr uptr unsigned-32))
@@ -361,9 +448,17 @@
 (define wayland-presentation-listener (wayland-listener wayland-clock-code))
 (define wayland-registry-listener
   (wayland-listener wayland-global-code wayland-global-gone-code))
+(define wayland-seat-listener (wayland-listener wayland-seat-code))
+(define wayland-pointer-listener
+  (wayland-listener wayland-enter-code wayland-leave-code wayland-motion-code
+                    wayland-button-code wayland-axis-code))
+(define wayland-keyboard-listener
+  (wayland-listener wayland-keymap-code wayland-keys-code wayland-leave-code
+                    wayland-key-code wayland-modifiers-code))
 
 ;; wp_presentation bound for the window, when it lives on Wayland and the
-;; compositor has it; and the clock it reports by, which it says at once.
+;; compositor has it, and the clock it reports by, which it says at once;
+;; and the seat, for the input's own times.
 (define (wayland-start! sdl-window)
   (when wayland-loaded?
     (let* ([props (sdl-get-window-properties sdl-window)]
@@ -382,6 +477,12 @@
            (wayland-set-queue registry *wayland-queue*)
            (wayland-add-listener registry wayland-registry-listener 0)
            (wayland-roundtrip display *wayland-queue*)
+           (when *wayland-seat-found*
+             (wayland-add-listener
+              (wayland-marshal-bind
+               registry 0 (foreign-entry "wl_seat_interface") 1 0
+               *wayland-seat-found* (platform-c-string "wl_seat") 1 0)
+              wayland-seat-listener 0))
            (when *wayland-found*
              (let ([p (wayland-marshal-bind
                        registry 0 wayland-presentation-interface 1 0

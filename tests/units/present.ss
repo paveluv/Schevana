@@ -21,7 +21,7 @@
     (do ([k 0 (+ k 1)]) ((= k 4))
       (when (= k 1)
         (set! present-test-in (now-ns))
-        (frame-input-came! present-test-in))
+        (frame-input-came! present-test-in 0 0))
       (request-frame!)
       (steps 1))
     first))
@@ -73,9 +73,47 @@
 (check "input that asked for no frame shows in none: the next frame says \
         nothing of it"
        (begin
-         (frame-input-came! (now-ns))
+         (frame-input-came! (now-ns) 0 0)
          (frame-turn-soon!)
          (steps 1)
          (request-frame!)
          (steps 1)
          (eqv? (inspect-frame-ref (- *frame-ring-n* 1) 7) 0)))
+
+(check "a frame keeps when its tick, its draw and its publish came, in that \
+        order, and its oldest input three ways: SDL's stamp, core0's pump, \
+        the compositor's time"
+       (let ([t (now-ns)])
+         (frame-input-came! (- t 3000000) (- t 2000000) (- t 4000000))
+         (request-frame!)
+         (steps 1)
+         (let ([i (- *frame-ring-n* 1)])
+           (and (= (inspect-frame-at i 'sdl) (- t 3000000))
+                (= (inspect-frame-at i 'pumped) (- t 2000000))
+                (= (inspect-frame-at i 'wl) (- t 4000000))
+                ;; unpaced, a tick's time is the pacer's ms
+                (<= (- t 1000000) (inspect-frame-at i 'tick)
+                    (inspect-frame-at i 'draw)
+                    (inspect-frame-at i 'publish))))))
+
+(check "the newest frames, not yet sent and so with no report, leave the \
+        last seconds' sums to those before them"
+       (let ([p (host-frame-ns)])
+         (frame-input-came! (- (now-ns) 3000000) 0 0)
+         (request-frame!)
+         (steps 1)
+         (let* ([i (- *frame-ring-n* 1)] [n (inspect-frame-ref i 6)]
+                [publish (inspect-frame-at i 'publish)] [at (present-at n)]
+                [r *present-ring*])
+           (fxvector-set! r at n)
+           (fxvector-set! r (+ at 1) 1)
+           (fxvector-set! r (+ at 2) (+ publish 2000000))
+           (fxvector-set! r (+ at 3) (+ publish p))
+           ;; one more, its row another frame's: core0 hasn't sent it
+           (request-frame!)
+           (steps 1)
+           (let ([m (inspect-frame-ref (- *frame-ring-n* 1) 6)])
+             (fxvector-set! r (present-at m) (- m present-rows)))
+           ;; stopped at the newest, nothing would be summed
+           (let-values ([(p50 p99 missed) (inspect-frames-truth 10000)])
+             (and p50 (<= p50 p99))))))

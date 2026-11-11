@@ -3214,7 +3214,9 @@
                       '(chart-share chart-flag)))
     (ui-draw-bar-chart-rules x areas top rules)))
 
-;; A chart's reference lines, over its bars, and their labels in its scale.
+;; A chart's reference lines, over its bars, and their labels in its scale;
+;; a rule at #f only widens the labels' room, so that charts one over
+;; another can line their bars up.
 (define (ui-draw-bar-chart-rules x areas top rules)
   (let* ([plot (cdr (assq 'plot areas))] [px (car plot)] [pw (caddr plot)]
          [ph (cadddr plot)] [bottom (+ (cadr plot) ph)])
@@ -3226,7 +3228,7 @@
                   (draw-line px ly (+ px pw) ly 'chart-rule)
                   (draw-text (+ x 6) (- ly (/ (font-line-height 'ui-small) 2))
                              (cdr r) 'text-faint 'ui-small)))
-              rules)))
+              (filter car rules))))
 
 ;;; ------------------------------------------------------------------
 ;;; streams: a chart of what keeps coming, a bar a moment, the newest at the
@@ -3468,7 +3470,9 @@
                       (gpu-buffer-set! palette (+ row ui-stream-stack-column)
                                        (car entry))
                       (gpu-buffer-set! palette (+ row ui-stream-stack-color)
-                                       (color-word (cdr entry)))))
+                                       (if (cdr entry)
+                                           (color-word (cdr entry))
+                                           0))))
                   stack (iota (length stack)))
         (fold-left (lambda (at strip)
                      (for-each (lambda (color i)
@@ -3499,7 +3503,8 @@
                  (+ ly lane-h))
                py strips)))
 
-;; stack: bottom up, (column . color); bar: a bar's width at least. opts: 'tip
+;; stack: bottom up, (column . color), the color #f for clear: what lifts
+;; the rest; bar: a bar's width at least. opts: 'tip
 ;; (seq), its tooltip or #f; 'on-pick (seq), on a left press and as it's
 ;; dragged; 'marked, the moments marked; 'over, as the part's; 'doc;
 ;; 'strip-tips, a tooltip for each strip's label; 'fit, true for every moment

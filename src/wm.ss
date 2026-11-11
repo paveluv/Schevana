@@ -1164,9 +1164,11 @@
        [else
         (let ([t0 (now-ns)] [waits *pacer-waits*])
           (host-trace! 23 0)
+          (set! *frame-draw-ns* t0)
           (rec-begin! *canvas-ratio*)
           (record-world!)
           (frame-number-set! (rec-present!))
+          (set! *frame-publish-ns* (now-ns))
           (host-trace! 24 *frame-number*)
           (let ([shown? (render-frames-back!)])
             (set! *frame-ms* (fl/ (fixnum->flonum
@@ -1195,33 +1197,56 @@
 
 ;; The last frames, for kits/inspect.ss: what each took and held, its
 ;; number (its report's, host-frame-report), and when the oldest input it
-;; shows came (now-ns; 0, none). Always kept: a few numbers a frame, for as
-;; many frames as the reports keep.
+;; shows came (now-ns; 0, none) by SDL's stamp; then when its tick began,
+;; its draw began and it was published, and when that input came by core0's
+;; pump and by the compositor's time. Always kept: a few numbers a frame,
+;; for as many frames as the reports keep.
 (define frame-ring-rows 2048)
-(define frame-ring-words 8)
+(define frame-ring-words 13)
 (defvar *frame-ring* (make-fxvector (* frame-ring-rows frame-ring-words) 0))
 (defvar *frame-ring-n* 0)   ; frames so far
-;; the frame being drawn's number, and the oldest input not drawn yet
+;; the frame being drawn's number, its times, and the oldest input not
+;; drawn yet three ways (host-input-ns-take!)
 (defvar *frame-number* 0)
+(defvar *frame-tick-ns* 0)
+(defvar *frame-draw-ns* 0)
+(defvar *frame-publish-ns* 0)
 (defvar *frame-input-ns* 0)
+(defvar *frame-input-pumped* 0)
+(defvar *frame-input-wl* 0)
 
 (define (frame-number-set! n) (set! *frame-number* n))
+;; The tick began at now (now-ns), or, unpaced, its ms: the pacer's read.
+(define (frame-ticked! now)
+  (set! *frame-tick-ns* (or now (* *pacer-tick-ms* 1000000))))
 
-;; Input came at ns (now-ns; 0, none): the next frame shows it, if no
-;; older input waits.
-(define (frame-input-came! ns)
+;; Input came (now-ns; 0, none), by SDL's stamp, core0's pump and the
+;; compositor: the next frame shows it, if no older input waits.
+(define (frame-input-came! ns pumped wl)
   (unless (or (eqv? ns 0) (not (eqv? *frame-input-ns* 0)))
-    (set! *frame-input-ns* ns)))
+    (set! *frame-input-ns* ns))
+  (unless (or (eqv? pumped 0) (not (eqv? *frame-input-pumped* 0)))
+    (set! *frame-input-pumped* pumped))
+  (unless (or (eqv? wl 0) (not (eqv? *frame-input-wl* 0)))
+    (set! *frame-input-wl* wl)))
 
 ;; Input that asked for no frame: no frame shows it.
-(define (frame-input-drop!) (set! *frame-input-ns* 0))
+(define (frame-input-drop!)
+  (set! *frame-input-ns* 0)
+  (set! *frame-input-pumped* 0)
+  (set! *frame-input-wl* 0))
 
 (define (frame-ring-add! shown?)
   (let ([at (* frame-ring-words (modulo *frame-ring-n* frame-ring-rows))]
         [ring *frame-ring*])
     (fxvector-set! ring (+ at 6) *frame-number*)
     (fxvector-set! ring (+ at 7) *frame-input-ns*)
-    (set! *frame-input-ns* 0)
+    (fxvector-set! ring (+ at 8) *frame-tick-ns*)
+    (fxvector-set! ring (+ at 9) *frame-draw-ns*)
+    (fxvector-set! ring (+ at 10) *frame-publish-ns*)
+    (fxvector-set! ring (+ at 11) *frame-input-pumped*)
+    (fxvector-set! ring (+ at 12) *frame-input-wl*)
+    (frame-input-drop!)
     (fxvector-set! ring at (flonum->fixnum (flround (fl* 1000.0 *frame-ms*))))
     ;; the frame's, published: the recorder writes nothing now
     (let-values ([(recs-n extras-n) (rec-last-sizes)])

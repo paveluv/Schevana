@@ -1371,6 +1371,7 @@
       (memory-order-acquire)
       (let loop () (unless (box-cas! *gpu-published* f #f) (loop)))
       (host-trace! 2 (gpu-frame-number f))
+      (present-taken!)
       (set! *gpu-booting* #f)
       ;; taken: main may make the next (.work/gpu-design.md 9.12), with the
       ;; input that came till now, not only till the last step's pump

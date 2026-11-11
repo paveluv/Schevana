@@ -87,12 +87,35 @@
              'late
              'done))))
 
-;; From the oldest input frame i shows to its showing, ns; #f when it shows
-;; no input or hasn't shown.
-(define (inspect-frame-latency i)
-  (let ([in (inspect-frame-ref i 7)])
-    (and in (> in 0) (inspect-frame-shown? i)
-         (- (inspect-frame-report i 3) in))))
+;; When frame i's point came (now-ns), or #f: its oldest input by SDL's
+;; stamp (sdl), by the compositor's own time (wl), and as core0's pump
+;; first saw it (pumped); its tick, its draw and its publish on main; core0
+;; taking it (taken) and sending it (sent); its GPU work seen done (gpu);
+;; on the screen (shown).
+(define (inspect-frame-at i point)
+  (let ([t (case point
+             [(sdl) (inspect-frame-ref i 7)]
+             [(tick) (inspect-frame-ref i 8)]
+             [(draw) (inspect-frame-ref i 9)]
+             [(publish) (inspect-frame-ref i 10)]
+             [(pumped) (inspect-frame-ref i 11)]
+             [(wl) (inspect-frame-ref i 12)]
+             [(taken) (inspect-frame-report i 7)]
+             [(sent) (inspect-frame-report i 2)]
+             [(gpu) (inspect-frame-report i 6)]
+             [(shown) (and (inspect-frame-shown? i)
+                           (inspect-frame-report i 3))]
+             [else #f])])
+    (and t (> t 0) t)))
+
+;; From the oldest input frame i shows to its showing, ns, the input by
+;; point (sdl, wl or pumped); #f when it shows no input, or hasn't shown.
+(define (inspect-frame-latency-from i point)
+  (let ([in (inspect-frame-at i point)] [shown (inspect-frame-at i 'shown)])
+    (and in shown (- shown in))))
+
+;; The same, by SDL's stamp.
+(define (inspect-frame-latency i) (inspect-frame-latency-from i 'sdl))
 
 ;; The frames kept, and how many of them had no room on the screen.
 ;; => (values kept not-shown)
@@ -107,15 +130,18 @@
                     (+ not-shown 1)))))))
 
 ;; Of the frames shown in the last ms: their input-to-screen times' 50th
-;; and 99th percentiles (ns, #f with none), and the refreshes they missed.
+;; and 99th percentiles (ns, #f with none), the input by point (as
+;; inspect-frame-latency's), and the refreshes they missed.
 ;; => (values p50 p99 missed)
-(define (inspect-frames-truth ms)
-  (let ([since (- (now-ns) (* ms 1000000))])
+(define (inspect-frames-truth ms . point)
+  (let ([since (- (now-ns) (* ms 1000000))]
+        [point (if (pair? point) (car point) 'sdl)])
+    ;; by publish: the newest frames, not yet sent, have no report
     (let loop ([i (- *frame-ring-n* 1)] [lats '()] [missed 0])
-      (let ([sent (inspect-frame-report i 2)])
-        (if (and sent (> sent since))
+      (let ([publish (inspect-frame-at i 'publish)])
+        (if (and publish (> publish since))
             (loop (- i 1)
-                  (let ([l (inspect-frame-latency i)])
+                  (let ([l (inspect-frame-latency-from i point)])
                     (if l (cons l lats) lats))
                   (+ missed (or (inspect-frame-missed i) 0)))
             (let* ([v (list->vector (sort < lats))] [n (vector-length v)]
