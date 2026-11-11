@@ -259,9 +259,11 @@
                                      nowhere now" (env-path e)))
         (let ([v (vat-of e)])
           (repl-started-set! r (now-ms))
-          (repl-proc-set! r (if v
-                                (repl-send! r win v forms width)
-                                (repl-spawn! r win forms width)))
+          (repl-proc-set! r (cond
+                              [v (repl-send! r win v forms width)]
+                              [(eq? (env-kind e) 'host)
+                               (repl-host-send! r win forms width)]
+                              [else (repl-spawn! r win forms width)]))
           ;; its frames while it runs: what it prints, the busy mark
           (window-frame-soon! win)))))
 
@@ -301,6 +303,18 @@
                (repl-add! r 'error text)
                (repl-done! r win))))
 
+;; "/host": core0 runs the forms between frames, in its own environment, and
+;; the texts come back. => what Ctrl+C finds: core0 is never interrupted.
+(define (repl-host-send! r win forms width)
+  (host-eval! forms width
+              (lambda (answer)
+                (if (eq? (car answer) 'ok)
+                    (for-each (lambda (t) (repl-add! r 'result t))
+                              (cdr answer))
+                    (repl-add! r 'error (cadr answer)))
+                (repl-done! r win)))
+  'host)
+
 ;; The evaluation is over: the window is no longer busy, and the next
 ;; waiting input runs.
 (define (repl-done! r win)
@@ -320,7 +334,10 @@
         (begin (vat-job-kill! p)
                (repl-add! r 'info "; interrupted")
                (repl-done! r win))
-        (kill! p))))
+        (if (eq? p 'host)
+            (repl-add! r 'info "; core0 runs it between frames, and isn't \
+                                interrupted")
+            (kill! p)))))
 
 ;;; ------------------------------------------------------------------ editing
 
@@ -1460,8 +1477,10 @@ here"))]
       (repl-port-set! r (make-repl-port r))
       (repl-banner! r)
       (let ([win (open-repl-window r)])
-        ;; In a namespace, (exit) closes the window, not the world.
-        (when (and (env-parent e) (eq? (env-base e) 'chez))
+        ;; In a namespace, (exit) closes the window, not the world; but in
+        ;; core0's, where exit is how core0 ends the process
+        (when (and (env-parent e) (eq? (env-base e) 'chez)
+                   (not (eq? (env-kind e) 'host)))
           (repl-define-exit! win e))
         win))))
 

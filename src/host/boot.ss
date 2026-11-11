@@ -45,7 +45,7 @@
     ;; Jobs: posted to core0's mailbox, run at its next step; safe from any
     ;; thread.
     host-window-minimum! host-window-fullscreen! host-window-icon!
-    host-set-cursor! clipboard-set! host-trace-dump!
+    host-set-cursor! clipboard-set! host-trace-dump! host-eval!
     ;; a step of the calling thread's, on its own ring
     host-trace!
     ;; and its wake, ending core0's wait; frames published, whether the last
@@ -74,6 +74,50 @@
 ;; its procedures by name, so a redefinition there takes at the next call.
 (define host-environment
   (let ([e (interaction-environment)]) (lambda () e)))
+
+;; Forms evaluated in core0's environment by core0 itself, between frames,
+;; as a vat takes them: a REPL in "/host" sends them, never touching core0's
+;; state from main's thread. then gets, on main, (ok text ...), what they
+;; printed and their values but (void) written width wide, or (error text).
+(define (host-eval! forms width then)
+  (host-post! (list 'host-eval-now! forms width then)))
+
+(define (host-eval-now! forms width then)
+  (host-put! *gpu-answers*
+             (cons then
+                   (guard (c [#t (list 'error (condition->string c))])
+                     (cons 'ok (host-eval-texts forms width)))))
+  (host-world-wake!))
+
+(define (host-eval-texts forms width)
+  (let* ([chop (lambda (s)   ; its last newline off
+                 (if (and (> (string-length s) 0)
+                          (char=? #\newline
+                                  (string-ref s (- (string-length s) 1))))
+                     (substring s 0 (- (string-length s) 1))
+                     s))]
+         [text (lambda (v)
+                 (chop (with-output-to-string (lambda () (pretty-print v)))))])
+    (parameterize ([pretty-line-length width]
+                   [interaction-environment (host-environment)])
+      (let loop ([forms forms] [texts '()])
+        (if (null? forms)
+            (reverse texts)
+            (let* ([vals #f]
+                   [out (with-output-to-string
+                         (lambda ()
+                           (set! vals (call-with-values
+                                        (lambda ()
+                                          (eval (car forms)
+                                                (host-environment)))
+                                        list))))])
+              (loop (cdr forms)
+                    (append (reverse
+                             (map text (filter (lambda (v)
+                                                 (not (eq? v (void))))
+                                               vals)))
+                            (if (string=? out "") '() (list (chop out)))
+                            texts))))))))
 
 ;; What core0 shares with "/recorder" alone, beside its interface:
 ;; recordings, the lists, images and frame that hold them, how far frames

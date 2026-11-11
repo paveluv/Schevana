@@ -795,7 +795,8 @@
          again into it, or with a restart"
   'doc "Core0, below the core: the window, its events and the GPU's \
         device side. Of the world's names it holds none; what is defined \
-        here changes the host at its next call")
+        here changes the host at its next call. A REPL here sends its forms \
+        to core0, which runs them between frames")
 
 (env-register-kind! 'recorder
   'title "The recorder"

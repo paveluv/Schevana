@@ -520,7 +520,10 @@ there only its interface (`host-interface` in `src/host/boot.ss`),
 read-only, and loads the rest of the tree into it, the C bindings and the
 basics again as the world's own. The world names nothing else of core0's
 (`tests/sources.ss`), and `(reload!)` loads the world's files, not
-core0's, which change with a restart (`.work/gpu-design.md` 9.13).
+core0's, which change with a restart (`.work/gpu-design.md` 9.13), or
+through a REPL in "/host", core0's own environment: it sends its forms to
+core0 (`host-eval!`), which runs them between frames on its own thread,
+and their output and values come back.
 
 The core names nothing of the desktop layer's: the crash panel and the
 window menu are parts (`draw-crash-panel`, `open-window-menu`) whose
