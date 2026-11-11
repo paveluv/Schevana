@@ -63,12 +63,21 @@
       [(not) `(not ,a)]
       [else (cons name args)])))
 
+;; Forms worked out left to right, as the language has them, and then what k
+;; makes of their values: Chez's order for a call's arguments is its own.
+(define (twin-in-order forms k)
+  (let ([names (map (lambda (f) (if (pair? f) (gensym) f)) forms)])
+    `(let* ,(filter (lambda (b) (pair? (cadr b))) (map list names forms))
+       ,(k names))))
+
 (define (twin-form t)
   (case (car t)
     ;; a float as the device has it, 32 bits
     [(const) (let ([v (caddr t)]) (if (flonum? v) (flsingle v) v))]
     [(var) (twin-var (caddr t))]
-    [(op) (twin-op (caddr t) (map twin-form (cdddr t)))]
+    [(op)
+     (twin-in-order (map twin-form (cdddr t))
+                    (lambda (args) (twin-op (caddr t) args)))]
     [(let)
      `(let ([,(twin-var (cadr t)) ,(twin-form (caddr t))])
         ,(twin-form (cadddr t)))]
@@ -79,32 +88,38 @@
           ,(twin-form (car (cddddr t))))]
     [(loop)
      (let ([specs (cadddr t)])
-       `(let shader-loop
-            ([shader-count 0]
-             ,@(map (lambda (s)
-                      (list (twin-var (car s))
-                            (twin-form (caddr s))))
-                    specs))
-          (if (or ,(twin-form (car (cddddr t)))
-                  (>= shader-count ,(caddr t)))
-              ,(twin-form (cadr (cddddr t)))
-              (shader-loop
-               (+ shader-count 1)
-               ,@(map (lambda (s) (twin-form (cadddr s))) specs)))))]
+       (twin-in-order
+        (map (lambda (s) (twin-form (caddr s))) specs)
+        (lambda (inits)
+          `(let shader-loop
+               ([shader-count 0]
+                ,@(map (lambda (s i) (list (twin-var (car s)) i))
+                       specs inits))
+             (if (or ,(twin-form (car (cddddr t)))
+                     (>= shader-count ,(caddr t)))
+                 ,(twin-form (cadr (cddddr t)))
+                 ,(twin-in-order
+                   (map (lambda (s) (twin-form (cadddr s))) specs)
+                   (lambda (steps)
+                     `(shader-loop (+ shader-count 1) ,@steps))))))))]
     [(load)
      `(,(if (eq? (cadr t) 'flonum) 'twin-fl-ref 'twin-fx-ref)
        ,(caddr t) ,(twin-form (cadddr t)))]
     [(store)
      (let ([v (cadddr t)])
-       `(,(if (eq? (shader-type v) 'flonum) 'twin-fl-set! 'twin-fx-set!)
-         ,(cadr t) ,(twin-form (caddr t)) ,(twin-form v)))]
+       (twin-in-order
+        (list (twin-form (caddr t)) (twin-form v))
+        (lambda (iv)
+          `(,(if (eq? (shader-type v) 'flonum) 'twin-fl-set! 'twin-fx-set!)
+            ,(cadr t) ,@iv))))]
     [(fetch)
-     `(,(cadr t) ,(twin-form (caddr t)) ,(twin-form (cadddr t))
-       ,(car (cddddr t)) ,(twin-form (list-ref t 5)))]
-    [(emit-position)
-     `(set! shader-out (list ,@(map twin-form (cdr t))))]
-    [(emit-color)
-     `(set! shader-out (list ,@(map twin-form (cdr t))))]
+     (twin-in-order
+      (map twin-form (list (caddr t) (cadddr t) (list-ref t 5)))
+      (lambda (uvl)
+        `(,(cadr t) ,(car uvl) ,(cadr uvl) ,(car (cddddr t)) ,(caddr uvl))))]
+    [(emit-position emit-color)
+     (twin-in-order (map twin-form (cdr t))
+                    (lambda (vs) `(set! shader-out (list ,@vs))))]
     [else '(void)]))
 
 (define twin-procedures (make-weak-eq-hashtable))

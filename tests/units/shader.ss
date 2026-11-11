@@ -165,6 +165,49 @@
                                                (fixnum->flonum x)))))))])
          (and (memv 2 math) (not (memv 1 math)))))
 
+;; Stores worked out left to right: each to a word a later one overwrites.
+(define-compute-shader (shader-test-order x y) ([out fx-buffer write])
+  (define (put k v) (fx-set! out k v) 0)
+  (fx-set! out 3 (fx+ (put 0 1) (put 0 2) (put 0 3) (put 0 4)))
+  (fx-set! out 4
+           (do-bounded 1
+               ([a (put 1 1) (put 2 1)]
+                [b (put 1 2) (put 2 2)]
+                [c (put 1 3) (put 2 3)])
+             ((fx> a 0) 0))))
+
+(check "operands, and a loop's starts and steps, are worked out left to \
+        right, on the device, on the twin and in MSL's text"
+       (let ([out (make-gpu-buffer 5)]
+             [twin-out (make-bytevector 20 0)]
+             [text (shader-msl 'compute '(x y) '((out fx-buffer write))
+                               (shader-tree shader-test-order))]
+             [at (lambda (text piece)
+                   (let loop ([i 0])
+                     (cond
+                       [(> (+ i (string-length piece)) (string-length text))
+                        #f]
+                       [(string=? (substring text i
+                                             (+ i (string-length piece)))
+                                  piece)
+                        i]
+                       [else (loop (+ i 1))])))])
+         (gpu-compute! shader-test-order 1 1 out)
+         ((twin-procedure shader-test-order) 0 0 1 1 twin-out)
+         (let* ([got (gpu-buffer-read! out)]
+                [words (lambda (b) (map (lambda (i) (shader-test-word b i))
+                                        (iota 5)))]
+                [places (map (lambda (v)
+                               (at text (format "] = ~a;"
+                                                (msl-const 'fixnum v))))
+                             '(1 2 3 4))])
+           (gpu-buffer-release! out)
+           (printf "  ~s ~s ~s\n" (words got) (words twin-out) places)
+           (and (equal? (words got) '(4 3 3 0 0))
+                (equal? (words twin-out) '(4 3 3 0 0))
+                (for-all number? places)
+                (apply < places)))))
+
 (check "a float constant is 32 bits on the twin, as on the device"
        (let* ([s (eval '(let ()
                           (define-compute-shader (shader-test-tenth x y)

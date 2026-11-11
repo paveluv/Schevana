@@ -2,13 +2,13 @@
 ;;;
 ;;; The language is a contract: a new back end must always be possible.
 ;;; It defines its own meaning (ints are 32 bits and wrap; fxmod floors;
-;;; dividing an int by 0 gives 0; a shift's count is taken mod 32; a read
-;;; outside a buffer reads its last word, and a write outside is left out),
-;;; and asks only for what every GPU API has: three stages, scalars, buffers
-;;; of 4-byte elements by index, a 2D texture by integer fetch at a level, a
-;;; uniform block of scalars, if and bounded loops. No structs, pointers,
-;;; recursion or shared memory; a buffer is read or written in a run, never
-;;; both.
+;;; dividing an int by 0 gives 0; operands are worked out left to right; a
+;;; shift's count is taken mod 32; a read outside a buffer reads its last
+;;; word, and a write outside is left out), and asks only for what every GPU
+;;; API has: three stages, scalars, buffers of 4-byte elements by index, a 2D
+;;; texture by integer fetch at a level, a uniform block of scalars, if and
+;;; bounded loops. No structs, pointers, recursion or shared memory; a buffer
+;;; is read or written in a run, never both.
 ;;;
 ;;; The front end checks types, inlines local functions, prices the shader
 ;;; and gives a small typed tree with no target in it:
@@ -35,6 +35,14 @@
 (define shader-fl-compares '(fl= fl< fl> fl<= fl>=))
 
 (define (shader-error . args) (apply errorf 'shader args))
+
+;; map, left to right: a back end works out operands in the language's order,
+;; where Chez's map calls in an order of its own
+(define (shader-map-in-order f xs)
+  (if (null? xs)
+      '()
+      (let ([y (f (car xs))])
+        (cons y (shader-map-in-order f (cdr xs))))))
 
 ;; What shaders share, by name. A constant is one definition for shaders and
 ;; Scheme alike, so that what writes a number and what reads it can't disagree.
@@ -700,7 +708,7 @@
   (define (operation t)
     (let* ([type (type-id (cadr t))]
            [name (caddr t)]
-           [args (map value (cdddr t))])
+           [args (shader-map-in-order value (cdddr t))])
       (cond
         [(assq name spirv-binary-ops)
          => (lambda (o) (apply op! (cdr o) type args))]
@@ -739,7 +747,7 @@
            [specs (cadddr t)]
            [test (car (cddddr t))]
            [result (cadr (cddddr t))]
-           [inits (map (lambda (s) (value (caddr s))) specs)]
+           [inits (shader-map-in-order (lambda (s) (value (caddr s))) specs)]
            [before block]
            [header (id!)] [check (id!)] [work (id!)] [round-end (id!)]
            [merge (id!)]
@@ -975,7 +983,8 @@
       [(const) (msl-const (cadr t) (caddr t))]
       [(var) (name-of (caddr t))]
       [(op)
-       (assign! (cadr t) (msl-op (caddr t) (map value (cdddr t))))]
+       (assign! (cadr t)
+                (msl-op (caddr t) (shader-map-in-order value (cdddr t))))]
       [(let)
        (hashtable-set! names (cadr t) (value (caddr t)))
        (value (cadddr t))]
@@ -1037,8 +1046,9 @@
       (line "while (true) {")
       (line "if (" (value (car (cddddr t))) " || " count " >= " (caddr t)
             ") break;")
-      (let ([news (map (lambda (s) (assign! (cadr s) (value (cadddr s))))
-                       specs)])
+      (let ([news (shader-map-in-order
+                   (lambda (s) (assign! (cadr s) (value (cadddr s))))
+                   specs)])
         (for-each (lambda (s v) (line (name-of (car s)) " = " v ";"))
                   specs news))
       (line count " += 1;")
