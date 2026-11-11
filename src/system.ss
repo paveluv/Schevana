@@ -45,10 +45,12 @@
 ;; row, which count once
 (defvar *pacer-raised* 0)
 ;; the compositor's queue holds a frame too many, and the next tick skips
-;; a latch; and the frame that skipped one last (its number): the reports
-;; on the frames sent before it still say the queue was deep
+;; a latch; and the newest frame main had made when one was last skipped
+;; (its number): the reports on frames till it still say the queue was
+;; deep. And the newest frame whose report the pacer has judged.
 (defvar *pacer-drain?* #f)
 (defvar *pacer-drained* 0)
+(defvar *pacer-judged* 0)
 ;; where the latches fall from the screen's refreshes, ns after one, as
 ;; last seen; or #f: with it, each report on a refresh says where the next
 ;; latches are, whether or not an acquire waits for one
@@ -362,39 +364,62 @@
 ;; (no refresh freezes for it), when the queue is deep: from its publish
 ;; till its acquire ended took half a refresh longer than the lead, a
 ;; latch after the one aimed for (it waited in the box, or for an image);
-;; or the newest frame
-;; the screen reported on, sent at a latch, showed more than a refresh and
-;; a half on, a frame queued ahead of it. Not again till the frames sent
-;; since the last skip are reported on.
+;; or a frame the screen reported on since, sent at a latch, showed more
+;; than a refresh and a half on, a frame queued ahead of it. Not again till
+;; a frame published after the last skip is reported on. The reports read
+;; are the newest in: how many frames behind they come differs by
+;; compositor, GPU and rate (a frame back; four, under Mutter's triple
+;; buffering at 120 Hz).
 (define (pacer-latch! n)
+  (when (>= *pacer-judged* n)            ; frames numbered anew
+    (set! *pacer-judged* 0)
+    (set! *pacer-drained* 0))
   (let* ([r (host-frame-ns)]
          [began (host-frame-report n 8)] [ended (host-frame-report n 9)]
          [held? (and began ended (> ended 0) (> (- ended began) 1000000))]
-         [refresh (pacer-refresh-seen (- n 3))]
-         [behind? (pacer-behind! (- n 3) r)])
+         [m (pacer-reported-before n)]
+         [refresh (and m (pacer-refresh-seen m))]
+         [behind? (and m (pacer-judge! m r))]
+         [drain? (> *pacer-judged* *pacer-drained*)])
     (cond
       [held?
        (set! *pacer-latch* ended)
        (when refresh
          (set! *pacer-latch-phase* (modulo (- ended refresh) r)))
-       (when (and (> (- n *pacer-drained*) 4)
+       (when (and drain?
                   (or behind?
                       (> (- ended (or (pacer-published n) began))
                          (+ (quotient r 2) *pacer-lead*))))
          (set! *pacer-drain?* #t)
-         (set! *pacer-drained* n))]
+         (set! *pacer-drained* *frame-number*))]
       ;; an image free at once: the reports place the latches
       [(and refresh *pacer-latch-phase*)
        (set! *pacer-latch* (+ refresh *pacer-latch-phase*))
-       (when (and (> (- n *pacer-drained*) 4) behind?)
+       (when (and drain? behind?)
          (set! *pacer-drain?* #t)
-         (set! *pacer-drained* n))])))
+         (set! *pacer-drained* *frame-number*))])))
+
+;; The newest frame before n the screen has reported on, shown or dropped,
+;; among the eight before it; else #f.
+(define (pacer-reported-before n)
+  (let loop ([m (- n 1)])
+    (and (> m (- n 9)) (> m 0)
+         (if (memv (host-frame-report m 1) '(1 2)) m (loop (- m 1))))))
+
+;; Each frame up to m whose report is in, and not judged yet, judged once
+;; (pacer-behind!), from at most eight back. => whether one was late
+(define (pacer-judge! m r)
+  (let loop ([k (max (+ *pacer-judged* 1) (- m 8))] [late? #f])
+    (if (> k m)
+        late?
+        (begin (set! *pacer-judged* k)
+               (loop (+ k 1) (or (pacer-behind! k r) late?))))))
 
 ;; Frame n, its report in, aimed at a latch: the refreshes it showed after
 ;; the first at or after that latch, the one aimed for. Late (1 or more),
 ;; it came after the compositor's deadline, or behind a frame of ours, as
 ;; every frame after a late one does till one latch is skipped: ticks
-;; begin 2 ms earlier, to a refresh less 4 ms, once in half a second, a
+;; begin 2 ms earlier, to a refresh at most, once in half a second, a
 ;; run of them from one stall counting once; in time, 5 µs later, a
 ;; probe slow enough that a frame comes late only now and then; early (it
 ;; made the refresh before), 1 ms later. => whether it was late
@@ -407,7 +432,7 @@
                [(>= late 1)
                 (if (> (- (now-ns) *pacer-raised*) 500000000)
                     (begin (set! *pacer-raised* (now-ns))
-                           (min (- r 4000000) (+ *pacer-deadline* 2000000)))
+                           (min r (+ *pacer-deadline* 2000000)))
                     *pacer-deadline*)]
                [(= late 0) (max 0 (- *pacer-deadline* 5000))]
                [else (max 0 (- *pacer-deadline* 1000000))]))
@@ -419,11 +444,11 @@
 ;; When main published frame n (now-ns), among the last few; else #f.
 (define (pacer-published n) (pacer-frame-word n 10))
 
-;; Word k of frame n's row in the frame ring, among the last eight; else
+;; Word k of frame n's row in the frame ring, among the last sixteen; else
 ;; #f.
 (define (pacer-frame-word n k)
   (let loop ([i (- *frame-ring-n* 1)] [j 0])
-    (and (< j 8) (>= i 0)
+    (and (< j 16) (>= i 0)
          (let ([at (* frame-ring-words (modulo i frame-ring-rows))])
            (if (eqv? (fxvector-ref *frame-ring* (+ at 6)) n)
                (fxvector-ref *frame-ring* (+ at k))
@@ -438,14 +463,15 @@
 ;; the most of those lately, a 32nd less each frame (a second's spike is
 ;; gone in a second or two), with the deadline's margin, which covers the
 ;; GPU's time too, and 3 ms more for the wake's ms and the clock's jitter;
-;; from 3 ms to a refresh less 1 ms. (Core0 sees a frame's GPU work done
-;; only between its acquires, a refresh late while the queue is deep: no
-;; measure to lead by.)
+;; from 3 ms to two refreshes less 1 ms, so that a deadline a refresh
+;; long still leaves a tick its time at 120 Hz. (Core0 sees a frame's GPU
+;; work done only between its acquires, a refresh late while the queue is
+;; deep: no measure to lead by.)
 (define (pacer-drew! ns)
   (let ([r (host-frame-ns)])
     (set! *pacer-lead*
       (max 3000000
-           (min (- r 1000000)
+           (min (- (* 2 r) 1000000)
                 (max (+ ns *pacer-deadline* 3000000)
                      (- *pacer-lead* (quotient *pacer-lead* 32))))))))
 
