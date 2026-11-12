@@ -530,15 +530,24 @@
 ;; meant to begin till core0 sent it (main waking late and core0 taking it
 ;; late among it), with the margin, at once when that's more, else fading;
 ;; two refreshes at most, so that a lead longer than a refresh still
-;; leaves a tick its time at 120 Hz.
+;; leaves a tick its time at 120 Hz. A wait for an image past the latch it
+;; aimed at, a later latch's, the compositor holding a frame more (one it
+;; missed a refresh with, or ours queued behind it), is the screen's time,
+;; not the frame's: a lead it grew would send the frames after it early.
 (define (pacer-need! n r)
-  (let ([tick (pacer-frame-word n 14)] [sent (host-frame-report n 2)])
+  (let ([tick (pacer-frame-word n 14)] [sent (host-frame-report n 2)]
+        [aimed (pacer-aimed-of n)]
+        [began (host-frame-report n 8)] [ended (host-frame-report n 9)])
     (when (and tick sent (> tick 0) (> sent 0))
-      (set! *pacer-lead*
-        (min (* 2 r)
-             (max (+ (- sent tick) *pacer-margin*)
-                  (- *pacer-lead*
-                     (quotient (* *pacer-lead* r) pacer-lead-fade))))))))
+      (let ([held (if (and aimed began ended (> aimed 0)
+                           (> ended (+ aimed (quotient r 2))))
+                      (- ended (max began aimed))
+                      0)])
+        (set! *pacer-lead*
+          (min (* 2 r)
+               (max (+ (- sent tick held) *pacer-margin*)
+                    (- *pacer-lead*
+                       (quotient (* *pacer-lead* r) pacer-lead-fade)))))))))
 
 ;; A tick drew a frame: the screen goes on pacing (*pacer-shown?*).
 (define (pacer-drew!) (set! *pacer-drew?* #t))

@@ -756,33 +756,34 @@ Decisions worth keeping in mind for the real design:
   ticks so while each sends it a frame. A tick begins its lead before its
   latch: what frames took lately from when their tick was meant to begin
   till core0 sent them, main waking late among it (a spike fades in half a
-  second), and a margin. Its frame goes straight to the screen with the
-  input that came till then, not a refresh early, waiting for an image. The
-  reports say how many refreshes after the one aimed for each frame showed,
-  past the compositor's depth, the refreshes it keeps a frame it took
-  (WindowServer's, two). Late, though sent about the margin before its
-  latch, the margin grows past that by an eighth of a refresh; a margin past
-  a refresh carries into the depth, as a frame sent a refresh earlier for
-  the latch before is one for this latch, shown a refresh later, and is
-  learned afresh. Late though sent well before it, or no closer than one
-  that made its latch lately, the compositor missed the refresh (a
-  screenshot, a stall of its own, WindowServer now and then), and nothing is
-  learned, unless it's the third late run in a chain, each within 128 frames
-  of the one before, as at a deadline that comes and goes. Nor from the
-  frames late behind a run's first, sent before the pacer saw it, which
-  waited behind it; one sent since, and late still, however early, teaches.
-  One that showed sooner than the depth, sent as the pacer sends them,
-  lowers it. In time, the margin fades over a minute, so that one comes late
-  only now and then. A frame that showed late moves the ones after it, each
-  a latch on (the floor), so the queue drains of itself. Core0 reads input
-  as soon as its acquire returns, and every ms while frames flow. On GNOME
-  48 with NVIDIA this took a frame from its publish to the screen from 58 ms
-  to 24 under the Pipeline and Boids 3D, and 7.4 for a light window, with no
-  refresh missed in 2 × 21 s each. `(inspect-pacer)` gives the period, the
-  grid's next tick, whether the last tick sent the screen a frame it holds,
-  the last `t`, the latch, the lead, the margin, the closest send that made
-  its latch lately, the floor, the depth, the latch aimed at, and when the
-  next tick may begin.
+  second), but for a wait for an image past the latch aimed at, the
+  compositor holding a frame more, which is the screen's time; and a margin.
+  Its frame goes straight to the screen with the input that came till then,
+  not a refresh early, waiting for an image. The reports say how many
+  refreshes after the one aimed for each frame showed, past the compositor's
+  depth, the refreshes it keeps a frame it took (WindowServer's, two). Late,
+  though sent about the margin before its latch, the margin grows past that
+  by an eighth of a refresh; a margin past a refresh carries into the depth,
+  as a frame sent a refresh earlier for the latch before is one for this
+  latch, shown a refresh later, and is learned afresh. Late though sent well
+  before it, or no closer than one that made its latch lately, the
+  compositor missed the refresh (a screenshot, a stall of its own,
+  WindowServer now and then), and nothing is learned, unless it's the third
+  late run in a chain, each within 128 frames of the one before, as at a
+  deadline that comes and goes. Nor from the frames late behind a run's
+  first, sent before the pacer saw it, which waited behind it; one sent
+  since, and late still, however early, teaches. One that showed sooner than
+  the depth, sent as the pacer sends them, lowers it. In time, the margin
+  fades over a minute, so that one comes late only now and then. A frame
+  that showed late moves the ones after it, each a latch on (the floor), so
+  the queue drains of itself. Core0 reads input as soon as its acquire
+  returns, and every ms while frames flow. On GNOME 48 with NVIDIA this took
+  a frame from its publish to the screen from 58 ms to 24 under the Pipeline
+  and Boids 3D, and 7.4 for a light window, with no refresh missed in 2 × 21
+  s each. `(inspect-pacer)` gives the period, the grid's next tick, whether
+  the last tick sent the screen a frame it holds, the last `t`, the latch,
+  the lead, the margin, the closest send that made its latch lately, the
+  floor, the depth, the latch aimed at, and when the next tick may begin.
   How a frame reaches the screen is `'present-mode`, in Settings'
   Display tab, or `(override! 'present-mode 'mailbox)`; it changes live,
   at the next frame, among what the window offers (`(inspect-device)`).

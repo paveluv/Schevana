@@ -1061,3 +1061,23 @@
              (frame 1 aim (- aim 8000000))
              (and (= first 1000000)
                   (= *pacer-margin* (+ 8000000 (quotient r 8))))))))
+
+(check "a wait for an image past the latch a frame aimed at, the \
+        compositor holding a frame more, is the screen's time, not the \
+        frame's: the lead learns only the rest; a wait up to that latch is \
+        the frame's"
+       (let* ([r (host-frame-ns)] [n 1000141] [t (now-ns)] [at (present-at n)]
+              [need (lambda (ended)
+                      (pacer-test-frame
+                       n t (+ t 5000000) (+ ended 1000000) #f
+                       (lambda ()
+                         (fxvector-set! *present-ring* (+ at 8)
+                                        (+ t 3000000))
+                         (fxvector-set! *present-ring* (+ at 9) ended)
+                         (pacer-need! n r)
+                         *pacer-lead*)))])
+         (fluid-let ([*pacer-lead* 1000000] [*pacer-margin* 0])
+           (let ([past (need (+ t 5000000 r))])
+             (set! *pacer-lead* 1000000)
+             (let ([up-to (need (+ t 5000000))])
+               (and (= past 6000000) (= up-to 6000000)))))))
