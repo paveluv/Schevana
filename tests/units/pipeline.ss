@@ -267,118 +267,123 @@
                               (invert-box 120 80 20 10)
                               (fill-box 150 4 30 20 'accent 6)
                               (stroke-box 150 30 30 20 'text 1 4)))])
-  (invalidate!)
-  (steps 1)
-  (let* ([l (inspect-list)]
-         [image (inspect-preview-image *canvas-pw* *canvas-ph*)])
-    (inspect-preview-list! image l (inspect-list-count l))
-    (request-frame!)
+  ;; the top bar's words held, which change once a second: the screen two
+  ;; frames apart is the same
+  (fluid-let ([refresh-status! void])
+    (invalidate!)
     (steps 1)
-    (let* ([r *renderer*]
-           [flat (gpu-read-texture! r (sdl-acquire-gpu-commands
-                                       (renderer-device r))
-                                    (gpu-image-texture image)
-                                    *canvas-pw* *canvas-ph*)]
-           [tree (screen-bytes)]
-           [differ (let loop ([i 0] [n 0])
-                     (if (= i (bytevector-length tree))
-                         n
-                         (loop (+ i 4)
-                               (if (= (bytevector-u32-native-ref tree i)
-                                      (bytevector-u32-native-ref flat i))
-                                   n
-                                   (+ n 1)))))])
-      (check "the screen's lists read as a tree: a window's, at its corner, \
-              showing its content's"
-             (let ([mine (find (lambda (n)
-                                 (and (= (car n) (* *scale* (window-x w)))
-                                      (= (cadr n) (* *scale* (window-y w)))))
-                               (inspect-list-tree))])
-               (and mine (> (caddr mine) 0) (> (list-ref mine 4) 0)
-                    (= 1 (length (list-ref mine 5))))))
-      (let* ([span (assoc "Every kind" (inspect-list-labels l))]
-             [lists (inspect-span-lists l (cadr span) (caddr span))]
-             [i (+ (cadr span) (caddr span) -1)])
-        (let-values ([(lst j) (inspect-record-list l i)])
-          (check (format "a window's records come from its two lists, named \
-                          by it, ~s; a record from its place in one (~a of \
-                          ~a)" (map inspect-list-part lists) j
-                          (and lst (inspect-list-part lst)))
-                 (and (equal? (map inspect-list-part lists) '(window content))
-                      (for-all (lambda (x)
-                                 (equal? (inspect-list-owner x) "Every kind"))
-                               lists)
-                      (memq lst lists)
-                      ;; its head's kind and paint, as the list has them
-                      (= (fxand (inspect-word l i rec-row-head) 255)
-                         (fxand (bytevector-u32-native-ref
-                                 (gpu-list-recs (inspect-list-copy lst))
-                                 (* 32 j))
-                                255))))))
-      (let* ([h (inspect-history-new 8)]
-             [keep! (lambda (thunk)
-                      (thunk)
-                      (steps 1)
-                      (inspect-history-add! h)
-                      (cons (inspect-history-bytes h)
-                            (inspect-history-ref
-                             h (inspect-history-newest h))))]
-             [mine (lambda (k)
-                     (filter (lambda (x) (equal? (inspect-list-owner x)
-                                                 "Every kind"))
-                             (inspect-list-lists (cdr k))))]
-             [a (keep! request-frame!)]
-             [b (keep! request-frame!)]
-             [c (keep! (lambda () (invalidate! w)))]
-             [bytes (lambda (x) (+ (gpu-list-recs-n x) (gpu-list-extras-n x)))]
-             ;; the bytes of the copies in k not in the frame before, the
-             ;; window's and any other's (the top bar's clock, when its
-             ;; second turns)
-             [new (lambda (k before)
-                    (apply + (map bytes
-                                  (remp (lambda (x)
-                                          (memq x (inspect-list-lists
-                                                   (cdr before))))
-                                        (inspect-list-lists (cdr k))))))])
-        (check (format "frames kept share a list's copy while it's the same: \
-                        a frame kept adds ~a bytes, and after the window \
-                        changed ~a, its lists' new copies (new ~a then ~a, \
-                        the window's ~a)"
-                       (- (car b) (car a)) (- (car c) (car b))
-                       (new b a) (new c b) (apply + (map bytes (mine c))))
-               (and (= 2 (length (mine a)))
-                    (for-all eq? (mine a) (mine b))
-                    (not (exists (lambda (x) (memq x (mine a))) (mine c)))
-                    (= (gpu-list-version (cadr (mine c)))
-                       (+ 1 (gpu-list-version (cadr (mine a)))))
-                    (>= (new c b) (apply + (map bytes (mine c))))
-                    (= (- (car c) (car b) (new c b))
-                       (- (car b) (car a) (new b a)))))
-        (let-values ([(n copies) (inspect-history-copies
-                                  h (inspect-history-newest h))])
-          (check "a list recorded again the very same keeps the basis of the \
-                  copy before, and the frames kept give each list's copies, \
-                  frame by frame, none of them flattened"
-                 (and (for-all (lambda (x y)
-                                 (and (not (eq? x y))
-                                      (eq? (inspect-list-basis x)
-                                           (inspect-list-basis y))))
-                               (mine c) (mine a))
-                      (= n 3)
-                      (let ([v (hashtable-ref
-                                copies (inspect-list-original (car (mine c)))
-                                #f)])
-                        (and v
-                             (eq? (vector-ref v 0) (car (mine a)))
-                             (eq? (vector-ref v 1) (car (mine a)))
-                             (eq? (vector-ref v 2) (car (mine c)))))))))
-      (check (format "the screen's lists, read as one, draw its pixels: ~a \
-                      of ~a differ, in ~a records"
-                     differ (* *canvas-pw* *canvas-ph*) (inspect-list-count l))
-             (and (= differ 0) (> (inspect-list-count l) 0)))
-      (inspect-preview-free! image)
-      (close-window! w)
-      (steps 1))))
+    (let* ([l (inspect-list)]
+           [image (inspect-preview-image *canvas-pw* *canvas-ph*)])
+      (inspect-preview-list! image l (inspect-list-count l))
+      (request-frame!)
+      (steps 1)
+      (let* ([r *renderer*]
+             [flat (gpu-read-texture! r (sdl-acquire-gpu-commands
+                                         (renderer-device r))
+                                      (gpu-image-texture image)
+                                      *canvas-pw* *canvas-ph*)]
+             [tree (screen-bytes)]
+             [differ (let loop ([i 0] [n 0])
+                       (if (= i (bytevector-length tree))
+                           n
+                           (loop (+ i 4)
+                                 (if (= (bytevector-u32-native-ref tree i)
+                                        (bytevector-u32-native-ref flat i))
+                                     n
+                                     (+ n 1)))))])
+        (check "the screen's lists read as a tree: a window's, at its corner, \
+                showing its content's"
+               (let ([mine (find (lambda (n)
+                                   (and (= (car n) (* *scale* (window-x w)))
+                                        (= (cadr n) (* *scale* (window-y w)))))
+                                 (inspect-list-tree))])
+                 (and mine (> (caddr mine) 0) (> (list-ref mine 4) 0)
+                      (= 1 (length (list-ref mine 5))))))
+        (let* ([span (assoc "Every kind" (inspect-list-labels l))]
+               [lists (inspect-span-lists l (cadr span) (caddr span))]
+               [i (+ (cadr span) (caddr span) -1)])
+          (let-values ([(lst j) (inspect-record-list l i)])
+            (check (format "a window's records come from its two lists, named \
+                            by it, ~s; a record from its place in one (~a of \
+                            ~a)" (map inspect-list-part lists) j
+                            (and lst (inspect-list-part lst)))
+                   (and (equal? (map inspect-list-part lists) '(window content))
+                        (for-all (lambda (x)
+                                   (equal? (inspect-list-owner x) "Every kind"))
+                                 lists)
+                        (memq lst lists)
+                        ;; its head's kind and paint, as the list has them
+                        (= (fxand (inspect-word l i rec-row-head) 255)
+                           (fxand (bytevector-u32-native-ref
+                                   (gpu-list-recs (inspect-list-copy lst))
+                                   (* 32 j))
+                                  255))))))
+        (let* ([h (inspect-history-new 8)]
+               [keep! (lambda (thunk)
+                        (thunk)
+                        (steps 1)
+                        (inspect-history-add! h)
+                        (cons (inspect-history-bytes h)
+                              (inspect-history-ref
+                               h (inspect-history-newest h))))]
+               [mine (lambda (k)
+                       (filter (lambda (x) (equal? (inspect-list-owner x)
+                                                   "Every kind"))
+                               (inspect-list-lists (cdr k))))]
+               [a (keep! request-frame!)]
+               [b (keep! request-frame!)]
+               [c (keep! (lambda () (invalidate! w)))]
+               [bytes (lambda (x)
+                        (+ (gpu-list-recs-n x) (gpu-list-extras-n x)))]
+               ;; the bytes of the copies in k not in the frame before, the
+               ;; window's and any other's (the top bar's clock, when its
+               ;; second turns)
+               [new (lambda (k before)
+                      (apply + (map bytes
+                                    (remp (lambda (x)
+                                            (memq x (inspect-list-lists
+                                                     (cdr before))))
+                                          (inspect-list-lists (cdr k))))))])
+          (check (format "frames kept share a list's copy while it's the same: \
+                          a frame kept adds ~a bytes, and after the window \
+                          changed ~a, its lists' new copies (new ~a then ~a, \
+                          the window's ~a)"
+                         (- (car b) (car a)) (- (car c) (car b))
+                         (new b a) (new c b) (apply + (map bytes (mine c))))
+                 (and (= 2 (length (mine a)))
+                      (for-all eq? (mine a) (mine b))
+                      (not (exists (lambda (x) (memq x (mine a))) (mine c)))
+                      (= (gpu-list-version (cadr (mine c)))
+                         (+ 1 (gpu-list-version (cadr (mine a)))))
+                      (>= (new c b) (apply + (map bytes (mine c))))
+                      (= (- (car c) (car b) (new c b))
+                         (- (car b) (car a) (new b a)))))
+          (let-values ([(n copies) (inspect-history-copies
+                                    h (inspect-history-newest h))])
+            (check "a list recorded again the very same keeps the basis of the \
+                    copy before, and the frames kept give each list's copies, \
+                    frame by frame, none of them flattened"
+                   (and (for-all (lambda (x y)
+                                   (and (not (eq? x y))
+                                        (eq? (inspect-list-basis x)
+                                             (inspect-list-basis y))))
+                                 (mine c) (mine a))
+                        (= n 3)
+                        (let ([v (hashtable-ref
+                                  copies (inspect-list-original (car (mine c)))
+                                  #f)])
+                          (and v
+                               (eq? (vector-ref v 0) (car (mine a)))
+                               (eq? (vector-ref v 1) (car (mine a)))
+                               (eq? (vector-ref v 2) (car (mine c)))))))))
+        (check (format "the screen's lists, read as one, draw its pixels: ~a \
+                        of ~a differ, in ~a records"
+                       differ (* *canvas-pw* *canvas-ph*)
+                       (inspect-list-count l))
+               (and (= differ 0) (> (inspect-list-count l) 0)))
+        (inspect-preview-free! image)
+        (close-window! w)
+        (steps 1)))))
 
 (check "a list repainted: each record solid in its span's color over what it \
         covers, its runs those plain records need"
