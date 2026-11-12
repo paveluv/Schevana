@@ -477,11 +477,13 @@
 ;;; type: Up/Down choose, Tab and Shift+Tab page, Enter or a click
 ;;; accepts, Esc, a click elsewhere in it or the keyboard going elsewhere
 ;;; closes. With nothing to choose, a popup says so: the sole completion,
-;;; with its description, or none. What it offers depends on where the
-;;; cursor is: inside a string, file names; after a quote in (theme '…),
+;;; with its description, or none. Tab never inserts space: with nothing
+;;; typed it offers every name that fits. What it offers depends on where
+;;; the cursor is: inside a string, file names; after a quote in (theme '…),
 ;;; (app-launch! '…) and the like, the theme keys, apps, palettes or styles
 ;;; that fit there; inside (import (…)), library names a part at a time;
-;;; otherwise every name bound in this REPL's environment. Names match by
+;;; right after a paren, the procedures and syntax bound in this REPL's
+;;; environment; otherwise every name bound there. Names match by
 ;;; the kit's segments ("dtc" puts text-draw-centered first), Schevana's
 ;;; own first among equals. The chosen name shows its argument list and
 ;;; the comment above its definition, read from the sources.
@@ -732,13 +734,30 @@
                  [quoted (and (> start 0)
                               (char=? (string-ref s (- start 1)) #\')
                               (pair? stack)
-                              (quoted-choices r s (car stack) start))])
-            (values 'symbols start typed
-                    (or quoted
-                        (map (lambda (sym) (cons (symbol->string sym) #f))
+                              (quoted-choices r s (car stack) start))]
+                 [names (map symbol->string
                              (remp gensym?
                                    (environment-symbols
-                                    (repl-environment r)))))))]))))
+                                    (repl-environment r))))])
+            (values 'symbols start typed
+                    (cond
+                      [quoted quoted]
+                      [(command-position? s stack start)
+                       (filter-map (lambda (name)
+                                     (let ([k (name-kind name (repl-env r))])
+                                       (and (member k '("proc" "syntax"))
+                                            (cons name k))))
+                                   names)]
+                      [else (map (lambda (name) (cons name #f)) names)])))]))))
+
+;; Is the name at start the first thing after a paren, where only what
+;; can be called or is syntax goes? A bracket opens a clause or a
+;; binding, not a call.
+(define (command-position? s stack start)
+  (and (pair? stack)
+       (char=? (string-ref s (car stack)) #\()
+       (for-all char-whitespace?
+                (string->list (substring s (+ (car stack) 1) start)))))
 
 ;; The choices for a quoted name inside the form opening at open, or #f.
 (define (quoted-choices r s open start)
@@ -997,20 +1016,18 @@
 ;; carry on inside it.
 (define (repl-complete! r)
   (let-values ([(kind start typed choices) (completion-context r)])
-    (if (and (eq? kind 'symbols) (string=? typed ""))
-        (repl-insert! r "  ")
-        (let ([items (rank-choices typed choices)])
-          (when (zero? (vector-length items)) (bell))   ; nothing to complete
-          (if (and (= 1 (vector-length items))
-                   (carries-on? kind (vector-ref items 0)))
-              (accept-completion! r kind start (vector-ref items 0))
-              (complete-tab! r kind start typed items
-                             (lambda (shared)
-                               (repl-delete! r start (repl-point r))
-                               (repl-insert! r shared)
-                               (refresh-completion! r))
-                             (lambda (item)
-                               (accept-completion! r kind start item))))))))
+    (let ([items (rank-choices typed choices)])
+      (when (zero? (vector-length items)) (bell))   ; nothing to complete
+      (if (and (= 1 (vector-length items))
+               (carries-on? kind (vector-ref items 0)))
+          (accept-completion! r kind start (vector-ref items 0))
+          (complete-tab! r kind start typed items
+                         (lambda (shared)
+                           (repl-delete! r start (repl-point r))
+                           (repl-insert! r shared)
+                           (refresh-completion! r))
+                         (lambda (item)
+                           (accept-completion! r kind start item)))))))
 
 ;; After the input changed while the list is open: narrow it, or close it
 ;; when the cursor has left the name.
@@ -1020,8 +1037,7 @@
       (let-values ([(kind start typed choices) (completion-context r)])
         (if (or (not (eq? kind (complete-context c)))
                 (and (memq kind '(symbols library))
-                     (not (= start (complete-start c))))
-                (and (eq? kind 'symbols) (string=? typed "")))
+                     (not (= start (complete-start c)))))
             (complete-close! r)
             (complete-narrow! r kind start typed
                               (rank-choices typed choices)))))))

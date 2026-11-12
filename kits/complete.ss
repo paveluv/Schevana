@@ -131,7 +131,7 @@
 
 ;; Up and Down move, Page Up and Down a page's rows, Tab and Shift+Tab
 ;; to the next or previous page's first row, Return accepts, Escape
-;; closes.
+;; closes. Tab takes a list narrowed to one, as on a sole match.
 (define (complete-key! owner key mods accept!)
   (let ([c (complete-of owner)])
     (cond
@@ -144,7 +144,11 @@
          [(up) (complete-move! c -1) #t]
          [(page-down) (complete-move! c (complete-page c)) #t]
          [(page-up) (complete-move! c (- (complete-page c))) #t]
-         [(tab) (complete-page! c (if (memq 'shift mods) -1 1)) #t]
+         [(tab)
+          (if (= 1 (vector-length (complete-items c)))
+              (accept! (vector-ref (complete-items c) 0))
+              (complete-page! c (if (memq 'shift mods) -1 1)))
+          #t]
          [(return)
           (accept! (vector-ref (complete-items c) (complete-sel c)))
           #t]
