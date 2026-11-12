@@ -1162,8 +1162,10 @@
 ;; The pacer: its period and its grid's next tick (ns), whether the screen
 ;; paces it (frames back by vsync), and its t; the
 ;; compositor's last latch seen and the lead before one (pacer-just-in-time),
-;; its margin, the first latch the next frame may take, and when the next
-;; tick may begin.
+;; its margin, the closest to its latch a frame that made its latch was
+;; sent lately, the newest late run's first frame and how many runs came
+;; in a chain, the first latch the next frame may take, the compositor's
+;; depth, and when the next tick may begin.
 (define (inspect-pacer)
   `((period . ,(pacer-period))
     (due . ,*pacer-due*)
@@ -1172,7 +1174,11 @@
     (latch . ,*pacer-latch*)
     (lead . ,*pacer-lead*)
     (margin . ,*pacer-margin*)
+    (made . ,*pacer-made*)
+    (late . ,*pacer-late-run*)
+    (chain . ,*pacer-late-chain*)
     (floor . ,*pacer-floor*)
+    (depth . ,*pacer-depth*)
     (aimed . ,*pacer-aimed*)
     (start . ,(pacer-start))))
 

@@ -793,7 +793,8 @@
         late: the margin grows past how long before its latch it was sent, \
         by an eighth of a refresh; in time, the margin fades"
        (let* ([r (host-frame-ns)] [n 1000011] [t (now-ns)])
-         (fluid-let ([*pacer-margin* 1000000])
+         (fluid-let ([*pacer-margin* 1000000] [*pacer-depth* 0]
+                     [*pacer-made* #f] [*pacer-late-seen* 0])
            (let* ([late (pacer-test-frame n (- t 9000000) t (- t 3000000)
                                           (+ t r 4000000)
                                           (lambda () (pacer-behind! n r)))]
@@ -819,7 +820,8 @@
 (check "frames late in a row, as a stall makes them, sent alike, raise \
         the margin once"
        (let* ([r (host-frame-ns)] [n 1000013] [t (now-ns)])
-         (fluid-let ([*pacer-margin* 0])
+         (fluid-let ([*pacer-margin* 0] [*pacer-depth* 0]
+                     [*pacer-made* #f] [*pacer-late-seen* 0])
            (pacer-test-frame n (- t 9000000) t (- t 2000000) (+ t r 4000000)
                              (lambda ()
                                (do ([k 0 (+ k 1)]) ((= k 10))
@@ -855,7 +857,8 @@
        (let* ([r (host-frame-ns)] [n 1000033] [m (- n 2)] [ring *present-ring*]
               [t (now-ns)])
          (fluid-let ([*pacer-margin* 0] [*pacer-judged* (- m 1)]
-                     [*pacer-latch-phase* #f])
+                     [*pacer-latch-phase* #f] [*pacer-depth* 0]
+                     [*pacer-made* #f] [*pacer-late-seen* 0])
            (pacer-test-frame
             m (- t 9000000) t (- t 2000000) (+ t r 4000000)
             (lambda ()
@@ -870,22 +873,191 @@
               (pacer-latch! (+ n 1))))
            (and (= *pacer-margin* 0) (= *pacer-judged* m)))))
 
-(check "the margin may grow to a refresh, no further: a 120 Hz compositor \
-        may want frames most of a refresh ahead"
-       (let* ([r (host-frame-ns)] [n 1000041] [t (now-ns)])
-         (fluid-let ([*pacer-margin* (- r 1000000)])
-           (pacer-test-frame n (- t (* 2 r)) t (- t (- r 1000000))
-                             (+ t r 4000000)
-                             (lambda () (pacer-behind! n r)))
-           (= *pacer-margin* r))))
+(check "a margin past a refresh carries into the compositor's depth: a \
+        frame for the latch before, sent a refresh earlier, is one for \
+        this latch shown a refresh later; the margin is learned afresh; \
+        three refreshes at most"
+       (let* ([r (host-frame-ns)] [n 1000041] [t (now-ns)]
+              [late! (lambda (shown)
+                       (pacer-test-frame n (- t (* 2 r)) t
+                                         (- t (- r 1000000)) shown
+                                         (lambda () (pacer-behind! n r))))])
+         (fluid-let ([*pacer-margin* (- r 1000000)] [*pacer-depth* 0]
+                     [*pacer-made* #f] [*pacer-late-seen* 0])
+           (late! (+ t r 4000000))
+           (let ([depth *pacer-depth*] [margin *pacer-margin*])
+             (set! *pacer-depth* 3)
+             (set! *pacer-margin* (- r 1000000))
+             (set! *pacer-late-seen* 0)       ; a run of its own
+             (late! (+ t (* 4 r) 4000000))
+             (and (= depth 1) (= margin 0)
+                  (= *pacer-depth* 3) (= *pacer-margin* r))))))
 
 (check "a frame sent well before its latch, past the margin and a step, \
         and late all the same, the compositor missed the refresh: the \
         margin learns nothing"
        (let* ([r (host-frame-ns)] [n 1000043] [t (now-ns)])
-         (fluid-let ([*pacer-margin* 1000000])
+         (fluid-let ([*pacer-margin* 1000000] [*pacer-depth* 0]
+                     [*pacer-made* #f] [*pacer-late-seen* 0])
            (let ([late (pacer-test-frame
                         n (- t (* 2 r)) t (- t (quotient r 2))
                         (+ t r 4000000)
                         (lambda () (pacer-behind! n r)))])
              (and late (= *pacer-margin* 1000000))))))
+
+(check "a compositor that keeps a frame two refreshes past the first after \
+        its latch (WindowServer's): its frames come late, the margin grows \
+        past them till refreshes of it carry into the depth, and then \
+        they're in time"
+       (let* ([r (host-frame-ns)] [n 1000045]
+              ;; sent as the pacer sends them, each after the last was seen
+              [frame (lambda ()
+                       (let ([t (+ (now-ns) (* 2 r))])
+                         (pacer-test-frame n (- t 9000000) t
+                                           (- t *pacer-margin*)
+                                           (+ t (* 2 r) 4000000)
+                                           (lambda () (pacer-behind! n r)))))])
+         (fluid-let ([*pacer-margin* 0] [*pacer-depth* 0] [*pacer-made* #f]
+                     [*pacer-late-seen* 0])
+           (let loop ([k 0] [lates 0])
+             (if (< k 40)
+                 (loop (+ k 1) (if (frame) (+ lates 1) lates))
+                 (and (= *pacer-depth* 2) (< *pacer-margin* r)
+                      (<= 16 lates 18) (not (frame))))))))
+
+(check "a frame sent as the pacer sends them that shows sooner than the \
+        depth: the compositor keeps frames less long now, and the depth \
+        falls to it; one sent a refresh early tells nothing"
+       (let* ([r (host-frame-ns)] [n 1000047] [t (now-ns)]
+              [frame (lambda (sent)
+                       (pacer-test-frame n (- t 9000000) t sent
+                                         (+ t r 4000000)
+                                         (lambda () (pacer-behind! n r))))])
+         (fluid-let ([*pacer-margin* 1000000] [*pacer-depth* 2]
+                     [*pacer-made* #f] [*pacer-late-seen* 0])
+           (let* ([early (frame (- t r))]
+                  [after-early *pacer-depth*]
+                  [usual (frame (- t 500000))])
+             (and (not early) (= after-early 2)
+                  (not usual) (= *pacer-depth* 1))))))
+
+(check "the floor counts the compositor's depth: the newest report, two \
+        refreshes past the first after its latch, places the latches the \
+        frames on their way take two refreshes sooner than it would at \
+        none"
+       (let* ([r (host-frame-ns)] [n 1000049] [ring *present-ring*]
+              [t (now-ns)] [at (present-at n)] [old (present-at (- n 4))])
+         (fluid-let ([*pacer-latch* #f] [*pacer-latch-phase* #f]
+                     [*pacer-judged* 0] [*pacer-floor* 0]
+                     [*pacer-depth* 2] [*frame-number* n])
+           (do ([k 1 (+ k 1)]) ((> k 3))   ; sent, no report yet
+             (let ([a (present-at (- n k))])
+               (fxvector-set! ring a (- n k))
+               (fxvector-set! ring (+ a 1) 0)))
+           (fxvector-set! ring old (- n 4))
+           (fxvector-set! ring (+ old 1) 1)
+           (fxvector-set! ring (+ old 3) (- t (* 3 r) 1500000))
+           (fxvector-set! ring at n)
+           (fxvector-set! ring (+ at 8) (- t 6000000))
+           (fxvector-set! ring (+ at 9) t)
+           (pacer-latch! n)
+           (= *pacer-floor* (- t r)))))
+
+(check "a late frame sent no closer to its latch than one that made its \
+        latch lately, the compositor missed the refresh (WindowServer, now \
+        and then): the margin learns nothing; one sent closer teaches it"
+       (let* ([r (host-frame-ns)] [n 1000051] [t (now-ns)]
+              [frame (lambda (k sent shown)
+                       (pacer-test-frame (+ n k) (- t 9000000) t sent shown
+                                         (lambda ()
+                                           (pacer-behind! (+ n k) r))))])
+         (fluid-let ([*pacer-margin* 2500000] [*pacer-depth* 0]
+                     [*pacer-made* #f] [*pacer-late-seen* 0]
+                     [*pacer-late-run* 0] [*pacer-late-chain* 0])
+           (frame 0 (- t 2000000) (+ t 4000000))
+           (let* ([made *pacer-made*]
+                  [slip (frame 1 (- t 2500000) (+ t r 4000000))]
+                  [after-slip *pacer-margin*])
+             (frame 2 (- t 3000000) (+ t 4000000))
+             (let ([close (frame 40 (- t 1000000) (+ t r 4000000))])
+               (and (= made 2000000) slip close
+                    (< after-slip 2500000)
+                    (= *pacer-margin* (+ 1000000 (quotient r 8)))))))))
+
+(check "the closest send that made its latch is kept, a closer one at \
+        once, and forgotten slowly: a 1024th of a refresh a frame judged"
+       (let* ([r (host-frame-ns)] [n 1000071] [t (now-ns)])
+         (fluid-let ([*pacer-made* #f] [*pacer-late-seen* 0]
+                     [*pacer-margin* 1000000] [*pacer-depth* 0])
+           (pacer-made! 3000000)
+           (pacer-made! 2000000)
+           (pacer-made! 4000000)
+           (let ([kept *pacer-made*])
+             (pacer-test-frame n (- t 9000000) t (- t 5000000)
+                               (+ t 4000000)
+                               (lambda () (pacer-behind! n r)))
+             (and (= kept 2000000)
+                  (= *pacer-made*
+                     (+ 2000000 (quotient (quotient r 8) 128))))))))
+
+(check "the third late run in a chain, each within 128 frames of the \
+        one before, teaches the margin though sent no closer than one that \
+        made its latch: frames that keep missing a deadline that comes and \
+        goes (WindowServer's, near it) want sending sooner; a compositor's \
+        misses now and then seldom chain so"
+       (let* ([r (host-frame-ns)] [n 1000081] [t (now-ns)]
+              [frame (lambda (k sent shown)
+                       (pacer-test-frame (+ n k) (- t 9000000) t sent shown
+                                         (lambda ()
+                                           (pacer-behind! (+ n k) r))))]
+              [late (lambda (k) (frame k (- t 2500000) (+ t r 4000000)))]
+              [in-time (lambda (k) (frame k (- t 3000000) (+ t 4000000)))])
+         (fluid-let ([*pacer-margin* 2500000] [*pacer-depth* 0]
+                     [*pacer-made* #f] [*pacer-late-seen* 0]
+                     [*pacer-late-run* 0] [*pacer-late-chain* 0])
+           (frame 0 (- t 2000000) (+ t 4000000))
+           (late 10) (in-time 11)
+           (late 100) (in-time 101)
+           (let ([two *pacer-margin*])
+             (late 200)
+             (and (< two 2500000)
+                  (= *pacer-margin* (+ 2500000 (quotient r 8))))))))
+
+(check "frames late behind a run's first, sent before the pacer saw it, \
+        teach nothing: they waited behind it, for an image; one sent since, \
+        and late still, teaches, as at a deadline missed for good"
+       (let* ([r (host-frame-ns)] [n 1000101] [t (now-ns)]
+              [frame (lambda (k aim sent)
+                       (pacer-test-frame (+ n k) (- aim 9000000) aim sent
+                                         (+ aim r 4000000)
+                                         (lambda ()
+                                           (pacer-behind! (+ n k) r))))])
+         (fluid-let ([*pacer-margin* 2500000] [*pacer-depth* 0]
+                     [*pacer-made* 2000000] [*pacer-late-seen* 0]
+                     [*pacer-late-run* 0] [*pacer-late-chain* 0])
+           (frame 0 t (- t 2500000))        ; WindowServer's miss
+           (let ([after-miss *pacer-margin*])
+             (frame 1 t (- t 500000))       ; behind it, sent late
+             (let ([behind *pacer-margin*] [aim (+ (now-ns) 10000000)])
+               (frame 2 aim (- aim 1000000))
+               (and (= after-miss 2500000) (= behind 2500000)
+                    (= *pacer-margin* (+ 1000000 (quotient r 8)))))))))
+
+(check "a frame sent after the pacer saw its run, though well before its \
+        latch, and late still teaches: no one missed refresh makes that, \
+        but a compositor that keeps frames longer (a Mac's, as the world \
+        starts)"
+       (let* ([r (host-frame-ns)] [n 1000131] [t (now-ns)]
+              [frame (lambda (k aim sent)
+                       (pacer-test-frame (+ n k) (- aim 9000000) aim sent
+                                         (+ aim r 4000000)
+                                         (lambda ()
+                                           (pacer-behind! (+ n k) r))))])
+         (fluid-let ([*pacer-margin* 1000000] [*pacer-depth* 0]
+                     [*pacer-made* 2000000] [*pacer-late-seen* 0]
+                     [*pacer-late-run* 0] [*pacer-late-chain* 0])
+           (frame 0 t (- t 2500000))        ; no closer: taught nothing
+           (let ([first *pacer-margin*] [aim (+ (now-ns) (* 2 r))])
+             (frame 1 aim (- aim 8000000))
+             (and (= first 1000000)
+                  (= *pacer-margin* (+ 8000000 (quotient r 8))))))))

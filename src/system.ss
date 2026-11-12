@@ -54,6 +54,20 @@
 ;; last seen; or #f: with it, each report on a refresh says where the next
 ;; latches are, whether or not an acquire waits for one
 (defvar *pacer-latch-phase* #f)
+;; how many refreshes past the first after its latch a frame the
+;; compositor took there shows, as the reports teach: 0, a compositor that
+;; shows it at the refresh after its latch (pacer-margin!)
+(defvar *pacer-depth* 0)
+;; how long before its latch the frame sent closest to it was sent, ns,
+;; among those that made their latch lately (pacer-made!); or #f
+(defvar *pacer-made* #f)
+;; the first frame of the newest late run, frames judged late one after
+;; another; when the pacer judged it (now-ns), or 0 once one is in time;
+;; and how many runs have come in a chain, each within 128 frames of the
+;; one before
+(defvar *pacer-late-run* 0)
+(defvar *pacer-late-seen* 0)
+(defvar *pacer-late-chain* 0)
 ;; this step is paced and came between ticks: the profiler sums it into
 ;; the next tick
 (defvar *pacer-between?* #f)
@@ -363,7 +377,8 @@
 ;; A frame core0 gave back, its number n: if the screen held its acquire,
 ;; the acquire's end is the compositor's latch, else the newest report
 ;; places it. The newest report also says where the frames on their way
-;; will show, each a latch after the one before (the floor), and is
+;; will show, each a latch after the one before, the compositor's depth
+;; past its own (the floor), and is
 ;; judged (pacer-behind!); n's own time to its send teaches the lead. The
 ;; reports read are the newest in: how many frames behind they come
 ;; differs by compositor, GPU and rate (a frame back; four, under Mutter's
@@ -386,7 +401,8 @@
        (set! *pacer-latch* (+ refresh *pacer-latch-phase*))])
     (when (and refresh *pacer-latch-phase*)
       (set! *pacer-floor*
-        (+ refresh *pacer-latch-phase* (* r (- *frame-number* m)))))
+        (+ refresh *pacer-latch-phase*
+           (* r (- *frame-number* m *pacer-depth*)))))
     (pacer-need! n r)))
 
 ;; The newest frame before n the screen has reported on, shown or dropped,
@@ -412,28 +428,88 @@
 (define pacer-margin-fade 60000000000)
 
 ;; Frame n, its report in, aimed at a latch: late if it showed a refresh
-;; or more after the one aimed for. Sent about the margin before the
-;; latch, as the pacer sends them, that was too little: the margin grows
-;; past it, by an eighth of a refresh, to a refresh at most; a run of late
-;; frames from one stall, sent alike, raise it once. Sent well before it
-;; and late all the same, the compositor missed the refresh, not the
-;; frame: nothing to learn. In time, the margin fades. => whether it was
-;; late
+;; or more after the one aimed for, the first after the latch and the
+;; compositor's depth on. Sent about the margin before the latch, as the
+;; pacer sends them, that was too little: the margin grows past it, by an
+;; eighth of a refresh (pacer-margin!); a run of late frames sent alike
+;; raises it once. Sent well before it, or no closer to it than a frame
+;; that made its latch lately (pacer-made!), and late all the same, the
+;; compositor missed the refresh, not the frame: nothing to learn; unless
+;; it's the third late run in a chain, as at a deadline that comes and
+;; goes, which a compositor's misses now and then seldom make. Nor from
+;; the frames late behind the run's first, sent before the pacer saw it:
+;; they waited behind it. One sent since, and late still, however early,
+;; teaches: no one missed refresh makes that. Sent as the pacer sends
+;; them and shown sooner than the depth, the compositor keeps frames less
+;; long now: the depth falls to it. In time, the margin fades. => whether
+;; it was late
 (define (pacer-behind! n r)
   (let ([aimed (pacer-aimed-of n)] [shown (pacer-refresh-seen n)]
         [sent (host-frame-report n 2)] [step (quotient r 8)])
     (and aimed shown sent (> aimed 0)
-         (if (>= (div (- shown aimed) r) 1)
-             (begin
-               (when (< (- aimed sent) (+ *pacer-margin* step))
+         (let ([past (- (div (- shown aimed) r) *pacer-depth*)]
+               [ahead (- aimed sent)]
+               [usual? (< (- aimed sent) (+ *pacer-margin* step))])
+           (when *pacer-made*
+             (set! *pacer-made* (+ *pacer-made* (quotient step 128))))
+           (if (>= past 1)
+               (let ([first? (= *pacer-late-seen* 0)])
+                 (when first?
+                   (set! *pacer-late-chain*
+                     (if (< 0 (- n *pacer-late-run*) 128)
+                         (+ *pacer-late-chain* 1)
+                         1))
+                   (set! *pacer-late-run* n)
+                   (set! *pacer-late-seen* (now-ns)))
+                 (when (if first?
+                           (and usual?
+                                (or (>= *pacer-late-chain* 3)
+                                    (pacer-made-closer? ahead)))
+                           (> sent *pacer-late-seen*))
+                   (pacer-margin! (+ ahead step) r))
+                 #t)
+               (begin
+                 (set! *pacer-late-seen* 0)
+                 (when (and usual? (< past 0))
+                   (set! *pacer-depth* (max 0 (+ *pacer-depth* past))))
+                 (pacer-made! ahead)
                  (set! *pacer-margin*
-                   (min r (max *pacer-margin* (+ (- aimed sent) step)))))
-               #t)
-             (begin
-               (set! *pacer-margin*
-                 (- *pacer-margin*
-                    (quotient (* *pacer-margin* r) pacer-margin-fade)))
-               #f)))))
+                   (- *pacer-margin*
+                      (quotient (* *pacer-margin* r) pacer-margin-fade)))
+                 #f))))))
+
+;; The deepest a compositor is taken to keep frames, refreshes: one more
+;; than the deepest seen (WindowServer's).
+(define pacer-depth-most 3)
+
+;; The margin grown to m at least. A margin of a refresh or more is the
+;; compositor's depth: frames sent a refresh earlier for the latch before
+;; are frames sent for this one, shown a refresh later. So it carries into
+;; the depth, which a compositor whose latch comes after the acquire's end
+;; has (WindowServer frees an image at a refresh and keeps a frame two
+;; more), and the margin is learned afresh: what's past the refresh came of
+;; frames sent early; pacer-depth-most at most.
+(define (pacer-margin! m r)
+  (let ([m (max *pacer-margin* m)])
+    (if (and (>= m r) (< *pacer-depth* pacer-depth-most))
+        (begin
+          (set! *pacer-depth* (+ *pacer-depth* 1))
+          (set! *pacer-margin* 0))
+        (set! *pacer-margin* (min r m)))))
+
+;; A frame made its latch, sent ahead ns before it: the closest to its
+;; latch of those that did is kept, forgotten slowly (a 1024th of a
+;; refresh a frame judged, pacer-behind!), so that a late frame sent no
+;; closer, which a compositor that now and then misses a refresh makes
+;; (WindowServer), teaches no margin, though frames went out early a
+;; while, as the lead grew.
+(define (pacer-made! ahead)
+  (when (pacer-made-closer? ahead) (set! *pacer-made* ahead)))
+
+;; Whether a frame sent ahead ns before its latch was sent closer to it
+;; than one that made its latch lately, or none is known.
+(define (pacer-made-closer? ahead)
+  (or (not *pacer-made*) (< ahead *pacer-made*)))
 
 ;; The latch frame n's tick aimed at, among the last few frames; else #f.
 (define (pacer-aimed-of n) (pacer-frame-word n 13))
