@@ -831,9 +831,12 @@ Decisions worth keeping in mind for the real design:
   [docs/PLATFORMS.md](docs/PLATFORMS.md).
 - **A trace of each frame.** In a checkout with a `.work` folder, core0
   and main stamp their steps around each frame (take, acquire, submit,
-  tick, draw, publish, collect) on rings of their own, the last few
-  minutes of them; closing the window, or `(host-trace-dump!)`, writes them
-  by time with the screen's reports on the frames still kept to
+  tick, draw, publish, collect) on rings of their own, the last minute or
+  two of them; an event pump that held core0 past 2 ms (slow-pump, µs,
+  and each event's SDL type), and each collection, which every thread
+  waits for (gc, by generation, and gced); closing the window, or
+  `(host-trace-dump!)`, writes them by time with the screen's reports on
+  the frames still kept, the last two minutes or so, to
   `.work/traces/trace-<date>-<time>.txt`.
 - **Kernel vs user space via engines.** Each app handler runs in a Chez
   engine with a fuel budget (`safe-call`). An error or an infinite loop

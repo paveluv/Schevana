@@ -11,7 +11,7 @@
 ;;; number, written last, and what a report brings is in view once the
 ;;; row's kind says so, written after it.
 
-(define present-rows 2048)
+(define present-rows 8192)
 (define present-words 10)
 ;; A row: the frame's number; its kind (0 sent, 1 shown, 2 dropped); when
 ;; it was sent (now-ns); when it showed (now-ns); the refresh (ns); the

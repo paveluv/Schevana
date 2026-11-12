@@ -117,3 +117,13 @@
        (let ([world (begin (collector-settle!) (bytes-allocated 4))])
          (reload!)
          (< (bytes-allocated 4) (+ world (quotient world 4)))))
+
+(check "a collection, which every thread waits for, is traced: its start \
+        by the generation collected, and its end"
+       (let ([traced '()])
+         (fluid-let ([host-trace! (lambda (code a)
+                                    (set! traced (cons (cons code a) traced)))]
+                     [*collector-holding?* #f]
+                     [*collector-pass* #f])
+           (collector-collect!))
+         (equal? (reverse traced) '((28 . 0) (29 . 0)))))

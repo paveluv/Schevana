@@ -700,7 +700,10 @@
       (set! *collector-held?* #t)
       (let ([pass *collector-pass*])
         (set! *collector-pass* #f)
-        (if pass (collect (car pass) (cdr pass)) (collect 0 1)))))
+        ;; every thread waits for it: traced, by the generation collected
+        (host-trace! 28 (if pass (car pass) 0))
+        (if pass (collect (car pass) (cdr pass)) (collect 0 1))
+        (host-trace! 29 0))))
 
 ;; A request now is held off: a frame turn's, and no pass of main's asked.
 (define (collector-declining?)

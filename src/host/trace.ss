@@ -5,7 +5,7 @@
 ;;; the window closes or on (host-trace-dump!). On in a checkout with a
 ;;; .work folder and a window; elsewhere host-trace! does nothing.
 
-(define host-trace-rows 131072)
+(define host-trace-rows 262144)
 
 ;; Where the files go, or #f: off.
 (defvar *host-trace-dir* #f)
@@ -22,7 +22,7 @@
 (define host-trace-names
   '#(#f step take acquire acquired submit back sleep woke pump shown
      dropped gpu-done slow-pump event #f #f #f #f #f
-     wait waited tick draw publish collect collected events))
+     wait waited tick draw publish collect collected events gc gced))
 
 ;; From now on, if the checkout has a .work folder: on core0's thread, as
 ;; the window opens.
