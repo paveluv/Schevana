@@ -878,8 +878,14 @@
                                    i]
                                   [else (loop (- i 1))])))]
            [i (shown-frame (- *frame-ring-n* 3))]
-           [x (x-of (inspect-frame-refresh g i))])
-      ((ui-region-on r) (list 'press x y 'left 1))
+           [x (x-of (inspect-frame-refresh g i))]
+           ;; as the press finds it: frames coming back after may show at
+           ;; a refresh still this recent
+           [at-press (begin
+                       ((ui-region-on r) (list 'press x y 'left 1))
+                       (pipeline-frame-tick
+                        (pipeline-river-frame-at
+                         g (inspect-frame-refresh g i))))])
       (invalidate! w)
       (steps 2)
       (let* ([tick (pipeline-view-tick v)] [reach (pipeline-view-reach v)]
@@ -888,9 +894,7 @@
         (check "a press on the River holds it and goes back to the frame on \
                 the screen at that refresh: the whole app shows it"
                (and x (pipeline-view-held? v) tick
-                    (= tick (pipeline-frame-tick
-                             (pipeline-river-frame-at
-                              g (inspect-frame-refresh g i))))
+                    (= tick at-press)
                     (= (inspect-list-frame (pipeline-view-shown v))
                        (pipeline-tick-frame tick))
                     (not (window-error w))))
