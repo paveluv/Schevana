@@ -1113,8 +1113,9 @@ Decisions worth keeping in mind for the real design:
   one list (`inspect-list` in `kits/inspect.ss`): each list's records where
   its runs draw them, moved to where it's shown, which draws the same
   pixels.
-- **A paint is a shader an app writes.** `define-paint` compiles when it's
-  expanded: its body runs for each pixel of a box and gives a color, and
+- **A paint is a shader an app writes** (a guide to shaders, the language
+  and examples to try: [docs/SHADERS.md](docs/SHADERS.md)). `define-paint`
+  compiles when it's expanded: its body runs for each pixel of a box and gives a color, and
   `fill-shader` fills one, its arguments numbers, colors and GPU buffers
   (`make-gpu-buffer`, `gpu-buffer-set!`), so what changes is a few numbers and
   nothing is recorded again: Monitor's Ticks are one. `define-compute-shader` is the
