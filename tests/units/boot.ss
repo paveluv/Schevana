@@ -98,6 +98,25 @@
                     size; once a step (~a)" (reverse order))
            (equal? (reverse order) '(facts put)))))
 
+;; A pump that holds core0 is traced with what it brought.
+(let ([traced '()])
+  (fluid-let ([*host-inbox* (box '())]
+              [host-window-pump
+               (lambda ()
+                 (sleep (make-time 'time-duration 3000000 0))
+                 (values '((mouse-leave)) '(#x20d) 0))]
+              [platform-reports-pump! void]
+              [host-world-wake! void]
+              [host-facts-refresh! (lambda (all?) (void))]
+              [host-trace! (lambda (code a)
+                             (set! traced (cons (cons code a) traced)))])
+    (host-events-pumped!)
+    (check (format "a pump that held core0 past 2 ms is traced, µs, with its \
+                    events' types (~a)" (reverse traced))
+           (let ([slow (assv 13 traced)])
+             (and slow (>= (cdr slow) 2000)
+                  (equal? (assv 14 traced) '(14 . #x20d)))))))
+
 (check "headless, the window's facts are a world that's shown at 60 Hz, and \
         inspect-host reads core0's step"
        (and (not (host-hidden?))

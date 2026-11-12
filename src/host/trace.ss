@@ -21,7 +21,7 @@
 ;; The steps' names, by code.
 (define host-trace-names
   '#(#f step take acquire acquired submit back sleep woke pump shown
-     dropped gpu-done #f #f #f #f #f #f #f
+     dropped gpu-done slow-pump event #f #f #f #f #f
      wait waited tick draw publish collect collected events))
 
 ;; From now on, if the checkout has a .work folder: on core0's thread, as

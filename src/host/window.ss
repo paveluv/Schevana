@@ -600,10 +600,16 @@
 
 ;; The events come since the last pump into the world's inbox, main woken
 ;; for them, and when the oldest input came; what the window says of itself
-;; read again before, so that main, taking a resize, finds the new size.
+;; read again before, so that main, taking a resize, finds the new size. A
+;; pump that held core0 past 2 ms is traced, µs, with its events' types.
 ;; => whether any came.
 (define (host-events-pumped!)
-  (let-values ([(events types first) (host-window-pump)])
+  (let*-values ([(t0) (now-ns)]
+                [(events types first) (host-window-pump)]
+                [(took) (- (now-ns) t0)])
+    (when (> took 2000000)
+      (host-trace! 13 (quotient took 1000))
+      (for-each (lambda (type) (host-trace! 14 type)) types))
     ;; core0's queue, which SDL's pump read into: the screen's reports, and
     ;; the compositor's input times
     (platform-reports-pump!)
