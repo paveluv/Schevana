@@ -583,8 +583,9 @@
 ;; One step of core0's: the jobs posted, in order; the frame published, if
 ;; one is; with none, on a thread of its own, a sleep of up to
 ;; host-idle-ms, which a job or a frame ends; the frames' GPU fences looked
-;; at and the screen's reports read; the events into the world's inbox;
-;; then what it says of itself, read again. The sleep comes before
+;; at and the screen's reports read; the events into the world's inbox,
+;; what the window says of itself read again first; with none, read again
+;; all the same. The sleep comes before
 ;; the pump, so that input that came while it slept goes in before the
 ;; next present can wait for the screen.
 (define (host-step!)
@@ -595,10 +596,12 @@
     (when (and *host-forked* (not (unbox *gpu-published*)))
       (host-sleep! (host-idle-ms-now)))
     (present-poll!)
-    (host-facts-refresh! (or (host-events-pumped!) (pair? jobs)))))
+    (unless (host-events-pumped!) (host-facts-refresh! (pair? jobs)))))
 
 ;; The events come since the last pump into the world's inbox, main woken
-;; for them, and when the oldest input came. => whether any came.
+;; for them, and when the oldest input came; what the window says of itself
+;; read again before, so that main, taking a resize, finds the new size.
+;; => whether any came.
 (define (host-events-pumped!)
   (let-values ([(events types first) (host-window-pump)])
     ;; core0's queue, which SDL's pump read into: the screen's reports, and
@@ -609,6 +612,7 @@
       (host-input-set! *host-input-pumped* (now-ns)))
     (unless (null? types)
       (host-trace! 9 (length types))
+      (host-facts-refresh! #t)
       (when (memv #x900 types) (host-clipboard-read!))   ; clipboard-update
       (host-put! *host-inbox* (cons events types))
       (host-world-wake!))

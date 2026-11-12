@@ -79,6 +79,25 @@
                   (equal? types '(#x300 #x303))
                   (null? again) (null? more))))))
 
+;; A resize: main, woken for it, reads the window's size from the facts,
+;; so core0 reads them again before it hands the events over.
+(let ([order '()] [put host-put!])
+  (fluid-let ([*host-inbox* (box '())]
+              [host-window-pump
+               (lambda () (values '((window-resized)) '(#x206) 0))]
+              [platform-reports-pump! void]
+              [host-world-wake! void]
+              [host-facts-refresh!
+               (lambda (all?) (set! order (cons 'facts order)))]
+              [host-put! (lambda (b x)
+                           (set! order (cons 'put order))
+                           (put b x))])
+    (host-step!)
+    (check (format "core0 reads what the window says of itself before it \
+                    hands the world its events, so a resize finds the new \
+                    size; once a step (~a)" (reverse order))
+           (equal? (reverse order) '(facts put)))))
+
 (check "headless, the window's facts are a world that's shown at 60 Hz, and \
         inspect-host reads core0's step"
        (and (not (host-hidden?))

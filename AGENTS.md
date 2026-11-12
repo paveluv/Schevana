@@ -83,7 +83,7 @@ before it:
   change to such a feature updates `docs/PLATFORMS.md`: where it ran,
   where it should work, what happens without it. Monitor's Platform tab
   shows it all, and copies a run as a row of it.
-- **The core has a budget**, 35,319 tokens (atoms as read; comments,
+- **The core has a budget**, 35,321 tokens (atoms as read; comments,
   whitespace and names' lengths are free), in `tests/sources.ss`. Don't
   join lines or shorten names to fit it. Code the core doesn't need moves
   out to the next layer, kits first; the budget is raised only on purpose.
