@@ -758,13 +758,13 @@ Decisions worth keeping in mind for the real design:
   till core0 sent them, main waking late among it (a spike fades in half a
   second), but for a wait for an image past the latch aimed at, the
   compositor holding a frame more, which is the screen's time; and a
-  margin, from an eighth of a refresh.
+  margin, none at first.
   Its frame goes straight to the screen with the input that came till then,
   not a refresh early, waiting for an image. The reports say how many
   refreshes after the one aimed for each frame showed, past the compositor's
   depth, the refreshes it keeps a frame it took (WindowServer's, two). Late,
   though sent about the margin before its latch, the margin grows past that
-  by an eighth of a refresh; a margin past a refresh carries into the depth,
+  by a step, an eighth of a refresh; a margin past a refresh carries into the depth,
   as a frame sent a refresh earlier for the latch before is one for this
   latch, shown a refresh later, and is learned afresh. Late though sent well
   before it, or no closer than one that made its latch lately, the
@@ -775,9 +775,9 @@ Decisions worth keeping in mind for the real design:
   first, sent before the pacer saw it, which waited behind it; one sent
   since, and late still, however early, teaches. One that showed sooner than
   the depth, sent as the pacer sends them, lowers it. On a Mac the margin
-  fades over a minute (`platform-pacer-margin-fade`), so that one comes late
-  only now and then; elsewhere it doesn't: finding out whether the
-  compositor would take frames later again costs a frame late. A frame
+  fades over a minute, so that one comes late only now and then; elsewhere
+  it doesn't: finding out whether the compositor would take frames later
+  again costs a frame late. A frame
   that showed late moves the ones after it, each a latch on (the floor), so
   the queue drains of itself. Core0 reads input as soon as its acquire
   returns, and every ms while frames flow. On GNOME 48 with NVIDIA this took
@@ -785,8 +785,18 @@ Decisions worth keeping in mind for the real design:
   and Boids 3D, and 7.4 for a light window, with no refresh missed in 2 × 21
   s each. `(inspect-pacer)` gives the period, the grid's next tick, whether
   the last tick sent the screen a frame it holds, the last `t`, the latch,
-  the lead, the margin, the closest send that made its latch lately, the
-  floor, the depth, the latch aimed at, and when the next tick may begin.
+  the lead, the margin, its counts (frames judged, late of its own, the
+  compositor's), the trial holding its choices, the closest send that made
+  its latch lately, the newest late run and its chain, the floor, the
+  depth, the latch aimed at, and when the next tick may begin.
+  Its choices are settings, read live, in refreshes or seconds:
+  `pacer-margin-start`, `pacer-margin-step`, `pacer-miss-own` (how far
+  past the margin a late frame may have been sent and still be its own),
+  `pacer-lead-fade`, `pacer-margin-fade` (the platform's by default:
+  `platform-pacer-margin-fade`, a minute on a Mac, else never), and
+  `frames-in-flight`, which goes to core0 with each frame; a trial
+  (`pacer-trial!`) may hold them for a while instead, never saved with the
+  look.
   How a frame reaches the screen is `'present-mode`, in Settings'
   Display tab, or `(override! 'present-mode 'mailbox)`; it changes live,
   at the next frame, among what the window offers (`(inspect-device)`).

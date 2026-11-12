@@ -285,16 +285,18 @@
       (gpu-facts-refresh!)
       r)))
 
-;; Three frames in flight, the most SDL allows, and as many images in the
-;; swapchain: with two, GPU work of most of a refresh missed refreshes, and
-;; the compositor's queue covers a stall of core0's of up to about two
-;; refreshes. A refresh more of latency.
-(define gpu-frames-in-flight 3)
+;; Frames in flight, as many images in the swapchain: three, the most SDL
+;; allows, by default (the world's 'frames-in-flight, with each frame).
+;; With two, GPU work of most of a refresh missed refreshes; three cover a
+;; stall of core0's of up to about two refreshes, a refresh more of
+;; latency when the queue fills.
+(defvar *gpu-frames-in-flight* 3)
 
 ;; The host window this renderer draws to from now on. The count goes
 ;; first: on a claimed window, setting it builds the swapchain again.
 (define (gpu-claim-window! sdl-window)
-  (sdl-set-frames-in-flight (renderer-device *renderer*) gpu-frames-in-flight)
+  (sdl-set-frames-in-flight (renderer-device *renderer*)
+                            *gpu-frames-in-flight*)
   (unless (sdl-claim-window (renderer-device *renderer*) sdl-window)
     (errorf 'gpu-claim-window! "~a" (sdl-get-error)))
   (set! *gpu-present-mode* 'vsync)   ; as a claim leaves it
@@ -1311,6 +1313,7 @@
           (driver . ,(gpu-driver-name))
           (present-mode . ,*gpu-present-mode*)
           (present-modes . ,(gpu-present-modes))
+          (frames-in-flight . ,*gpu-frames-in-flight*)
           (objects
            (records buffer . ,(cdr (renderer-records r)))
            (extras buffer . ,(cdr (renderer-extras r)))
@@ -1333,26 +1336,36 @@
                   gpu-composition-sdr (cdr (assq mode gpu-present-codes))))
         (set! *gpu-present-mode* mode)))))
 
+;; Between frames, n frames in flight from now on, 1 to 3, as SDL allows:
+;; the swapchain is built again. Another count is left as it is.
+(define (gpu-frames-in-flight! n)
+  (when (and (fixnum? n) (fx<= 1 n 3) (not (fx= n *gpu-frames-in-flight*))
+             (sdl-set-frames-in-flight (renderer-device *renderer*) n))
+    (set! *gpu-frames-in-flight* n)
+    (set! *gpu-facts-mode* #f)))       ; the facts say so at the next look
+
 ;;; ------------------------------------------------------------------ frames
 ;;; A frame as main hands it to the host, which reads nothing else of main's
 ;;; (.work/gpu-design.md 9.5): the root's recording and the frame's number,
 ;;; "/recorder"'s to set (src/recorder/bytes.ss), the glyph table if it
 ;;; changed, the atlas's new pieces, the jobs, the writes and the compute
-;;; runs asked for since, the present mode, and lists kept from earlier to
-;;; draw on images first, (image . recording) each, the recorder's copies.
+;;; runs asked for since, the present mode, the frames in flight, and lists
+;;; kept from earlier to draw on images first, (image . recording) each, the
+;;; recorder's copies.
 ;;; It comes back with whether it reached the screen.
 ;;; The same few records go back and forth, filled again for each frame: a
 ;;; frame allocates none.
 
 (define-record-type gpu-frame
-  (nongenerative schevana-gpu-frame-6)
+  (nongenerative schevana-gpu-frame-7)
   (fields (mutable root) (mutable number) (mutable table) (mutable table-n)
           (mutable pieces) (mutable jobs) (mutable writes) (mutable computes)
-          (mutable mode) (mutable earlier) (mutable shown?)))
+          (mutable mode) (mutable in-flight) (mutable earlier)
+          (mutable shown?)))
 
 ;; A frame to fill: main keeps those given back to fill again.
 (define (gpu-frame-make)
-  (make-gpu-frame #f 0 #f 0 '() '() #f '() #f '() #f))
+  (make-gpu-frame #f 0 #f 0 '() '() #f '() #f 3 '() #f))
 
 ;; The number of the last frame the host gave back: what it read of the
 ;; recorder's is free to write again once a later frame doesn't show it.
@@ -1409,6 +1422,7 @@
 (define (gpu-present! f)
   (gpu-run-jobs! (gpu-frame-jobs f) (gpu-frame-writes f))
   (gpu-present-mode! (gpu-frame-mode f))
+  (gpu-frames-in-flight! (gpu-frame-in-flight f))
   (let loop ([earlier (gpu-frame-earlier f)])
     (if (pair? earlier)
         (begin

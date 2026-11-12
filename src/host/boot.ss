@@ -29,7 +29,8 @@
     ;; frames; what they write is the recorder's (host-recorder-share)
     gpu-frame-make gpu-frame-table-set! gpu-frame-table-n-set!
     gpu-frame-pieces-set! gpu-frame-jobs-set! gpu-frame-computes-set!
-    gpu-frame-mode-set! gpu-frame-number gpu-frame-shown?
+    gpu-frame-mode-set! gpu-frame-in-flight-set! gpu-frame-number
+    gpu-frame-shown?
     ;; What core0 says of itself, in variables it sets whole: another thread
     ;; reads each whole (Chez lets no thread see an object half made), but
     ;; not in step with the others, as ARM keeps no order between stores.

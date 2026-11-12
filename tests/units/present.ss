@@ -117,3 +117,17 @@
            ;; stopped at the newest, nothing would be summed
            (let-values ([(p50 p99 missed) (inspect-frames-truth 10000)])
              (and p50 (<= p50 p99))))))
+
+(check "frames in flight is a setting that goes to core0 with each frame: \
+        two, and core0 builds the swapchain so and says so; three again"
+       (let ([in-flight (lambda ()
+                          (request-frame!)
+                          (steps 2)
+                          (gpu-facts-refresh!)
+                          (cons *gpu-frames-in-flight*
+                                (cdr (assq 'frames-in-flight *gpu-facts*))))])
+         (override! 'frames-in-flight 2)
+         (let ([two (in-flight)])
+           (override! 'frames-in-flight)
+           (let ([three (in-flight)])
+             (and (equal? two '(2 . 2)) (equal? three '(3 . 3)))))))

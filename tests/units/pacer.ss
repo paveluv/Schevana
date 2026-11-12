@@ -693,9 +693,10 @@
                                 2000000))
                     (= (pacer-start) (- *pacer-due* 2000000))))))))
 
-(check "the margin starts at an eighth of a refresh, before the screen has \
-        taught it anything"
-       (= *pacer-margin* (quotient (host-frame-ns) 8)))
+(check "the margin starts at nothing, before the screen has taught it \
+        anything"
+       (and (not *pacer-margin*)
+            (= (pacer-margin (host-frame-ns)) 0)))
 
 ;; Frame n as the pacer reads it: its row in the frame ring, the newest,
 ;; its tick (as begun and as planned) and aimed latch; its report sent,
@@ -775,13 +776,15 @@
                   [after (begin (need! 1000000) *pacer-lead*)]
                   [faded (begin
                            (do ([i 0 (+ i 1)])
-                               ((>= (* i r) pacer-lead-fade))
+                               ((>= (* i r)
+                                    (pacer-seconds 'pacer-lead-fade)))
                              (need! 1000000))
                            *pacer-lead*)]
                   [most (begin (need! (* 3 r)) *pacer-lead*)])
              (and (= long 7000000)
                   (= after (- 7000000 (quotient (* 7000000 r)
-                                                pacer-lead-fade)))
+                                                (pacer-seconds
+                                                 'pacer-lead-fade))))
                   (< faded 3500000) (>= faded 2000000)
                   (= most (* 2 r)))))))
 
@@ -809,9 +812,32 @@
                                              (lambda () (pacer-behind! n r)))])
              (and late (not in-time)
                   (= after-late (+ 3000000 (quotient r 8)))
-                  (if platform-pacer-margin-fade
+                  (if (> (pacer-seconds 'pacer-margin-fade) 0)
                       (< *pacer-margin* after-late)
                       (= *pacer-margin* after-late)))))))
+
+(check "the margin fades as pacer-margin-fade has it, the platform's by \
+        default (a minute on a Mac, else never): a frame in time takes a \
+        refresh's share of the fade off it; at 0, nothing"
+       (let* ([r (host-frame-ns)] [n 1000013] [t (now-ns)]
+              [in-time (lambda ()
+                         (set! *pacer-margin* 3000000)
+                         (pacer-test-frame n (- t 9000000) t (- t 5000000)
+                                           (+ t 4000000)
+                                           (lambda () (pacer-behind! n r)))
+                         *pacer-margin*)])
+         (fluid-let ([*pacer-margin* #f] [*pacer-depth* 0]
+                     [*pacer-made* #f] [*pacer-late-seen* 0])
+           (override! 'pacer-margin-fade 60)
+           (let ([faded (in-time)])
+             (override! 'pacer-margin-fade 0)
+             (let ([kept (in-time)])
+               (override! 'pacer-margin-fade)
+               (and (= (theme-default 'pacer-margin-fade)
+                       platform-pacer-margin-fade)
+                    (= faded (- 3000000 (quotient (* 3000000 r)
+                                                  60000000000)))
+                    (= kept 3000000)))))))
 
 (check "while ticks keep to the latches, a tick wanted, main's wait for the \
         next is the screen's"
@@ -895,7 +921,7 @@
              (set! *pacer-margin* (- r 1000000))
              (set! *pacer-late-seen* 0)       ; a run of its own
              (late! (+ t (* 4 r) 4000000))
-             (and (= depth 1) (= margin (quotient r 8))
+             (and (= depth 1) (not margin)
                   (= *pacer-depth* 3) (= *pacer-margin* r))))))
 
 (check "a frame sent well before its latch, past the margin and a step, \
@@ -919,7 +945,7 @@
               [frame (lambda ()
                        (let ([t (+ (now-ns) (* 2 r))])
                          (pacer-test-frame n (- t 9000000) t
-                                           (- t *pacer-margin*)
+                                           (- t (pacer-margin r))
                                            (+ t (* 2 r) 4000000)
                                            (lambda () (pacer-behind! n r)))))])
          (fluid-let ([*pacer-margin* 0] [*pacer-depth* 0] [*pacer-made* #f]
@@ -927,7 +953,7 @@
            (let loop ([k 0] [lates 0])
              (if (< k 40)
                  (loop (+ k 1) (if (frame) (+ lates 1) lates))
-                 (and (= *pacer-depth* 2) (< *pacer-margin* r)
+                 (and (= *pacer-depth* 2) (< (pacer-margin r) r)
                       (<= 16 lates 18) (not (frame))))))))
 
 (check "a frame sent as the pacer sends them that shows sooner than the \
@@ -1086,3 +1112,57 @@
              (set! *pacer-lead* 1000000)
              (let ([up-to (need (+ t 5000000))])
                (and (= past 6000000) (= up-to 6000000)))))))
+
+(check "the pacer's choices are settings, read live: with a step of a \
+        quarter refresh, a late frame of its own raises the margin by a \
+        quarter, and counts as its own"
+       (let* ([r (host-frame-ns)] [n 1000047] [t (now-ns)]
+              [own (fxvector-ref *pacer-counts* 1)])
+         (fluid-let ([*pacer-margin* 0] [*pacer-depth* 0] [*pacer-made* #f]
+                     [*pacer-late-seen* 0])
+           (override! 'pacer-margin-step 1/4)
+           (pacer-test-frame n (- t 9000000) t (- t 1000000) (+ t r 4000000)
+                             (lambda () (pacer-behind! n r)))
+           (override! 'pacer-margin-step)
+           (and (= *pacer-margin* (+ 1000000 (quotient r 4)))
+                (= (fxvector-ref *pacer-counts* 1) (+ own 1))))))
+
+(check "with no room past the margin for a frame of the pacer's own, a late \
+        frame sent past it is the compositor's: counted so, nothing learned"
+       (let* ([r (host-frame-ns)] [n 1000049] [t (now-ns)]
+              [theirs (fxvector-ref *pacer-counts* 2)])
+         (fluid-let ([*pacer-margin* 1000000] [*pacer-depth* 0]
+                     [*pacer-made* #f] [*pacer-late-seen* 0])
+           (override! 'pacer-miss-own 0)
+           (pacer-test-frame n (- t 9000000) t (- t 1500000) (+ t r 4000000)
+                             (lambda () (pacer-behind! n r)))
+           (override! 'pacer-miss-own)
+           (and (= *pacer-margin* 1000000)
+                (= (fxvector-ref *pacer-counts* 2) (+ theirs 1))))))
+
+(check "relearning forgets the margin taught, the floor, the depth, the \
+        closest send, the late runs and the lead"
+       (let ([r (host-frame-ns)])
+         (fluid-let ([*pacer-margin* 5000000] [*pacer-floor* 123]
+                     [*pacer-lead* 9000000] [*pacer-depth* 2]
+                     [*pacer-made* 3000000] [*pacer-late-seen* 5]
+                     [*pacer-late-chain* 2])
+           (pacer-relearn!)
+           (and (not *pacer-margin*) (= *pacer-floor* 0) (= *pacer-depth* 0)
+                (not *pacer-made*) (= *pacer-late-seen* 0)
+                (= *pacer-late-chain* 0)
+                (= *pacer-lead* (quotient r 4))
+                (= (pacer-margin r) 0)))))
+
+(check "a trial holds the pacer's choices before the settings, which it \
+        leaves as they are, and starts it learning anew"
+       (let ([r (host-frame-ns)] [overrides (theme-overrides)])
+         (fluid-let ([*pacer-margin* 5000000])
+           (pacer-trial! '((pacer-margin-start . 1/4)))
+           (let ([held (list (pacer-margin r) (pacer-knob 'pacer-margin-step)
+                             (theme 'pacer-margin-start))])
+             (pacer-trial! '())
+             (and (equal? held (list (quotient r 4) (theme 'pacer-margin-step)
+                                     0))
+                  (= (pacer-margin r) 0)
+                  (equal? (theme-overrides) overrides))))))

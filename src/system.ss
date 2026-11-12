@@ -40,8 +40,10 @@
 (defvar *pacer-lead* 4000000)
 ;; how much before its latch a frame must be sent to make it, as the
 ;; screen's reports teach: the compositor's deadline and the GPU's work;
-;; from an eighth of a refresh, which its deadline wanders by
-(defvar *pacer-margin* (quotient (host-frame-ns) 8))
+;; or #f, nothing taught yet (pacer-margin)
+(defvar *pacer-margin* #f)
+;; what the pacer judged: frames, those late of its own, the compositor's
+(defvar *pacer-counts* (make-fxvector 3 0))
 ;; the latch the last tick aimed its frame at, just in time; or 0; and
 ;; when the pacer meant it to begin (now-ns)
 (defvar *pacer-aimed* 0)
@@ -421,40 +423,76 @@
   (let loop ([k (max (+ *pacer-judged* 1) (- m 8))])
     (unless (> k m)
       (set! *pacer-judged* k)
+      (pacer-count! 0)
       (pacer-behind! k r)
       (loop (+ k 1)))))
 
-;; How fast a frame's slow spike fades from the lead, ns. The margin the
-;; screen taught fades only where the platform has it fade
-;; (platform-pacer-margin-fade): elsewhere finding out whether the
-;; compositor would take frames later again costs a frame late.
-(define pacer-lead-fade 500000000)
+(define (pacer-count! k)
+  (fxvector-set! *pacer-counts* k (fx+ 1 (fxvector-ref *pacer-counts* k))))
+
+;; The pacer's choices, settings a person may change live (src/theme.ss),
+;; unless a trial holds them: ((key . value) ...), the pacer lab's
+;; (services/pacer-lab.ss), which is never saved with the look.
+(defvar *pacer-trial* '())
+
+(define (pacer-knob key)
+  (let ([t (assq key *pacer-trial*)]) (if t (cdr t) (theme key))))
+
+;; A trial from now, '() for none; what the pacer learned under another
+;; forgotten.
+(define (pacer-trial! alist)
+  (set! *pacer-trial* alist)
+  (pacer-relearn!))
+
+;; A choice as a fraction of refresh r, or seconds, as ns.
+(define (pacer-of-refresh key r) (exact (floor (* (pacer-knob key) r))))
+(define (pacer-seconds key) (exact (floor (* (pacer-knob key) 1000000000))))
+
+;; The margin: as the screen taught it, else where it starts. It fades as
+;; pacer-margin-fade has it, the platform's by default: on a Mac in a
+;; minute; elsewhere never, as finding out whether the compositor would
+;; take frames later again costs a frame late.
+(define (pacer-margin r)
+  (or *pacer-margin* (pacer-of-refresh 'pacer-margin-start r)))
+
+;; What the pacer learned forgotten, as at a run's start.
+(define (pacer-relearn!)
+  (set! *pacer-margin* #f)
+  (set! *pacer-floor* 0)
+  (set! *pacer-depth* 0)
+  (set! *pacer-made* #f)
+  (set! *pacer-late-seen* 0)
+  (set! *pacer-late-chain* 0)
+  (set! *pacer-lead* (quotient (host-frame-ns) 4)))
 
 ;; Frame n, its report in, aimed at a latch: late if it showed a refresh
 ;; or more after the one aimed for, the first after the latch and the
 ;; compositor's depth on. Sent about the margin before the latch, as the
-;; pacer sends them, that was too little: the margin grows past it, by an
-;; eighth of a refresh (pacer-margin!); a run of late frames sent alike
-;; raises it once. Sent well before it, or no closer to it than a frame
-;; that made its latch lately (pacer-made!), and late all the same, the
-;; compositor missed the refresh, not the frame: nothing to learn; unless
-;; it's the third late run in a chain, as at a deadline that comes and
-;; goes, which a compositor's misses now and then seldom make. Nor from
-;; the frames late behind the run's first, sent before the pacer saw it:
-;; they waited behind it. One sent since, and late still, however early,
-;; teaches: no one missed refresh makes that. Sent as the pacer sends
-;; them and shown sooner than the depth, the compositor keeps frames less
-;; long now: the depth falls to it. In time, where the platform has it
-;; fade, the margin fades. => whether it was late
+;; pacer sends them (no more than pacer-miss-own past it), that was too
+;; little: the margin grows past it by a step (pacer-margin!); a run of
+;; late frames sent alike raises it once. Sent well before it, or no
+;; closer to it than a frame that made its latch lately (pacer-made!), and
+;; late all the same, the compositor missed the refresh, not the frame:
+;; nothing to learn; unless it's the third late run in a chain, as at a
+;; deadline that comes and goes, which a compositor's misses now and then
+;; seldom make. Nor from the frames late behind the run's first, sent
+;; before the pacer saw it: they waited behind it. One sent since, and
+;; late still, however early, teaches: no one missed refresh makes that.
+;; A late frame that teaches is counted the pacer's own, any other the
+;; compositor's. Sent as the pacer sends them and shown sooner than the
+;; depth, the compositor keeps frames less long now: the depth falls to
+;; it. In time, the margin fades as pacer-margin-fade has it. => whether
+;; it was late
 (define (pacer-behind! n r)
   (let ([aimed (pacer-aimed-of n)] [shown (pacer-refresh-seen n)]
-        [sent (host-frame-report n 2)] [step (quotient r 8)])
+        [sent (host-frame-report n 2)] [margin (pacer-margin r)])
     (and aimed shown sent (> aimed 0)
          (let ([past (- (div (- shown aimed) r) *pacer-depth*)]
                [ahead (- aimed sent)]
-               [usual? (< (- aimed sent) (+ *pacer-margin* step))])
+               [usual? (< (- aimed sent)
+                          (+ margin (pacer-of-refresh 'pacer-miss-own r)))])
            (when *pacer-made*
-             (set! *pacer-made* (+ *pacer-made* (quotient step 128))))
+             (set! *pacer-made* (+ *pacer-made* (quotient r 1024))))
            (if (>= past 1)
                (let ([first? (= *pacer-late-seen* 0)])
                  (when first?
@@ -464,23 +502,27 @@
                          1))
                    (set! *pacer-late-run* n)
                    (set! *pacer-late-seen* (now-ns)))
-                 (when (if first?
-                           (and usual?
-                                (or (>= *pacer-late-chain* 3)
-                                    (pacer-made-closer? ahead)))
-                           (> sent *pacer-late-seen*))
-                   (pacer-margin! (+ ahead step) r))
+                 (if (if first?
+                         (and usual?
+                              (or (>= *pacer-late-chain* 3)
+                                  (pacer-made-closer? ahead)))
+                         (> sent *pacer-late-seen*))
+                     (begin
+                       (pacer-count! 1)
+                       (pacer-margin!
+                        (+ ahead (pacer-of-refresh 'pacer-margin-step r))
+                        r))
+                     (pacer-count! 2))
                  #t)
-               (begin
+               (let ([fade (pacer-seconds 'pacer-margin-fade)])
                  (set! *pacer-late-seen* 0)
                  (when (and usual? (< past 0))
                    (set! *pacer-depth* (max 0 (+ *pacer-depth* past))))
                  (pacer-made! ahead)
-                 (when platform-pacer-margin-fade
+                 (when (and *pacer-margin* (> fade 0))
                    (set! *pacer-margin*
                      (- *pacer-margin*
-                        (quotient (* *pacer-margin* r)
-                                  platform-pacer-margin-fade))))
+                        (quotient (* *pacer-margin* r) fade))))
                  #f))))))
 
 ;; The deepest a compositor is taken to keep frames, refreshes: one more
@@ -495,11 +537,11 @@
 ;; more), and the margin is learned afresh, from where it starts: what's
 ;; past the refresh came of frames sent early; pacer-depth-most at most.
 (define (pacer-margin! m r)
-  (let ([m (max *pacer-margin* m)])
+  (let ([m (max (pacer-margin r) m)])
     (if (and (>= m r) (< *pacer-depth* pacer-depth-most))
         (begin
           (set! *pacer-depth* (+ *pacer-depth* 1))
-          (set! *pacer-margin* (quotient r 8)))
+          (set! *pacer-margin* #f))
         (set! *pacer-margin* (min r m)))))
 
 ;; A frame made its latch, sent ahead ns before it: the closest to its
@@ -531,12 +573,13 @@
 
 ;; Frame n, sent: the lead follows what it took from when its tick was
 ;; meant to begin till core0 sent it (main waking late and core0 taking it
-;; late among it), with the margin, at once when that's more, else fading;
-;; two refreshes at most, so that a lead longer than a refresh still
-;; leaves a tick its time at 120 Hz. A wait for an image past the latch it
-;; aimed at, a later latch's, the compositor holding a frame more (one it
-;; missed a refresh with, or ours queued behind it), is the screen's time,
-;; not the frame's: a lead it grew would send the frames after it early.
+;; late among it), with the margin, at once when that's more, else fading
+;; (pacer-lead-fade, a spike's time to fade); two refreshes at most, so
+;; that a lead longer than a refresh still leaves a tick its time at 120
+;; Hz. A wait for an image past the latch it aimed at, a later latch's,
+;; the compositor holding a frame more (one it missed a refresh with, or
+;; ours queued behind it), is the screen's time, not the frame's: a lead it
+;; grew would send the frames after it early.
 (define (pacer-need! n r)
   (let ([tick (pacer-frame-word n 14)] [sent (host-frame-report n 2)]
         [aimed (pacer-aimed-of n)]
@@ -548,9 +591,11 @@
                       0)])
         (set! *pacer-lead*
           (min (* 2 r)
-               (max (+ (- sent tick held) *pacer-margin*)
+               (max (+ (- sent tick held) (pacer-margin r))
                     (- *pacer-lead*
-                       (quotient (* *pacer-lead* r) pacer-lead-fade)))))))))
+                       (quotient
+                        (* *pacer-lead* r)
+                        (max 1 (pacer-seconds 'pacer-lead-fade)))))))))))
 
 ;; A tick drew a frame: the screen goes on pacing (*pacer-shown?*).
 (define (pacer-drew!) (set! *pacer-drew?* #t))

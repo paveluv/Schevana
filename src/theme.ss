@@ -88,12 +88,19 @@
 
 (define default-theme
   (append base-colors derived-colors
-          '(title-height 30
+          `(title-height 30
             corner-radius 9
             topbar-height 28
             taskbar-height 38
             shadow 14
             present-mode vsync
+            frames-in-flight 3
+            ;; the pacer's choices: refreshes, or seconds for the fades
+            pacer-margin-start 0
+            pacer-margin-step 1/8
+            pacer-miss-own 1/8
+            pacer-lead-fade 1/2
+            pacer-margin-fade ,platform-pacer-margin-fade
             ui-font "sans-serif"
             ui-font-size 13
             mono-font "monospace"

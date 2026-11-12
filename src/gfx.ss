@@ -1422,7 +1422,8 @@
     ;; its recording, the frozen one, and those copies it's lent by
     ;; "/recorder"
     (let ([f (gpu-publish (rec-take-table!) (rec-table-bytes)
-                          (rec-take-atlas-pieces!) (theme 'present-mode))])
+                          (rec-take-atlas-pieces!) (theme 'present-mode)
+                          (pacer-knob 'frames-in-flight))])
       (rec-lend! f)
       f)))
 

@@ -218,7 +218,7 @@
 
 ;; Main's side: the frame filled, what it asked of the GPU since handed on
 ;; with it; its writes "/recorder"'s to hand (rec-lend!). => the frame
-(define (gpu-publish table table-n pieces mode)
+(define (gpu-publish table table-n pieces mode in-flight)
   (let ([f (if (pair? *gpu-frames-free*)
                (let ([f (car *gpu-frames-free*)])
                  (set! *gpu-frames-free* (cdr *gpu-frames-free*))
@@ -231,4 +231,5 @@
     (gpu-frame-table-n-set! f table-n)
     (gpu-frame-pieces-set! f pieces)
     (gpu-frame-mode-set! f mode)
+    (gpu-frame-in-flight-set! f in-flight)
     f))
