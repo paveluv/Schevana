@@ -757,7 +757,8 @@ Decisions worth keeping in mind for the real design:
   latch: what frames took lately from when their tick was meant to begin
   till core0 sent them, main waking late among it (a spike fades in half a
   second), but for a wait for an image past the latch aimed at, the
-  compositor holding a frame more, which is the screen's time; and a margin.
+  compositor holding a frame more, which is the screen's time; and a
+  margin, from an eighth of a refresh.
   Its frame goes straight to the screen with the input that came till then,
   not a refresh early, waiting for an image. The reports say how many
   refreshes after the one aimed for each frame showed, past the compositor's
@@ -773,8 +774,10 @@ Decisions worth keeping in mind for the real design:
   deadline that comes and goes. Nor from the frames late behind a run's
   first, sent before the pacer saw it, which waited behind it; one sent
   since, and late still, however early, teaches. One that showed sooner than
-  the depth, sent as the pacer sends them, lowers it. In time, the margin
-  fades over a minute, so that one comes late only now and then. A frame
+  the depth, sent as the pacer sends them, lowers it. On a Mac the margin
+  fades over a minute (`platform-pacer-margin-fade`), so that one comes late
+  only now and then; elsewhere it doesn't: finding out whether the
+  compositor would take frames later again costs a frame late. A frame
   that showed late moves the ones after it, each a latch on (the floor), so
   the queue drains of itself. Core0 reads input as soon as its acquire
   returns, and every ms while frames flow. On GNOME 48 with NVIDIA this took

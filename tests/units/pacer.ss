@@ -693,6 +693,10 @@
                                 2000000))
                     (= (pacer-start) (- *pacer-due* 2000000))))))))
 
+(check "the margin starts at an eighth of a refresh, before the screen has \
+        taught it anything"
+       (= *pacer-margin* (quotient (host-frame-ns) 8)))
+
 ;; Frame n as the pacer reads it: its row in the frame ring, the newest,
 ;; its tick (as begun and as planned) and aimed latch; its report sent,
 ;; and shown at shown or not reported (#f). Then thunk; the row as it was
@@ -791,7 +795,8 @@
 
 (check "a frame that showed a refresh after the one its tick aimed for was \
         late: the margin grows past how long before its latch it was sent, \
-        by an eighth of a refresh; in time, the margin fades"
+        by an eighth of a refresh; in time, it stays, but where the \
+        platform has it fade"
        (let* ([r (host-frame-ns)] [n 1000011] [t (now-ns)])
          (fluid-let ([*pacer-margin* 1000000] [*pacer-depth* 0]
                      [*pacer-made* #f] [*pacer-late-seen* 0])
@@ -804,9 +809,9 @@
                                              (lambda () (pacer-behind! n r)))])
              (and late (not in-time)
                   (= after-late (+ 3000000 (quotient r 8)))
-                  (= *pacer-margin*
-                     (- after-late (quotient (* after-late r)
-                                             pacer-margin-fade))))))))
+                  (if platform-pacer-margin-fade
+                      (< *pacer-margin* after-late)
+                      (= *pacer-margin* after-late)))))))
 
 (check "while ticks keep to the latches, a tick wanted, main's wait for the \
         next is the screen's"
@@ -875,8 +880,8 @@
 
 (check "a margin past a refresh carries into the compositor's depth: a \
         frame for the latch before, sent a refresh earlier, is one for \
-        this latch shown a refresh later; the margin is learned afresh; \
-        three refreshes at most"
+        this latch shown a refresh later; the margin is learned afresh, \
+        from where it starts; three refreshes at most"
        (let* ([r (host-frame-ns)] [n 1000041] [t (now-ns)]
               [late! (lambda (shown)
                        (pacer-test-frame n (- t (* 2 r)) t
@@ -890,7 +895,7 @@
              (set! *pacer-margin* (- r 1000000))
              (set! *pacer-late-seen* 0)       ; a run of its own
              (late! (+ t (* 4 r) 4000000))
-             (and (= depth 1) (= margin 0)
+             (and (= depth 1) (= margin (quotient r 8))
                   (= *pacer-depth* 3) (= *pacer-margin* r))))))
 
 (check "a frame sent well before its latch, past the margin and a step, \
@@ -981,7 +986,7 @@
              (frame 2 (- t 3000000) (+ t 4000000))
              (let ([close (frame 40 (- t 1000000) (+ t r 4000000))])
                (and (= made 2000000) slip close
-                    (< after-slip 2500000)
+                    (<= after-slip 2500000)    ; it didn't grow
                     (= *pacer-margin* (+ 1000000 (quotient r 8)))))))))
 
 (check "the closest send that made its latch is kept, a closer one at \
@@ -1020,7 +1025,7 @@
            (late 100) (in-time 101)
            (let ([two *pacer-margin*])
              (late 200)
-             (and (< two 2500000)
+             (and (<= two 2500000)          ; nor did two runs
                   (= *pacer-margin* (+ 2500000 (quotient r 8))))))))
 
 (check "frames late behind a run's first, sent before the pacer saw it, \

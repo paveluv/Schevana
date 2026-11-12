@@ -93,3 +93,12 @@
                                     (foreign-ref 'double p 16)))])
              (foreign-free p)
              load)))))
+
+;;; ------------------------------------------------------------------
+;;; the pacer here
+
+;; How fast the pacer's margin fades, ns, or #f: never. A Mac's fades in a
+;; minute, as its pacer was measured with (WindowServer). Elsewhere it
+;; stays: under Mutter a margin that fades sends a frame late now and then,
+;; finding out whether the compositor would take frames later again.
+(define platform-pacer-margin-fade (and (host-mac?) 60000000000))
