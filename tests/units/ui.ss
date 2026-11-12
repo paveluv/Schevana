@@ -540,3 +540,39 @@
                (and (edit-layout-done? scan) (>= frames 1)
                     (not (window-ref win 'wm-frame-soon #f))))))
   (close-window! win))
+
+;; A live badge: a press turns it, live to held and back; held, it says
+;; what it holds and the way back, and is wider for it.
+(let ([win (open-window "Live" 'size '(400 . 100))])
+  (parameterize ([current-window win])
+    (let ([ui (make-ui)] [live? #t] [turns '()])
+      (define (draw!)
+        (let ([drawn (image 400 100 1
+                            (lambda ()
+                              (ui-begin! ui)
+                              (let-values ([(w h) (ui-live-badge-size
+                                                   live? "Held")])
+                                (ui-live-badge ui 'live 10 10 w h live? "Held"
+                                         (lambda (on?)
+                                           (set! turns (cons on? turns))
+                                           (set! live? on?))))
+                              (ui-end! ui 400 100)))])
+          (picture-free! drawn)))
+      (define (press!)
+        (let ([r (ui-find ui 'live)])
+          (ui-mouse-down ui (+ (ui-region-x r) 2) (+ (ui-region-y r) 2))
+          (ui-mouse-up ui)))
+      (draw!)
+      (let ([live-w (ui-region-w (ui-find ui 'live))])
+        (press!)
+        (draw!)
+        (let ([held-w (ui-region-w (ui-find ui 'live))])
+          (press!)
+          (check (format "a live badge turns held at a press, and live at the \
+                          next; held, it's wider, saying what it holds and \
+                          the way back (~a; ~a then ~a)"
+                         (reverse turns) live-w held-w)
+                 (and (equal? (reverse turns) '(#f #t))
+                      live?
+                      (> held-w live-w)))))))
+  (close-window! win))

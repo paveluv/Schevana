@@ -219,6 +219,23 @@
                      1999)
                   (< narrow 2000))))))
 
+(check "a stream fitted whole has bars of whole device pixels, all as wide, \
+        leaving out the oldest that don't fit, less than a bar's room left"
+       (let ([s (ui-stream-new 2048 1 '())] [scale (draw-scale)])
+         (for-all
+          (lambda (oldest)
+            (let-values ([(count areas)
+                          (ui-stream-layout s 0 0 300 60 299 oldest '() 1
+                                            'whole)])
+              (let* ([px (* scale (cadr (assq 'bar areas)))]
+                     [pixels (floor (* scale (cadddr (assq 'plot areas))))]
+                     [left (- pixels (* px count))])
+                (and (< (abs (- px (round px))) 1e-9)
+                     (<= count (- 300 oldest))
+                     (<= 0 left)
+                     (< left px)))))
+          '(0 7 100 220))))
+
 (check "restarted, a stream sends again all it's given"
        (let* ([s (ui-stream-new 16 1 '())] [calls 0]
               [word (lambda (seq j) (set! calls (+ calls 1)) seq)])

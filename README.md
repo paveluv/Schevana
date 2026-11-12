@@ -785,17 +785,15 @@ Decisions worth keeping in mind for the real design:
   names, unless its frame would then show before it was sent: GNOME with
   NVIDIA names `CLOCK_MONOTONIC` and reports on `CLOCK_MONOTONIC_RAW`. X11,
   headless runs and the Mac report nothing yet.
-- **Latency, a frame at a time.** The Pipeline's Latency stage draws a
-  bar a frame, its points stacked on one line, the frame's publish: below
-  it what led up to it, its oldest input by the compositor's own time
-  (core0 reads the same events on a pointer and keyboard of its own), by
-  SDL's stamp and as core0 first saw it, then main's tick and draw; above
-  it core0 taking it, sending it, its GPU work done and the screen showing
-  it, with the refreshes a frame apart as rules and the frames the screen
-  froze a refresh for over the bars. Its words give input to screen at
-  the median and the 99th, all three ways: SDL's stamp runs late by the
-  shortest delivery it has seen, so the gap between the first two is
-  SDL's guess.
+- **Latency, a refresh at a time.** The Pipeline's Latency stage puts its
+  refresh clock and its strip of the last six refreshes over the River,
+  whose columns are the screen's refreshes: each the frame on the screen
+  then, a tail hanging from its showing down to its tick and its input,
+  the oldest by the compositor's own time (core0 reads the same
+  events on a pointer and keyboard of its own), else SDL's stamp, else as
+  core0 first saw it. Its words give input to screen at the median and the
+  99th, all three ways: SDL's stamp runs late by the shortest delivery it
+  has seen, so the gap between the first two is SDL's guess.
 - **What the host is, said in one place.** Which OS, CPU, windowing
   system and GPU API this is comes from predicates (`host-mac?`,
   `host-wayland?`, `host-vulkan?`) and facts that core0 learns as SDL and
@@ -1125,24 +1123,42 @@ Decisions worth keeping in mind for the real design:
   it and named on its heading, with Clear (or Esc). A record selected opens
   its drawer in the tree and stays with its drawer, at its place in it, as
   the frame changes, and a drawer keeps its color, whatever its place, while
-  the Pipeline is open. Below, the River flows, a bar a tick: what main did,
-  and in lanes over it whether the tick came late, the frame it sent, what
-  the screen says became of it (shown in time, a refresh or more late, or
-  dropped), whether its GPU work was done in time, the collector, as
-  bright as it took long, and input, green where all's well and red where
-  something wants looking into (a drop is orange where the present mode
-  drops by design), a label's tooltip saying what its colors mean, and a bar's how long its frame
-  showed after the input it shows. A tick's lanes fill in as the screen's
-  report on its frame comes, a few refreshes on. A press holds it and goes back
-  to that tick's frame, the whole app showing it, and a drag moves through
-  them: the last 300 frames are kept while it's open, each the screen's own
-  records and copies of the lists it showed, a list the same as in the
-  frame before the same copy, the images and paints
-  they showed drawn again as they are now (the River's rows are kept by tick,
-  so its bands come back as they were), and left out once they're let go
-  of. While it flows it asks for a
-  frame a tick, and says what that takes; closed, what's left of it is the
-  core's few numbers a frame.
+  the Pipeline is open. Below, the River flows, a column a refresh of the
+  screen's (its own count where Wayland reports, else estimated on the
+  clock), the newest at the right: the refresh before the one the frame
+  being drawn will show at, should frames keep coming a refresh apart. So
+  the River moves a column a frame however late the screen's word comes,
+  and jumps only with a frame that came late. Its columns are whole
+  pixels, all as wide. The newest frames are on their way, each under the
+  refresh it's meant for, drawn as far as they've gone, ready up to the
+  latch they should make and the compositor's from there. A column's
+  bar is the frame on the
+  screen at that refresh, a tail hanging from zero, its showing, down its
+  way back: the compositor, ready to the latch, the GPU, core0, the box,
+  main, and under the tick its input's way, from the compositor's time to
+  SDL's stamp, to core0's pump and to main's tick; a rule a refresh. Shown
+  again while the next frame was late, the time since is red, at the top;
+  with nothing due, the column is empty. Over the bars the screen's word on
+  each refresh, green where a new frame showed, red where one repeated
+  while the next was late (or, by VSync, a frame was dropped), orange where
+  one was dropped by a mode that drops, a pip where its count and its times
+  disagree on how far a frame came after the one before (the columns go by
+  the count, now by the times). Over that lane, rising to it, main's
+  ticks by Monitor's phases, in the same columns, by a choice in its
+  heading: "Ticks when they ran", those whose work began in that refresh,
+  or "Each over its frame", the one that drew the frame new there; over
+  them, a tick that came late and a collection that ran. Its heading says
+  whether it's live: "Live", or held, at which frame, with the way back
+  (the kit's `ui-live-badge`); a press there holds it or lets it go, as
+  Esc does. A press on a bar holds it and goes back to the frame on the
+  screen at that refresh, the whole app showing it, and a drag moves
+  through them: the last 300 frames are kept while it's open, each the
+  screen's own records and copies of the lists it showed, a list the same
+  as in the frame before the same copy, the images and paints they showed
+  drawn again as they are now (the River's rows are kept by refresh, so
+  its bands come back as they were), and left out once they're let go of.
+  While it flows it asks for a frame a tick, and says what that takes;
+  closed, what's left of it is the core's few numbers a frame.
 - **The profiler hooks into the core.** `src/proc.ss` keeps one hook,
   `*profile-span*` (`#f`, or a pair of procedures, begin and end), and
   `with-profile-span`, in which five places run their work: the step

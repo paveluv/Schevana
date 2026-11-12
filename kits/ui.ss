@@ -1212,6 +1212,65 @@
 (define-part (ui-checkbox-size label)
   (values (+ (ui-checkbox-box) 8 (text-width label 'ui)) (ui-control-height)))
 
+;;; ------------------------------------------------------------------
+;;; live: whether a view follows what happens, or holds still
+
+;; A badge saying whether a view is live: "Live", with a dot; held, what it
+;; holds (held-label) and the way back. A press or Space turns it,
+;; (on-change live?) with the other state.
+(define (ui-live-badge ui id x y w h live? held-label on-change . opts)
+  (ui-pressable! ui id x y w h (lambda () (on-change (not live?)))
+                 '(#\space) opts
+                 (list (cons 'L (if live? "Hold still" "Back to live"))))
+  (ui-draw-live-badge x y w h
+                      (apply ui-flags ui id (if live? '(checked) '()))
+                      (if live? "Live" held-label)))
+
+(define ui-live-badge-back " · back to live")
+
+;; The dot's or the pause mark's width.
+(define (ui-live-badge-mark) (quotient (font-line-height 'ui-small) 2))
+
+(define-part (ui-live-badge-size live? held-label)
+  (values (+ 8 (ui-live-badge-mark) 6
+             (text-width (if live? "Live" held-label) 'ui-small)
+             (if live? 0 (text-width ui-live-badge-back 'ui-small))
+             10)
+          (+ (font-line-height 'ui-small) 6)))
+
+;; flags: checked (live), hover, pressed, focused. A pill: live, tinted
+;; with the accent and a dot; held, plain, a pause mark, the way back in
+;; the accent.
+(define-part (ui-draw-live-badge x y w h flags label)
+  (let* ([on? (lambda (f) (memq f flags))]
+         [live? (on? 'checked)] [hot? (or (on? 'hover) (on? 'pressed))]
+         [lh (font-line-height 'ui-small)] [m (ui-live-badge-mark)]
+         [ty (+ y (/ (- h lh) 2))] [my (+ y (/ (- h m) 2))]
+         [r (exact (floor (/ h 2)))]
+         [tx (+ x 8 m 6)]
+         [back (if live? 0 (text-width ui-live-badge-back 'ui-small))]
+         [label (text-fit label (max 0 (- (+ x w) tx back 10)) 'ui-small)])
+    (fill-box x y w h
+              (cond [live? (alpha 'accent (if hot? 0.3 0.18))]
+                    [hot? 'bg-3]
+                    [else 'bg-2])
+              r)
+    (stroke-box x y w h
+                (cond [hot? 'accent]
+                      [live? (alpha 'accent 0.6)]
+                      [else 'window-border])
+                1 r)
+    (if live?
+        (fill-circle (+ x 8 (/ m 2)) (+ y (/ h 2)) (/ m 2) 'accent)
+        (let ([bw (max 1 (quotient m 3))])
+          (fill-box (+ x 8) my bw m 'text-dim)
+          (fill-box (+ x 8 (- m bw)) my bw m 'text-dim)))
+    (draw-text tx ty label (if live? 'text 'text-dim) 'ui-small)
+    (unless live?
+      (draw-text (+ tx (text-width label 'ui-small)) ty ui-live-badge-back
+                 'accent 'ui-small))
+    (when (on? 'focused) (ui-draw-focus x y w h flags r))))
+
 ;; A toggle's track, the pill its knob slides in: (values w h).
 (define (ui-toggle-track)
   (let ([th (+ (ui-glyph-size) 6)]) (values (- (* 2 th) 4) th)))
@@ -3425,16 +3484,22 @@
       0))
 
 ;; (values count areas): fit, every moment across the width, its bars as
-;; narrow as that takes.
+;; narrow as that takes; fit 'whole, its bars whole device pixels, so that
+;; all are as wide, the oldest that don't fit left out.
 (define (ui-stream-layout s x y w h newest oldest rules bar fit?)
   (let* ([count (ui-stream-count s x y w h newest oldest rules
                                  (and (not fit?) bar))]
-         [areas (ui-stream-areas s x y w h count rules)])
-    (values count
-            (if fit?
-                (cons (list 'bar (/ (cadddr (assq 'plot areas)) (max count 1)))
-                      areas)
-                areas))))
+         [areas (ui-stream-areas s x y w h count rules)]
+         [room (cadddr (assq 'plot areas))])
+    (cond
+      [(eq? fit? 'whole)
+       (let* ([scale (draw-scale)]
+              [pixels (exact (floor (* scale room)))]
+              [px (max 1 (exact (ceiling (/ pixels (max count 1)))))])
+         (values (min count (quotient pixels px))
+                 (cons (list 'bar (/ px scale)) areas)))]
+      [fit? (values count (cons (list 'bar (/ room (max count 1))) areas))]
+      [else (values count areas)])))
 
 ;; The moment at x: the nearest of those shown, off either end.
 (define (ui-stream-seq-at areas x newest count)
@@ -3508,7 +3573,8 @@
 ;; (seq), its tooltip or #f; 'on-pick (seq), on a left press and as it's
 ;; dragged; 'marked, the moments marked; 'over, as the part's; 'doc;
 ;; 'strip-tips, a tooltip for each strip's label; 'fit, true for every moment
-;; from oldest to newest across the width, bar or no. A bar under the pointer
+;; from oldest to newest across the width, bar or no, or 'whole for as many
+;; as bars of whole pixels let in (ui-stream-layout). A bar under the pointer
 ;; is marked too. => the moment under the pointer, or #f
 (define (ui-stream ui id s x y w h newest oldest top rules stack bar . opts)
   (let-values ([(count areas)

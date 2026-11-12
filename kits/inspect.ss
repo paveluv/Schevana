@@ -74,6 +74,20 @@
                         (inspect-frame-report (- i 1) 5)
                         1))))))
 
+;; Whether the screen's two words on frame i disagree, its count and its
+;; time: from the frame before, shown too, the refreshes its sequence steps
+;; and those its time steps, a period each, half a refresh apart or more.
+;; The River trusts the sequence for its columns, the times for its now.
+(define (inspect-frame-seq-off? i)
+  (and (inspect-frame-shown? i) (inspect-frame-shown? (- i 1))
+       (let ([p (inspect-frame-report i 4)])
+         (and (> p 0)
+              (>= (* 2 (abs (- (- (inspect-frame-report i 3)
+                                  (inspect-frame-report (- i 1) 3))
+                               (* p (- (inspect-frame-report i 5)
+                                       (inspect-frame-report (- i 1) 5))))))
+                  p)))))
+
 ;; Frame i on the screen: shown, late (inspect-frame-missed), dropped by the
 ;; compositor, or #f (no report, none yet).
 (define (inspect-frame-screen i)
@@ -161,6 +175,65 @@
                               (vector-ref v (min (- n 1)
                                                  (exact (floor (* q n)))))))])
               (values (at 0.5) (at 0.99) missed)))))))
+
+;;; ---- refreshes
+;;; The screen's rhythm, a refresh a number: the display's own sequence,
+;;; anchored at the newest frame the screen reported showing; where it
+;;; reports none, counted from now-ns's 0 a period apart, an estimate. A
+;;; refresh's time is its vblank's (now-ns).
+
+;; The grid as it stands: #(refresh time period estimated?), its anchor.
+(define (inspect-refresh-grid)
+  (let loop ([i (- *frame-ring-n* 1)] [k 0])
+    (cond
+      [(or (= k 64) (< i 0)) (vector 0 0 (host-frame-ns) #t)]
+      [(and (inspect-frame-shown? i) (> (inspect-frame-report i 4) 0))
+       (vector (inspect-frame-report i 5) (inspect-frame-report i 3)
+               (inspect-frame-report i 4) #f)]
+      [else (loop (- i 1) (+ k 1))])))
+
+(define (inspect-refresh-period g) (vector-ref g 2))
+(define (inspect-refresh-estimated? g) (vector-ref g 3))
+
+;; The refresh at t (now-ns), or the last before it, by grid g.
+(define (inspect-refresh-of g t)
+  (+ (vector-ref g 0) (div (- t (vector-ref g 1)) (vector-ref g 2))))
+
+;; Refresh k's time, by grid g.
+(define (inspect-refresh-time g k)
+  (+ (vector-ref g 1) (* (- k (vector-ref g 0)) (vector-ref g 2))))
+
+;; The refresh frame i showed at, by grid g: the screen's word; with no
+;; reports, once core0 sent it, the one after it was sent (with no screen,
+;; published), an estimate. #f when it didn't show, or hasn't yet.
+(define (inspect-frame-refresh g i)
+  (cond
+    [(inspect-frame-shown? i) (inspect-frame-report i 5)]
+    [(and (inspect-refresh-estimated? g) (eq? (inspect-frame-sent i) 'sent))
+     (+ 1 (inspect-refresh-of g (or (inspect-frame-at i 'sent)
+                                    (inspect-frame-at i 'publish))))]
+    [else #f]))
+
+;; The refresh frame i was meant for: the one after the latch its tick aimed
+;; at; with no aim, the second after its tick began. #f with no tick.
+(define (inspect-frame-target g i)
+  (let ([aimed (inspect-frame-ref i 13)])
+    (if (and aimed (> aimed 0))
+        (+ 1 (inspect-refresh-of g aimed))
+        (let ([tick (inspect-frame-at i 'tick)])
+          (and tick (+ 2 (inspect-refresh-of g tick)))))))
+
+;; When the compositor took the frame shown at refresh k: in the refresh
+;; before, at the latch's phase, as the pacer learned it; or #f.
+(define (inspect-refresh-latch g k)
+  (and *pacer-latch-phase*
+       (+ (inspect-refresh-time g (- k 1)) *pacer-latch-phase*)))
+
+;; When the oldest input frame i shows came: by the compositor's own time,
+;; else SDL's stamp, else core0's pump; #f with none.
+(define (inspect-frame-input i)
+  (or (inspect-frame-at i 'wl) (inspect-frame-at i 'sdl)
+      (inspect-frame-at i 'pumped)))
 
 ;;; ---- lists
 

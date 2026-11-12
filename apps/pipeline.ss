@@ -28,15 +28,18 @@
 ;;; at a pixel, is marked on it, and named on its heading, with Clear (or
 ;;; Esc); a record selected opens its drawer in the tree, and stays with its
 ;;; drawer as the frame changes. A drawer keeps its color while it's open.
-;;; Below, the River: a bar a tick as it flows, what main did, and in lanes
-;;; over them what else happened. A press holds it and goes back to that
-;;; tick's frame, the whole app showing it; a drag moves through them. Frames
+;;; Below, the River: a column a refresh of the screen's, each the frame on
+;;; the screen then from the refresh before its tick to its showing, the
+;;; screen's word over them and who was busy under them. A press holds it and
+;;; goes back to that frame, the whole app showing it; a drag moves through
+;;; them. Frames
 ;;; are kept for a few seconds, what's left of the River's reach, while it's
 ;;; open: closed, what's left of it is the core's few numbers a frame.
 ;;; While it flows it asks for a frame a tick, so it says what it takes itself.
 
 (define-record-type pipeline-view
   (fields ui history river
+          ticks                ; the tick breakdown under the River
           (mutable stage)      ; lists, who, course, inside, memory, latency
           (mutable shown)      ; (inspect-list), the one on view
           (mutable held?)      ; it stays
@@ -48,12 +51,10 @@
           (mutable image)      ; the small screen on view, or #f
           (mutable back)       ; what its next picture is drawn on, or #f
           (mutable flip?)      ; back has a newer picture than image
-          (mutable reach)      ; while held, where the River stops: (newest
-                               ; . oldest)
+          (mutable reach)      ; while held, the River's now: a refresh
           (mutable tick)       ; the tick picked, or #f
-          (mutable order)      ; how the River's bars stack: columns
           (mutable own)        ; what it takes itself, ms a tick
-          (mutable tip)        ; the last bar's tooltip: (seq . text)
+          (mutable tip)        ; the last bar's tooltip: ((k . now) . text)
           (mutable every)      ; the small screen draws every this many frames
           (mutable tape)       ; the Tape, a stream a record
           (mutable tape-of)    ; the records it holds: kept, as it was
@@ -73,8 +74,8 @@
           (mutable course)     ; a tick's stages: (list . (seq items))
           (mutable course-sort) ; (key . up|down), or #f: in their order
           (mutable who-sort)   ; (key . up|down), or #f: in draw order
-          latency              ; the Latency's stream, a tick a bar
           (mutable latency-words) ; (when . words), read twice a second
+          (mutable ticks-by-frame?) ; the tick breakdown by frame, not when
           colors))             ; each drawer's color, by node: an index
 
 (define pipeline-period-ms 1000)
@@ -111,18 +112,12 @@
 
 (define (pipeline-look! v)
   (unless (pipeline-view-held? v)
-    (let ([history (pipeline-view-history v)] [newest (profile-newest-tick)])
+    (let ([history (pipeline-view-history v)])
       (inspect-history-add! history)
       (pipeline-show! v (or (inspect-history-ref
                              history (inspect-history-newest history))
                             (inspect-list)))
-      (pipeline-view-own-set! v (pipeline-own-ms))
-      (when newest
-        (pipeline-view-order-set!
-         v (monitor-bars-order
-            (monitor-range (max (profile-oldest-tick)
-                                (- newest pipeline-frames-kept))
-                           newest))))))
+      (pipeline-view-own-set! v (pipeline-own-ms))))
   (pipeline-view-looked-set! v (now-ms)))
 
 ;; What's on view, drawn on image, but the spans left out. Live, it's drawn
@@ -180,8 +175,7 @@
     (pipeline-view-held?-set! v #t)
     (pipeline-view-flip?-set! v #f)
     (pipeline-view-tick-set! v (profile-newest-tick))
-    (pipeline-view-reach-set! v (cons (profile-newest-tick)
-                                      (profile-oldest-tick)))
+    (pipeline-view-reach-set! v (pipeline-river-target (inspect-refresh-grid)))
     (pipeline-preview! v)))
 
 (define (pipeline-resume! v)
@@ -205,6 +199,16 @@
         (pipeline-preview! v)))))
 
 ;;; ---- the River
+;;; A column a refresh of the screen's, the newest at the right: the one
+;;; before now, the refresh the frame drawn will show at
+;;; (pipeline-river-target). The newest frames are on their way, under
+;;; the refreshes they're meant for.
+;;; A column's bar is the frame on the screen at that refresh, a tail
+;;; hanging from zero, its showing: down, its way back to its tick, and
+;;; under that its input's, from the compositor to the tick. Shown again
+;;; while the next frame was late, the time since is red, at the top; with
+;;; nothing due, the column is empty. Over the bars, the screen's word on
+;;; each refresh.
 
 ;; How bright a tick's collecting is: a level by its time, faint however short,
 ;; and at its brightest from this many ns.
@@ -216,45 +220,6 @@
                     (min (max ns 0) pipeline-collector-full-ns))
                  pipeline-collector-full-ns)))
 
-;; Bottom up, as monitor-bars-order stacks them, what main did; over them, the
-;; lanes, a word each, green where all's well and red where something wants
-;; looking into: the tick, in time or late; then a frame's way out: sent, or
-;; no room; its GPU work, done in time or late; what the screen says of it,
-;; shown in time, late, or dropped; then the collector, by how long; input.
-(define pipeline-draw-lanes
-  `(("tick" chart-ok chart-flag)
-    ("frame" chart-ok chart-flag)
-    ("GPU" chart-ok chart-flag)
-    ("screen" chart-ok chart-flag chart-2)
-    ("collector"
-     ,@(map (lambda (i)
-              (alpha 'chart-7
-                     (+ 0.2 (* 0.8 (/ i (- pipeline-collector-levels 1.0))))))
-            (iota pipeline-collector-levels)))
-    ("input" chart-1)))
-
-;; What a lane's colors say, on its label.
-(define pipeline-lane-tips
-  `("Green: main's own work in this tick took less than one and a half \
-     periods, however long the screen held it. Red: it took longer, and came \
-     late."
-    "Green: core0 sent the tick's frame to the screen. Red: the window had no \
-     room for it, and it was drawn for nothing. None: no frame was drawn, or \
-     core0 hasn't given it back yet."
-    "When core0 saw the frame's GPU work done. Green: in time for its \
-     refresh. Red: after the refresh it missed, the GPU's fault, not the \
-     screen's. None: not seen."
-    "What the screen says of the tick's frame. Green: it showed a refresh \
-     after the one before. Red: the one before showed again first, while \
-     frames came a refresh apart; or, by VSync, the compositor dropped it, \
-     two frames having come in one refresh. Orange: the compositor dropped \
-     it for a newer one, as Mailbox does. None: no frame, or no word from \
-     the screen (only Wayland's compositors say)."
-    ,(format "A collection ran in this tick: the longer it took, the brighter, \
-              at its brightest from ~a."
-             (monitor-ns-text pipeline-collector-full-ns))
-    "The keyboard or the mouse sent something."))
-
 ;; Whether tick seq drew a frame.
 (define (pipeline-tick-drew? seq)
   (or (not (profile-tick-kept? (- seq 1)))
@@ -263,123 +228,465 @@
 ;; The frame tick seq drew, counting from 0 (inspect-frame-ref).
 (define (pipeline-tick-frame-index seq) (- (profile-tick-ns seq 'frames) 1))
 
-;; The lanes' readings of tick seq, in words, for its tooltip.
-(define (pipeline-tick-lanes seq)
-  (let* ([drew? (pipeline-tick-drew? seq)]
-         [i (pipeline-tick-frame-index seq)]
-         [ms (lambda (ns) (/ ns 1e6))])
-    (string-append
-     (if drew?
-         (format "\nframe ~a~a~a~a"
-                 (case (inspect-frame-sent i)
-                   [(sent) "sent"]
-                   [(no-room) "drawn, but the window had no room for it"]
-                   [else "on its way to the screen"])
-                 (case (inspect-frame-screen i)
-                   [(shown) "; it showed in time"]
-                   [(late) (format "; it showed late, ~a refresh~a missed"
-                                   (inspect-frame-missed i)
-                                   (if (eqv? (inspect-frame-missed i) 1)
-                                       ""
-                                       "es"))]
-                   [(dropped) "; the compositor dropped it"]
-                   [else ""])
-                 (let ([l (inspect-frame-latency i)])
-                   (if l
-                       (format ", ~,1f ms after the input it shows" (ms l))
-                       ""))
-                 (let ([done (inspect-frame-report i 6)]
-                       [sent (inspect-frame-report i 2)])
-                   (if (and done (> done 0))
-                       (format "; its GPU work seen done ~,1f ms after it \
-                                was sent~a"
-                               (ms (- done sent))
-                               (if (eq? (inspect-frame-gpu i) 'late)
-                                   ", too late"
-                                   ""))
-                       "")))
-         "\nno frame drawn")
-     (if (> (profile-tick-ns seq 'gcs) 0)
-         (format "\ncollected for ~,2f ms"
-                 (/ (profile-tick-ns seq 'gc-ns) 1000000.0))
-         ""))))
+;; The tick that drew frame i, among those kept, or #f.
+(define (pipeline-frame-tick i)
+  (let loop ([seq (profile-newest-tick)])
+    (and seq (profile-tick-kept? seq) (> (profile-tick-ns seq 'frames) i)
+         (if (and (profile-tick-kept? (- seq 1))
+                  (> (profile-tick-ns (- seq 1) 'frames) i))
+             (loop (- seq 1))
+             seq))))
 
-(define (pipeline-river-word period)
-  (let ([phases (length monitor-phases)])
-    (lambda (seq j)
-      (if (< j phases)
-          (quotient (monitor-tick-phase-ns seq j) 1000)
-          (let ([drew? (pipeline-tick-drew? seq)]
-                [i (pipeline-tick-frame-index seq)])
-            (case (- j phases)
-              [(0) (if (profile-tick-late? seq period) 2 1)]
-              [(1) (if drew?
-                       (case (inspect-frame-sent i)
-                         [(sent) 1] [(no-room) 2] [else 0])
-                       0)]
-              [(2) (if drew?
-                       (case (inspect-frame-gpu i)
-                         [(done) 1] [(late) 2] [else 0])
-                       0)]
-              [(3) (if drew?
-                       (case (inspect-frame-screen i)
-                         [(shown) 1]
-                         [(late) 2]
-                         [(dropped) (if (eq? (inspect-present-mode) 'vsync)
-                                        2
-                                        3)]
-                         [else 0])
-                       0)]
-              [(4) (if (> (profile-tick-ns seq 'gcs) 0)
-                       (pipeline-collector-level (profile-tick-ns seq 'gc-ns))
-                       0)]
-              [else (if (> (profile-tick-ns seq 'input) 0) 1 0)]))))))
+;; Refreshes kept; the bars' room in refreshes, under zero.
+(define pipeline-river-kept 300)
+(define pipeline-river-depth 5)
 
-;; A bar's tooltip, worked out once: a held River draws for each move.
-(define (pipeline-river-tip v seq period)
-  (let ([tip (pipeline-view-tip v)])
-    (if (and tip (eqv? (car tip) seq))
+;; A tail's parts bottom up, the oldest first, a word each: (color .
+;; label), the first clear, lifting the tail to hang from zero.
+(define pipeline-draw-river-parts
+  '((#f . #f)
+    (chart-muted-1 . "input, to SDL's stamp")
+    (chart-muted-2 . "to core0's pump")
+    (chart-5 . "to main's tick")
+    (chart-1 . "main")
+    (chart-2 . "in the box")
+    (chart-3 . "core0")
+    (chart-4 . "the GPU")
+    (chart-6 . "ready, to the latch")
+    (chart-8 . "the compositor")
+    (chart-flag . "shown again, the next frame late")))
+
+;; Over the bars, the screen's word: new, shown again while a newer was
+;; due, a frame dropped.
+(define pipeline-draw-river-strips '(("screen" chart-ok chart-flag chart-2)))
+
+(define pipeline-river-screen-tip
+  "Green: a new frame showed at this refresh. Red: the one before showed \
+   again, the next frame late, or, by VSync, the compositor dropped one, \
+   two having come in one refresh. Orange: the compositor dropped one for \
+   a newer, as Mailbox does. None: nothing new was due, or no word yet. \
+   A pip: the screen's count and its times disagree on how far its frame \
+   came after the one before.")
+
+(define (pipeline-river-new)
+  (ui-stream-new pipeline-river-rows (length pipeline-draw-river-parts)
+                 pipeline-draw-river-strips))
+
+;; Whether frame i may still show: not dropped, and core0 found room for it.
+(define (pipeline-frame-on-way? i)
+  (not (or (eqv? (inspect-frame-report i 1) 2)
+           (eq? (inspect-frame-sent i) 'no-room))))
+
+;; Where frames began to show, by grid g, from refresh from on: each frame
+;; the screen reported at its refresh, the last before from among them;
+;; then those on their way at the one each is meant for, or the next free
+;; one. => ((k i on-way?) ...) by k
+(define (pipeline-river-starts g from)
+  (define (refresh i) (and (inspect-frame-ref i 6) (inspect-frame-refresh g i)))
+  (let find ([i (- *frame-ring-n* 1)] [on-way '()])
+    (if (and (inspect-frame-ref i 6) (not (refresh i)))
+        (find (- i 1) (if (pipeline-frame-on-way? i) (cons i on-way) on-way))
+        (let ([last (refresh i)])
+          (append
+           (let older ([i i] [acc '()])
+             (let ([k (refresh i)])
+               (cond [(not (inspect-frame-ref i 6)) acc]
+                     [(not k) (older (- i 1) acc)]
+                     [(< k from) (cons (list k i #f) acc)]
+                     [else (older (- i 1) (cons (list k i #f) acc))])))
+           (let place ([is on-way] [k (if last (+ last 1) from)])
+             (if (null? is)
+                 '()
+                 (let ([at (max k (or (inspect-frame-target g (car is)) k))])
+                   (cons (list at (car is) #t)
+                         (place (cdr is) (+ at 1)))))))))))
+
+;; The frame on the screen at refresh k by grid g, or #f.
+(define (pipeline-river-frame-at g k)
+  (let loop ([starts (pipeline-river-starts g k)] [i #f])
+    (if (and (pair? starts) (<= (car (car starts)) k))
+        (loop (cdr starts) (cadr (car starts)))
+        i)))
+
+;; The refresh frame i shows at, or is meant for, by grid g.
+(define (pipeline-frame-column g i)
+  (or (inspect-frame-refresh g i) (inspect-frame-target g i)))
+
+;; Whether a frame between i0 and i was dropped.
+(define (pipeline-dropped-between? i0 i)
+  (let loop ([j (+ i0 1)])
+    (and (< j i)
+         (or (eqv? (inspect-frame-report j 1) 2) (loop (+ j 1))))))
+
+;; Frame i's tail into row (µs), by grid g, down from zero, refresh at's
+;; time and extra ns on (shown again): back from its showing to its tick,
+;; then its input's way to it; on its way, as far as it has gone by now,
+;; under the refresh it's meant for, the compositor's part from the latch
+;; it should make. Cut at the column's depth.
+(define (pipeline-river-parts! row g i at extra on-way?)
+  (let* ([r (inspect-refresh-period g)]
+         [top (+ (inspect-refresh-time g at) extra)]
+         [bottom (- top (* pipeline-river-depth r))]
+         [tick (inspect-frame-at i 'tick)]
+         [shown (or (inspect-frame-at i 'shown)
+                    (and (not on-way?) (inspect-refresh-time g at)))]
+         [latch (or (inspect-refresh-latch g at) shown)]
+         [end (if on-way? (min top (now-ns)) top)]
+         [input (map (lambda (point)
+                       (let ([t (inspect-frame-at i point)])
+                         (and t tick (min t tick))))
+                     '(wl sdl pumped))]
+         [us (lambda (ns) (quotient (max 0 ns) 1000))])
+    (when tick
+      ;; each point no earlier than the one before, a missing one taking
+      ;; no time
+      (let ([start (max bottom (apply min tick (filter values input)))])
+        (fxvector-set! row 0 (us (- start bottom)))
+        (let loop ([points (append (cdr input)
+                                   (list tick
+                                         (inspect-frame-at i 'publish)
+                                         (inspect-frame-at i 'taken)
+                                         (inspect-frame-at i 'sent)
+                                         (inspect-frame-at i 'gpu)
+                                         latch shown))]
+                   [k 1] [at start] [now? #f])
+          (unless (null? points)
+            (let* ([p (car points)]
+                   [t (min end (max at (cond [p p]
+                                             [now? (now-ns)]
+                                             [else at])))])
+              (fxvector-set! row k (us (- t at)))
+              ;; the tick is point 3: after it, on its way, the first
+              ;; missing is now
+              (loop (cdr points) (+ k 1) t
+                    (cond [(< k 3) #f]
+                          [(= k 3) on-way?]
+                          [else (and now? p #t)])))))))
+    (fxvector-set! row 10 (us extra))))
+
+;; The River's words of refresh k, by grid g, now the refresh now, from
+;; starts (pipeline-river-starts): the parts of the bar of the frame on the
+;; screen then, and the screen's word. Rows come by k: each is worked out
+;; once, its words read in turn.
+(define (pipeline-river-word g now starts)
+  (let* ([n (length pipeline-draw-river-parts)]
+         [row (make-fxvector (+ n 1) 0)]
+         [vsync? (eq? (inspect-present-mode) 'vsync)]
+         [at #f] [left starts] [start #f] [prev #f])
+    (lambda (k j)
+      (unless (eqv? k at)
+        (set! at k)
+        (let advance ()
+          (when (and (pair? left) (<= (car (car left)) k))
+            (set! prev start)
+            (set! start (car left))
+            (set! left (cdr left))
+            (advance)))
+        (fxvector-fill! row 0)
+        (when start
+          (let* ([shown-at (car start)] [i (cadr start)]
+                 [on-way? (caddr start)]
+                 [new? (= shown-at k)]
+                 [target (and (< (+ i 1) *frame-ring-n*)
+                              (inspect-frame-target g (+ i 1)))]
+                 [due? (and (not new?) (<= k now) target (<= target k))])
+            (when (or new? due?)
+              (pipeline-river-parts!
+               row g i shown-at
+               (if new?
+                   0
+                   (- (inspect-refresh-time g k)
+                      (inspect-refresh-time g shown-at)))
+               on-way?))
+            (fxvector-set!
+             row n
+             (cond [(and new? on-way?) 0]
+                   [(and new? prev (pipeline-dropped-between? (cadr prev) i))
+                    (if vsync? 2 3)]
+                   [new? 1]
+                   [due? 2]
+                   [else 0])))))
+      (fxvector-ref row j))))
+
+;; The rules: a refresh at a time under zero, the screen, which is at the
+;; top.
+(define (pipeline-river-rules r)
+  (map (lambda (m)
+         (cons (quotient (* (- pipeline-river-depth m) r) 1000)
+               (format "−~a" m)))
+       '(1 2 3 4)))
+
+;; Refresh k on the River, in words, worked out once while it's pointed at.
+(define (pipeline-river-tip v g now k)
+  (let ([tip (pipeline-view-tip v)] [key (cons k now)])
+    (if (and tip (equal? (car tip) key))
         (cdr tip)
-        (let ([text (string-append
-                     (monitor-tick-tip seq (monitor-clock-zero) period)
-                     (pipeline-tick-lanes seq))])
-          (pipeline-view-tip-set! v (cons seq text))
+        (let ([text (pipeline-river-text g now k)])
+          (pipeline-view-tip-set! v (cons key text))
           text))))
 
-;; A line where the frames kept end, left of it ticks whose frames are gone.
-(define (pipeline-draw-reach v areas count newest)
-  (let ([history (pipeline-view-history v)]
-        [plot (cdr (assq 'plot areas))])
-    (let loop ([i (- count 1)])
-      (when (>= i 0)
-        (let ([seq (+ newest (- i count -1))])
-          (if (and (profile-tick-kept? seq)
-                   (inspect-history-kept? history (pipeline-tick-frame seq)))
-              (loop (- i 1))
-              (let-values ([(bx bw) (ui-bar-chart-bar areas count i)])
-                (when (and (< i (- count 1)) (>= bx (car plot)))
-                  (fill-box (+ bx bw -1) (cadr plot) 1 (cadddr plot)
-                            'chart-rule)))))))))
+(define (pipeline-river-text g now k)
+  (let* ([r (inspect-refresh-period g)]
+         [ms (lambda (ns) (format "~,1f" (/ ns 1e6)))]
+         [i (pipeline-river-frame-at g k)]
+         [head (format "refresh ~a~a, ~a ms before this picture shows"
+                       k (if (inspect-refresh-estimated? g) " (estimated)" "")
+                       (ms (* (- now k) r)))])
+    (if (not i)
+        (string-append head "\nno frame")
+        (let* ([at (pipeline-frame-column g i)]
+               [shown (inspect-frame-at i 'shown)]
+               [tick (inspect-frame-at i 'tick)]
+               [in (inspect-frame-input i)]
+               [seq (pipeline-frame-tick i)]
+               [point (lambda (p) (inspect-frame-at i p))])
+          (string-append
+           head
+           (format "\nframe ~a, ~a" (inspect-frame-ref i 6)
+                   (cond [(not shown) "on its way to the screen"]
+                         [(= at k) "new at this refresh"]
+                         [else "shown again"]))
+           (if (and in shown)
+               (format "\ninput to screen ~a ms" (ms (- shown in)))
+               "")
+           (if (and tick shown)
+               (format "~atick to screen ~a ms" (if in "; " "\n")
+                       (ms (- shown tick)))
+               "")
+           (if (and (= at k) (inspect-frame-seq-off? i))
+               (format "\nafter the frame before, in refreshes: ~a by \
+                        the screen's count, ~,2f by its times"
+                       (- at (inspect-frame-report (- i 1) 5))
+                       (inexact
+                        (/ (- shown (inspect-frame-at (- i 1) 'shown))
+                           (inspect-frame-report i 4))))
+               "")
+           (apply string-append
+                  (map (lambda (from to name)
+                         (let ([a (point from)] [b (point to)])
+                           (if (and a b)
+                               (format "\n~a ~a ms" name (ms (- b a)))
+                               "")))
+                       '(wl sdl pumped tick publish taken sent)
+                       '(sdl pumped tick publish taken sent gpu)
+                       '("input, to SDL's stamp" "to core0's pump"
+                         "to main's tick" "main" "in the box" "core0"
+                         "the GPU")))
+           (if (and seq (profile-tick-kept? seq))
+               (string-append "\n\n" (monitor-tick-tip seq (monitor-clock-zero)
+                                                       (pacer-period)))
+               ""))))))
 
-;; The tick picked stands out, whatever's on it.
-(define (pipeline-draw-picked areas count newest tick)
-  (let-values ([(bx bw) (ui-bar-chart-bar areas count
-                                          (- count 1 (- newest tick)))])
-    (let ([plot (cdr (assq 'plot areas))])
-      (when (>= bx (car plot))
-        (stroke-box (- bx 1) (cadr plot) (+ bw 1) (cadddr plot) 'accent 1)))))
+;; Over the frames, main's ticks, a column a refresh as the frames': the
+;; ticks whose work began in it, or each frame's own, over the refresh it
+;; showed at. Monitor's phases, rising to the screen's lane, two refreshes
+;; tall, a refresh as tall as under it; over them, whether a tick came
+;; late and when a collection ran.
+(define pipeline-river-ticks-high 2)
 
-;; The River's height for this width's legend, its heading and legend included.
-(define (pipeline-river-height v w)
+(define pipeline-draw-river-tick-strips
+  `(("late" chart-flag)
+    ("collector"
+     ,@(map (lambda (i)
+              (alpha 'chart-7
+                     (+ 0.2 (* 0.8 (/ i (- pipeline-collector-levels 1.0))))))
+            (iota pipeline-collector-levels)))))
+
+(define pipeline-river-ticks-tips
+  (list "Red: main's own work in a tick here took more than one and a half \
+         periods, and came late."
+        (format "A collection ran in a tick here: the longer it took, the \
+                 brighter, at its brightest from ~a."
+                (monitor-ns-text pipeline-collector-full-ns))))
+
+(define (pipeline-river-ticks-new)
+  (ui-stream-new pipeline-river-rows (length monitor-phases)
+                 pipeline-draw-river-tick-strips))
+
+;; When tick seq's own work began (now-ns): after its wait for the screen.
+(define (pipeline-tick-began seq)
+  (- (profile-tick-ns seq 'end)
+     (- (profile-tick-ns seq 'ns) (profile-tick-phase-ns seq 'vsync-wait))))
+
+;; The ticks of refresh k, by grid g, from starts (pipeline-river-starts):
+;; under frames, the one that drew the frame new there; else those whose
+;; work began in it, from ran (pipeline-river-ticks-ran).
+(define (pipeline-river-ticks-of g k by-frame? starts ran)
+  (if by-frame?
+      (let ([start (assv k starts)])
+        (let ([seq (and start (pipeline-frame-tick (cadr start)))])
+          (if seq (list seq) '())))
+      (hashtable-ref ran k '())))
+
+;; The ticks kept whose work began from refresh from on, by grid g: refresh
+;; -> (seq ...).
+(define (pipeline-river-ticks-ran g from)
+  (let ([t (make-eqv-hashtable)] [since (inspect-refresh-time g from)])
+    (let loop ([seq (profile-newest-tick)])
+      (when (and seq (profile-tick-kept? seq))
+        (let ([began (pipeline-tick-began seq)])
+          (when (>= began since)
+            (hashtable-update! t (inspect-refresh-of g began)
+                               (lambda (seqs) (cons seq seqs)) '())
+            (loop (- seq 1))))))
+    t))
+
+;; The tick breakdown's words of refresh k: its ticks' phases summed (µs),
+;; then whether one came late, and the collector's level, by its longest.
+(define (pipeline-river-tick-word g by-frame? starts ran)
+  (let ([phases (length monitor-phases)] [period (pacer-period)])
+    (lambda (k j)
+      (let ([seqs (pipeline-river-ticks-of g k by-frame? starts ran)])
+        (cond
+          [(< j phases)
+           (fold-left (lambda (sum seq)
+                        (+ sum (quotient (monitor-tick-phase-ns seq j) 1000)))
+                      0 seqs)]
+          [(= j phases)
+           (if (exists (lambda (seq) (profile-tick-late? seq period)) seqs)
+               1
+               0)]
+          [else
+           (fold-left (lambda (level seq)
+                        (if (> (profile-tick-ns seq 'gcs) 0)
+                            (max level (pipeline-collector-level
+                                        (profile-tick-ns seq 'gc-ns)))
+                            level))
+                      0 seqs)])))))
+
+;; The tick breakdown's rules: a refresh and two over its foot.
+(define (pipeline-river-tick-rules r)
+  (map (lambda (i)
+         (cons (quotient (* (+ i 1) r) 1000) (format "+~a" (+ i 1))))
+       (iota pipeline-river-ticks-high)))
+
+;; Labels another chart's gutter has, as rules with no line: the frames'
+;; and the ticks' columns then start at the same x.
+(define (pipeline-river-gutter rules strips)
+  (map (lambda (label) (cons #f label))
+       (append (map cdr rules) (filter values (map car strips)))))
+
+;; Refresh k's ticks, in words.
+(define (pipeline-river-ticks-text g k by-frame? starts)
+  (let ([seqs (pipeline-river-ticks-of
+               g k by-frame? starts
+               (if by-frame? #f (pipeline-river-ticks-ran g k)))]
+        [period (pacer-period)])
+    (if (null? seqs)
+        (format "refresh ~a: no tick~a" k
+                (if by-frame? " drew a frame new here" " began here"))
+        (apply string-append
+               (map (lambda (seq at)
+                      (string-append
+                       (if (= at 0) "" "\n\n")
+                       (monitor-tick-tip seq (monitor-clock-zero) period)
+                       (if (> (profile-tick-ns seq 'gcs) 0)
+                           (format "\ncollected for ~,2f ms"
+                                   (/ (profile-tick-ns seq 'gc-ns) 1e6))
+                           "")))
+                    seqs (iota (length seqs)))))))
+
+;; The picked tick's column.
+(define (pipeline-river-tick-marked v g by-frame?)
+  (let ([tick (pipeline-view-tick v)])
+    (cond [by-frame? (pipeline-river-marked v g)]
+          [(and tick (profile-tick-kept? tick))
+           (list (inspect-refresh-of g (pipeline-tick-began tick)))]
+          [else '()])))
+
+;; The refreshes from oldest on where the screen's count and its times
+;; disagree on how far the frame there came after the one before
+;; (inspect-frame-seq-off?): none on an estimated grid, which has no word.
+(define (pipeline-river-seq-off g oldest)
+  (if (inspect-refresh-estimated? g)
+      '()
+      (let loop ([i (- *frame-ring-n* 1)] [ks '()])
+        (if (not (inspect-frame-ref i 6))
+            ks
+            (let ([k (and (inspect-frame-shown? i) (inspect-frame-report i 5))])
+              (cond [(and k (< k oldest)) ks]
+                    [(and k (inspect-frame-seq-off? i))
+                     (loop (- i 1) (cons k ks))]
+                    [else (loop (- i 1) ks)]))))))
+
+;; A pip in the screen's cell of each refresh in ks, over its color.
+(define (pipeline-draw-river-seq-off areas count newest ks)
+  (let ([py (cadr (cdr (assq 'plot areas)))]
+        [lane (- (cadr (assq 'lane areas)) (caddr (assq 'lane areas)))])
+    (for-each
+     (lambda (k)
+       (let ([i (- count 1 (- newest k))])
+         (when (>= i 0)
+           (let-values ([(bx bw) (ui-bar-chart-bar areas count i)])
+             ;; a bar may be a fraction of a pixel wide when fitted
+             (let ([pw (max 1 (exact (floor (/ bw 3))))]
+                   [ph (max 1 (quotient lane 2))])
+               (fill-box (exact (round (+ bx (/ (- bw pw) 2))))
+                         (+ py (quotient (- lane ph) 2)) pw ph 'text))))))
+     ks)))
+
+;; The River's height for this width's legends, its heading, the ticks
+;; and the legends included, with the frames' bars about h tall.
+(define (pipeline-river-height w bars)
+  (+ (pipeline-river-fixed w)
+     (* (+ pipeline-river-depth pipeline-river-ticks-high)
+        (quotient bars pipeline-river-depth))))
+
+;; What of the River's height isn't bars: its heading, legends, and each
+;; stream's strips and the inset over its plot.
+(define (pipeline-river-fixed w)
+  (let-values ([(kw kh) (ui-legend-size (pipeline-river-keys))]
+               [(tw th) (ui-legend-size (pipeline-river-tick-keys))])
+    (+ (pipeline-river-heading-h w) 4 th 4
+       pipeline-river-inset (ui-stream-room pipeline-draw-river-tick-strips)
+       pipeline-river-inset (ui-stream-room pipeline-draw-river-strips)
+       4 kh)))
+
+;; The River's heading row: its name, whether it's live, the checkbox,
+;; the words.
+(define (pipeline-river-heading-h w)
   (let-values ([(gw gh) (ui-label-size '(group) "River" w)]
-               [(kw kh) (ui-legend-size (pipeline-river-keys v))])
-    (+ gh 4 (ui-stream-room pipeline-draw-lanes) 96 4 kh)))
+               [(cw ch) (pipeline-river-tick-choice-size)]
+               [(lw lh) (ui-live-badge-size #t "")])
+    (max gh ch lh)))
 
-(define (pipeline-river-keys v)
-  (map (lambda (j) (cdr (list-ref monitor-phases j)))
-       (pipeline-view-order v)))
+;; What a held Pipeline holds, on its badge.
+(define (pipeline-river-held-label v)
+  (let* ([tick (pipeline-view-tick v)]
+         [l (and tick (profile-tick-kept? tick)
+                 (inspect-history-ref (pipeline-view-history v)
+                                      (pipeline-tick-frame tick)))])
+    (if l (format "Held at frame ~a" (inspect-list-frame l)) "Held")))
 
-(define (pipeline-river-words v)
+(define pipeline-river-live-tip
+  "Live: the Pipeline follows each frame. A press here, or on a bar, holds \
+   it still on one frame; here again, or Esc, lets it go.")
+
+;; Which ticks stand over a refresh: those whose work began in it, or the
+;; one that drew the frame new there.
+(define pipeline-river-tick-choices
+  '(("Ticks when they ran" . ran)
+    ("Each over its frame" . frame)))
+
+;; The choice's room: a button as wide as the widest, each.
+(define (pipeline-river-tick-choice-size)
+  (let ([sizes (map (lambda (c)
+                      (call-with-values (lambda () (ui-button-size (car c) #f))
+                        cons))
+                    pipeline-river-tick-choices)])
+    (values (* (length sizes) (+ 6 (apply max (map car sizes))))
+            (apply max (map cdr sizes)))))
+
+;; A stream's plot begins this far under its top (ui-bar-chart-areas).
+(define pipeline-river-inset 4)
+
+(define (pipeline-river-keys)
+  (filter cdr (cdr pipeline-draw-river-parts)))
+
+(define (pipeline-river-tick-keys)
+  (map cdr monitor-phases))
+
+(define (pipeline-river-words v g)
   (let ([tick (pipeline-view-tick v)] [held? (pipeline-view-held? v)])
     (if (and held? tick)
         (let ([l (and (profile-tick-kept? tick)
@@ -389,167 +696,183 @@
               (format "tick ~a, frame ~a: ~a records" tick
                       (inspect-list-frame l) (inspect-list-count l))
               (format "tick ~a: its frame is no longer kept" tick)))
-        (format "a bar a tick; the last ~a frames kept; it takes ~,2f ms a \
-                 tick itself"
+        (format "a column a refresh, ~,1f ms~a; ~a frames kept; it takes \
+                 ~,2f ms a tick itself"
+                (/ (inspect-refresh-period g) 1e6)
+                (if (inspect-refresh-estimated? g)
+                    ", estimated: this screen doesn't report"
+                    "")
                 (inspect-history-count (pipeline-view-history v))
                 (pipeline-view-own v)))))
 
-;; The newest tick whose frame the screen has had time to report on, six
-;; periods back: the River sends those after it again each time, till what
-;; became of their frames is known. #f with none yet.
-(define (pipeline-settled-tick period)
-  (let ([oldest (profile-oldest-tick)] [since (- (now-ns) (* 6 period))])
-    (let loop ([seq (profile-newest-tick)])
-      (cond [(or (not seq) (not oldest) (< seq oldest)) #f]
-            [(> (profile-tick-ns seq 'end) since) (loop (- seq 1))]
-            [else seq]))))
+;; The picked frame's column.
+(define (pipeline-river-marked v g)
+  (let ([tick (pipeline-view-tick v)])
+    (if (and tick (profile-tick-kept? tick) (pipeline-tick-drew? tick))
+        (let ([k (pipeline-frame-column g (pipeline-tick-frame-index tick))])
+          (if k (list k) '()))
+        '())))
+
+;; Goes back to the frame on the screen at refresh k.
+(define (pipeline-pick-refresh! v g k)
+  (let* ([i (pipeline-river-frame-at g k)]
+         [seq (and i (pipeline-frame-tick i))])
+    (when seq (pipeline-pick! v seq))))
+
+;; The refresh on the River's now: the one the frame drawn now will show
+;; at (pipeline-river-target); while held, as it was.
+(define (pipeline-river-now v g)
+  (if (pipeline-view-held? v)
+      (pipeline-view-reach v)
+      (pipeline-river-target g)))
+
+;; The refresh the frame being drawn will show at, by grid g, should frames
+;; keep coming a refresh apart: the one after the newest frame placed on a
+;; refresh, one more for each since on its way to the screen; never before
+;; the next refresh. So the River moves a column a frame while the screen
+;; takes them so, the screen's late word no matter, and a frame that comes
+;; late moves it with the jump it makes.
+(define (pipeline-river-target g)
+  (let ([next (+ (inspect-refresh-of g (now-ns)) 1)])
+    (let loop ([i (- *frame-ring-n* 1)] [ahead 1] [n 0])
+      (if (or (= n 64) (not (inspect-frame-ref i 6)))
+          (+ next ahead -1)
+          (let ([k (inspect-frame-refresh g i)])
+            (cond [k (max next (+ k ahead))]
+                  [(pipeline-frame-on-way? i)
+                   (loop (- i 1) (+ ahead 1) (+ n 1))]
+                  [else (loop (- i 1) ahead (+ n 1))]))))))
 
 (define (pipeline-river-pane v x y w h)
   (let*-values
       ([(ui) (pipeline-view-ui v)]
        [(river) (pipeline-view-river v)]
-       [(period) (pacer-period)]
-       [(top) (quotient (* 2 period) 1000)]
-       [(rules) (append (pipeline-river-rules period)
-                        (pipeline-gutter-rules period))]
-       [(reach) (pipeline-view-reach v)]
-       [(held?) (pipeline-view-held? v)]
-       [(newest) (if held? (car reach) (profile-newest-tick))]
-       [(oldest) (if held? (cdr reach) (profile-oldest-tick))]
-       [(keys) (pipeline-river-keys v)]
+       [(ticks) (pipeline-view-ticks v)]
+       [(by-frame?) (pipeline-view-ticks-by-frame? v)]
+       [(g) (inspect-refresh-grid)]
+       [(r) (inspect-refresh-period g)]
+       [(top) (quotient (* pipeline-river-depth r)
+                        1000)]
+       [(rules) (pipeline-river-rules r)]
+       [(tick-rules) (pipeline-river-tick-rules r)]
+       [(frame-rules) (append rules
+                              (pipeline-river-gutter
+                               tick-rules pipeline-draw-river-tick-strips))]
+       [(tick-rules*) (append tick-rules
+                              (pipeline-river-gutter
+                               rules pipeline-draw-river-strips))]
+       [(now) (pipeline-river-now v g)]
+       ;; now's own frame is the one being drawn
+       [(newest) (- now 1)]
+       [(oldest) (- newest (min pipeline-river-kept (max 1 (quotient w 2)))
+                    -1)]
+       [(keys) (pipeline-river-keys)]
+       [(tick-keys) (pipeline-river-tick-keys)]
        [(gw gh) (ui-label-size '(group) "River" w)]
        [(kw kh) (ui-legend-size keys)]
-       [(sy) (+ y gh 4)]
-       [(sh) (- h gh 4 4 kh)])
-    (ui-draw-label x y w gh '(group) "River")
-    (ui-draw-label x y w gh '(dim right) (pipeline-river-words v))
-    (when (and newest (not held?))
-      (ui-stream-resend! river (+ 1 (or (pipeline-settled-tick period)
-                                        (- oldest 1))))
-      (ui-stream-send! river oldest newest (pipeline-river-word period)))
-    (ui-stream ui 'pipeline-river river x sy w sh newest oldest top rules
-               (map (lambda (j) (cons j (cadr (list-ref monitor-phases j))))
-                    (pipeline-view-order v))
-               pipeline-bar-px
-               'doc '((L . "Go back to this tick"))
-               'strip-tips pipeline-lane-tips
-               'tip (lambda (seq)
-                      (and (profile-tick-kept? seq)
-                           (pipeline-river-tip v seq period)))
-               'on-pick (lambda (seq) (pipeline-pick! v seq))
-               'marked (if (pipeline-view-tick v)
-                           (list (pipeline-view-tick v))
-                           '())
+       [(tw th) (ui-legend-size tick-keys)]
+       [(cw ch) (pipeline-river-tick-choice-size)]
+       [(live?) (not (pipeline-view-held? v))]
+       [(held-label) (if live? "" (pipeline-river-held-label v))]
+       [(lw lh) (ui-live-badge-size live? held-label)]
+       [(row) (pipeline-river-heading-h w)]
+       ;; a refresh's height in pixels, the same up and down
+       [(unit) (max 1 (quotient (- h (pipeline-river-fixed w))
+                                (+ pipeline-river-depth
+                                   pipeline-river-ticks-high)))]
+       [(ticks-h) (+ pipeline-river-inset
+                     (ui-stream-room pipeline-draw-river-tick-strips)
+                     (* pipeline-river-ticks-high unit))]
+       ;; the heading, then the ticks rising to the screen's lane, and the
+       ;; frames' tails hanging from it
+       [(ty) (+ y row 4 th 4)]
+       [(sy) (+ ty ticks-h)]
+       [(sh) (+ pipeline-river-inset
+                (ui-stream-room pipeline-draw-river-strips)
+                (* pipeline-river-depth unit))])
+    (let ([ly (+ y (quotient (- row gh) 2))])
+      (ui-draw-label x ly w gh '(group) "River")
+      (ui-draw-label x ly w gh '(dim right) (pipeline-river-words v g)))
+    (unless (pipeline-view-held? v)
+      ;; the screen reports a few refreshes on, and what's on its way moves
+      (ui-stream-resend! river (- now 8))
+      (ui-stream-resend! ticks (- now 8))
+      (let* ([from (if (< newest (ui-stream-sent river))
+                       oldest
+                       (max oldest (+ (ui-stream-sent river) 1)))]
+             [ticks-from (if (< newest (ui-stream-sent ticks))
+                             oldest
+                             (max oldest (+ (ui-stream-sent ticks) 1)))]
+             [starts (pipeline-river-starts g (min from ticks-from))])
+        (ui-stream-send! river oldest newest
+                         (pipeline-river-word g now starts))
+        (ui-stream-send! ticks oldest newest
+                         (pipeline-river-tick-word
+                          g by-frame? starts
+                          (and (not by-frame?)
+                               (pipeline-river-ticks-ran g ticks-from))))))
+    (ui-stream ui 'pipeline-river river x sy w sh newest oldest top
+               frame-rules
+               (map (lambda (part j) (cons j (car part)))
+                    pipeline-draw-river-parts
+                    (iota (length pipeline-draw-river-parts)))
+               1
+               'fit 'whole
+               'doc '((L . "Go back to this frame"))
+               'strip-tips (list pipeline-river-screen-tip)
+               'tip (lambda (k) (pipeline-river-tip v g now k))
+               'on-pick (lambda (k) (pipeline-pick-refresh! v g k))
+               'marked (pipeline-river-marked v g)
                'over (lambda (areas count)
-                       (when newest
-                         (pipeline-draw-reach v areas count newest)
-                         (when (pipeline-view-tick v)
-                           (pipeline-draw-picked areas count newest
-                                                 (pipeline-view-tick v))))))
-    (ui-draw-legend x (+ sy sh 4) w kh '() keys)))
+                       (pipeline-draw-river-seq-off
+                        areas count newest
+                        (pipeline-river-seq-off g oldest))))
+    (ui-draw-legend x (+ sy sh 4) w kh '() keys)
+    (ui-draw-legend x (+ y row 4) w th '() tick-keys)
+    (ui-live-badge ui '(pipeline hold) (+ x gw 12) (+ y (quotient (- row lh) 2))
+             lw lh live? held-label
+             (lambda (on?)
+               (if on? (pipeline-resume! v) (pipeline-hold! v)))
+             'tip pipeline-river-live-tip)
+    (ui-segmented ui '(pipeline ticks) (+ x gw 12 lw 16)
+                  (+ y (quotient (- row ch) 2)) cw ch
+                  pipeline-river-tick-choices (if by-frame? 'frame 'ran)
+                  (lambda (choice)
+                    (unless (eq? (eq? choice 'frame) by-frame?)
+                      (pipeline-view-ticks-by-frame?-set! v (eq? choice 'frame))
+                      (ui-stream-restart! ticks))))
+    (ui-stream ui 'pipeline-river-ticks ticks x ty w ticks-h newest oldest
+               (quotient (* pipeline-river-ticks-high r) 1000)
+               tick-rules*
+               (map (lambda (phase j) (cons j (cadr phase)))
+                    monitor-phases (iota (length monitor-phases)))
+               1
+               'fit 'whole
+               'doc '((L . "Go back to this tick"))
+               'strip-tips pipeline-river-ticks-tips
+               'tip (lambda (k)
+                      (pipeline-river-ticks-text
+                       g k by-frame? (if by-frame?
+                                         (pipeline-river-starts g k)
+                                         '())))
+               'on-pick (lambda (k)
+                          (let ([seqs (pipeline-river-ticks-of
+                                       g k by-frame?
+                                       (if by-frame?
+                                           (pipeline-river-starts g k)
+                                           '())
+                                       (if by-frame?
+                                           #f
+                                           (pipeline-river-ticks-ran g k)))])
+                            (when (pair? seqs) (pipeline-pick! v (car seqs)))))
+               'marked (pipeline-river-tick-marked v g by-frame?))))
 
 ;;; ---- Latency
-;;; A bar a tick, over the River's and as wide, its frame's points stacked
-;;; on one line, the publish: below it what led up to it, from its oldest
-;;; input (by the compositor's own time, then SDL's stamp, then when core0
-;;; first saw it) through main's tick and draw; above it what came after,
-;;; core0 taking it, sending it, its GPU work done, and the screen showing
-;;; it. Over the bars, the frames the screen froze a refresh for, or dropped.
+;;; The refresh clock, the last six refreshes as they went, and the
+;;; numbers of the newest frame shown, over the River, which is the chart.
 
-;; The parts of a bar bottom up, each from the point before it: (point
-;; color . label); the first, clear, lifts the bar to the publish line.
-(define pipeline-draw-latency-parts
-  '((#f #f . #f)
-    (sdl chart-muted-1 . "the compositor's time to SDL's stamp")
-    (pumped chart-7 . "to core0's pump")
-    (tick chart-6 . "to main's tick")
-    (draw chart-5 . "to its draw")
-    (publish chart-1 . "drawing")
-    (taken chart-2 . "to core0's take")
-    (sent chart-3 . "to its send")
-    (gpu chart-4 . "to the GPU's done")
-    (shown chart-8 . "to the screen")))
-(define pipeline-draw-latency-strips '(("screen" chart-flag text-faint)))
-(define pipeline-latency-below 3)   ; refreshes under the publish line
-(define pipeline-latency-above 4)   ; and over it
-
-(define (pipeline-latency-new)
-  (ui-stream-new pipeline-river-rows (length pipeline-draw-latency-parts)
-                 pipeline-draw-latency-strips))
-
-;; Frame i's point k of its bar (now-ns), lifted to the one before it when
-;; missing or earlier: 0 its floor, the publish less the room below; 1 its
-;; oldest input, or what comes first; then pipeline-draw-latency-parts'; all
-;; within the bar's room.
-(define (pipeline-latency-at i k p)
-  (let* ([publish (inspect-frame-at i 'publish)]
-         [low (- publish (* pipeline-latency-below p))]
-         [high (+ publish (* pipeline-latency-above p))])
-    (let loop ([j 1]
-               [at (max low (or (inspect-frame-at i 'wl)
-                                (inspect-frame-at i 'sdl)
-                                (inspect-frame-at i 'pumped)
-                                (inspect-frame-at i 'tick)
-                                (inspect-frame-at i 'draw)
-                                publish))])
-      (cond
-        [(= k 0) low]
-        [(= j k) (min high at)]
-        [else
-         (loop (+ j 1)
-               (max at (or (inspect-frame-at
-                            i (car (list-ref pipeline-draw-latency-parts j)))
-                           at)))]))))
-
-;; Tick seq's word j, µs: a part of its frame's bar, then the screen's
-;; strip (1 froze a refresh, 2 dropped); 0 with no frame.
-(define (pipeline-latency-word p)
-  (let ([word (pipeline-latency-frame-word p)])
-    (lambda (seq j)
-      (if (and (profile-tick-kept? seq) (pipeline-tick-drew? seq))
-          (word (pipeline-tick-frame-index seq) j)
-          0))))
-
-;; The same of frame i.
-(define (pipeline-latency-frame-word p)
-  (lambda (i j)
-    (cond
-      [(not (inspect-frame-at i 'publish)) 0]
-      [(= j (length pipeline-draw-latency-parts))
-       (cond [(eqv? (inspect-frame-report i 1) 2) 2]
-             [(let ([m (inspect-frame-missed i)]) (and m (> m 0))) 1]
-             [else 0])]
-      [else (quotient (- (pipeline-latency-at i (+ j 1) p)
-                         (pipeline-latency-at i j p))
-                      1000)])))
-
-;; Frame i's points as a tooltip: each that came, ms from its publish.
-(define (pipeline-latency-tip i)
-  (let ([publish (inspect-frame-at i 'publish)])
-    (and publish
-         (string-join
-          (cons
-           (format "frame ~a~a" (inspect-frame-ref i 6)
-                   (case (inspect-frame-screen i)
-                     [(late) ", the screen froze a refresh before it"]
-                     [(dropped) ", dropped by the screen"]
-                     [else ""]))
-           (filter values
-                   (map (lambda (point label)
-                          (let ([t (inspect-frame-at i point)])
-                            (and t (format "~a: ~,2f ms" label
-                                           (/ (- t publish) 1e6)))))
-                        '(wl sdl pumped tick draw publish taken acquiring
-                          acquired sent gpu shown)
-                        '("input, by the compositor" "input, by SDL"
-                          "input, seen by core0" "tick" "draw" "publish"
-                          "core0's take" "asked for an image" "had one"
-                          "sent" "GPU done" "on screen"))))
-          "\n"))))
-
-;; Input to screen over the last 10 s, ms at the median and the 99th, by
-;; the compositor's time, SDL's stamp and core0's pump: a phrase each, read
-;; twice a second at most.
+;; Input to screen, the last 10 s, ms at the median and the 99th, by each
+;; input's point, read twice a second.
 (define (pipeline-latency-words v)
   (let ([was (pipeline-view-latency-words v)])
     (if (and was (< (- (now-ms) (car was)) 500))
@@ -570,35 +893,9 @@
 (define (pipeline-latency-pane v x y w h)
   (let*-values
       ([(ui) (pipeline-view-ui v)]
-       [(s) (pipeline-view-latency v)]
-       [(p) (pacer-period)]
-       [(top) (quotient (* (+ pipeline-latency-below pipeline-latency-above) p)
-                        1000)]
-       [(rules) (append (pipeline-latency-rules p)
-                        (pipeline-gutter-rules p))]
-       [(reach) (pipeline-view-reach v)]
-       [(held?) (pipeline-view-held? v)]
-       [(newest) (if held? (car reach) (profile-newest-tick))]
-       [(oldest) (if held? (cdr reach) (profile-oldest-tick))]
-       ;; a row before the publish, a row after
-       [(keys) (map cdr (cdr pipeline-draw-latency-parts))]
-       [(before) (list-head keys 5)]
-       [(after) (list-tail keys 5)]
        [(gw gh) (ui-label-size '(group) "Latency" w)]
-       [(kw kh) (ui-legend-size keys)]
-       [(th) (max pipeline-clock-size (pipeline-timeline-height))]
-       [(ty) (+ y gh 4)]
-       [(sy) (+ ty th 6)]
-       [(sh) (- h gh 4 th 6 4 kh 2 kh)])
+       [(ty) (+ y gh 4)])
     (ui-draw-label x y w gh '(group) "Latency")
-    ;; with no small screen beside it, Hold is here
-    (let-values ([(tw th) (ui-label-size '(group) "Latency" w)]
-                 [(cw chh) (ui-checkbox-size "Hold")])
-      (ui-checkbox ui '(pipeline hold) (+ x tw 16) y cw gh "Hold" held?
-                   (lambda (on?)
-                     (if on? (pipeline-hold! v) (pipeline-resume! v)))
-                   'tip "Hold the flow still, as a press on a bar does; \
-                         Esc lets it go"))
     (ui-draw-label x y w gh '(dim right)
                    (string-append "input to screen, the last 10 s, ms at \
                                    the median and the 99th: "
@@ -627,35 +924,14 @@
             oldest input, main drawing it, its wait in the box, core0's \
             wait for an image (a mark at the latch its tick aimed at), its \
             time on the screen, red where a refresh repeated. Lines are \
-            the screen's refreshes. Held, it ends with the tick picked.")
-    (when (and newest (not held?))
-      ;; the screen reports a few refreshes on
-      (ui-stream-resend! s (+ 1 (or (pipeline-settled-tick p) (- oldest 1))))
-      (ui-stream-send! s oldest newest (pipeline-latency-word p)))
-    (ui-stream ui 'pipeline-latency s x sy w sh newest oldest top rules
-               (map (lambda (part j) (cons j (cadr part)))
-                    pipeline-draw-latency-parts
-                    (iota (length pipeline-draw-latency-parts)))
-               pipeline-bar-px
-               'doc '((L . "Go back to this tick"))
-               'strip-tips '("Frames the screen froze a refresh for, \
-                              in red; dropped ones, faint.")
-               'tip (lambda (seq)
-                      (and (profile-tick-kept? seq) (pipeline-tick-drew? seq)
-                           (pipeline-latency-tip
-                            (pipeline-tick-frame-index seq))))
-               'on-pick (lambda (seq) (pipeline-pick! v seq))
-               'marked (if (pipeline-view-tick v)
-                           (list (pipeline-view-tick v))
-                           '())
-               'over (lambda (areas count)
-                       (when (and newest (pipeline-view-tick v))
-                         (pipeline-draw-picked areas count newest
-                                               (pipeline-view-tick v)))))
-    (ui-draw-legend x (+ sy sh 4) w kh '() before)
-    (ui-draw-legend x (+ sy sh 4 kh 2) w kh '() after)))
+            the screen's refreshes. Held, it ends with the tick picked.")))
 
-;; The live strip over Latency's bars: the last six refreshes, each frame
+;; Latency's height over the River: its heading and the clock or the strip.
+(define (pipeline-latency-height w)
+  (let-values ([(gw gh) (ui-label-size '(group) "Latency" w)])
+    (+ gh 4 (max pipeline-clock-size (pipeline-timeline-height)))))
+
+;; The live strip beside the clock: the last six refreshes, each frame
 ;; across its lanes as it went, its oldest input, main's draw, its wait in
 ;; the box, core0's wait for an image, and its time on the screen, a
 ;; refresh repeated red; the refreshes the screen reported, and the latch
@@ -870,29 +1146,6 @@
                   (draw-text ix y (car item) 'text-faint 'ui-small)
                   (draw-text ix (+ y lh 2) (cdr item) 'text 'ui)))
               items (iota (length items)))))
-
-;; Latency's rules: the publish, and refreshes before and after it.
-(define (pipeline-latency-rules p)
-  (map (lambda (k)
-         (cons (quotient (+ (* pipeline-latency-below p) (* k p)) 1000)
-               (if (= k 0)
-                   "publish"
-                   (format "~a~,1f ms" (if (> k 0) "+" "") (/ (* k p) 1e6)))))
-       '(-2 -1 0 1 2 3)))
-
-;; Rules at #f, the River's labels and Latency's both, so that the two
-;; charts' bars start at one x and line up a tick to a tick.
-(define (pipeline-gutter-rules p)
-  (map (lambda (label) (cons #f label))
-       (append (map cdr (pipeline-latency-rules p))
-               (map car pipeline-draw-latency-strips)
-               (map cdr (pipeline-river-rules p))
-               (map car pipeline-draw-lanes))))
-
-;; The River's rules: a period and two.
-(define (pipeline-river-rules period)
-  (list (cons (quotient period 1000) (monitor-ns-text period))
-        (cons (quotient (* 2 period) 1000) (monitor-ns-text (* 2 period)))))
 
 ;;; ---- the Tape
 
@@ -2704,13 +2957,15 @@
   (let* ([ui (pipeline-view-ui v)] [pad (ui-pad)] [gap (ui-gap)]
          [lh (font-line-height 'ui)]
          [card-h (+ 12 (* 3 lh))]
-         [river-h (pipeline-river-height v (- w pad pad))]
          [tape-h (pipeline-tape-height v (- w pad pad))]
          [side (min 360 (quotient w 2))]
          [top (+ pad card-h gap)]
-         ;; Latency's bars stand over the River's, a tick each, as wide: no
+         ;; Latency is the clock over the River, which takes the rest: no
          ;; small screen beside it, no Tape under it
          [latency? (eq? (pipeline-view-stage v) 'latency)]
+         [river-h (if latency?
+                      (- h pad top (pipeline-latency-height (- w pad pad)) gap)
+                      (pipeline-river-height (- w pad pad) 80))]
          [bottom (max top (- h pad river-h gap
                              (if latency? 0 (+ tape-h gap))))]
          [l (pipeline-view-shown v)]
@@ -2721,8 +2976,7 @@
          ;; rows under it: the viewer fits the screen in whatever it's given
          [screen-h (max ch (min (exact (round (* screen-w (/ *canvas-ph*
                                                               *canvas-pw*))))
-                                (- bottom top gap bh gap
-                                   (* 2 (+ ch gap)))))])
+                                (- bottom top gap bh gap ch gap)))])
     (ui-begin! ui)
     (let ([card-w (quotient (- w pad pad (* 5 gap)) 6)])
       (for-each
@@ -2746,7 +3000,7 @@
           [(latency)
            (pipeline-latency-pane v pad top pane-w (- bottom top))]
           [else (pipeline-memory-pane v pad top pane-w (- bottom top))]))
-      ;; the small screen, or its place while it's out; its bar, Hold
+      ;; the small screen, or its place while it's out; its bar, how often
       (unless latency? (pipeline-image! v))
       (unless latency?
         (let* ([sx (+ pad pane-w gap)]
@@ -2766,11 +3020,7 @@
                 (pipeline-viewer v ui '(pipeline viewer) sx top screen-w
                                  screen-h)
                 (pipeline-viewer-bar v ui sx sy screen-w screen-w screen-h #f)))
-          (ui-checkbox ui '(pipeline hold) sx hy
-                       screen-w ch "Hold this frame" (pipeline-view-held? v)
-                       (lambda (on?)
-                         (if on? (pipeline-hold! v) (pipeline-resume! v))))
-          (let* ([ey (+ hy ch gap)]
+          (let* ([ey hy]
                  [every (pipeline-view-every v)]
                  [label "Draw it every"]
                  [lw (+ 8 (text-width label 'ui))])
@@ -2785,7 +3035,7 @@
                              '(dim) (if (= every 1) "tick" "ticks"))))
           ;; what a frame kept can't show
           (when (and (pipeline-view-held? v) (> (inspect-list-left-out l) 0))
-            (ui-draw-label sx (+ hy ch gap ch gap)
+            (ui-draw-label sx (+ hy ch gap)
                            screen-w 0 '(hint wrap)
                            "An image or a paint let go of since this frame \
                             is left out of it here.")))))
@@ -2811,10 +3061,8 @@
                  (or (pipeline-view-popped v)
                      (not (eq? (pipeline-view-stage v) 'latency))))
         (pipeline-preview-back! v)))
-    (let ([newest (profile-newest-tick)])
-      (when (and newest
-                 (not (eqv? newest (ui-stream-sent (pipeline-view-river v)))))
-        (invalidate! win)))
+    ;; the River moves with every frame
+    (invalidate! win)
     ;; a period after the last read was due, not after it was done, so that
     ;; reads keep in step with the clock; one a period late or more starts
     ;; again from then
@@ -2830,16 +3078,17 @@
     (if existing
         (begin (focus-window! existing) existing)
         (let* ([ui (make-ui)]
-               [river (ui-stream-new pipeline-river-rows (length monitor-phases)
-                                     pipeline-draw-lanes)]
+               [river (pipeline-river-new)]
+               [ticks (pipeline-river-ticks-new)]
                [v (make-pipeline-view ui (inspect-history-new
                                           pipeline-frames-kept)
-                                      river 'lists (inspect-list) #f 0 '() #f #f
-                                      #f #f #f #f #f #f '() 0.0 #f 1
+                                      river ticks 'lists (inspect-list) #f 0
+                                      '() #f #f
+                                      #f #f #f #f #f #f 0.0 #f 1
                                       (pipeline-tape-new 0) #f #f 5
                                       #f #f #f #f '() #f #f 'picture
                                       (inspect-list-empty) #f #f #f #f
-                                      (pipeline-latency-new) #f
+                                      #f #f
                                       (make-hashtable equal-hash equal?))])
           (pipeline-look! v)
           (apply open-window "Pipeline"
@@ -2855,8 +3104,8 @@
                             (pipeline-view-image-set! v #f)
                             (pipeline-view-back-set! v #f))
                           (ui-stream-release! river)
-                          (ui-stream-release! (pipeline-view-tape v))
-                          (ui-stream-release! (pipeline-view-latency v)))
+                          (ui-stream-release! ticks)
+                          (ui-stream-release! (pipeline-view-tape v)))
                  (append
                   (ui-handlers ui
                                'key (lambda (win key mods)
