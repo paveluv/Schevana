@@ -31,10 +31,16 @@
 (define-foreign sdl-set-hint "SDL_SetHint" (string string) bool)
 (define-foreign sdl-create-window "SDL_CreateWindow"
   (string int int unsigned-64) uptr)
-(define-foreign sdl-destroy-window "SDL_DestroyWindow" (uptr) void)
-(define-foreign sdl-set-window-minimum-size "SDL_SetWindowMinimumSize"
+;; Collect-safe, as is what may size, show or let go of the window's Metal
+;; layer once it has run: Core Animation may hold the layer's lock running
+;; a presented handler of core0's, which may wait for a collection
+;; (src/host/platform.ss).
+(define-foreign/collect-safe sdl-destroy-window "SDL_DestroyWindow" (uptr)
+  void)
+(define-foreign/collect-safe sdl-set-window-minimum-size
+  "SDL_SetWindowMinimumSize" (uptr int int) bool)
+(define-foreign/collect-safe sdl-set-window-size "SDL_SetWindowSize"
   (uptr int int) bool)
-(define-foreign sdl-set-window-size "SDL_SetWindowSize" (uptr int int) bool)
 (define-foreign sdl-set-window-position "SDL_SetWindowPosition"
   (uptr int int) bool)
 (define-foreign sdl-show-window "SDL_ShowWindow" (uptr) bool)
@@ -54,8 +60,8 @@
 (define-foreign sdl-free "SDL_free" (uptr) void)
 (define-foreign sdl-create-system-cursor "SDL_CreateSystemCursor" (int) uptr)
 (define-foreign sdl-set-cursor "SDL_SetCursor" (uptr) bool)
-(define-foreign sdl-set-window-fullscreen "SDL_SetWindowFullscreen"
-  (uptr bool) bool)
+(define-foreign/collect-safe sdl-set-window-fullscreen
+  "SDL_SetWindowFullscreen" (uptr bool) bool)
 (define-foreign sdl-get-window-flags "SDL_GetWindowFlags" (uptr) unsigned-64)
 (define-foreign sdl-create-surface-from "SDL_CreateSurfaceFrom"
   (int int unsigned-32 uptr int) uptr)
@@ -71,8 +77,8 @@
   (unsigned-32 bool uptr) uptr)
 (define-foreign sdl-claim-window "SDL_ClaimWindowForGPUDevice"
   (uptr uptr) bool)
-(define-foreign sdl-release-window "SDL_ReleaseWindowFromGPUDevice"
-  (uptr uptr) void)
+(define-foreign/collect-safe sdl-release-window
+  "SDL_ReleaseWindowFromGPUDevice" (uptr uptr) void)
 (define-foreign sdl-swapchain-format "SDL_GetGPUSwapchainTextureFormat"
   (uptr uptr) int)
 (define-foreign sdl-create-gpu-shader "SDL_CreateGPUShader" (uptr uptr) uptr)
@@ -157,11 +163,14 @@
   (uptr bool uptr unsigned-32) bool)
 (define-foreign sdl-query-gpu-fence "SDL_QueryGPUFence" (uptr uptr) bool)
 (define-foreign sdl-release-gpu-fence "SDL_ReleaseGPUFence" (uptr uptr) void)
-;; a window's properties: its Wayland display and surface, for their reports
+;; a window's properties: its Wayland display and surface, or its Cocoa
+;; window and the tag of the view SDL draws to, for their reports
 (define-foreign sdl-get-window-properties "SDL_GetWindowProperties" (uptr)
   unsigned-32)
 (define-foreign sdl-get-pointer-property "SDL_GetPointerProperty"
   (unsigned-32 string uptr) uptr)
+(define-foreign sdl-get-number-property "SDL_GetNumberProperty"
+  (unsigned-32 string integer-64) integer-64)
 (define-foreign sdl-gpu-driver "SDL_GetGPUDeviceDriver" (uptr) string)
 ;; what the host is: SDL's version, its video driver (#f before its start)
 (define-foreign sdl-get-version "SDL_GetVersion" () int)

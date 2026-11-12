@@ -3929,6 +3929,7 @@
     [(sdl-get-window-flags) (lambda (win) fake-flags)]
     [(sdl-get-window-properties) (lambda (win) 0)]
     [(sdl-get-pointer-property) (lambda (props name default) default)]
+    [(sdl-get-number-property) (lambda (props name default) default)]
     [(sdl-get-current-video-driver) (lambda () "dummy")]
     [(sdl-get-version) (lambda () 3002010)]
     [(sdl-get-string-property) (lambda (props name default) default)]

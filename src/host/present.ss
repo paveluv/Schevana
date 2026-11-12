@@ -3,8 +3,8 @@
 ;;; each frame: when core0 sent it; when it reached the screen, the vblank
 ;;; it showed at, on now-ns's clock, with the refresh and the display's
 ;;; sequence, or that the compositor dropped it; and when core0 first saw
-;;; its GPU work done. Where the screen says nothing (X11, headless, the Mac
-;;; so far) only the GPU's times are kept.
+;;; its GPU work done. Where the screen says nothing (X11, headless) only
+;;; the GPU's times are kept.
 ;;;
 ;;; The reports are a ring by frame number that only core0 writes, and the
 ;;; world reads (host-frame-report): a row is its frame's once it bears its

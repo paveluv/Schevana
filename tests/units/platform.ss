@@ -140,3 +140,53 @@
                       (eqv? *wayland-input-clock* 1)
                       (not (wayland-input-on 1 (modulo (+ ms 2000) 4294967296)
                                              at))))))))
+
+;; A frame's row begun as core0 sends it, at t: none of the screen's word
+;; yet.
+(define (platform-test-sent! n t)
+  (let ([at (present-at n)])
+    (fxvector-set! *present-ring* at n)
+    (fxvector-set! *present-ring* (+ at 1) 0)
+    (fxvector-set! *present-ring* (+ at 2) t)))
+
+;; CLOCK_UPTIME_RAW, Metal's clock, is 8 on a Mac alone.
+(check "Metal's word on a drawable is its frame's report: shown on now-ns's \
+        clock at the window's refresh, its sequence the refreshes since the \
+        last shown; a time before the frame was sent says nothing; 0 is \
+        dropped"
+       (or (not (host-mac?))
+           (let* ([r (host-frame-ns)] [f 1000021] [t (now-ns)]
+                  [host (lambda (ns) (- ns (platform-clock-offset 8)))])
+             (fluid-let ([*mac-refresh* 0] [*mac-refresh-at* 0])
+               (for-each (lambda (n) (platform-test-sent! n (- t (* 4 r))))
+                         (list f (+ f 1) (+ f 2)))
+               (platform-test-sent! (+ f 3) (- t 20000000))
+               (mac-reported! f (host (- t (* 3 r))))
+               (mac-reported! (+ f 1) (host (- t r)))
+               (mac-reported! (+ f 2) 0)
+               (mac-reported! (+ f 3) (host (- t 40000000)))
+               (and (eqv? (host-frame-report f 1) 1)
+                    (< (abs (- (host-frame-report f 3) (- t (* 3 r)))) 100000)
+                    (= (host-frame-report f 4) r)
+                    (= 2 (- (host-frame-report (+ f 1) 5)
+                            (host-frame-report f 5)))
+                    (eqv? (host-frame-report (+ f 2) 1) 2)
+                    (eqv? (host-frame-report (+ f 3) 1) 0))))))
+
+(check "core0 reads the presented handlers' ring for the frames it sent, \
+        each by its drawable's number, once its row is in"
+       (let ([f 1000025])
+         (fluid-let ([*mac-drawable* 41]
+                     [*mac-waiting* (make-fxvector (* 2 mac-waiting-rows) -1)]
+                     [*mac-shown* (make-fxvector (* 2 mac-rows) 0)])
+           (platform-test-sent! f (now-ns))
+           (mac-ask! f)
+           (mac-pump!)
+           (let ([before (host-frame-report f 1)])
+             (fxvector-set! *mac-shown* (+ 1 (* 2 41)) 0)
+             (fxvector-set! *mac-shown* (* 2 41) 42)
+             (mac-pump!)
+             (and (eqv? before 0) (= *mac-drawable* -1)
+                  (eqv? (host-frame-report f 1) 2)
+                  (= -1 (fxvector-ref *mac-waiting*
+                                      (* 2 (modulo f mac-waiting-rows)))))))))

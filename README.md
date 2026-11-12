@@ -789,8 +789,15 @@ Decisions worth keeping in mind for the real design:
   and Monitor's Overview and the Pipeline say how long input takes to
   reach the screen. A report's time is read on the clock the compositor
   names, unless its frame would then show before it was sent: GNOME with
-  NVIDIA names `CLOCK_MONOTONIC` and reports on `CLOCK_MONOTONIC_RAW`. X11,
-  headless runs and the Mac report nothing yet.
+  NVIDIA names `CLOCK_MONOTONIC` and reports on `CLOCK_MONOTONIC_RAW`.
+  On the Mac, Metal tells a drawable's presented handlers when it was
+  shown (`presentedTime`, on the host's clock). SDL hands out no
+  drawable, so core0 gives the layer it draws to a class of its own,
+  whose `nextDrawable` is `CAMetalLayer`'s and gives each drawable
+  core0's handler; the handler runs on a thread of Apple's, writes only a
+  ring of its own by the drawable's number, and core0 reads it at each
+  pump. Metal gives no display sequence: it's counted from the times, at
+  the window's rate. X11 and headless runs report nothing yet.
 - **Latency, a refresh at a time.** The Pipeline's Latency stage puts its
   refresh clock and its strip of the last six refreshes over the River,
   whose columns are the screen's refreshes: each the frame on the screen

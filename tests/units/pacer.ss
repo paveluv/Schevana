@@ -781,7 +781,7 @@
                   (< faded 3500000) (>= faded 2000000)
                   (= most (* 2 r)))))))
 
-(check "where no report places the latches (X11, the Mac as yet), the \
+(check "where no report places the latches (X11, Windows), the \
         pacing is the grid's, as it was"
        (let ([t (now-ns)])
          (fluid-let ([*pacer-latch* (- t 1000000)] [*pacer-latch-phase* #f]

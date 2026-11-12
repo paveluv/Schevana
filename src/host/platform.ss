@@ -118,37 +118,47 @@
 ;;; ------------------------------------------------------------------
 ;;; the screen's reports
 ;;; When each frame reached the screen, in present.ss's ring
-;;; (present-reported!). Wayland's wp_presentation is the one source so far.
+;;; (present-reported!): Wayland's wp_presentation, and Metal's presented
+;;; handlers on the Mac.
 
 ;; Ask the screen to report on frame, sent next.
 (define (platform-report-ask! frame)
-  (unless (eqv? *wayland-presentation* 0)
-    (with-interrupts-disabled
-     (let ([proxy (wayland-marshal-2 *wayland-presentation* 1
-                                     wayland-feedback-interface 1 0
-                                     *wayland-surface* 0)])
-       (wayland-add-listener proxy wayland-feedback-listener frame)))))
+  (cond
+    [(not (eqv? *wayland-presentation* 0))
+     (with-interrupts-disabled
+      (let ([proxy (wayland-marshal-2 *wayland-presentation* 1
+                                      wayland-feedback-interface 1 0
+                                      *wayland-surface* 0)])
+        (wayland-add-listener proxy wayland-feedback-listener frame)))]
+    [(not (eqv? *mac-layer* 0)) (mac-ask! frame)]))
 
 ;; Reports from now on for the window, where its platform gives them.
 (define (platform-reports-start! sdl-window)
   (wayland-start! sdl-window)
+  (mac-start! sdl-window)
   (host-platform-read!))
 
 ;; The reports come since the last look, without waiting.
 (define (platform-reports-pump!)
   (unless (eqv? *wayland-queue* 0)
     (with-interrupts-disabled
-     (wayland-dispatch *wayland-display* *wayland-queue*))))
+     (wayland-dispatch *wayland-display* *wayland-queue*)))
+  (unless (eqv? *mac-layer* 0) (mac-pump!)))
 
 ;; Where the reports come from, as a person reads it: (source clock clock
 ;; flags), the clock the compositor says and the one its times fit; or #f
 ;; with none.
 (define (platform-reports)
-  (and (not (eqv? *wayland-presentation* 0))
-       (list 'wayland-presentation
-             (platform-clock-name *wayland-clock*)
-             (platform-clock-name *wayland-used*)
-             (platform-report-flags *wayland-flags*))))
+  (cond
+    [(not (eqv? *wayland-presentation* 0))
+     (list 'wayland-presentation
+           (platform-clock-name *wayland-clock*)
+           (platform-clock-name *wayland-used*)
+           (platform-report-flags *wayland-flags*))]
+    ;; Metal says its clock is the host's, mach_absolute_time's
+    [(not (eqv? *mac-layer* 0))
+     (list 'metal-presented-handler 'uptime-raw 'uptime-raw '())]
+    [else #f]))
 
 ;; ns to add to a time on clock (a POSIX clock's number) for now-ns's, read
 ;; at each report: two clocks may drift apart by a few ms an hour.
@@ -493,3 +503,224 @@
                ;; no report till the clock is known
                (when *wayland-clock*
                  (set! *wayland-presentation* p))))))))))
+
+;;; ---- the Mac's
+;;; Metal calls a drawable's presented handlers when it was shown, or
+;;; never will be: its presentedTime, seconds on the host's clock
+;;; (mach_absolute_time's, CLOCK_UPTIME_RAW), 0 for never. SDL takes each
+;;; drawable from its layer in its acquire and presents it at the submit,
+;;; and hands us none; so the one layer it draws to becomes a class of
+;;; core0's own, made once, whose nextDrawable is CAMetalLayer's and gives
+;;; what it returns our handler, there on core0's thread, inside SDL's
+;;; acquire. The handler runs on a thread of Apple's: it writes only a ring
+;;; of its own, by the drawable's number, which core0 reads at each pump
+;;; for the frames it sent. Keeping the drawables to read them later would
+;;; keep them from the layer's pool, which holds three.
+
+(define mac-objc-loaded?
+  (and (host-mac?)
+       (guard (c [#t #f])
+         (load-shared-object "/usr/lib/libobjc.A.dylib")
+         #t)))
+
+(define-syntax define-objc
+  (syntax-rules ()
+    [(_ name form) (define name (and mac-objc-loaded? form))]))
+
+(define-objc objc-class (foreign-procedure "objc_getClass" (string) uptr))
+(define-objc objc-selector
+  (foreign-procedure "sel_registerName" (string) uptr))
+(define-objc objc-class-of (foreign-procedure "object_getClass" (uptr) uptr))
+(define-objc objc-class-set!
+  (foreign-procedure "object_setClass" (uptr uptr) uptr))
+(define-objc objc-subclass
+  (foreign-procedure "objc_allocateClassPair" (uptr uptr size_t) uptr))
+(define-objc objc-subclass-done!
+  (foreign-procedure "objc_registerClassPair" (uptr) void))
+(define-objc objc-method-add!
+  (foreign-procedure "class_addMethod" (uptr uptr uptr uptr) unsigned-8))
+(define-objc objc-method
+  (foreign-procedure "class_getMethodImplementation" (uptr uptr) uptr))
+;; objc_msgSend, as each message's types call it
+(define-objc objc-send (foreign-procedure "objc_msgSend" (uptr uptr) uptr))
+(define-objc objc-send-long
+  (foreign-procedure "objc_msgSend" (uptr uptr long) uptr))
+(define-objc objc-send-double
+  (foreign-procedure "objc_msgSend" (uptr uptr) double))
+;; Collect-safe, for core0 inside nextDrawable: Core Animation's lock that
+;; a drawable's messages take is held by its thread while it runs our
+;; handler, which may wait for a collection, which can't wait for core0
+;; blocked on that lock.
+(define-objc objc-send-safe
+  (foreign-procedure __collect_safe "objc_msgSend" (uptr uptr) uptr))
+(define-objc objc-send-pointer-safe
+  (foreign-procedure __collect_safe "objc_msgSend" (uptr uptr uptr) void))
+
+(define-objc mac-next-selector (objc-selector "nextDrawable"))
+(define-objc mac-id-selector (objc-selector "drawableID"))
+(define-objc mac-time-selector (objc-selector "presentedTime"))
+(define-objc mac-handler-selector (objc-selector "addPresentedHandler:"))
+
+;; The handlers' ring: a row a drawable, by its number (drawableID, which
+;; counts up from 0 on each layer): that number plus one (0, none yet), and
+;; when it was shown (ns on the host's clock; 0, never). Only the handlers
+;; write it, the number last.
+(define mac-rows 64)
+(defvar *mac-shown* (make-fxvector (* 2 mac-rows) 0))
+
+;; On Apple's thread: the drawable's word, into its row.
+(define (mac-presented! drawable)
+  (let* ([id (objc-send drawable mac-id-selector)]
+         [t (objc-send-double drawable mac-time-selector)]
+         [at (fx* 2 (fxmodulo id mac-rows))])
+    (fxvector-set! *mac-shown* (fx+ at 1)
+                   (if (fl> t 0.0) (flonum->fixnum (flround (fl* t 1e9))) 0))
+    (memory-order-release)
+    (fxvector-set! *mac-shown* at (fx+ id 1))))
+
+;; Collect-safe: Chez makes the thread of Apple's that calls it one of its
+;; own for the call.
+(define mac-handler-code
+  (and mac-objc-loaded?
+       (let ([code (foreign-callable __collect_safe
+                     (lambda (block drawable) (mac-presented! drawable))
+                     (uptr uptr) void)])
+         (lock-object code)
+         (foreign-callable-entry-point code))))
+
+;; The handler as a block: a global one (flag 1 << 28), which copying and
+;; releasing leave as it is, with its signature (1 << 30). Never freed.
+(define mac-handler-block
+  (and mac-objc-loaded?
+       (let ([b (foreign-alloc 32)] [d (foreign-alloc 24)])
+         (foreign-set! 'unsigned-64 d 0 0)
+         (foreign-set! 'unsigned-64 d 8 32)
+         (foreign-set! 'uptr d 16 (platform-c-string "v16@?0@8"))
+         (foreign-set! 'uptr b 0 (foreign-entry "_NSConcreteGlobalBlock"))
+         (foreign-set! 'integer-32 b 8 (+ (expt 2 28) (expt 2 30)))
+         (foreign-set! 'integer-32 b 12 0)
+         (foreign-set! 'uptr b 16 mac-handler-code)
+         (foreign-set! 'uptr b 24 d)
+         b)))
+
+;; SDL's layer, of core0's class now (0, none); CAMetalLayer's own
+;; nextDrawable, collect-safe, as the pool may hold it a refresh; and the
+;; number of the drawable the acquire running now was given (-1, none).
+(defvar *mac-layer* 0)
+(defvar *mac-next-drawable* #f)
+(defvar *mac-drawable* -1)
+
+;; nextDrawable, as core0's class has it: the layer's own, and the drawable
+;; it returns given our handler.
+(define mac-next-code
+  (and mac-objc-loaded?
+       (let ([code (foreign-callable __collect_safe
+                     (lambda (layer cmd)
+                       (let ([d (*mac-next-drawable* layer cmd)])
+                         (if (eqv? d 0)
+                             (set! *mac-drawable* -1)
+                             (begin
+                               (objc-send-pointer-safe d mac-handler-selector
+                                                       mac-handler-block)
+                               (set! *mac-drawable*
+                                 (objc-send-safe d mac-id-selector))))
+                         d))
+                     (uptr uptr) uptr)])
+         (lock-object code)
+         (foreign-callable-entry-point code))))
+
+;; Core0's subclass of CAMetalLayer, made once a process.
+(define (mac-layer-class metal)
+  (let ([own (objc-class "SchevanaMetalLayer")])
+    (if (eqv? own 0)
+        (let ([c (objc-subclass metal (platform-c-string "SchevanaMetalLayer")
+                                0)])
+          (objc-method-add! c mac-next-selector mac-next-code
+                            (platform-c-string "@16@0:8"))
+          (objc-subclass-done! c)
+          c)
+        own)))
+
+;; The layer SDL draws to, found by its view's tag in the window, of core0's
+;; class from now on: only one of CAMetalLayer's own class, not one another
+;; has given its own (KVO does).
+(define (mac-start! sdl-window)
+  (when (and mac-objc-loaded? (eqv? *mac-layer* 0))
+    (let* ([props (sdl-get-window-properties sdl-window)]
+           [nswindow (sdl-get-pointer-property
+                      props "SDL.window.cocoa.window" 0)]
+           [tag (sdl-get-number-property
+                 props "SDL.window.cocoa.metal_view_tag" 0)]
+           [metal (objc-class "CAMetalLayer")]
+           [content (if (eqv? nswindow 0)
+                        0
+                        (objc-send nswindow (objc-selector "contentView")))]
+           [view (if (or (eqv? content 0) (eqv? tag 0))
+                     0
+                     (objc-send-long content (objc-selector "viewWithTag:")
+                                     tag))]
+           [layer (if (eqv? view 0)
+                      0
+                      (objc-send view (objc-selector "layer")))])
+      (when (and (not (eqv? layer 0)) (not (eqv? metal 0))
+                 (eqv? (objc-class-of layer) metal))
+        (set! *mac-next-drawable*
+          (foreign-procedure __collect_safe
+            (objc-method metal mac-next-selector) (uptr uptr) uptr))
+        (objc-class-set! layer (mac-layer-class metal))
+        (set! *mac-layer* layer)))))
+
+;; The frames sent and not reported on yet, each with its drawable's
+;; number, a row a frame by its number (-1, none): core0's alone.
+(define mac-waiting-rows 8)
+(defvar *mac-waiting* (make-fxvector (* 2 mac-waiting-rows) -1))
+
+;; Frame, sent next, waits for its drawable's report.
+(define (mac-ask! frame)
+  (unless (fx= *mac-drawable* -1)
+    (let ([at (fx* 2 (fxmodulo frame mac-waiting-rows))])
+      (fxvector-set! *mac-waiting* at frame)
+      (fxvector-set! *mac-waiting* (fx+ at 1) *mac-drawable*))
+    (set! *mac-drawable* -1)))
+
+;; The reports the handlers wrote since the last look.
+(define (mac-pump!)
+  (let ([w *mac-waiting*] [s *mac-shown*])
+    (do ([i 0 (fx+ i 2)]) ((fx= i (fx* 2 mac-waiting-rows)))
+      (let ([frame (fxvector-ref w i)] [id (fxvector-ref w (fx+ i 1))])
+        (unless (fx< frame 0)
+          (let ([at (fx* 2 (fxmodulo id mac-rows))])
+            (when (fx= (fxvector-ref s at) (fx+ id 1))
+              (memory-order-acquire)
+              (mac-reported! frame (fxvector-ref s (fx+ at 1)))
+              (fxvector-set! w i -1))))))))
+
+;; The display's refreshes as Metal's times count them, from the first
+;; shown, and when the last shown came (now-ns).
+(defvar *mac-refresh* 0)
+(defvar *mac-refresh-at* 0)
+
+;; Frame's word from Metal: t, when it was shown on the host's clock, or 0
+;; for never. A time is taken on now-ns's clock when its frame shows after
+;; it was sent, and within a second; else the report says nothing. The
+;; display's sequence is the refreshes since the last shown, at the
+;; window's rate, as Metal gives none.
+(define (mac-reported! frame t)
+  (if (fx= t 0)
+      (begin (present-reported! frame 2 0 0 0)
+             (host-trace! 11 frame))
+      (let ([shown (+ t (platform-clock-offset 8))]
+            [sent (fxvector-ref *present-ring* (fx+ (present-at frame) 2))]
+            [r (host-frame-ns)])
+        (when (and (<= (- sent 1000000) shown (+ sent 1000000000)) (> r 0))
+          (let ([seq (if (= *mac-refresh-at* 0)
+                         1
+                         (+ *mac-refresh*
+                            (div (+ (- shown *mac-refresh-at*)
+                                    (quotient r 2))
+                                 r)))])
+            (when (> shown *mac-refresh-at*)
+              (set! *mac-refresh* seq)
+              (set! *mac-refresh-at* shown))
+            (present-reported! frame 1 shown r seq)
+            (host-trace! 10 frame))))))
