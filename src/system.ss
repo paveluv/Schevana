@@ -200,8 +200,10 @@
                     (lambda () (if hold? (hold-event! ev) (handle-event! ev)))))
           (each (cdr evs)))))
     ;; frames core0 gave back, on its own thread since; on main's, they
-    ;; come back as they're published
+    ;; come back as they're published. One sent, the collections its turn
+    ;; held off.
     (when (host-forked?) (safely 'render render-frames-back!))
+    (collector-after-sent!)
     (let ([ticked?
            (and (not (reload-holding?))
                 (begin
@@ -220,7 +222,8 @@
       ;; a step leads up to a tick only while one is wanted; one in a quiet
       ;; spell is its own, as a tick nothing asked for once was
       (set! *pacer-between?* (and (pair? paced) (not ticked?) (pacer-wanted?)))
-      (unless (or ticked? (pacer-wanted?)) (collector-tick!))
+      (unless (or ticked? (pacer-wanted?) *collector-after*)
+        (collector-tick!))
       (safely 'procs
               (lambda () (run-procs! (if (null? paced) 10 (pacer-procs-ms)))))
       ;; a frame a tick at most
@@ -233,11 +236,10 @@
         (when (pair? paced) (pacer-drew!))
         (frame-turn-soon!))
       ;; the frame is out: the collections it held off, and the older
-      ;; generations' passes; input that asked for no frame shows in none
+      ;; generations' passes, once core0 has sent it; input that asked for
+      ;; no frame shows in none
       (when ticked?
-        (host-trace! 25 0)
-        (collector-after-frame!)
-        (host-trace! 26 0)
+        (collector-frame-out!)
         (unless *dirty* (frame-input-drop!)))
       ;; compute runs and writes no frame took go on their own
       (when (and (gpu-asks-pending?) (not (reload-holding?)))
@@ -669,12 +671,16 @@
 
 ;; What the next rendezvous collects, (generation . target); #f, the young.
 (defvar *collector-pass* #f)
-;; A frame turn, from its tick to its frame's publish, holds the young
-;; generation's collections off: one asked for then waits till after, where
-;; its pause costs the frame nothing, the heap growing meanwhile by what the
-;; turn allocates. Whether a turn holds them, and whether one was asked for.
+;; A frame turn, from its tick till core0 has sent its frame, holds the
+;; young generation's collections off: one asked for then waits till after,
+;; where its pause costs the frame nothing, the heap growing meanwhile by
+;; what the turn allocates. A collection stops core0 too: right at the
+;; publish, a long one held the frame past its latch. Whether a turn holds
+;; them, whether one was asked for, and the frame they wait to see sent
+;; (#f, none).
 (defvar *collector-holding?* #f)
 (defvar *collector-held?* #f)
+(defvar *collector-after* #f)
 (defvar *collector-check-ms* 0)
 (defvar *collector-input-ms* 0)
 ;; generations 2 and 3 when last collected
@@ -692,6 +698,22 @@
   (and *collector-holding?* (not *collector-pass*)))
 
 (define (collector-hold!) (set! *collector-holding?* #t))
+
+;; A frame turn ended: what it held off waits for its frame, the one drawn
+;; last, to be sent; for the earliest such, if one waits already, so that
+;; frames sent always behind the next turn hold nothing off for long.
+(define (collector-frame-out!)
+  (unless *collector-after* (set! *collector-after* *frame-number*))
+  (collector-after-sent!))
+
+;; That frame sent (core0 gave it back; on main's thread, as it was
+;; published): what its turn held off, now.
+(define (collector-after-sent!)
+  (when (and *collector-after* (>= *frame-back* *collector-after*))
+    (set! *collector-after* #f)
+    (host-trace! 25 0)
+    (collector-after-frame!)
+    (host-trace! 26 0)))
 
 ;; After a frame turn: the collection it held off, if one was asked for,
 ;; then the older generations' passes.

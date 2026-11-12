@@ -80,6 +80,34 @@
                 (apply = seen)
                 (> after (car seen))))))
 
+;; core0 on a thread of its own gives a frame back once it's sent: till
+;; then, the collection its turn held off waits, as it would stop core0
+(let ([win (open-window "Hog" 'size '(80 . 60)
+                        'draw (lambda (win w h)
+                                (let loop ([i 0] [keep '()])
+                                  (when (< i 200000)
+                                    (loop (+ i 1)
+                                          (cons (make-vector 8)
+                                                (if (> (length keep) 10)
+                                                    '()
+                                                    keep)))))))]
+      [back render-frames-back!])
+  (steps 1)
+  (let* ([before (collections)]
+         [waiting (fluid-let ([render-frames-back! (lambda () #f)])
+                    (invalidate! win)
+                    (steps 1)
+                    (collections))])
+    (back)
+    (collector-after-sent!)
+    (let ([after (collections)])
+      (close-window! win)
+      (check (format "a collection a frame turn held off waits till core0 \
+                      has sent its frame, then runs (collections before, \
+                      while it's out, once it's back: ~a ~a ~a)"
+                     before waiting after)
+             (and (= waiting before) (> after waiting))))))
+
 (check "a deep pass never touches the world"
        (let ([world (bytes-allocated 4)])
          (collector-pass! 3 3)

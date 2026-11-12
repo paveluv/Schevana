@@ -1106,6 +1106,8 @@
 ;; the last frame's time: its work, not its wait for the screen
 (defvar *frame-ms* 0.0)
 (defvar *frames-drawn* 0)
+;; the newest frame core0 gave back: sent, or found no room
+(defvar *frame-back* 0)
 
 ;; The whole screen, as a list. A crashed draw leaves nothing to unwind: the
 ;; state it left goes when the next one starts.
@@ -1186,6 +1188,7 @@
 (define (render-frames-back!)
   (for-each (lambda (f)
               (let ([shown? (gpu-frame-shown? f)])
+                (set! *frame-back* (gpu-frame-number f))
                 (pacer-frame-back! shown?)
                 (pacer-latch! (gpu-frame-number f))
                 (frame-ring-set! (gpu-frame-number f) 5 (if shown? 1 2))
