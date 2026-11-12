@@ -1129,7 +1129,7 @@
           (cons "in the box" (ms 'publish 'taken))
           (cons "for an image" (ms 'acquiring 'acquired))
           (cons "tick before latch" (format "~,1f ms" (/ *pacer-lead* 1e6)))
-          (cons "deadline margin" (format "~,1f ms" (/ *pacer-deadline* 1e6)))
+          (cons "margin" (format "~,1f ms" (/ *pacer-margin* 1e6)))
           (cons "latch before refresh"
                 (if (and i *pacer-latch*)
                     (format "~,1f ms"

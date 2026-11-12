@@ -676,13 +676,13 @@
              (and (= held (- t 200000)) (= *pacer-latch* held))))))
 
 (check "with a latch seen lately and the reports placing them, a tick \
-        begins its lead before the first latch half a refresh after the \
-        last tick; with an old one, or no frame back by vsync, the grid's"
+        begins its lead before the first latch a lead after the last tick \
+        began; with an old one, or no frame back by vsync, the grid's"
        (let* ([r (host-frame-ns)] [t (now-ns)] [latch (- t 1000000)])
          (fluid-let ([*pacer-latch* latch] [*pacer-lead* 4000000]
-                     [*pacer-latch-phase* 0]
+                     [*pacer-latch-phase* 0] [*pacer-aimed* 0]
                      [*pacer-began* (- t 3000000)] [*pacer-shown?* #t]
-                     [*pacer-due* (+ t 5000000)])
+                     [*pacer-due* (+ t 5000000)] [*pacer-floor* 0])
            (let ([jit (pacer-start)])
              (set! *pacer-latch* (- t 2000000000))
              (let ([stale (pacer-start)])
@@ -693,20 +693,93 @@
                                 2000000))
                     (= (pacer-start) (- *pacer-due* 2000000))))))))
 
-(check "the lead is what a tick takes to its publish lately, with the \
-        deadline's margin, and 3 ms more: it follows a long one at once and \
-        decays a 32nd a frame, from 3 ms to two refreshes less 1 ms"
-       (let ([r (host-frame-ns)])
-         (fluid-let ([*pacer-lead* 4000000] [*pacer-deadline* 1000000])
-           (pacer-drew! 6000000)
-           (let ([long *pacer-lead*])
-             (pacer-drew! 1000000)
-             (let ([after *pacer-lead*])
-               (do ([i 0 (+ i 1)]) ((= i 1000)) (pacer-drew! 0))
-               (let ([floor *pacer-lead*])
-                 (pacer-drew! (* 3 r))
-                 (and (= long 10000000) (= after 9687500) (= floor 4000000)
-                      (= *pacer-lead* (- (* 2 r) 1000000)))))))))
+;; Frame n as the pacer reads it: its row in the frame ring, the newest,
+;; its tick (as begun and as planned) and aimed latch; its report sent,
+;; and shown at shown or not reported (#f). Then thunk; the row as it was
+;; after.
+(define (pacer-test-frame n tick aimed sent shown thunk)
+  (let* ([row (* frame-ring-words
+                 (modulo (- *frame-ring-n* 1) frame-ring-rows))]
+         [was (map (lambda (k) (fxvector-ref *frame-ring* (+ row k)))
+                   '(6 8 13 14))]
+         [at (present-at n)] [ring *present-ring*])
+    (for-each (lambda (k v) (fxvector-set! *frame-ring* (+ row k) v))
+              '(6 8 13 14) (list n tick aimed tick))
+    (fxvector-set! ring at n)
+    (do ([w 1 (+ w 1)]) ((= w present-words)) (fxvector-set! ring (+ at w) 0))
+    (fxvector-set! ring (+ at 2) sent)
+    (when shown
+      (fxvector-set! ring (+ at 1) 1)
+      (fxvector-set! ring (+ at 3) shown))
+    (let ([v (thunk)])
+      (for-each (lambda (k v) (fxvector-set! *frame-ring* (+ row k) v))
+                '(6 8 13 14) was)
+      v)))
+
+(check "one frame a latch: with the last tick's frame aimed at the next \
+        latch, the tick after aims at the one after it, though a lead \
+        after the last tick began would make the next"
+       (let* ([r (host-frame-ns)] [t (now-ns)] [latch (- t 1000000)])
+         (fluid-let ([*pacer-latch* latch] [*pacer-lead* 4000000]
+                     [*pacer-latch-phase* 0] [*pacer-aimed* (+ latch r)]
+                     [*pacer-began* (- t 3000000)] [*pacer-shown?* #t]
+                     [*pacer-floor* 0])
+           (= (pacer-start) (- (+ latch (* 2 r)) 4000000)))))
+
+(check "a tick that drew a frame leaves the screen pacing: till its frame \
+        comes back, the next waits for its latch, not the grid's, which \
+        would make two frames for one; a tick that drew none, the grid's. \
+        A tick on a latch was planned its lead before it"
+       (let* ([r (host-frame-ns)] [t (now-ns)] [latch (- t 1000000)])
+         (fluid-let ([*pacer-latch* latch] [*pacer-lead* 4000000]
+                     [*pacer-latch-phase* 0] [*pacer-aimed* 0]
+                     [*pacer-began* (- t 3000000)] [*pacer-shown?* #t]
+                     [*pacer-due* (- t (quotient r 2))] [*pacer-floor* 0]
+                     [*pacer-ticks* 0] [*pacer-tick-ms* 0]
+                     [*pacer-frame-ns* 0] [*pacer-wanted?* #f]
+                     [*pacer-drew?* #t] [wm-tick! void])
+           (pacer-tick! t)
+           (let ([paced? (and *pacer-shown?* (pacer-on-latch?)
+                              (= *pacer-aimed* (+ latch r))
+                              ;; its frame's planned start, the lead before
+                              (= *pacer-planned* (- (+ latch r) 4000000))
+                              (= (pacer-start)
+                                 (- (+ latch (* 2 r)) 4000000)))])
+             ;; a tick that drew nothing: the grid's again
+             (pacer-tick! (+ t 1000000))
+             (and paced? (not *pacer-shown?*))))))
+
+(check "a frame that came late moves the ones after it: the next tick aims \
+        no earlier than the floor, a latch for each frame on its way"
+       (let* ([r (host-frame-ns)] [t (now-ns)] [latch (- t 1000000)])
+         (fluid-let ([*pacer-latch* latch] [*pacer-lead* 4000000]
+                     [*pacer-latch-phase* 0] [*pacer-aimed* (+ latch r)]
+                     [*pacer-began* (- t 3000000)] [*pacer-shown?* #t]
+                     [*pacer-floor* (+ latch (* 3 r))])
+           (= (pacer-start) (- (+ latch (* 3 r)) 4000000)))))
+
+(check "the lead is what frames took lately from when their tick was \
+        meant to begin till core0 sent them, with the margin: it follows \
+        a longer one at once, fades over half a second, and is two \
+        refreshes at most"
+       (let* ([r (host-frame-ns)] [n 1000003] [t (now-ns)])
+         (fluid-let ([*pacer-lead* 4000000] [*pacer-margin* 1000000])
+           (let* ([need! (lambda (took)
+                           (pacer-test-frame n t 0 (+ t took) #f
+                                             (lambda () (pacer-need! n r))))]
+                  [long (begin (need! 6000000) *pacer-lead*)]
+                  [after (begin (need! 1000000) *pacer-lead*)]
+                  [faded (begin
+                           (do ([i 0 (+ i 1)])
+                               ((>= (* i r) pacer-lead-fade))
+                             (need! 1000000))
+                           *pacer-lead*)]
+                  [most (begin (need! (* 3 r)) *pacer-lead*)])
+             (and (= long 7000000)
+                  (= after (- 7000000 (quotient (* 7000000 r)
+                                                pacer-lead-fade)))
+                  (< faded 3500000) (>= faded 2000000)
+                  (= most (* 2 r)))))))
 
 (check "where no report places the latches (X11, the Mac as yet), the \
         pacing is the grid's, as it was"
@@ -717,48 +790,22 @@
                                2000000)))))
 
 (check "a frame that showed a refresh after the one its tick aimed for was \
-        late: ticks begin 2 ms earlier, and it says a frame should drain; \
-        in time, 5 µs later; early, 1 ms later"
-       (let* ([r (host-frame-ns)] [n 1000011] [at (present-at n)]
-              [ring *present-ring*] [t (now-ns)]
-              [row (* frame-ring-words
-                      (modulo (- *frame-ring-n* 1) frame-ring-rows))]
-              [was-n (fxvector-ref *frame-ring* (+ row 6))]
-              [was-aim (fxvector-ref *frame-ring* (+ row 13))])
-         (fluid-let ([*pacer-deadline* 3000000] [*pacer-raised* 0])
-           (fxvector-set! *frame-ring* (+ row 6) n)
-           (fxvector-set! *frame-ring* (+ row 13) t)
-           (fxvector-set! ring at n)
-           (fxvector-set! ring (+ at 1) 1)
-           (let ([shown! (lambda (ns) (fxvector-set! ring (+ at 3) ns))])
-             (shown! (+ t r 4000000))
-             (let* ([late (pacer-behind! n r)] [after-late *pacer-deadline*])
-               (shown! (+ t 4000000))
-               (let* ([in-time (pacer-behind! n r)] [after-in *pacer-deadline*])
-                 (shown! (- t 4000000))
-                 (pacer-behind! n r)
-                 (fxvector-set! *frame-ring* (+ row 6) was-n)
-                 (fxvector-set! *frame-ring* (+ row 13) was-aim)
-                 (and late (not in-time) (= after-late 5000000)
-                      (= after-in 4995000)
-                      (= *pacer-deadline* 3995000))))))))
-
-(check "a frame that waited about the lead from its publish to its image, \
-        as a tick just in time sends it, drains nothing; one half a refresh \
-        longer drains a frame"
-       (let* ([r (host-frame-ns)] [n 1000015] [at (present-at n)]
-              [ring *present-ring*] [t (now-ns)])
-         (fluid-let ([*pacer-latch* #f] [*pacer-latch-phase* #f]
-                     [*pacer-lead* 12000000] [*pacer-drain?* #f]
-                     [*pacer-drained* 0] [*pacer-judged* (- n 1)])
-           (fxvector-set! ring at n)
-           (fxvector-set! ring (+ at 8) (- t 11000000))
-           (fxvector-set! ring (+ at 9) t)
-           (pacer-latch! n)
-           (let ([kept *pacer-drain?*])
-             (fxvector-set! ring (+ at 8) (- t 12000000 (quotient r 2) 1))
-             (pacer-latch! n)
-             (and (not kept) *pacer-drain?*)))))
+        late: the margin grows past how long before its latch it was sent, \
+        by an eighth of a refresh; in time, the margin fades"
+       (let* ([r (host-frame-ns)] [n 1000011] [t (now-ns)])
+         (fluid-let ([*pacer-margin* 1000000])
+           (let* ([late (pacer-test-frame n (- t 9000000) t (- t 3000000)
+                                          (+ t r 4000000)
+                                          (lambda () (pacer-behind! n r)))]
+                  [after-late *pacer-margin*]
+                  [in-time (pacer-test-frame n (- t 9000000) t (- t 3000000)
+                                             (+ t 4000000)
+                                             (lambda () (pacer-behind! n r)))])
+             (and late (not in-time)
+                  (= after-late (+ 3000000 (quotient r 8)))
+                  (= *pacer-margin*
+                     (- after-late (quotient (* after-late r)
+                                             pacer-margin-fade))))))))
 
 (check "while ticks keep to the latches, a tick wanted, main's wait for the \
         next is the screen's"
@@ -769,32 +816,24 @@
                 (begin (set! *pacer-latch-phase* #f)
                        (not (pacer-on-latch?)))))))
 
-(check "frames late in a row, as a stall makes them, raise the margin once \
-        in half a second"
-       (let* ([r (host-frame-ns)] [n 1000013] [at (present-at n)]
-              [ring *present-ring*] [t (now-ns)]
-              [row (* frame-ring-words
-                      (modulo (- *frame-ring-n* 1) frame-ring-rows))]
-              [was-n (fxvector-ref *frame-ring* (+ row 6))]
-              [was-aim (fxvector-ref *frame-ring* (+ row 13))])
-         (fluid-let ([*pacer-deadline* 0] [*pacer-raised* 0])
-           (fxvector-set! *frame-ring* (+ row 6) n)
-           (fxvector-set! *frame-ring* (+ row 13) t)
-           (fxvector-set! ring at n)
-           (fxvector-set! ring (+ at 1) 1)
-           (fxvector-set! ring (+ at 3) (+ t r 4000000))
-           (do ([k 0 (+ k 1)]) ((= k 10)) (pacer-behind! n r))
-           (fxvector-set! *frame-ring* (+ row 6) was-n)
-           (fxvector-set! *frame-ring* (+ row 13) was-aim)
-           (= *pacer-deadline* 2000000))))
+(check "frames late in a row, as a stall makes them, sent alike, raise \
+        the margin once"
+       (let* ([r (host-frame-ns)] [n 1000013] [t (now-ns)])
+         (fluid-let ([*pacer-margin* 0])
+           (pacer-test-frame n (- t 9000000) t (- t 2000000) (+ t r 4000000)
+                             (lambda ()
+                               (do ([k 0 (+ k 1)]) ((= k 10))
+                                 (pacer-behind! n r))))
+           (= *pacer-margin* (+ 2000000 (quotient r 8))))))
 
 (check "the reports read are the newest in, however many frames behind: \
         four back, as under Mutter's triple buffering at 120 Hz, they \
-        still place the latches"
+        still place the latches, and the frames on their way the floor"
        (let* ([r (host-frame-ns)] [n 1000027] [ring *present-ring*]
               [t (now-ns)] [at (present-at n)] [old (present-at (- n 4))])
          (fluid-let ([*pacer-latch* #f] [*pacer-latch-phase* #f]
-                     [*pacer-judged* 0] [*pacer-drained* 0])
+                     [*pacer-judged* 0] [*pacer-floor* 0]
+                     [*frame-number* n])
            (do ([k 1 (+ k 1)]) ((> k 3))   ; sent, no report yet
              (let ([a (present-at (- n k))])
                (fxvector-set! ring a (- n k))
@@ -808,53 +847,45 @@
            (pacer-latch! n)
            (and (= *pacer-latch* t)
                 (= *pacer-latch-phase* 1500000)
-                (= *pacer-judged* (- n 4))))))
+                (= *pacer-judged* (- n 4))
+                (= *pacer-floor* (+ t r))))))
 
 (check "each report is judged once: a late frame raises the margin once, \
         however many frames come back before the next report"
        (let* ([r (host-frame-ns)] [n 1000033] [m (- n 2)] [ring *present-ring*]
-              [t (now-ns)] [at (present-at m)]
-              [row (* frame-ring-words
-                      (modulo (- *frame-ring-n* 1) frame-ring-rows))]
-              [was-n (fxvector-ref *frame-ring* (+ row 6))]
-              [was-aim (fxvector-ref *frame-ring* (+ row 13))])
-         (fluid-let ([*pacer-deadline* 0] [*pacer-raised* 0]
-                     [*pacer-judged* (- m 1)] [*pacer-latch-phase* #f])
-           (fxvector-set! *frame-ring* (+ row 6) m)
-           (fxvector-set! *frame-ring* (+ row 13) t)
-           (for-each (lambda (k)        ; sent since, no report yet
-                       (let ([a (present-at k)])
-                         (fxvector-set! ring a k)
-                         (do ([w 1 (+ w 1)]) ((= w present-words))
-                           (fxvector-set! ring (+ a w) 0))))
-                     (list (- n 1) n (+ n 1)))
-           (fxvector-set! ring at m)
-           (fxvector-set! ring (+ at 1) 1)
-           (fxvector-set! ring (+ at 3) (+ t r 4000000))
-           (pacer-latch! n)
-           (set! *pacer-raised* 0)       ; half a second on, as it were
-           (pacer-latch! (+ n 1))
-           (fxvector-set! *frame-ring* (+ row 6) was-n)
-           (fxvector-set! *frame-ring* (+ row 13) was-aim)
-           (and (= *pacer-deadline* 2000000) (= *pacer-judged* m)))))
+              [t (now-ns)])
+         (fluid-let ([*pacer-margin* 0] [*pacer-judged* (- m 1)]
+                     [*pacer-latch-phase* #f])
+           (pacer-test-frame
+            m (- t 9000000) t (- t 2000000) (+ t r 4000000)
+            (lambda ()
+              (for-each (lambda (k)        ; sent since, no report yet
+                          (let ([a (present-at k)])
+                            (fxvector-set! ring a k)
+                            (do ([w 1 (+ w 1)]) ((= w present-words))
+                              (fxvector-set! ring (+ a w) 0))))
+                        (list (- n 1) n (+ n 1)))
+              (pacer-latch! n)
+              (set! *pacer-margin* 0)      ; were it judged again, it'd show
+              (pacer-latch! (+ n 1))))
+           (and (= *pacer-margin* 0) (= *pacer-judged* m)))))
 
-(check "the deadline's margin may grow to a refresh, no further: a 120 Hz \
-        compositor may want frames most of a refresh ahead"
-       (let* ([r (host-frame-ns)] [n 1000041] [at (present-at n)]
-              [ring *present-ring*] [t (now-ns)]
-              [row (* frame-ring-words
-                      (modulo (- *frame-ring-n* 1) frame-ring-rows))]
-              [was-n (fxvector-ref *frame-ring* (+ row 6))]
-              [was-aim (fxvector-ref *frame-ring* (+ row 13))])
-         (fluid-let ([*pacer-deadline* 0] [*pacer-raised* 0])
-           (fxvector-set! *frame-ring* (+ row 6) n)
-           (fxvector-set! *frame-ring* (+ row 13) t)
-           (fxvector-set! ring at n)
-           (fxvector-set! ring (+ at 1) 1)
-           (fxvector-set! ring (+ at 3) (+ t r 4000000))
-           (do ([k 0 (+ k 1)]) ((= k 40))
-             (set! *pacer-raised* 0)
-             (pacer-behind! n r))
-           (fxvector-set! *frame-ring* (+ row 6) was-n)
-           (fxvector-set! *frame-ring* (+ row 13) was-aim)
-           (= *pacer-deadline* r))))
+(check "the margin may grow to a refresh, no further: a 120 Hz compositor \
+        may want frames most of a refresh ahead"
+       (let* ([r (host-frame-ns)] [n 1000041] [t (now-ns)])
+         (fluid-let ([*pacer-margin* (- r 1000000)])
+           (pacer-test-frame n (- t (* 2 r)) t (- t (- r 1000000))
+                             (+ t r 4000000)
+                             (lambda () (pacer-behind! n r)))
+           (= *pacer-margin* r))))
+
+(check "a frame sent well before its latch, past the margin and a step, \
+        and late all the same, the compositor missed the refresh: the \
+        margin learns nothing"
+       (let* ([r (host-frame-ns)] [n 1000043] [t (now-ns)])
+         (fluid-let ([*pacer-margin* 1000000])
+           (let ([late (pacer-test-frame
+                        n (- t (* 2 r)) t (- t (quotient r 2))
+                        (+ t r 4000000)
+                        (lambda () (pacer-behind! n r)))])
+             (and late (= *pacer-margin* 1000000))))))

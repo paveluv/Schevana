@@ -111,7 +111,8 @@
 
 ;; When frame i's point came (now-ns), or #f: its oldest input by SDL's
 ;; stamp (sdl), by the compositor's own time (wl), and as core0's pump
-;; first saw it (pumped); its tick, its draw and its publish on main; core0
+;; first saw it (pumped); its tick as the pacer planned it (planned), its
+;; tick, its draw and its publish on main; core0
 ;; taking it (taken), asking for a swapchain image for it and having one
 ;; (acquiring, acquired), and sending it (sent); its GPU work seen done
 ;; (gpu); on the screen (shown).
@@ -123,6 +124,7 @@
              [(publish) (inspect-frame-ref i 10)]
              [(pumped) (inspect-frame-ref i 11)]
              [(wl) (inspect-frame-ref i 12)]
+             [(planned) (inspect-frame-ref i 14)]
              [(taken) (inspect-frame-report i 7)]
              [(acquiring) (inspect-frame-report i 8)]
              [(acquired) (inspect-frame-report i 9)]
@@ -1157,10 +1159,11 @@
       (events . ,(cdr (assq 'events state)))
       (failed . ,(cdr (assq 'failed state))))))
 
-;; The pacer: its period and its grid's next tick (ns), whether a frame
-;; has reached the screen by vsync since the last tick, and its t; the
+;; The pacer: its period and its grid's next tick (ns), whether the screen
+;; paces it (frames back by vsync), and its t; the
 ;; compositor's last latch seen and the lead before one (pacer-just-in-time),
-;; and when the next tick may begin.
+;; its margin, the first latch the next frame may take, and when the next
+;; tick may begin.
 (define (inspect-pacer)
   `((period . ,(pacer-period))
     (due . ,*pacer-due*)
@@ -1168,7 +1171,8 @@
     (frame . ,*pacer-frame-ns*)
     (latch . ,*pacer-latch*)
     (lead . ,*pacer-lead*)
-    (deadline . ,*pacer-deadline*)
+    (margin . ,*pacer-margin*)
+    (floor . ,*pacer-floor*)
     (aimed . ,*pacer-aimed*)
     (start . ,(pacer-start))))
 

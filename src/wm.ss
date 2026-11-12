@@ -1203,11 +1203,12 @@
 ;; given back yet); its number (its report's, host-frame-report), and when
 ;; the oldest input it shows came (now-ns; 0, none) by SDL's stamp; then
 ;; when its tick began, its draw began and it was published, and when that
-;; input came by core0's pump and by the compositor's time; and the latch
-;; its tick aimed at (0, none). Always kept: a few numbers a frame, for as
-;; many frames as the reports keep.
+;; input came by core0's pump and by the compositor's time; the latch its
+;; tick aimed at (0, none), and when the pacer meant its tick to begin.
+;; Always kept: a few numbers a frame, for as many frames as the reports
+;; keep.
 (define frame-ring-rows 2048)
-(define frame-ring-words 14)
+(define frame-ring-words 15)
 (defvar *frame-ring* (make-fxvector (* frame-ring-rows frame-ring-words) 0))
 (defvar *frame-ring-n* 0)   ; frames so far
 ;; the frame being drawn's number, its times, and the oldest input not
@@ -1252,6 +1253,7 @@
     (fxvector-set! ring (+ at 11) *frame-input-pumped*)
     (fxvector-set! ring (+ at 12) *frame-input-wl*)
     (fxvector-set! ring (+ at 13) *pacer-aimed*)
+    (fxvector-set! ring (+ at 14) *pacer-planned*)
     (frame-input-drop!)
     (fxvector-set! ring at 0)
     ;; the frame's, published: the recorder writes nothing now

@@ -747,16 +747,22 @@ Decisions worth keeping in mind for the real design:
   is hidden, minimized or covered no frame is drawn, and core0 keeps the
   last; input, timers and processes go on.
   Where the screen's reports place the compositor's latches (Wayland's),
-  a tick begins just in time instead, aimed at a latch: its lead before
-  it, the lead what a tick takes to its publish lately, a margin for the
-  compositor's deadline, and 3 ms. Its frame goes straight to the screen
-  with the input that came till then, not a refresh early, waiting for an
-  image. The reports say how many refreshes after the one aimed for each
-  frame showed: late, the margin grows 2 ms, and a tick skips one latch to
-  drain the frame now queued ahead, which that frame covers; in time, it
-  shrinks 5 µs a frame, slowly enough that one comes late only now and
-  then. A frame that waited half a refresh more than its lead from its
-  publish to its image drains one too. Core0 reads input as soon as its
+  a tick begins just in time instead, aimed at a latch, and at a later one
+  than the tick before it: a latch holds one frame, so no two meet in a
+  refresh and the screen's queue never grows. The screen paces the ticks
+  so while each sends it a frame. A tick begins its lead before its
+  latch: what frames took lately from when their tick was meant to begin
+  till core0 sent them, main waking late among it (a spike fades in half
+  a second), and a margin. Its frame goes straight to the screen with the
+  input that came till then, not a refresh early, waiting for an image.
+  The reports say how many refreshes after the one aimed for each frame
+  showed: late, though sent about the margin before its latch, the margin
+  grows past that by an eighth of a refresh; late though sent well before
+  it, the compositor missed the refresh (a screenshot, a stall of its
+  own), and nothing is learned; in time, the margin fades over a minute,
+  so that one comes late only now and then. A frame that showed late moves
+  the ones after it, each a latch on (the floor), so the queue drains of
+  itself. Core0 reads input as soon as its
   acquire returns, and every ms while frames flow. On GNOME 48 with NVIDIA
   this took a frame from its publish to the screen from 58 ms to 24 under
   the Pipeline and Boids 3D, and 7.4 for a light window, with no refresh
