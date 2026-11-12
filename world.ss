@@ -46,6 +46,8 @@
      (schevana-boot! mode (car size) (cdr size) start-fullscreen?)
      (update-host-icon!)
      (load-user-init!)
+     ;; the pacer lab goes on if it was on (services/pacer-lab.ss)
+     (pacer-lab-log-load!)
      (let ([w (screen-w)])
        (clock)
        (move-window! (find-window 'clock) (- w 270) 60)

@@ -794,9 +794,20 @@ Decisions worth keeping in mind for the real design:
   past the margin a late frame may have been sent and still be its own),
   `pacer-lead-fade`, `pacer-margin-fade` (the platform's by default:
   `platform-pacer-margin-fade`, a minute on a Mac, else never), and
-  `frames-in-flight`, which goes to core0 with each frame; a trial
-  (`pacer-trial!`) may hold them for a while instead, never saved with the
-  look.
+  `frames-in-flight`, which goes to core0 with each frame. **The Pacer
+  Lab** (`services/pacer-lab.ss`, its window `(pacer-lab)`) tries them on
+  Schevana itself while it's used as ever:
+  switched on, every ten minutes each choice takes one of its values at
+  random, on its own, as a trial the pacer reads before the settings
+  (`pacer-trial!`), never saved with the look; the pacer relearns at
+  each period's start. Each period's frames judged, late ones (its own
+  and the compositor's) and tick to screen go to
+  `~/.schevana.d/pacer-lab.ss`, which says whether it's on, so it goes
+  on after a restart. The window shows, for each value, its periods,
+  late frames per 10,000 with a standard error from the periods' spread,
+  and tick to screen; the fewest late is best, and those within two
+  errors of it tied. Over days the other choices and the work done
+  average out of each value's periods. The defaults change by hand.
   How a frame reaches the screen is `'present-mode`, in Settings'
   Display tab, or `(override! 'present-mode 'mailbox)`; it changes live,
   at the next frame, among what the window offers (`(inspect-device)`).
