@@ -51,6 +51,26 @@
            (and (= (bytes-allocated 1) before)
                 (= 1 (bytevector-u8-ref kept 0))))))
 
+(check "GPU bytes made count as old growth: past the limit an old pass \
+        comes, and finds a buffer dropped after it grew old"
+       (let* ([held (box (make-gpu-buffer 4))]
+              [release (list 'release (gpu-buffer-id (unbox held)))]
+              [let-go? (lambda ()
+                         (gpu-held-sweep!)
+                         (and (member release *gpu-jobs*) #t))])
+         (collector-pass! 1 2)
+         (set-box! held #f)
+         (collect-rendezvous)
+         (let ([young (let-go?)])
+           (set! *collector-check-ms* 0)
+           (set! *collector-input-ms* (- (now-ms) 2000))
+           (set! *input-step?* #f)
+           (set! *gpu-bytes-made* (+ *gpu-bytes-made* collector-old-quiet))
+           (collector-tick!)
+           (and (not young)
+                (let-go?)
+                (= *collector-old-kept* (collector-grown))))))
+
 (let* ([counts '()]
        [note! (lambda () (set! counts (cons (collections) counts)))]
        [win (open-window "Hog" 'size '(80 . 60)

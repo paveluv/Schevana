@@ -1141,6 +1141,12 @@
 ;; says it.
 (define (inspect-gpu-objects) (cdr (assq 'objects *gpu-facts*)))
 
+;; Main's handles: the GPU bytes made so far, which the collector counts,
+;; and how many the guardian let go of once nothing held them.
+(define (inspect-gpu-held)
+  `((bytes-made . ,*gpu-bytes-made*)
+    (let-go . ,*gpu-held-gone*)))
+
 ;; How core0 presents now: vsync, mailbox or immediate.
 (define (inspect-present-mode)
   (let ([f (assq 'present-mode *gpu-facts*)]) (and f (cdr f))))

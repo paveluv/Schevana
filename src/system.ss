@@ -244,7 +244,9 @@
       (when ticked?
         (collector-frame-out!)
         (unless *dirty* (frame-input-drop!)))
-      ;; compute runs and writes no frame took go on their own
+      ;; handles nothing holds any more are let go of, and compute runs and
+      ;; writes no frame took go on their own
+      (gpu-held-sweep!)
       (when (and (gpu-asks-pending?) (not (reload-holding?)))
         (safely 'render gpu-computes-send!)))))
 
@@ -740,7 +742,7 @@
 (defvar *collector-after* #f)
 (defvar *collector-check-ms* 0)
 (defvar *collector-input-ms* 0)
-;; generations 2 and 3 when last collected
+;; generations 2 and 3, and the GPU bytes made, when last collected
 (defvar *collector-old-kept* 0)
 
 (define (collector-collect!)
@@ -796,11 +798,16 @@
 
 (define (collector-old) (+ (bytes-allocated 2) (bytes-allocated 3)))
 
+;; The old generations with the GPU bytes made: a dropped buffer or image is
+;; let go of only once its handle's generation is collected, and its bytes,
+;; which the collector doesn't see, bring that on as old growth would.
+(define (collector-grown) (+ (collector-old) *gpu-bytes-made*))
+
 ;; The world into the oldest generation, at boot and after a reload. Not
 ;; static: each reload would then leak the world it replaced.
 (define (collector-settle!)
   (collector-pass! 4 4)
-  (set! *collector-old-kept* 0))
+  (set! *collector-old-kept* (collector-grown)))
 
 ;; On a tick: twice a second, an older generation if it has grown enough.
 (define (collector-tick!)
@@ -810,10 +817,10 @@
       (set! *collector-check-ms* (+ now 500))
       (let ([quiet? (>= (- now *collector-input-ms*) 1000)])
         (cond
-          [(>= (- (collector-old) *collector-old-kept*)
+          [(>= (- (collector-grown) *collector-old-kept*)
                (if quiet? collector-old-quiet collector-old-limit))
            (collector-pass! 3 3)
-           (set! *collector-old-kept* (collector-old))]
+           (set! *collector-old-kept* (collector-grown))]
           [(>= (bytes-allocated 1)
                (if quiet? collector-young-quiet collector-young-limit))
            (collector-pass! 1 2)])))))

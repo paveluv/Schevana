@@ -528,6 +528,44 @@
                 (not (has? (gpu-buffer-id b)))
                 (not (has? (gpu-image-id i)))))))
 
+;; A handle nothing holds is let go of, once a collection finds it and the
+;; step's end sweeps; a list that draws an image holds it till it goes too.
+(let* ([has? (lambda (id) (hashtable-contains? *gpu-objects* id))]
+       [shown? (lambda (id) (hashtable-contains? *gpu-lists* id))]
+       [lst (gpu-list-new)]
+       [kept (let ([image (gpu-image-make 2 2)])
+               (record-list! lst (lambda () (draw-image image 0 0 2 2)))
+               (gpu-image-id image))]
+       [plain record-world!]
+       [ids (let ([b (make-gpu-buffer 4)] [i (gpu-image-make 2 2)]
+                  [l (gpu-list-new)])
+              (record-list! l (lambda () (fill-box 0 0 2 2 #xff0000)))
+              (set! record-world! (lambda () (show-list l 0 0)))
+              (list (gpu-buffer-id b) (gpu-image-id i) (gpu-list-id l)))]
+       ;; frames that show neither, then a collection and a step's end
+       [again! (lambda ()
+                 (do ([k 0 (+ k 1)]) ((= k 3)) (request-frame!) (steps 1))
+                 (collector-pass! 3 3)
+                 (steps 1))]
+       [gone (cdr (assq 'let-go (inspect-gpu-held)))])
+  (request-frame!)
+  (steps 1)
+  (let ([made (and (has? (car ids)) (has? (cadr ids)) (shown? (caddr ids))
+                   (has? kept))])
+    (set! record-world! plain)
+    (again!)
+    (let ([dropped (and (not (has? (car ids))) (not (has? (cadr ids)))
+                        (not (shown? (caddr ids))))]
+          [held (has? kept)]
+          [counted (- (cdr (assq 'let-go (inspect-gpu-held))) gone)])
+      (set! lst #f)
+      (again!)
+      (check (format "a buffer, an image and a list nothing holds are let go \
+                      of after a collection (~a by the guardian), and an \
+                      image a list draws stays till the list goes"
+                     counted)
+             (and made dropped held (>= counted 3) (not (has? kept)))))))
+
 ;; Core0 says what it is as an alist it makes again only when that changes.
 (let ([before (begin (request-frame!) (steps 1) *gpu-facts*)])
   (request-frame!)

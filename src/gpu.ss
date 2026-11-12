@@ -29,6 +29,32 @@
     (set! *gpu-jobs* '())
     jobs))
 
+;; Every image, buffer and list made is let go of once nothing holds it: an
+;; app never has to, and one that does frees at once, where this waits for
+;; a collection of the handle's generation. The guardian gives back the id;
+;; one let go of by hand already is let go of again, which core0 finds done.
+;; A call holds its buffers and images, so a list shown, a compute run
+;; waiting and a frame in core0's hands keep what they use.
+(defvar *gpu-held* (make-guardian))
+;; GPU bytes made, which the collector counts with the old generations'
+;; growth (it sees only the handles), and handles let go of by the guardian
+(defvar *gpu-bytes-made* 0)
+(defvar *gpu-held-gone* 0)
+
+(define (gpu-hold! handle id bytes)
+  (set! *gpu-bytes-made* (+ *gpu-bytes-made* bytes))
+  (*gpu-held* handle id)
+  handle)
+
+;; At each step's end: what the guardian gave back, let go of by jobs.
+(define (gpu-held-sweep!)
+  (let loop ()
+    (let ([id (*gpu-held*)])
+      (when id
+        (set! *gpu-held-gone* (+ *gpu-held-gone* 1))
+        (gpu-ask! (list 'release id))
+        (loop)))))
+
 ;;; ------------------------------------------------------------------ images
 
 ;; An image of w × h, premultiplied BGRA, its pixels on the GPU alone; usage
@@ -39,8 +65,7 @@
     [(w h usage levels)
      (let ([id (gpu-new-id!)])
        (gpu-ask! (list 'texture id w h usage levels))
-       (gpu-images-sweep!)
-       (make-gpu-image id w h levels #f #f))]))
+       (gpu-hold! (make-gpu-image id w h levels #f #f) id (* 4 w h)))]))
 
 ;; An image that can also be drawn on. It has a chain of levels, each half the
 ;; last down to a pixel, so that it can be shown smaller: a third more memory.
@@ -51,20 +76,6 @@
 (define (gpu-image-release! image)
   (gpu-image-gone?-set! image #t)
   (gpu-ask! (list 'release (gpu-image-id image))))
-
-;; Images whose holders are gone, let go of: (gpu-image-held! holder image)
-;; lets image go once nothing holds holder, if it wasn't already; a second
-;; release finds nothing. Swept as images are made.
-(defvar *gpu-images-held* (make-guardian))
-
-(define (gpu-image-held! holder image) (*gpu-images-held* holder image))
-
-(define (gpu-images-sweep!)
-  (let loop ()
-    (let ([image (*gpu-images-held*)])
-      (when image
-        (gpu-image-release! image)
-        (loop)))))
 
 ;; The glyphs' atlas as an image, to draw: one channel, coverage, as the
 ;; glyph records read it. Core0's own, never let go of.
@@ -82,7 +93,8 @@
 
 ;; A list to record into (record-list!), a handle like an image's: its GPU
 ;; buffers are core0's.
-(define (gpu-list-new) (rec-list-new (gpu-new-id!)))
+(define (gpu-list-new)
+  (let ([id (gpu-new-id!)]) (gpu-hold! (rec-list-new id) id 0)))
 
 ;; Its GPU buffers let go of: shown again, it goes up again.
 (define (gpu-list-release! l) (gpu-ask! (list 'release (gpu-list-id l))))
@@ -91,10 +103,9 @@
 
 ;; At least a word: a read outside it reads word 0 (shader.ss). Zeroed.
 (define (make-gpu-buffer words)
-  (let* ([n (* 4 (max 1 words))]
-         [b (make-gpu-buffer* (gpu-new-id!) n #f)])
-    (gpu-ask! (list 'buffer (gpu-buffer-id b) n))
-    b))
+  (let ([n (* 4 (max 1 words))] [id (gpu-new-id!)])
+    (gpu-ask! (list 'buffer id n))
+    (gpu-hold! (make-gpu-buffer* id n #f) id n)))
 
 (define (gpu-buffer-words b) (fxquotient (gpu-buffer-size b) 4))
 
@@ -194,9 +205,10 @@
     (set! *gpu-computes* '())
     (values (gpu-take-jobs!) runs)))
 
-;; Is there what a turn's end sends, with no frame: compute runs or writes?
+;; Is there what a turn's end sends, with no frame: jobs (what the guardian
+;; let go of, say), compute runs or writes?
 (define (gpu-asks-pending?)
-  (or (pair? *gpu-computes*) (rec-writes-pending?)))
+  (or (pair? *gpu-jobs*) (pair? *gpu-computes*) (rec-writes-pending?)))
 
 ;; At a turn's end: compute runs and writes no frame took go now, on their
 ;; own, so that one an app steps on a timer, its window unseen, isn't kept

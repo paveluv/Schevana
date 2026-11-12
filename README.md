@@ -651,6 +651,14 @@ Decisions worth keeping in mind for the real design:
   a buffer back, are the world's alone. What's set goes up with the next
   frame or compute run, and core0 checks every write against the sizes it
   made the buffer or image with. `(inspect-computes)` lists the runs waiting for the frame.
+- **Nothing on the GPU has to be let go of.** A buffer, an image or a list
+  nothing holds any more is released once a collection finds it, by a
+  guardian swept at each step's end; what uses one keeps it, so a list still
+  shown keeps the buffers and images it draws with. The collector can't see
+  GPU memory, so the bytes made count with its old generations' growth and
+  bring on their pass. Releasing by hand (`gpu-buffer-release!`) frees at
+  once and stays optional. `(inspect-gpu-held)` gives the bytes made and how
+  many the guardian let go of.
 - **Life and Boids run on the crew.** Life's grid is as many cells as its
   window has room for: a new size keeps what fits and seeds the new ground.
   Its panel sets the cell size (in the screen's own pixels: 1 px is one),

@@ -24,7 +24,6 @@
      (unless (and (fixnum? w) (fixnum? h) (fx> w 0) (fx> h 0))
        (errorf 'make-pixmap "not a pixmap size: ~s × ~s" w h))
      (let ([pm (make-pixmap-record w h (gpu-image-make w h))])
-       (gpu-image-held! pm (pixmap-image pm))
        (pixmap-rows! pm 0 h pixmap-fill-rows!
                      (if color (color->pixel color) 0) w)
        pm)]))

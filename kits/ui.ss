@@ -3298,7 +3298,7 @@
 ;;;   (define s (ui-stream-new 2048 columns '(("late" chart-flag))))
 ;;;   (ui-stream-send! s oldest newest (lambda (seq j) ...))
 ;;;   (ui-stream ui 'id s x y w h newest oldest top rules stack bar ...)
-;;;   (ui-stream-release! s)    when its window closes
+;;;   (ui-stream-release! s)    when its window closes, to free at once
 ;;;
 ;;; A row is its columns' numbers, then a word a strip. A strip is a thin lane
 ;;; over the bars, (label color ...), the label #f for none: its word says
