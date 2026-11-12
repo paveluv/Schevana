@@ -220,6 +220,7 @@
     (set! *host-forked* #t)
     (fork-thread
      (lambda ()
+       (platform-thread-interactive!)
        (guard (c [#t (display-condition c (console-error-port))
                      (newline (console-error-port))])
          (interaction-environment world)

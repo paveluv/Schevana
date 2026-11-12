@@ -190,3 +190,18 @@
                   (eqv? (host-frame-report f 1) 2)
                   (= -1 (fxvector-ref *mac-waiting*
                                       (* 2 (modulo f mac-waiting-rows)))))))))
+
+;; QOS_CLASS_USER_INTERACTIVE and QOS_CLASS_DEFAULT
+(check "on a Mac a thread forked, as main's, starts at the default class \
+        and asks for core0's, the user-interactive one; elsewhere no class \
+        is known"
+       (let* ([out (box #f)]
+              [t (fork-thread
+                  (lambda ()
+                    (let ([before (platform-thread-class)])
+                      (platform-thread-interactive!)
+                      (set-box! out (list before (platform-thread-class))))))])
+         (thread-join t)
+         (if (host-mac?)
+             (equal? (unbox out) '(#x15 #x21))
+             (equal? (unbox out) '(#f #f)))))

@@ -504,6 +504,35 @@
                (when *wayland-clock*
                  (set! *wayland-presentation* p))))))))))
 
+;;; ---- the frame's threads
+;;; On a Mac the OS's main thread, core0's, runs at the user-interactive
+;;; class; a thread forked starts at the default one, which Apple silicon
+;;; may run on an efficiency core and wake late, and main's ticks that
+;;; woke late sent frames past their latch. So main asks for core0's
+;;; class. Elsewhere, nothing yet.
+
+(define mac-system-loaded?
+  (and (host-mac?)
+       (guard (c [#t #f])
+         (load-shared-object "/usr/lib/libSystem.B.dylib")
+         #t)))
+
+;; QOS_CLASS_USER_INTERACTIVE
+(define mac-class-interactive #x21)
+
+;; The calling thread at the class core0's runs at, where the OS has one.
+(define (platform-thread-interactive!)
+  (when mac-system-loaded?
+    ((foreign-procedure "pthread_set_qos_class_self_np" (unsigned-int int)
+                        int)
+     mac-class-interactive 0)))
+
+;; The calling thread's class, as the OS says (a Mac's QOS_CLASS_…); or
+;; #f where there's none.
+(define (platform-thread-class)
+  (and mac-system-loaded?
+       ((foreign-procedure "qos_class_self" () unsigned-int))))
+
 ;;; ---- the Mac's
 ;;; Metal calls a drawable's presented handlers when it was shown, or
 ;;; never will be: its presentedTime, seconds on the host's clock

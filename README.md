@@ -734,7 +734,10 @@ Decisions worth keeping in mind for the real design:
   With a window, the screen sets the frames' pace: core0 presents them
   on a thread of its own, holding at most the one it presents and one
   more, and no tick runs while the last frame published waits for core0
-  to take it, which it does as the screen frees an image. After a tick
+  to take it, which it does as the screen frees an image. On a Mac, main
+  asks the OS for the class core0's thread, the process's first, runs at
+  (user-interactive): a thread forked starts at the default one, which
+  Apple silicon may run on an efficiency core and wake late. After a tick
   that sent the screen a frame it holds (`vsync`, at the screen's rate),
   the next may come as soon as half a period later, once core0 has taken
   that frame, so that neither a screen a little faster than it says nor
