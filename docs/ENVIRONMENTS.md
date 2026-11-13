@@ -114,3 +114,30 @@ stops their threads; what still holds it can ask `env-dropped?`.
 The tree's apps live in sandboxes made this way, under "/apps"
 ([APPS.md](APPS.md)), and the core in environments of its own: "/core0",
 "/recorder" and "/core1" ([INTERNALS.md](INTERNALS.md)).
+
+## The Environments app
+
+`(envs)` opens Environments, which shows the tree: each environment's icon,
+kind, how many names it was shared and holds, and its thread's jobs;
+past a line you can drag, the one selected: kind, base, parent,
+children, what it forks, its jobs (× stops one) and its names, shared
+(the parent's name, read-only or through a setter, where bound) or its
+own. Its toolbar and a row's right-press menu act on it:
+
+- **Fork…**: a child of a kind it forks, named and shared names
+  (suggested as you type; `now-ms as clock` renames, `size via
+  size-set!` goes through a setter), optionally with a REPL in it.
+- **REPL** (Return): a REPL in it.
+- **Share…**: more of its parent's names, ticked in a dialog, each
+  renamed or set through a setter (not into a thread's sandbox); the
+  Fork sheet's Choose… picks there too.
+- **Load…**: a file evaluated in it (`env-load`), picked in the
+  desktop's file dialog, which stays above Environments while it waits
+  (a style's `modal-above`).
+- **Drop…**: it, what is under it and their threads.
+
+On `/worklets` it sets the pool's threads. On an app's sandbox it lists
+the bundles the app requests, as each stands (a press shows a bundle's
+names), who decides them, and Permissions… to change them; `/apps` lists
+every bundle. A world namespace gets the names the world gains at its next
+evaluation; Sync shares them now (`env-sync!`).

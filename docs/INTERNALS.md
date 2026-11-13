@@ -213,14 +213,8 @@ On Wayland core0 asks the compositor to report on each frame it presents
 display's sequence, or that it was dropped. On a Mac, Metal tells a
 drawable's presented handlers when it was shown, and core0 counts the
 sequence from the times. X11 and headless runs report nothing yet. The
-world reads the reports by frame number and joins them to the input each
-frame shows:
-
-```scheme no-run
-(inspect-frame-screen n)                   ; when frame n showed, or #f
-(inspect-frame-latency n)                  ; input to screen, for it
-```
-
+world reads the reports by frame number, `(inspect-frame-screen n)` and
+`(inspect-frame-latency n)`, and joins them to the input each frame shows.
 So a refresh frozen where an update was due is counted from the screen's
 own sequence, not guessed from waits, and Monitor and the Pipeline say how
 long input takes to reach the screen: at the median and the 99th, from the
@@ -277,7 +271,7 @@ stack of fixed depth, giving each its self time, so the parts add up to
 the tick; a span allocates nothing. A span inside an engine runs untimed,
 since an engine can be suspended halfway, and so does one on another
 thread. While it's on, the collector's work is a span of its own, `gc`.
-The data it keeps is in [MEASURING.md](MEASURING.md).
+The data it keeps is in [MONITORING.md](MONITORING.md).
 
 ## Measured
 

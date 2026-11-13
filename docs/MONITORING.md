@@ -1,7 +1,34 @@
-# Measuring
+# Monitoring
 
-Where the world's time and memory go is data, kept from boot: Monitor and
-the Pipeline draw it, and a REPL or a test reads the same.
+Where the world's time and memory go is data, kept from boot. Two apps
+draw it, Monitor and the Pipeline, and a REPL or a test reads the same.
+The apps explain themselves: hover anything in them for what it means.
+
+## Monitor
+
+`(monitor)` shows the world live, in four tabs:
+
+- **Overview**: the world's facts (uptime, the screen, the last tick and
+  frame, memory, the style, the last error), the windows, and the
+  processes, each with a Kill button.
+- **Ticks**: a bar a tick, its time stacked by phase, a late one flagged;
+  who spent it, by window, surface and process; and the memory.
+- **Flags**: every tick that came late, what made it late, and all that's
+  known of the moment.
+- **Platform**: this machine's stack, and a button that copies the run as
+  a row of [PLATFORMS.md](PLATFORMS.md).
+
+## The Pipeline
+
+`(pipeline)` shows the way from a window's draw procedure to the screen,
+for the frame on the screen or one held: the frame's records by who drew
+them and what each cost; a tick's stages in order; a record decoded, with
+its list, its run and its shader's source; what the GPU holds; the screen
+small, colored by who drew, kind, heat or change, with a loupe; the Tape,
+the records in draw order, to step or play through; and the River, a
+column a refresh of the screen's, each frame's way back from its showing
+to its input. A press on the River goes back to that frame, and Esc lets
+it go.
 
 ## The profiler
 
@@ -48,15 +75,10 @@ it comes, to outlive a run.
 (profile-on! #t)
 ```
 
-`(monitor)` draws all of this live: the ticks as stacked bars, the
-consumers by window, surface and process, the memory, and the flags.
-
 ## Inside the frame
 
 `kits/inspect.ss` reads what the core keeps about frames, the GPU and the
-platform, as plain data. The Pipeline, `(pipeline)`, draws it: who drew
-each record of the frame, what each cost, each record decoded, and each
-frame's way to the screen, refresh by refresh.
+platform, as plain data, which the Pipeline draws.
 
 ```scheme
 (inspect-platform)                         ; the OS, CPU, Chez, the display
