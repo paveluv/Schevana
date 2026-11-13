@@ -753,3 +753,14 @@
          (and (eq? (car (why 0)) 'asleep)
               (eq? (car (why 30)) 'pump))))
 
+
+(check "at a REPL, a tick's uses and the totals print what they say"
+       (begin
+         (steps 3)
+         (let ([use (format "~s" (car (profile-tick-uses
+                                        (car (profile-ticks)))))]
+               [total (format "~s" (car (profile-totals (profile-ticks) #t)))])
+           (and (string-prefix? "#<profile-use " use)
+                (string-contains-ci? use " ms, ")
+                (string-prefix? "#<profile-total " total)
+                (string-contains-ci? total " parts>")))))

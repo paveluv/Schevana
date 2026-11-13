@@ -1089,6 +1089,14 @@
   (nongenerative schevana-profile-use-5)
   (fields subject part phase ms calls ticks longest))
 
+;; At a REPL: #<profile-use (window . 3) draw in render: 1.250 ms, 2 calls>.
+(record-writer (record-type-descriptor profile-use)
+  (lambda (u p wr)
+    (fprintf p "#<profile-use ~s~a in ~a: ~,3f ms, ~a calls>"
+             (profile-use-subject u)
+             (if (profile-use-part u) (format " ~s" (profile-use-part u)) "")
+             (profile-use-phase u) (profile-use-ms u) (profile-use-calls u))))
+
 ;; count entries of e from at as uses, new records; none if e has taken
 ;; their entries again.
 (define (profile-uses e at count held whole?)
@@ -1202,6 +1210,13 @@
   (nongenerative schevana-profile-total-2)
   (fields what (mutable ms) (mutable calls) (mutable ticks)
           (mutable longest) (mutable parts)))
+
+;; At a REPL: #<profile-total render: 61.905 ms, 1 calls, 1 parts>.
+(record-writer (record-type-descriptor profile-total)
+  (lambda (t p wr)
+    (fprintf p "#<profile-total ~s: ~,3f ms, ~a calls, ~a parts>"
+             (profile-total-what t) (profile-total-ms t)
+             (profile-total-calls t) (length (profile-total-parts t)))))
 
 ;; By subject, what seconds (seqs) spent, or ticks (ticks? true), the
 ;; most first, each with its parts, the most first.
