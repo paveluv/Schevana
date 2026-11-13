@@ -6,7 +6,7 @@
 ;;;   (crew-map square list)              (map square list) on the crew
 ;;;   (crew-size) (crew-size-set! 4)      how many workers
 ;;;
-;;; What the crew calls is a worklet (define-worklet, src/proc.ss): it
+;;; What the crew calls is a worklet (define-worklet, src/core1/proc.ss): it
 ;;; touches only what it is handed, and each call writes only its own
 ;;; slice. What it is handed holds no procedure but worklets: crew-for
 ;;; refuses any other among its arguments, or in the pairs, vectors and

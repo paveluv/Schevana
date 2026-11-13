@@ -290,15 +290,18 @@
                      acc))]
         [else (walk (cdr x) (walk (car x) acc))]))))
 
-;; form, a lambda, compiled in env as the worklet who.
+;; form, a lambda, compiled in env as the worklet who. What it names is
+;; env's: its own, or what env was given, the clock and the worklets, as
+;; forwarders, which a reference names by the binding they reach.
 (define (worklet-compile who form env)
-  (for-each (lambda (n)
-              (cond [(eq? (car n) 'set)
-                     (errorf who "a worklet sets no top-level name: ~s"
-                             (cdr n))]
-                    [(not (top-level-bound? (cdr n) env))
-                     (errorf who "~s is out of a worklet's reach" (cdr n))]))
-            (worklet-free-names form env))
+  (let ([names (environment-symbols env)])
+    (for-each (lambda (n)
+                (cond [(eq? (car n) 'set)
+                       (errorf who "a worklet sets no top-level name: ~s"
+                               (cdr n))]
+                      [(not (memq (cdr n) names))
+                       (errorf who "~s is out of a worklet's reach" (cdr n))]))
+              (worklet-free-names form env)))
   (let ([p (eval form env)])
     (hashtable-set! *worklets* p #t)
     p))

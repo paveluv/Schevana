@@ -48,7 +48,8 @@
 
 (define (fork-done!)
   (let ([seen
-         (list (cons 'forked (core0-forked?))
+         ;; core0's, which the world isn't given: read where the core has it
+         (list (cons 'forked ((eval 'core0-forked? *core1-env*)))
                (cons 'core1 (core1-thread?))
                (cons 'readback
                      (fork-raises? (lambda ()

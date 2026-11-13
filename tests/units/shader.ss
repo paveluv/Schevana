@@ -814,7 +814,7 @@
         none of the rest's: lines, gradients, stipples and images by a node \
         only theirs has, shadows by the size they add"
        (let* ([variant (lambda (i)
-                         (top-level-value (vector-ref gfx-fragments i)))]
+                         (world-value (vector-ref gfx-fragments i)))]
               [has? (lambda (i head test)
                       (exists test (shader-test-nodes
                                     (shader-tree (variant i)) head)))]
@@ -981,10 +981,15 @@
 ;; a module a driver may take and do anything with.
 (check "every shader is a valid SPIR-V module for Vulkan 1.0"
        (let ([shaders
+              ;; the core's and the world's
               (filter shader?
-                      (map (lambda (n)
-                             (and (top-level-bound? n) (top-level-value n)))
-                           (environment-symbols (interaction-environment))))]
+                      (apply append
+                             (map (lambda (env)
+                                    (map (lambda (n)
+                                           (and (top-level-bound? n env)
+                                                (top-level-value n env)))
+                                         (environment-symbols env)))
+                                  (list core1-env (interaction-environment)))))]
              [file (string-append out-dir "/shader-check.spv")])
          (cond
            [(not (eq? shader-target 'spirv))

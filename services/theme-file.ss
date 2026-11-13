@@ -1,9 +1,9 @@
-;;; services/theme-file.ss — the saved look (src/theme.ss's layers): the file
-;;; holds the chosen style, the scale, the Overrides and your changes per
-;;; style. It is plain data: loading it never evaluates code. A rule or a
-;;; procedure typed at the REPL lasts the session. Every change to the
-;;; layers saves it soon after, through the core's *theme-saver*; main.ss
-;;; loads it before boot (theme-file-load!).
+;;; services/theme-file.ss — the saved look (src/core1/theme.ss's layers):
+;;; the file holds the chosen style, the scale, the Overrides and your
+;;; changes per style. It is plain data: loading it never evaluates code. A
+;;; rule or a procedure typed at the REPL lasts the session. Every change
+;;; to the layers saves it soon after, through the core's *theme-saver*;
+;;; world.ss loads it before boot (theme-file-load!).
 
 (defvar *theme-file-path*
   (format "~a/.schevana-theme.ss" (or (getenv "HOME") ".")))
@@ -103,13 +103,14 @@
          ;; theme these changes give
          [differing
           (lambda (changes keep?)
-            (fluid-let ([*theme* (resolve-theme style '() changes)])
-              (let loop ([p kvs])
-                (cond [(null? p) '()]
-                      [(and (keep? (car p))
-                            (not (equal? (cadr p) (theme (car p)))))
-                       (cons* (car p) (cadr p) (loop (cddr p)))]
-                      [else (loop (cddr p))]))))]
+            (call-with-theme (resolve-theme style '() changes)
+              (lambda ()
+                (let loop ([p kvs])
+                  (cond [(null? p) '()]
+                        [(and (keep? (car p))
+                              (not (equal? (cadr p) (theme (car p)))))
+                         (cons* (car p) (cadr p) (loop (cddr p)))]
+                        [else (loop (cddr p))])))))]
          [chosen (cons* 'palette palette
                         (differing (list 'palette palette)
                                    (lambda (k) (not (derived? k)))))])

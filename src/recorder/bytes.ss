@@ -1,10 +1,11 @@
 ;;; recorder/bytes.ss — "/recorder", sealed (.work/gpu-design.md 9.14): the
 ;;; bytes of what the world records and hands core0, and the only code that
-;;; writes them. Core0 makes this environment and loads it; the world
-;;; reaches it only through recorder-interface, each name a read-only
-;;; forwarder (tests/sources.ss), so nothing it does, however written, can
-;;; write a byte core0 reads. The world keeps the rest of the recorder
-;;; (src/gfx.ss): colors, shapes, text, runs and labels.
+;;; writes them. Core0 makes this environment and loads it; core1 reaches
+;;; it only through what src/recorder/export.ss gives it, each name a
+;;; read-only forwarder, and the world through what core1 gives it again,
+;;; so nothing either does, however written, can write a byte core0 reads.
+;;; Core1 keeps the rest of the recorder (src/core1/gfx.ss): colors,
+;;; shapes, text, runs and labels.
 ;;;
 ;;; What's recorded goes into a recording (gpu-recording, src/core0/gpu.ss):
 ;;; a list's, or the root's, the frame's. Recorded, it's frozen with its
@@ -17,18 +18,6 @@
 ;;; What the world writes into buffers and images goes the same way, in
 ;;; the frame's writes (src/core0/gpu.ss's gpu-send-writes!), and so do the
 ;;; rows an app paints, in loans of the image's own.
-
-;; What the world may name of this environment's.
-(define recorder-interface
-  '(rec-write! rec-extra! rec-extra-u32! rec-extra-ref rec-extra-at
-    rec-count rec-bytes-begin! rec-into-list! rec-freeze! rec-lend!
-    rec-last-sizes rec-last-copy! rec-last-runs rec-drawing->bytes
-    rec-bytes-copies
-    rec-list-new rec-list-copy gpu-list-recs-n gpu-list-extras-n
-    gpu-list-runs gpu-list-version gpu-list-recs gpu-list-extras
-    rec-earlier-add! rec-recordings rec-buffer-set! rec-pixel-set!
-    rec-image-rows! rec-writes-pending? rec-compute-now!
-    rec-submit-computes! rec-buffer-read!))
 
 ;; Written to between a publish and the next list: a write there raises.
 (define rec-nothing

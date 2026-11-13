@@ -1,7 +1,7 @@
 ;;; services/profile.ss — the profiler: where the world's time and memory
 ;;; go, tick by tick, whether or not Monitor shows it. Level 1: Schevana's
 ;;; own accounting, through the core's hook (with-profile-span,
-;;; src/proc.ss); nothing in an app's code is instrumented.
+;;; src/core1/proc.ss); nothing in an app's code is instrumented.
 ;;;
 ;;; The unit is a tick: the steps of core1's loop (schevana-step!) from the
 ;;; one after a tick's to the next tick's, the steps between ticks (input

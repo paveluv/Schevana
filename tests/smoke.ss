@@ -9,7 +9,7 @@
     (if (string=? dir "") "." dir)))
 
 (load (string-append *schevana-root* "/main.ss"))
-(load (string-append *schevana-root* "/tests/core0.ss"))
+(load (string-append *schevana-root* "/tests/reach.ss"))
 
 (define out-dir
   (if (pair? (command-line-arguments)) (car (command-line-arguments)) "."))
@@ -3849,15 +3849,14 @@
                       '(#f #f #f #f (wheel 0 -1))))))
 
 ;;; Core0's SDL code, run against a stand-in for SDL: every SDL call
-;;; src/ffi.ss and src/core0/sdl.ss bind is replaced in core0's environment
-;;; (one with no stand-in raises), so nothing here reaches the real SDL or
-;;; opens a window. The
-;;; fake window is fake-units window units big with fake-ratio physical
-;;; pixels per unit, on a desktop that asks for fake-desktop (Xft.dpi / 96
-;;; under X11), so its display scale is their product, as SDL3's is; its
-;;; texture is an image that uploads copy rows into, as SDL_UpdateTexture
-;;; does. *core0-mode* is 'sdl only around single core0 calls, so steps stay
-;;; headless.
+;;; src/core0/ffi.ss and src/core0/sdl.ss bind is replaced in core0's
+;;; environment (one with no stand-in raises), so nothing here reaches the
+;;; real SDL or opens a window. The fake window is fake-units window units
+;;; big with fake-ratio physical pixels per unit, on a desktop that asks
+;;; for fake-desktop (Xft.dpi / 96 under X11), so its display scale is
+;;; their product, as SDL3's is; its texture is an image that uploads copy
+;;; rows into, as SDL_UpdateTexture does. *core0-mode* is 'sdl only around
+;;; single core0 calls, so steps stay headless.
 
 (define fake-sdl-names
   (apply append
@@ -3878,7 +3877,7 @@
                                 (not (string-contains-ci? (caddr x) "GPU")))
                            (loop (cons (cadr x) acc))]
                           [else (loop acc)]))))))
-              '("/src/ffi.ss" "/src/core0/sdl.ss"))))
+              '("/src/core0/ffi.ss" "/src/core0/sdl.ss"))))
 
 (define fake-units '(1280 . 800))
 (define fake-ratio 1)

@@ -218,7 +218,7 @@
 ;; Calls a surface's field: a procedure, or the name of one.
 (define (surface-call s field . args)
   (let ([v (field s)])
-    (apply (if (symbol? v) (top-level-value v *world-env*) v) args)))
+    (apply (if (symbol? v) (world-value v) v) args)))
 
 (define (over-windows? s) (>= (surface-depth s) 0))
 
@@ -244,7 +244,7 @@
     (apply + (map (lambda (s)
                     (if (eq? (cadr s) e)
                         (let ([n (cddr s)])
-                          ((if (symbol? n) (top-level-value n *world-env*) n)))
+                          ((if (symbol? n) (world-value n) n)))
                         0))
                   *strips*)))
   (let ([t (edge 'top)] [b (edge 'bottom)] [l (edge 'left)]

@@ -3,7 +3,7 @@
 ;;;
 ;;; A style is the one switch: frames, bars, widgets, palette, wallpaper,
 ;;; fonts and what you changed for it. Every row is a theme setting (see
-;;; src/theme.ss), so the REPL does the same: (set-style! 'genera),
+;;; src/core1/theme.ss), so the REPL does the same: (set-style! 'genera),
 ;;; (set-theme! 'accent #xff9e64) for the chosen style, (override!
 ;;; 'ui-font-size 15) for every style that honors it, (reset-style!),
 ;;; (save-style-as! 'my-genera "My Genera"). Changes apply live and are
@@ -39,7 +39,7 @@
 (theme-default! 'accent-choices
   '(accent cyan teal green yellow orange red magenta accent-2))
 
-;; The common options (src/theme.ss) by group: Colors (a palette or a
+;; The common options (src/core1/theme.ss) by group: Colors (a palette or a
 ;; color), Desktop (a wallpaper), Text (on the Fonts tab) and Shape, the
 ;; rest: the sizes.
 (define settings-text-keys '(ui-font ui-font-size mono-font mono-font-size))

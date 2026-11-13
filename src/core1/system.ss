@@ -431,7 +431,7 @@
 (define (pacer-count! k)
   (fxvector-set! *pacer-counts* k (fx+ 1 (fxvector-ref *pacer-counts* k))))
 
-;; The pacer's choices, settings a person may change live (src/theme.ss),
+;; The pacer's choices, settings a person may change live (src/core1/theme.ss),
 ;; unless a trial holds them: ((key . value) ...), the pacer lab's
 ;; (services/pacer-lab.ss), which is never saved with the look.
 (defvar *pacer-trial* '())
@@ -830,10 +830,11 @@
            (collector-pass! 1 2)])))))
 
 ;;; ------------------------------------------------------------------ sources
-;;; The core is main.ss's list. After it come the folders, one definition
-;;; per file, each folder's files in file-name order: drop a file in and it
-;;; loads at the next boot or (reload!). A real session then loads the same
-;;; folders from ~/.schevana.d.
+;;; The core is main.ss's list, in "/core1". The world, in "/", is a copy
+;;; of src/base.ss and the folders, one definition per file, each folder's
+;;; files in file-name order: drop a file in and it loads at the next boot
+;;; or (reload!). A real session then loads the same folders from
+;;; ~/.schevana.d.
 
 ;; The folders after the core, in load order.
 (define source-folders
@@ -872,9 +873,13 @@
   (append (apply append (map folder-sources source-folders))
           (user-folder-files)))
 
-;; Every source file of the world, in load order. The REPL's docs and the
-;; tests read this list.
-(define (source-files) (append *schevana-sources* (folder-files)))
+;; The world's own files, in load order: a copy of the basics, then the
+;; folders.
+(define (world-sources) (cons "src/base.ss" (folder-files)))
+
+;; Every source file, the core's and the world's, in load order. The REPL's
+;; docs and the tests read this list.
+(define (source-files) (append *schevana-core1-sources* (world-sources)))
 
 ;; The text of every source as it was loaded (or, from a REPL, evaluated),
 ;; by its name: a file's path, or what the REPL calls its input. What reads
@@ -906,15 +911,17 @@
         (*app-loader* path)
         (load-file! path))))
 
-;; Loads files into the world (from a private REPL too). Run as a process
-;; (the launcher's "Reload sources", (reload!) in a REPL), it names itself
-;; and the file in *reloading* until it ends, so the world holds still
-;; meanwhile (schevana-step!), yet it is still preempted and Ctrl+C kills it.
-;; Not with dynamic-wind: an engine runs its exits at every preemption.
-(define (load-sources! files)
+;; Loads files into the world (from a private REPL too), or into env
+;; ("/core1", the core's). Run as a process (the launcher's "Reload
+;; sources", (reload!) in a REPL), it names itself and the file in
+;; *reloading* until it ends, so the world holds still meanwhile
+;; (schevana-step!), yet it is still preempted and Ctrl+C kills it. Not
+;; with dynamic-wind: an engine runs its exits at every preemption.
+(define (load-sources! files . env)
   (let* ([p (current-proc)]
          [outer? (and p (not (and *reloading* (eq? (car *reloading*) p))))])
-    (parameterize ([interaction-environment *world-env*])
+    (parameterize ([interaction-environment
+                    (if (pair? env) (car env) *world-env*)])
       (guard (c [outer? (reload-ended!
                          (format "Reload failed in ~a: ~a"
                                  (cdr *reloading*) (condition->string c)))
@@ -936,29 +943,38 @@
   (for-each (lambda (f) (safely f (lambda () (load-sources! (list f)))))
             (user-folder-files)))
 
-;; The source files main.ss lists, read from the file itself so that a
-;; reload picks up new ones.
+;; The core's source files main.ss lists, read from the file itself so
+;; that a reload picks up new ones.
 (define (read-source-list)
-  (guard (c [#t *schevana-sources*])
+  (guard (c [#t *schevana-core1-sources*])
     (call-with-input-file (string-append *schevana-root* "/main.ss")
       (lambda (p)
         (let loop ()
           (let ([x (read p)])
             (cond
-              [(eof-object? x) *schevana-sources*]
+              [(eof-object? x) *schevana-core1-sources*]
               [(and (list? x) (= (length x) 3) (eq? (car x) 'define)
-                    (eq? (cadr x) '*schevana-sources*)
+                    (eq? (cadr x) '*schevana-core1-sources*)
                     (pair? (caddr x)) (eq? (car (caddr x)) 'quote)
                     (list? (cadr (caddr x))))
                (cadr (caddr x))]
               [else (loop)])))))))
 
-;; Re-read every source file. Code changes take effect; state declared
+;; Re-read every source file: the core's into "/core1", then the world's
+;; into "/", given first what the core exports that it wasn't before; what
+;; it was keeps its forwarder. Code changes take effect; state declared
 ;; with defvar (windows, theme, processes...) survives.
 (define (reload!)
-  (let ([files (read-source-list)])
-    (set! *schevana-sources* files)
-    (load-sources! files))
+  (let ([files (read-source-list)] [before (core1-exported)])
+    (set! *schevana-core1-sources* files)
+    (load-sources! files *core1-env*)
+    (exports-install! (map (lambda (clause)
+                             (cons (car clause)
+                                   (remp (lambda (e) (memq (car e) before))
+                                         (cdr clause))))
+                           core1-exports)
+                      *core1-env* 'world *world-env*))
+  (load-world!)
   (invalidate!)
   (collector-settle!)
   (notify "Sources reloaded" 'green))
@@ -969,10 +985,10 @@
             (let ([path (source-path f)])
               (unless (hashtable-contains? *source-texts* path)
                 (keep-source-text! path (file-text path)))))
-          *schevana-sources*)
+          *schevana-core1-sources*)
 
-;; The folders load from here, the end of the last file in main.ss's list,
-;; so that a reload by older code, which loads only that list, loads them
-;; too. Their files may import the libraries shipped in lib/.
-(add-library-directory! (string-append *schevana-root* "/lib"))
-(load-sources! (folder-files))
+;; The world's files into "/" (core1-boot!, reload!). The folders may
+;; import the libraries shipped in lib/.
+(define (load-world!)
+  (add-library-directory! (string-append *schevana-root* "/lib"))
+  (load-sources! (world-sources)))

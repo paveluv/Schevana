@@ -85,7 +85,7 @@
 ;;; ------------------------------------------------------------------ a topic
 
 (load (string-append *schevana-root* "/main.ss"))
-(load (string-append *schevana-root* "/tests/core0.ss"))
+(load (string-append *schevana-root* "/tests/reach.ss"))
 
 ;; Never touch the user's real theme file, nor their apps' permissions.
 (set! *theme-file-path* (string-append out-dir "/theme.ss"))

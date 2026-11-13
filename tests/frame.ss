@@ -41,7 +41,7 @@
     (if (string=? dir "") "." dir)))
 
 (load (string-append *schevana-root* "/main.ss"))
-(load (string-append *schevana-root* "/tests/core0.ss"))
+(load (string-append *schevana-root* "/tests/reach.ss"))
 
 (define out-dir
   (if (pair? (command-line-arguments)) (car (command-line-arguments)) "."))

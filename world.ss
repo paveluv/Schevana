@@ -1,4 +1,4 @@
-;;; world.ss — the world's boot, in "/" once core0 loaded the tree there
+;;; world.ss — the world's boot, in "/" once core1 loaded the world there
 ;;; (main.ss): the user's folders and settings, the window or the headless
 ;;; target, the first windows, then the run. What the command line asked,
 ;;; main.ss read: *schevana-options*.

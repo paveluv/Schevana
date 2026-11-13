@@ -1,8 +1,8 @@
-;;; platform.ss — what differs by platform, of the core's: which platform
-;;; this is, as predicates and facts (the OS and CPU are src/base.ss's,
-;;; the rest core0's word in *core0-platform*), and what core1 reads of the
-;;; system that each system says its own way. Each is #f where the system
-;;; doesn't say. docs/PLATFORMS.md says where each has run.
+;;; core1/platform.ss — what differs by platform, of the core's: which
+;;; platform this is, as predicates and facts (the OS and CPU are
+;;; src/base.ss's, the rest core0's word in *core0-platform*), and what core1
+;;; reads of the system that each system says its own way. Each is #f where
+;;; the system doesn't say. docs/PLATFORMS.md says where each has run.
 
 ;; One of core0's facts of the platform (src/core0/platform.ss), or #f:
 ;; windowing, gpu-api, gpu-device, sdl, system, kernel, desktop, reports.
@@ -94,8 +94,25 @@
              (foreign-free p)
              load)))))
 
-;; How many threads this machine runs at once (logical cores).
-(define (platform-cpu-count) (sdl-get-num-logical-cpu-cores))
+;; The monotonic clock in ns, a fixnum: what the profiler times with.
+;; Core1's own, read from core0's (src/core0/ffi.ss), so a test fakes it
+;; without moving core0's.
+(define (now-ns) (core0-clock-ns))
+
+;; The same clock in ms: what apps and timers go by. It reads the clock
+;; itself, so a test can fake either without moving the other.
+(define (now-ms) (quotient (core0-clock-ns) 1000000))
+
+;; The CPU time this thread has had, in ns: a number, read into memory
+;; kept for it, so that reading it allocates nothing. The clock's number is
+;; the system's.
+(define thread-cpu-clock
+  (if (platform-mac?) 16 3))
+(define thread-cpu-time (foreign-alloc 16))   ; a timespec
+(define (thread-cpu-ns)
+  (c-clock-gettime thread-cpu-clock thread-cpu-time)
+  (+ (* 1000000000 (foreign-ref 'long thread-cpu-time 0))
+     (foreign-ref 'long thread-cpu-time 8)))
 
 ;;; ------------------------------------------------------------------
 ;;; the pacer here

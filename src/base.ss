@@ -1,14 +1,7 @@
-;;; base.ss — small utilities shared by everything else.
-
-;; Whether this is the thread that loaded this copy of base.ss: each
-;; environment loads its own, so the world's answers for core1 and core0's
-;; for the process's first thread. The world's state is core1's alone, and
-;; SDL core0's: a worker runs only worklets (proc.ss), where neither can be
-;; named.
-(define core1-thread?
-  (if (threaded?)
-      (let ([id (get-thread-id)]) (lambda () (fx= (get-thread-id) id)))
-      (lambda () #t)))
+;;; base.ss — what every environment has: the basics, and the means by
+;;; which a layer gives the next its names. Pure: it keeps no state and
+;;; calls no C, so each environment loads a copy of its own, and any copy
+;;; is as good as another (tests/sources.ss).
 
 ;; State variables that must survive (reload!) are declared with defvar,
 ;; like in Emacs: the initial value is only used if the name is unbound.
@@ -16,10 +9,6 @@
   (syntax-rules ()
     [(_ name init)
      (define name (if (top-level-bound? 'name) (top-level-value 'name) init))]))
-
-;; The environment the world lives in. Lookups by name go here, not to
-;; (interaction-environment), which a private REPL rebinds.
-(defvar *world-env* (interaction-environment))
 
 ;; A read-only forwarder to the identifier id's binding: a macro that,
 ;; installed in another environment, makes code there refer to that
@@ -34,12 +23,103 @@
        [_ (identifier? x) id]
        [(_ . rest) #`(#,id . rest)]))))
 
-;; The monotonic clock in ns, a fixnum: what the profiler times with.
-(define (now-ns) (sdl-get-ticks-ns))
+;; The same, but a set!, and so a fluid-let, sets the binding, if (check
+;; value); check #t lets any value by.
+(define (forwarder-settable id check)
+  (make-variable-transformer
+   (lambda (x)
+     (syntax-case x (set!)
+       [(set! name v)
+        (if (procedure? check)
+            #`(set! #,id (let ([value v])
+                           (if ((quote #,check) value)
+                               value
+                               (errorf 'set! "~s may not be ~s" 'name
+                                       value))))
+            #`(set! #,id v))]
+       [_ (identifier? x) id]
+       [(_ . rest) #`(#,id . rest)]))))
 
-;; The same clock in ms: what apps and timers go by. It reads the clock
-;; itself, so a test can fake either without moving the other.
-(define (now-ms) (quotient (sdl-get-ticks-ns) 1000000))
+;; An identifier at environment's top level: a forwarder made from it names
+;; that environment's binding. A macro there, under a name no code can type,
+;; hands back the identifier it is used with, so it needs nothing of the
+;; environment's own, not even syntax.
+(define (environment-anchor environment)
+  (let ([grab (gensym "anchor")] [got #f])
+    (define-top-level-syntax grab
+      (lambda (x)
+        (syntax-case x () [(_ id) (begin (set! got #'id) #''anchor)]))
+      environment)
+    (eval (list grab 'anchor) environment)
+    got))
+
+;;; ---- exports
+;;; Each layer below the world says in its export.ss what it gives the
+;;; environments it makes, and nothing else gets there:
+;;;
+;;;   (define-exports name (export (destination ...) entry ...) ...)
+;;;
+;;; each entry a name, read-only there; or (settable name), whose set! and
+;;; fluid-let reach the layer's own variable; or (settable name check), the
+;;; same if (check value). The destinations are the chain's environments:
+;;; the recorder's and core1's, which core0 makes, and the world's, "/",
+;;; which core1 makes (main.ss).
+
+(define-syntax define-exports
+  (lambda (x)
+    (define (destination? d) (memq (syntax->datum d) '(recorder core1 world)))
+    (syntax-case x (export)
+      [(_ name (export (destination ...) entry ...) ...)
+       (for-all destination? #'(destination ... ...))
+       #'(define name
+           (list (cons '(destination ...) (list (export-entry entry) ...))
+                 ...))])))
+
+(define-syntax export-entry
+  (lambda (x)
+    (syntax-case x (settable)
+      [(_ (settable name)) (identifier? #'name) #''(name . #t)]
+      [(_ (settable name check)) (identifier? #'name) #'(cons 'name check)]
+      [(_ name) (identifier? #'name) #''(name . #f)])))
+
+;; Gives target what exports has for destination, each name a forwarder to
+;; source's binding as its entry says. A name source doesn't have is
+;; refused, so a slip in an export.ss stops the boot; a name target
+;; defined itself stays its own.
+(define (exports-install! exports source destination target)
+  (let ([anchor (environment-anchor source)] [has (make-eq-hashtable)])
+    ;; what source has, as syntax too: top-level-syntax? says so of any
+    ;; name an environment doesn't have
+    (for-each (lambda (s) (hashtable-set! has s #t))
+              (environment-symbols source))
+    (for-each
+     (lambda (clause)
+       (when (memq destination (car clause))
+         (for-each
+          (lambda (entry)
+            (let ([name (car entry)] [check (cdr entry)])
+              (unless (hashtable-ref has name #f)
+                (errorf 'exports-install! "~s is not there to export" name))
+              (unless (top-level-bound? name target)
+                (define-top-level-syntax name
+                  (let ([id (datum->syntax anchor name)])
+                    (if check
+                        (forwarder-settable id check)
+                        (forwarder-to id)))
+                  target))))
+          (cdr clause))))
+     exports)))
+
+;; The names exports gives destination.
+(define (exports-names exports destination)
+  (apply append
+         (map (lambda (clause)
+                (if (memq destination (car clause))
+                    (map car (cdr clause))
+                    '()))
+              exports)))
+
+;;; ---- the basics
 
 (define (clamp x lo hi) (max lo (min hi x)))
 
@@ -112,11 +192,11 @@
 
 ;;; ---- what the platform is
 ;;; Which OS and CPU this is, as Chez was built for them: known before
-;;; anything loads, so here, where core0 and the world both have them. What
-;;; is known only once SDL and the GPU start (the windowing system, the GPU's
-;;; API) core0 says in *core0-platform* (src/core0/platform.ss), and the world
-;;; asks src/platform.ss. These say what the platform is; whether it can do
-;;; a thing is asked of the thing.
+;;; anything loads, so here, where every environment has them. What is
+;;; known only once SDL and the GPU start (the windowing system, the GPU's
+;;; API) core0 says in *core0-platform* (src/core0/platform.ss), and the
+;;; world asks src/core1/platform.ss. These say what the platform is;
+;;; whether it can do a thing is asked of the thing.
 
 ;; 'linux, 'macos, 'windows, or 'other.
 (define (platform-os)
@@ -137,14 +217,3 @@
           [else 'other])))
 (define (platform-x86-64?) (eq? (platform-cpu) 'x86-64))
 (define (platform-arm64?) (eq? (platform-cpu) 'arm64))
-
-;; The CPU time this thread has had, in ns: a number, read into memory
-;; kept for it, so that reading it allocates nothing. The clock's number is
-;; the system's.
-(define thread-cpu-clock
-  (if (platform-mac?) 16 3))
-(define thread-cpu-time (foreign-alloc 16))   ; a timespec
-(define (thread-cpu-ns)
-  (c-clock-gettime thread-cpu-clock thread-cpu-time)
-  (+ (* 1000000000 (foreign-ref 'long thread-cpu-time 0))
-     (foreign-ref 'long thread-cpu-time 8)))

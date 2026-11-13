@@ -74,9 +74,11 @@
   (lambda (x)
     (syntax-case x ()
       [(k name reader (field ...))
+       ;; made where name is: the keyword may be a forwarder's
        (let ([named (lambda (s)
                       (datum->syntax
-                       #'k (string->symbol (format "~a-~a" (datum name) s))))]
+                       #'name
+                       (string->symbol (format "~a-~a" (datum name) s))))]
              [fields (datum (field ...))])
          (with-syntax ([words (named 'words)]
                        [n (length fields)]

@@ -368,8 +368,8 @@
               (equal? (envs-chip-picked "a") '(a "" "")))))
 
 (check "dropping a child takes it, and its children, out of the tree and \
-        marks them dropped; not the world, nor /worklets, /core0, /recorder \
-        or /apps"
+        marks them dropped; not the world, nor /worklets, /core0, \
+        /recorder, /core1 or /apps"
        (let ([g (env-child units-env-world 'grand 'chez)])
          (env-drop! units-env-world)
          (env-drop! units-env)
@@ -380,12 +380,13 @@
               (raises? (lambda () (env-drop! (env-worklets))))
               (raises? (lambda () (env-drop! (env-find "/core0"))))
               (raises? (lambda () (env-drop! (env-find "/recorder"))))
+              (raises? (lambda () (env-drop! (env-find "/core1"))))
               (raises? (lambda () (env-drop! (grant-apps-env))))
               (not (env-find "/units-world/grand"))
               (not (env-find "/units"))
               (not (memq units-env (env-children (env-root))))
               (equal? (map env-name (env-children (env-root)))
-                      '(worklets core0 recorder apps)))))
+                      '(worklets core0 recorder core1 apps)))))
 
 ;;; The confined base (services/env.ss): what is always safe, for apps.
 
@@ -467,7 +468,8 @@
          (and h (eq? (env-parent h) (env-root)) (eq? (env-kind h) 'core0)
               (eq? (env-environment h) core0-env)
               (env-eval h '(procedure? gpu-frame!))
-              (not (top-level-bound? 'gpu-frame! *core0-world*))))
+              (not (top-level-bound? 'gpu-frame! *world-env*))
+              (not (top-level-bound? 'gpu-frame! core1-env))))
   (check "a definition there takes at core0's next call, through the \
           world's forwarder too"
          (let ([real (env-eval h 'core0-error-text)])
@@ -498,3 +500,33 @@
            (and (equal? (window-title win) "REPL — /core0")
                 (eq? (repl-kind r) 'core0)))
     (close-window! win)))
+
+;;; /core1: the core's own environment, under the root; what the world is
+;;; given forwards there.
+
+(let ([h (env-find "/core1")])
+  (check "/core1 is the core's environment: kept, forking nothing, shared \
+          nothing of the world's"
+         (and h (eq? (env-parent h) (env-root)) (eq? (env-kind h) 'core1)
+              (eq? (env-environment h) core1-env)
+              (raises? (lambda () (env-drop! h)))
+              (null? (env-forks h))
+              (envs-why-not h 'share)
+              (not (envs-why-not h 'repl))))
+  (check "describing a name the core gives the world, from \"/\" or from a \
+          world namespace, reaches /core1"
+         (let ([w (env-fork (env-root) 'world)])
+           (let-values ([(e n) (env-holder (env-root) 'theme)]
+                        [(e2 n2) (env-holder w 'theme)])
+             (env-drop! w)
+             (and (eq? e h) (eq? n 'theme) (eq? e2 h) (eq? n2 'theme)))))
+  (check "a definition there takes at the core's next call, the world's \
+          through its forwarder; one the core doesn't export stays its own"
+         (let ([real (env-eval h 'platform-machine-load)])
+           (env-eval h '(define (platform-machine-load) "from /core1"))
+           (env-eval h '(define units-core1-own 1))
+           (let ([seen (eval '(platform-machine-load) *world-env*)])
+             (env-eval h `(define platform-machine-load ',real))
+             (and (equal? seen "from /core1")
+                  (eq? (env-eval h 'platform-machine-load) real)
+                  (not (memq 'units-core1-own (core1-exported))))))))

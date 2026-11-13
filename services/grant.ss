@@ -132,7 +132,7 @@
      crew-size
      crew-size-set!
      platform-cpu-count)
-    ;; a shader touches only the buffers it's handed (src/shader.ss), and
+    ;; a shader touches only the buffers it's handed (src/core1/shader.ss), and
     ;; nothing here waits for the GPU
     (gpu "Compute and draw on the GPU"
      define-compute-shader
@@ -320,7 +320,7 @@
             (remp (lambda (n) (memq n grant-worklet-names))
                   (apply append (map cddr grant-bundles))))
 
-;; Loads path, a file of an apps folder, for src/system.ss: a tree app
+;; Loads path, a file of an apps folder, for src/core1/system.ss: a tree app
 ;; that requests nothing into the world, any other into its sandbox,
 ;; made again when what it requests or is granted has changed.
 (define (grant-load-app! path)

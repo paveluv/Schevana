@@ -50,27 +50,38 @@ before it:
 
 | Layer | What goes there |
 |---|---|
-| `src/core0/` | Core0, below the core: SDL's bindings, the GPU's device side, and the window and its events. It loads right after `src/ffi.ss` and `src/base.ss`, then makes the world's environment, "/", where everything below loads, and forks core1, the world's own thread, which loads and runs it (headless, one thread plays both). |
-| `src/` | The core: the world (windows, focus, the theme's layers, processes, timers, its side of core0's window and events), the shader compiler, core1's side of the GPU layer, the recorder and fonts, its registries, the hooks later layers fill, and the caches its own procedures need. |
+| `src/base.ss` | What every environment has, a copy each: the basics, and `define-exports`, by which a layer gives the next its names. Pure: no state, no C. |
+| `src/core0/` | Core0, below the core, in "/core0": SDL's bindings, the GPU's device side, and the window and its events. `main.ss` boots it; it makes "/recorder" (`src/recorder/`, sealed: the bytes of frames and their writers) and "/core1", loads the core there, and boots core1, the world's own thread (headless, one thread plays both). |
+| `src/core1/` | The core, in "/core1": the world (windows, focus, the theme's layers, processes, timers, its side of core0's window and events), the shader compiler, core1's side of the GPU layer, the recorder and fonts, its registries, the hooks later layers fill, and the caches its own procedures need. It makes the world's environment, "/", where everything below loads. |
 | `kits/` | Libraries, pure or almost. |
 | `services/` | Long-lived state with an API and no surface: the crew of worker threads, the tree of environments, the apps' sandboxes and what they are allowed, vats and their jobs, the profiler, the saved look. |
 | `desktop/` | The screen's own surfaces and the desktop's behavior: wallpaper, bars, menu, toasts, keys, arranging windows. |
 | `styles/`, `palettes/`, `wallpapers/` | One definition per file, registered by its definer. |
 | `apps/` | One app per file, defined with `define-app`; one whose first form is `app-requests` runs in a sandbox of its own (`services/grant.ss`). |
 
+- **The boot is a chain**: `main.ss` boots core0, core0 boots core1, core1
+  boots the world. Each link makes the next one's environment and gives it
+  only what its `export.ss` lists (`src/core0/`, `src/recorder/`,
+  `src/core1/`), each name read-only unless its entry is `settable`;
+  nothing else of a layer's is there to name, and nothing reaches back up.
+  The world has of core0's and the recorder's only what core1 gives it
+  again. A new name in an `export.ss` is a reviewed change, and
+  `tests/sources.ss` checks that no layer names another's beyond it.
 - **The core never depends on a later layer.** It reaches them only
-  through registries, parts and settings they fill, and hooks they set
-  (`*profile-span*`, `*theme-saver*`, `*window-gone*`, `*app-loader*`).
+  through registries, parts and settings they fill, and hooks they set:
+  core1's `settable` exports (`*profile-span*`, `*theme-saver*`,
+  `*window-gone*`, `*app-loader*`, ...).
 - **Core0 sits below the core.** `src/core0/` names nothing of the core
-  above it, and only it names SDL, but for the clock and the CPU count,
-  which any thread may call (`src/ffi.ss`). What still crosses is listed
-  in `tests/sources.ss`, and the lists only shrink
-  (`.work/gpu-design.md` 9.5, 9.12). The world names of core0's only its
-  interface (`core0-interface` in `src/core0/boot.ss`), which "/" has
-  read-only: a new name there is a reviewed change (`tests/sources.ss`).
+  above it but what it boots it by, and only it names SDL: the clock and
+  the CPU count are core0's, which it gives core1. What still crosses is
+  listed in `tests/sources.ss`, and the lists only shrink
+  (`.work/gpu-design.md` 9.5, 9.12).
+- **`src/base.ss` is pure**: it keeps no state and calls no C, so each
+  environment's copy is as good as another (`tests/sources.ss`). What
+  isn't pure is core0's or core1's, and exported.
 - **What differs by platform lives in the platform files**:
   `src/core0/platform.ss` for core0's (a folder, `src/core0/platform/`,
-  once it outgrows a file), `src/platform.ss` for the core's. A stack
+  once it outgrows a file), `src/core1/platform.ss` for the core's. A stack
   differs by OS, windowing system, compositor, SDL, GPU API, driver and
   monitor. Which one this is comes from their predicates and facts alone
   (`platform-mac?`, `platform-wayland?`, `platform-vulkan?`,
@@ -84,17 +95,19 @@ before it:
   updates `docs/PLATFORMS.md`: where it ran, where it should work, what
   happens without it. Monitor's Platform tab shows it all, and copies a
   run as a row of it.
-- **The core has a budget**, 36,682 tokens (atoms as read; comments,
-  whitespace and names' lengths are free), in `tests/sources.ss`. Don't
-  join lines or shorten names to fit it. Code the core doesn't need moves
-  out to the next layer, kits first; the budget is raised only on purpose.
+- **The core has a budget**, 36,786 tokens (atoms as read; comments,
+  whitespace and names' lengths are free; the `export.ss` files, which
+  declare, are left out), in `tests/sources.ss`. Don't join lines or
+  shorten names to fit it. Code the core doesn't need moves out to the
+  next layer, kits first; the budget is raised only on purpose.
 - **Only the core calls C.** No SDL, FreeType or fontconfig binding, or
-  `foreign-…` procedure, outside `src/`: the core grows a primitive instead
-  (`tests/sources.ss`).
+  `foreign-…` procedure, outside `src/`, and no binding is exported to the
+  world: the core grows a primitive instead (`tests/sources.ss`). Core1
+  binds its own C with `define-foreign`, which core0 gives it.
 - **The GPU layer speaks the world's terms.** Above core0, in the core too,
   nothing names SDL's GPU, Vulkan, SPIR-V, Metal or MSL, so that another
   back end or raw Vulkan stays core0's business alone (`tests/sources.ss`;
-  the compiler, `src/shader.ss`, writes the back ends' code).
+  the compiler, `src/core1/shader.ss`, writes the back ends' code).
 - **The shader language is the contract.** What a back end can't do doesn't
   get in: the twin (`kits/twin.ss`) is a second back end from the start, and
   `tests/units/shader.ss` holds it and the device together.
@@ -108,9 +121,11 @@ before it:
 ## State
 
 - **S1. One owner.** Outside the core, only the file that defines a global
-  sets it; the others call its procedures. The core's hooks are the
-  exception, and `fluid-let` for a temporary view is not a set
-  (`tests/sources.ss`).
+  sets it; the others call its procedures. The core's hooks, core1's
+  `settable` exports, are the exception, and `fluid-let` for a temporary
+  view is not a set (`tests/sources.ss`). The world is given the rest of
+  the core's read-only: a look that isn't on is read with
+  `call-with-theme`.
 - **S2. State by layer.** The world is the core's. A kit keeps no state but
   caches whose loss changes only speed, and state kept per object its
   caller holds (a ui, an edit, an owner's completion list). A service keeps
@@ -159,7 +174,10 @@ before it:
   effect at the next call: `(lambda () (theme-file-save-soon!))`, not
   `theme-file-save-soon!` captured as a value.
 - `(reload!)` of the tree into itself must keep working. It loads the
-  world's files again; core0's change with a restart.
+  core's files again into "/core1" and the world's into "/"; core0's
+  change with a restart. The core's own names are redefined in "/core1":
+  a `define` in "/" of one makes the world's own, which the core never
+  calls.
 
 ## Drawing and the look
 

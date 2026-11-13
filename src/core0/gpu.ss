@@ -11,7 +11,7 @@
 ;;; ring buffers, and no fence bookkeeping is needed for them.
 
 ;;; ------------------------------------------------------------------ shaders
-;;; What a compiled shader is, the compiler's (src/shader.ss) and the
+;;; What a compiled shader is, the compiler's (src/core1/shader.ss) and the
 ;;; device's contract, and which back end this machine speaks.
 
 ;; This machine's back end: a Mac has Metal, everything else Vulkan.
@@ -396,7 +396,7 @@
               (sdl-create-gpu-pipeline device (gpu-at p)))))
 
 ;; The core's shaders, which records are drawn with, as core1 hands them
-;; over (src/gfx.ss): (vertex . fragments), a vector of the fragment
+;; over (src/core1/gfx.ss): (vertex . fragments), a vector of the fragment
 ;; shader's variants.
 (defvar *gpu-shaders* #f)
 

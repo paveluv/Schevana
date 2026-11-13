@@ -111,8 +111,8 @@
                 (fxsll (byte g) 8) (byte b))))]))
 
 ;;; ------------------------------------------------------------------ fonts
-;;; (src/font.ss). The roles, from the four font settings (a style may give
-;;; any): the ui or mono family at its size plus d (or twice it).
+;;; (src/core1/font.ss). The roles, from the four font settings (a style may
+;;; give any): the ui or mono family at its size plus d (or twice it).
 
 (define (theme-font-rule family d . opts)
   (theme-rule

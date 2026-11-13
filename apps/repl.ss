@@ -277,6 +277,7 @@
                             [pretty-line-length width])
                (for-each
                 (lambda (form)
+                  (repl-note-core! r form)
                   (call-with-values
                     (lambda () (env-eval (repl-env r) form))
                     (lambda vals
@@ -291,6 +292,21 @@
                [(error) (repl-add! r 'error (condition->string value))]
                [(killed) (repl-add! r 'info "; interrupted")])
              (repl-done! r win)))))
+
+;; A define in the world of a name the core gives it makes the world's
+;; own, which the core never calls: said once, as it's evaluated, since
+;; what was meant is likely a redefinition, which is /core1's to make.
+(define (repl-note-core! r form)
+  (let ([name (and (pair? form) (memq (car form) '(define defvar))
+                   (pair? (cdr form))
+                   (let ([h (cadr form)]) (if (pair? h) (car h) h)))])
+    (when (and (symbol? name) (eq? (env-kind (repl-env r)) 'root)
+               (not (top-level-bound? name *world-env*))
+               (memq name (core1-exported)))
+      (repl-add! r 'info
+                 (format "; ~a is /core1's: this defines the world's own, \
+                          which the core doesn't call; redefine it in /core1"
+                         name)))))
 
 ;; The vat's thread runs the forms and prints what they return there,
 ;; where the values live; the texts come back. => the job.
@@ -1494,9 +1510,9 @@ here"))]
       (repl-banner! r)
       (let ([win (open-repl-window r)])
         ;; In a namespace, (exit) closes the window, not the world; but in
-        ;; core0's, where exit is how core0 ends the process
+        ;; core0's and core1's, where exit is how the process ends
         (when (and (env-parent e) (eq? (env-base e) 'chez)
-                   (not (eq? (env-kind e) 'core0)))
+                   (not (memq (env-kind e) '(core0 core1))))
           (repl-define-exit! win e))
         win))))
 

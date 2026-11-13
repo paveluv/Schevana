@@ -1,39 +1,38 @@
-;;; tests/units/boot.ss — core0 as the bootloader: the world's environment
-;;; it makes, "/" (src/core0/boot.ss).
+;;; tests/units/boot.ss — the boot's chain: core0 makes "/recorder" and
+;;; "/core1" (src/core0/boot.ss), core1 makes "/" (src/core1/boot.ss), each
+;;; given what the one before exports (src/base.ss's define-exports).
 
-;; The tests' "/" forwards every name of core0's (tests/core0.ss), so a "/"
-;; made again, with no sources, shows what the world is given.
-(let ([world (fluid-let ([*core0-world* *core0-world*]
+;; core0 makes the two again, with no sources for core1, to show what core1
+;; is given; the tests' own stay as they were.
+(let ([core1 (fluid-let ([*core0-core1* *core0-core1*]
                          [*core0-recorder* *core0-recorder*])
-               (core0-boot! *schevana-root* *schevana-recorder-sources* '()
-                           '((mode . headless)) #f)
-               *core0-world*)])
-  (define (in-world form) (eval form world))
-  (check "core0 makes \"/\" with all of Chez and, of its own names, only its \
-          interface: each core0's binding itself, and read-only; and hands \
-          it the tree's sources and the command line's options"
-         (and (eq? (in-world 'car) car)
-              (eq? (in-world 'gpu-publish!) gpu-publish!)
-              (eq? (in-world '*gpu-facts*) *gpu-facts*)
-              (raises? (lambda () (in-world 'gpu-frame!)))
-              (raises? (lambda () (in-world '*sdl-window*)))
-              (raises? (lambda () (in-world '(set! gpu-publish! #f))))
+               (core0-make! *schevana-root* *schevana-recorder-sources* '()
+                            '((mode . headless))))])
+  (define (in-core1 form) (eval form core1))
+  (define (named? name) (guard (c [#t #f]) (in-core1 name) #t))
+  (check "core0 makes \"/core1\" with all of Chez and, of its own names, \
+          only what it exports there: each core0's binding itself, and \
+          read-only; and hands it the core's sources and the command \
+          line's options"
+         (and (eq? (in-core1 'car) car)
+              (eq? (in-core1 'gpu-publish!) gpu-publish!)
+              (eq? (in-core1 '*gpu-facts*) *gpu-facts*)
+              (eq? (in-core1 'core0-clock-ns) (top-level-value 'core0-clock-ns
+                                                               core0-env))
+              (not (named? 'gpu-frame!))
+              (not (named? '*sdl-window*))
+              (not (named? 'sdl-get-ticks-ns))
+              (raises? (lambda () (in-core1 '(set! gpu-publish! #f))))
               (raises? (lambda ()
-                         (in-world '(fluid-let ([*core0-mode* 'sdl]) #t))))
-              (equal? (in-world '*schevana-sources*) '())
-              (equal? (in-world '*schevana-options*) '((mode . headless)))
-              (not (eq? world core0-env)))))
-
-(let ([world (fluid-let ([*core0-world* *core0-world*]
-                         [*core0-recorder* *core0-recorder*])
-               (core0-boot! *schevana-root* *schevana-recorder-sources* '()
-                           '((mode . headless)) #f)
-               *core0-world*)])
-  (define (named? name) (guard (c [#t #f]) (eval name world) #t))
-  (check "\"/recorder\" is sealed: \"/\" holds its interface, read-only, and \
-          none of the bytes it hands core0, nor what writes them"
-         (and (procedure? (eval 'rec-write! world))
-              (raises? (lambda () (eval '(set! rec-write! #f) world)))
+                         (in-core1 '(fluid-let ([*core0-mode* 'sdl]) #t))))
+              (equal? (in-core1 '*schevana-core1-sources*) '())
+              (equal? (in-core1 '*schevana-options*) '((mode . headless)))
+              (not (eq? core1 core0-env))))
+  (check "\"/recorder\" is sealed: \"/core1\" holds what it exports, \
+          read-only, and none of the bytes it hands core0, nor what writes \
+          them"
+         (and (procedure? (in-core1 'rec-write!))
+              (raises? (lambda () (in-core1 '(set! rec-write! #f))))
               (not (named? '*rec-now*))
               (not (named? 'rec-take!))
               (not (named? 'gpu-recording-recs))
@@ -42,6 +41,49 @@
               (not (named? 'gpu-frame-root-set!))
               (not (named? 'gpu-frame-earlier-set!))
               (eq? (env-kind (env-find "/recorder")) 'recorder))))
+
+;; A "/" made as core1 makes it, given core1's exports: the tests' own has
+;; them settable (tests/reach.ss).
+(let ([world (let ([w (copy-environment (scheme-environment) #t)])
+               (exports-install! core1-exports core1-env 'world w)
+               w)])
+  (define (in-world form) (eval form world))
+  (define (named? name) (guard (c [#t #f]) (in-world name) #t))
+  (check "core1 gives \"/\" what it exports, each the core's binding \
+          itself and read-only, core0's it gives again too; nothing else of \
+          the core's, and none of its C"
+         (and (eq? (in-world 'theme) (top-level-value 'theme core1-env))
+              (eq? (in-world 'core0-frame-ns) core0-frame-ns)
+              (raises? (lambda () (in-world '(set! theme #f))))
+              (raises? (lambda ()
+                         (in-world '(fluid-let ([*style-name* 'mac]) #t))))
+              (not (memq 'compute-rule! (core1-exported)))
+              (not (named? 'compute-rule!))
+              (not (named? 'ft-init-freetype))
+              (not (named? 'c-socket))
+              (not (named? 'core0-clock-ns))
+              (not (named? 'gpu-publish!))))
+  (check "a hook is settable from \"/\", reaching the core's variable, \
+          but only with what the core calls"
+         (let ([real (top-level-value '*window-gone* core1-env)]
+               [mine (lambda (win) 'gone)])
+           (and (raises? (lambda () (in-world '(set! *window-gone* 5))))
+                (eq? (top-level-value '*window-gone* core1-env) real)
+                (eq? (in-world `(fluid-let ([*window-gone* ',mine])
+                                  *window-gone*))
+                     mine)
+                (eq? (top-level-value '*window-gone* core1-env) real)))))
+
+(check "an export list names only the chain's environments, and a name \
+        that isn't there to give stops the install"
+       (and (raises? (lambda ()
+                       (eval '(define-exports units-x (export (moon) car))
+                             core0-env)))
+            (raises? (lambda ()
+                       (exports-install!
+                        (list (cons '(world) '((units-no-such-name . #f))))
+                        core1-env 'world
+                        (copy-environment (scheme-environment) #t))))))
 
 ;; main.ss reads the command line before anything loads, each option once,
 ;; in its defaults' order; a word it doesn't know prints the usage.
@@ -69,9 +111,14 @@
               (not (main-fork? (main-options '("--headless"))))
               (not (main-fork? (main-options '("--install-desktop")))))))
 
-(check "the world runs in an environment of its own, not core0's"
-       (and (eq? *world-env* *core0-world*)
-            (not (eq? *world-env* core0-env))))
+(check "the world runs in an environment of its own, made by core1 in \
+        one of its own, made by core0"
+       (and (eq? *world-env* world-env)
+            (eq? *core1-env* core1-env)
+            (eq? core1-env *core0-core1*)
+            (not (eq? *world-env* core1-env))
+            (not (eq? *world-env* core0-env))
+            (not (eq? core1-env core0-env))))
 
 ;;; Core0's step: jobs the world posts run at its next step, in order, by
 ;;; name; the events it pumps wait in the world's inbox until taken; what it

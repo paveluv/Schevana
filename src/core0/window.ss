@@ -1,7 +1,7 @@
 ;;; core0/window.ss — core0's window (.work/gpu-design.md 9.12):
 ;;; SDL's window, its events and what it says of itself, as plain data the
-;;; world reads (src/screen.ss), never SDL's pointers. Positions come in the
-;;; window's units, as SDL gives them; the world lays them out.
+;;; world reads (src/core1/screen.ss), never SDL's pointers. Positions come
+;;; in the window's units, as SDL gives them; the world lays them out.
 ;;;
 ;;; *core0-mode* says what core0 runs, 'none before it starts:
 ;;; 'sdl      : a real resizable window, on the GPU

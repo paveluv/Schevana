@@ -140,6 +140,11 @@
     (topbar-height "Top bar" 22 40 topbar-height-min)
     (taskbar-height "Taskbar" 28 56 taskbar-height-min)))
 
+;; thunk's values with t (a resolved theme) in effect meanwhile: a look
+;; that isn't on, read as if it were (a preview, a comparison).
+(define (call-with-theme t thunk)
+  (fluid-let ([*theme* t]) (thunk)))
+
 ;; A rule still in the table is computed the first time it is read.
 (define (theme key)
   (let ([v (hashtable-ref *theme* key theme-unset)])
@@ -237,24 +242,27 @@
 ;; next frame.
 (define (theme-part key)
   (let ([v (theme key)])
-    (if (symbol? v) (top-level-value v *world-env*) v)))
+    (if (symbol? v) (world-value v) v)))
 
 ;; (define-part (name formal ...) body ...) defines name* as the body (the
 ;; built-in) and name as a call to the theme's part for the key name,
 ;; whose built-in setting is name*; a style replaces it by setting the key.
 (define-syntax define-part
   (lambda (x)
-    (define (star k name)
-      (datum->syntax k (string->symbol (format "~a*" (syntax->datum name)))))
+    ;; name*, made where name is: the keyword may be a forwarder's, from
+    ;; another environment
+    (define (star name)
+      (datum->syntax name
+                     (string->symbol (format "~a*" (syntax->datum name)))))
     (syntax-case x ()
       [(k (name formal ...) body ...)
-       (with-syntax ([built-in (star #'k #'name)])
+       (with-syntax ([built-in (star #'name)])
          #'(begin
              (define (built-in formal ...) body ...)
              (define (name formal ...) ((theme-part 'name) formal ...))
              (theme-default! 'name 'built-in)))]
       [(k (name formal ... . rest) body ...)
-       (with-syntax ([built-in (star #'k #'name)])
+       (with-syntax ([built-in (star #'name)])
          #'(begin
              (define (built-in formal ... . rest) body ...)
              (define (name formal ... . rest)

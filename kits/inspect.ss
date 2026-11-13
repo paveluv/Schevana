@@ -5,7 +5,7 @@
 ;;; read from a copy of the last frame's: (inspect-list), about 2 µs for 150
 ;;; KB. What's read of it comes in device pixels, the screen's.
 
-;; What src/gfx.ss's record kinds and paints are, by number; a test holds
+;; What src/core1/gfx.ss's record kinds and paints are, by number; a test holds
 ;; the two together.
 (define inspect-kinds '#(box segment polygon glyph shadow))
 (define inspect-paints '#(solid gradient stipple image shader))
@@ -1438,7 +1438,7 @@
   (let ([x (cadr run)])
     (if (gpu-call? x)
         (gpu-call-shader x)
-        (top-level-value (inspect-run-shader run)))))
+        (world-value (inspect-run-shader run)))))
 
 ;; The helper groups a shader's source takes, wherever it takes them, in
 ;; order.

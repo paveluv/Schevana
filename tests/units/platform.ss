@@ -1,5 +1,5 @@
 ;;; tests/units/platform.ss — which platform this is (src/base.ss,
-;;; src/platform.ss, src/core0/platform.ss), as predicates, facts,
+;;; src/core1/platform.ss, src/core0/platform.ss), as predicates, facts,
 ;;; Monitor's Platform tab and a row for docs/PLATFORMS.md; the screen's
 ;;; times read on the clock that fits them; and the trace
 ;;; (src/core0/trace.ss). Whatever the platform: each check holds on any

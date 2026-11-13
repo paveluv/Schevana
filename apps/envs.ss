@@ -49,8 +49,9 @@
 ;; What the kind means, under its title.
 (define (envs-kind-doc e)
   (case (env-kind e)
-    [(root) "The world itself: every name of Schevana's and of Chez. What \
-             is defined here changes the running world."]
+    [(root) "The world itself: the folders' names, Chez's, and what the \
+             core gives it (/core1). What is defined here changes the \
+             running world; the core's own are redefined in /core1."]
     [(worklets) "Where the worklets live (define-worklet); the pool's \
                  threads run them."]
     [(#f) (format "Made by code (env-child): ~a, and what is shared with it"
@@ -114,7 +115,7 @@
               "/worklets holds worklets only: define-worklet puts them there"]
              [(and (eq? what 'share) (memq kind '(apps app)))
               "An app holds the bundles it is allowed, and no more"]
-             [(and (eq? what 'share) (memq kind '(core0 recorder)))
+             [(and (eq? what 'share) (memq kind '(core0 recorder core1)))
               "It names nothing of the world's: it sits below it"]
              [vat? "Its sandbox is its vat's: share and load before its \
                     thread starts"]

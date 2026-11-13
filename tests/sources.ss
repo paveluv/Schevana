@@ -18,7 +18,7 @@
     (if (string=? dir "") "." dir)))
 
 (load (string-append *schevana-root* "/main.ss"))
-(load (string-append *schevana-root* "/tests/core0.ss"))
+(load (string-append *schevana-root* "/tests/reach.ss"))
 
 (define failures 0)
 
@@ -64,15 +64,17 @@
                (sort string<? (directory-list (source-path folder))))))
 
 ;; Core0's own files, src/core0/: main.ss lists them for core0 alone, and
-;; (source-files) is the world's.
+;; (source-files) is core1's and the world's. Each environment loads its
+;; own copy of src/base.ss, counted with core1's.
 (define core0-files
-  (remp (lambda (f) (member f *schevana-sources*)) *schevana-core0-sources*))
+  (remove "src/base.ss" *schevana-core0-sources*))
 
-;; "/recorder"'s own files, src/recorder/, sealed between core0 and the
-;; world.
+;; "/recorder"'s own files, src/recorder/, sealed between core0 and core1.
 (define recorder-files
-  (remp (lambda (f) (member f *schevana-sources*))
-        *schevana-recorder-sources*))
+  (remove "src/base.ss" *schevana-recorder-sources*))
+
+;; The core's, in "/core1".
+(define core1-files *schevana-core1-sources*)
 
 (define line-files
   (append core0-files recorder-files
@@ -148,7 +150,9 @@
 (define (definitions f) (apply append (map defined (file-forms f))))
 
 ;; Names defined in two files on purpose: ((kind . name) reason) ...
-(define defined-twice '())
+(define defined-twice
+  '(((name . now-ns) "core0's clock and core1's, each in its own \
+                      environment, so a test fakes core1's alone")))
 
 (define world-files
   (append core0-files recorder-files (source-files) '("main.ss")))
@@ -192,8 +196,10 @@
 ;;; code itself: less of it, or some of it moved to a later layer.
 
 ;; Raise it deliberately: the core is what the desktop needs to boot and
-;; run; everything else belongs in a folder.
-(define src-budget 36682)
+;; run; everything else belongs in a folder. The export.ss files are left
+;; out: they declare what each layer gives, sized by what's given, each a
+;; reviewed change.
+(define src-budget 36786)
 
 ;; The tokens of a datum as read; a list's end is none.
 (define (tokens x)
@@ -203,9 +209,8 @@
         [else 1]))
 
 (let* ([counts (map (lambda (f) (cons f (apply + (map tokens (file-forms f)))))
-                    (append core0-files recorder-files
-                            (filter (lambda (f) (string-prefix? "src/" f))
-                                    *schevana-sources*)))]
+                    (remp (lambda (f) (equal? (path-last f) "export.ss"))
+                          (append core0-files recorder-files core1-files)))]
        [n (apply + (map cdr counts))])
   (check (format "src/ is ~a tokens, within its budget of ~a (to grow the \
                   core, raise src-budget in tests/sources.ss on purpose)"
@@ -222,9 +227,13 @@
 ;;; are there for a later layer to set. fluid-let (a view for a while) is
 ;;; not a set.
 
+;; core1's settable exports (src/core1/export.ss).
 (define core-hooks
-  '(*profile-span* *theme-saver* *window-gone* *app-loader*
-    *screen-event-seen* *worklet-spread*))
+  (apply append
+         (map (lambda (clause)
+                (filter-map (lambda (entry) (and (cdr entry) (car entry)))
+                            (cdr clause)))
+              core1-exports)))
 
 ;; The names a file defines at its top level.
 (define (top-level-names f)
@@ -270,12 +279,13 @@
 ;;; ------------------------------------------------------------------
 ;;; only the core calls C
 ;;; One of the core's roles is to keep C away from the rest: outside src/
-;;; no file names a binding of src/ffi.ss, a foreign-… procedure, an
-;;; ftype form or load-shared-object. The tests may: they inspect what is
-;;; drawn and stand in for SDL.
+;;; no file names a binding of src/core0/ffi.ss's or src/core1/ffi.ss's, a
+;;; foreign-… procedure, an ftype form or load-shared-object. The tests
+;;; may: they inspect what is drawn and stand in for SDL.
 
 (define ffi-names
-  (map cdr (append (definitions "src/ffi.ss")
+  (map cdr (append (definitions "src/core0/ffi.ss")
+                   (definitions "src/core1/ffi.ss")
                    (definitions "src/core0/sdl.ss"))))
 
 (define (reaches-c? s)
@@ -302,25 +312,25 @@
 ;; The GPU layer speaks the world's terms: above it, in the core too, nothing
 ;; names SDL's windowless half, Vulkan, SPIR-V, Metal or MSL, so that another
 ;; back end, or raw Vulkan, is the GPU layer's business alone. Core0 keeps
-;; SDL's window; the clock and the CPU count are SDL's, which any thread may
-;; call. Which platform this is, its GPU's API among it, is named only
-;; where it's said, src/platform.ss.
+;; SDL, the clock and the CPU count among it. Which platform this is, its
+;; GPU's API among it, is named only where it's said,
+;; src/core1/platform.ss.
 (define above-gpu-files
   (remp (lambda (f)
-          (member f '("src/ffi.ss" "src/shader.ss" "src/core0/sdl.ss"
-                      "src/core0/platform.ss" "src/core0/gpu.ss"
-                      "src/core0/present.ss" "src/core0/window.ss"
-                      "src/font.ss" "src/platform.ss")))
+          (member f '("src/core0/ffi.ss" "src/core1/shader.ss"
+                      "src/core0/sdl.ss" "src/core0/platform.ss"
+                      "src/core0/gpu.ss" "src/core0/present.ss"
+                      "src/core0/window.ss" "src/core1/font.ss"
+                      "src/core1/platform.ss")))
         (append world-files '("world.ss"))))
 
 (define (names-a-back-end? s)
   (let ([name (symbol->string s)])
-    (and (not (memq s '(sdl-get-ticks-ns sdl-get-num-logical-cpu-cores)))
-         (or (string-prefix? "sdl-" name)
-             (string-contains-ci? name "spirv")
-             (string-contains-ci? name "vulkan")
-             (string-contains-ci? name "msl")
-             (string-contains-ci? name "metal")))))
+    (or (string-prefix? "sdl-" name)
+        (string-contains-ci? name "spirv")
+        (string-contains-ci? name "vulkan")
+        (string-contains-ci? name "msl")
+        (string-contains-ci? name "metal"))))
 
 (check (format "above the GPU layer (~a files) no name is SDL's, Vulkan's, \
                 SPIR-V's, Metal's or MSL's" (length above-gpu-files))
@@ -333,7 +343,7 @@
                           above-gpu-files))))
 
 (check (format "outside src/ (~a files) nothing reaches C: no binding of \
-                src/ffi.ss (~a), no foreign-… or ftype form"
+                core0's or core1's (~a), no foreign-… or ftype form"
                (length outside-src) (length ffi-names))
        (none? (apply append
                      (map (lambda (f)
@@ -352,8 +362,8 @@
 
 ;; and src/core0/sdl.ss, which binds SDL's video driver for core0's to read
 (define platform-files
-  '("src/base.ss" "src/platform.ss" "src/core0/sdl.ss" "src/core0/platform.ss"
-    "kits/inspect.ss"))
+  '("src/base.ss" "src/core1/platform.ss" "src/core0/sdl.ss"
+    "src/core0/platform.ss" "kits/inspect.ss"))
 
 ;; The strings in x.
 (define (strings-in x)
@@ -383,38 +393,34 @@
                                         '("world.ss")))))))
 
 ;;; ------------------------------------------------------------------
-;;; core0 below the core
-;;; Core0's code, src/core0/ (.work/gpu-design.md 9.5), sits below the
-;;; core: it loads right after the C bindings and the basics, names nothing
-;;; of the core above it, and is the only code that names SDL. What it still
-;;; names above it, and the SDL the core above still calls, are listed
-;;; here, and the lists only shrink.
+;;; the chain: core0, the recorder, core1, the world
+;;; Each environment is given what the one that made it exports (its
+;;; export.ss), and names nothing else of that one's, nor of those it gave
+;;; again; core0 names nothing of the core above it, which it boots by
+;;; name. An environment can't reach past it anyway, sealed; these say
+;;; where, before a boot finds it.
 
-(define above-core0-files
-  (append recorder-files
-          (remp (lambda (f)
-                  (member f (append core0-files '("src/ffi.ss" "src/base.ss"))))
-                (filter (lambda (f) (string-prefix? "src/" f))
-                        *schevana-sources*))))
+;; The names each layer defines; base.ss's are every environment's own.
+(define (layer-names files)
+  (map cdr (apply append (map definitions (remove "src/base.ss" files)))))
 
-;; What core0 names of the core above it: only the recorder's interface,
-;; which it reads by name as it makes "/" and shares it there.
-(define core0-reaches-up '(recorder-interface))
+(define core0-names (layer-names core0-files))
+(define recorder-names (layer-names recorder-files))
 
-(check "core0 names nothing of the core above it but what's listed, on its \
-        way out"
-       (let ([above (map cdr (apply append (map definitions
-                                                 above-core0-files)))])
-         (none? (apply append
-                       (map (lambda (f)
-                              (map (lambda (s) (format "~a names ~a" f s))
-                                   (filter (lambda (s)
-                                             (and (memq s above)
-                                                  (not (memq
-                                                        s core0-reaches-up))))
-                                           (reverse (symbols-in
-                                                     (file-forms f))))))
-                            core0-files)))))
+;; Core1's, as it has them once loaded: what its macros define too (a
+;; layout's fields), and what it was given; not Chez's, nor base.ss's.
+(define core1-names
+  (let ([chez (scheme-environment)]
+        [base (map cdr (definitions "src/base.ss"))])
+    (remp (lambda (s)
+            (or (gensym? s) (memq s base)
+                (top-level-bound? s chez) (top-level-syntax? s chez)))
+          (environment-symbols core1-env))))
+
+;; The world's own files: the basics, the folders, world.ss.
+(define world-own-files
+  (append (remp (lambda (f) (member f core1-files)) (source-files))
+          '("src/base.ss" "world.ss")))
 
 ;; The symbols x names as code, each once: what's quoted is data, and in a
 ;; quasiquote only what's unquoted is code.
@@ -436,60 +442,73 @@
           [else acc]))
   (code x '()))
 
-;; Of core0's names, the world names only those core0 shares with it, its
-;; interface (core0-interface in src/core0/boot.ss). The scripts that load the
-;; tree call core0 to make "/", or to fork the world into it, and to enter
-;; it.
-(check "the world names nothing of core0's but its interface"
-       (let ([own (remp (lambda (n)
-                          (memq n (append core0-interface
-                                          '(core0-boot! core0-fork!
-                                            core0-enter-world!))))
-                        (map cdr (apply append
-                                        (map definitions core0-files))))])
-         (none? (apply append
-                       (map (lambda (f)
-                              (map (lambda (s) (format "~a names ~a" f s))
-                                   (filter (lambda (s) (memq s own))
-                                           (reverse (code-symbols-in
-                                                     (file-forms f))))))
-                            (remp (lambda (f) (or (member f core0-files)
-                                                  (member f recorder-files)))
-                                  (append world-files
-                                          '("world.ss"))))))))
+;; What files name as code of names, but given and their own: "f names s"
+;; each.
+(define (names-beyond files names given)
+  (let ([own (apply append (map (lambda (f) (map cdr (definitions f)))
+                                files))])
+    (apply append
+           (map (lambda (f)
+                  (map (lambda (s) (format "~a names ~a" f s))
+                       (filter (lambda (s)
+                                 (and (memq s names) (not (memq s given))
+                                      (not (memq s own))))
+                               (reverse (code-symbols-in (file-forms f))))))
+                files))))
 
-;; "/recorder" is given core0's interface and, alone, recordings and what
-;; holds them (core0-recorder-share in src/core0/boot.ss).
-(check "the recorder names nothing of core0's but its interface and its share"
-       (let ([own (remp (lambda (n)
-                          (memq n (append core0-interface
-                                          core0-recorder-share)))
-                        (map cdr (apply append
-                                        (map definitions core0-files))))])
-         (none? (apply append
-                       (map (lambda (f)
-                              (map (lambda (s) (format "~a names ~a" f s))
-                                   (filter (lambda (s) (memq s own))
-                                           (reverse (code-symbols-in
-                                                     (file-forms f))))))
-                            recorder-files)))))
+;; What core0 names of the core above it: what it reads by name as it boots
+;; the next link, the recorder's exports and core1's boot.
+(define core0-reaches-up '(recorder-exports core1-boot!))
 
-;; "/recorder" is sealed (.work/gpu-design.md 9.14): of its names the world
-;; names only its interface (recorder-interface in src/recorder/bytes.ss),
-;; so nothing the world does can write a byte it hands core0.
-(check "the world names nothing of the recorder's but its interface"
-       (let ([own (remp (lambda (n) (memq n recorder-interface))
-                        (map cdr (apply append
-                                        (map definitions recorder-files))))])
-         (none? (apply append
-                       (map (lambda (f)
-                              (map (lambda (s) (format "~a names ~a" f s))
-                                   (filter (lambda (s) (memq s own))
-                                           (reverse (code-symbols-in
-                                                     (file-forms f))))))
-                            (remp (lambda (f) (member f recorder-files))
-                                  (append world-files
-                                          '("world.ss"))))))))
+;; main.ss's own names are core0's too: it loads core0 where it defines
+;; them.
+(check "core0 names nothing of the recorder's or core1's but what it boots \
+        them by"
+       (none? (names-beyond core0-files (append recorder-names core1-names)
+                            (append core0-reaches-up
+                                    (map cdr (definitions "main.ss"))))))
+
+(check "the recorder names nothing of core0's but what core0 exports to it"
+       (none? (names-beyond recorder-files core0-names
+                            (exports-names core0-exports 'recorder))))
+
+(check "core1 names nothing of core0's or the recorder's but what they \
+        export to it"
+       (none? (names-beyond core1-files (append core0-names recorder-names)
+                            (append (exports-names core0-exports 'core1)
+                                    (exports-names recorder-exports 'core1)))))
+
+(check "the world names nothing of the core's (core0's, the recorder's, \
+        core1's) but what core1 exports to it"
+       (none? (names-beyond world-own-files
+                            (append core0-names recorder-names core1-names)
+                            (exports-names core1-exports 'world))))
+
+(check "every name core1 exports, some file of the world's names"
+       (let ([named (make-eq-hashtable)])
+         (for-each (lambda (f)
+                     (for-each (lambda (s) (hashtable-set! named s #t))
+                               (symbols-in (file-forms f))))
+                   world-own-files)
+         (none? (map (lambda (n) (format "no file names ~a" n))
+                     (remp (lambda (n) (hashtable-ref named n #f))
+                           (exports-names core1-exports 'world))))))
+
+;; base.ss is every environment's, a copy each: so it keeps no state, and
+;; calls no C.
+(check "src/base.ss is pure: no defvar, no set! of its own names, no C"
+       (let ([forms (file-forms "src/base.ss")]
+             [own (map cdr (definitions "src/base.ss"))])
+         (none? (append
+                 (filter-map (lambda (x)
+                               (and (pair? x) (eq? (car x) 'defvar)
+                                    (format "defvar ~a" (cadr x))))
+                             forms)
+                 (map (lambda (n) (format "sets ~a" n))
+                      (filter (lambda (n) (memq n own))
+                              (apply append (map set-targets forms))))
+                 (map (lambda (s) (format "names ~a" s))
+                      (filter reaches-c? (reverse (symbols-in forms))))))))
 
 ;; The SDL the core above core0 still calls: none since the window went down
 ;; to core0; kept for what a later change may have to list.
@@ -523,7 +542,9 @@
                  sdl-blocking))))
 
 (check "only core0 names SDL's bindings, but what's listed, on its way out"
-       (let ([sdl (map cdr (definitions "src/core0/sdl.ss"))])
+       (let ([sdl (filter (lambda (n)
+                            (string-prefix? "sdl-" (symbol->string n)))
+                          core0-names)])
          (none? (apply append
                        (map (lambda (f)
                               (map (lambda (s) (format "~a names ~a" f s))

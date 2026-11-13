@@ -30,6 +30,17 @@
 ;;; ------------------------------------------------------------------
 ;;; what the platform is
 
+;; How many threads this machine runs at once (logical cores): from any
+;; thread.
+(define (platform-cpu-count) (sdl-get-num-logical-cpu-cores))
+
+;; The monotonic clock in ns, a fixnum: core0's, and what core1's is read
+;; from (src/core1/platform.ss), from any thread. Core1 has a clock of its
+;; own, so a test fakes the world's without moving the one core0 times the
+;; screen by.
+(define (core0-clock-ns) (sdl-get-ticks-ns))
+(define (now-ns) (sdl-get-ticks-ns))
+
 ;; The system's name and version, the kernel's, where the system says them.
 (define-optional-foreign platform-uname
   (foreign-procedure "uname" (uptr) int))
@@ -96,7 +107,7 @@
                    '("name" "driver_name" "driver_version" "driver_info"))))))
 
 ;; What core0 knows of the platform, an alist it sets whole: the world reads it
-;; (src/platform.ss), never asking SDL itself.
+;; (src/core1/platform.ss), never asking SDL itself.
 (defvar *core0-platform* '())
 
 (define (core0-platform-read!)
@@ -381,9 +392,9 @@
 (define (wayland-input-on clock ms at)
   (and clock
        (let* ([off (platform-clock-offset clock)]
-              [now-ms (quotient (- at off) 1000000)]
-              [t (+ off (* 1000000 (- now-ms (modulo (- now-ms ms)
-                                                      4294967296))))])
+              [at-ms (quotient (- at off) 1000000)]
+              [t (+ off (* 1000000 (- at-ms (modulo (- at-ms ms)
+                                                     4294967296))))])
          (and (<= (- at 1000000000) t (+ at 1000000))
               (begin (set! *wayland-input-clock* clock) t)))))
 (define-wayland-callback wayland-global-code

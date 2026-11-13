@@ -483,54 +483,73 @@ kits/        app: launching one by name, the color a name gets; color:
              tooltips, dialogs and sheets, windows that wait on one
              another, charts: stacked bars, lines, a sparkline, a
              legend), keyboard focus
-src/system   core1's loop, timers, inject!, boot, reload!, loading the
-             folders
+core1/       the core, in "/core1" (src/core1/), the world's runtime:
+  system     core1's loop, timers, inject!, reload!, loading the world
              (an app's file through a hook, which grant sets)
-src/wm       window records, z-order, focus, hit testing, drag/resize,
+  wm         window records, z-order, focus, hit testing, drag/resize,
              dispatch; the registries of surfaces and strips
-src/proc     processes + watchdog (Chez engines); notify, report-error!;
+  proc       processes + watchdog (Chez engines); notify, report-error!;
              the profiler's hook; worklets, what worker threads run
-src/screen   core0's window as the world sees it: scale, full screen, icon,
+  screen     core0's window as the world sees it: scale, full screen, icon,
              SDL3's events as Scheme lists   |  headless mode
-src/socket   local sockets, for what talks to the world from outside
-src/gfx      immediate-mode drawing API, colors, stipples and gradients,
+  socket     local sockets, for what talks to the world from outside
+  gfx        immediate-mode drawing API, colors, stipples and gradients,
              what's clipped and turned, images and paints: all written as
              records, the list a frame sends
-src/gpu      the GPU layer: the device, frames, images, buffers, compute,
-             in the world's terms, SDL's GPU names ending here
-src/shader   the shader language's compiler: one small tree, and SPIR-V or,
+  gpu        the GPU layer: the device, frames, images, buffers, compute,
+             in the world's terms
+  shader     the shader language's compiler: one small tree, and SPIR-V or,
              on a Mac, Metal's language
-src/font     fonts by fontconfig, glyphs by FreeType, the atlas, and measuring
+  font       fonts by fontconfig, glyphs by FreeType, the atlas, and measuring
              from tables, with no device
-src/theme    the whole look: settings in layers, rules, palettes, styles,
+  theme      the whole look: settings in layers, rules, palettes, styles,
              parts, the frame's parts; a hook that keeps each change
-src/ffi      the only file that knows about C (SDL3, FreeType, fontconfig);
-             only the core uses it
+  platform   what differs by platform, of the core's; core1's clocks
+  ffi        core1's own C: FreeType, fontconfig, sockets
+  boot       core1's thread and environment; making "/"
+  export     what the world is given of the core, read-only
+core0/       below the core, in "/core0" (src/core0/): SDL, the window and
+             its events, the GPU's device side, the trace; how a C binding
+             is made; making "/recorder" and "/core1"
+recorder/    "/recorder", sealed: the bytes of frames and their writers
+base         what every environment has, a copy each: pure, no state, no C;
+             define-exports, by which a layer gives the next its names
 ```
 
-`src/` is the core, the explicit, ordered lists in `main.ss`. Its last
-file loads the folders: `kits/`, `services/`, `desktop/`, `styles/`,
-`palettes/`, `wallpapers/` and `apps/`, one definition per file (`kits/`,
-`services/` and `desktop/` aside),
-each folder in file-name order. A file dropped into a folder loads at the
+The boot is a chain (`main.ss` tells it): `main.ss` boots core0, core0
+boots core1, core1 boots the world. Each link makes the next one's
+environment, gives it what its `export.ss` lists, loads it, and calls its
+boot; nothing reaches back up, and nothing else of a layer's is there to
+name. The core is privileged: it decides what goes down the chain, each
+name read-only unless its entry says `settable` (the hooks the folders
+fill). Apps are not: they ask for what they import (`app-requests`).
+
+Core0, `src/core0/`, is the bottom: SDL, the GPU's device side, the
+window and its events, the only code that names SDL. It makes
+"/recorder" and "/core1", gives them what `src/core0/export.ss` lists,
+loads the core into "/core1", and boots core1 there, on a thread of its
+own, the world's, while core0 runs its own loop on the process's first
+thread (headless, one thread plays both). The core, `src/core1/`, makes
+the world's environment, "/", gives it what `src/core1/export.ss` lists,
+core0's and the recorder's that the world uses among it, and loads into
+it a copy of `src/base.ss` and the folders: `kits/`, `services/`,
+`desktop/`, `styles/`, `palettes/`, `wallpapers/` and `apps/`, one
+definition per file (`kits/`, `services/` and `desktop/` aside), each
+folder in file-name order. A file dropped into a folder loads at the
 next boot or `(reload!)`, with no list to edit, and `(source-files)`
-lists them all. Only the core calls C: the folders draw, measure and
-save through its procedures, never through `src/ffi.ss`'s bindings, and
-`tests/sources.ss` checks that none of them names one. Below the rest of
-the core sits core0, `src/core0/`: SDL's bindings, the GPU's device side,
-and the window and its events, loaded first, after the C bindings and the
-basics. It names nothing of the core above it, and only it names SDL.
-Core0 is the bootloader: it makes the world's environment, "/", shares
-there only its interface (`core0-interface` in `src/core0/boot.ss`),
-read-only, and forks core1, the world's own thread, which loads the rest
-of the tree into it, the C bindings and the basics again as the world's
-own, and runs it, while core0 runs its own loop on the process's first
-thread (headless, one thread plays both). The world names nothing else
-of core0's (`tests/sources.ss`), and `(reload!)` loads the world's files, not
-core0's, which change with a restart (`.work/gpu-design.md` 9.13), or
-through a REPL in "/core0", core0's own environment: it sends its forms to
-core0 (`core0-eval!`), which runs them between frames on its own thread,
-and their output and values come back.
+lists them all. Only the core calls C: no binding reaches "/", and
+`tests/sources.ss` checks that no folder names one, nor anything of the
+core's it isn't given.
+
+`(reload!)` loads the core's files into "/core1", gives "/" what the core
+exports anew, and loads the world's; core0's change with a restart
+(`.work/gpu-design.md` 9.13), or through a REPL in "/core0", core0's own
+environment: it sends its forms to core0 (`core0-eval!`), which runs them
+between frames on its own thread, and their output and values come back.
+The core's own are redefined in a REPL in "/core1": a `define` there
+takes at the core's next call, the world's too. A `define` in "/" of a
+name the core gives it makes the world's own, which the core never calls;
+the REPL says so.
 
 The core names nothing of the desktop layer's: the crash panel and the
 window menu are parts (`draw-crash-panel`, `open-window-menu`) whose
@@ -931,7 +950,7 @@ Decisions worth keeping in mind for the real design:
   percentage; 0 for automatic, in Settings → Display, saved apart from
   any style's settings) overrides it.
   Mouse positions are converted where the world reads core0's events
-  (`src/screen.ss`), so apps never see physical pixels.
+  (`src/core1/screen.ss`), so apps never see physical pixels.
 - **Fonts are settings, and sizes follow them.** A font role (`'ui`,
   `'mono`, `'title`, ...) is a rule that makes the font from the four
   font settings, `(font family size . opts)`, one record per font, so
@@ -956,7 +975,7 @@ Decisions worth keeping in mind for the real design:
   `'parent`: a derived style changes what it sets and inherits the rest.
   A part is a setting whose value is a procedure or its name, looked up
   at each call, so redefining that procedure at the REPL shows on the
-  next frame. The frame is six parts (`src/theme.ss`): `frame-insets`,
+  next frame. The frame is six parts (`src/core1/theme.ss`): `frame-insets`,
   `frame-regions` (`close`, `minimize`, `maximize`, `depth` buttons and
   `title` areas), `frame-radius`, `frame-bleed`, and two drawing passes
   around the content, `frame-under` and `frame-over`. The window manager
@@ -1105,7 +1124,7 @@ Decisions worth keeping in mind for the real design:
   hover, the clock once a second, the world's changes. The next tick's frame
   records the wallpaper, the panels, the menu and the toasts, shows each
   window's list from the bottom up, each clipped to its extent
-  (`record-world!` in `src/wm.ss`), and sends them; a list that changed goes
+  (`record-world!` in `src/core1/wm.ss`), and sends them; a list that changed goes
   up to the GPU, the others are there. A window draws again only when it
   opens or resizes, when what its frame is drawn with changes (its focus,
   the part under the mouse or held, its title, state or error), after input
@@ -1230,7 +1249,7 @@ Decisions worth keeping in mind for the real design:
   its bands come back as they were), and left out once they're let go of.
   While it flows it asks for a frame a tick, and says what that takes;
   closed, what's left of it is the core's few numbers a frame.
-- **The profiler hooks into the core.** `src/proc.ss` keeps one hook,
+- **The profiler hooks into the core.** `src/core1/proc.ss` keeps one hook,
   `*profile-span*` (`#f`, or a pair of procedures, begin and end), and
   `with-profile-span`, in which five places run their work: the step
   (`schevana-step!`), `safely` (each phase of core1's loop, each
@@ -1571,4 +1590,5 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 - No persistence. Windows and state vanish on exit (`fasl-write` of app
   state is a natural first step).
 - Portability: it runs on Linux and on a Mac. The library names for Windows
-  are in `src/ffi.ss` but have not been tried.
+  are in `src/core0/ffi.ss` and `src/core1/ffi.ss` but have not been
+  tried.

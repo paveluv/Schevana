@@ -1,5 +1,6 @@
-;;; kits/theme.ss — questions about the theme (src/theme.ss): which layer
-;;; gives a setting, and what a palette would show (Settings, the REPL).
+;;; kits/theme.ss — questions about the theme (src/core1/theme.ss): which
+;;; layer gives a setting, and what a palette would show (Settings, the
+;;; REPL).
 ;;;
 ;;;   (theme-source 'accent)            which layer gives it
 
@@ -22,6 +23,7 @@
 ;; The colors and wallpaper the chosen style shows in palette name.
 (define (theme-palette-preview name)
   (let ([t (resolve-theme *style-name* '() (list 'palette name))])
-    (fluid-let ([*theme* t])
-      (apply append (map (lambda (k) (list k (theme k)))
-                         (append color-keys '(wallpaper)))))))
+    (call-with-theme t
+      (lambda ()
+        (apply append (map (lambda (k) (list k (theme k)))
+                           (append color-keys '(wallpaper))))))))

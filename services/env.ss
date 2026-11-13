@@ -21,7 +21,7 @@
 ;;; chez (all of Chez), confined (what is always safe, for apps) or core
 ;;; (Scheme's pure core, the worklets'), and of its parent's names only
 ;;; those the parent shares, as read-only forwarders
-;;; (forwarder-to, src/proc.ss): live, at no cost a call, and refusing a
+;;; (forwarder-to, src/base.ss): live, at no cost a call, and refusing a
 ;;; set! as it expands ("attempt to assign read-only variable"), as R6RS
 ;;; refuses set! of an import. The child's define of
 ;;; a name makes its own. A name not shared is unbound there, and the
@@ -75,7 +75,8 @@
             #f (make-eq-hashtable) ""))
 
 ;; Root, with the worklets' environment its first child, core0's, "/core0",
-;; its second, and the recorder's, "/recorder", sealed, its third.
+;; its second, the recorder's, "/recorder", sealed, its third, and the
+;; core's, "/core1", its fourth.
 (defvar *env-root*
   (let ([root (env-new 'root #f #f *world-env* 'root 'all)])
     (env-children-set! root
@@ -83,10 +84,20 @@
                      'worklets '())
             (env-new 'core0 root 'chez (core0-environment) 'core0 '())
             (env-new 'recorder root 'chez (core0-recorder-environment)
-                     'recorder '())))
+                     'recorder '())
+            (env-new 'core1 root 'chez *core1-env* 'core1 '())))
     root))
 
 (define (env-root) *env-root*)
+
+;; "/core1": what the world forwards to.
+(define (env-core1)
+  (find (lambda (c) (eq? (env-kind c) 'core1)) (env-children *env-root*)))
+
+;; The world's shares are what core1 gives it, at each load: a reload may
+;; bring new ones.
+(for-each (lambda (n) (hashtable-set! (env-shares *env-root*) n n))
+          (core1-exported))
 
 ;; /worklets: the worklets live there, and the pool's threads run them.
 (define (env-worklets)
@@ -241,11 +252,13 @@
 ;; Where e's name is bound, as (values env name): up through the shares
 ;; to the environment holding the binding, so that what describes a name
 ;; (the REPL's help) describes what it forwards to. A shared name e
-;; defined itself is e's.
+;; defined itself is e's. An env's shares come from its parent; the
+;; world's, which has none, from /core1.
 (define (env-holder e name)
-  (let ([target (and (env-parent e) (hashtable-ref (env-shares e) name #f))])
+  (let* ([from (or (env-parent e) (env-core1))]
+         [target (and from (hashtable-ref (env-shares e) name #f))])
     (if (and target (not (top-level-bound? name (env-environment e))))
-        (env-holder (env-parent e) target)
+        (env-holder from target)
         (values e name))))
 
 ;; The same, as (values environment name).
@@ -797,6 +810,18 @@
         device side. Of the world's names it holds none; what is defined \
         here changes core0 at its next call. A REPL here sends its forms \
         to core0, which runs them between frames")
+
+(env-register-kind! 'core1
+  'title "Core1"
+  'base 'chez
+  'forks '()
+  'fork #f
+  'kept "the core runs the world from there; its files load again into \
+         it with a reload"
+  'doc "The core: the pacer, the step, windows, focus, the theme's layers, \
+        the GPU's world side, fonts, processes and timers. The world has \
+        only what it exports, read-only; what is defined here changes the \
+        core, and the world with it, at its next call")
 
 (env-register-kind! 'recorder
   'title "The recorder"

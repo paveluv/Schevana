@@ -1,6 +1,7 @@
 ;;; core0/sdl.ss — SDL's bindings, core0's alone (.work/gpu-design.md 9.5):
 ;;; the window, its events, and the GPU. Core1 names none of them
-;;; (tests/sources.ss) but the two any thread may call, in src/ffi.ss.
+;;; (tests/sources.ss), nor the clock and the CPU count SDL gives, which
+;;; core0 gives it (src/core0/platform.ss).
 
 ;;; ------------------------------------------------------------------ SDL3
 
@@ -71,7 +72,8 @@
 (define-foreign sdl-memset "SDL_memset" (uptr int size_t) uptr)
 
 ;;; ------------------------------------------------------------------ SDL GPU
-;;; Only src/gpu.ss uses these: above it no SDL name for the GPU appears.
+;;; Only src/core0/gpu.ss uses these: above it no SDL name for the GPU
+;;; appears.
 
 (define-foreign sdl-create-gpu-device "SDL_CreateGPUDevice"
   (unsigned-32 bool uptr) uptr)
