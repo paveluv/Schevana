@@ -494,12 +494,13 @@
                   (ui-draw-label x y w (ui-control-height) '()
                                  (format "~a thread, its vat's"
                                          (vat-threads-of vat)))))
-          (list "Jobs" (lambda (w) (ui-chips-height w labels #t #f))
-                (lambda (x y w)
-                  (ui-chips ui '(envs jobs) x y w labels #f
-                            'on-remove (lambda (i)
-                                         (vat-job-kill! (list-ref jobs i)))
-                            'empty "None waiting"))))))
+          (cons* "Jobs" (lambda (w) (ui-chips-height w labels #t #f))
+                 (lambda (x y w)
+                   (ui-chips ui '(envs jobs) x y w labels #f
+                             'on-remove (lambda (i)
+                                          (vat-job-kill! (list-ref jobs i)))
+                             'empty "None waiting"))
+                 (if (pair? jobs) '(hint "× stops one") '())))))
 
 ;;; ------------------------------------------------------------------
 ;;; apps' bundles

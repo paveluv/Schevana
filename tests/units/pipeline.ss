@@ -1856,3 +1856,12 @@
                      (fold-left + 0 (map (lambda (r)
                                            (if (gpu-show-run? r) 0 (cadddr r)))
                                          runs))))))))
+
+(check "the Pipeline's Pop out says closing its window brings it back"
+       (let ([w (pipeline)])
+         (steps 2)
+         (let ([ok (string-contains-ci?
+                    (ui-region-tip (ui-find (window-ref w 'ui) '(pipeline pop)))
+                    "brings it back")])
+           (close-window! w)
+           ok)))

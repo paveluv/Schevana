@@ -530,3 +530,16 @@
              (and (equal? seen "from /core1")
                   (eq? (env-eval h 'platform-machine-load) real)
                   (not (memq 'units-core1-own (core1-exported))))))))
+
+(check "Environments says a job's × stops it, while a vat has jobs"
+       (let* ([w (envs)] [v (window-ref w 'state)]
+              [vat (vat-of (env-fork (env-root) 'thread 'name 'units-jobs))]
+              [jobs-row (lambda ()
+                          (assoc "Jobs" (envs-vat-rows v vat)))]
+              [idle (jobs-row)]
+              [j (vat-eval! vat '(+ 1 2) void)]
+              [busy (jobs-row)])
+         (close-window! w)
+         (vat-job-kill! j)
+         (and (not (memq 'hint idle))
+              (equal? (cadr (memq 'hint busy)) "× stops one"))))

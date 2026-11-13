@@ -701,8 +701,8 @@
               (format "tick ~a, frame ~a: ~a records" tick
                       (inspect-list-frame l) (inspect-list-count l))
               (format "tick ~a: its frame is no longer kept" tick)))
-        (format "a column a refresh, ~,1f ms~a; ~a frames kept; it takes \
-                 ~,2f ms a tick itself"
+        (format "a column a refresh, the newest at the right, ~,1f ms~a; \
+                 ~a frames kept; it takes ~,2f ms a tick itself"
                 (/ (inspect-refresh-period g) 1e6)
                 (if (inspect-refresh-estimated? g)
                     ", estimated: this screen doesn't report"
@@ -823,7 +823,7 @@
                     (iota (length pipeline-draw-river-parts)))
                1
                'fit 'whole
-               'doc '((L . "Go back to this frame"))
+               'doc '((L . "Go back to this frame, or drag through them"))
                'strip-tips (list pipeline-river-screen-tip)
                'tip (lambda (k) (pipeline-river-tip v g now k))
                'on-pick (lambda (k) (pipeline-pick-refresh! v g k))
@@ -2765,7 +2765,7 @@
           (ui-button ui '(pipeline pop) (- (+ x w) pw) y pw ch "Pop out"
                      (lambda () (pipeline-pop-out! v (current-window)))
                      'tip "Show it in a window of its own, above the \
-                           Pipeline")))))
+                           Pipeline: closing it brings it back here")))))
   ;; under them, what it shows
   (let* ([ch (ui-control-height)] [y (+ y ch 6)]
          [lw (+ 8 (text-width "Show" 'ui))])
