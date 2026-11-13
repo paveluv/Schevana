@@ -81,28 +81,8 @@ at the REPL shows what was typed there (input is read with its places,
 so errors in it say where too), and one `set!` to another procedure
 what that one tells.
 
-A REPL evaluates in one environment (`services/env.ss`), named in its
-title (`REPL — /`, `REPL — /lab/sandbox`) with its kind's icon where the
-style shows one. A kind opens a new environment of it, the window's own:
-
-| | Opens with | What a `define` does |
-| --- | --- | --- |
-| REPL | `(repl)`, Ctrl+Shift+R | changes the running world |
-| Private REPL | `(repl 'private)` | stays in its environment and vanishes with it, like private browsing |
-| World REPL | `(repl 'world)` | the same, with every name of the world's |
-| Pure Scheme REPL | `(repl 'pure)` | plain Chez Scheme, none of Schevana's names exist |
-| Sandbox, thread | `(repl 'sandbox)`, `(repl 'thread)` | stays in a sandbox: Scheme's pure core, no files, C or threads |
-
-A private REPL has all of Chez and, of the world, what reads it
-(`env-private-names`: `(windows)`, `(theme 'accent)` and the like), live:
-a `set!` of one is refused ("attempt to assign read-only variable"), and
-redefining one makes the REPL's own. A world REPL has every name of the
-world's, so `(set-theme! ...)` there still acts on the world. Neither is
-a security sandbox: the FFI is reachable from any namespace, where
-`(exit)` closes the window. A thread's REPL sends its forms to the vat,
-whose thread runs and prints them; Ctrl+C stops them there.
-`(repl "/lab")` opens one in an environment that exists (not
-`/worklets`); once its environment is dropped, a REPL evaluates nowhere.
+What each kind of REPL is, `(repl 'private)` and the others, and how
+R6RS libraries are imported, is in [docs/REPL.md](docs/REPL.md).
 
 **Environments**, `(envs)`, shows the tree: each environment's icon,
 kind, how many names it was shared and holds, and its thread's jobs;
@@ -132,22 +112,6 @@ names the world gains at its next evaluation; Sync shares them now
 through `(fork kind 'name n 'share names 'setters pairs)`: the world and
 world namespaces every kind, a sandbox sandboxes and threads, the others
 none; `(fork)` lists them.
-
-R6RS libraries work as in Chez: `(import (acme math))` in a REPL, in the
-file of an app that runs in the world, or inside a body (`(let () (import
-(acme math)) …)`). A sandbox has no `import`: a library may name anything,
-and a sandbox holds only what it is given. Besides
-Chez's usual places, import looks in `~/.schevana.d/lib` (so
-`~/.schevana.d/lib/acme/math.sls`) and in the tree's `lib/`, for libraries
-shipped with Schevana (none yet), and `(add-library-directory! dir)` adds
-more. A library is compiled in memory when imported: nothing is written
-next to its source (Chez's `compile-imported-libraries` stays off). Two
-things differ from Schevana's own code. A library is loaded once per
-session: after editing one, `load` its file again and import it again;
-`(reload!)` doesn't. And an import adds names to the environment it runs
-in, the world's for its apps and a REPL at `/`, so a library exporting a name
-Schevana also defines changes what that name means in code you type
-afterwards; `(only …)` or `(prefix … acme:)` keep them apart.
 
 ## Things to try in the REPL
 
@@ -346,59 +310,10 @@ apps to derive from.
 
 ## Your own apps, styles, palettes and wallpapers
 
-Styles, palettes (named colors) and wallpapers (desktop fills) have definers
-of the same shape as `define-app`: a name, a title, then the definition.
-Evaluate one in a REPL and the next frame shows it; define a name again
-and the new definition takes the old one's place.
-
-```scheme
-(define-palette dusk "Dusk"
-  '(bg-0 #x15131c bg-1 #x1c1a26 bg-2 #x24212f bg-3 #x2e2a3b
-    text #xe0dcef text-dim #xb8b2cc text-faint #x6e6884
-    accent #xf0a35e accent-2 #xc792ea
-    red #xf07178 orange #xf78c6c yellow #xffcb6b green #xc3e88d
-    cyan #x89ddff teal #x80cbc4 magenta #xc792ea
-    desktop-top #x1c1a26 desktop-bottom #x3a2a40 watermark #xffffff
-    panel #x111017))
-(set-theme! 'palette 'dusk)                ; or click it in Settings
-(define-wallpaper stripes "Stripes"
-  (lambda (x y w h top bottom)
-    (fill-box x y w h top)
-    (do ([i 0 (+ i 24)]) ((>= i h)) (fill-box x (+ y i) w 12 bottom))))
-(set-theme! 'wallpaper 'stripes)
-(define (bare-insets win) (values 0 8 0 0))
-(define (bare-under win x y w h focused? hover pressed)
-  (fill-box x y w 8 (if focused? 'accent 'bg-3)))
-(define-style bare "Bare" 'frame-insets 'bare-insets 'frame-under 'bare-under)
-(set-style! 'bare)
-(define-style flat-mac "Flat Mac" 'parent 'mac 'corner-radius 0 'palette 'nord)
-```
-
-To keep one, drop it into a file of its own in `~/.schevana.d/`, under
-`apps/`, `styles/`, `palettes/` or `wallpapers/`, with any code your styles
-and bars share under `kits/` (or `services/`, if it keeps state) and your
-own bars, menus or keys under `desktop/`. These folders load at boot after
-Schevana's own (`kits` first, then `services`, `desktop`, `styles`,
-`palettes`, `wallpapers` and `apps`, each in
-file-name order) and again at every `(reload!)`. Settings lists your
-styles and palettes with the others, and the saved look may name them.
-An app of yours runs in a sandbox of its own, which holds only what it asks
-for, so not your kits, which are the world's. Its file is named after it, and
-its first form says what it needs, of the bundles `window`, `draw`, `ui`,
-`timers`, `crew`, `gpu`, `toasts` and `launch`: the Counter above, in `counter.ss`, starts
-with `(app-requests window draw)`. The launcher asks you before its first
-run, and Settings, Permissions changes it later.
-`(apps)`, `(styles)`, `(palettes)`, `(wallpapers)` and
-`(surfaces)` list what is registered.
-
-The sandboxes and their grants are a beta, and will be redesigned after v1
-as a module system of Schevana's own, built on environments: a module
-imports and exports names, and a grant is a module's environment, imported.
-Not R6RS's, so that you can still go into any module's environment and
-inspect or redefine everything in it. Kits, and probably themes, will be
-modules too, installable from third parties; an app will be able to span
-several files and use R6RS libraries; and modules will be compiled ahead,
-for a faster start.
+Windows, apps, keys and timers are in [docs/WINDOWS.md](docs/WINDOWS.md);
+themes, styles, palettes and wallpapers in [docs/LOOKS.md](docs/LOOKS.md);
+keeping what you make in `~/.schevana.d/`, and apps in sandboxes, in
+[docs/APPS.md](docs/APPS.md).
 
 ## Architecture
 
@@ -583,20 +498,6 @@ Decisions worth keeping in mind for the real design:
   files, eval, C, threads, clock or inspector. Its record types are its
   own: a uid is taken under its path, so a type stays one across a reload
   and is never the world's. Its console writes to its log (`env-log`).
-- **Apps run in sandboxes.** An app's file that starts with
-  `(app-requests window draw timers)` loads into `/apps/<name>`
-  (`services/grant.ss`), on the confined base, holding of the world's
-  names only its bundles: titled lists ("Draw in its windows": `fill-box`
-  and 49 more). The tree's Boids, Boids 3D, Clock and Life are approved by a
-  table;
-  Sketch, and every app of yours, asks the person, whose answers are kept in
-  `~/.schevana.d/permissions.ss`. A bundle not allowed is there as stubs
-  that raise, naming it ("Sketch needs Draw in its windows (fill-box):
-  denied"); a name in no bundle it requests is unbound. Its `define-app`
-  registers that app alone, and what it defines stays in its sandbox
-  (Boids' `boids-step` is no name of the world's): only `(clock)` at the world's
-  REPL reaches in, to open Clock. Settings, Monitor, Tasks, the REPL and
-  Environments request nothing and run in the world, which they tune.
 - **A crew of threads for loops.** `(crew-for start end worklet arg ...)`
   (`services/crew.ss`) calls `(worklet lo hi arg ...)` on disjoint slices
   of the range on worker threads, the caller among them, and returns when
@@ -693,15 +594,6 @@ Decisions worth keeping in mind for the real design:
   instead of crashing the window; `(vat-repl! v forms width then fail)`
   prints what the forms return on the vat's thread, where the values
   live, as a REPL in a thread's environment does.
-- **Apps are procedures.** `define-app` defines a normal procedure (in
-  the app's sandbox, for one in a sandbox) that
-  calls `open-window` with a property list of handlers (`'draw`, `'key`,
-  `'text`, `'mouse-down`, `'tick`, ...). Every other option becomes a
-  window property (`window-ref` / `window-set!`). `'above owner` makes a
-  window its owner's: it stays above the owner, which still takes the
-  keyboard when given it, and the two are raised, minimized, brought back,
-  sent behind and closed together (`window-owner`, `window-owned`); looked
-  up by its app, an app's own window comes first.
 - **A tick's busy time is always kept.** What a tick took but its waits for
   input and for the screen, profiling on or off: past a period, the next
   tick is late. `(pacer-busy-ms)` is the last tick's, Monitor shows it, and
@@ -870,65 +762,6 @@ Decisions worth keeping in mind for the real design:
   other processes, and input waits, to be handled in order when it is done.
   Ctrl+C stops it (and closing the window still quits); a toast names the
   file it was loading when it is stopped or fails.
-- **Events are data.** Core0 turns SDL events into lists like
-  `(mouse-down 120 40 left 1)` and `(key-down #\w (ctrl shift))`.
-  `(inject! ...)` feeds the same lists in, which is how the tests drive the
-  world.
-- **Settings are theme keys, in layers.** Colors, sizes and fonts all
-  live in one table, `(theme key)`, resolved from layers whenever one
-  changes: your Overrides (`override!`, in every style), your changes to
-  the chosen style (`set-theme!`: switch styles and back, and yours come
-  back), the style and its parents, its palette (the setting `palette`),
-  and the built-in defaults. A rule is a setting computed from others then,
-  never per frame: the built-in `selection` is `(theme-rule (mix 'accent
-  'bg-1 0.65))`, so a palette gives twenty colors and the rest follow it, and
-  so does your accent. `(theme-source key)` (the theme kit's) says
-  which layer gives one, `(theme-part key)` the procedure a part key
-  gives.
-  The Settings app is a front end to these, so anything it does can be
-  scripted from the REPL: its Theme tab's style cards are the one
-  switch (`set-style!`: frames, palette, wallpaper, fonts, behaviors and
-  what you changed for that style at once); each row is one of the style's
-  options (the common ones it honors, the behaviors, its own; those it
-  does not honor show dimmed), and changing it is your change to this
-  style (`set-theme!`; ↺ drops it, `reset-style!`); its pin makes it an
-  Override (`override!`); Reset forgets your changes to the style; Save
-  as new style writes them as a `define-style` with the style as its
-  parent, `(save-style-as! 'my-mac "My Mac")`, into
-  `~/.schevana.d/styles/` (`*settings-style-directory*`). The saved file is
-  plain data: the
-  style, the scale, the Overrides and your changes per style; an older,
-  flat file loads as the saved style's changes.
-- **Logical pixels.** All layout is in logical pixels, and a record holds
-  device pixels: what's drawn is `*scale*` times bigger, so text and shapes
-  are rendered from outlines at full resolution, and what a text measures
-  doesn't change with the scale. The scale follows
-  the desktop (SDL's display scale for the window: the pixel ratio on
-  macOS and Wayland, `Xft.dpi` under X11, which is how GNOME publishes
-  200% and SDL reads once, as it starts), and the display's `scale` (a
-  percentage; 0 for automatic, in Settings → Display, saved apart from
-  any style's settings) overrides it.
-  Mouse positions are converted where the world reads core0's events
-  (`src/core1/screen.ss`), so apps never see physical pixels.
-- **Fonts are settings, and sizes follow them.** A font role (`'ui`,
-  `'mono`, `'title`, ...) is a rule that makes the font from the four
-  font settings, `(font family size . opts)`, one record per font, so
-  every theme asking for it shares its face, its metrics and the text
-  laid out in it; a style changes a role by setting it (Genera sets
-  `'ui` to the code font). Besides the regular, bold, small and italic
-  ones there are `'ui-bold-italic`, `'ui-small-bold` and `'mono-italic`.
-  Faint text (`'text-faint`) takes the font a style's `faint-text-font`
-  part makes of its own: Genera, with no gray, gives the kit's
-  `ui-italic-of`. The kit's shared
-  sizes (`control-height`, `gap`, `pad`, ...) are rules from the fonts
-  too, and a style may give its own pixels. Title bars and the bars take
-  the larger of their own setting and what their text needs
-  (`chrome-height`: 0 is none, and a style that fixes one means its
-  pixels), as do menus, the apps' bars and the Settings layout, so the
-  interface stays usable from 9 to 36 px; the screen's
-  scale changing builds the theme again, since fonts measure differently
-  there. Where a window is too small, Settings scrolls and stacks its
-  rows. A new REPL opens at 80 × 22 characters of the code font.
 - **Styles are settings; parts are procedures by name.** A style is a
   name, a title and settings (`define-style`), one of which may be
   `'parent`: a derived style changes what it sets and inherits the rest.
@@ -1040,29 +873,6 @@ Decisions worth keeping in mind for the real design:
   drags its brackets, Curses rings the bell on the whole screen and boxes
   menu entries, Interlisp drags Medley's dashed outline, chooses from
   menus on release and flashes the window.
-- **How it feels is settings too.** Shared code does what a style
-  chooses, each a setting whose default is today's feel: a double click
-  on the title (`title-double-click`: `maximize`, `shade` or `none`) or
-  on a frame button (`button-double-click`: `((menu . close))` is CDE's);
-  a shaded window, only its frame's top and bottom (`shade-window!`,
-  `unshade-window!`, `shaded?`), from a region of kind `shade`, the
-  title's double click or its wheel (`title-wheel`); dragging live or as
-  an outline (`drag-feedback`, drawn by the `draw-drag-outline` part);
-  the window manager's resize edges (`frame-edge`, `frame-corner`; a
-  style's regions may resize from the top too, `resize-t`, `resize-tl`,
-  `resize-tr`); whether a click in a window raises it
-  (`raise-on-click`); the bell, `(bell)` (`none`, or `screen` or
-  `window` flashed inverted); menus (`menu-choose`: `click` or
-  `release`, `menu-blink`, `menu-hover`: `fill` or `outline`); scroll
-  bars (`scrollbar-side`: `right`, `left`, or `outside` in a region of
-  kind `scrollbar` the frame leaves; `scrollbar-show`: `always` or
-  `hover`); and the mouse documentation, `(mouse-doc)`, what each button
-  does under the pointer as data (from the window's regions, a kit
-  widget's `'doc`, an app's `'mouse-doc`, a surface's `'doc`), which the
-  top bar shows where `mouse-doc` is on, and Genera's who line. A top
-  bar 0 high is none; a style may make the taskbar another bar with its
-  areas, drawing and tick (`taskbar-areas`, `draw-taskbar`,
-  `taskbar-tick`).
 - **The screen is a tree of lists of records.** A list is flat records
   of 32 bytes, whole numbers, that the drawing procedures write
   (`fill-box`, `draw-text`, ...); `with-clip`, `with-translation`,

@@ -1,10 +1,11 @@
 ;;; tests/units/docs.ss — the docs' examples run as they read: each page's
 ;;; scheme blocks (README.md, CREDITS.md, docs/*.md), in order, as typed at
-;;; a REPL at "/", a page in a world of its own. A comment `; => value`
-;;; after a form, on its line or the next, is checked as what it returns;
-;;; an error, in a form or in what it left to run later (a timer, a
-;;; then), fails its block. A block fenced "```scheme no-run" is shown, not
-;;; run: one that never ends, or waits for a person.
+;;; a REPL at "/", each form in a process, a page in a world of its own. A
+;;; comment `; => value` after a form, on its line or the next, is checked
+;;; as what it returns; an error, in a form, in what it left to run later
+;;; (a timer, a then) or in a window's handler, fails its block. A block
+;;; fenced "```scheme no-run" is shown, not run: one that never ends, or
+;;; waits for a person.
 
 ;; The pages, from the tree's root.
 (define (docs-pages)
@@ -58,8 +59,22 @@
     (and (<= (+ j 4) n) (string=? (substring text j (+ j 4)) "; =>")
          (list (read (open-string-input-port (substring text (+ j 4) n)))))))
 
-;; What the last form gave; what it printed is dropped.
-(define docs-value #f)
+;; What form gives, run as a REPL runs its input: in a process, at "/",
+;; the world stepping until it ends (at most 10 s). What it printed
+;; is dropped; what it raised is raised again here.
+(define (docs-eval form)
+  (let ([done #f])
+    (parameterize ([current-output-port (open-output-string)])
+      (spawn "docs"
+             (lambda () (env-eval (env-root) form))
+             (lambda (status value) (set! done (cons status value)))))
+    (let ([end (+ (real-time) 10000)])
+      (let loop ()
+        (unless (or done (> (real-time) end)) (steps 1) (loop))))
+    (cond [(not done) (errorf 'docs "~s never ended" form)]
+          [(eq? (car done) 'ok) (apply values (cdr done))]
+          [(eq? (car done) 'error) (raise (cdr done))]
+          [else (errorf 'docs "~s was killed" form)])))
 
 ;; Runs text's forms in the world, each checked against its `; =>`; then
 ;; a few steps, for what they left to run later.
@@ -69,17 +84,21 @@
     (let loop ()
       (let ([form (read p)])
         (unless (eof-object? form)
-          (with-output-to-string
-            (lambda () (set! docs-value (env-eval (env-root) form))))
-          (let ([expected (docs-expected text (port-position p))])
-            (when (and expected (not (equal? docs-value (car expected))))
+          (let ([v (docs-eval form)]
+                [expected (docs-expected text (port-position p))])
+            (when (and expected (not (equal? v (car expected))))
               (errorf 'docs "~s gave ~a" form
                       (parameterize ([print-length #f] [print-level #f])
-                        (format "~s, not ~s" docs-value (car expected))))))
+                        (format "~s, not ~s" v (car expected))))))
           (loop))))
     (steps 3)
     (unless (equal? (car *last-error*) error-before)
       (errorf 'docs "later: ~a" (car *last-error*)))
+    (let ([crashed (find window-error (windows))])
+      (when crashed
+        (errorf 'docs "~s crashed in its ~a: ~a" (window-title crashed)
+                (car (window-error crashed))
+                (condition->string (cdr (window-error crashed))))))
     #t))
 
 (define docs-page (getenv "SCHEVANA_DOCS_PAGE"))

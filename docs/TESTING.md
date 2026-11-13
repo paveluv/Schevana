@@ -68,10 +68,11 @@ A check's name says what is true when it passes, as a sentence.
 ## The docs' examples
 
 The `docs` topic runs every `scheme` block of README.md, CREDITS.md and
-`docs/*.md`, in order, as typed at a REPL at "/", each page in a world of
-its own. A comment `; => value` after a form, on its line or the next, is
-checked as what the form returns, and an error, in a form or in what it
-left to run later, fails its block. A block fenced `scheme no-run`, like
+`docs/*.md`, in order, as typed at a REPL at "/", each form in a process
+as a REPL runs it, and each page in a world of its own. A comment `; =>
+value` after a form, on its line or the next, is checked as what the form
+returns, and an error, in a form, in what it left to run later or in a
+window's handler, fails its block. A block fenced `scheme no-run`, like
 the one above, is shown and not run: one that never ends, waits for a
 person, or needs what only a test has.
 
