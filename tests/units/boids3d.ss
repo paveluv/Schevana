@@ -530,3 +530,15 @@
                      (close-window! win)
                      (and had (= flips 4) quiet queued stopped
                           sent)))))))))
+
+(check "Boids 3D's home rule says what it does, and its Defaults button that \
+        they make a murmuration"
+       (let ([win (boids3d)])
+         (steps 2)
+         (let* ([ui (window-ref (find-window "Boids 3D — Rules") 'ui)]
+                [tip (lambda (id) (ui-region-tip (ui-find ui id)))]
+                [ok (and (string-contains-ci? (tip 'home) "back to the middle")
+                         (string-contains-ci? (tip 'defaults) "murmuration")
+                         (not (tip 'scatter)))])
+           (close-window! win)
+           ok)))

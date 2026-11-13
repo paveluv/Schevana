@@ -1096,9 +1096,10 @@
          [lw (boids3d-label-width)] [rw (boids3d-readout-width)]
          [rules (window-ref flock-win 'rules)]
          [n (window-ref flock-win 'count)])
-    (define (row y id label t readout set)
+    (define (row y id label t readout set . tip)
       (ui-draw-label pad y lw sh '(dim) label)
-      (ui-slider ui id (+ pad lw) y (- w pad lw rw pad) t 0.0 1.0 set)
+      (ui-slider ui id (+ pad lw) y (- w pad lw rw pad) t 0.0 1.0 set #f
+                 'tip (and (pair? tip) (car tip)))
       (ui-draw-label (- w pad rw) y rw sh '(right) readout)
       (+ y sh gap))
     (let* ([y (row pad 'count "birds"
@@ -1108,12 +1109,14 @@
                      (boids3d-resize! flock-win
                        (exact (round (+ 10 (* t (- boids3d-most 10))))))))]
            [y (let ([bw (/ (- w pad pad gap gap) 3)] [ch (ui-control-height)])
-                (for-each (lambda (i label id act!)
+                (for-each (lambda (i label id act! tip)
                             (ui-button ui id (+ pad (* i (+ bw gap))) y bw ch
-                                       label (lambda () (act! flock-win))))
+                                       label (lambda () (act! flock-win))
+                                       'tip tip))
                           '(0 1 2) boids3d-buttons '(randomize defaults scatter)
                           (list boids3d-randomize! boids3d-defaults!
-                                boids3d-scatter!))
+                                boids3d-scatter!)
+                          '(#f "Rules that make a murmuration" #f))
                 (+ y ch gap))]
            [y (let ([ch (ui-control-height)])
                 (ui-checkbox ui 'ride pad y (- w pad pad) ch boids3d-ride-label
@@ -1132,7 +1135,10 @@
                             (boids3d-set-rule (window-ref flock-win 'rules)
                                               key
                                               (boids3d-slider-value range
-                                                                    t)))))))
+                                                                    t))))
+                        (and (eq? key 'home)
+                             "How hard a bird outside the ball of its space \
+                              turns back to the middle"))))
                y boids3d-ranges)])
       (ui-draw-label pad (+ y gap) (- w pad pad) (font-line-height 'ui-small)
                      '(hint) "h hides this window · space pauses")

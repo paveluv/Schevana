@@ -462,3 +462,12 @@
            (and (< (window-x win) 400)
                 (= (+ (window-x win) (window-w win) 12) (window-x rw)))))
   (close-window! win))
+
+(check "Boids' threads slider says they are the crew's, every app's"
+       (let ([win (boids)])
+         (steps 2)
+         (let* ([rw (find-window "Boids — Rules")]
+                [r (ui-find (window-ref rw 'ui) 'threads)]
+                [ok (string-contains-ci? (ui-region-tip r) "every app")])
+           (close-window! win)
+           ok)))

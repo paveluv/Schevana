@@ -117,6 +117,17 @@
 ;; of a 60 Hz tick draws the frame: the desktop stays usable.
 (define life-flat-ns 10000000)
 
+;; What the panel's sliders mean, made once: a tooltip is asked for at
+;; every draw.
+(define life-cell-tip
+  "The side of a cell, in the screen's own pixels: at 1 px, a cell is a \
+   pixel")
+(define life-speed-tip
+  (format "How often a generation comes. Flat out: as many as ~a ms of each \
+           frame holds" (quotient life-flat-ns 1000000)))
+(define life-threads-tip
+  "The threads a generation runs on: the crew's, which every app shares")
+
 ;; How often the numbers change, to stay readable.
 (define life-meter-ns 500000000)
 
@@ -326,10 +337,11 @@
           (ui-draw-label lx y lw line '(dim) label)
           (ui-draw-label lx y lw line '(right) value)
           (+ y line))
-        (define (slider! y id label value at lo hi on-change)
+        (define (slider! y id label value at lo hi on-change tip)
           (let ([y (numbers! y label value)])
             (ui-slider ui id (+ lx 8) y (- lw 16) at lo hi
-                       (lambda (v) (on-change (exact (round v)))))
+                       (lambda (v) (on-change (exact (round v)))) #f
+                       'tip tip)
             (+ y sh gap)))
         (let* ([y pad]
                [y (begin
@@ -345,16 +357,19 @@
                            (life-nearest-stop cell-px)
                            0 (- (length life-cell-stops) 1)
                            (lambda (i)
-                             (set! cell-px (list-ref life-cell-stops i))))]
+                             (set! cell-px (list-ref life-cell-stops i)))
+                           life-cell-tip)]
                [y (slider! y 'speed "Speed" (car (list-ref life-speeds speed))
                            speed 0 (- (length life-speeds) 1)
-                           (lambda (i) (set! speed i)))]
+                           (lambda (i) (set! speed i))
+                           life-speed-tip)]
                [y (slider! y 'threads "Threads"
                            (if (= used threads)
                                (number->string threads)
                                (format "~a of ~a" used threads))
                            threads 1 cpus
-                           (lambda (n) (crew-size-set! (- n 1))))]
+                           (lambda (n) (crew-size-set! (- n 1)))
+                           life-threads-tip)]
                [y (+ y gap)]
                [y (numbers! y "A generation" (life-ms shown-step))]
                [y (numbers! y "Drawing it" (life-ms shown-draw))]
@@ -379,7 +394,8 @@
       (ui-area ui 'life-cells 0 0 w h
                (lambda () (set! painting 'fresh))
                paint!
-               'cursor 'crosshair))
+               'cursor 'crosshair
+               'doc '((L . "Draw or erase cells"))))
     ;; The status line at y, the window's width, the panel's button at its
     ;; end: clear of the grid and of a style's resize grip, and in one
     ;; place whether the panel shows or not.

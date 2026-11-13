@@ -515,9 +515,10 @@
          [lw (boids-label-width)] [rw (boids-readout-width)]
          [rules (window-ref flock-win 'rules)]
          [n (boids-size (window-ref flock-win 'flock))])
-    (define (row y id label t readout set)
+    (define (row y id label t readout set . tip)
       (ui-draw-label pad y lw sh '(dim) label)
-      (ui-slider ui id (+ pad lw) y (- w pad lw rw pad) t 0.0 1.0 set)
+      (ui-slider ui id (+ pad lw) y (- w pad lw rw pad) t 0.0 1.0 set #f
+                 'tip (and (pair? tip) (car tip)))
       (ui-draw-label (- w pad rw) y rw sh '(right) readout)
       (+ y sh gap))
     (let* ([y (row pad 'count "boids"
@@ -531,7 +532,9 @@
                 (row y 'threads "threads"
                      (/ (crew-size) (inexact most))
                      (boids-threads-readout n)
-                     (lambda (t) (crew-size-set! (exact (round (* t most)))))))]
+                     (lambda (t) (crew-size-set! (exact (round (* t most)))))
+                     "The threads a step runs on: the crew's, which every \
+                      app shares"))]
            [y (let ([bw (/ (- w pad pad gap gap) 3)] [ch (ui-control-height)])
                 (for-each (lambda (i label id act!)
                             (ui-button ui id (+ pad (* i (+ bw gap))) y bw ch

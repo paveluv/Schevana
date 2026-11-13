@@ -442,3 +442,14 @@
                              (= 1 (bytevector-u8-ref drawn (+ x (* 2 72)))))
                            '(2 3 4 5 6 7 8 9 10 11 12))
                   (= 10 (apply + (bytevector->u8-list cleared))))))))
+
+(check "Life's sliders say what they mean, and its grid that a press draws \
+        or erases cells"
+       (let* ([win (life-paused!)] [ui (window-ref win 'ui)]
+              [tip (lambda (id) (ui-region-tip (ui-find ui id)))]
+              [ok (and (string-contains-ci? (tip 'cell) "screen's own pixels")
+                       (string-contains-ci? (tip 'speed) "10 ms")
+                       (string-contains-ci? (tip 'threads) "every app")
+                       (assq 'L (ui-region-doc (ui-find ui 'life-cells))))])
+         (close-window! win)
+         ok))
