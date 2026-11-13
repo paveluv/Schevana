@@ -66,7 +66,24 @@
 (define monitor-ring-rows 2048)
 
 (define (monitor-ticks-stream)
-  (ui-stream-new monitor-ring-rows (length monitor-phases) '((#f chart-flag))))
+  (ui-stream-new monitor-ring-rows (length monitor-phases)
+                 '(("late" chart-flag))))
+
+;; What the Ticks show, said where they show it; made once, as a tooltip
+;; is asked for at every draw.
+(define monitor-ticks-tip
+  "A bar a tick: all its time since the last, stacked by phase, the work at \
+   the bottom and the waits above it. A wait counts, as it delays the next \
+   tick as much as work does; a bar past the top loses a wait, never work.")
+(define monitor-late-tip
+  "Came late: over one and a half ticks, its wait for the screen left out. \
+   Not over one: a tick that missed a refresh waits for the next.")
+(define monitor-consumers-tip
+  "A row pressed shows its share of every bar; pressed again, it lets it \
+   go. A heading says what its column means.")
+(define monitor-tick-history-tip
+  (format "How long every tick is kept, at most ~a a second"
+          profile-tick-rate))
 
 ;; A tick's row: each phase's µs, as monitor-phases has them, then whether it
 ;; came late.
@@ -593,14 +610,17 @@
                      (ui-checkbox ui 'profiling x y w h "Profiling"
                                   (profile-on?)
                                   (lambda (on?) (profile-on! on?))
-                                  'tip "Profile the world: (profile-on! #t)")))
+                                  'tip "Profile the whole world, from boot, \
+                                        Monitor open or not: \
+                                        (profile-on! #t)")))
              (list pw ph
                    (lambda (x y w h)
                      (ui-button ui 'pause x y w h
                                 (if paused? "Resume" "Pause")
                                 (lambda () (if paused? (resume!) (pause! #f)))
                                 'disabled (and none? (not paused?))
-                                'tip "Hold this view still")))
+                                'tip "Hold this view still; the profiler \
+                                      goes on")))
              (list cw ch
                    (lambda (x y w h)
                      (ui-button ui 'clear x y w h "Clear"
@@ -618,7 +638,7 @@
                                   (lambda (s)
                                     (profile-history! s *profile-minutes*))
                                   'label ticks-label
-                                  'tip "How long every tick is kept")))
+                                  'tip monitor-tick-history-tip)))
              (list dw dh
                    (lambda (x y w h)
                      (ui-dropdown ui 'minutes x y w h monitor-minute-choices
@@ -634,11 +654,14 @@
                       [(flags) (list (car items) (cadddr items))]
                       [else items])])
         (ui-toolbar 0 0 w items)))
-    ;; A group's heading at y, and words at its right; the y below.
-    (define (section x y w title words)
+    ;; A group's heading at y, and words at its right; given an id and a
+    ;; tip, the heading's tooltip. => the y below
+    (define (section x y w title words . tip)
       (let-values ([(gw gh) (ui-label-size '(group) title w)])
         (ui-draw-label x y w gh '(group) title)
         (ui-draw-label x y w gh '(dim right) words)
+        (when (pair? tip)
+          (ui-region! ui (car tip) x y gw gh 'tip (cadr tip)))
         (+ y gh 6)))
     ;; The Consumers' rows: the totals over the last complete seconds (at
     ;; most 5 of them), the subjects listed (those that ran in the last
@@ -719,6 +742,8 @@
                        (and (profile-tick-kept? seq)
                             (tip-of seq zero period)))
                 'on-pick (lambda (seq) (pause! seq))
+                'doc '((L . "Pause here"))
+                'strip-tips (list monitor-late-tip)
                 'marked (if pinned (list pinned) '())
                 ;; the row selected's share, over the bars
                 'over
@@ -965,9 +990,16 @@
           (ui-table ui 'monitor-flags x y w h
                     (let ([w (ui-table-room w)])
                       `((when "When" ,(* w 0.10)) (took "Took" ,(* w 0.06))
-                        (why "Why" ,(* w 0.46))
-                        (before "Before it" ,(* w 0.16))
-                        (ticks "Ticks about it, ms" ,(* w 0.22))))
+                        (why "Why" ,(* w 0.46)
+                             "The biggest thing in it that could make it \
+                              late: a wait for events past its period, the \
+                              collector or someone's work; never the screen \
+                              holding core0")
+                        (before "Before it" ,(* w 0.16)
+                                "What core0 said last before it")
+                        (ticks "Ticks about it, ms" ,(* w 0.22)
+                               "The ticks about it, in ms, this one in \
+                                brackets")))
                     flags #f (lambda (f) #f)
                     (lambda (f key cx cy cw ch cell-flags)
                       (ui-draw-cell
@@ -991,7 +1023,12 @@
            (monitor-draw-platform ui pad (+ y 12) (- w pad pad))]
           [(eq? tab 'flags)
            (let* ([cw (- w pad pad)]
-                  [y (section pad (+ y 4) cw "Flags" (profile-flag-summary))])
+                  [y (section pad (+ y 4) cw "Flags"
+                              (if *profile-flag-log*
+                                  (format "~a; each logged to ~a"
+                                          (profile-flag-summary)
+                                          *profile-flag-log*)
+                                  (profile-flag-summary)))])
              (draw-flags pad y cw (- h y pad) (profile-flags)))]
           [(profile-on?)
            (let* ([h* (history)] [seconds (cdr h*)]
@@ -1004,14 +1041,18 @@
                             0)]
                   [y (section x (+ y 4) cw "Ticks"
                               (format "a bar a tick, flagged if it came \
-                                       late; ~a ticks/s~a"
-                                      rate (if paused? ", paused" "")))]
+                                       late, a click pauses there; ~a \
+                                       ticks/s~a"
+                                      rate (if paused? ", paused" ""))
+                              'monitor-ticks-heading monitor-ticks-tip)]
                   [y (begin (draw-ticks x y cw ticks-h seconds)
                             (+ y ticks-h 8))]
                   [y (section x y cw "Consumers"
                               (format "a second's average over the \
                                        last ~a s"
-                                      monitor-consumer-seconds))]
+                                      monitor-consumer-seconds)
+                              'monitor-consumers-heading
+                              monitor-consumers-tip)]
                   [consumers-h (max (* 3 (ui-table-row-height))
                                     (- h y memory-h 6 8 pad
                                        (font-line-height

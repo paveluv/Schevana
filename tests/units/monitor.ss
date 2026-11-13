@@ -178,3 +178,39 @@
                            listed)))))
                *styles*)
               (not (exists (lambda (k) (memq k listed)) keys)))))
+
+(check "Monitor says what its Ticks are and what late means, that a click \
+        pauses, that the profiler runs from boot and goes on when paused, \
+        and what its Flags' columns mean"
+       (let* ([m (monitor)] [ui (window-ref m 'ui)]
+              [press-tab!
+               (lambda (id)
+                 (let-values ([(cx cy cw ch) (content-rect m)])
+                   (let* ([r (ui-find ui id)]
+                          [x (exact (round (+ cx (ui-region-x r)
+                                              (/ (ui-region-w r) 2))))]
+                          [y (exact (round (+ cy (ui-region-y r)
+                                              (/ (ui-region-h r) 2))))])
+                     (inject! `(mouse-down ,x ,y left 1)
+                              `(mouse-up ,x ,y left))))
+                 (steps 3))]
+              [tip (lambda (id) (ui-region-tip (ui-find ui id)))]
+              [has? (lambda (s part) (and s (string-contains-ci? s part)))])
+         (steps 3)
+         (press-tab! '(tab ticks))
+         (let ([ticks (and (has? (tip 'monitor-ticks-heading) "a wait counts")
+                           (has? (tip '(monitor-ticks strip 0))
+                                 "one and a half")
+                           (assq 'L (ui-region-doc
+                                     (ui-find ui '(monitor-ticks))))
+                           (has? (tip 'monitor-consumers-heading)
+                                 "pressed again")
+                           (has? (tip 'profiling) "from boot")
+                           (has? (tip 'pause) "profiler goes on"))])
+           (press-tab! '(tab flags))
+           (let ([flags (and (has? (tip '(monitor-flags header why))
+                                   "the collector")
+                             (has? (tip '(monitor-flags header ticks))
+                                   "brackets"))])
+             (close-window! m)
+             (and ticks flags)))))

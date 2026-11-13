@@ -3524,7 +3524,10 @@
        [bars (lambda ()
                (filter (lambda (r)
                          (let ([id (ui-region-id r)])
-                           (and (pair? id) (eq? (car id) 'monitor-ticks))))
+                           ;; the bars, not the strip's label
+                           (and (pair? id) (eq? (car id) 'monitor-ticks)
+                                (not (and (pair? (cdr id))
+                                          (eq? (cadr id) 'strip))))))
                        (ui-state-regions ui)))]
        [row (lambda (table x xs)   ; x's row in the table of xs, by id
               (list table 'row (list-index (lambda (y) (eq? y x)) xs)))]
