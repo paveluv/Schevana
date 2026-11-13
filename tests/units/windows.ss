@@ -100,6 +100,38 @@
            (and (= while-minimized 0) (= (length frames) 1))))
   (close-window! win))
 
+;; A window that rides frames, its draw raising once: its frame waits while
+;; the error shows, and it rides on once a press clears the error.
+(let* ([frames 0]
+       [raise? #f]
+       [win (windows-open "Rides"
+                          'frame (lambda (w t)
+                                   (set! frames (+ frames 1))
+                                   (window-frame-soon! w))
+                          'draw (lambda (w width height)
+                                  (when raise?
+                                    (set! raise? #f)
+                                    (error 'windows-test
+                                           "a draw that raises"))))]
+       [x (+ (window-x win) 100)]
+       [y (+ (window-y win) (window-h win) -20)])
+  (window-frame-soon! win)
+  (steps 2)
+  (set! raise? #t)
+  (invalidate! win)
+  (steps 2)
+  (let ([crashed (window-error win)] [at frames])
+    (steps 3)
+    (let ([while-crashed (- frames at)] [content (window-region win x y)])
+      (inject! `(mouse-move ,x ,y) `(mouse-down ,x ,y left 1)
+               `(mouse-up ,x ,y left))
+      (steps 3)
+      (check "a window that rides frames waits while its draw's error shows, \
+              and rides on once a press clears it"
+             (and crashed (eq? content 'content) (= while-crashed 0)
+                  (not (window-error win)) (>= (- frames at) 2)))))
+  (close-window! win))
+
 (check "a closed window drawn again asks for no frame: a timer it left \
         behind draws nothing"
        (let ([w (windows-open "Gone")])

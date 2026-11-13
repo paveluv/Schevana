@@ -981,13 +981,15 @@
   (frame-turn-soon!))
 
 ;; The frames asked for, each window's once; a minimized window's wait
-;; until it's seen again, so one that rides frames pauses meanwhile. A
-;; tick no window asked in allocates nothing.
+;; until it's seen again, and a crashed one's until its error is cleared
+;; (its handlers don't run meanwhile), so one that rides frames pauses and
+;; goes on after. A tick no window asked in allocates nothing.
 (define (wm-frames! t)
   (let loop ([ws *windows*])
     (when (pair? ws)
       (let ([props (window-props (car ws))])
-        (when (and (hashtable-ref props 'wm-frame-soon #f) (visible? (car ws)))
+        (when (and (hashtable-ref props 'wm-frame-soon #f) (visible? (car ws))
+                   (not (window-error (car ws))))
           (hashtable-set! props 'wm-frame-soon #f)
           (window-call (car ws) 'frame t)))
       (loop (cdr ws)))))
