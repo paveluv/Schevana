@@ -161,22 +161,39 @@
 ;; inspect-frame-latency's), and the refreshes they missed.
 ;; => (values p50 p99 missed)
 (define (inspect-frames-truth ms . point)
-  (let ([since (- (now-ns) (* ms 1000000))]
-        [point (if (pair? point) (car point) 'sdl)])
+  (let-values ([(by missed) (inspect-frames-truths
+                             ms (list (if (pair? point) (car point) 'sdl)))])
+    (values (caar by) (cadar by) missed)))
+
+;; The same for each of points, in one walk of the frames, which is most of
+;; the cost. => (values ((p50 p99) ...) missed)
+(define (inspect-frames-truths ms points)
+  (let ([since (- (now-ns) (* ms 1000000))])
     ;; by publish: the newest frames, not yet sent, have no report
-    (let loop ([i (- *frame-ring-n* 1)] [lats '()] [missed 0])
+    (let loop ([i (- *frame-ring-n* 1)] [lats (map (lambda (p) '()) points)]
+               [missed 0])
       (let ([publish (inspect-frame-at i 'publish)])
         (if (and publish (> publish since))
             (loop (- i 1)
-                  (let ([l (inspect-frame-latency-from i point)])
-                    (if l (cons l lats) lats))
+                  (let ([shown (inspect-frame-at i 'shown)])
+                    (if shown
+                        (map (lambda (point ls)
+                               (let ([in (inspect-frame-at i point)])
+                                 (if in (cons (- shown in) ls) ls)))
+                             points lats)
+                        lats))
                   (+ missed (or (inspect-frame-missed i) 0)))
-            (let* ([v (list->vector (sort < lats))] [n (vector-length v)]
-                   [at (lambda (q)
-                         (and (> n 0)
-                              (vector-ref v (min (- n 1)
-                                                 (exact (floor (* q n)))))))])
-              (values (at 0.5) (at 0.99) missed)))))))
+            (values
+             (map (lambda (ls)
+                    (let* ([v (list->vector (sort < ls))] [n (vector-length v)]
+                           [at (lambda (q)
+                                 (and (> n 0)
+                                      (vector-ref v (min (- n 1)
+                                                         (exact
+                                                          (floor (* q n)))))))])
+                      (list (at 0.5) (at 0.99))))
+                  lats)
+             missed))))))
 
 ;;; ---- refreshes
 ;;; The screen's rhythm, a refresh a number: the display's own sequence,
@@ -1383,17 +1400,19 @@
 
 ;; Does record i of l say what record j of b does? What a record says of
 ;; where it is in the list's extras, its clip and its rows, moves when
-;; something before it changes, so it isn't compared.
+;; something before it changes, so it isn't compared. Making nothing: the
+;; Pipeline asks it of every record of a frame.
 (define (inspect-record-same? l i b j)
   (let ([head (inspect-word l i rec-row-head)])
     (and (fx= (fxand head #xff) (fxand (inspect-word b j rec-row-head) #xff))
-         (for-all (lambda (k)
-                    (or (and (fx= k rec-row-paint)
+         (let loop ([k 1])
+           (or (fx= k rec-row-words)
+               (and (or (and (fx= k rec-row-paint)
                              (fx= (fxand (fxsrl head 4) 15) 1))
                         (and (fx= k rec-polygon-points)
                              (fx= (fxand head 15) 2))
-                        (fx= (inspect-word l i k) (inspect-word b j k))))
-                  (cdr (iota rec-row-words))))))
+                        (fx= (inspect-word l i k) (inspect-word b j k)))
+                    (loop (fx+ k 1))))))))
 
 ;; How many of count records of l from first differ from bcount records of b
 ;; from bfirst, one by one, a record past b's counting as changed.

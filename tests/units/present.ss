@@ -118,6 +118,18 @@
            (let-values ([(p50 p99 missed) (inspect-frames-truth 10000)])
              (and p50 (<= p50 p99))))))
 
+(check "the frames' truth for several inputs' points, in one walk, is each \
+        point's own"
+       (let-values ([(by missed) (inspect-frames-truths 1000000
+                                                        '(sdl wl pumped))])
+         (and (= (length by) 3)
+              (caar by)             ; SDL's, from the check before
+              (for-all (lambda (point p)
+                         (let-values ([(p50 p99 m)
+                                       (inspect-frames-truth 1000000 point)])
+                           (and (equal? (list p50 p99) p) (= m missed))))
+                       '(sdl wl pumped) by))))
+
 (check "frames in flight is a setting that goes to core0 with each frame: \
         two, and core0 builds the swapchain so and says so; three again"
        (let ([in-flight (lambda ()

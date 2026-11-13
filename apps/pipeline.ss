@@ -72,7 +72,7 @@
                                ; out: (x0 y0 x1 y1) on the screen, or #f
           (mutable look)       ; what the small screen shows: pipeline-looks
           (mutable painted)    ; a list repainted for it, used again
-          (mutable who)        ; what each drew cost: (list . rows)
+          (mutable who)        ; what each drew cost: (list whole? . rows)
           (mutable course)     ; a tick's stages: (list . (seq items))
           (mutable course-sort) ; (key . up|down), or #f: in their order
           (mutable who-sort)   ; (key . up|down), or #f: in draw order
@@ -877,23 +877,24 @@
 ;;; numbers of the newest frame shown, over the River, which is the chart.
 
 ;; Input to screen, the last 10 s, ms at the median and the 99th, by each
-;; input's point, read twice a second.
+;; input's point, read twice a second, all in one walk of the frames: it
+;; runs in a frame's draw.
 (define (pipeline-latency-words v)
   (let ([was (pipeline-view-latency-words v)])
     (if (and was (< (- (now-ms) (car was)) 500))
         (cdr was)
-        (let ([words
-               (map (lambda (point name)
-                      (let-values ([(p50 p99 missed)
-                                    (inspect-frames-truth 10000 point)])
-                        (if p50
-                            (format "~a ~,1f, ~,1f" name (/ p50 1e6)
-                                    (/ p99 1e6))
-                            (format "~a none" name))))
-                    '(wl sdl pumped)
-                    '("compositor" "SDL" "core0's pump"))])
-          (pipeline-view-latency-words-set! v (cons (now-ms) words))
-          words))))
+        (let-values ([(by missed)
+                      (inspect-frames-truths 10000 '(wl sdl pumped))])
+          (let ([words
+                 (map (lambda (p name)
+                        (if (car p)
+                            (format "~a ~,1f, ~,1f" name (/ (car p) 1e6)
+                                    (/ (cadr p) 1e6))
+                            (format "~a none" name)))
+                      by
+                      '("compositor" "SDL" "core0's pump"))])
+            (pipeline-view-latency-words-set! v (cons (now-ms) words))
+            words)))))
 
 (define (pipeline-latency-pane v x y w h)
   (let*-values
@@ -1752,30 +1753,40 @@
 ;; color's index, ms what main took to draw it a frame, up to the frame's
 ;; tick, or #f, changed how many of its records differ from the frame
 ;; before's, #f when that one isn't kept; redrawn, same and marks as
-;; pipeline-redraws says. Made again for each list.
-(define (pipeline-who-rows v)
-  (let ([l (pipeline-view-shown v)] [who (pipeline-view-who v)])
-    (if (and who (eq? (car who) l))
-        (cdr who)
+;; pipeline-redraws says. Made again for each list. (pipeline-who-rows v
+;; 'costs), as the cards want them each look, in a frame's draw, leaves
+;; changed, redrawn, same and marks #f: the frames kept make them dear, a
+;; few ms, and Who makes them when it shows.
+(define (pipeline-who-rows v . costs)
+  (let ([l (pipeline-view-shown v)] [who (pipeline-view-who v)]
+        [whole? (null? costs)])
+    (if (and who (eq? (car who) l) (or (cadr who) (not whole?)))
+        (cddr who)
         (let*-values
             ([(spans) (inspect-list-labels l)]
-             [(before) (inspect-history-ref (pipeline-view-history v)
-                                            (- (inspect-list-frame l) 1))]
+             [(before) (and whole?
+                            (inspect-history-ref (pipeline-view-history v)
+                                                 (- (inspect-list-frame l)
+                                                    1)))]
              [(newest) (or (pipeline-view-tick v) (profile-newest-tick))]
-             [(n copies) (inspect-history-copies (pipeline-view-history v)
-                                                 (inspect-list-frame l))]
+             [(n copies) (if whole?
+                             (inspect-history-copies (pipeline-view-history v)
+                                                     (inspect-list-frame l))
+                             (values 0 #f))]
              [(row)
               (lambda (span node i)
                 (let-values ([(pixels runs)
                               (inspect-span-cost l (cadr span) (caddr span))]
                              [(redrawn same marks)
-                              (pipeline-redraws
-                               n (map (lambda (lst)
-                                        (hashtable-ref
-                                         copies (inspect-list-original lst)
-                                         #f))
-                                      (inspect-span-lists l (cadr span)
-                                                          (caddr span))))])
+                              (if whole?
+                                  (pipeline-redraws
+                                   n (map (lambda (lst)
+                                            (hashtable-ref
+                                             copies (inspect-list-original lst)
+                                             #f))
+                                          (inspect-span-lists l (cadr span)
+                                                              (caddr span))))
+                                  (values #f #f #f))])
                   (let ([subject (pipeline-span-subject node)]
                         [b (and before
                                 (pipeline-span-in
@@ -1792,7 +1803,7 @@
              [(rows) (map row spans nodes
                           (map (lambda (n) (pipeline-color-index v n))
                                nodes))])
-          (pipeline-view-who-set! v (cons l rows))
+          (pipeline-view-who-set! v (cons l (cons whole? rows)))
           rows))))
 
 ;; How often a drawer was recorded again in the n frames kept, from its
@@ -2829,7 +2840,7 @@
 (define (pipeline-card-lines v stage)
   (case stage
     [(who)
-     (let ([rows (pipeline-who-rows v)])
+     (let ([rows (pipeline-who-rows v 'costs)])
        (list (format "main drew in ~,2f ms"
                      (fold-left (lambda (ms r) (+ ms (or (vector-ref r 2) 0.0)))
                                 0.0 rows))

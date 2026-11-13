@@ -1073,6 +1073,22 @@
                    (caddr (assoc "Pipeline" (pipeline-view-groups v))))
                 (> (vector-ref mine 4) 0)
                 (>= (vector-ref mine 5) 1)))
+    (check "the cards ask only what each drawer cost, the rest left #f, \
+            and Who makes the rows again whole, which the cards then use"
+           (begin
+             (pipeline-view-who-set! v #f)
+             (let* ([costs (pipeline-who-rows v 'costs)]
+                    [whole (pipeline-who-rows v)]
+                    [same (lambda (r)
+                            (map (lambda (k) (vector-ref r k)) '(0 1 3 4 5)))])
+               (and (pair? costs)
+                    (for-all (lambda (r)
+                               (for-all (lambda (k) (not (vector-ref r k)))
+                                        '(6 7 8 9)))
+                             costs)
+                    (equal? (map same costs) (map same whole))
+                    (vector? (vector-ref (car whole) 9))
+                    (eq? (pipeline-who-rows v 'costs) whole)))))
     (press! (list '(pipeline who) 'row
                   (let loop ([rs rows] [i 0])
                     (if (eq? (car rs) mine) i (loop (cdr rs) (+ i 1))))))
@@ -1523,6 +1539,18 @@
                      (rec-begin! 1)))])
            (printf "  ~a bytes a pass\n" n)
            (< n 512))))
+
+(check "comparing a frame's records with the frame before's allocates \
+        nothing: Who does it for every record of a frame"
+       (let* ([a (begin (request-frame!) (steps 1) (inspect-list))]
+              [b (begin (request-frame!) (steps 1) (inspect-list))]
+              [n (min (inspect-list-count a) (inspect-list-count b))]
+              [bytes (pipeline-test-bytes
+                      (lambda ()
+                        (do ([i 0 (fx+ i 1)]) ((fx= i n))
+                          (inspect-record-same? b i a i))))])
+         (printf "  ~a bytes for ~a records\n" bytes n)
+         (and (> n 0) (< bytes 512))))
 
 ;;; Monitor's Ticks, by a paint: a tick is a row of numbers.
 
