@@ -1,4 +1,4 @@
-;;; tests/units/drawing.ss — the drawing layer: measuring, the host window,
+;;; tests/units/drawing.ss — the drawing layer: measuring, core0's window,
 ;;; invalidation.
 
 ;;; measuring: arithmetic on a font's tables, with no device
@@ -85,7 +85,7 @@
                                  (draw-style-preview 'genera 0 0 200 150 0.5)
                                  (with-scale (0.5) (measured))))))
                 '(1 5/4 3/2 2))])
-         (canvas-create! 1280 800 *host-scale*)
+         (canvas-create! 1280 800 *screen-chosen-scale*)
          same?))
 (steps 1)
 
@@ -99,13 +99,13 @@
 (steps 1)
 
 ;;; ------------------------------------------------------------------
-;;; host window
+;;; core0's window
 
 ;; (w h scale ratio) -> window units: logical size × scale / pixel ratio.
 (check
- "the host window opens at the logical size times the scale, in window units"
+ "core0's window opens at the logical size times the scale, in window units"
  (equal? (map (lambda (args)
-                (call-with-values (lambda () (apply host-window-size args))
+                (call-with-values (lambda () (apply screen-window-size args))
                                   list))
               '((1280 800 1 1) (1280 800 2 1) (1280 800 2 2) (1280 800 3/2 2)
                 (1280 800 1 2) (1024 640 5/4 1) (1281 801 7/4 2)))

@@ -35,7 +35,7 @@
 (let ([size (schevana-option 'size)])
   (schevana-boot! (schevana-option 'mode) (car size) (cdr size)
                   (schevana-option 'full-screen?)))
-(update-host-icon!)
+(update-app-icon!)
 (load-user-init!)
 ;; The pacer lab goes on if it was on (services/pacer-lab.ss).
 (pacer-lab-log-load!)

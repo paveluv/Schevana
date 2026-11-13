@@ -2,12 +2,12 @@
 
 ![Schevana: a REPL and a Clock in the Spine style](docs/screenshot.png)
 
-A Lisp Machine-style desktop that lives inside one host window and is written
+A Lisp Machine-style desktop that lives inside one window and is written
 entirely in Chez Scheme. Every window, color, key binding, status-bar segment
 and running process is a live Scheme value. You can inspect it, redefine it and
 break it from a REPL that runs inside the world it changes.
 
-The only C code involved is SDL3 (the host window, input and the GPU),
+The only C code involved is SDL3 (the window, input and the GPU),
 FreeType and fontconfig (fonts), all called through Chez's FFI. There is no
 build step: the whole
 world compiles from source in about 0.8 s at startup, and again at each
@@ -79,9 +79,9 @@ your own apps, styles, palettes and wallpapers in `~/.schevana.d/` (see
 "Your own apps, styles, palettes and wallpapers" below). The look you choose
 in the Settings app is saved to `~/.schevana-theme.ss` (plain data, never
 evaluated) and loaded at boot too, and so is what you allow the apps in
-sandboxes, in `~/.schevana.d/permissions.ss`. The host window's taskbar
+sandboxes, in `~/.schevana.d/permissions.ss`. The window's taskbar
 icon is the wallpaper's λ in your theme's colors, drawn by `draw-app-icon` (redefine
-it, then call `(update-host-icon!)`). GNOME and similar desktops take app
+it, then call `(update-app-icon!)`). GNOME and similar desktops take app
 icons from `.desktop` files instead, so install one once (it goes under
 `~/.local/share`; `--uninstall-desktop` removes it):
 
@@ -273,7 +273,7 @@ The profiler runs whether Monitor is open or not, from boot, until
 Monitor's Profiling or `(profile-on! #f)` turns it off: a step of 30 Life
 windows costs about 1% more with it (`tests/bench.ss`), and it
 allocates nothing. Its unit is a tick of the pacer's: the steps of
-core1's loop (`schevana-step!`: the wait for host events, then events,
+core1's loop (`schevana-step!`: the wait for core0's events, then events,
 timers, a tick when due, processes, the frame and its upload) from the
 one after a tick's to the next tick's, so that the steps that only
 handle input between ticks sum into the tick they lead up to; a test's
@@ -284,7 +284,7 @@ The Ticks tab has three parts:
 
 - **Ticks:** a bar a tick, all of its time since the last, stacked by
   phase: events, timers, processes, ticks, render, present, the
-  collector, and the two waits, for input (the steps' wait for host
+  collector, and the two waits, for input (the steps' wait for core0's
   events) and for the screen, in muted colors. A wait delays the next tick as much as work does, so
   both count. The work is at the bottom, the phase that spent the most
   over the graph lowest and first in the legend, and the waits above
@@ -326,17 +326,17 @@ turn it on.
 
 The **Flags** tab keeps every late tick (the last 1,024 of them) long
 after its bar has flowed past, the newest first: when it ended, what it
-took, what made it late, what the host said last before it and the ticks
+took, what made it late, what core0 said last before it and the ticks
 about it; `(profile-flag-report)` prints the same. What made it late is
 the biggest single thing in the tick that could have
 (`profile-tick-why`) of what counts as late: a wait for events past its
 period (asleep, or running in SDL), the collector or someone's work,
-never what the screen held the host for.
+never what the screen held core0 for.
 
 A row's tooltip says all that's known of it: for each tick about it, how
-long it slept and worked and what the screen held the host for; the
-host's events for the 10 seconds before it; its
-frame, the host window's state, the windows and processes, its memory,
+long it slept and worked and what the screen held core0 for; core0's
+events for the 10 seconds before it; its
+frame, core0's window's state, the windows and processes, its memory,
 the machine's load and SDL's last error. `(profile-flag-log! path)`
 adds each flag to the end of a file as it comes, to outlive a run; a run
 from a checkout with a `.work` folder logs to `.work/flags.log`.
@@ -490,7 +490,9 @@ src/wm       window records, z-order, focus, hit testing, drag/resize,
              dispatch; the registries of surfaces and strips
 src/proc     processes + watchdog (Chez engines); notify, report-error!;
              the profiler's hook; worklets, what worker threads run
-src/host     SDL3 window ⇄ Scheme event lists   |  headless mode
+src/screen   core0's window as the world sees it: scale, full screen, icon,
+             SDL3's events as Scheme lists   |  headless mode
+src/socket   local sockets, for what talks to the world from outside
 src/gfx      immediate-mode drawing API, colors, stipples and gradients,
              what's clipped and turned, images and paints: all written as
              records, the list a frame sends
@@ -515,19 +517,19 @@ next boot or `(reload!)`, with no list to edit, and `(source-files)`
 lists them all. Only the core calls C: the folders draw, measure and
 save through its procedures, never through `src/ffi.ss`'s bindings, and
 `tests/sources.ss` checks that none of them names one. Below the rest of
-the core sits core0, `src/host/`: SDL's bindings, the GPU's device side,
+the core sits core0, `src/core0/`: SDL's bindings, the GPU's device side,
 and the window and its events, loaded first, after the C bindings and the
 basics. It names nothing of the core above it, and only it names SDL.
 Core0 is the bootloader: it makes the world's environment, "/", shares
-there only its interface (`host-interface` in `src/host/boot.ss`),
+there only its interface (`core0-interface` in `src/core0/boot.ss`),
 read-only, and forks core1, the world's own thread, which loads the rest
 of the tree into it, the C bindings and the basics again as the world's
-own, and runs it, while core0 goes on as the host on the process's first
+own, and runs it, while core0 runs its own loop on the process's first
 thread (headless, one thread plays both). The world names nothing else
 of core0's (`tests/sources.ss`), and `(reload!)` loads the world's files, not
 core0's, which change with a restart (`.work/gpu-design.md` 9.13), or
-through a REPL in "/host", core0's own environment: it sends its forms to
-core0 (`host-eval!`), which runs them between frames on its own thread,
+through a REPL in "/core0", core0's own environment: it sends its forms to
+core0 (`core0-eval!`), which runs them between frames on its own thread,
 and their output and values come back.
 
 The core names nothing of the desktop layer's: the crash panel and the
@@ -758,7 +760,7 @@ Decisions worth keeping in mind for the real design:
   that drifts against the screen's. A window's `'frame` is told `t`, its
   frame's time: a refresh after the last one's (a period, at a rate of
   its own), a few refreshes after the tick, so that what moves by `t`
-  moves as evenly as the screen shows its frames. While the host window
+  moves as evenly as the screen shows its frames. While core0's window
   is hidden, minimized or covered no frame is drawn, and core0 keeps the
   last; input, timers and processes go on.
   Where the screen's reports place the compositor's latches (Wayland's, the
@@ -841,7 +843,7 @@ Decisions worth keeping in mind for the real design:
   names, unless its frame would then show before it was sent: GNOME with
   NVIDIA names `CLOCK_MONOTONIC` and reports on `CLOCK_MONOTONIC_RAW`.
   On the Mac, Metal tells a drawable's presented handlers when it was
-  shown (`presentedTime`, on the host's clock). SDL hands out no
+  shown (`presentedTime`, in Apple's host time). SDL hands out no
   drawable, so core0 gives the layer it draws to a class of its own,
   whose `nextDrawable` is `CAMetalLayer`'s and gives each drawable
   core0's handler; the handler runs on a thread of Apple's, writes only a
@@ -857,9 +859,9 @@ Decisions worth keeping in mind for the real design:
   core0 first saw it. Its words give input to screen at the median and the
   99th, all three ways: SDL's stamp runs late by the shortest delivery it
   has seen, so the gap between the first two is SDL's guess.
-- **What the host is, said in one place.** Which OS, CPU, windowing
-  system and GPU API this is comes from predicates (`host-mac?`,
-  `host-wayland?`, `host-vulkan?`) and facts that core0 learns as SDL and
+- **Which platform this is, said in one place.** Which OS, CPU, windowing
+  system and GPU API this is comes from predicates (`platform-mac?`,
+  `platform-wayland?`, `platform-vulkan?`) and facts that core0 learns as SDL and
   the GPU start; code for one platform lives in the platform files and asks
   what it needs of the thing itself. Monitor's Platform tab lists it all,
   the system's and libraries' versions, the screen's reports and their
@@ -871,7 +873,7 @@ Decisions worth keeping in mind for the real design:
   two of them; an event pump that held core0 past 2 ms (slow-pump, µs,
   and each event's SDL type), and each collection, which every thread
   waits for (gc, by generation, and gced); closing the window, or
-  `(host-trace-dump!)`, writes them by time with the screen's reports on
+  `(core0-trace-dump!)`, writes them by time with the screen's reports on
   the frames still kept, the last two minutes or so, to
   `.work/traces/trace-<date>-<time>.txt`. So do Ctrl-C in the terminal and
   core1 going 5 s without a step, which core0 watches for: the file says
@@ -890,7 +892,7 @@ Decisions worth keeping in mind for the real design:
   other processes, and input waits, to be handled in order when it is done.
   Ctrl+C stops it (and closing the window still quits); a toast names the
   file it was loading when it is stopped or fails.
-- **Events are data.** The host turns SDL events into lists like
+- **Events are data.** Core0 turns SDL events into lists like
   `(mouse-down 120 40 left 1)` and `(key-down #\w (ctrl shift))`.
   `(inject! ...)` feeds the same lists in, which is how the tests drive the
   world.
@@ -928,8 +930,8 @@ Decisions worth keeping in mind for the real design:
   200% and SDL reads once, as it starts), and the display's `scale` (a
   percentage; 0 for automatic, in Settings → Display, saved apart from
   any style's settings) overrides it.
-  Mouse positions are converted at the host boundary, so apps never see
-  physical pixels.
+  Mouse positions are converted where the world reads core0's events
+  (`src/screen.ss`), so apps never see physical pixels.
 - **Fonts are settings, and sizes follow them.** A font role (`'ui`,
   `'mono`, `'title`, ...) is a rule that makes the font from the four
   font settings, `(font family size . opts)`, one record per font, so
@@ -1291,7 +1293,7 @@ profiler collecting with it closed, its graphs, a window's name and a
 process's Kill, Profiling off, the rows that focus and kill then, and on
 again), uses Environments (a fork of each kind, sharing, loading through
 the file dialog, syncing, dropping, an app's bundles), reloads the sources
-(the profiler's history kept), runs the host's SDL code (uploads, presents, resize events, the window's size)
+(the profiler's history kept), runs core0's SDL code (uploads, presents, resize events, the window's size)
 against a stand-in that replaces every SDL call, so no window opens, and
 writes screenshots to the given folder. It asks Sketch's permissions
 through the launcher and Settings, never touches your real

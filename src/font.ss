@@ -93,7 +93,7 @@
 ;; no λ and a sans-serif taller than the layouts here are made for: DejaVu, as
 ;; on Linux, or where it isn't installed the nearest the system has.
 (define font-generic-families
-  (if (host-mac?)
+  (if (platform-mac?)
       '(("sans-serif" . "DejaVu Sans,Lucida Grande")
         ("serif" . "DejaVu Serif,serif")
         ("monospace" . "DejaVu Sans Mono,Menlo"))

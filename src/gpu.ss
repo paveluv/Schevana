@@ -1,9 +1,9 @@
 ;;; gpu.ss — core1's side of the GPU layer: what the world asks of the GPU,
-;;; kept until it hands the host a frame. Images and buffers as handles,
+;;; kept until it hands core0 a frame. Images and buffers as handles,
 ;;; and the jobs that make them; the calls a paint or a compute run makes,
 ;;; the compute runs to go with the next frame, and the frame filled for
-;;; the host. What's written into buffers and images "/recorder" keeps
-;;; (src/recorder/bytes.ss). The device's side is core0's (src/host/gpu.ss),
+;;; core0. What's written into buffers and images "/recorder" keeps
+;;; (src/recorder/bytes.ss). The device's side is core0's (src/core0/gpu.ss),
 ;;; and no SDL is named here (tests/sources.ss).
 
 ;;; ------------------------------------------------------------------ handles
@@ -214,7 +214,7 @@
 ;; own, so that one an app steps on a timer, its window unseen, isn't kept
 ;; waiting, and what's written is held no longer than a turn.
 (define (gpu-computes-send!)
-  (unless (eq? *host* 'none)
+  (unless (eq? *core0-mode* 'none)
     (let-values ([(jobs runs) (gpu-take-asks!)])
       (rec-submit-computes! runs jobs))))
 

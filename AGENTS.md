@@ -50,8 +50,8 @@ before it:
 
 | Layer | What goes there |
 |---|---|
-| `src/host/` | Core0, below the core: the host's own code, SDL's bindings, the GPU's device side, and the window and its events. It loads right after `src/ffi.ss` and `src/base.ss`, then makes the world's environment, "/", where everything below loads, and forks core1, the world's own thread, which loads and runs it (headless, one thread plays both). |
-| `src/` | The core: the world (windows, focus, the theme's layers, processes, timers, the host's interface), the shader compiler, core1's side of the GPU layer, the recorder and fonts, its registries, the hooks later layers fill, and the caches its own procedures need. |
+| `src/core0/` | Core0, below the core: SDL's bindings, the GPU's device side, and the window and its events. It loads right after `src/ffi.ss` and `src/base.ss`, then makes the world's environment, "/", where everything below loads, and forks core1, the world's own thread, which loads and runs it (headless, one thread plays both). |
+| `src/` | The core: the world (windows, focus, the theme's layers, processes, timers, its side of core0's window and events), the shader compiler, core1's side of the GPU layer, the recorder and fonts, its registries, the hooks later layers fill, and the caches its own procedures need. |
 | `kits/` | Libraries, pure or almost. |
 | `services/` | Long-lived state with an API and no surface: the crew of worker threads, the tree of environments, the apps' sandboxes and what they are allowed, vats and their jobs, the profiler, the saved look. |
 | `desktop/` | The screen's own surfaces and the desktop's behavior: wallpaper, bars, menu, toasts, keys, arranging windows. |
@@ -61,28 +61,29 @@ before it:
 - **The core never depends on a later layer.** It reaches them only
   through registries, parts and settings they fill, and hooks they set
   (`*profile-span*`, `*theme-saver*`, `*window-gone*`, `*app-loader*`).
-- **Core0 sits below the core.** `src/host/` names nothing of the core
+- **Core0 sits below the core.** `src/core0/` names nothing of the core
   above it, and only it names SDL, but for the clock and the CPU count,
   which any thread may call (`src/ffi.ss`). What still crosses is listed
   in `tests/sources.ss`, and the lists only shrink
   (`.work/gpu-design.md` 9.5, 9.12). The world names of core0's only its
-  interface (`host-interface` in `src/host/boot.ss`), which "/" has
+  interface (`core0-interface` in `src/core0/boot.ss`), which "/" has
   read-only: a new name there is a reviewed change (`tests/sources.ss`).
 - **What differs by platform lives in the platform files**:
-  `src/host/platform.ss` for core0's (a folder, `src/host/platform/`, once
-  it outgrows a file), `src/platform.ss` for the core's. A stack differs
-  by OS, windowing system, compositor, SDL, GPU API, driver and monitor.
-  Which one this is comes from their predicates and facts alone
-  (`host-mac?`, `host-wayland?`, `host-vulkan?`, `host-windowing`; the OS
-  and CPU's in `src/base.ss`), which say what the host is: what it can do
-  is asked of the thing (a library that loads, a protocol the compositor
-  lists), never assumed, and nothing crashes without it. What the
-  platform says (its clock, its refresh) beats what was measured on one
-  machine, and is checked where it can be. What sits elsewhere today is
-  listed in `docs/PLATFORMS.md` and moves there (`tests/sources.ss`). A
-  change to such a feature updates `docs/PLATFORMS.md`: where it ran,
-  where it should work, what happens without it. Monitor's Platform tab
-  shows it all, and copies a run as a row of it.
+  `src/core0/platform.ss` for core0's (a folder, `src/core0/platform/`,
+  once it outgrows a file), `src/platform.ss` for the core's. A stack
+  differs by OS, windowing system, compositor, SDL, GPU API, driver and
+  monitor. Which one this is comes from their predicates and facts alone
+  (`platform-mac?`, `platform-wayland?`, `platform-vulkan?`,
+  `platform-windowing`; the OS and CPU's in `src/base.ss`), which say
+  which platform this is: what it can do is asked of the thing (a library
+  that loads, a protocol the compositor lists), never assumed, and
+  nothing crashes without it. What the platform says (its clock, its
+  refresh) beats what was measured on one machine, and is checked where
+  it can be. What sits elsewhere today is listed in `docs/PLATFORMS.md`
+  and moves there (`tests/sources.ss`). A change to such a feature
+  updates `docs/PLATFORMS.md`: where it ran, where it should work, what
+  happens without it. Monitor's Platform tab shows it all, and copies a
+  run as a row of it.
 - **The core has a budget**, 36,682 tokens (atoms as read; comments,
   whitespace and names' lengths are free), in `tests/sources.ss`. Don't
   join lines or shorten names to fit it. Code the core doesn't need moves

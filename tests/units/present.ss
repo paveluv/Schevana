@@ -1,5 +1,5 @@
 ;;; tests/units/present.ss — what the screen says of each frame: its reports
-;;; (src/host/present.ss), joined to the frames drawn and the input they
+;;; (src/core0/present.ss), joined to the frames drawn and the input they
 ;;; show (kits/inspect.ss). Headless, nothing reports, so the reports here
 ;;; are written as the screen's callbacks would write them.
 
@@ -12,7 +12,7 @@
     (fxvector-set! r at n)
     (fxvector-set! r (+ at 2) sent)
     (fxvector-set! r (+ at 6) done)
-    (present-reported! n kind shown (host-frame-ns) seq)))
+    (present-reported! n kind shown (core0-frame-ns) seq)))
 
 ;; Four frames drawn, the second showing input that came at in.
 (define present-test-in 0)
@@ -26,7 +26,7 @@
       (steps 1))
     first))
 
-(let* ([p (host-frame-ns)]
+(let* ([p (core0-frame-ns)]
        [t (+ (now-ns) (* 10 p))]
        [i present-test-first])
   ;; sent a refresh apart; shown 3 refreshes on, the third a refresh late
@@ -68,7 +68,7 @@
 
 (check "a report taken over by a later frame's says nothing of the earlier"
        (let ([n (inspect-frame-ref present-test-first 6)])
-         (not (host-frame-report (+ n present-rows) 1))))
+         (not (core0-frame-report (+ n present-rows) 1))))
 
 (check "input that asked for no frame shows in none: the next frame says \
         nothing of it"
@@ -98,7 +98,7 @@
 
 (check "the newest frames, not yet sent and so with no report, leave the \
         last seconds' sums to those before them"
-       (let ([p (host-frame-ns)])
+       (let ([p (core0-frame-ns)])
          (frame-input-came! (- (now-ns) 3000000) 0 0)
          (request-frame!)
          (steps 1)

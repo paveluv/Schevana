@@ -170,7 +170,7 @@
               (list 'start (pacer-lab-trial-began-s t)
                     'seconds (quotient (- (now-ms) (pacer-lab-trial-began-ms t))
                                        1000)
-                    'refresh-ns (host-frame-ns)
+                    'refresh-ns (core0-frame-ns)
                     'knobs (pacer-lab-trial-knobs t)
                     'frames (- (car now) (car then))
                     'own (- (cadr now) (cadr then))

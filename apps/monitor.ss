@@ -281,7 +281,7 @@
 
 ;; The World's facts, (label . words) a pair each, in reading order.
 (define (monitor-world-facts)
-  (let ([hz (exact (round (/ 1e9 (host-frame-ns))))]
+  (let ([hz (exact (round (/ 1e9 (core0-frame-ns))))]
         [err *last-error*])
     (append
      (list (cons "Up" (monitor-span-text (uptime-ms)))
@@ -296,7 +296,7 @@
            (cons "Last tick" (format "~,1f ms busy" (pacer-busy-ms)))
            (cons "Last frame" (format "~,1f ms" *frame-ms*))
            (cons "Input to screen" (monitor-input-text))
-           (cons "Process" (let ([b (host-process-bytes)])
+           (cons "Process" (let ([b (platform-process-bytes)])
                              (if b
                                  (format "~,1f MB" (/ b 1048576.0))
                                  "not known here")))
@@ -349,8 +349,8 @@
       (+ y (if err row-h 0)))))
 
 ;; The Platform's groups, each (title words facts), the facts (label .
-;; words) as the World's: what the host is (inspect-platform), so that a
-;; run on another machine is told apart, and its predicates.
+;; words) as the World's: which platform this is (inspect-platform), so
+;; that a run on another machine is told apart, and its predicates.
 (define (monitor-platform-groups)
   (let* ([p (inspect-platform)]
          [of (lambda (k) (cdr (assq k p)))]

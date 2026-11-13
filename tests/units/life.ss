@@ -216,7 +216,7 @@
         (picture-free! a)
         (picture-free! b)
         (close-window! win)
-        (canvas-create! 1280 800 *host-scale*)
+        (canvas-create! 1280 800 *screen-chosen-scale*)
         ok))))
 
 (check "Life's pixmap drawing equals per-cell rectangles at 100%"
@@ -355,7 +355,7 @@
                        seen))])
         (picture-free! a)
         (close-window! win)
-        (canvas-create! 1280 800 *host-scale*)
+        (canvas-create! 1280 800 *screen-chosen-scale*)
         ok))))
 
 (check "Life: at the cell size's first stop, in a maximized window with its \
@@ -401,7 +401,7 @@
            (let ([most (crew-size)])
              (crew-size-set! size)
              (close-window! win)
-             (and (= least 0) (= most (- (max 2 (host-cpu-count)) 1)))))))
+             (and (= least 0) (= most (- (max 2 (platform-cpu-count)) 1)))))))
 
 (check "Life's generation on the crew equals the reference, and its seeding \
         is about 22% alive, no two rows alike"

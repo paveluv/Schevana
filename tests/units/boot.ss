@@ -1,13 +1,13 @@
 ;;; tests/units/boot.ss — core0 as the bootloader: the world's environment
-;;; it makes, "/" (src/host/boot.ss).
+;;; it makes, "/" (src/core0/boot.ss).
 
 ;; The tests' "/" forwards every name of core0's (tests/core0.ss), so a "/"
 ;; made again, with no sources, shows what the world is given.
-(let ([world (fluid-let ([*host-world* *host-world*]
-                         [*host-recorder* *host-recorder*])
-               (host-boot! *schevana-root* *schevana-recorder-sources* '()
+(let ([world (fluid-let ([*core0-world* *core0-world*]
+                         [*core0-recorder* *core0-recorder*])
+               (core0-boot! *schevana-root* *schevana-recorder-sources* '()
                            '((mode . headless)) #f)
-               *host-world*)])
+               *core0-world*)])
   (define (in-world form) (eval form world))
   (check "core0 makes \"/\" with all of Chez and, of its own names, only its \
           interface: each core0's binding itself, and read-only; and hands \
@@ -18,16 +18,17 @@
               (raises? (lambda () (in-world 'gpu-frame!)))
               (raises? (lambda () (in-world '*sdl-window*)))
               (raises? (lambda () (in-world '(set! gpu-publish! #f))))
-              (raises? (lambda () (in-world '(fluid-let ([*host* 'sdl]) #t))))
+              (raises? (lambda ()
+                         (in-world '(fluid-let ([*core0-mode* 'sdl]) #t))))
               (equal? (in-world '*schevana-sources*) '())
               (equal? (in-world '*schevana-options*) '((mode . headless)))
               (not (eq? world core0-env)))))
 
-(let ([world (fluid-let ([*host-world* *host-world*]
-                         [*host-recorder* *host-recorder*])
-               (host-boot! *schevana-root* *schevana-recorder-sources* '()
+(let ([world (fluid-let ([*core0-world* *core0-world*]
+                         [*core0-recorder* *core0-recorder*])
+               (core0-boot! *schevana-root* *schevana-recorder-sources* '()
                            '((mode . headless)) #f)
-               *host-world*)])
+               *core0-world*)])
   (define (named? name) (guard (c [#t #f]) (eval name world) #t))
   (check "\"/recorder\" is sealed: \"/\" holds its interface, read-only, and \
           none of the bytes it hands core0, nor what writes them"
@@ -69,7 +70,7 @@
               (not (main-fork? (main-options '("--install-desktop")))))))
 
 (check "the world runs in an environment of its own, not core0's"
-       (and (eq? *world-env* *host-world*)
+       (and (eq? *world-env* *core0-world*)
             (not (eq? *world-env* core0-env))))
 
 ;;; Core0's step: jobs the world posts run at its next step, in order, by
@@ -77,32 +78,32 @@
 ;;; says of the window it read at the step.
 
 (let ([ran '()])
-  (fluid-let ([*host-jobs* (box '())]
-              [*host-job-failed* #f])
+  (fluid-let ([*core0-jobs* (box '())]
+              [*core0-job-failed* #f])
     (define-top-level-value 'boot-test-job!
       (lambda (x) (set! ran (cons x ran))) core0-env)
-    (host-post! '(boot-test-job! 1))
-    (host-post! '(boot-test-job! 2))
+    (core0-post! '(boot-test-job! 1))
+    (core0-post! '(boot-test-job! 2))
     (let ([before ran])
-      (host-step!)
+      (core0-step!)
       (check "a job posted runs at core0's next step, not before, in order"
              (and (null? before) (equal? ran '(2 1)))))
     (define-top-level-value 'boot-test-job!
       (lambda (x) (set! ran (cons (list 'again x) ran))) core0-env)
-    (host-post! '(boot-test-job! 3))
-    (host-post! '(car ()))
-    (host-post! '(boot-test-job! 4))
-    (host-step!)
+    (core0-post! '(boot-test-job! 3))
+    (core0-post! '(car ()))
+    (core0-post! '(boot-test-job! 4))
+    (core0-step!)
     (check "by name, so a redefinition takes; one that raises is kept, and \
             the rest run"
            (and (equal? (list-head ran 2) '((again 4) (again 3)))
-                (equal? (car *host-job-failed*) '(car ()))))))
+                (equal? (car *core0-job-failed*) '(car ()))))))
 
-(fluid-let ([*host-inbox* (box '())])
-  (host-put! *host-inbox* '(((key-down #\a ())) . (#x300)))
-  (host-put! *host-inbox* '(((text "a")) . (#x303)))
-  (let-values ([(events types) (host-window-events)])
-    (let-values ([(again more) (host-window-events)])
+(fluid-let ([*core0-inbox* (box '())])
+  (core0-put! *core0-inbox* '(((key-down #\a ())) . (#x300)))
+  (core0-put! *core0-inbox* '(((text "a")) . (#x303)))
+  (let-values ([(events types) (core0-window-events)])
+    (let-values ([(again more) (core0-window-events)])
       (check "the events of core0's steps wait in the inbox, the oldest \
               first, and are taken once"
              (and (equal? events '((key-down #\a ()) (text "a")))
@@ -111,18 +112,18 @@
 
 ;; A resize: core1, woken for it, reads the window's size from the facts,
 ;; so core0 reads them again before it hands the events over.
-(let ([order '()] [put host-put!])
-  (fluid-let ([*host-inbox* (box '())]
-              [host-window-pump
+(let ([order '()] [put core0-put!])
+  (fluid-let ([*core0-inbox* (box '())]
+              [core0-window-pump
                (lambda () (values '((window-resized)) '(#x206) 0))]
               [platform-reports-pump! void]
-              [host-world-wake! void]
-              [host-facts-refresh!
+              [core0-world-wake! void]
+              [core0-facts-refresh!
                (lambda (all?) (set! order (cons 'facts order)))]
-              [host-put! (lambda (b x)
+              [core0-put! (lambda (b x)
                            (set! order (cons 'put order))
                            (put b x))])
-    (host-step!)
+    (core0-step!)
     (check (format "core0 reads what the window says of itself before it \
                     hands the world its events, so a resize finds the new \
                     size; once a step (~a)" (reverse order))
@@ -130,17 +131,17 @@
 
 ;; A pump that holds core0 is traced with what it brought.
 (let ([traced '()])
-  (fluid-let ([*host-inbox* (box '())]
-              [host-window-pump
+  (fluid-let ([*core0-inbox* (box '())]
+              [core0-window-pump
                (lambda ()
                  (sleep (make-time 'time-duration 3000000 0))
                  (values '((mouse-leave)) '(#x20d) 0))]
               [platform-reports-pump! void]
-              [host-world-wake! void]
-              [host-facts-refresh! (lambda (all?) (void))]
-              [host-trace! (lambda (code a)
+              [core0-world-wake! void]
+              [core0-facts-refresh! (lambda (all?) (void))]
+              [core0-trace! (lambda (code a)
                              (set! traced (cons (cons code a) traced)))])
-    (host-events-pumped!)
+    (core0-events-pumped!)
     (check (format "a pump that held core0 past 2 ms is traced, µs, with its \
                     events' types (~a)" (reverse traced))
            (let ([slow (assv 13 traced)])
@@ -148,26 +149,26 @@
                   (equal? (assv 14 traced) '(14 . #x20d)))))))
 
 (check "headless, the window's facts are a world that's shown at 60 Hz, and \
-        inspect-host reads core0's step"
-       (and (not (host-hidden?))
-            (= (host-frame-ns) (quotient 1000000000 60))
-            (equal? (map car (inspect-host))
+        inspect-core0 reads core0's step"
+       (and (not (core0-hidden?))
+            (= (core0-frame-ns) (quotient 1000000000 60))
+            (equal? (map car (inspect-core0))
                     '(sizes scale flags frame-ns jobs events failed))))
 
 ;; Core0's sleep, on a thread of its own: a job posted or a frame published
 ;; wakes it, at once or from the next sleep; its events never do, so a
 ;; sleep with nothing to wake it lasts its whole time.
-(fluid-let ([*host-forked* #t] [*host-woken* #f])
-  (host-wake!)
+(fluid-let ([*core0-forked* #t] [*core0-woken* #f])
+  (core0-wake!)
   (let ([t0 (now-ms)])
-    (host-sleep! 1000)
+    (core0-sleep! 1000)
     (let ([before (- (now-ms) t0)] [t1 (now-ms)])
-      (host-sleep! 20)
+      (core0-sleep! 20)
       (let ([alone (- (now-ms) t1)] [t2 (now-ms)])
         (fork-thread (lambda ()
                        (sleep (make-time 'time-duration 30000000 0))
-                       (host-wake!)))
-        (host-sleep! 1000)
+                       (core0-wake!)))
+        (core0-sleep! 1000)
         (let ([during (- (now-ms) t2)])
           (check (format "a wake ends core0's sleep, before it or during it, \
                           and nothing else does (~a ~a ~a ms)"

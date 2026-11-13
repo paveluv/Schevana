@@ -1,4 +1,4 @@
-;;; host/sdl.ss — SDL's bindings, core0's alone (.work/gpu-design.md 9.5):
+;;; core0/sdl.ss — SDL's bindings, core0's alone (.work/gpu-design.md 9.5):
 ;;; the window, its events, and the GPU. Core1 names none of them
 ;;; (tests/sources.ss) but the two any thread may call, in src/ffi.ss.
 
@@ -34,7 +34,7 @@
 ;; Collect-safe, as is what may size, show or let go of the window's Metal
 ;; layer once it has run: Core Animation may hold the layer's lock running
 ;; a presented handler of core0's, which may wait for a collection
-;; (src/host/platform.ss).
+;; (src/core0/platform.ss).
 (define-foreign/collect-safe sdl-destroy-window "SDL_DestroyWindow" (uptr)
   void)
 (define-foreign/collect-safe sdl-set-window-minimum-size
@@ -172,7 +172,7 @@
 (define-foreign sdl-get-number-property "SDL_GetNumberProperty"
   (unsigned-32 string integer-64) integer-64)
 (define-foreign sdl-gpu-driver "SDL_GetGPUDeviceDriver" (uptr) string)
-;; what the host is: SDL's version, its video driver (#f before its start)
+;; what the platform is: SDL's version, its video driver (#f before its start)
 (define-foreign sdl-get-version "SDL_GetVersion" () int)
 (define-foreign sdl-get-current-video-driver "SDL_GetCurrentVideoDriver" ()
   string)

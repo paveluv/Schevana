@@ -1,54 +1,54 @@
-;;; host/window.ss — the host window, core0's (.work/gpu-design.md 9.12):
+;;; core0/window.ss — core0's window (.work/gpu-design.md 9.12):
 ;;; SDL's window, its events and what it says of itself, as plain data the
-;;; world reads (src/host.ss), never SDL's pointers. Positions come in the
+;;; world reads (src/screen.ss), never SDL's pointers. Positions come in the
 ;;; window's units, as SDL gives them; the world lays them out.
 ;;;
-;;; *host* says what the host is:
+;;; *core0-mode* says what core0 runs, 'none before it starts:
 ;;; 'sdl      : a real resizable window, on the GPU
 ;;; 'headless : no window at all, on the CPU's Vulkan driver (for tests and
 ;;;             screenshots)
 
-(defvar *host* 'none)
+(defvar *core0-mode* 'none)
 (defvar *sdl-window* 0)
 (defvar *sdl-event* (foreign-alloc 128))   ; an SDL_Event
 ;; what SDL says of the window's size: a place for it, a pointer made once
-(define-ftype host-size (struct [w int] [h int]))
-(defvar *host-scratch* (foreign-alloc (ftype-sizeof host-size)))
-(define host-size* (make-ftype-pointer host-size *host-scratch*))
-(defvar *host-clipboard* "")   ; what headless mode keeps
+(define-ftype core0-size (struct [w int] [h int]))
+(defvar *core0-scratch* (foreign-alloc (ftype-sizeof core0-size)))
+(define core0-size* (make-ftype-pointer core0-size *core0-scratch*))
+(defvar *core0-clipboard* "")   ; what headless mode keeps
 (defvar *cursors* (make-eq-hashtable))
 (defvar *current-cursor* #f)
 
-;; Who the host window is to the desktop: its app id under Wayland, its
+;; Who the window is to the desktop: its app id under Wayland, its
 ;; class under X11. The desktop entry (desktop/icon.ss) names it too.
-(define host-app-id "schevana")
+(define core0-app-id "schevana")
 
 ;;; ------------------------------------------------------------------ window
 
 ;; Once for all: video, the driver named if one is.
-(define (host-window-init! driver)
+(define (core0-window-init! driver)
   (when driver (sdl-set-hint "SDL_VIDEO_DRIVER" driver))
   (unless (sdl-init SDL_INIT_VIDEO)
-    (errorf 'host-window-init! "SDL_Init failed: ~a" (sdl-get-error))))
+    (errorf 'core0-window-init! "SDL_Init failed: ~a" (sdl-get-error))))
 
 ;; No window: the GPU draws to a target, on the windowless driver.
-(define (host-window-headless!)
-  (set! *host* 'headless)
+(define (core0-window-headless!)
+  (set! *core0-mode* 'headless)
   ;; on a Mac, no Dock icon and no taking the focus from what you're doing
   (sdl-set-hint "SDL_MAC_BACKGROUND_APP" "1")
-  (host-window-init! gpu-windowless-video)
+  (core0-window-init! gpu-windowless-video)
   (unless *renderer* (gpu-open! gpu-windowless-kind))
-  (host-platform-read!))
+  (core0-platform-read!))
 
 ;; The window, w × h window units, hidden till it's sized and shown, full
 ;; screen if asked; the GPU draws to it from then on.
-(define (host-window-open! w h full?)
-  (set! *host* 'sdl)
-  (host-trace-start!)
+(define (core0-window-open! w h full?)
+  (set! *core0-mode* 'sdl)
+  (core0-trace-start!)
   (sdl-set-hint "SDL_VIDEO_X11_NET_WM_BYPASS_COMPOSITOR" "0")
   (sdl-set-hint "SDL_MOUSE_FOCUS_CLICKTHROUGH" "1")
-  (sdl-set-hint "SDL_APP_ID" host-app-id)
-  (host-window-init! #f)
+  (sdl-set-hint "SDL_APP_ID" core0-app-id)
+  (core0-window-init! #f)
   (set! *sdl-window*
     (sdl-create-window "Schevana" w h
                        (fxior SDL_WINDOW_RESIZABLE
@@ -56,80 +56,81 @@
                               SDL_WINDOW_HIDDEN
                               (if full? SDL_WINDOW_FULLSCREEN 0))))
   (when (= 0 *sdl-window*)
-    (errorf 'host-window-open! "SDL_CreateWindow failed: ~a"
+    (errorf 'core0-window-open! "SDL_CreateWindow failed: ~a"
             (sdl-get-error)))
   (unless *renderer* (gpu-open! 'gpu))
   (gpu-claim-window! *sdl-window*)
-  (host-platform-read!)
-  (host-facts-refresh! #t))
+  (core0-platform-read!)
+  (core0-facts-refresh! #t))
 
 ;; Centered on its display and shown, taking text from then on.
-(define (host-window-show!)
+(define (core0-window-show!)
   (sdl-set-window-position *sdl-window* SDL_WINDOWPOS_CENTERED
                            SDL_WINDOWPOS_CENTERED)
   (sdl-show-window *sdl-window*)
   (sdl-start-text-input *sdl-window*)
-  (host-clipboard-read!)
+  (core0-clipboard-read!)
   (platform-reports-start! *sdl-window*)
-  (host-facts-refresh! #t))
+  (core0-facts-refresh! #t))
 
-(define (host-window-close!)
+(define (core0-window-close!)
   (sdl-wait-gpu-idle (renderer-device *renderer*))
   (sdl-release-window (renderer-device *renderer*) *sdl-window*)
   (sdl-destroy-window *sdl-window*)
   (sdl-quit)
   (set! *renderer* #f)
-  (set! *host* 'none))
+  (set! *core0-mode* 'none))
 
 ;; The window's size in window units and in physical pixels, as core0 last
 ;; read it: (values w h pw ph).
-(define (host-window-sizes)
-  (let ([f *host-facts*])
+(define (core0-window-sizes)
+  (let ([f *core0-facts*])
     (values (vector-ref f 1) (vector-ref f 2) (vector-ref f 3)
             (vector-ref f 4))))
 
 ;; The size get, one of SDL's, says: (values w h).
-(define (host-size-from get)
+(define (core0-size-from get)
   (get *sdl-window*
-       (ftype-pointer-address (ftype-&ref host-size (w) host-size*))
-       (ftype-pointer-address (ftype-&ref host-size (h) host-size*)))
-  (values (ftype-ref host-size (w) host-size*)
-          (ftype-ref host-size (h) host-size*)))
+       (ftype-pointer-address (ftype-&ref core0-size (w) core0-size*))
+       (ftype-pointer-address (ftype-&ref core0-size (h) core0-size*)))
+  (values (ftype-ref core0-size (w) core0-size*)
+          (ftype-ref core0-size (h) core0-size*)))
 
 ;; To w × h window units: from core1, once core0 has a thread of its own, a
 ;; job of core0's.
-(define (host-window-resize! w h)
-  (if *host-forked*
-      (host-post! (list 'host-resize-now! w h))
-      (host-resize-now! w h)))
-(define (host-resize-now! w h)
+(define (core0-window-resize! w h)
+  (if *core0-forked*
+      (core0-post! (list 'core0-resize-now! w h))
+      (core0-resize-now! w h)))
+(define (core0-resize-now! w h)
   (sdl-set-window-size *sdl-window* w h)
-  (host-facts-refresh! #t))
+  (core0-facts-refresh! #t))
 
 ;; The least it may be dragged to, in window units: a job of core0's.
-(define (host-window-minimum! w h) (host-post! (list 'host-minimum-now! w h)))
-(define (host-minimum-now! w h)
+(define (core0-window-minimum! w h)
+  (core0-post! (list 'core0-minimum-now! w h)))
+(define (core0-minimum-now! w h)
   (sdl-set-window-minimum-size *sdl-window* w h))
 
 ;; SDL's display scale for the window as last read; 0 is SDL's failure, 1
 ;; with no window.
-(define (host-window-scale)
-  (if (eq? *host* 'sdl) (vector-ref *host-facts* 5) 1))
+(define (core0-window-scale)
+  (if (eq? *core0-mode* 'sdl) (vector-ref *core0-facts* 5) 1))
 
 ;; SDL3's flags include a change asked for and not made yet.
-(define (host-window-fullscreen?)
-  (logtest (host-flags) SDL_WINDOW_FULLSCREEN))
+(define (core0-window-fullscreen?)
+  (logtest (core0-flags) SDL_WINDOW_FULLSCREEN))
 
-(define (host-window-fullscreen! on?)
-  (host-post! (list 'host-fullscreen-now! on?)))
-(define (host-fullscreen-now! on?)
+(define (core0-window-fullscreen! on?)
+  (core0-post! (list 'core0-fullscreen-now! on?)))
+(define (core0-fullscreen-now! on?)
   (sdl-set-window-fullscreen *sdl-window* on?))
 
 ;; The window's icon, from size × size straight ARGB pixels: a job, in which
 ;; SDL copies them.
-(define (host-window-icon! size bytes)
-  (host-post! (list 'host-icon-now! size bytes)))
-(define (host-icon-now! size bytes)
+(define (core0-window-icon! size bytes)
+  (core0-post! (list 'core0-icon-now! size bytes)))
+(define (core0-icon-now! size bytes)
   (let ([icon (sdl-create-surface-from size size SDL_PIXELFORMAT_ARGB8888
                                        (object->reference-address bytes)
                                        (* 4 size))])
@@ -145,8 +146,8 @@
           [density float] [refresh float] [numerator int] [denominator int]))
 
 ;; The window's display's mode, or #f when SDL does not say (headless, say).
-(define (host-display-mode)
-  (let ([m (if (eq? *host* 'sdl)
+(define (core0-display-mode)
+  (let ([m (if (eq? *core0-mode* 'sdl)
                (sdl-get-current-display-mode
                 (sdl-get-display-for-window *sdl-window*))
                0)])
@@ -154,8 +155,8 @@
 
 ;; How long the screen shows a frame, ns: by its display's refresh rate, or
 ;; 60 Hz when SDL does not say.
-(define (host-read-frame-ns)
-  (let* ([m (host-display-mode)]
+(define (core0-read-frame-ns)
+  (let* ([m (core0-display-mode)]
          [hz (if m (ftype-ref sdl-display-mode (numerator) m) 0)]
          [per (if m (ftype-ref sdl-display-mode (denominator) m) 0)])
     (if (and (> hz 0) (> per 0))
@@ -163,13 +164,13 @@
         (quotient 1000000000 60))))
 
 ;; The same, as core0 last read them.
-(define (host-frame-ns) (vector-ref *host-facts* 6))
-(define (host-display) (vector-ref *host-facts* 7))
+(define (core0-frame-ns) (vector-ref *core0-facts* 6))
+(define (core0-display) (vector-ref *core0-facts* 7))
 
 ;; The display as a person reads it: (w h refresh-numerator denominator
 ;; density), or #f.
-(define (host-read-display)
-  (let ([m (host-display-mode)])
+(define (core0-read-display)
+  (let ([m (core0-display-mode)])
     (and m
          (list (ftype-ref sdl-display-mode (w) m)
                (ftype-ref sdl-display-mode (h) m)
@@ -177,11 +178,11 @@
                (ftype-ref sdl-display-mode (denominator) m)
                (ftype-ref sdl-display-mode (density) m)))))
 
-;; What SDL says of the host window and last went wrong with it, as core0
+;; What SDL says of the window and last went wrong with it, as core0
 ;; last read them. It's all for whoever is looking into a late tick.
-(define (host-flags) (vector-ref *host-facts* 0))
+(define (core0-flags) (vector-ref *core0-facts* 0))
 
-(define (host-flag-names flags)
+(define (core0-flag-names flags)
   (map cdr
        (filter (lambda (bit) (logtest flags (car bit)))
                '((#x1 . fullscreen)
@@ -192,10 +193,10 @@
                  (#x200 . input-focus)
                  (#x400 . mouse-focus)))))
 
-(define (host-error-text) (vector-ref *host-facts* 8))
+(define (core0-error-text) (vector-ref *core0-facts* 8))
 
 ;; An event's name, by its number (SDL_events.h); or the number.
-(define (host-event-name type)
+(define (core0-event-name type)
   (cond
     [(assv type
            '((#x100 . quit)
@@ -252,11 +253,11 @@
      => cdr]
     [else type]))
 
-;; Hidden, minimized or covered, the host window shows nothing: no frames,
+;; Hidden, minimized or covered, the window shows nothing: no frames,
 ;; which wait until it shows.
-(define (host-hidden?)
+(define (core0-hidden?)
   ;; SDL_WINDOW_OCCLUDED, _HIDDEN and _MINIMIZED
-  (and (eq? *host* 'sdl) (logtest (host-flags) #x4c)))
+  (and (eq? *core0-mode* 'sdl) (logtest (core0-flags) #x4c)))
 
 ;;; ------------------------------------------------------------------ events
 
@@ -367,8 +368,8 @@
 ;; events as sdl-event->list gives them, every event's number in order,
 ;; whether it means anything or not, and when SDL took the first that came
 ;; from the keyboard or the mouse (now-ns; 0, none).
-(define (host-window-pump)
-  (if (eq? *host* 'sdl)
+(define (core0-window-pump)
+  (if (eq? *core0-mode* 'sdl)
       (let ([buf *sdl-event*])
         (let loop ([more? (sdl-poll-event buf)] [acc '()] [types '()]
                    [first 0])
@@ -388,30 +389,30 @@
 
 ;; When the oldest input not yet taken came (now-ns; 0, none), three ways:
 ;; by SDL's stamp; when core0's pump first saw it; by the compositor's own
-;; time where core0 reads it (src/host/platform.ss). Core0's pump sets them,
+;; time where core0 reads it (src/core0/platform.ss). Core0's pump sets them,
 ;; the world takes them with the events, both by box-cas!.
-(defvar *host-input-ns* (box 0))
-(defvar *host-input-pumped* (box 0))
-(defvar *host-input-wl* (box 0))
+(defvar *core0-input-ns* (box 0))
+(defvar *core0-input-pumped* (box 0))
+(defvar *core0-input-wl* (box 0))
 
 ;; Box b holds ns, unless it holds an older input's.
-(define (host-input-set! b ns)
+(define (core0-input-set! b ns)
   (let loop ()
     (let ([old (unbox b)])
       (unless (or (not (eqv? old 0)) (box-cas! b old ns))
         (loop)))))
 
-(define (host-input-take! b)
+(define (core0-input-take! b)
   (let loop ()
     (let ([old (unbox b)])
       (if (box-cas! b old 0) old (loop)))))
 
 ;; When the oldest input since the last take came, taken, by SDL, core0's
 ;; pump and the compositor: (values sdl pumped compositor), 0 for none.
-(define (host-input-ns-take!)
-  (values (host-input-take! *host-input-ns*)
-          (host-input-take! *host-input-pumped*)
-          (host-input-take! *host-input-wl*)))
+(define (core0-input-ns-take!)
+  (values (core0-input-take! *core0-input-ns*)
+          (core0-input-take! *core0-input-pumped*)
+          (core0-input-take! *core0-input-wl*)))
 
 ;;; ------------------------------------------------------------------
 ;;; cursor & clipboard
@@ -422,14 +423,14 @@
 
 ;; The pointer's shape, with a window a job of core0's when it changes from
 ;; what was last asked (the asker's, so a move that keeps it posts nothing).
-(defvar *host-cursor-asked* #f)
-(define (host-set-cursor! kind)
-  (when (and (eq? *host* 'sdl) (not (eq? kind *host-cursor-asked*)))
-    (set! *host-cursor-asked* kind)
-    (host-post! (list 'host-cursor-now! kind))))
+(defvar *core0-cursor-asked* #f)
+(define (core0-set-cursor! kind)
+  (when (and (eq? *core0-mode* 'sdl) (not (eq? kind *core0-cursor-asked*)))
+    (set! *core0-cursor-asked* kind)
+    (core0-post! (list 'core0-cursor-now! kind))))
 
-(define (host-cursor-now! kind)
-  (when (and (eq? *host* 'sdl) (not (eq? kind *current-cursor*)))
+(define (core0-cursor-now! kind)
+  (when (and (eq? *core0-mode* 'sdl) (not (eq? kind *current-cursor*)))
     (set! *current-cursor* kind)
     (sdl-set-cursor
      (or (hashtable-ref *cursors* kind #f)
@@ -440,22 +441,22 @@
 
 ;; The clipboard's text, as core0 read it last: when the window showed, and
 ;; whenever SDL said it changed; headless, it's kept here.
-(define (clipboard-get) *host-clipboard*)
+(define (clipboard-get) *core0-clipboard*)
 
-(define (host-clipboard-read!)
+(define (core0-clipboard-read!)
   (let* ([p (sdl-get-clipboard-text)] [s (c-string->string p)])
     (unless (= p 0) (sdl-free p))
-    (set! *host-clipboard* s)))
+    (set! *core0-clipboard* s)))
 
 ;; With a window, a job of core0's.
 (define (clipboard-set! s)
-  (if (eq? *host* 'sdl)
-      (host-post! (list 'host-clipboard-now! s))
-      (set! *host-clipboard* s)))
+  (if (eq? *core0-mode* 'sdl)
+      (core0-post! (list 'core0-clipboard-now! s))
+      (set! *core0-clipboard* s)))
 
-(define (host-clipboard-now! s)
+(define (core0-clipboard-now! s)
   (sdl-set-clipboard-text s)
-  (set! *host-clipboard* s))
+  (set! *core0-clipboard* s))
 
 ;;; ------------------------------------------------------------------ step
 ;;; Core0 runs the window in steps: the jobs the world posted, then the
@@ -464,34 +465,34 @@
 ;;; core0 has a thread, its loop does (.work/gpu-design.md 9.4).
 
 ;; The jobs posted, newest first, each (name arg ...): core0's procedure by
-;; name, so a redefinition in "/host" takes; and the events pumped and not
+;; name, so a redefinition in "/core0" takes; and the events pumped and not
 ;; yet taken, newest first, each (events . types) of a step.
-(defvar *host-jobs* (box '()))
-(defvar *host-inbox* (box '()))
-(defvar *host-job-failed* #f)   ; (job . condition): the last job that raised
+(defvar *core0-jobs* (box '()))
+(defvar *core0-inbox* (box '()))
+(defvar *core0-job-failed* #f)   ; (job . condition): the last job that raised
 
 ;; What SDL says of the window, as core0 read it last: #(flags w h pw ph
 ;; scale frame-ns display error-text). Made again whole when it changes, so
 ;; another thread reads it whole.
-(defvar *host-facts* (vector 0 0 0 0 0 1 (quotient 1000000000 60) #f ""))
+(defvar *core0-facts* (vector 0 0 0 0 0 1 (quotient 1000000000 60) #f ""))
 
 ;; x onto box b's list, what came before it handed over with it.
-(define (host-put! b x)
+(define (core0-put! b x)
   (memory-order-release)
   (let loop ()
     (let ([l (unbox b)]) (unless (box-cas! b l (cons x l)) (loop)))))
 
 ;; Box b's list, taken, the oldest first.
-(define (host-take! b)
+(define (core0-take! b)
   (let loop ()
     (let ([l (unbox b)])
       (cond [(null? l) l]
             [(box-cas! b l '()) (memory-order-acquire) (reverse l)]
             [else (loop)]))))
 
-(define (host-post! job)
-  (host-put! *host-jobs* job)
-  (host-wake!))
+(define (core0-post! job)
+  (core0-put! *core0-jobs* job)
+  (core0-wake!))
 
 ;;; ------------------------------------------------------------------ core1
 ;;; With a window core0 runs on the process's first thread and the world on
@@ -500,137 +501,137 @@
 ;;; brings them. Headless, one thread plays both, and core0's step is the
 ;;; wait.
 
-(defvar *host-forked* #f)
-(define (host-forked?) *host-forked*)
+(defvar *core0-forked* #f)
+(define (core0-forked?) *core0-forked*)
 
-(defvar *host-world-mutex* (make-mutex))
-(defvar *host-world-ready* (make-condition))
-(defvar *host-world-woken* #f)   ; under the mutex
-(defvar *host-ready* (make-condition))   ; core0's own
-(defvar *host-woken* #f)                 ; under the mutex
+(defvar *core0-world-mutex* (make-mutex))
+(defvar *core0-world-ready* (make-condition))
+(defvar *core0-world-woken* #f)   ; under the mutex
+(defvar *core0-ready* (make-condition))   ; core0's own
+(defvar *core0-woken* #f)                 ; under the mutex
 
 ;; Ends core1's wait, or the next one: from any thread.
-(define (host-world-wake!)
-  (when *host-forked*
-    (with-mutex *host-world-mutex*
-      (set! *host-world-woken* #t)
-      (condition-signal *host-world-ready*))))
+(define (core0-world-wake!)
+  (when *core0-forked*
+    (with-mutex *core0-world-mutex*
+      (set! *core0-world-woken* #t)
+      (condition-signal *core0-world-ready*))))
 
 ;; Core1 waits up to ms, or till it's woken.
-(define (host-world-wait! ms)
-  (with-mutex *host-world-mutex*
-    (unless (or *host-world-woken* (<= ms 0))
-      (condition-wait *host-world-ready* *host-world-mutex* (host-ms ms)))
-    (set! *host-world-woken* #f)))
+(define (core0-world-wait! ms)
+  (with-mutex *core0-world-mutex*
+    (unless (or *core0-world-woken* (<= ms 0))
+      (condition-wait *core0-world-ready* *core0-world-mutex* (core0-ms ms)))
+    (set! *core0-world-woken* #f)))
 
-(define (host-ms ms)
+(define (core0-ms ms)
   (make-time 'time-duration (* 1000000 (modulo ms 1000)) (quotient ms 1000)))
 
 ;; Compute runs and writes no frame took, sent by a job, "/recorder"'s.
-(define (host-post-submit! runs jobs writes)
-  (host-post! (list 'gpu-submit-computes! runs jobs writes)))
+(define (core0-post-submit! runs jobs writes)
+  (core0-post! (list 'gpu-submit-computes! runs jobs writes)))
 
 ;; Core1 is done: core0 closes the window and ends the process.
-(define (host-quit!) (host-post! '(host-quit-now!)))
-(defvar *host-quit* #f)
-(define (host-quit-now!) (set! *host-quit* #t))
+(define (core0-quit!) (core0-post! '(core0-quit-now!)))
+(defvar *core0-quit* #f)
+(define (core0-quit-now!) (set! *core0-quit* #t))
 
 ;; How long core0 sleeps with nothing to do: input waits that long at most;
 ;; while frames flow (one taken in the last 100 ms), a ms, so that core1's
 ;; turn, which begins just in time for the screen, finds the newest.
-(define host-idle-ms 4)
-(define (host-idle-ms-now)
-  (if (< (- (now-ns) *present-taken*) 100000000) 1 host-idle-ms))
+(define core0-idle-ms 4)
+(define (core0-idle-ms-now)
+  (if (< (- (now-ns) *present-taken*) 100000000) 1 core0-idle-ms))
 
 ;; Core0's loop, on its own thread: its steps till core1 quits.
-(define (host-loop!)
+(define (core0-loop!)
   (let loop ()
-    (host-step!)
+    (core0-step!)
     ;; while it boots, the boot screen at each refresh
     (when *gpu-booting* (gpu-boot-screen!))
-    (if *host-quit*
+    (if *core0-quit*
         (begin
-          (when (eq? *host* 'sdl)
+          (when (eq? *core0-mode* 'sdl)
             ;; a trace that fails to write never keeps the window open
-            (guard (c [#t #f]) (host-trace-write!))
-            (host-window-close!))
+            (guard (c [#t #f]) (core0-trace-write!))
+            (core0-window-close!))
           (exit 0))
         (loop))))
 
 ;; Ends core0's sleep, or the next one: a job posted, a frame published.
 ;; From any thread; on core1's own, core0 never sleeps.
-(define (host-wake!)
-  (when *host-forked*
-    (with-mutex *host-world-mutex*
-      (set! *host-woken* #t)
-      (condition-signal *host-ready*))))
+(define (core0-wake!)
+  (when *core0-forked*
+    (with-mutex *core0-world-mutex*
+      (set! *core0-woken* #t)
+      (condition-signal *core0-ready*))))
 
 ;; Core0 sleeps up to ms, or till it's woken. Its events aren't a wake:
 ;; it looks for them each time it wakes, so ms bounds how long input
-;; waits while nothing else comes (host-idle-ms).
-(define (host-sleep! ms)
-  (with-mutex *host-world-mutex*
-    (unless (or *host-woken* (<= ms 0))
-      (host-trace! 7 ms)
-      (condition-wait *host-ready* *host-world-mutex* (host-ms ms))
-      (host-trace! 8 0))
-    (set! *host-woken* #f)))
+;; waits while nothing else comes (core0-idle-ms).
+(define (core0-sleep! ms)
+  (with-mutex *core0-world-mutex*
+    (unless (or *core0-woken* (<= ms 0))
+      (core0-trace! 7 ms)
+      (condition-wait *core0-ready* *core0-world-mutex* (core0-ms ms))
+      (core0-trace! 8 0))
+    (set! *core0-woken* #f)))
 
-(define (host-run-job! job)
-  (guard (c [#t (set! *host-job-failed* (cons job c))])
-    (apply (top-level-value (car job) (host-environment)) (cdr job))))
+(define (core0-run-job! job)
+  (guard (c [#t (set! *core0-job-failed* (cons job c))])
+    (apply (top-level-value (car job) (core0-environment)) (cdr job))))
 
 ;; One step of core0's: the jobs posted, in order; the frame published, if
 ;; one is; with none, on a thread of its own, a sleep of up to
-;; host-idle-ms, which a job or a frame ends; the frames' GPU fences looked
+;; core0-idle-ms, which a job or a frame ends; the frames' GPU fences looked
 ;; at and the screen's reports read; the events into the world's inbox,
 ;; what the window says of itself read again first; with none, read again
 ;; all the same; core1, on a thread of its own, watched for a stall
-;; (host-trace-watch!). The sleep comes before
+;; (core0-trace-watch!). The sleep comes before
 ;; the pump, so that input that came while it slept goes in before the
 ;; next present can wait for the screen.
-(define (host-step!)
-  (let ([jobs (host-take! *host-jobs*)])
-    (host-trace! 1 (length jobs))
-    (for-each host-run-job! jobs)
-    (unless (eq? *host* 'none) (gpu-present-published!))
-    (when (and *host-forked* (not (unbox *gpu-published*)))
-      (host-sleep! (host-idle-ms-now)))
+(define (core0-step!)
+  (let ([jobs (core0-take! *core0-jobs*)])
+    (core0-trace! 1 (length jobs))
+    (for-each core0-run-job! jobs)
+    (unless (eq? *core0-mode* 'none) (gpu-present-published!))
+    (when (and *core0-forked* (not (unbox *gpu-published*)))
+      (core0-sleep! (core0-idle-ms-now)))
     (present-poll!)
-    (unless (host-events-pumped!) (host-facts-refresh! (pair? jobs)))
-    (when *host-forked* (host-trace-watch!))))
+    (unless (core0-events-pumped!) (core0-facts-refresh! (pair? jobs)))
+    (when *core0-forked* (core0-trace-watch!))))
 
 ;; The events come since the last pump into the world's inbox, core1 woken
 ;; for them, and when the oldest input came; what the window says of itself
 ;; read again before, so that core1, taking a resize, finds the new size. A
 ;; pump that held core0 past 2 ms is traced, µs, with its events' types.
 ;; => whether any came.
-(define (host-events-pumped!)
+(define (core0-events-pumped!)
   (let*-values ([(t0) (now-ns)]
-                [(events types first) (host-window-pump)]
+                [(events types first) (core0-window-pump)]
                 [(took) (- (now-ns) t0)])
     (when (> took 2000000)
-      (host-trace! 13 (quotient took 1000))
-      (for-each (lambda (type) (host-trace! 14 type)) types))
+      (core0-trace! 13 (quotient took 1000))
+      (for-each (lambda (type) (core0-trace! 14 type)) types))
     ;; core0's queue, which SDL's pump read into: the screen's reports, and
     ;; the compositor's input times
     (platform-reports-pump!)
     (unless (eqv? first 0)
-      (host-input-set! *host-input-ns* first)
-      (host-input-set! *host-input-pumped* (now-ns)))
+      (core0-input-set! *core0-input-ns* first)
+      (core0-input-set! *core0-input-pumped* (now-ns)))
     (unless (null? types)
-      (host-trace! 9 (length types))
-      (host-facts-refresh! #t)
-      (when (memv #x900 types) (host-clipboard-read!))   ; clipboard-update
-      (host-put! *host-inbox* (cons events types))
-      (host-world-wake!))
+      (core0-trace! 9 (length types))
+      (core0-facts-refresh! #t)
+      (when (memv #x900 types) (core0-clipboard-read!))   ; clipboard-update
+      (core0-put! *core0-inbox* (cons events types))
+      (core0-world-wake!))
     (pair? types)))
 
 ;; The events core0's steps have put in the inbox since it was last taken,
-;; as host-window-pump gives them: (values events types); when the oldest
-;; input came, host-input-ns-take!.
-(define (host-window-events)
-  (let ([steps (host-take! *host-inbox*)])
+;; as core0-window-pump gives them: (values events types); when the oldest
+;; input came, core0-input-ns-take!.
+(define (core0-window-events)
+  (let ([steps (core0-take! *core0-inbox*)])
     (if (null? steps)
         (values '() '())
         (values (apply append (map car steps))
@@ -639,24 +640,24 @@
 ;; The facts read again: the flags and sizes each step, and made again when
 ;; they changed; the scale, the display and the last error too after
 ;; events or jobs (all?), as they change only with those.
-(define (host-facts-refresh! all?)
-  (when (eq? *host* 'sdl)
+(define (core0-facts-refresh! all?)
+  (when (eq? *core0-mode* 'sdl)
     (let*-values ([(f) (sdl-get-window-flags *sdl-window*)]
-                  [(w h) (host-size-from sdl-get-window-size)]
-                  [(pw ph) (host-size-from sdl-get-window-size-in-pixels)])
-      (let ([old *host-facts*])
+                  [(w h) (core0-size-from sdl-get-window-size)]
+                  [(pw ph) (core0-size-from sdl-get-window-size-in-pixels)])
+      (let ([old *core0-facts*])
         (when (or all?
                   (not (and (= f (vector-ref old 0)) (= w (vector-ref old 1))
                             (= h (vector-ref old 2)) (= pw (vector-ref old 3))
                             (= ph (vector-ref old 4)))))
-          (set! *host-facts*
+          (set! *core0-facts*
             (vector f w h pw ph (sdl-get-window-display-scale *sdl-window*)
-                    (host-read-frame-ns) (host-read-display)
+                    (core0-read-frame-ns) (core0-read-display)
                     (sdl-get-error))))))))
 
-;; The step's state as plain data, for inspect-host (kits/inspect.ss): the
+;; The step's state as plain data, for inspect-core0 (kits/inspect.ss): the
 ;; jobs and events waiting, and the last job that raised.
-(define (host-step-state)
-  (list (cons 'jobs (length (unbox *host-jobs*)))
-        (cons 'events (length (unbox *host-inbox*)))
-        (cons 'failed (and *host-job-failed* (car *host-job-failed*)))))
+(define (core0-step-state)
+  (list (cons 'jobs (length (unbox *core0-jobs*)))
+        (cons 'events (length (unbox *core0-inbox*)))
+        (cons 'failed (and *core0-job-failed* (car *core0-job-failed*)))))

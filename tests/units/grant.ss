@@ -206,4 +206,4 @@
          (env-eval (units-crew-env) '(crew-size-set! 100000))
          (let ([most (crew-size)])
            (crew-size-set! size)
-           (= most (- (host-cpu-count) 1)))))
+           (= most (- (platform-cpu-count) 1)))))

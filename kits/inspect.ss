@@ -33,7 +33,7 @@
 
 ;;; ---- what became of each frame
 ;;; Frame i, counting from 0 for the first drawn, as long as the ring keeps
-;;; it; its report, the screen's (host-frame-report), by its number.
+;;; it; its report, the screen's (core0-frame-report), by its number.
 
 ;; Word k of frame i's row (inspect-frames' order, then its number and when
 ;; the oldest input it shows came), or #f once it's gone.
@@ -48,7 +48,7 @@
 ;; sequence, 6 when its GPU work was seen done (0, not yet); or #f.
 (define (inspect-frame-report i k)
   (let ([n (inspect-frame-ref i 6)])
-    (and n (> n 0) (host-frame-report n k))))
+    (and n (> n 0) (core0-frame-report n k))))
 
 (define (inspect-frame-shown? i) (eqv? (inspect-frame-report i 1) 1))
 
@@ -205,7 +205,7 @@
 (define (inspect-refresh-grid)
   (let loop ([i (- *frame-ring-n* 1)] [k 0])
     (cond
-      [(or (= k 64) (< i 0)) (vector 0 0 (host-frame-ns) #t)]
+      [(or (= k 64) (< i 0)) (vector 0 0 (core0-frame-ns) #t)]
       [(and (inspect-frame-shown? i) (> (inspect-frame-report i 4) 0))
        (vector (inspect-frame-report i 5) (inspect-frame-report i 3)
                (inspect-frame-report i 4) #f)]
@@ -1021,25 +1021,26 @@
 
 ;;; ---- the platform
 
-;; What the host is, an alist, its keys in reading order: the system, the
-;; window, the drawing, the screen's reports, the libraries, the predicates
-;; that hold, and the checkout's commit. #f where it isn't known here.
+;; Which platform this is, an alist, its keys in reading order: the
+;; system, the window, the drawing, the screen's reports, the libraries,
+;; the predicates that hold, and the checkout's commit. #f where it isn't
+;; known here.
 (define (inspect-platform)
-  (let ([fact host-platform-fact]
+  (let ([fact platform-fact]
         [gpu (lambda (k) (let ([f (assq k *gpu-facts*)]) (and f (cdr f))))])
     (let-values ([(ft fc) (font-library-versions)])
-      `((os . ,(host-os))
+      `((os . ,(platform-os))
         (system . ,(fact 'system))
         (kernel . ,(fact 'kernel))
-        (cpu . ,(host-cpu))
-        (threads . ,(host-cpu-count))
+        (cpu . ,(platform-cpu))
+        (threads . ,(platform-cpu-count))
         (chez . ,(inspect-chez-version))
         (chez-machine . ,(machine-type))
-        (windowing . ,(host-windowing))
+        (windowing . ,(platform-windowing))
         (desktop . ,(fact 'desktop))
-        (display . ,(host-display))
+        (display . ,(core0-display))
         (scale . ,*canvas-ratio*)
-        (gpu-api . ,(host-gpu-api))
+        (gpu-api . ,(platform-gpu-api))
         (gpu-device . ,(fact 'gpu-device))
         (renderer . ,(gpu 'renderer))
         (present-mode . ,(gpu 'present-mode))
@@ -1048,7 +1049,7 @@
         (sdl . ,(fact 'sdl))
         (freetype . ,ft)
         (fontconfig . ,fc)
-        (predicates . ,(map car (filter cdr (host-predicates))))
+        (predicates . ,(map car (filter cdr (platform-predicates))))
         (commit . ,(inspect-commit))))))
 
 ;; The checkout's commit, (branch . short hash), from its .git folder; #f
@@ -1136,7 +1137,7 @@
             (of 'chez))))
 
 ;; What draws: ((renderer . gpu) (window? . #t) (pixels w . h) ...), as
-;; core0 says it (*gpu-facts*). The display is host-display's, or #f.
+;; core0 says it (*gpu-facts*). The display is core0-display's, or #f.
 (define (inspect-device)
   (let ([fact (lambda (k) (cdr (assq k *gpu-facts*)))])
     `((renderer . ,(fact 'renderer))
@@ -1146,7 +1147,7 @@
       (driver . ,(fact 'driver))
       (present-mode . ,(fact 'present-mode))
       (present-modes . ,(fact 'present-modes))
-      (display . ,(host-display)))))
+      (display . ,(core0-display)))))
 
 ;; The glyphs made, and how full the atlas is, of 1.
 (define (inspect-glyphs)
@@ -1172,12 +1173,12 @@
 
 ;; Core0's step: the window's facts as it last read them, the jobs posted
 ;; to it and the steps' events not yet taken, and the last job that raised.
-(define (inspect-host)
-  (let ([state (host-step-state)])
-    `((sizes . ,(call-with-values host-window-sizes list))
-      (scale . ,(host-window-scale))
-      (flags . ,(host-flag-names (host-flags)))
-      (frame-ns . ,(host-frame-ns))
+(define (inspect-core0)
+  (let ([state (core0-step-state)])
+    `((sizes . ,(call-with-values core0-window-sizes list))
+      (scale . ,(core0-window-scale))
+      (flags . ,(core0-flag-names (core0-flags)))
+      (frame-ns . ,(core0-frame-ns))
       (jobs . ,(cdr (assq 'jobs state)))
       (events . ,(cdr (assq 'events state)))
       (failed . ,(cdr (assq 'failed state))))))
@@ -1198,7 +1199,7 @@
     (frame . ,*pacer-frame-ns*)
     (latch . ,*pacer-latch*)
     (lead . ,*pacer-lead*)
-    (margin . ,(pacer-margin (host-frame-ns)))
+    (margin . ,(pacer-margin (core0-frame-ns)))
     (counts . ,(fxvector->list *pacer-counts*))
     (trial . ,*pacer-trial*)
     (made . ,*pacer-made*)

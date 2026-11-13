@@ -1077,7 +1077,7 @@
                  (- (screen-h) (taskbar-height))))))
 (close-window! (find-window 'clock))
 
-;; Full screen, and the host window's icon.
+;; Full screen, and core0's window's icon.
 (press! 'f11)
 (steps 1)
 (check "F11 switches to full screen" (fullscreen?))
@@ -3083,7 +3083,7 @@
             (inject! `(mouse-move ,x ,y) `(mouse-down ,x ,y ,b 1)
                      `(mouse-up ,x ,y ,b))))
         (set! slow (cons (cons id 'gone) slow))))
-  (define (paste!) (set! *host-clipboard* long-text) (press! #\v 'ctrl))
+  (define (paste!) (set! *core0-clipboard* long-text) (press! #\v 'ctrl))
   (define card (list 'card (task-id t)))
   (steps 1)
   (at! card) (timed "its details" 2)
@@ -3487,9 +3487,9 @@
 (let ([files (install-desktop-entry!)])
   (check "the desktop entry names the window's app id and the icon"
          (let ([text (call-with-input-file (car files) get-string-all)])
-           (and (member (string-append "StartupWMClass=" host-app-id)
+           (and (member (string-append "StartupWMClass=" core0-app-id)
                         (string-split text #\newline))
-                (string-suffix? (string-append "/" host-app-id ".desktop")
+                (string-suffix? (string-append "/" core0-app-id ".desktop")
                                 (car files))
                 (string-contains-ci? text "Icon=schevana")
                 (file-exists? (cadr files)))))
@@ -3823,7 +3823,7 @@
   (for-each (lambda (f) (foreign-set! (car f) *sdl-event* (cadr f) (caddr f)))
             fields)
   (let ([e (sdl-event->list *sdl-event*)])
-    (and e (host-event->world e))))
+    (and e (screen-event->world e))))
 
 (set! *wheel-rest* '(0 . 0))
 ;; the decoded wheel events, in order (map's order is unspecified)
@@ -3843,20 +3843,20 @@
                       '(key-down #\a (ctrl shift)))
               (equal? (decode-event SDL_EVENT_MOUSE_MOTION '(float 28 10.75)
                                     '(float 32 20.25))
-                      (list 'mouse-move (host->world 10.75)
-                            (host->world 20.25)))
+                      (list 'mouse-move (screen-units->world 10.75)
+                            (screen-units->world 20.25)))
               (equal? (wheel 0.4 0.4 -0.4 -0.4 -0.4)
                       '(#f #f #f #f (wheel 0 -1))))))
 
-;;; The host's SDL code, run against a stand-in for SDL: every SDL call
-;;; src/ffi.ss and src/host/sdl.ss bind is replaced in core0's environment
+;;; Core0's SDL code, run against a stand-in for SDL: every SDL call
+;;; src/ffi.ss and src/core0/sdl.ss bind is replaced in core0's environment
 ;;; (one with no stand-in raises), so nothing here reaches the real SDL or
 ;;; opens a window. The
 ;;; fake window is fake-units window units big with fake-ratio physical
 ;;; pixels per unit, on a desktop that asks for fake-desktop (Xft.dpi / 96
 ;;; under X11), so its display scale is their product, as SDL3's is; its
 ;;; texture is an image that uploads copy rows into, as SDL_UpdateTexture
-;;; does. *host* is 'sdl only around single host calls, so steps stay
+;;; does. *core0-mode* is 'sdl only around single core0 calls, so steps stay
 ;;; headless.
 
 (define fake-sdl-names
@@ -3878,7 +3878,7 @@
                                 (not (string-contains-ci? (caddr x) "GPU")))
                            (loop (cons (cadr x) acc))]
                           [else (loop acc)]))))))
-              '("/src/ffi.ss" "/src/host/sdl.ss"))))
+              '("/src/ffi.ss" "/src/core0/sdl.ss"))))
 
 (define fake-units '(1280 . 800))
 (define fake-ratio 1)
@@ -3967,11 +3967,11 @@
                   fake-sdl-names saved)
         (set! gpu-claim-window! claim)))))
 
-;; SDL reports window events (through the host's real event loop); the
-;; world handles what the host makes of them.
+;; SDL reports window events (through core0's real event loop); the
+;; world handles what core0 makes of them.
 (define (fake-event! . types)
   (set! fake-queue types)
-  (apply inject! (fluid-let ([*host* 'sdl]) (host-events 0)))
+  (apply inject! (fluid-let ([*core0-mode* 'sdl]) (screen-events 0)))
   (steps 2))
 
 ;; As SDL3 reports a change of size or of pixel ratio: each of the three
@@ -3984,8 +3984,8 @@
 
 (with-quiet-status
  (lambda ()
-   (fluid-let ([*host-min-size* #f] [*pixel-ratio* 1]
-               [*host-scale* *host-scale*])
+   (fluid-let ([*screen-min-size* #f] [*pixel-ratio* 1]
+               [*screen-chosen-scale* *screen-chosen-scale*])
      (with-fake-sdl
       (lambda ()
         (set! fake-log '())
@@ -4025,14 +4025,14 @@
                       (= *scale* 1.0) (= *canvas-w* 1280)
                       (= *canvas-h* 800)))))))))
 
-;; The host window opens hidden, is sized in window units once the pixel
+;; Core0's window opens hidden, is sized in window units once the pixel
 ;; ratio and the desktop's scale are known, centered, and only then shown.
 ;; SDL is told the app id that the desktop entry names.
 (with-quiet-status
  (lambda ()
-   (fluid-let ([*host* 'headless] [*sdl-window* 0]
-               [*host-fullscreen* #f] [*host-min-size* #f]
-               [*pixel-ratio* 1] [*host-scale* *host-scale*])
+   (fluid-let ([*core0-mode* 'headless] [*sdl-window* 0]
+               [*screen-fullscreen* #f] [*screen-min-size* #f]
+               [*pixel-ratio* 1] [*screen-chosen-scale* *screen-chosen-scale*])
      (with-fake-sdl
       (lambda ()
         ;; the scale saved (a rescale builds the theme again from it)
@@ -4043,8 +4043,8 @@
           (set! fake-desktop desktop)
           (set! fake-log '())
           (set! *canvas-pw* 0)   ; as in a new session
-          (apply host-init! 'sdl 1280 800 fullscreen?)
-          (set! *host* 'headless)   ; steps stay headless
+          (apply screen-init! 'sdl 1280 800 fullscreen?)
+          (set! *core0-mode* 'headless)   ; steps stay headless
           (list (reverse fake-log) *canvas-w* *canvas-h*
                 (= fake-flags
                    (fxior SDL_WINDOW_RESIZABLE SDL_WINDOW_HIGH_PIXEL_DENSITY
@@ -4059,9 +4059,9 @@
           (hashtable-set! *theme* 'scale 0)
           (set! fake-flags 0)
           (set! fake-desktop 1)
-          (set! *host-fullscreen* #f)
+          (set! *screen-fullscreen* #f)
           (fake-resize! '(1280 . 800) 1)   ; the world as it was
-          (check (format "the host window opens hidden, sized for the pixel \
+          (check (format "core0's window opens hidden, sized for the pixel \
                           ratio and the desktop's scale, then centered and \
                           shown ~s" (list explicit x11 wayland x150 full))
                  (and (equal? explicit '(((create 1280 800 hidden)
@@ -4084,9 +4084,9 @@
                       (= *scale* 1.0) (= *canvas-w* 1280) (= *canvas-h* 800)
                       (null? fake-unfaked))))
         (check (format "SDL gets the app id the desktop entry names, ~s"
-                       host-app-id)
+                       core0-app-id)
                (equal? (assoc "SDL_APP_ID" fake-hints)
-                       (cons "SDL_APP_ID" host-app-id))))))))
+                       (cons "SDL_APP_ID" core0-app-id))))))))
 
 
 ;; Settings: input and the full-screen switch reach it.

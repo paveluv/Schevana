@@ -1,4 +1,4 @@
-;;; host/gpu.ss — the GPU layer's device side, in core0 below the core
+;;; core0/gpu.ss — the GPU layer's device side, in core0 below the core
 ;;; (.work/gpu-design.md 9.5): the device, pipelines, images, buffers and
 ;;; lists on the GPU, uploads, the pass, the swapchain, presenting a frame
 ;;; core1 publishes. Only core0 names SDL; this file alone knows one driver
@@ -15,7 +15,7 @@
 ;;; device's contract, and which back end this machine speaks.
 
 ;; This machine's back end: a Mac has Metal, everything else Vulkan.
-(define shader-target (if (host-mac?) 'msl 'spirv))
+(define shader-target (if (platform-mac?) 'msl 'spirv))
 
 ;; What a shader's entry is called: main is no function's name in MSL.
 (define shader-entry (if (eq? shader-target 'msl) "main0" "main"))
@@ -51,7 +51,7 @@
           (mutable extras)
           (mutable glyphs)
           (mutable transfer)       ; (transfer buffer . capacity)
-          (mutable sdl-window)     ; the host window it draws to, or 0
+          (mutable sdl-window)     ; core0's window it draws to, or 0
           (mutable target)         ; an offscreen texture, or 0
           (mutable target-w)
           (mutable target-h)
@@ -292,7 +292,7 @@
 ;; latency when the queue fills.
 (defvar *gpu-frames-in-flight* 3)
 
-;; The host window this renderer draws to from now on. The count goes
+;; The window this renderer draws to from now on. The count goes
 ;; first: on a claimed window, setting it builds the swapchain again.
 (define (gpu-claim-window! sdl-window)
   (sdl-set-frames-in-flight (renderer-device *renderer*)
@@ -495,7 +495,7 @@
 
 ;; What core0 read back for core1 since core1 last took it, (then . bytes)
 ;; each, in order: core1 hands each to its then. From any thread.
-(define (gpu-take-answers!) (host-take! *gpu-answers*))
+(define (gpu-take-answers!) (core0-take! *gpu-answers*))
 
 ;; The jobs, and core1's writes since it last handed them on (writes, a
 ;; recording of "/recorder"'s, or #f): what makes objects first, then the
@@ -538,7 +538,7 @@
        (gpu-forget-pipelines!)]
       [(target) (gpu-set-target! (cadr job) (caddr job))]
       [(read)
-       (host-put! *gpu-answers*
+       (core0-put! *gpu-answers*
                   (cons (cadr job)
                         (apply gpu-drawing->bytes '() #f '() (cddr job))))]
       [(release)
@@ -1278,7 +1278,7 @@
 ;;; 9.12): an alist the world never changes, made again at the end
 ;;; of a frame only when what it's made of changed, so that a frame like the
 ;;; last allocates nothing. What became of each frame is in its report
-;;; (src/host/present.ss).
+;;; (src/core0/present.ss).
 
 (defvar *gpu-facts* '())
 
@@ -1345,7 +1345,7 @@
     (set! *gpu-facts-mode* #f)))       ; the facts say so at the next look
 
 ;;; ------------------------------------------------------------------ frames
-;;; A frame as core1 hands it to the host, which reads nothing else of core1's
+;;; A frame as core1 hands it to core0, which reads nothing else of core1's
 ;;; (.work/gpu-design.md 9.5): the root's recording and the frame's number,
 ;;; "/recorder"'s to set (src/recorder/bytes.ss), the glyph table if it
 ;;; changed, the atlas's new pieces, the jobs, the writes and the compute
@@ -1367,7 +1367,7 @@
 (define (gpu-frame-make)
   (make-gpu-frame #f 0 #f 0 '() '() #f '() #f 3 '() #f))
 
-;; The number of the last frame the host gave back: what it read of the
+;; The number of the last frame core0 gave back: what it read of the
 ;; recorder's is free to write again once a later frame doesn't show it.
 (defvar *gpu-frame-back* 0)
 
@@ -1385,12 +1385,12 @@
            (errorf 'gpu-publish! "the frame published last waits for core0 \
                                   still")]
           [(not (box-cas! *gpu-published* #f f)) (loop)]))
-  (host-wake!))
+  (core0-wake!))
 
 (define (gpu-frame-waiting?) (and (unbox *gpu-published*) #t))
 
 ;; The frames core0 gave back since core1 last took them, oldest first.
-(define (gpu-frames-back!) (host-take! *gpu-given-back*))
+(define (gpu-frames-back!) (core0-take! *gpu-given-back*))
 
 ;; Core0's side, in its step: the frame published, if one is, presented
 ;; and given back.
@@ -1399,22 +1399,22 @@
     (when f
       (memory-order-acquire)
       (let loop () (unless (box-cas! *gpu-published* f #f) (loop)))
-      (host-trace! 2 (gpu-frame-number f))
+      (core0-trace! 2 (gpu-frame-number f))
       (present-taken!)
       (set! *gpu-booting* #f)
       ;; taken: core1 may make the next (.work/gpu-design.md 9.12), with the
       ;; input that came till now, not only till the last step's pump
-      (host-events-pumped!)
-      (host-world-wake!)
+      (core0-events-pumped!)
+      (core0-world-wake!)
       (gpu-frame-shown?-set! f (gpu-present! f))
       ;; the input that came while the acquire held core0, read before core1
       ;; hears the frame is back and may begin its next turn
-      (host-events-pumped!)
-      (host-put! *gpu-given-back* f)
-      (host-trace! 6 (gpu-frame-number f))
+      (core0-events-pumped!)
+      (core0-put! *gpu-given-back* f)
+      (core0-trace! 6 (gpu-frame-number f))
       ;; given back, with what it read: core1 takes them at once, whether
       ;; or not a frame follows
-      (host-world-wake!))))
+      (core0-world-wake!))))
 
 ;; Core1's jobs and writes, the lists kept from earlier on their images,
 ;; then the frame. => #t if the frame reached the screen; #f if the window
@@ -1440,7 +1440,7 @@
 ;; holds the acquire: the screen of a forked run's tests. Its refreshes
 ;; fall on whole periods of now-ns's clock.
 (define (gpu-headless-hold!)
-  (let ([p (host-frame-ns)])
+  (let ([p (core0-frame-ns)])
     (sleep (make-time 'time-duration (- p (mod (now-ns) p)) 0))))
 
 ;; One frame: uploads, then the runs, to the window or the target. => #t if
@@ -1459,7 +1459,7 @@
     (gpu-run-computes! cb (gpu-frame-computes f))
     (if (eqv? 0 (renderer-sdl-window r))
         (begin
-          (when *host-forked* (gpu-headless-hold!))
+          (when *core0-forked* (gpu-headless-hold!))
           (gpu-draw-runs! r cb (renderer-target r) gpu-format-bgra8
                           (renderer-target-w r) (renderer-target-h r) runs #f)
           ;; no screen paces these, and frames sent faster than they're drawn
@@ -1472,7 +1472,7 @@
         (let* ([out gpu-swapchain-out*]
                [shown?
                 (let ([ok (begin
-                            (host-trace! 3 (gpu-frame-number f))
+                            (core0-trace! 3 (gpu-frame-number f))
                             (present-acquiring!)
                             (sdl-acquire-swapchain
                            cb (renderer-sdl-window r)
@@ -1483,7 +1483,7 @@
                            (ftype-pointer-address
                             (ftype-&ref gpu-swapchain-out (h) out))))])
                   (present-acquired!)
-                  (host-trace! 4 (if ok 1 0))
+                  (core0-trace! 4 (if ok 1 0))
                   (and ok
                        (not (eqv? 0 (ftype-ref gpu-swapchain-out (texture)
                                                out)))))])
@@ -1498,7 +1498,7 @@
           (when shown? (present-sent! (gpu-frame-number f)))
           (present-fence! (gpu-frame-number f)
                           (gpu-must 'gpu-frame! (sdl-submit-gpu-fence cb)))
-          (host-trace! 5 (gpu-frame-number f))
+          (core0-trace! 5 (gpu-frame-number f))
           shown?))))
 
 ;;; ---- the boot screen
@@ -1532,7 +1532,8 @@
 ;; world publishes its first frame.
 (defvar *gpu-boot-loaded* '(0 . 0))
 (defvar *gpu-booting* #f)
-(define (host-loaded! done total) (set! *gpu-boot-loaded* (cons done total)))
+(define (core0-world-loaded! done total)
+  (set! *gpu-boot-loaded* (cons done total)))
 
 ;; The picture as a texture, made and sent up once.
 (defvar *gpu-boot-texture* #f)

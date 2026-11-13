@@ -34,7 +34,7 @@
 (defvar *profile-span* #f)
 
 ;; A span already over, from start to end on now-ns's clock, told to the
-;; profiler as if it had been open inside the one open now: the host's waits,
+;; profiler as if it had been open inside the one open now: core0's waits,
 ;; which core0 times itself.
 (define (profile-span-past! key part start end)
   (let ([span *profile-span*])

@@ -141,7 +141,7 @@
 (check "a collection, which every thread waits for, is traced: its start \
         by the generation collected, and its end"
        (let ([traced '()])
-         (fluid-let ([host-trace! (lambda (code a)
+         (fluid-let ([core0-trace! (lambda (code a)
                                     (set! traced (cons (cons code a) traced)))]
                      [*collector-holding?* #f]
                      [*collector-pass* #f])

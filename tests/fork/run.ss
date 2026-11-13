@@ -32,7 +32,7 @@
 ;; Of the gaps between the timed frames' t, those that aren't a period, to
 ;; the 0.5 ms.
 (define (fork-uneven)
-  (let ([p (host-frame-ns)])
+  (let ([p (core0-frame-ns)])
     (let count ([fs (fork-timed)] [k 0])
       (if (null? (cdr fs))
           k
@@ -44,11 +44,11 @@
 ;; The refreshes between the first and the last timed frame, by the clock.
 (define (fork-refreshes)
   (let ([fs (fork-timed)])
-    (exact (round (/ (- (cdar fork-frames) (cdar fs)) (host-frame-ns))))))
+    (exact (round (/ (- (cdar fork-frames) (cdar fs)) (core0-frame-ns))))))
 
 (define (fork-done!)
   (let ([seen
-         (list (cons 'forked (host-forked?))
+         (list (cons 'forked (core0-forked?))
                (cons 'core1 (core1-thread?))
                (cons 'readback
                      (fork-raises? (lambda ()

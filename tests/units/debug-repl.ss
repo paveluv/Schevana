@@ -5,25 +5,25 @@
 
 ;; text as a client sends it, steps until the answer has come. => the datum
 (define (debug-repl-test-ask text)
-  (let ([fd (host-socket-connect debug-repl-test-path)]
+  (let ([fd (socket-connect debug-repl-test-path)]
         [bytes (string->utf8 text)]
         [buffer (make-bytevector 4096)])
     (let-values ([(port get) (open-bytevector-output-port)])
       (let send ([at 0])
-        (let ([next (host-socket-write fd bytes at)])
+        (let ([next (socket-write fd bytes at)])
           (unless (= next (bytevector-length bytes)) (send next))))
-      (host-socket-end-writing fd)
+      (socket-end-writing fd)
       ;; it serves by a timer, so the answer is waited for by the clock
       (let wait ([until (+ (now-ms) 5000)])
         (when (> (now-ms) until)
           (errorf 'debug-repl-test-ask "no answer to ~a" text))
         (steps 1)
-        (let ([n (host-socket-read fd buffer)])
+        (let ([n (socket-read fd buffer)])
           (cond
             [(not n) (wait until)]
             [(zero? n) (void)]
             [else (put-bytevector port buffer 0 n) (wait until)])))
-      (host-socket-close fd)
+      (socket-close fd)
       (read (open-input-string (utf8->string (get)))))))
 
 (define (debug-repl-test-styles win)
@@ -85,11 +85,11 @@
                 (memq 'info styles)
                 (not (window-error win)))))
   (check "a client gone before its answer costs nothing but itself"
-         (let ([fd (host-socket-connect debug-repl-test-path)]
+         (let ([fd (socket-connect debug-repl-test-path)]
                [bytes (string->utf8 "(+ 1 1)")])
-           (host-socket-write fd bytes 0)
-           (host-socket-end-writing fd)
-           (host-socket-close fd)
+           (socket-write fd bytes 0)
+           (socket-end-writing fd)
+           (socket-close fd)
            (steps 10)
            (and (null? (debug-repl-clients (window-ref win 'state)))
                 (eq? (car (debug-repl-test-ask "1")) 'ok))))
@@ -98,6 +98,6 @@
            (close-window! win)
            (steps 1)
            (and (not (file-exists? debug-repl-test-path))
-                (not (host-socket-connect debug-repl-test-path))))))
+                (not (socket-connect debug-repl-test-path))))))
 
 (debug-repl-path! #f)

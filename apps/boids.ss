@@ -527,7 +527,7 @@
                      (boids-resize! flock-win
                        (exact (round (+ 10 (* t (- boids-max-count 10))))))))]
            ;; the crew's, for every app; the caller makes one more
-           [y (let ([most (- (max 2 (host-cpu-count)) 1)])
+           [y (let ([most (- (max 2 (platform-cpu-count)) 1)])
                 (row y 'threads "threads"
                      (/ (crew-size) (inexact most))
                      (boids-threads-readout n)

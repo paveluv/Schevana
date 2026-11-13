@@ -1,6 +1,6 @@
-;;; platform.ss — what differs by platform, of core0's: what the host is, as
-;;; core0 learns it once SDL and the GPU start (*host-platform*), and the
-;;; screen's reports where a platform gives them (Wayland's here). Each
+;;; platform.ss — what differs by platform, of core0's: which platform this
+;;; is, as core0 learns it once SDL and the GPU start (*core0-platform*),
+;;; and the screen's reports where a platform gives them (Wayland's here). Each
 ;;; thing a platform may lack is found by asking (a library that loads, an
 ;;; entry SDL has, a global the compositor lists) and is off without it.
 ;;; docs/PLATFORMS.md says where each has run.
@@ -28,7 +28,7 @@
           (loop (+ i 1) (cons b acc))))))
 
 ;;; ------------------------------------------------------------------
-;;; what the host is
+;;; what the platform is
 
 ;; The system's name and version, the kernel's, where the system says them.
 (define-optional-foreign platform-uname
@@ -43,7 +43,7 @@
 ;; and third fields), 65 bytes long on Linux and 256 on a Mac.
 (define (platform-kernel)
   (and platform-uname
-       (let* ([n (if (host-mac?) 256 65)] [p (foreign-alloc (* 6 n))])
+       (let* ([n (if (platform-mac?) 256 65)] [p (foreign-alloc (* 6 n))])
          (let ([k (and (= 0 (platform-uname p))
                        (format "~a ~a" (platform-c->string p)
                                (platform-c->string (+ p (* 2 n)))))])
@@ -95,13 +95,13 @@
               (map (lambda (key) (get props key))
                    '("name" "driver_name" "driver_version" "driver_info"))))))
 
-;; What core0 knows of the host, an alist it sets whole: the world reads it
+;; What core0 knows of the platform, an alist it sets whole: the world reads it
 ;; (src/platform.ss), never asking SDL itself.
-(defvar *host-platform* '())
+(defvar *core0-platform* '())
 
-(define (host-platform-read!)
+(define (core0-platform-read!)
   (let ([video (sdl-get-current-video-driver)])
-    (set! *host-platform*
+    (set! *core0-platform*
       `((windowing
          . ,(cond [(not video) 'none]
                   [(string=? video "windows") 'win32]
@@ -136,7 +136,7 @@
 (define (platform-reports-start! sdl-window)
   (wayland-start! sdl-window)
   (mac-start! sdl-window)
-  (host-platform-read!))
+  (core0-platform-read!))
 
 ;; The reports come since the last look, without waiting.
 (define (platform-reports-pump!)
@@ -155,7 +155,7 @@
            (platform-clock-name *wayland-clock*)
            (platform-clock-name *wayland-used*)
            (platform-report-flags *wayland-flags*))]
-    ;; Metal says its clock is the host's, mach_absolute_time's
+    ;; Metal says its clock is Apple's host time, mach_absolute_time's
     [(not (eqv? *mac-layer* 0))
      (list 'metal-presented-handler 'uptime-raw 'uptime-raw '())]
     [else #f]))
@@ -315,17 +315,17 @@
                           nsec))
      refresh
      (+ (* seq-hi 4294967296) seq-lo))
-    (host-trace! 10 frame)
+    (core0-trace! 10 frame)
     (wayland-destroy proxy)
     (unless (eqv? flags *wayland-flags*)
       (set! *wayland-flags* flags)
-      (host-platform-read!)))
+      (core0-platform-read!)))
   (uptr uptr unsigned-32 unsigned-32 unsigned-32 unsigned-32 unsigned-32
    unsigned-32 unsigned-32))
 (define-wayland-callback wayland-dropped-code
   (lambda (frame proxy)
     (present-reported! frame 2 0 0 0)
-    (host-trace! 11 frame)
+    (core0-trace! 11 frame)
     (wayland-destroy proxy))
   (uptr uptr))
 (define-wayland-callback wayland-output-code
@@ -349,7 +349,7 @@
                                      (+ sent 1000000000))])
         (when clock
           (set! *wayland-used* clock)
-          (host-platform-read!))))
+          (core0-platform-read!))))
     (+ t (platform-clock-offset *wayland-used*))))
 
 ;; Whether time t on clock falls from low to high on now-ns's; the first of
@@ -368,14 +368,14 @@
 ;; An input's time, its event's ms on the compositor's clock (which wraps
 ;; at 32 bits), as core0 reads the event at now-ns at: on the clock under
 ;; which it came within the last second, to the ms. Into the oldest not
-;; yet taken (host-input-set!).
+;; yet taken (core0-input-set!).
 (define (wayland-input! ms)
   (let* ([at (now-ns)]
          [t (or (wayland-input-on *wayland-input-clock* ms at)
                 (wayland-input-on 1 ms at)
                 (wayland-input-on 4 ms at)
                 (wayland-input-on 7 ms at))])
-    (when t (host-input-set! *host-input-wl* t))))
+    (when t (core0-input-set! *core0-input-wl* t))))
 
 ;; ms, read on clock and kept as the clock it fits, on now-ns's; or #f.
 (define (wayland-input-on clock ms at)
@@ -512,7 +512,7 @@
 ;;; asks for core0's class. Elsewhere, nothing yet.
 
 (define mac-system-loaded?
-  (and (host-mac?)
+  (and (platform-mac?)
        (guard (c [#t #f])
          (load-shared-object "/usr/lib/libSystem.B.dylib")
          #t)))
@@ -535,7 +535,7 @@
 
 ;;; ---- the Mac's
 ;;; Metal calls a drawable's presented handlers when it was shown, or
-;;; never will be: its presentedTime, seconds on the host's clock
+;;; never will be: its presentedTime, seconds in Apple's host time
 ;;; (mach_absolute_time's, CLOCK_UPTIME_RAW), 0 for never. SDL takes each
 ;;; drawable from its layer in its acquire and presents it at the submit,
 ;;; and hands us none; so the one layer it draws to becomes a class of
@@ -547,7 +547,7 @@
 ;;; keep them from the layer's pool, which holds three.
 
 (define mac-objc-loaded?
-  (and (host-mac?)
+  (and (platform-mac?)
        (guard (c [#t #f])
          (load-shared-object "/usr/lib/libobjc.A.dylib")
          #t)))
@@ -592,7 +592,7 @@
 
 ;; The handlers' ring: a row a drawable, by its number (drawableID, which
 ;; counts up from 0 on each layer): that number plus one (0, none yet), and
-;; when it was shown (ns on the host's clock; 0, never). Only the handlers
+;; when it was shown (ns in Apple's host time; 0, never). Only the handlers
 ;; write it, the number last.
 (define mac-rows 64)
 (defvar *mac-shown* (make-fxvector (* 2 mac-rows) 0))
@@ -729,7 +729,7 @@
 (defvar *mac-refresh* 0)
 (defvar *mac-refresh-at* 0)
 
-;; Frame's word from Metal: t, when it was shown on the host's clock, or 0
+;; Frame's word from Metal: t, when it was shown in Apple's host time, or 0
 ;; for never. A time is taken on now-ns's clock when its frame shows after
 ;; it was sent, and within a second; else the report says nothing. The
 ;; display's sequence is the refreshes since the last shown, at the
@@ -737,10 +737,10 @@
 (define (mac-reported! frame t)
   (if (fx= t 0)
       (begin (present-reported! frame 2 0 0 0)
-             (host-trace! 11 frame))
+             (core0-trace! 11 frame))
       (let ([shown (+ t (platform-clock-offset 8))]
             [sent (fxvector-ref *present-ring* (fx+ (present-at frame) 2))]
-            [r (host-frame-ns)])
+            [r (core0-frame-ns)])
         (when (and (<= (- sent 1000000) shown (+ sent 1000000000)) (> r 0))
           (let ([seq (if (= *mac-refresh-at* 0)
                          1
@@ -752,4 +752,4 @@
               (set! *mac-refresh* seq)
               (set! *mac-refresh-at* shown))
             (present-reported! frame 1 shown r seq)
-            (host-trace! 10 frame))))))
+            (core0-trace! 10 frame))))))

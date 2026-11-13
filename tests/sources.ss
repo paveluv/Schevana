@@ -63,7 +63,7 @@
        (filter (lambda (f) (string=? (path-extension f) "ss"))
                (sort string<? (directory-list (source-path folder))))))
 
-;; Core0's own files, src/host/: main.ss lists them for core0 alone, and
+;; Core0's own files, src/core0/: main.ss lists them for core0 alone, and
 ;; (source-files) is the world's.
 (define core0-files
   (remp (lambda (f) (member f *schevana-sources*)) *schevana-core0-sources*))
@@ -224,7 +224,7 @@
 
 (define core-hooks
   '(*profile-span* *theme-saver* *window-gone* *app-loader*
-    *host-event-seen* *worklet-spread*))
+    *screen-event-seen* *worklet-spread*))
 
 ;; The names a file defines at its top level.
 (define (top-level-names f)
@@ -272,10 +272,11 @@
 ;;; One of the core's roles is to keep C away from the rest: outside src/
 ;;; no file names a binding of src/ffi.ss, a foreign-… procedure, an
 ;;; ftype form or load-shared-object. The tests may: they inspect what is
-;;; drawn and stand in for the host.
+;;; drawn and stand in for SDL.
 
 (define ffi-names
-  (map cdr (append (definitions "src/ffi.ss") (definitions "src/host/sdl.ss"))))
+  (map cdr (append (definitions "src/ffi.ss")
+                   (definitions "src/core0/sdl.ss"))))
 
 (define (reaches-c? s)
   (or (and (memq s (append ffi-names
@@ -302,13 +303,13 @@
 ;; names SDL's windowless half, Vulkan, SPIR-V, Metal or MSL, so that another
 ;; back end, or raw Vulkan, is the GPU layer's business alone. Core0 keeps
 ;; SDL's window; the clock and the CPU count are SDL's, which any thread may
-;; call. What the host is, its GPU's API among it, is named only where it's
-;; said, src/platform.ss.
+;; call. Which platform this is, its GPU's API among it, is named only
+;; where it's said, src/platform.ss.
 (define above-gpu-files
   (remp (lambda (f)
-          (member f '("src/ffi.ss" "src/shader.ss" "src/host/sdl.ss"
-                      "src/host/platform.ss" "src/host/gpu.ss"
-                      "src/host/present.ss" "src/host/window.ss"
+          (member f '("src/ffi.ss" "src/shader.ss" "src/core0/sdl.ss"
+                      "src/core0/platform.ss" "src/core0/gpu.ss"
+                      "src/core0/present.ss" "src/core0/window.ss"
                       "src/font.ss" "src/platform.ss")))
         (append world-files '("world.ss"))))
 
@@ -343,15 +344,15 @@
                           outside-src))))
 
 ;;; ------------------------------------------------------------------
-;;; what the host is, said in one place
+;;; which platform this is, said in one place
 ;;; Which OS, windowing system or desktop this is, and where the system
 ;;; keeps what it says of itself, are read only in the platform files
 ;;; (AGENTS.md); the rest asks their predicates and facts. Monitor's
 ;;; Platform tab shows Chez's machine type as it is.
 
-;; and src/host/sdl.ss, which binds SDL's video driver for core0's to read
+;; and src/core0/sdl.ss, which binds SDL's video driver for core0's to read
 (define platform-files
-  '("src/base.ss" "src/platform.ss" "src/host/sdl.ss" "src/host/platform.ss"
+  '("src/base.ss" "src/platform.ss" "src/core0/sdl.ss" "src/core0/platform.ss"
     "kits/inspect.ss"))
 
 ;; The strings in x.
@@ -383,9 +384,9 @@
 
 ;;; ------------------------------------------------------------------
 ;;; core0 below the core
-;;; The host's code, src/host/, is core0 (.work/gpu-design.md 9.5): it
-;;; loads right after the C bindings and the basics, names nothing of the
-;;; core above it, and is the only code that names SDL. What it still
+;;; Core0's code, src/core0/ (.work/gpu-design.md 9.5), sits below the
+;;; core: it loads right after the C bindings and the basics, names nothing
+;;; of the core above it, and is the only code that names SDL. What it still
 ;;; names above it, and the SDL the core above still calls, are listed
 ;;; here, and the lists only shrink.
 
@@ -436,14 +437,14 @@
   (code x '()))
 
 ;; Of core0's names, the world names only those core0 shares with it, its
-;; interface (host-interface in src/host/boot.ss). The scripts that load the
+;; interface (core0-interface in src/core0/boot.ss). The scripts that load the
 ;; tree call core0 to make "/", or to fork the world into it, and to enter
 ;; it.
 (check "the world names nothing of core0's but its interface"
        (let ([own (remp (lambda (n)
-                          (memq n (append host-interface
-                                          '(host-boot! host-fork!
-                                            host-enter-world!))))
+                          (memq n (append core0-interface
+                                          '(core0-boot! core0-fork!
+                                            core0-enter-world!))))
                         (map cdr (apply append
                                         (map definitions core0-files))))])
          (none? (apply append
@@ -458,10 +459,11 @@
                                           '("world.ss"))))))))
 
 ;; "/recorder" is given core0's interface and, alone, recordings and what
-;; holds them (host-recorder-share in src/host/boot.ss).
+;; holds them (core0-recorder-share in src/core0/boot.ss).
 (check "the recorder names nothing of core0's but its interface and its share"
        (let ([own (remp (lambda (n)
-                          (memq n (append host-interface host-recorder-share)))
+                          (memq n (append core0-interface
+                                          core0-recorder-share)))
                         (map cdr (apply append
                                         (map definitions core0-files))))])
          (none? (apply append
@@ -507,7 +509,7 @@
     "SDL_SetGPUSwapchainParameters"))
 
 (check "every SDL call that may block is collect-safe"
-       (let ([forms (file-forms "src/host/sdl.ss")])
+       (let ([forms (file-forms "src/core0/sdl.ss")])
          (none? (filter-map
                  (lambda (c)
                    (let ([f (find (lambda (x)
@@ -521,7 +523,7 @@
                  sdl-blocking))))
 
 (check "only core0 names SDL's bindings, but what's listed, on its way out"
-       (let ([sdl (map cdr (definitions "src/host/sdl.ss"))])
+       (let ([sdl (map cdr (definitions "src/core0/sdl.ss"))])
          (none? (apply append
                        (map (lambda (f)
                               (map (lambda (s) (format "~a names ~a" f s))
@@ -574,22 +576,22 @@
     (crew-push! memory-order-release)
     (crew-remove!)
     (crew-claim!)
-    (host-put! memory-order-release)
-    (host-take! memory-order-acquire)
+    (core0-put! memory-order-release)
+    (core0-take! memory-order-acquire)
     (gpu-publish! memory-order-release)
     (gpu-present-published! memory-order-acquire)
     (gpu-send-writes! memory-order-release)
     (gpu-present! memory-order-release)
-    (host-frame-report memory-order-acquire)
+    (core0-frame-report memory-order-acquire)
     (present-sent! memory-order-release)
     (present-reported! memory-order-release)
     (mac-presented! memory-order-release)
     (mac-pump! memory-order-acquire)
-    (host-trace! memory-order-release)
-    (host-trace-rows-of memory-order-acquire)
-    (host-trace-watch! memory-order-acquire)
-    (host-input-set!)
-    (host-input-take!)
+    (core0-trace! memory-order-release)
+    (core0-trace-rows-of memory-order-acquire)
+    (core0-trace-watch! memory-order-acquire)
+    (core0-input-set!)
+    (core0-input-take!)
     (rec-free? memory-order-acquire)))
 
 (define thread-fence-names '(memory-order-acquire memory-order-release))

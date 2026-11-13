@@ -401,7 +401,7 @@
     (set! *theme* new)
     (hashtable-clear! *style-themes*)
     (set! *theme-version* (+ *theme-version* 1))
-    (when (changed? 'scale) (host-rescale!))
+    (when (changed? 'scale) (screen-rescale!))
     (unless (for-all (lambda (k) (or (memq k color-keys) (not (changed? k))))
                      (append (vector->list (hashtable-keys old))
                              (vector->list (hashtable-keys new))))

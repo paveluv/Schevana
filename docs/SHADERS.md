@@ -40,7 +40,7 @@ gets from its definition to the GPU, and two examples to type at a REPL.
   twin to the same answers.
 - **The GPU layer speaks in the world's terms.** Above core0 nothing names
   Vulkan, SPIR-V, Metal or MSL but the compiler, which writes the back
-  ends' code. Core0 (`src/host/gpu.ss`) makes the pipelines and runs them.
+  ends' code. Core0 (`src/core0/gpu.ss`) makes the pipelines and runs them.
 
 ## A first shader
 
@@ -378,7 +378,7 @@ comes back to the CPU.
 | `src/shader.ss` | the language: the front end, the SPIR-V and MSL back ends, `define-compute-shader`, constants, helpers and layouts |
 | `src/gfx.ss` | `define-paint`, `fill-shader`, the core's own shaders and their helpers |
 | `src/gpu.ss` | buffers and images as handles, calls, compute runs |
-| `src/host/gpu.ss` | core0: pipelines, dispatch, drawing |
+| `src/core0/gpu.ss` | core0: pipelines, dispatch, drawing |
 | `kits/twin.ss` | the twin |
 | `kits/inspect.ss` | `inspect-shader-…`, `inspect-computes` |
 | `apps/boids3d.ss` | an app that is all shaders |

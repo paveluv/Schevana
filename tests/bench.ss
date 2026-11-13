@@ -316,7 +316,7 @@
   (set! *headless-size* (cons w h))
   (set-theme! 'scale pct)
   (unless (and (= *canvas-w* w) (= *canvas-h* h))
-    (canvas-create! w h *host-scale*)
+    (canvas-create! w h *screen-chosen-scale*)
     (wm-screen-resized!))
   (steps 2 17))
 

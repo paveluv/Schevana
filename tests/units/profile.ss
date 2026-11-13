@@ -555,7 +555,7 @@
     (profile-flags)))
 
 (check "a late tick stays as a flag, with the ticks about it and what the \
-        screen held the host for; the ticks in time don't"
+        screen held core0 for; the ticks in time don't"
        (let* ([flags (profile-test-flags
                       (lambda ()
                         (profile-test-calm!)
@@ -638,7 +638,7 @@
         been showing; the flags kept are the newest, the count all of them; \
         clearing the history clears them"
        (let* ([hidden? #t]
-              [flags (fluid-let ([host-hidden? (lambda () hidden?)])
+              [flags (fluid-let ([core0-hidden? (lambda () hidden?)])
                        (profile-test-flags
                         (lambda ()
                           (set! hidden? #f)
@@ -680,7 +680,7 @@
          (spent)
          (> (spent) 0)))
 
-(check "a flag says what the host said about then, the mouse's motion only \
+(check "a flag says what core0 said about then, the mouse's motion only \
         counted; what the tick drew on, its window and its memory, and how \
         the ticks about it went, in the report and in its log"
        (let* ([path (string-append out-dir "/flags.log")]
@@ -690,9 +690,9 @@
                        (profile-test-flags
                         (lambda ()
                           (profile-test-calm!)
-                          (*host-event-seen* #x20E)   ; focus-gained
+                          (*screen-event-seen* #x20E)   ; focus-gained
                           (profile-test-pass! 5)
-                          (*host-event-seen* #x400)   ; motion: counted
+                          (*screen-event-seen* #x400)   ; motion: counted
                           (with-profile-span 'step #f
                             (profile-test-pass! 25)   ; asleep: late
                             (with-profile-span 'vsync-wait 'acquire
@@ -715,16 +715,16 @@
                       (cons 'focus-gained -60000000))
               (= 1 (length (profile-flag-events f)))
               (equal? (profile-flag-before-text f) "focus-gained, 60.0 ms ago")
-              (line? "the host said: focus-gained -60.0 ms")
+              (line? "core0 said: focus-gained -60.0 ms")
               (line? "the screen: 0.0 0.0 [30.0] 0.0 0.0 0.0")
-              (line? "host events: 0 0 [2] 0 0 0")
+              (line? "core0's events: 0 0 [2] 0 0 0")
               (line? "memory: heap")
               (line? "records: ")
-              (line? "the host window:")
+              (line? "core0's window:")
               (has? "=== a run" more)
               (has? "presenting by vsync, present modes offered" more)
               (line? "presenting by vsync")
-              (has? "the host said: focus-gained" more))))
+              (has? "core0 said: focus-gained" more))))
 
 (check "core1 past its time in the wait for events: asleep if it ran little \
         of that, running if it ran most"

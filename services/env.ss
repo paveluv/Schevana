@@ -74,15 +74,15 @@
             (make-eq-hashtable) (make-eq-hashtable) '() #f kind may-fork
             #f (make-eq-hashtable) ""))
 
-;; Root, with the worklets' environment its first child, core0's, "/host",
+;; Root, with the worklets' environment its first child, core0's, "/core0",
 ;; its second, and the recorder's, "/recorder", sealed, its third.
 (defvar *env-root*
   (let ([root (env-new 'root #f #f *world-env* 'root 'all)])
     (env-children-set! root
       (list (env-new 'worklets root 'core *worklet-environment*
                      'worklets '())
-            (env-new 'host root 'chez (host-environment) 'host '())
-            (env-new 'recorder root 'chez (host-recorder-environment)
+            (env-new 'core0 root 'chez (core0-environment) 'core0 '())
+            (env-new 'recorder root 'chez (core0-recorder-environment)
                      'recorder '())))
     root))
 
@@ -786,8 +786,8 @@
   'forks '()
   'doc "All of Chez, and nothing of the world's")
 
-(env-register-kind! 'host
-  'title "The host"
+(env-register-kind! 'core0
+  'title "Core0"
   'base 'chez
   'forks '()
   'fork #f
@@ -795,7 +795,7 @@
          again into it, or with a restart"
   'doc "Core0, below the core: the window, its events and the GPU's \
         device side. Of the world's names it holds none; what is defined \
-        here changes the host at its next call. A REPL here sends its forms \
+        here changes core0 at its next call. A REPL here sends its forms \
         to core0, which runs them between frames")
 
 (env-register-kind! 'recorder

@@ -57,7 +57,7 @@
   (let ([n (let ([s (getenv "SCHEVANA_WORKERS")]) (and s (string->number s)))])
     (if (and (fixnum? n) (>= n 0))
         n
-        (max 1 (min 8 (- (host-cpu-count) 1))))))
+        (max 1 (min 8 (- (platform-cpu-count) 1))))))
 
 (defvar *crew-size* (crew-default-size))
 (defvar *crew-workers* '())         ; their threads, the oldest first

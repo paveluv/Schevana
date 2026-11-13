@@ -206,7 +206,7 @@
                           [else '((L . "Close the list"))]))
     (unless (eq? shape (window-ref win 'cursor 'arrow))
       (hashtable-set! (window-props win) 'cursor shape)
-      (when at (host-set-cursor! shape)))
+      (when at (core0-set-cursor! shape)))
     (and c (not (eqv? i (complete-hover c)))
          (begin (complete-hover-set! c i) #t))))
 

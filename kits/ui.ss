@@ -336,7 +336,7 @@
            (ui-rest! ui ms x y)
            (unless (eq? c (window-ref win 'cursor 'arrow))
              (window-set! win 'cursor c)
-             (host-set-cursor! c))
+             (core0-set-cursor! c))
            (invalidate! win)
            #t))))
 
@@ -2155,7 +2155,7 @@
                 (case kind
                   [(root) (values 'globe 'accent)]
                   [(worklets) (values 'gear 'yellow)]
-                  [(host) (values 'chip 'red)]   ; core0, the REPL's red
+                  [(core0) (values 'chip 'red)]   ; core0, the REPL's red
                   [(recorder) (values 'drive 'red)]   ; sealed bytes
                   [(thread) (values 'gear 'orange)]
                   [(sandbox) (values 'box 'teal)]

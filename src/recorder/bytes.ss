@@ -6,7 +6,7 @@
 ;;; write a byte core0 reads. The world keeps the rest of the recorder
 ;;; (src/gfx.ss): colors, shapes, text, runs and labels.
 ;;;
-;;; What's recorded goes into a recording (gpu-recording, src/host/gpu.ss):
+;;; What's recorded goes into a recording (gpu-recording, src/core0/gpu.ss):
 ;;; a list's, or the root's, the frame's. Recorded, it's frozen with its
 ;;; runs and version and swapped into its holder by one store, so core0
 ;;; reads a whole one, never written again while a frame may read it. Each
@@ -15,7 +15,7 @@
 ;;; replaced, it's free once core0 gave frame N back.
 ;;;
 ;;; What the world writes into buffers and images goes the same way, in
-;;; the frame's writes (src/host/gpu.ss's gpu-send-writes!), and so do the
+;;; the frame's writes (src/core0/gpu.ss's gpu-send-writes!), and so do the
 ;;; rows an app paints, in loans of the image's own.
 
 ;; What the world may name of this environment's.
@@ -383,7 +383,7 @@
 ;; names none). On a world of its own thread they'd hold core1 till core0
 ;; answered: they raise.
 (define (rec-one-thread who)
-  (when (host-forked?)
+  (when (core0-forked?)
     (errorf who "readbacks never hold core1: on a world of its own thread, \
                  use what hands the bytes to a then")))
 
@@ -398,8 +398,8 @@
 ;; job of core0's, or at once while one thread plays both.
 (define (rec-submit-computes! runs jobs)
   (let ([writes (rec-writes-take!)])
-    (if (host-forked?)
-        (host-post-submit! runs jobs writes)
+    (if (core0-forked?)
+        (core0-post-submit! runs jobs writes)
         (gpu-submit-computes! runs jobs writes))))
 
 ;;; ------------------------------------------------------------------ lists

@@ -466,7 +466,7 @@
                       '(#xffff0000 #xff0000ff))))
   (gpu-image-release! target))
 
-;; Core1 publishes a frame, the host presents it: what core1 asked of the
+;; Core1 publishes a frame, core0 presents it: what core1 asked of the
 ;; GPU goes with the frame, the preview's list is made on core1 as it's
 ;; published, and the one frame record comes back to be filled again.
 (let ([b (make-gpu-buffer 1)] [target (gpu-image-make-target 4 4)]
@@ -486,13 +486,13 @@
                       (= 1 (length (gpu-frame-earlier f))))])
     (gpu-publish! f)
     (let ([waiting (gpu-frame-waiting?)])
-      (host-step!)
+      (core0-step!)
       (render-frames-back!)
       (rec-begin! 1)
       (let ([again (rec-publish)])
         (gpu-publish! again)
         (let ([refused (raises? (lambda () (gpu-publish! (gpu-frame-make))))])
-          (host-step!)
+          (core0-step!)
           (render-frames-back!)
           (check "core1 publishes a frame with what it asked of the GPU, the \
                   preview's list made on core1; it waits till core0's step \

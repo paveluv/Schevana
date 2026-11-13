@@ -1,41 +1,44 @@
-;;; tests/units/platform.ss — what the host is (src/base.ss, src/platform.ss,
-;;; src/host/platform.ss), as predicates, facts, Monitor's Platform tab and
-;;; a row for docs/PLATFORMS.md; the screen's times read on the clock that
-;;; fits them; and the trace (src/host/trace.ss). Whatever the platform:
-;;; each check holds on any of them.
+;;; tests/units/platform.ss — which platform this is (src/base.ss,
+;;; src/platform.ss, src/core0/platform.ss), as predicates, facts,
+;;; Monitor's Platform tab and a row for docs/PLATFORMS.md; the screen's
+;;; times read on the clock that fits them; and the trace
+;;; (src/core0/trace.ss). Whatever the platform: each check holds on any
+;;; of them.
 
 (define (platform-test-one-of preds)
   (<= (length (filter (lambda (p) (p)) preds)) 1))
 
 (check "the OS and the CPU are one each, and their predicates agree"
-       (and (memq (host-os) '(linux macos windows other))
-            (memq (host-cpu) '(x86-64 arm64 other))
-            (platform-test-one-of (list host-linux? host-mac? host-windows?))
-            (platform-test-one-of (list host-x86-64? host-arm64?))
-            (eq? (host-linux?) (eq? (host-os) 'linux))
-            (eq? (host-mac?) (eq? (host-os) 'macos))
-            (eq? (host-arm64?) (eq? (host-cpu) 'arm64))))
+       (and (memq (platform-os) '(linux macos windows other))
+            (memq (platform-cpu) '(x86-64 arm64 other))
+            (platform-test-one-of (list platform-linux? platform-mac?
+                                        platform-windows?))
+            (platform-test-one-of (list platform-x86-64? platform-arm64?))
+            (eq? (platform-linux?) (eq? (platform-os) 'linux))
+            (eq? (platform-mac?) (eq? (platform-os) 'macos))
+            (eq? (platform-arm64?) (eq? (platform-cpu) 'arm64))))
 
 (check "core0 says the windowing system and the GPU's API, one each, as the \
         predicates do"
-       (and (symbol? (host-windowing))
-            (not (eq? (host-windowing) 'none))
+       (and (symbol? (platform-windowing))
+            (not (eq? (platform-windowing) 'none))
             (= 1 (length (filter (lambda (p) (p))
-                                 (list host-wayland? host-x11? host-cocoa?
-                                       host-win32? host-offscreen?))))
-            (memq (host-gpu-api) '(vulkan metal direct3d12))
+                                 (list platform-wayland? platform-x11?
+                                       platform-cocoa? platform-win32?
+                                       platform-offscreen?))))
+            (memq (platform-gpu-api) '(vulkan metal direct3d12))
             (= 1 (length (filter (lambda (p) (p))
-                                 (list host-vulkan? host-metal?
-                                       host-direct3d12?))))))
+                                 (list platform-vulkan? platform-metal?
+                                       platform-direct3d12?))))))
 
 (check "SDL's version reads as 3.x.y, from 3.2 on"
        (let ([v (map string->number
-                     (string-split (host-platform-fact 'sdl) #\.))])
+                     (string-split (platform-fact 'sdl) #\.))])
          (and (= 3 (length v)) (= 3 (car v)) (>= (cadr v) 2))))
 
 (check "the process's memory and the machine's load, where the system says \
         them"
-       (let ([b (host-process-bytes)] [load (host-machine-load)])
+       (let ([b (platform-process-bytes)] [load (platform-machine-load)])
          (and (or (not b) (> b (* 1/2 (bytes-allocated))))
               (or (not load)
                   (let ([ns (map string->number (string-split load #\space))])
@@ -51,7 +54,7 @@
                          renderer present-mode present-modes reports sdl
                          freetype fontconfig predicates commit))
               (equal? (cdr (assq 'predicates p))
-                      (map car (filter cdr (host-predicates))))
+                      (map car (filter cdr (platform-predicates))))
               (= 11 (length (filter (lambda (c) (char=? c #\|))
                                     (string->list row))))
               (string-prefix? "| " row))))
@@ -91,7 +94,7 @@
          (fxvector-set! *present-ring* (+ at 2) sent)
          (let ([raw (- (now-ns) (platform-clock-offset 4))])
            (fluid-let ([*wayland-clock* 1] [*wayland-used* 1]
-                       [host-platform-read! void])
+                       [core0-platform-read! void])
              (let ([shown (wayland-shown-ns frame raw)])
                (and (<= (- sent 1000000) shown (+ sent 1000000000))
                     (< (abs (- shown (now-ns))) 2000000)
@@ -100,10 +103,10 @@
 (check "the trace keeps each thread's steps and writes them, by time, with \
         the screen's frames, to a file of its own"
        (let ([dir (string-append out-dir "/traces")])
-         (fluid-let ([*host-trace-dir* dir])
-           (host-trace! 22 0)
-           (host-trace! 24 7)
-           (let* ([path (host-trace-write!)]
+         (fluid-let ([*core0-trace-dir* dir])
+           (core0-trace! 22 0)
+           (core0-trace! 24 7)
+           (let* ([path (core0-trace-write!)]
                   [lines (call-with-input-file path
                            (lambda (p)
                              (let loop ([acc '()])
@@ -119,8 +122,8 @@
 
 (check "a trace says why it was written, if that's said, and a second's \
         second trace goes beside the first"
-       (fluid-let ([*host-trace-dir* (string-append out-dir "/traces")])
-         (let* ([a (host-trace-write!)] [b (host-trace-write! "a check")]
+       (fluid-let ([*core0-trace-dir* (string-append out-dir "/traces")])
+         (let* ([a (core0-trace-write!)] [b (core0-trace-write! "a check")]
                 [line3 (lambda (path)
                          (call-with-input-file path
                            (lambda (p) (get-line p) (get-line p)
@@ -134,20 +137,20 @@
         core1's last step; a step of core1's later, again"
        (let ([whys '()])
          (parameterize ([collect-request-handler void])
-           (fluid-let ([*host-trace-dir* (string-append out-dir "/traces")]
-                       [*host-trace-stalled* -1]
-                       [host-trace-stall-ns -1]
-                       [host-trace-write!
+           (fluid-let ([*core0-trace-dir* (string-append out-dir "/traces")]
+                       [*core0-trace-stalled* -1]
+                       [core0-trace-stall-ns -1]
+                       [core0-trace-write!
                         (lambda (why) (set! whys (cons why whys)))])
-             (host-trace! 22 0)
-             (host-trace-watch!)
-             (host-trace-watch!)
+             (core0-trace! 22 0)
+             (core0-trace-watch!)
+             (core0-trace-watch!)
              (let ([once (length whys)])
-               (host-trace! 23 0)
-               (host-trace-watch!)
-               (fluid-let ([host-trace-stall-ns 5000000000])
-                 (host-trace! 24 0)
-                 (host-trace-watch!))
+               (core0-trace! 23 0)
+               (core0-trace-watch!)
+               (fluid-let ([core0-trace-stall-ns 5000000000])
+                 (core0-trace! 24 0)
+                 (core0-trace-watch!))
                (and (= once 1)
                     (= 2 (length whys))
                     (string-prefix? "core1 hasn't stepped for " (car whys))
@@ -159,32 +162,32 @@
        (let ([whys '()] [ended #f])
          (parameterize ([keyboard-interrupt-handler
                          (lambda () (set! ended (pair? whys)))])
-           (fluid-let ([*host-trace-interrupt* #f]
-                       [host-trace-write!
+           (fluid-let ([*core0-trace-interrupt* #f]
+                       [core0-trace-write!
                         (lambda (why) (set! whys (cons why whys)))])
-             (host-trace-on-interrupt!)
+             (core0-trace-on-interrupt!)
              ((keyboard-interrupt-handler))
              (and ended (equal? whys '("Ctrl-C ended the run")))))))
 
 (check "with no .work folder, or no window, nothing is traced"
-       (fluid-let ([*host-trace-dir* #f])
-         (let ([n (unbox (vector-ref *host-trace-rings* 1))])
-           (host-trace! 22 0)
-           (and (= n (unbox (vector-ref *host-trace-rings* 1)))
-                (not (host-trace-write!))))))
+       (fluid-let ([*core0-trace-dir* #f])
+         (let ([n (unbox (vector-ref *core0-trace-rings* 1))])
+           (core0-trace! 22 0)
+           (and (= n (unbox (vector-ref *core0-trace-rings* 1)))
+                (not (core0-trace-write!))))))
 
 ;; CLOCK_MONOTONIC is 1 on Linux alone: elsewhere there's no Wayland.
 (check "an input's ms on the compositor's clock reads as its time on \
         now-ns's, to the ms, across the clock's 32-bit wrap; one a second \
         ahead fits no clock"
-       (or (not (host-linux?))
+       (or (not (platform-linux?))
            (let* ([at (now-ns)]
                   [ms (quotient (- at (platform-clock-offset 1) 5000000)
                                 1000000)])
              (fluid-let ([*wayland-input-clock* #f]
-                         [*host-input-wl* (box 0)])
+                         [*core0-input-wl* (box 0)])
                (wayland-input! (modulo ms 4294967296))
-               (let ([t (unbox *host-input-wl*)])
+               (let ([t (unbox *core0-input-wl*)])
                  (and (<= (- at 7000000) t (- at 4000000))
                       (eqv? *wayland-input-clock* 1)
                       (not (wayland-input-on 1 (modulo (+ ms 2000) 4294967296)
@@ -203,24 +206,24 @@
         clock at the window's refresh, its sequence the refreshes since the \
         last shown; a time before the frame was sent says nothing; 0 is \
         dropped"
-       (or (not (host-mac?))
-           (let* ([r (host-frame-ns)] [f 1000021] [t (now-ns)]
-                  [host (lambda (ns) (- ns (platform-clock-offset 8)))])
+       (or (not (platform-mac?))
+           (let* ([r (core0-frame-ns)] [f 1000021] [t (now-ns)]
+                  [mach (lambda (ns) (- ns (platform-clock-offset 8)))])
              (fluid-let ([*mac-refresh* 0] [*mac-refresh-at* 0])
                (for-each (lambda (n) (platform-test-sent! n (- t (* 4 r))))
                          (list f (+ f 1) (+ f 2)))
                (platform-test-sent! (+ f 3) (- t 20000000))
-               (mac-reported! f (host (- t (* 3 r))))
-               (mac-reported! (+ f 1) (host (- t r)))
+               (mac-reported! f (mach (- t (* 3 r))))
+               (mac-reported! (+ f 1) (mach (- t r)))
                (mac-reported! (+ f 2) 0)
-               (mac-reported! (+ f 3) (host (- t 40000000)))
-               (and (eqv? (host-frame-report f 1) 1)
-                    (< (abs (- (host-frame-report f 3) (- t (* 3 r)))) 100000)
-                    (= (host-frame-report f 4) r)
-                    (= 2 (- (host-frame-report (+ f 1) 5)
-                            (host-frame-report f 5)))
-                    (eqv? (host-frame-report (+ f 2) 1) 2)
-                    (eqv? (host-frame-report (+ f 3) 1) 0))))))
+               (mac-reported! (+ f 3) (mach (- t 40000000)))
+               (and (eqv? (core0-frame-report f 1) 1)
+                    (< (abs (- (core0-frame-report f 3) (- t (* 3 r)))) 100000)
+                    (= (core0-frame-report f 4) r)
+                    (= 2 (- (core0-frame-report (+ f 1) 5)
+                            (core0-frame-report f 5)))
+                    (eqv? (core0-frame-report (+ f 2) 1) 2)
+                    (eqv? (core0-frame-report (+ f 3) 1) 0))))))
 
 (check "core0 reads the presented handlers' ring for the frames it sent, \
         each by its drawable's number, once its row is in"
@@ -231,12 +234,12 @@
            (platform-test-sent! f (now-ns))
            (mac-ask! f)
            (mac-pump!)
-           (let ([before (host-frame-report f 1)])
+           (let ([before (core0-frame-report f 1)])
              (fxvector-set! *mac-shown* (+ 1 (* 2 41)) 0)
              (fxvector-set! *mac-shown* (* 2 41) 42)
              (mac-pump!)
              (and (eqv? before 0) (= *mac-drawable* -1)
-                  (eqv? (host-frame-report f 1) 2)
+                  (eqv? (core0-frame-report f 1) 2)
                   (= -1 (fxvector-ref *mac-waiting*
                                       (* 2 (modulo f mac-waiting-rows)))))))))
 
@@ -251,6 +254,6 @@
                       (platform-thread-interactive!)
                       (set-box! out (list before (platform-thread-class))))))])
          (thread-join t)
-         (if (host-mac?)
+         (if (platform-mac?)
              (equal? (unbox out) '(#x15 #x21))
              (equal? (unbox out) '(#f #f)))))

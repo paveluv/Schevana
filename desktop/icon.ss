@@ -1,6 +1,6 @@
-;;; icon.ss — the app icon: the host window's icon in the taskbar or dock,
+;;; icon.ss — the app icon: core0's window's icon in the taskbar or dock,
 ;;; the wallpaper's λ on the desktop gradient, in the current theme.
-;;; Redefine draw-app-icon and call (update-host-icon!) to change it.
+;;; Redefine draw-app-icon and call (update-app-icon!) to change it.
 
 (define-part (draw-app-icon size)
   (let* ([m (* size 0.06)] [s (- size m m)] [r (* s 0.22)])
@@ -14,11 +14,11 @@
     (text-draw-centered m m s s "λ" 'text
                         (make-font* "serif" (* s 0.72) 'bold))))
 
-(define (update-host-icon!) (host-set-icon! 256 draw-app-icon))
+(define (update-app-icon!) (screen-set-icon! 256 draw-app-icon))
 
 ;;; Desktops like GNOME don't use the icon a window sets: they show the
 ;;; icon of the app's .desktop file, which they match to the window by its
-;;; app id (host-app-id; the class under X11). (install-desktop-entry!)
+;;; app id (core0-app-id; the class under X11). (install-desktop-entry!)
 ;;; writes that file and the icon under ~/.local/share; ./schevana
 ;;; --install-desktop does the same.
 
@@ -29,7 +29,7 @@
 (define (desktop-entry-files)
   (let ([data (desktop-data-home)])
     ;; named after the app id, which Wayland desktops look it up by
-    (values (string-append data "/applications/" host-app-id ".desktop")
+    (values (string-append data "/applications/" core0-app-id ".desktop")
             (string-append data "/icons/hicolor/256x256/apps/schevana.png"))))
 
 (define (make-directories! path)
@@ -59,7 +59,7 @@
             "Comment=A Lisp Machine-style desktop written in Chez Scheme~%")
           (fprintf p "Exec=\"~a\"~%Icon=schevana~%Terminal=false~%\
                       Categories=Development;~%" exec)
-          (fprintf p "StartupWMClass=~a~%" host-app-id))
+          (fprintf p "StartupWMClass=~a~%" core0-app-id))
         'replace)
       ;; let the desktop notice; harmless where these tools are missing
       (system (format
@@ -84,12 +84,12 @@
 (define (icon-follow-theme!)
   (unless (eqv? *icon-version* *theme-version*)
     (set! *icon-version* *theme-version*)
-    (update-host-icon-soon!)))
+    (update-app-icon-soon!)))
 
 ;; Follow theme changes, once things settle.
-(define (update-host-icon-soon!)
+(define (update-app-icon-soon!)
   (unless *icon-update-pending*
     (set! *icon-update-pending* #t)
     (after 500 (lambda ()
                  (set! *icon-update-pending* #f)
-                 (update-host-icon!)))))
+                 (update-app-icon!)))))

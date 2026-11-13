@@ -630,7 +630,7 @@
 (define (toggle-shade! win)
   ((if (shaded? win) unshade-window! shade-window!) win))
 
-;; The host window was resized.
+;; Core0's window was resized.
 ;; The screen changed size (or scale): refit maximized windows, and pull
 ;; others back until their title bar can be reached.
 (define (wm-screen-resized!)
@@ -734,7 +734,7 @@
       (request-hover-frame! *hover*)
       (set! *hover* h)
       (request-hover-frame! h))
-    (host-set-cursor!
+    (core0-set-cursor!
      (if (and h (eq? (car h) 'window))
          (region-cursor (cadr h) (caddr h))
          'arrow))))
@@ -870,7 +870,7 @@
          [(eq? button 'left)
           (set! *drag* (make-drag 'move win button x y
                                   (window-x win) (window-y win) 0 0))
-          (host-set-cursor! 'move)])]
+          (core0-set-cursor! 'move)])]
       [(content scrollbar)
        (cond
          [(window-error win)
@@ -1162,19 +1162,19 @@
     [() (render-frame! #t)]
     [(asked?)
      (cond
-       [(or (not asked?) (eq? *host* 'none) (eqv? *canvas-pw* 0)) (void)]
+       [(or (not asked?) (eq? *core0-mode* 'none) (eqv? *canvas-pw* 0)) (void)]
        [(in-engine?) (request-frame!)]
-       [(or (host-hidden?) (gpu-frame-waiting?)) (request-frame!)]
+       [(or (core0-hidden?) (gpu-frame-waiting?)) (request-frame!)]
        [else
         (let ([t0 (now-ns)] [waits *pacer-waits*])
-          (host-trace! 23 0)
+          (core0-trace! 23 0)
           (set! *frame-draw-ns* t0)
           (rec-begin! *canvas-ratio*)
           (record-world!)
           (frame-number-set! (rec-present!))
           (pacer-drew!)
           (set! *frame-publish-ns* (now-ns))
-          (host-trace! 24 *frame-number*)
+          (core0-trace! 24 *frame-number*)
           ;; its row first, for core0 may give it back at once
           (frame-ring-add!)
           (render-frames-back!)
@@ -1206,7 +1206,7 @@
 
 ;; The last frames, for kits/inspect.ss: what each took and held, and what
 ;; became of it (1 it reached the screen, 2 the window had no room, 0 not
-;; given back yet); its number (its report's, host-frame-report), and when
+;; given back yet); its number (its report's, core0-frame-report), and when
 ;; the oldest input it shows came (now-ns; 0, none) by SDL's stamp; then
 ;; when its tick began, its draw began and it was published, and when that
 ;; input came by core0's pump and by the compositor's time; the latch its
@@ -1218,7 +1218,7 @@
 (defvar *frame-ring* (make-fxvector (* frame-ring-rows frame-ring-words) 0))
 (defvar *frame-ring-n* 0)   ; frames so far
 ;; the frame being drawn's number, its times, and the oldest input not
-;; drawn yet three ways (host-input-ns-take!)
+;; drawn yet three ways (core0-input-ns-take!)
 (defvar *frame-number* 0)
 (defvar *frame-tick-ns* 0)
 (defvar *frame-draw-ns* 0)

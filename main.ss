@@ -12,9 +12,9 @@
 ;;;
 ;;; The boot, in three steps:
 ;;;
-;;;   1. This thread loads core0, the host's own code (src/host/).
+;;;   1. This thread loads core0, the code below the core (src/core0/).
 ;;;   2. Core0 makes the world's environment, "/", and loads the tree into
-;;;      it: the core, whose last file loads the folders (src/host/boot.ss,
+;;;      it: the core, whose last file loads the folders (src/core0/boot.ss,
 ;;;      src/system.ss).
 ;;;   3. world.ss, in "/", reads the user's settings, opens the first
 ;;;      windows and runs the world till it quits.
@@ -42,13 +42,13 @@
         (if (string=? dir "") "." dir))
       (top-level-value '*schevana-root*)))
 
-;; Core0, below the core: the C bindings and the basics, then the host's
-;; own code (src/host/: SDL, what differs by platform, the GPU's device
+;; Core0, below the core: the C bindings and the basics, then core0's
+;; own code (src/core0/: SDL, what differs by platform, the GPU's device
 ;; side, the screen's reports, the trace, the window, the boot).
 (define *schevana-core0-sources*
-  '("src/ffi.ss" "src/base.ss" "src/host/sdl.ss" "src/host/platform.ss"
-    "src/host/gpu.ss" "src/host/present.ss" "src/host/trace.ss"
-    "src/host/window.ss" "src/host/boot.ss"))
+  '("src/ffi.ss" "src/base.ss" "src/core0/sdl.ss" "src/core0/platform.ss"
+    "src/core0/gpu.ss" "src/core0/present.ss" "src/core0/trace.ss"
+    "src/core0/window.ss" "src/core0/boot.ss"))
 
 ;; "/recorder", sealed, made by core0 before "/": the basics, then the bytes
 ;; of frames and their writers (src/recorder/). Like core0's, these change
@@ -64,8 +64,8 @@
 (define *schevana-sources*
   '("src/ffi.ss" "src/base.ss" "src/platform.ss" "src/shader.ss"
     "src/theme.ss" "src/gpu.ss"
-    "src/font.ss" "src/gfx.ss" "src/proc.ss" "src/host.ss" "src/wm.ss"
-    "src/system.ss"))
+    "src/font.ss" "src/gfx.ss" "src/proc.ss" "src/screen.ss" "src/socket.ss"
+    "src/wm.ss" "src/system.ss"))
 
 ;;; ---------------------------------------------------------- the command line
 
@@ -134,15 +134,15 @@
 (for-each (lambda (f) (load (string-append *schevana-root* "/" f)))
           *schevana-core0-sources*)
 
-;; 2 and 3. With two threads, core0 never comes back: it's the host from
+;; 2 and 3. With two threads, core0 never comes back: its loop runs from
 ;; here. A test's boot stops at the tree.
 (cond
   [(not main-script?)
-   (host-boot! *schevana-root* *schevana-recorder-sources* *schevana-sources*
+   (core0-boot! *schevana-root* *schevana-recorder-sources* *schevana-sources*
                *schevana-options* #f)]
   [(main-fork? *schevana-options*)
-   (host-fork! *schevana-root* *schevana-recorder-sources* *schevana-sources*
+   (core0-fork! *schevana-root* *schevana-recorder-sources* *schevana-sources*
                *schevana-options* "world.ss")]
   [else
-   (host-boot! *schevana-root* *schevana-recorder-sources* *schevana-sources*
+   (core0-boot! *schevana-root* *schevana-recorder-sources* *schevana-sources*
                *schevana-options* "world.ss")])

@@ -146,7 +146,7 @@
   (let ([fd (debug-repl-client-fd c)])
     (cond
       [(debug-repl-client-answer c)
-       (let ([at (host-socket-write fd (debug-repl-client-answer c)
+       (let ([at (socket-write fd (debug-repl-client-answer c)
                                     (debug-repl-client-sent c))])
          (cond
            [(and at (< at (bytevector-length (debug-repl-client-answer c))))
@@ -159,7 +159,7 @@
          (kill! (debug-repl-client-proc c)))
        #t]
       [else
-       (let ([n (host-socket-read fd *debug-repl-buffer*)])
+       (let ([n (socket-read fd *debug-repl-buffer*)])
          (cond
            [(not n)
             (if (> (- (now-ms) (debug-repl-client-came c)) debug-repl-read-ms)
@@ -191,7 +191,7 @@
   (let ([fd (debug-repl-listening d)])
     (when fd
       (when (< (length (debug-repl-clients d)) debug-repl-most-clients)
-        (let ([c (host-socket-accept fd)])
+        (let ([c (socket-accept fd)])
           (when c
             (let-values ([(port get) (open-bytevector-output-port)])
               (debug-repl-clients-set!
@@ -202,7 +202,7 @@
         (debug-repl-clients-set!
          d (filter (lambda (c)
                      (or (debug-repl-serve-client! d c)
-                         (begin (host-socket-close (debug-repl-client-fd c))
+                         (begin (socket-close (debug-repl-client-fd c))
                                 #f)))
                    (debug-repl-clients d)))
         (unless (= count (transcript-count (debug-repl-transcript d)))
@@ -215,7 +215,7 @@
                                 outside. Nobody types here.")
     (if path
         (guard (c [#t (transcript-add! t 'error (condition->string c))])
-          (debug-repl-listening-set! d (host-socket-listen path))
+          (debug-repl-listening-set! d (socket-listen path))
           (debug-repl-path-set! d path)
           (transcript-add! t 'info (format "; listening at ~a" path)))
         (transcript-add! t 'info "; no socket: no path is set \
@@ -226,11 +226,11 @@
   (for-each (lambda (c)
               (when (debug-repl-client-proc c)
                 (kill! (debug-repl-client-proc c)))
-              (host-socket-close (debug-repl-client-fd c)))
+              (socket-close (debug-repl-client-fd c)))
             (debug-repl-clients d))
   (debug-repl-clients-set! d '())
   (when (debug-repl-listening d)
-    (host-socket-close (debug-repl-listening d))
+    (socket-close (debug-repl-listening d))
     (debug-repl-listening-set! d #f)
     (when (file-exists? (debug-repl-path d))
       (delete-file (debug-repl-path d)))))

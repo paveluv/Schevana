@@ -9,7 +9,7 @@
   (profile-span-past! 'vsync-wait 'submit start end)
   (pacer-held! (- end start)))
 
-;; Core1's loop for ms of a fake clock (ns), with a wait for host events
+;; Core1's loop for ms of a fake clock (ns), with a wait for core0's events
 ;; that only moves the clock, and a frame that, with vsync?, waits for the
 ;; screen's next refresh. In it: a window whose
 ;; tick keeps books (3 ms) and never draws, one that moves at every tick
@@ -20,7 +20,7 @@
 ;; steps, the process's slices, when the timer ran, and whether the key
 ;; came. At most 50 steps a ms of the clock: past that the loop spins.
 (define (pacer-test-run vsync? draw-ms ms . opts)
-  (let* ([real-ns now-ns] [real-ms now-ms] [real-events host-events]
+  (let* ([real-ns now-ns] [real-ms now-ms] [real-events screen-events]
          [real-present rec-present!] [rate (pacer-rate)]
          [period (pacer-period)]
          [t 0] [ticks '()] [frames 0] [slices 0] [fired #f]
@@ -29,7 +29,7 @@
     (set! now-ns (lambda () t))
     (set! now-ms (lambda () (quotient t 1000000)))
     ;; the wait for input ends at the next key of a flood
-    (set! host-events
+    (set! screen-events
           (lambda (wait-ms)
             (let ([until (+ t (* wait-ms 1000000))])
               (if (and flood-at (<= flood-at until))
@@ -94,7 +94,7 @@
       (close-window! mover)
       (set! now-ns real-ns)
       (set! now-ms real-ms)
-      (set! host-events real-events)
+      (set! screen-events real-events)
       (set! rec-present! real-present)
       (pacer-rate! rate)
       (steps 1)
@@ -212,12 +212,12 @@
 ;; timers then, when each frame showed, each 'frame's t less the clock
 ;; then, and the ticks.
 (define (pacer-test-lock ms away-from away-to fast . opts)
-  (let* ([real-ns now-ns] [real-ms now-ms] [real-events host-events]
+  (let* ([real-ns now-ns] [real-ms now-ms] [real-events screen-events]
          [real-present rec-present!] [real-waiting gpu-frame-waiting?]
          [rate (pacer-rate)] [mailbox? (plist-ref opts 'mailbox #f)]
          [full? (plist-ref opts 'full #f)]
          [draw-every (plist-ref opts 'draw-every 1)]
-         [p (* (plist-ref opts 'slow 1) (- (host-frame-ns) fast))]
+         [p (* (plist-ref opts 'slow 1) (- (core0-frame-ns) fast))]
          [t 0] [held-to #f] [boxed? #f]
          [shows '()] [ts '()] [leads '()] [away-frames 0] [away-timers 0]
          [n 0] [end (* ms 1000000)] [ticks (pacer-ticks)])
@@ -237,7 +237,7 @@
     (set! now-ns (lambda () t))
     (set! now-ms (lambda () (quotient t 1000000)))
     (set! gpu-frame-waiting? (lambda () (screen!) boxed?))
-    (set! host-events
+    (set! screen-events
           (lambda (wait-ms)
             (let ([until (+ t (* wait-ms 1000000))]
                   ;; core0 wakes core1 as it takes a frame; core1 wakes late
@@ -279,7 +279,7 @@
                     (when (< t end) (tick)))))
       ;; t starts on the fake clock: the real clock's is seconds ahead of
       ;; it, and t comes back to the screen only when it falls behind
-      (fluid-let ([*host-forked* #t]
+      (fluid-let ([*core0-forked* #t]
                   [*pacer-frame-ns* 0]
                   [*gpu-facts* (cons (cons 'present-mode
                                            (if mailbox? 'mailbox 'vsync))
@@ -289,7 +289,7 @@
       (close-window! mover))
     (set! now-ns real-ns)
     (set! now-ms real-ms)
-    (set! host-events real-events)
+    (set! screen-events real-events)
     (set! rec-present! real-present)
     (set! gpu-frame-waiting? real-waiting)
     (set! ticks (- (pacer-ticks) ticks))
@@ -317,7 +317,7 @@
        [ts (caddr r)]
        [steps (list-tail (pacer-test-gaps ts) 3)]
        [shows (list-ref r 5)]
-       [p (host-frame-ns)]
+       [p (core0-frame-ns)]
        ;; t less when its frame showed, but for frames made before the
        ;; screen went away and shown after
        [leads (let lead ([ts ts] [shows shows])
@@ -354,7 +354,7 @@
    (let* ([r (apply pacer-test-lock 2000 0 0 0 opts)]
           [ticks (list-ref r 7)]
           [leads (list-tail (list-ref r 6) 5)]
-          [p (host-frame-ns)])
+          [p (core0-frame-ns)])
      ;; t starts a period ahead and slides toward two; turns that ran
      ;; away would carry it seconds ahead
      (check (format "turns that send the screen no frame it holds keep to \
@@ -369,7 +369,7 @@
    "frames the screen has no room for"))
 
 (let* ([r (pacer-test-lock 2000 0 0 0 'slow 3/2)]
-       [p (host-frame-ns)]
+       [p (core0-frame-ns)]
        [steps (list-tail (pacer-test-gaps (caddr r)) 3)]
        [leads (list-tail (list-ref r 6) 5)])
   (check (format "with a screen slower than it says, each frame's t steps \
@@ -400,7 +400,7 @@
          (pacer-rate! 30)
          (let ([p30 (pacer-period)])
            (pacer-rate! 'screen)
-           (let ([screen (pacer-period)] [p (host-frame-ns)])
+           (let ([screen (pacer-period)] [p (core0-frame-ns)])
              (pacer-rate! rate)
              (and (= p30 33333333)
                   (= screen (- p (quotient p 500))))))))
@@ -417,9 +417,9 @@
 ;; draws at every one, working 1 to 3 ms, and once, at long-at ms, long-ms
 ;; more. => the refreshes that showed no new frame once frames had shown.
 (define (pacer-test-fifo ms phase long-at long-ms)
-  (let* ([real-ns now-ns] [real-ms now-ms] [real-events host-events]
+  (let* ([real-ns now-ns] [real-ms now-ms] [real-events screen-events]
          [real-present rec-present!] [real-waiting gpu-frame-waiting?]
-         [rate (pacer-rate)] [p (host-frame-ns)] [e 4000000] [g 1000000]
+         [rate (pacer-rate)] [p (core0-frame-ns)] [e 4000000] [g 1000000]
          [t 0] [end (* ms 1000000)] [next-latch (+ phase (- p e))]
          [free 3] [queue '()] [front? #f] [shown? #f]
          [state 'idle] [at 0] [boxed? #f] [box-t 0] [woken? #f]
@@ -472,7 +472,7 @@
     (set! now-ns (lambda () t))
     (set! now-ms (lambda () (quotient t 1000000)))
     (set! gpu-frame-waiting? (lambda () (screen!) boxed?))
-    (set! host-events
+    (set! screen-events
           (lambda (wait-ms)
             (screen!)
             (if woken?
@@ -503,7 +503,7 @@
                                        (invalidate! win))
                               'draw (lambda (win w h) (set! t (+ t 1000000))))])
       (focus-window! mover)
-      (fluid-let ([*host-forked* #t]
+      (fluid-let ([*core0-forked* #t]
                   [*pacer-frame-ns* 0]
                   [*gpu-facts* (cons '(present-mode . vsync) *gpu-facts*)])
         (let loop ()
@@ -511,7 +511,7 @@
       (close-window! mover))
     (set! now-ns real-ns)
     (set! now-ms real-ms)
-    (set! host-events real-events)
+    (set! screen-events real-events)
     (set! rec-present! real-present)
     (set! gpu-frame-waiting? real-waiting)
     (pacer-rate! rate)
@@ -537,7 +537,7 @@
   (set! pacer-test-t (+ pacer-test-t (* ms 1000000))))
 (define (pacer-test-on-fake-clock thunk)
   (fluid-let ([now-ns (lambda () pacer-test-t)]
-              [host-events (lambda (wait-ms)
+              [screen-events (lambda (wait-ms)
                              (pacer-test-advance! pacer-test-wait)
                              '())]
               [rec-present!
@@ -629,7 +629,7 @@
   (fluid-let ([*timers* '()]
               [now-ns (lambda () t)]
               [now-ms (lambda () (quotient t 1000000))]
-              [host-events (lambda (wait-ms)
+              [screen-events (lambda (wait-ms)
                              (set! t (+ t (* (max 1 wait-ms) 1000000)))
                              (let ([e events]) (set! events '()) e))])
     (ticks-in 20)
@@ -678,7 +678,7 @@
 (check "with a latch seen lately and the reports placing them, a tick \
         begins its lead before the first latch a lead after the last tick \
         began; with an old one, or no frame back by vsync, the grid's"
-       (let* ([r (host-frame-ns)] [t (now-ns)] [latch (- t 1000000)])
+       (let* ([r (core0-frame-ns)] [t (now-ns)] [latch (- t 1000000)])
          (fluid-let ([*pacer-latch* latch] [*pacer-lead* 4000000]
                      [*pacer-latch-phase* 0] [*pacer-aimed* 0]
                      [*pacer-began* (- t 3000000)] [*pacer-shown?* #t]
@@ -696,7 +696,7 @@
 (check "the margin starts at nothing, before the screen has taught it \
         anything"
        (and (not *pacer-margin*)
-            (= (pacer-margin (host-frame-ns)) 0)))
+            (= (pacer-margin (core0-frame-ns)) 0)))
 
 ;; Frame n as the pacer reads it: its row in the frame ring, the newest,
 ;; its tick (as begun and as planned) and aimed latch; its report sent,
@@ -724,7 +724,7 @@
 (check "one frame a latch: with the last tick's frame aimed at the next \
         latch, the tick after aims at the one after it, though a lead \
         after the last tick began would make the next"
-       (let* ([r (host-frame-ns)] [t (now-ns)] [latch (- t 1000000)])
+       (let* ([r (core0-frame-ns)] [t (now-ns)] [latch (- t 1000000)])
          (fluid-let ([*pacer-latch* latch] [*pacer-lead* 4000000]
                      [*pacer-latch-phase* 0] [*pacer-aimed* (+ latch r)]
                      [*pacer-began* (- t 3000000)] [*pacer-shown?* #t]
@@ -735,7 +735,7 @@
         comes back, the next waits for its latch, not the grid's, which \
         would make two frames for one; a tick that drew none, the grid's. \
         A tick on a latch was planned its lead before it"
-       (let* ([r (host-frame-ns)] [t (now-ns)] [latch (- t 1000000)])
+       (let* ([r (core0-frame-ns)] [t (now-ns)] [latch (- t 1000000)])
          (fluid-let ([*pacer-latch* latch] [*pacer-lead* 4000000]
                      [*pacer-latch-phase* 0] [*pacer-aimed* 0]
                      [*pacer-began* (- t 3000000)] [*pacer-shown?* #t]
@@ -774,7 +774,7 @@
 (check "a tick whose frame was held back, the window hidden, gives the \
         screen nothing to pace by; one sent does"
        (let ([drew? (lambda (hidden?)
-                      (fluid-let ([host-hidden? (lambda () hidden?)]
+                      (fluid-let ([core0-hidden? (lambda () hidden?)]
                                   [*pacer-drew?* #f] [*pacer-due* 0]
                                   [*pacer-shown?* #f])
                         (invalidate!)
@@ -784,7 +784,7 @@
 
 (check "a frame that came late moves the ones after it: the next tick aims \
         no earlier than the floor, a latch for each frame on its way"
-       (let* ([r (host-frame-ns)] [t (now-ns)] [latch (- t 1000000)])
+       (let* ([r (core0-frame-ns)] [t (now-ns)] [latch (- t 1000000)])
          (fluid-let ([*pacer-latch* latch] [*pacer-lead* 4000000]
                      [*pacer-latch-phase* 0] [*pacer-aimed* (+ latch r)]
                      [*pacer-began* (- t 3000000)] [*pacer-shown?* #t]
@@ -795,7 +795,7 @@
         meant to begin till core0 sent them, with the margin: it follows \
         a longer one at once, fades over half a second, and is two \
         refreshes at most"
-       (let* ([r (host-frame-ns)] [n 1000003] [t (now-ns)])
+       (let* ([r (core0-frame-ns)] [n 1000003] [t (now-ns)])
          (fluid-let ([*pacer-lead* 4000000] [*pacer-margin* 1000000])
            (let* ([need! (lambda (took)
                            (pacer-test-frame n t 0 (+ t took) #f
@@ -828,7 +828,7 @@
         late: the margin grows past how long before its latch it was sent, \
         by an eighth of a refresh; in time, it stays, but where the \
         platform has it fade"
-       (let* ([r (host-frame-ns)] [n 1000011] [t (now-ns)])
+       (let* ([r (core0-frame-ns)] [n 1000011] [t (now-ns)])
          (fluid-let ([*pacer-margin* 1000000] [*pacer-depth* 0]
                      [*pacer-made* #f] [*pacer-late-seen* 0])
            (let* ([late (pacer-test-frame n (- t 9000000) t (- t 3000000)
@@ -847,7 +847,7 @@
 (check "the margin fades as pacer-margin-fade has it, the platform's by \
         default (a minute on a Mac, else never): a frame in time takes a \
         refresh's share of the fade off it; at 0, nothing"
-       (let* ([r (host-frame-ns)] [n 1000013] [t (now-ns)]
+       (let* ([r (core0-frame-ns)] [n 1000013] [t (now-ns)]
               [in-time (lambda ()
                          (set! *pacer-margin* 3000000)
                          (pacer-test-frame n (- t 9000000) t (- t 5000000)
@@ -878,7 +878,7 @@
 
 (check "frames late in a row, as a stall makes them, sent alike, raise \
         the margin once"
-       (let* ([r (host-frame-ns)] [n 1000013] [t (now-ns)])
+       (let* ([r (core0-frame-ns)] [n 1000013] [t (now-ns)])
          (fluid-let ([*pacer-margin* 0] [*pacer-depth* 0]
                      [*pacer-made* #f] [*pacer-late-seen* 0])
            (pacer-test-frame n (- t 9000000) t (- t 2000000) (+ t r 4000000)
@@ -890,7 +890,7 @@
 (check "the reports read are the newest in, however many frames behind: \
         four back, as under Mutter's triple buffering at 120 Hz, they \
         still place the latches, and the frames on their way the floor"
-       (let* ([r (host-frame-ns)] [n 1000027] [ring *present-ring*]
+       (let* ([r (core0-frame-ns)] [n 1000027] [ring *present-ring*]
               [t (now-ns)] [at (present-at n)] [old (present-at (- n 4))])
          (fluid-let ([*pacer-latch* #f] [*pacer-latch-phase* #f]
                      [*pacer-judged* 0] [*pacer-floor* 0]
@@ -913,7 +913,7 @@
 
 (check "each report is judged once: a late frame raises the margin once, \
         however many frames come back before the next report"
-       (let* ([r (host-frame-ns)] [n 1000033] [m (- n 2)] [ring *present-ring*]
+       (let* ([r (core0-frame-ns)] [n 1000033] [m (- n 2)] [ring *present-ring*]
               [t (now-ns)])
          (fluid-let ([*pacer-margin* 0] [*pacer-judged* (- m 1)]
                      [*pacer-latch-phase* #f] [*pacer-depth* 0]
@@ -936,7 +936,7 @@
         frame for the latch before, sent a refresh earlier, is one for \
         this latch shown a refresh later; the margin is learned afresh, \
         from where it starts; three refreshes at most"
-       (let* ([r (host-frame-ns)] [n 1000041] [t (now-ns)]
+       (let* ([r (core0-frame-ns)] [n 1000041] [t (now-ns)]
               [late! (lambda (shown)
                        (pacer-test-frame n (- t (* 2 r)) t
                                          (- t (- r 1000000)) shown
@@ -955,7 +955,7 @@
 (check "a frame sent well before its latch, past the margin and a step, \
         and late all the same, the compositor missed the refresh: the \
         margin learns nothing"
-       (let* ([r (host-frame-ns)] [n 1000043] [t (now-ns)])
+       (let* ([r (core0-frame-ns)] [n 1000043] [t (now-ns)])
          (fluid-let ([*pacer-margin* 1000000] [*pacer-depth* 0]
                      [*pacer-made* #f] [*pacer-late-seen* 0])
            (let ([late (pacer-test-frame
@@ -968,7 +968,7 @@
         its latch (WindowServer's): its frames come late, the margin grows \
         past them till refreshes of it carry into the depth, and then \
         they're in time"
-       (let* ([r (host-frame-ns)] [n 1000045]
+       (let* ([r (core0-frame-ns)] [n 1000045]
               ;; sent as the pacer sends them, each after the last was seen
               [frame (lambda ()
                        (let ([t (+ (now-ns) (* 2 r))])
@@ -987,7 +987,7 @@
 (check "a frame sent as the pacer sends them that shows sooner than the \
         depth: the compositor keeps frames less long now, and the depth \
         falls to it; one sent a refresh early tells nothing"
-       (let* ([r (host-frame-ns)] [n 1000047] [t (now-ns)]
+       (let* ([r (core0-frame-ns)] [n 1000047] [t (now-ns)]
               [frame (lambda (sent)
                        (pacer-test-frame n (- t 9000000) t sent
                                          (+ t r 4000000)
@@ -1004,7 +1004,7 @@
         refreshes past the first after its latch, places the latches the \
         frames on their way take two refreshes sooner than it would at \
         none"
-       (let* ([r (host-frame-ns)] [n 1000049] [ring *present-ring*]
+       (let* ([r (core0-frame-ns)] [n 1000049] [ring *present-ring*]
               [t (now-ns)] [at (present-at n)] [old (present-at (- n 4))])
          (fluid-let ([*pacer-latch* #f] [*pacer-latch-phase* #f]
                      [*pacer-judged* 0] [*pacer-floor* 0]
@@ -1025,7 +1025,7 @@
 (check "a late frame sent no closer to its latch than one that made its \
         latch lately, the compositor missed the refresh (WindowServer, now \
         and then): the margin learns nothing; one sent closer teaches it"
-       (let* ([r (host-frame-ns)] [n 1000051] [t (now-ns)]
+       (let* ([r (core0-frame-ns)] [n 1000051] [t (now-ns)]
               [frame (lambda (k sent shown)
                        (pacer-test-frame (+ n k) (- t 9000000) t sent shown
                                          (lambda ()
@@ -1045,7 +1045,7 @@
 
 (check "the closest send that made its latch is kept, a closer one at \
         once, and forgotten slowly: a 1024th of a refresh a frame judged"
-       (let* ([r (host-frame-ns)] [n 1000071] [t (now-ns)])
+       (let* ([r (core0-frame-ns)] [n 1000071] [t (now-ns)])
          (fluid-let ([*pacer-made* #f] [*pacer-late-seen* 0]
                      [*pacer-margin* 1000000] [*pacer-depth* 0])
            (pacer-made! 3000000)
@@ -1064,7 +1064,7 @@
         made its latch: frames that keep missing a deadline that comes and \
         goes (WindowServer's, near it) want sending sooner; a compositor's \
         misses now and then seldom chain so"
-       (let* ([r (host-frame-ns)] [n 1000081] [t (now-ns)]
+       (let* ([r (core0-frame-ns)] [n 1000081] [t (now-ns)]
               [frame (lambda (k sent shown)
                        (pacer-test-frame (+ n k) (- t 9000000) t sent shown
                                          (lambda ()
@@ -1085,7 +1085,7 @@
 (check "frames late behind a run's first, sent before the pacer saw it, \
         teach nothing: they waited behind it, for an image; one sent since, \
         and late still, teaches, as at a deadline missed for good"
-       (let* ([r (host-frame-ns)] [n 1000101] [t (now-ns)]
+       (let* ([r (core0-frame-ns)] [n 1000101] [t (now-ns)]
               [frame (lambda (k aim sent)
                        (pacer-test-frame (+ n k) (- aim 9000000) aim sent
                                          (+ aim r 4000000)
@@ -1106,7 +1106,7 @@
         latch, and late still teaches: no one missed refresh makes that, \
         but a compositor that keeps frames longer (a Mac's, as the world \
         starts)"
-       (let* ([r (host-frame-ns)] [n 1000131] [t (now-ns)]
+       (let* ([r (core0-frame-ns)] [n 1000131] [t (now-ns)]
               [frame (lambda (k aim sent)
                        (pacer-test-frame (+ n k) (- aim 9000000) aim sent
                                          (+ aim r 4000000)
@@ -1125,7 +1125,7 @@
         compositor holding a frame more, is the screen's time, not the \
         frame's: the lead learns only the rest; a wait up to that latch is \
         the frame's"
-       (let* ([r (host-frame-ns)] [n 1000141] [t (now-ns)] [at (present-at n)]
+       (let* ([r (core0-frame-ns)] [n 1000141] [t (now-ns)] [at (present-at n)]
               [need (lambda (ended)
                       (pacer-test-frame
                        n t (+ t 5000000) (+ ended 1000000) #f
@@ -1144,7 +1144,7 @@
 (check "the pacer's choices are settings, read live: with a step of a \
         quarter refresh, a late frame of its own raises the margin by a \
         quarter, and counts as its own"
-       (let* ([r (host-frame-ns)] [n 1000047] [t (now-ns)]
+       (let* ([r (core0-frame-ns)] [n 1000047] [t (now-ns)]
               [own (fxvector-ref *pacer-counts* 1)])
          (fluid-let ([*pacer-margin* 0] [*pacer-depth* 0] [*pacer-made* #f]
                      [*pacer-late-seen* 0])
@@ -1157,7 +1157,7 @@
 
 (check "with no room past the margin for a frame of the pacer's own, a late \
         frame sent past it is the compositor's: counted so, nothing learned"
-       (let* ([r (host-frame-ns)] [n 1000049] [t (now-ns)]
+       (let* ([r (core0-frame-ns)] [n 1000049] [t (now-ns)]
               [theirs (fxvector-ref *pacer-counts* 2)])
          (fluid-let ([*pacer-margin* 1000000] [*pacer-depth* 0]
                      [*pacer-made* #f] [*pacer-late-seen* 0])
@@ -1170,7 +1170,7 @@
 
 (check "relearning forgets the margin taught, the floor, the depth, the \
         closest send, the late runs and the lead"
-       (let ([r (host-frame-ns)])
+       (let ([r (core0-frame-ns)])
          (fluid-let ([*pacer-margin* 5000000] [*pacer-floor* 123]
                      [*pacer-lead* 9000000] [*pacer-depth* 2]
                      [*pacer-made* 3000000] [*pacer-late-seen* 5]
@@ -1184,7 +1184,7 @@
 
 (check "a trial holds the pacer's choices before the settings, which it \
         leaves as they are, and starts it learning anew"
-       (let ([r (host-frame-ns)] [overrides (theme-overrides)])
+       (let ([r (core0-frame-ns)] [overrides (theme-overrides)])
          (fluid-let ([*pacer-margin* 5000000])
            (pacer-trial! '((pacer-margin-start . 1/4)))
            (let ([held (list (pacer-margin r) (pacer-knob 'pacer-margin-step)

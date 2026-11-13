@@ -1,5 +1,5 @@
 ;;; present.ss — what became of each frame core0 presents, by the screen's
-;;; own reports where the platform gives them (src/host/platform.ss). For
+;;; own reports where the platform gives them (src/core0/platform.ss). For
 ;;; each frame: when core0 sent it; when it reached the screen, the vblank
 ;;; it showed at, on now-ns's clock, with the refresh and the display's
 ;;; sequence, or that the compositor dropped it; and when core0 first saw
@@ -7,7 +7,7 @@
 ;;; the GPU's times are kept.
 ;;;
 ;;; The reports are a ring by frame number that only core0 writes, and the
-;;; world reads (host-frame-report): a row is its frame's once it bears its
+;;; world reads (core0-frame-report): a row is its frame's once it bears its
 ;;; number, written last, and what a report brings is in view once the
 ;;; row's kind says so, written after it.
 
@@ -32,7 +32,7 @@
 (define (present-at frame) (fx* present-words (fxmodulo frame present-rows)))
 
 ;; Word k of frame's row, or #f once the row is another frame's.
-(define (host-frame-report frame k)
+(define (core0-frame-report frame k)
   (let ([at (present-at frame)])
     (and (fx= (fxvector-ref *present-ring* at) frame)
          (begin (memory-order-acquire)
@@ -101,6 +101,6 @@
                    [at (present-at frame)])
               (when (fx= (fxvector-ref *present-ring* at) frame)
                 (fxvector-set! *present-ring* (fx+ at 6) (now-ns)))
-              (host-trace! 12 frame))
+              (core0-trace! 12 frame))
             (sdl-release-gpu-fence dev fence)
             (vector-set! fs i 0)))))))

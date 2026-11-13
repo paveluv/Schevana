@@ -70,7 +70,7 @@
 ;; The heap, and the process's resident memory where the system says it.
 (define (status-memory)
   (let ([heap (/ (bytes-allocated) 1048576.0)]
-        [process (host-process-bytes)])
+        [process (platform-process-bytes)])
     (if process
         (format "~,1f/~,1f MB" heap (/ process 1048576.0))
         (format "~,1f MB" heap))))

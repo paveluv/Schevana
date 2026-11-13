@@ -804,7 +804,7 @@
      "Threads spec: worker pool, jobs, parallel-for"
      "Jobs on a pool of workers, results handed back to core1, \
       pixmaps filled in parallel. Threads only when measured.")
-    (7 review chore urgent "Pavel" ("sdl" "host") 1
+    (7 review chore urgent "Pavel" ("sdl" "core0") 1
      ("HiDPI at 200% on GNOME" "Typing with an IME"
       ("Clipboard both ways" . #t) "Full screen and back"
       ("Resize while drawing" . #t))
@@ -815,7 +815,7 @@
      "Match Genera's margins to the 1986 manuals"
      "Check the margins and the label in the bottom-left corner against the \
       manuals' figures.")
-    (1 done chore normal "Claude" ("sdl" "host") #f ()
+    (1 done chore normal "Claude" ("sdl" "core0") #f ()
      "Switch from SDL2 to SDL3"
      "Fractional wheel steps add up to whole ones, and the app id names the \
       window for the desktop.")

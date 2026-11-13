@@ -970,7 +970,7 @@
       [else (loop (- i 1) (+ k 1))])))
 
 (define (pipeline-draw-timeline x y w h v)
-  (let* ([r (host-frame-ns)]
+  (let* ([r (core0-frame-ns)]
          [span (* pipeline-timeline-refreshes r)]
          [last (pipeline-timeline-last v)]
          [end (pipeline-timeline-end last r)]
@@ -1046,7 +1046,7 @@
         (vector-set! v (+ 1 (* 2 k)) (exact (round (* -4096 (cos a)))))))))
 
 (define (pipeline-draw-refresh-clock x y d last)
-  (let* ([r (host-frame-ns)]
+  (let* ([r (core0-frame-ns)]
          [cx (+ x (quotient d 2))] [cy (+ y (quotient d 2))]
          [rim (- (quotient d 2) 4)] [hub (quotient rim 4)]
          [ring (quotient (- rim hub) pipeline-clock-laps)]
@@ -1119,7 +1119,7 @@
 ;; The numbers under the strip, of the newest frame the screen reported
 ;; on, and the pacer's now: (label . words) each.
 (define (pipeline-latency-readout last)
-  (let* ([r (host-frame-ns)]
+  (let* ([r (core0-frame-ns)]
          [i (let loop ([i last] [k 0])
               (and (< k 8) (>= i 0)
                    (if (inspect-frame-at i 'shown) i (loop (- i 1) (+ k 1)))))]
@@ -1136,7 +1136,7 @@
           (cons "for an image" (ms 'acquiring 'acquired))
           (cons "tick before latch" (format "~,1f ms" (/ *pacer-lead* 1e6)))
           (cons "margin" (format "~,1f ms"
-                                 (/ (pacer-margin (host-frame-ns)) 1e6)))
+                                 (/ (pacer-margin (core0-frame-ns)) 1e6)))
           (cons "latch before refresh"
                 (if (and i *pacer-latch*)
                     (format "~,1f ms"

@@ -368,7 +368,7 @@
               (equal? (envs-chip-picked "a") '(a "" "")))))
 
 (check "dropping a child takes it, and its children, out of the tree and \
-        marks them dropped; not the world, nor /worklets, /host, /recorder \
+        marks them dropped; not the world, nor /worklets, /core0, /recorder \
         or /apps"
        (let ([g (env-child units-env-world 'grand 'chez)])
          (env-drop! units-env-world)
@@ -378,14 +378,14 @@
               (raises? (lambda () (env-child g 'more 'chez)))
               (raises? (lambda () (env-drop! (env-root))))
               (raises? (lambda () (env-drop! (env-worklets))))
-              (raises? (lambda () (env-drop! (env-find "/host"))))
+              (raises? (lambda () (env-drop! (env-find "/core0"))))
               (raises? (lambda () (env-drop! (env-find "/recorder"))))
               (raises? (lambda () (env-drop! (grant-apps-env))))
               (not (env-find "/units-world/grand"))
               (not (env-find "/units"))
               (not (memq units-env (env-children (env-root))))
               (equal? (map env-name (env-children (env-root)))
-                      '(worklets host recorder apps)))))
+                      '(worklets core0 recorder apps)))))
 
 ;;; The confined base (services/env.ss): what is always safe, for apps.
 
@@ -459,23 +459,23 @@
            (env-drop! e)
            ok)))
 
-;;; /host: core0's own environment, under the root, for the person.
+;;; /core0: core0's own environment, under the root, for the person.
 
-(let ([h (env-find "/host")])
-  (check "/host is core0's environment: its names, none of the world's, \
+(let ([h (env-find "/core0")])
+  (check "/core0 is core0's environment: its names, none of the world's, \
           which \"/\" doesn't hold"
-         (and h (eq? (env-parent h) (env-root)) (eq? (env-kind h) 'host)
+         (and h (eq? (env-parent h) (env-root)) (eq? (env-kind h) 'core0)
               (eq? (env-environment h) core0-env)
               (env-eval h '(procedure? gpu-frame!))
-              (not (top-level-bound? 'gpu-frame! *host-world*))))
+              (not (top-level-bound? 'gpu-frame! *core0-world*))))
   (check "a definition there takes at core0's next call, through the \
           world's forwarder too"
-         (let ([real (env-eval h 'host-error-text)])
-           (env-eval h '(define host-error-text (lambda () "from /host")))
-           (let ([seen (host-error-text)])
-             (env-eval h `(define host-error-text ',real))
-             (and (equal? seen "from /host")
-                  (eq? (env-eval h 'host-error-text) real)))))
+         (let ([real (env-eval h 'core0-error-text)])
+           (env-eval h '(define core0-error-text (lambda () "from /core0")))
+           (let ([seen (core0-error-text)])
+             (env-eval h `(define core0-error-text ',real))
+             (and (equal? seen "from /core0")
+                  (eq? (env-eval h 'core0-error-text) real)))))
   (check "it isn't dropped, forks nothing, and is shared nothing of the \
           world's"
          (and (raises? (lambda () (env-drop! h)))
@@ -487,14 +487,14 @@
          (let* ([icon (lambda (kind)
                         (image 16 16 1
                                (lambda () (ui-draw-env-icon 0 0 16 '() kind))))]
-                [host (icon 'host)] [other (icon 'no-such-kind)]
-                [differ (not (equal? (picture-bytes host)
+                [core0 (icon 'core0)] [other (icon 'no-such-kind)]
+                [differ (not (equal? (picture-bytes core0)
                                      (picture-bytes other)))])
-           (picture-free! host)
+           (picture-free! core0)
            (picture-free! other)
            differ))
-  (let* ([win (repl "/host")] [r (window-ref win 'state)])
+  (let* ([win (repl "/core0")] [r (window-ref win 'state)])
     (check "a REPL opens there, in core0's look"
-           (and (equal? (window-title win) "REPL — /host")
-                (eq? (repl-kind r) 'host)))
+           (and (equal? (window-title win) "REPL — /core0")
+                (eq? (repl-kind r) 'core0)))
     (close-window! win)))

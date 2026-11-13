@@ -9,6 +9,6 @@
         to load, and its procedures stay the same"
        (let ([present gpu-publish!])
          (reload!)
-         (and (not (exists (lambda (f) (string-prefix? "src/host/" f))
+         (and (not (exists (lambda (f) (string-prefix? "src/core0/" f))
                            *schevana-sources*))
               (eq? gpu-publish! present))))

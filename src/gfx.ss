@@ -33,7 +33,7 @@
     (set! *scale* (inexact scale))
     (set! *canvas-ratio* (rationalize (exact scale) 1/100000))
     ;; with no window, frames draw to a target this big
-    (when (eq? *host* 'headless) (gpu-ask! (list 'target pw ph)))
+    (when (eq? *core0-mode* 'headless) (gpu-ask! (list 'target pw ph)))
     (request-frame!)
     (when rescaled? (theme-changed!))))
 
@@ -1397,15 +1397,15 @@
 ;; The list written since rec-begin! goes to the screen: core1 publishes it,
 ;; and core0 presents it, at once while it has no thread of its own
 ;; (render-frames-back! tells what came of it). => the frame's number, its
-;; report's (host-frame-report).
+;; report's (core0-frame-report).
 (define (rec-present!)
   (rec-run-end!)
   (let ([f (rec-publish)])
     (gpu-publish! f)
-    (unless (host-forked?) (host-step!))
+    (unless (core0-forked?) (core0-step!))
     (gpu-frame-number f)))
 
-;; The list written since rec-begin!, as the frame core1 hands the host,
+;; The list written since rec-begin!, as the frame core1 hands core0,
 ;; with the lists kept from earlier: the past one, and the preview's, which
 ;; its procedure makes here, on core1, of the frame just recorded.
 (define (rec-publish)

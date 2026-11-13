@@ -131,7 +131,7 @@
      crew-map
      crew-size
      crew-size-set!
-     host-cpu-count)
+     platform-cpu-count)
     ;; a shader touches only the buffers it's handed (src/shader.ss), and
     ;; nothing here waits for the GPU
     (gpu "Compute and draw on the GPU"
@@ -408,7 +408,7 @@
            (apply open-window title opts)))]
     [(crew-size-set!)
      (lambda (k)
-       (crew-size-set! (max 0 (min k (- (host-cpu-count) 1)))))]
+       (crew-size-set! (max 0 (min k (- (platform-cpu-count) 1)))))]
     [else #f]))
 
 ;; An app's define-worklet (n) and worklet: compiled in env, an environment

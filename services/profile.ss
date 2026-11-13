@@ -10,7 +10,7 @@
 ;;; core1's loop, a window's handler or drawing, a surface's draw or
 ;;; tick, a process's turn, the collector) keeps its self time: its time
 ;;; less the spans inside it, so that the parts add up to the tick; two
-;;; are waits, input-wait the steps' own (mostly the wait for host
+;;; are waits, input-wait the steps' own (mostly the wait for core0's
 ;;; events) and vsync-wait the screen's (with core0 on a thread of its
 ;;; own, core1's wait for core0 to take its frame), for a wait delays the
 ;;; next tick as much as work. Each tick's sums go into a ring of the
@@ -172,7 +172,7 @@
 ;; A tick's fields: its end and length (ns), collections, their ns, bytes
 ;; allocated, heap, where its uses start in their ring and how many; then
 ;; the frames that reached the screen, what core1 itself ran (ns, by the
-;; thread's CPU clock), the host window's flags, the host's events, the
+;; thread's CPU clock), core0's window's flags, core0's events, the
 ;; frames tried so far (what became of each is inspect-frame-…'s), and the
 ;; records of the frame last recorded.
 (define profile-tick-fields
@@ -270,7 +270,7 @@
 (defvar *profile-gc-ns* 0)
 (defvar *profile-memory* (make-fxvector 3 0))
 ;; at the last tick's end, the frames drawn and core1's CPU ns; and when
-;; the host window was last seen hidden
+;; core0's window was last seen hidden
 (defvar *profile-frames* 0)
 (defvar *profile-cpu* 0)
 (defvar *profile-hidden-at* 0)
@@ -430,8 +430,8 @@
     (let ([cpu (profile-thread-cpu)])
       (profile-ring-set! r names 'cpu slot (- cpu *profile-cpu*))
       (set! *profile-cpu* cpu))
-    (when (host-hidden?) (set! *profile-hidden-at* now))
-    (profile-ring-set! r names 'flags slot (host-flags))
+    (when (core0-hidden?) (set! *profile-hidden-at* now))
+    (profile-ring-set! r names 'flags slot (core0-flags))
     (profile-ring-set! r names 'input slot *profile-input*)
     (set! *profile-input* 0)
     (profile-ring-set! r names 'frames slot *frame-ring-n*)
@@ -551,40 +551,40 @@
              *profile-subject-entries* profile-second-subjects-most
              'subjects-start 'subjects-count))))
 
-;;; ------------------------------------------------------------------ the host
-;;; What the host said lately, by the clock, in a ring made once, so that a
+;;; ------------------------------------------------------------------ core0
+;;; What core0 said lately, by the clock, in a ring made once, so that a
 ;;; flag can say what came just before it. The mouse's motion is too common
 ;;; to keep: like every event, it only counts into its tick.
 
-(define profile-host-kept 256)
-(defvar *profile-host-at* (make-fxvector profile-host-kept 0))
-(defvar *profile-host-types* (make-fxvector profile-host-kept 0))
-(defvar *profile-host-count* 0)
+(define profile-core0-kept 256)
+(defvar *profile-core0-at* (make-fxvector profile-core0-kept 0))
+(defvar *profile-core0-types* (make-fxvector profile-core0-kept 0))
+(defvar *profile-core0-count* 0)
 (defvar *profile-input* 0)   ; this tick's events
 
-(define (profile-host-event! type)
+(define (profile-core0-event! type)
   (when *profile-on?*
     (set! *profile-input* (fx+ *profile-input* 1))
-    (unless (eq? (host-event-name type) 'mouse-motion)
-      (let ([i (fxmodulo *profile-host-count* profile-host-kept)])
-        (fxvector-set! *profile-host-at* i (now-ns))
-        (fxvector-set! *profile-host-types* i type)
-        (set! *profile-host-count* (fx+ *profile-host-count* 1))))))
+    (unless (eq? (core0-event-name type) 'mouse-motion)
+      (let ([i (fxmodulo *profile-core0-count* profile-core0-kept)])
+        (fxvector-set! *profile-core0-at* i (now-ns))
+        (fxvector-set! *profile-core0-types* i type)
+        (set! *profile-core0-count* (fx+ *profile-core0-count* 1))))))
 
 ;; What it said from seconds before end (by the clock) on, the most kept the
 ;; newest: ((name . ns after end) ...), the oldest first.
-(define (profile-host-about end seconds most)
-  (let loop ([n (- *profile-host-count* 1)] [left most] [acc '()])
+(define (profile-core0-about end seconds most)
+  (let loop ([n (- *profile-core0-count* 1)] [left most] [acc '()])
     (if (or (< n 0) (= left 0)
-            (<= n (- *profile-host-count* profile-host-kept 1)))
+            (<= n (- *profile-core0-count* profile-core0-kept 1)))
         acc
-        (let* ([i (modulo n profile-host-kept)]
-               [at (- (fxvector-ref *profile-host-at* i) end)])
+        (let* ([i (modulo n profile-core0-kept)]
+               [at (- (fxvector-ref *profile-core0-at* i) end)])
           (if (< at (* seconds -1000000000))
               acc
               (loop (- n 1) (- left 1)
-                    (cons (cons (host-event-name
-                                 (fxvector-ref *profile-host-types* i))
+                    (cons (cons (core0-event-name
+                                 (fxvector-ref *profile-core0-types* i))
                                 at)
                           acc)))))))
 
@@ -599,9 +599,9 @@
 
 ;; A flag: tick seq, the date it ended, what it took and the period it's
 ;; late against (ns), why (profile-tick-why), its phases ((phase . ns) ...),
-;; what core1 ran, the frames that reached the screen, how long the host
+;; what core1 ran, the frames that reached the screen, how long core0's
 ;; window had been showing (ns),
-;; the ticks about it (profile-tick-row), oldest first, what the host said
+;; the ticks about it (profile-tick-row), oldest first, what core0 said
 ;; about then ((name . ns after its end) ...) and lines of what else there
 ;; was to see.
 (define-record-type profile-flag
@@ -634,7 +634,7 @@
                   (filter profile-tick-kept?
                           (map (lambda (i) (+ seq i (- profile-flag-reach)))
                                (iota (+ 1 (* 2 profile-flag-reach))))))
-             (profile-host-about end 10 12)
+             (profile-core0-about end 10 12)
              (profile-tick-notes seq))])
     (vector-set! *profile-flags*
                  (modulo *profile-flag-count* profile-flags-kept) f)
@@ -650,7 +650,7 @@
                                    (quotient ago 1000000000))))))
 
 ;; A tick as a flag keeps those about it: its seq, what it took, how long
-;; it slept, worked and the screen held the host (all ns), its events, the
+;; it slept, worked and the screen held core0 (all ns), its events, the
 ;; records of the frame last recorded.
 (define (profile-tick-row seq)
   (let ([slept (profile-tick-phase-ns seq 'input-wait)]
@@ -659,7 +659,7 @@
     (list seq ns slept (- ns slept screen) screen
           (profile-tick-ns seq 'input) (profile-tick-ns seq 'records))))
 
-;; What else there is to see of tick seq, as lines: its frame, the host
+;; What else there is to see of tick seq, as lines: its frame, core0's
 ;; window, the world's windows and processes, its memory, the machine's load
 ;; and SDL's last error, those last read a few ticks on.
 (define (profile-tick-notes seq)
@@ -674,8 +674,8 @@
                            (format "~a*" (window-title w))
                            (window-title w)))
                      (windows))]
-         [loaded (host-machine-load)]
-         [wrong (host-error-text)])
+         [loaded (platform-machine-load)]
+         [wrong (core0-error-text)])
     (append
      (list
       (if frame
@@ -684,9 +684,9 @@
                   (/ (car frame) 1000) (cadr frame) (caddr frame)
                   (cadddr frame) (list-ref frame 4))
           "it drew no frame")
-      (format "the host window: ~a"
+      (format "core0's window: ~a"
               (string-join (map symbol->string
-                                (host-flag-names
+                                (core0-flag-names
                                  (profile-tick-ns seq 'flags)))
                            " "))
       (format "windows: ~a; ~a processes" (string-join names ", ")
@@ -824,13 +824,13 @@
       (format "  slept: ~a" (profile-flag-ms-text f 2))
       (format "  work: ~a" (profile-flag-ms-text f 3))
       (format "  the screen: ~a" (profile-flag-ms-text f 4))
-      (format "  host events: ~a"
+      (format "  core0's events: ~a"
               (profile-flag-row-text
                f (lambda (b) (number->string (list-ref b 5)))))
       (format "  records: ~a"
               (profile-flag-row-text
                f (lambda (b) (number->string (list-ref b 6)))))
-      (format "the host said: ~a"
+      (format "core0 said: ~a"
               (if (null? (profile-flag-events f))
                   "nothing for 10 s"
                   (string-join (map profile-event-text (profile-flag-events f))
@@ -1264,4 +1264,4 @@
 ;; Loading this file (at boot, or in a reload) sets the hooks as the flag
 ;; says, the spans open dropped.
 (profile-on! *profile-on?*)
-(set! *host-event-seen* (lambda (type) (profile-host-event! type)))
+(set! *screen-event-seen* (lambda (type) (profile-core0-event! type)))

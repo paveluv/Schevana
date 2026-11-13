@@ -110,39 +110,39 @@
         (map (lambda (e) (if (eq? (name-of e) name) entry e)) entries)
         (append entries (list entry)))))
 
-;;; ---- what the host is
+;;; ---- what the platform is
 ;;; Which OS and CPU this is, as Chez was built for them: known before
 ;;; anything loads, so here, where core0 and the world both have them. What
 ;;; is known only once SDL and the GPU start (the windowing system, the GPU's
-;;; API) core0 says in *host-platform* (src/host/platform.ss), and the world
-;;; asks src/platform.ss. These say what the host is; whether it can do a
-;;; thing is asked of the thing.
+;;; API) core0 says in *core0-platform* (src/core0/platform.ss), and the world
+;;; asks src/platform.ss. These say what the platform is; whether it can do
+;;; a thing is asked of the thing.
 
 ;; 'linux, 'macos, 'windows, or 'other.
-(define (host-os)
+(define (platform-os)
   (let ([m (symbol->string (machine-type))])
     (cond [(string-contains-ci? m "osx") 'macos]
           [(string-contains-ci? m "le") 'linux]
           [(string-contains-ci? m "nt") 'windows]
           [else 'other])))
-(define (host-linux?) (eq? (host-os) 'linux))
-(define (host-mac?) (eq? (host-os) 'macos))
-(define (host-windows?) (eq? (host-os) 'windows))
+(define (platform-linux?) (eq? (platform-os) 'linux))
+(define (platform-mac?) (eq? (platform-os) 'macos))
+(define (platform-windows?) (eq? (platform-os) 'windows))
 
 ;; 'x86-64, 'arm64, or 'other.
-(define (host-cpu)
+(define (platform-cpu)
   (let ([m (symbol->string (machine-type))])
     (cond [(string-contains-ci? m "a6") 'x86-64]
           [(string-contains-ci? m "arm64") 'arm64]
           [else 'other])))
-(define (host-x86-64?) (eq? (host-cpu) 'x86-64))
-(define (host-arm64?) (eq? (host-cpu) 'arm64))
+(define (platform-x86-64?) (eq? (platform-cpu) 'x86-64))
+(define (platform-arm64?) (eq? (platform-cpu) 'arm64))
 
 ;; The CPU time this thread has had, in ns: a number, read into memory
 ;; kept for it, so that reading it allocates nothing. The clock's number is
 ;; the system's.
 (define thread-cpu-clock
-  (if (host-mac?) 16 3))
+  (if (platform-mac?) 16 3))
 (define thread-cpu-time (foreign-alloc 16))   ; a timespec
 (define (thread-cpu-ns)
   (c-clock-gettime thread-cpu-clock thread-cpu-time)

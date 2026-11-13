@@ -413,7 +413,7 @@
               (round (+ 10 (/ (- boids-max-count 10) 2))))))
   (check "Boids: its threads slider sets the crew's size, and shows it; a \
           small flock says it uses one"
-         (let* ([size (crew-size)] [most (- (max 2 (host-cpu-count)) 1)])
+         (let* ([size (crew-size)] [most (- (max 2 (platform-cpu-count)) 1)])
            (press! (rules-win) 'threads)
            (let ([set-to (crew-size)])
              (crew-size-set! 8)

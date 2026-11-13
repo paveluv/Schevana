@@ -1,45 +1,45 @@
-;;; platform.ss — what differs by platform, of the core's: what the host is,
-;;; as predicates and facts (the OS and CPU are src/base.ss's, the rest
-;;; core0's word in *host-platform*), and what core1 reads of the system
-;;; that each system says its own way. Each is #f where the system doesn't
-;;; say. docs/PLATFORMS.md says where each has run.
+;;; platform.ss — what differs by platform, of the core's: which platform
+;;; this is, as predicates and facts (the OS and CPU are src/base.ss's,
+;;; the rest core0's word in *core0-platform*), and what core1 reads of the
+;;; system that each system says its own way. Each is #f where the system
+;;; doesn't say. docs/PLATFORMS.md says where each has run.
 
-;; One of core0's facts of the host (src/host/platform.ss), or #f: windowing,
-;; gpu-api, gpu-device, sdl, system, kernel, desktop, reports.
-(define (host-platform-fact key)
-  (let ([f (assq key *host-platform*)]) (and f (cdr f))))
+;; One of core0's facts of the platform (src/core0/platform.ss), or #f:
+;; windowing, gpu-api, gpu-device, sdl, system, kernel, desktop, reports.
+(define (platform-fact key)
+  (let ([f (assq key *core0-platform*)]) (and f (cdr f))))
 
 ;; The windowing system: 'wayland, 'x11, 'cocoa, 'win32, 'offscreen, or 'none
 ;; before SDL's start.
-(define (host-windowing) (host-platform-fact 'windowing))
-(define (host-wayland?) (eq? (host-windowing) 'wayland))
-(define (host-x11?) (eq? (host-windowing) 'x11))
-(define (host-cocoa?) (eq? (host-windowing) 'cocoa))
-(define (host-win32?) (eq? (host-windowing) 'win32))
-(define (host-offscreen?) (eq? (host-windowing) 'offscreen))
+(define (platform-windowing) (platform-fact 'windowing))
+(define (platform-wayland?) (eq? (platform-windowing) 'wayland))
+(define (platform-x11?) (eq? (platform-windowing) 'x11))
+(define (platform-cocoa?) (eq? (platform-windowing) 'cocoa))
+(define (platform-win32?) (eq? (platform-windowing) 'win32))
+(define (platform-offscreen?) (eq? (platform-windowing) 'offscreen))
 
 ;; The GPU's API, as SDL drives it: 'vulkan, 'metal, 'direct3d12.
-(define (host-gpu-api) (host-platform-fact 'gpu-api))
-(define (host-vulkan?) (eq? (host-gpu-api) 'vulkan))
-(define (host-metal?) (eq? (host-gpu-api) 'metal))
-(define (host-direct3d12?) (eq? (host-gpu-api) 'direct3d12))
+(define (platform-gpu-api) (platform-fact 'gpu-api))
+(define (platform-vulkan?) (eq? (platform-gpu-api) 'vulkan))
+(define (platform-metal?) (eq? (platform-gpu-api) 'metal))
+(define (platform-direct3d12?) (eq? (platform-gpu-api) 'direct3d12))
 
 ;; The predicates by name, each with what it says now: for whoever lists
-;; what the host is.
-(define (host-predicates)
-  `((host-linux? . ,(host-linux?))
-    (host-mac? . ,(host-mac?))
-    (host-windows? . ,(host-windows?))
-    (host-x86-64? . ,(host-x86-64?))
-    (host-arm64? . ,(host-arm64?))
-    (host-wayland? . ,(host-wayland?))
-    (host-x11? . ,(host-x11?))
-    (host-cocoa? . ,(host-cocoa?))
-    (host-win32? . ,(host-win32?))
-    (host-offscreen? . ,(host-offscreen?))
-    (host-vulkan? . ,(host-vulkan?))
-    (host-metal? . ,(host-metal?))
-    (host-direct3d12? . ,(host-direct3d12?))))
+;; which platform this is.
+(define (platform-predicates)
+  `((platform-linux? . ,(platform-linux?))
+    (platform-mac? . ,(platform-mac?))
+    (platform-windows? . ,(platform-windows?))
+    (platform-x86-64? . ,(platform-x86-64?))
+    (platform-arm64? . ,(platform-arm64?))
+    (platform-wayland? . ,(platform-wayland?))
+    (platform-x11? . ,(platform-x11?))
+    (platform-cocoa? . ,(platform-cocoa?))
+    (platform-win32? . ,(platform-win32?))
+    (platform-offscreen? . ,(platform-offscreen?))
+    (platform-vulkan? . ,(platform-vulkan?))
+    (platform-metal? . ,(platform-metal?))
+    (platform-direct3d12? . ,(platform-direct3d12?))))
 
 ;;; ------------------------------------------------------------------
 ;;; what core1 reads of the system
@@ -57,7 +57,7 @@
 ;; The process's memory in RAM, bytes: the heap, and what SDL and the
 ;; drivers hold outside it, which neither reports; #f where the system
 ;; doesn't say.
-(define (host-process-bytes)
+(define (platform-process-bytes)
   (cond
     [(file-exists? "/proc/self/status")
      (guard (c [#t #f])
@@ -82,7 +82,7 @@
 
 ;; The machine's load over the last 1, 5 and 15 minutes, as "0.52 0.48
 ;; 0.40"; #f where the system doesn't say.
-(define (host-machine-load)
+(define (platform-machine-load)
   (and platform-getloadavg
        (let ([p (foreign-alloc 24)])
          (let ([n (platform-getloadavg p 3)])
@@ -94,6 +94,9 @@
              (foreign-free p)
              load)))))
 
+;; How many threads this machine runs at once (logical cores).
+(define (platform-cpu-count) (sdl-get-num-logical-cpu-cores))
+
 ;;; ------------------------------------------------------------------
 ;;; the pacer here
 
@@ -102,4 +105,4 @@
 ;; pacer was measured with (WindowServer). Elsewhere it stays: under Mutter
 ;; a margin that fades sends a frame late now and then, finding out
 ;; whether the compositor would take frames later again.
-(define platform-pacer-margin-fade (if (host-mac?) 60 0))
+(define platform-pacer-margin-fade (if (platform-mac?) 60 0))

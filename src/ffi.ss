@@ -1,6 +1,6 @@
 ;;; ffi.ss — the only place where Schevana talks to C.
 ;;;
-;;; SDL3 gives us a host window, input events, a clipboard and the GPU.
+;;; SDL3 gives us a window, input events, a clipboard and the GPU.
 ;;; FreeType gives us glyphs, and fontconfig the files that hold them.
 ;;; Everything above this file is plain Scheme, and only the core (src/)
 ;;; uses these bindings: the folders draw, measure and save through the
@@ -34,8 +34,8 @@
    '("libfontconfig.so.1" "libfontconfig.so" "libfontconfig.1.dylib"
      "libfontconfig.dylib" "fontconfig.dll")))
 
-;; The C library's sockets come with what's loaded: only src/host.ss uses them,
-;; and it declares them below, after the macro.
+;; The C library's sockets come with what's loaded: only src/socket.ss uses
+;; them, and it declares them below, after the macro.
 
 ;; Like foreign-procedure, but `double` arguments accept any real number,
 ;; and `bool` is C's one-byte bool (SDL3's) as #t or #f: Chez's boolean is
@@ -99,7 +99,7 @@
 ;;; ------------------------------------------------------------------ SDL
 ;;; SDL's two calls any thread may make, so core1's: the clock, and how many
 ;;; threads the machine runs at once. The rest of SDL is core0's
-;;; (src/host/sdl.ss).
+;;; (src/core0/sdl.ss).
 
 (define-foreign sdl-get-ticks-ns "SDL_GetTicksNS" () unsigned-64)
 (define-foreign sdl-get-num-logical-cpu-cores "SDL_GetNumLogicalCPUCores" ()

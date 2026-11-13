@@ -1,4 +1,4 @@
-;;; host/boot.ss — core0 as the bootloader (.work/gpu-design.md 9.13): it
+;;; core0/boot.ss — core0 as the bootloader (.work/gpu-design.md 9.13): it
 ;;; makes the world's environment, "/", shares its interface there, and
 ;;; loads the world into it. Everything of core0's not in the interface is
 ;;; its own: the world may not name it (tests/sources.ss), and in "/" it
@@ -6,10 +6,10 @@
 
 ;; Core0's interface, the names it shares with the world, read-only, sorted
 ;; by what a thread other than core0's may do with them.
-(define host-interface
+(define core0-interface
   '(;; Constants, and procedures of their arguments alone: safe anywhere.
-    host-app-id gpu-atlas-side gpu-usage-sampler gpu-usage-target
-    host-flag-names host-event-name gpu-show-run? gpu-run-gone?
+    core0-app-id gpu-atlas-side gpu-usage-sampler gpu-usage-target
+    core0-flag-names core0-event-name gpu-show-run? gpu-run-gone?
     ;; The records the two share. Their procedures touch nothing else, so
     ;; what's safe is who holds the record: a thread writes only those it
     ;; holds, and a frame is the world's from gpu-frame-make, or
@@ -19,14 +19,14 @@
     shader-source shader-code shader-price shader-target shader-entry
     shader-group-x shader-uniforms shader-words
     ;; lists, and the runs that show them; their recordings are the
-    ;; recorder's alone (host-recorder-share)
+    ;; recorder's alone (core0-recorder-share)
     gpu-list-id gpu-list-labels gpu-list-labels-set! gpu-list-recorded
     gpu-list-recorded-set! gpu-list-took gpu-list-took-set!
     ;; images, buffers and the calls that name them
     make-gpu-image gpu-image-id gpu-image-w gpu-image-h gpu-image-levels
     gpu-image-gone?-set! make-gpu-buffer* gpu-buffer-id gpu-buffer-size
     gpu-buffer-gone?-set! make-gpu-call gpu-call? gpu-call-shader
-    ;; frames; what they write is the recorder's (host-recorder-share)
+    ;; frames; what they write is the recorder's (core0-recorder-share)
     gpu-frame-make gpu-frame-table-set! gpu-frame-table-n-set!
     gpu-frame-pieces-set! gpu-frame-jobs-set! gpu-frame-computes-set!
     gpu-frame-mode-set! gpu-frame-in-flight-set! gpu-frame-number
@@ -34,63 +34,63 @@
     ;; What core0 says of itself, in variables it sets whole: another thread
     ;; reads each whole (Chez lets no thread see an object half made), but
     ;; not in step with the others, as ARM keeps no order between stores.
-    *gpu-facts* *host* *host-platform*
+    *gpu-facts* *core0-mode* *core0-platform*
     ;; The same, read through procedures: the window's facts as core0's
     ;; step last read them, made again whole when they change; what became
     ;; of each frame, by its report; and the events its steps put in the
     ;; world's inbox, taken.
-    host-display host-frame-ns host-hidden? host-flags host-error-text
-    host-step-state host-frame-report
-    host-window-sizes host-window-scale host-window-fullscreen?
-    clipboard-get host-window-events host-input-ns-take!
+    core0-display core0-frame-ns core0-hidden? core0-flags core0-error-text
+    core0-step-state core0-frame-report
+    core0-window-sizes core0-window-scale core0-window-fullscreen?
+    clipboard-get core0-window-events core0-input-ns-take!
     ;; Jobs: posted to core0's mailbox, run at its next step; safe from any
     ;; thread.
-    host-window-minimum! host-window-fullscreen! host-window-icon!
-    host-set-cursor! clipboard-set! host-trace-dump! host-eval!
+    core0-window-minimum! core0-window-fullscreen! core0-window-icon!
+    core0-set-cursor! clipboard-set! core0-trace-dump! core0-eval!
     ;; a step of the calling thread's, on its own ring
-    host-trace!
+    core0-trace!
     ;; and its wake, ending core0's wait; frames published, whether the last
     ;; waits still, those given back, and what core0 read back: from any
     ;; thread
-    host-wake! gpu-publish! gpu-frame-waiting? gpu-frames-back!
+    core0-wake! gpu-publish! gpu-frame-waiting? gpu-frames-back!
     gpu-take-answers!
     ;; whether core0 has a thread of its own; core1's wait, and its wake from
     ;; any thread; and quitting, a job
-    host-forked? host-world-wait! host-world-wake! host-quit!
+    core0-forked? core0-world-wait! core0-world-wake! core0-quit!
     ;; and how far the world has loaded, for the boot screen
-    host-loaded!
+    core0-world-loaded!
     ;; Calls into SDL or core0's own state: safe only on core0's thread.
-    ;; Until core0 has a thread of its own the world steps it (host-step!),
+    ;; Until core0 has a thread of its own the world steps it (core0-step!),
     ;; and boots it (opening, sizing, showing the window).
-    host-step! host-environment host-recorder-environment
-    host-window-headless!
-    host-window-open! host-window-show! host-window-close!
-    host-window-resize!))
+    core0-step! core0-environment core0-recorder-environment
+    core0-window-headless!
+    core0-window-open! core0-window-show! core0-window-close!
+    core0-window-resize!))
 
 ;; The world's environment, "/", once core0 has made it.
-(defvar *host-world* #f)
+(defvar *core0-world* #f)
 
-;; Core0's own environment, where its files loaded: "/host" holds it
+;; Core0's own environment, where its files loaded: "/core0" holds it
 ;; (services/env.ss), for the person to evaluate in, and core0's loop calls
 ;; its procedures by name, so a redefinition there takes at the next call.
-(define host-environment
+(define core0-environment
   (let ([e (interaction-environment)]) (lambda () e)))
 
 ;; Forms evaluated in core0's environment by core0 itself, between frames,
-;; as a vat takes them: a REPL in "/host" sends them, never touching core0's
+;; as a vat takes them: a REPL in "/core0" sends them, never touching core0's
 ;; state from core1. then gets, on core1, (ok text ...), what they
 ;; printed and their values but (void) written width wide, or (error text).
-(define (host-eval! forms width then)
-  (host-post! (list 'host-eval-now! forms width then)))
+(define (core0-eval! forms width then)
+  (core0-post! (list 'core0-eval-now! forms width then)))
 
-(define (host-eval-now! forms width then)
-  (host-put! *gpu-answers*
+(define (core0-eval-now! forms width then)
+  (core0-put! *gpu-answers*
              (cons then
                    (guard (c [#t (list 'error (condition->string c))])
-                     (cons 'ok (host-eval-texts forms width)))))
-  (host-world-wake!))
+                     (cons 'ok (core0-eval-texts forms width)))))
+  (core0-world-wake!))
 
-(define (host-eval-texts forms width)
+(define (core0-eval-texts forms width)
   (let* ([chop (lambda (s)   ; its last newline off
                  (if (and (> (string-length s) 0)
                           (char=? #\newline
@@ -100,7 +100,7 @@
          [text (lambda (v)
                  (chop (with-output-to-string (lambda () (pretty-print v)))))])
     (parameterize ([pretty-line-length width]
-                   [interaction-environment (host-environment)])
+                   [interaction-environment (core0-environment)])
       (let loop ([forms forms] [texts '()])
         (if (null? forms)
             (reverse texts)
@@ -110,7 +110,7 @@
                            (set! vals (call-with-values
                                         (lambda ()
                                           (eval (car forms)
-                                                (host-environment)))
+                                                (core0-environment)))
                                         list))))])
               (loop (cdr forms)
                     (append (reverse
@@ -125,7 +125,7 @@
 ;; have come back, and the calls that hand core0 writes with no frame. The
 ;; world never has them, so it can't name a byte core0 reads, or hand
 ;; core0 a recording the recorder didn't freeze.
-(define host-recorder-share
+(define core0-recorder-share
   '(make-gpu-recording gpu-recording-recs gpu-recording-recs-set!
     gpu-recording-recs-n gpu-recording-recs-n-set! gpu-recording-extras
     gpu-recording-extras-set! gpu-recording-extras-n
@@ -137,28 +137,28 @@
     gpu-frame-root gpu-frame-root-set! gpu-frame-number
     gpu-frame-number-set! gpu-frame-earlier-set! gpu-frame-writes-set!
     *gpu-frame-back* gpu-drawing->bytes gpu-compute-now!
-    gpu-submit-computes! gpu-buffer-download! host-post-submit!))
+    gpu-submit-computes! gpu-buffer-download! core0-post-submit!))
 
 ;; "/recorder", sealed (.work/gpu-design.md 9.14): the bytes of frames and
 ;; their writers, below the world, which names only its interface.
-(defvar *host-recorder* #f)
-(define (host-recorder-environment) *host-recorder*)
+(defvar *core0-recorder* #f)
+(define (core0-recorder-environment) *core0-recorder*)
 
 ;; An identifier at environment's top level: a forwarder made from it names
 ;; that environment's binding. A macro there, under a name no code can type,
 ;; hands back the identifier it is used with.
-(define (host-anchor environment)
-  (let ([grab (gensym "host-anchor")] [got #f])
+(define (core0-anchor environment)
+  (let ([grab (gensym "core0-anchor")] [got #f])
     (define-top-level-syntax grab
       (lambda (x)
         (syntax-case x () [(_ id) (begin (set! got #'id) #''anchor)]))
       environment)
-    (eval (list grab 'host-anchor) environment)
+    (eval (list grab 'core0-anchor) environment)
     got))
 
 ;; A sealed environment: all of Chez and, of each (names . anchor) shared,
 ;; each name a read-only forwarder to the binding anchor's environment has.
-(define (host-sealed shares)
+(define (core0-sealed shares)
   (let ([e (copy-environment (scheme-environment) #t)])
     (for-each (lambda (share)
                 (for-each (lambda (name)
@@ -169,7 +169,7 @@
               shares)
     e))
 
-(define (host-load! e root sources)
+(define (core0-load! e root sources)
   (parameterize ([interaction-environment e])
     (for-each (lambda (f) (load (string-append root "/" f))) sources)))
 
@@ -177,14 +177,14 @@
 ;; sources there; then "/", shared core0's interface and the recorder's,
 ;; and loads the world's sources there, from root, then script (world.ss),
 ;; if any, all on this thread.
-(define (host-boot! root recorder-sources sources options script)
-  (host-load-world! (host-make-world! root recorder-sources sources options)
+(define (core0-boot! root recorder-sources sources options script)
+  (core0-load-world! (core0-make-world! root recorder-sources sources options)
                     root sources script))
 
 ;; Loads the world's sources into "/", then script, if any, which goes on
 ;; there.
-(define (host-load-world! world root sources script)
-  (host-load! world root sources)
+(define (core0-load-world! world root sources script)
+  (core0-load! world root sources)
   (when script
     (interaction-environment world)
     (load (string-append root "/" script))))
@@ -192,21 +192,21 @@
 ;; The environments, "/recorder" loaded: => "/", empty but for what main.ss
 ;; hands the world: where the tree is, its core's sources, and what the
 ;; command line asked (main-options).
-(define (host-make-world! root recorder-sources sources options)
-  (let* ([core0 (cons host-interface #'host-boot!)]
-         [recorder (host-sealed
-                    (list (cons (append host-interface host-recorder-share)
-                                #'host-boot!)))])
-    (set! *host-recorder* recorder)
-    (host-load! recorder root recorder-sources)
-    (let ([world (host-sealed
+(define (core0-make-world! root recorder-sources sources options)
+  (let* ([core0 (cons core0-interface #'core0-boot!)]
+         [recorder (core0-sealed
+                    (list (cons (append core0-interface core0-recorder-share)
+                                #'core0-boot!)))])
+    (set! *core0-recorder* recorder)
+    (core0-load! recorder root recorder-sources)
+    (let ([world (core0-sealed
                   (list core0
                         (cons (top-level-value 'recorder-interface recorder)
-                              (host-anchor recorder))))])
+                              (core0-anchor recorder))))])
       (define-top-level-value '*schevana-root* root world)
       (define-top-level-value '*schevana-sources* sources world)
       (define-top-level-value '*schevana-options* options world)
-      (set! *host-world* world)
+      (set! *core0-world* world)
       world)))
 
 ;; Core0 on this thread, the world on its own: with a window (the options'
@@ -214,36 +214,36 @@
 ;; scale, or full screen, and clears it; with none (headless, for the
 ;; tests), its GPU draws to a target. Then it makes the environments;
 ;; forks core1, which loads the world's sources and then script into "/";
-;; and goes on as the host, on this thread, till core1 quits. Core1 asks
+;; and goes on with its own loop, on this thread, till core1 quits. Core1 asks
 ;; core0 to quit when script returns, or raises.
-(define (host-fork! root recorder-sources sources options script)
+(define (core0-fork! root recorder-sources sources options script)
   (let ([w (cadr (assq 'size options))]
         [h (cddr (assq 'size options))]
         [full? (cdr (assq 'full-screen? options))])
     (if (eq? (cdr (assq 'mode options)) 'headless)
-        (host-window-headless!)
+        (core0-window-headless!)
         (begin
-          (host-window-open! w h full?)
+          (core0-window-open! w h full?)
           (unless full?
-            (let-values ([(uw uh pw ph) (host-window-sizes)])
-              (let ([s (/ (if (> (host-window-scale) 0) (host-window-scale) 1)
+            (let-values ([(uw uh pw ph) (core0-window-sizes)])
+              (let ([s (/ (if (> (core0-window-scale) 0) (core0-window-scale) 1)
                           (/ pw (max uw 1)))])
-                (host-resize-now! (exact (round (* w s)))
+                (core0-resize-now! (exact (round (* w s)))
                                   (exact (round (* h s)))))))
-          (host-window-show!)
+          (core0-window-show!)
           (set! *gpu-booting* #t)
           (gpu-boot-screen!))))
-  (let ([world (host-make-world! root recorder-sources sources options)])
-    (set! *host-forked* #t)
+  (let ([world (core0-make-world! root recorder-sources sources options)])
+    (set! *core0-forked* #t)
     (fork-thread
      (lambda ()
        (platform-thread-interactive!)
        (guard (c [#t (display-condition c (console-error-port))
                      (newline (console-error-port))])
-         (host-load-world! world root sources script))
-       (host-quit!))))
-  (host-loop!))
+         (core0-load-world! world root sources script))
+       (core0-quit!))))
+  (core0-loop!))
 
 ;; Moves a test that loaded the tree (tests/core0.ss) into "/": its later
 ;; forms evaluate there, as the world's.
-(define (host-enter-world!) (interaction-environment *host-world*))
+(define (core0-enter-world!) (interaction-environment *core0-world*))

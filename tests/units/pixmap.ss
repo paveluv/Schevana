@@ -90,7 +90,7 @@
                         (loop (+ y 1)))))])
     (picture-free! before)
     (picture-free! after)
-    (canvas-create! 1280 800 *host-scale*)
+    (canvas-create! 1280 800 *screen-chosen-scale*)
     ok))
 
 (define (quadrants)

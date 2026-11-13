@@ -117,7 +117,7 @@
   (let loop ()
     (let ([mail (unbox *core1-mail*)])
       (unless (box-cas! *core1-mail* mail (cons thunk mail)) (loop))))
-  (host-world-wake!))
+  (core0-world-wake!))
 
 (define (run-core1-mail!)
   (let loop ()
@@ -128,7 +128,7 @@
              (for-each (lambda (t) (safely 'jobs t)) (reverse mail))]
             [else (loop)]))))
 
-;; Feed a synthetic event into the world, exactly as if the host sent it:
+;; Feed a synthetic event into the world, exactly as if core0 sent it:
 ;; (inject! '(mouse-down 100 100 left 1))
 (define (inject! . events)
   (set! *injected* (append *injected* events)))
@@ -189,7 +189,7 @@
   (with-profile-span 'step #f
     (let* ([hold? (reload-holding?)]
            [evs (append (if hold? '() (reverse *held-events*))
-                        (pacer-host-events (if (pair? *injected*) 0 wait-ms))
+                        (pacer-screen-events (if (pair? *injected*) 0 wait-ms))
                         *injected*)])
       (unless hold? (set! *held-events* '()))
       (set! *injected* '())
@@ -205,7 +205,7 @@
     ;; frames core0 gave back, on its own thread since; with one thread,
     ;; they come back as they're published. One sent, the collections its
     ;; turn held off.
-    (when (host-forked?) (safely 'render render-frames-back!))
+    (when (core0-forked?) (safely 'render render-frames-back!))
     (collector-after-sent!)
     (let ([ticked?
            (and (not (reload-holding?))
@@ -217,7 +217,7 @@
                              (and (pacer-wanted?) (>= now (pacer-start))
                                   (not (gpu-frame-waiting?))))
                          (begin
-                           (host-trace! 22 0)
+                           (core0-trace! 22 0)
                            (collector-hold!)
                            (pacer-tick! now)
                            (frame-ticked! now)
@@ -251,9 +251,9 @@
 
 ;;; ------------------------------------------------------------------ pacer
 
-;; The host's events, the wait for them no work.
-(define (pacer-host-events wait-ms)
-  (let* ([t (now-ns)] [events (host-events wait-ms)])
+;; Core0's events, the wait for them no work.
+(define (pacer-screen-events wait-ms)
+  (let* ([t (now-ns)] [events (screen-events wait-ms)])
     (pacer-waited! t)
     events))
 
@@ -317,7 +317,7 @@
 ;; fill the screen's queue faster than a period apart, and carry t further
 ;; ahead of its tick, toward where it follows.
 (define (pacer-next-frame-ns now)
-  (let* ([p (if (eq? *pacer-rate* 'screen) (host-frame-ns) (pacer-period))]
+  (let* ([p (if (eq? *pacer-rate* 'screen) (core0-frame-ns) (pacer-period))]
          [next (+ *pacer-frame-ns* p)]
          [behind (- (+ now (* pacer-lead-frames p)) next)])
     (cond [(> (- now *pacer-frame-ns*) (* 3 p)) (+ now p)]
@@ -332,7 +332,7 @@
 ;; rate's.
 (define (pacer-period)
   (if (eq? *pacer-rate* 'screen)
-      (let ([p (host-frame-ns)]) (- p (quotient p 500)))
+      (let ([p (core0-frame-ns)]) (- p (quotient p 500)))
       (quotient 1000000000 *pacer-rate*)))
 
 ;; When the next tick may begin: a little before its time (2 ms), room
@@ -373,7 +373,7 @@
 ;; aimed at, which its frame holds, and not before the floor: a frame
 ;; that came late moves the ones after it.
 (define (pacer-aim)
-  (let* ([r (host-frame-ns)] [half (quotient r 2)]
+  (let* ([r (core0-frame-ns)] [half (quotient r 2)]
          [after (- (max (+ *pacer-began* *pacer-lead*)
                         (+ *pacer-aimed* half)
                         (- *pacer-floor* half))
@@ -392,8 +392,8 @@
 (define (pacer-latch! n)
   (when (>= *pacer-judged* n)            ; frames numbered anew
     (set! *pacer-judged* 0))
-  (let* ([r (host-frame-ns)]
-         [began (host-frame-report n 8)] [ended (host-frame-report n 9)]
+  (let* ([r (core0-frame-ns)]
+         [began (core0-frame-report n 8)] [ended (core0-frame-report n 9)]
          [held? (and began ended (> ended 0) (> (- ended began) 1000000))]
          [m (pacer-reported-before n)]
          [refresh (and m (pacer-refresh-seen m))])
@@ -416,7 +416,7 @@
 (define (pacer-reported-before n)
   (let loop ([m (- n 1)])
     (and (> m (- n 9)) (> m 0)
-         (if (memv (host-frame-report m 1) '(1 2)) m (loop (- m 1))))))
+         (if (memv (core0-frame-report m 1) '(1 2)) m (loop (- m 1))))))
 
 ;; Each frame up to m whose report is in, and not judged yet, judged once
 ;; (pacer-behind!), from at most eight back.
@@ -464,7 +464,7 @@
   (set! *pacer-made* #f)
   (set! *pacer-late-seen* 0)
   (set! *pacer-late-chain* 0)
-  (set! *pacer-lead* (quotient (host-frame-ns) 4)))
+  (set! *pacer-lead* (quotient (core0-frame-ns) 4)))
 
 ;; Frame n, its report in, aimed at a latch: late if it showed a refresh
 ;; or more after the one aimed for, the first after the latch and the
@@ -486,7 +486,7 @@
 ;; it was late
 (define (pacer-behind! n r)
   (let ([aimed (pacer-aimed-of n)] [shown (pacer-refresh-seen n)]
-        [sent (host-frame-report n 2)] [margin (pacer-margin r)])
+        [sent (core0-frame-report n 2)] [margin (pacer-margin r)])
     (and aimed shown sent (> aimed 0)
          (let ([past (- (div (- shown aimed) r) *pacer-depth*)]
                [ahead (- aimed sent)]
@@ -570,7 +570,7 @@
 ;; The refresh frame n showed at (now-ns), the screen's report on it in;
 ;; else #f.
 (define (pacer-refresh-seen n)
-  (and (eqv? (host-frame-report n 1) 1) (host-frame-report n 3)))
+  (and (eqv? (core0-frame-report n 1) 1) (core0-frame-report n 3)))
 
 ;; Frame n, sent: the lead follows what it took from when its tick was
 ;; meant to begin till core0 sent it (core1 waking late and core0 taking it
@@ -582,9 +582,9 @@
 ;; ours queued behind it), is the screen's time, not the frame's: a lead it
 ;; grew would send the frames after it early.
 (define (pacer-need! n r)
-  (let ([tick (pacer-frame-word n 14)] [sent (host-frame-report n 2)]
+  (let ([tick (pacer-frame-word n 14)] [sent (core0-frame-report n 2)]
         [aimed (pacer-aimed-of n)]
-        [began (host-frame-report n 8)] [ended (host-frame-report n 9)])
+        [began (core0-frame-report n 8)] [ended (core0-frame-report n 9)])
     (when (and tick sent (> tick 0) (> sent 0))
       (let ([held (if (and aimed began ended (> aimed 0)
                            (> ended (+ aimed (quotient r 2))))
@@ -635,7 +635,7 @@
 (define (pacer-frame-back! shown?)
   (set! *pacer-shown?*
     (and shown?
-         (host-forked?)
+         (core0-forked?)
          (eq? *pacer-rate* 'screen)
          (equal? (assq 'present-mode *gpu-facts*) '(present-mode . vsync)))))
 
@@ -649,7 +649,7 @@
                                       *frame-ms*)))))
       10))
 
-;; How long a paced step may wait for host events (input ends the wait at
+;; How long a paced step may wait for core0's events (input ends the wait at
 ;; once): until the next tick may begin, a period with none wanted (so mail
 ;; is seen) or while core0 still has the last frame to take (it wakes core1
 ;; as it takes it), or the first timer's time; not at all while processes
@@ -674,15 +674,15 @@
     (when *running*
       (schevana-step! (pacer-wait-ms) #t)
       (loop)))
-  (host-shutdown!))
+  (screen-shutdown!))
 
 (define (quit!) (set! *running* #f))
 
 ;; The run is over, and the process ends: at once on one thread; with core0
 ;; on its own, once it has closed the window, core1 waiting for it.
 (define (schevana-end!)
-  (if (host-forked?)
-      (let wait () (host-world-wait! 1000) (wait))
+  (if (core0-forked?)
+      (let wait () (core0-world-wait! 1000) (wait))
       (exit 0)))
 
 (define (uptime-ms) (- (now-ms) *boot-ms*))
@@ -717,7 +717,7 @@
 
 ;; (schevana-boot! 'sdl 1280 800 #t) starts full screen.
 (define (schevana-boot! mode w h . fullscreen?)
-  (apply host-init! mode w h fullscreen?)
+  (apply screen-init! mode w h fullscreen?)
   (invalidate!)
   (collector-settle!))
 
@@ -755,9 +755,9 @@
       (let ([pass *collector-pass*])
         (set! *collector-pass* #f)
         ;; every thread waits for it: traced, by the generation collected
-        (host-trace! 28 (if pass (car pass) 0))
+        (core0-trace! 28 (if pass (car pass) 0))
         (if pass (collect (car pass) (cdr pass)) (collect 0 1))
-        (host-trace! 29 0))))
+        (core0-trace! 29 0))))
 
 ;; A request now is held off: a frame turn's, and no pass of core1's asked.
 (define (collector-declining?)
@@ -777,9 +777,9 @@
 (define (collector-after-sent!)
   (when (and *collector-after* (>= *frame-back* *collector-after*))
     (set! *collector-after* #f)
-    (host-trace! 25 0)
+    (core0-trace! 25 0)
     (collector-after-frame!)
-    (host-trace! 26 0)))
+    (core0-trace! 26 0)))
 
 ;; After a frame turn: the collection it held off, if one was asked for,
 ;; then the older generations' passes.
@@ -923,7 +923,7 @@
                     (when p (set! *reloading* (cons p f)))
                     (load-source f)
                     ;; the boot screen's bar
-                    (host-loaded! (+ i 1) (length files)))
+                    (core0-world-loaded! (+ i 1) (length files)))
                   files (iota (length files)))
         (when outer? (set! *reloading* #f))))))
 

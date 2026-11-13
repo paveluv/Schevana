@@ -313,7 +313,7 @@
       (let* ([pad (ui-pad)] [gap (ui-gap)] [ch (ui-control-height)]
              [line (life-line-height)] [sh (ui-slider-height)]
              [lx (+ x pad)] [lw (- w pad pad)]
-             [bw (/ (- lw gap) 2)] [cpus (max 2 (host-cpu-count))]
+             [bw (/ (- lw gap) 2)] [cpus (max 2 (platform-cpu-count))]
              [threads (+ 1 (crew-size))]
              ;; on one thread alone while a generation is one call
              [used (if (<= rows (life-chunk-rows cols)) 1 threads)]
