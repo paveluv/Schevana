@@ -12,7 +12,7 @@
        (let* ([real now-ns] [fake (* 1000 1000000000)]
               [clock (lambda (ns) (set! fake (+ fake ns)))]
               [win (open-window "Grower" 'size '(120 . 80) 'pos '(600 . 400))])
-         ;; a step by hand, a tick of its own, as the main loop's (a
+         ;; a step by hand, a tick of its own, as core1's loop's (a
          ;; window's handlers run in an engine, where spans are untimed):
          ;; 10 ms waiting for input (the step's own), 1 of ticks, 3 of the
          ;; window's drawing, and 2 waiting for the screen in render
@@ -50,7 +50,7 @@
                 (for-all (lambda (p) (assq p monitor-phases))
                          (vector->list profile-phase-names))
                 ;; 16 ms, its wait for input too, but the screen's 2 ms,
-                ;; which aren't main's: late past periods of 28/3 ms
+                ;; which aren't core1's: late past periods of 28/3 ms
                 (member seq (profile-slow-ticks 9333333))
                 (not (member seq (profile-slow-ticks 9333334)))
                 (not (member seq (profile-slow-ticks 16666666)))
@@ -63,7 +63,7 @@
                 (= 9 (length (ui-tooltip-lines
                               "1\n2\n3\n4\n5\n6\n7\n8\n9")))))))
 
-(check "a tick hours long, the screen holding main all that time, is a bar \
+(check "a tick hours long, the screen holding core1 all that time, is a bar \
         like any other: Monitor's Ticks go on drawing, on rows the paint can \
         add up in 32 bits"
        (let* ([real now-ns] [held 0]
@@ -122,7 +122,7 @@
              (and (not none) rows (not crashed) (pair? flags)
                   (equal? (profile-why-text
                            (profile-flag-why (car (reverse flags))))
-                          "main woke 8671.9 s past its time"))))))
+                          "core1 woke 8671.9 s past its time"))))))
 
 (check "a bar chart flags at its top the bars 'flagged says, in chart-flag"
        (let* ([ui (make-ui)] [seen '()]

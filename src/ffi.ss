@@ -39,8 +39,8 @@
 
 ;; Like foreign-procedure, but `double` arguments accept any real number,
 ;; and `bool` is C's one-byte bool (SDL3's) as #t or #f: Chez's boolean is
-;; an int, whose upper bytes a C bool leaves undefined. Only the main
-;; thread calls them: workers run worklets, which cannot name them.
+;; an int, whose upper bytes a C bool leaves undefined. Only core0 and
+;; core1 call them: workers run worklets, which cannot name them.
 ;; collect-safe: a call that blocks, given foreign memory only, during
 ;; which a collection another thread needs does not wait for it.
 (define-syntax define-foreign-as
@@ -97,7 +97,7 @@
           (utf8->string bv)))))
 
 ;;; ------------------------------------------------------------------ SDL
-;;; SDL's two calls any thread may make, so main's: the clock, and how many
+;;; SDL's two calls any thread may make, so core1's: the clock, and how many
 ;;; threads the machine runs at once. The rest of SDL is core0's
 ;;; (src/host/sdl.ss).
 

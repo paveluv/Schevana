@@ -1,4 +1,4 @@
-;;; gpu.ss — main's side of the GPU layer: what the world asks of the GPU,
+;;; gpu.ss — core1's side of the GPU layer: what the world asks of the GPU,
 ;;; kept until it hands the host a frame. Images and buffers as handles,
 ;;; and the jobs that make them; the calls a paint or a compute run makes,
 ;;; the compute runs to go with the next frame, and the frame filled for
@@ -7,9 +7,9 @@
 ;;; and no SDL is named here (tests/sources.ss).
 
 ;;; ------------------------------------------------------------------ handles
-;;; An image or a buffer main holds is a handle, with an integer id; the SDL
-;;; object behind it is core0's. Main makes the handle at once and asks for
-;;; the object by a job, which core0 runs before anything that needs it.
+;;; An image or a buffer core1 holds is a handle, with an integer id; the
+;;; SDL object behind it is core0's. Core1 makes the handle at once and asks
+;;; for the object by a job, which core0 runs before anything that needs it.
 
 (defvar *gpu-next-id* 1)
 
@@ -23,7 +23,7 @@
 
 (define (gpu-ask! job) (set! *gpu-jobs* (cons job *gpu-jobs*)))
 
-;; The jobs asked since, in order, taken from main.
+;; The jobs asked since, in order, taken from core1.
 (define (gpu-take-jobs!)
   (let ([jobs (reverse *gpu-jobs*)])
     (set! *gpu-jobs* '())
@@ -198,7 +198,7 @@
   (set! *gpu-computes*
     (cons (gpu-compute-run shader w h args) *gpu-computes*)))
 
-;; What main asked of the GPU since it last handed it on, taken from it: the
+;; What core1 asked of the GPU since it last handed it on, taken from it: the
 ;; jobs and the compute runs, in order.
 (define (gpu-take-asks!)
   (let ([runs (reverse *gpu-computes*)])
@@ -228,7 +228,7 @@
   (set! *gpu-frames-free* (cons f *gpu-frames-free*))
   (set! *gpu-frame-last* f))
 
-;; Main's side: the frame filled, what it asked of the GPU since handed on
+;; Core1's side: the frame filled, what it asked of the GPU since handed on
 ;; with it; its writes "/recorder"'s to hand (rec-lend!). => the frame
 (define (gpu-publish table table-n pieces mode in-flight)
   (let ([f (if (pair? *gpu-frames-free*)

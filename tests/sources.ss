@@ -561,8 +561,8 @@
 ;;; on ARM with nothing in its way, each tries again until it lands.
 
 (define thread-fences
-  '((post-main! memory-order-release)
-    (run-main-mail! memory-order-acquire)
+  '((post-core1! memory-order-release)
+    (run-core1-mail! memory-order-acquire)
     (vat-flag-up!)
     (vat-put! memory-order-release)
     (vat-take! memory-order-acquire)

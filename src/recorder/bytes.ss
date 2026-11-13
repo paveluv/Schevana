@@ -380,11 +380,11 @@
 
 ;; Calls that hand core0 the writes with no frame, run now while one thread
 ;; plays both: a compute run; and buffer id's bytes, read back (#f if id
-;; names none). On a world of its own thread they'd hold main till core0
+;; names none). On a world of its own thread they'd hold core1 till core0
 ;; answered: they raise.
 (define (rec-one-thread who)
   (when (host-forked?)
-    (errorf who "readbacks never hold main: on a world of its own thread, \
+    (errorf who "readbacks never hold core1: on a world of its own thread, \
                  use what hands the bytes to a then")))
 
 (define (rec-compute-now! run jobs)

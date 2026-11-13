@@ -466,8 +466,8 @@
                       '(#xffff0000 #xff0000ff))))
   (gpu-image-release! target))
 
-;; Main publishes a frame, the host presents it: what main asked of the GPU
-;; goes with the frame, the preview's list is made on main as it's
+;; Core1 publishes a frame, the host presents it: what core1 asked of the
+;; GPU goes with the frame, the preview's list is made on core1 as it's
 ;; published, and the one frame record comes back to be filled again.
 (let ([b (make-gpu-buffer 1)] [target (gpu-image-make-target 4 4)]
       [made #f])
@@ -494,8 +494,8 @@
         (let ([refused (raises? (lambda () (gpu-publish! (gpu-frame-make))))])
           (host-step!)
           (render-frames-back!)
-          (check "main publishes a frame with what it asked of the GPU, the \
-                  preview's list made on main; it waits till core0's step \
+          (check "core1 publishes a frame with what it asked of the GPU, the \
+                  preview's list made on core1; it waits till core0's step \
                   presents it and gives it back, to be filled again; one \
                   more published while it waits is refused"
                  (and handed waiting (not (gpu-frame-waiting?))
@@ -586,7 +586,7 @@
              (and same changed (equal? target (cons 'texture (* 4 64 48))))))))
 
 ;; A list goes up when it has a newer version than went up; core0 keeps its
-;; GPU buffers by its id, and lets them go by main's release job.
+;; GPU buffers by its id, and lets them go by core1's release job.
 (let ([lst (gpu-list-new)] [plain record-world!]
       [state (lambda (l) (hashtable-ref *gpu-lists* (gpu-list-id l) #f))])
   (record-list! lst (lambda () (fill-box 0 0 4 4 #xff0000)))
@@ -613,7 +613,7 @@
                     (not (state lst))))))))
 
 ;; A drawing read back with a then: nothing waits for it, and its pixels come
-;; on main with a frame, those a drawing read back at once has.
+;; on core1 with a frame, those a drawing read back at once has.
 (let* ([draw (lambda ()
                (fill-box 0 0 2 2 #x112233)
                (fill-box 2 0 2 2 #x445566))]
@@ -622,7 +622,7 @@
   (drawing->bytes-then 4 2 1 draw #t (lambda (bytes) (set! got bytes)))
   (let ([before got])
     (steps 1)
-    (check "a drawing read back with a then comes on main with the next \
+    (check "a drawing read back with a then comes on core1 with the next \
             frame, the pixels a drawing read back at once has; nothing \
             waits for it"
            (and (not before) (bytevector? got) (equal? got now)))))

@@ -109,7 +109,7 @@
                   (equal? types '(#x300 #x303))
                   (null? again) (null? more))))))
 
-;; A resize: main, woken for it, reads the window's size from the facts,
+;; A resize: core1, woken for it, reads the window's size from the facts,
 ;; so core0 reads them again before it hands the events over.
 (let ([order '()] [put host-put!])
   (fluid-let ([*host-inbox* (box '())]

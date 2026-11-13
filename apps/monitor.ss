@@ -784,7 +784,7 @@
                        a phase")
                 (rate "ms/s" ,num right
                       ,(format "Milliseconds it spent a second, on average \
-                                over the last ~a s: its share of the main \
+                                over the last ~a s: its share of core1's \
                                 loop's time" monitor-consumer-seconds))
                 (avg "avg" ,num right
                      "Milliseconds it took in a tick, on average over \

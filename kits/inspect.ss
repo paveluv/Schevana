@@ -112,7 +112,7 @@
 ;; When frame i's point came (now-ns), or #f: its oldest input by SDL's
 ;; stamp (sdl), by the compositor's own time (wl), and as core0's pump
 ;; first saw it (pumped); its tick as the pacer planned it (planned), its
-;; tick, its draw and its publish on main; core0
+;; tick, its draw and its publish on core1; core0
 ;; taking it (taken), asking for a swapchain image for it and having one
 ;; (acquiring, acquired), and sending it (sent); its GPU work seen done
 ;; (gpu); on the screen (shown).
@@ -1158,7 +1158,7 @@
 ;; says it.
 (define (inspect-gpu-objects) (cdr (assq 'objects *gpu-facts*)))
 
-;; Main's handles: the GPU bytes made so far, which the collector counts,
+;; Core1's handles: the GPU bytes made so far, which the collector counts,
 ;; and how many the guardian let go of once nothing held them.
 (define (inspect-gpu-held)
   `((bytes-made . ,*gpu-bytes-made*)

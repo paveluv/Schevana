@@ -1,8 +1,8 @@
 ;;; tests/units/threads.ss — threads as the core sees them: thread parameters,
-;;; the main thread's C, its mail.
+;;; core1's C, its mail.
 
-;;; Threads, as the core sees them: thread parameters, the main thread's
-;;; C, and the main thread's mail.
+;;; Threads, as the core sees them: thread parameters, core1's C, and
+;;; core1's mail.
 
 ;; thunk run on a thread of its own; => its value, once the thread is done
 (define (on-thread thunk)
@@ -12,7 +12,7 @@
 
 (check "another thread's in-engine?, current-proc, current-app and \
         new-window-position are its own: binding them there leaves the \
-        main thread's as they were"
+        core1's as they were"
        (let ([inside (box #f)] [go (box #f)])
          (let ([t (fork-thread
                    (lambda ()
@@ -28,12 +28,12 @@
              (unless (or (unbox inside) (> n 2000))
                (sleep (make-time 'time-duration 1000000 0))
                (wait (+ n 1))))
-           (let ([main (list (in-engine?) (current-proc) (current-app)
-                             (new-window-position))])
+           (let ([core1 (list (in-engine?) (current-proc) (current-app)
+                              (new-window-position))])
              (set-box! go #t)
              (thread-join t)
-             (printf "  main's while the other's were bound: ~s\n" main)
-             (and (unbox inside) (equal? main '(#f #f #f #f)))))))
+             (printf "  core1's while the other's were bound: ~s\n" core1)
+             (and (unbox inside) (equal? core1 '(#f #f #f #f)))))))
 
 (check "a worklet reaches only its environment: one that names a world \
         procedure, SDL, eval, a primitive, a condition's reader or a world \
@@ -76,8 +76,8 @@
          (set! now-ns world)
          (and (eqv? seen 42) (fixnum? (units-clock)))))
 
-(check "post-main!: thunks from four threads run at the next step, on the \
-        main thread, once each and in each thread's order; one that \
+(check "post-core1!: thunks from four threads run at the next step, on \
+        core1, once each and in each thread's order; one that \
         raises is reported, and the rest still run"
        (let ([seen '()] [reported 0])
          (for-each thread-join
@@ -85,13 +85,13 @@
                           (fork-thread
                            (lambda ()
                              (do ([i 0 (+ i 1)]) ((= i 100))
-                               (post-main!
+                               (post-core1!
                                 (lambda ()
-                                  (set! seen (cons (list k i (main-thread?))
+                                  (set! seen (cons (list k i (core1-thread?))
                                                    seen))))))))
                         '(0 1 2 3)))
-         (post-main! (lambda () (error 'mail "posted to fail")))
-         (post-main! (lambda () (set! seen (cons '(main 0 #t) seen))))
+         (post-core1! (lambda () (error 'mail "posted to fail")))
+         (post-core1! (lambda () (set! seen (cons '(core1 0 #t) seen))))
          (let ([before (length seen)])
            (fluid-let ([report-error! (lambda (who c)
                                         (set! reported (+ reported 1)))])
@@ -103,5 +103,5 @@
                   (for-all caddr seen)
                   (for-all (lambda (k) (equal? (of k) (iota 100)))
                            '(0 1 2 3))
-                  (equal? (car (last-pair seen)) '(main 0 #t))
+                  (equal? (car (last-pair seen)) '(core1 0 #t))
                   (begin (steps 1) (= (length seen) 401)))))))

@@ -111,7 +111,7 @@
   path)
 
 ;; The same, written once core0 has drawn it, then called with path on
-;; main: nothing waits for it.
+;; core1: nothing waits for it.
 (define (png-write-screen-then path then)
   (let ([w (canvas-pixel-width)] [h (canvas-pixel-height)])
     (screen-bytes-then (lambda (bytes)

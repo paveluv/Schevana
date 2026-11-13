@@ -1028,9 +1028,9 @@
                            (override! 'present-mode)
                            (override! 'present-mode v))))))])
           (+ 22 (ui-draw-label x (+ y 10) w 0 '(hint wrap)
-                               "VSync: main waits its turn for the screen, \
+                               "VSync: core1 waits its turn for the screen, \
                                 and a frame that misses it shows as a flag \
-                                in Monitor. Mailbox: main seldom waits, and \
+                                in Monitor. Mailbox: core1 seldom waits, and \
                                 a newer frame replaces one not shown yet. \
                                 That leaves no trace here, so fewer flags \
                                 needn't mean fewer missed frames."))))))

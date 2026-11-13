@@ -16,9 +16,10 @@ world compiles from source in about 0.8 s at startup, and again at each
 **WARNING:** Schevana is a toy. It's meant to be a happy place for Lisp
 enthusiasts, and it doesn't pretend to be a serious desktop replacement.
 Simplicity is priority #1. The desktop is just a function of the
-environment, drawn by the CPU on the main thread. The apps that tune the
-world see all of it; the others run in sandboxes, with the permissions they
-ask for, and loops and background jobs can go to worker threads. Future
+environment, drawn by the CPU on the world's own thread, core1. The apps
+that tune the world see all of it; the others run in sandboxes, with the
+permissions they ask for, and loops and background jobs can go to worker
+threads. Future
 versions of Schevana might draw on those threads too, and use the GPU for
 window composition.
 
@@ -271,8 +272,8 @@ label, at the rows' size).
 The profiler runs whether Monitor is open or not, from boot, until
 Monitor's Profiling or `(profile-on! #f)` turns it off: a step of 30 Life
 windows costs about 1% more with it (`tests/bench.ss`), and it
-allocates nothing. Its unit is a tick of the pacer's: the steps of the
-main loop (`schevana-step!`: the wait for host events, then events,
+allocates nothing. Its unit is a tick of the pacer's: the steps of
+core1's loop (`schevana-step!`: the wait for host events, then events,
 timers, a tick when due, processes, the frame and its upload) from the
 one after a tick's to the next tick's, so that the steps that only
 handle input between ticks sum into the tick they lead up to; a test's
@@ -292,8 +293,8 @@ The Ticks tab has three parts:
   default) and the top is two. A tick that came late is flagged at the
   top: past one and a half periods, its wait for the screen left out
   (`profile-tick-late?`). That wait, with core0 on a thread of its own
-  main's wait for core0 to take its frame, is the screen's or core0's,
-  which main can't shorten; past one and a half periods the tick was
+  core1's wait for core0 to take its frame, is the screen's or core0's,
+  which core1 can't shorten; past one and a half periods the tick was
   held instead, which the Pipeline shows in orange
   (`profile-tick-held?`). Not just past one, for a tick ends about at a
   refresh, a little before or after it, and one that missed a refresh
@@ -482,7 +483,8 @@ kits/        app: launching one by name, the color a name gets; color:
              tooltips, dialogs and sheets, windows that wait on one
              another, charts: stacked bars, lines, a sparkline, a
              legend), keyboard focus
-src/system   main loop, timers, inject!, boot, reload!, loading the folders
+src/system   core1's loop, timers, inject!, boot, reload!, loading the
+             folders
              (an app's file through a hook, which grant sets)
 src/wm       window records, z-order, focus, hit testing, drag/resize,
              dispatch; the registries of surfaces and strips
@@ -518,9 +520,11 @@ and the window and its events, loaded first, after the C bindings and the
 basics. It names nothing of the core above it, and only it names SDL.
 Core0 is the bootloader: it makes the world's environment, "/", shares
 there only its interface (`host-interface` in `src/host/boot.ss`),
-read-only, and loads the rest of the tree into it, the C bindings and the
-basics again as the world's own. The world names nothing else of core0's
-(`tests/sources.ss`), and `(reload!)` loads the world's files, not
+read-only, and forks core1, the world's own thread, which loads the rest
+of the tree into it, the C bindings and the basics again as the world's
+own, and runs it, while core0 goes on as the host on the process's first
+thread (headless, one thread plays both). The world names nothing else
+of core0's (`tests/sources.ss`), and `(reload!)` loads the world's files, not
 core0's, which change with a restart (`.work/gpu-design.md` 9.13), or
 through a REPL in "/host", core0's own environment: it sends its forms to
 core0 (`host-eval!`), which runs them between frames on its own thread,
@@ -625,13 +629,12 @@ Decisions worth keeping in mind for the real design:
   start end worklet arg ...)` gives each call at least chunk indices, and a
   range of one chunk runs on the caller alone, so a small grid never wakes
   the crew. An error in a call is
-  raised in the caller; on main a runaway call is cancelled after 100 ms
+  raised in the caller; on core1 a runaway call is cancelled after 100 ms
   and the caller raises, as a runaway handler does; in a REPL evaluation
   the caller waits a millisecond at a time and the desktop runs on.
   `(crew-size)` workers, by default one less than the machine's threads,
   at most 8 (`SCHEVANA_WORKERS` sets it, 0 for none). Everything else stays
-  on the main thread; `(post-main! thunk)` hands work back to it from any
-  thread.
+  on core1; `(post-core1! thunk)` hands work back to it from any thread.
 - **Apps use the crew through a bundle.** `crew`, "Compute on worker
   threads", gives an app `crew-for`, `crew-for*`, `crew-map`, `crew-size`,
   `crew-size-set!` (at most one thread short of the machine's), and
@@ -682,7 +685,7 @@ Decisions worth keeping in mind for the real design:
   help with, so a generation every tick at 60 Hz wants about 10 to 16
   threads, and more show only flat out. That upload is a stand-in's memcpy:
   a real screen has not been measured. What fills the frame after that is
-  the drawing on the main thread, for both apps.
+  the drawing on core1, for both apps.
 - **A side panel hides and shows.** `(ui-side-panel ui id x y w h side width
   least rest panel)` lays a panel along a side and the rest beside it;
   hidden, or where the rest would be narrower than least, the rest has all
@@ -699,8 +702,9 @@ Decisions worth keeping in mind for the real design:
   state is its own: `(vat-eval! v '(define n 0) #f)` defines there, and
   `(vat-send! v 'add! '(5) show)` calls the vat's `add!` there.
   `(vat-send! (vat-pool) step! (list grid) show)` runs a worklet on the
-  pool's threads, 4 until `(vat-pool-size-set! n)`. When a job returns, its `then` (`show`) runs on main at
-  the next step as a handler of the window that sent the job: an error in
+  pool's threads, 4 until `(vat-pool-size-set! n)`. When a job returns,
+  its `then` (`show`) runs on core1 at the next step as a handler of the
+  window that sent the job: an error in
   the job or in `then` crashes that window. Closing or crashing the window
   kills its jobs, as `(vat-job-kill! j)` does: a job killed never starts,
   or escapes within microseconds, and its `then` never runs.
@@ -742,7 +746,7 @@ Decisions worth keeping in mind for the real design:
   With a window, the screen sets the frames' pace: core0 presents them
   on a thread of its own, holding at most the one it presents and one
   more, and no tick runs while the last frame published waits for core0
-  to take it, which it does as the screen frees an image. On a Mac, main
+  to take it, which it does as the screen frees an image. On a Mac, core1
   asks the OS for the class core0's thread, the process's first, runs at
   (user-interactive): a thread forked starts at the default one, which
   Apple silicon may run on an efficiency core and wake late. After a tick
@@ -750,7 +754,7 @@ Decisions worth keeping in mind for the real design:
   the next may come as soon as half a period later, once core0 has taken
   that frame, so that neither a screen a little faster than it says nor
   the screen's queue refilling after a pause is held back by the grid.
-  So each refresh gets a new frame, never one drawn on a clock of main's
+  So each refresh gets a new frame, never one drawn on a clock of core1's
   that drifts against the screen's. A window's `'frame` is told `t`, its
   frame's time: a refresh after the last one's (a period, at a rate of
   its own), a few refreshes after the tick, so that what moves by `t`
@@ -763,7 +767,7 @@ Decisions worth keeping in mind for the real design:
   in a refresh and the screen's queue never grows. The screen paces the
   ticks so while each sends it a frame. A tick begins its lead before its
   latch: what frames took lately from when their tick was meant to begin
-  till core0 sent them, main waking late among it (a spike fades in half a
+  till core0 sent them, core1 waking late among it (a spike fades in half a
   second), but for a wait for an image past the latch aimed at, the
   compositor holding a frame more, which is the screen's time; and a
   margin, none at first.
@@ -862,7 +866,7 @@ Decisions worth keeping in mind for the real design:
   clock, and copies the run as a row of
   [docs/PLATFORMS.md](docs/PLATFORMS.md).
 - **A trace of each frame.** In a checkout with a `.work` folder, core0
-  and main stamp their steps around each frame (take, acquire, submit,
+  and core1 stamp their steps around each frame (take, acquire, submit,
   tick, draw, publish, collect) on rings of their own, the last minute or
   two of them; an event pump that held core0 past 2 ms (slow-pump, µs,
   and each event's SDL type), and each collection, which every thread
@@ -870,8 +874,8 @@ Decisions worth keeping in mind for the real design:
   `(host-trace-dump!)`, writes them by time with the screen's reports on
   the frames still kept, the last two minutes or so, to
   `.work/traces/trace-<date>-<time>.txt`. So do Ctrl-C in the terminal and
-  main going 5 s without a step, which core0 watches for: the file says
-  why it was written, and a freeze ends on main's last step.
+  core1 going 5 s without a step, which core0 watches for: the file says
+  why it was written, and a freeze ends on core1's last step.
 - **Kernel vs user space via engines.** Each app handler runs in a Chez
   engine with a fuel budget (`safe-call`). An error or an infinite loop
   "crashes" only that window, which then shows the condition and can be
@@ -1142,15 +1146,15 @@ Decisions worth keeping in mind for the real design:
   body and two wings that beat, bend at the wrist and bank into turns, in a
   haze that grows with distance, so far off it looks like a real one. With a
   step every frame, at 2560 × 1600, the GPU's frame grows from 0.82 ms to
-  2.01 ms with 1,000 birds and to 5.18 ms with 4,096, its most; main spends
+  2.01 ms with 1,000 birds and to 5.18 ms with 4,096, its most; core1 spends
   about 0.1 ms.
 - **Drawing is single-threaded.** Recording and the world's state stay on
-  the main thread; worker threads run only worklets and what a vat's sandbox
-  holds. Monitor shows where each tick's time goes (above). A process may be
+  core1; worker threads run only worklets and what a vat's sandbox holds.
+  Monitor shows where each tick's time goes (above). A process may be
   switched out at any call while frames go on, so typed in a REPL (or
   called by a handler) `(render-frame!)` only asks for a frame. Next: lists
   showing lists (a window's own, moved without being drawn), then recording
-  off main.
+  off core1.
 - **Pipeline shows all of this.** `(pipeline)` puts the way from a window's
   draw to the screen on one screen, reading through `kits/inspect.ss`, plain
   data that a REPL or a test can read too: the frame's list by who drew it,
@@ -1158,7 +1162,7 @@ Decisions worth keeping in mind for the real design:
   each drawer with a checkbox that leaves it out of the small screen and the
   Tape (the core's preview takes a cut of the frame's runs), and the lists
   it drew from, each with how many records it holds; Who, what each
-  drawer cost, a row each in draw order or sorted by any column: main's time
+  drawer cost, a row each in draw order or sorted by any column: core1's time
   drawing it a frame, its records, the pixels they may touch, the runs they
   start and how many changed since the frame before, each with a bar for its
   share, and in how many of the frames kept it was recorded again, and of
@@ -1200,15 +1204,15 @@ Decisions worth keeping in mind for the real design:
   bar is the frame on the
   screen at that refresh, a tail hanging from zero, its showing, down its
   way back: the compositor, ready to the latch, the GPU, core0, the box,
-  main, and under the tick its input's way, from the compositor's time to
-  SDL's stamp, to core0's pump and to main's tick; a rule a refresh. Shown
+  core1, and under the tick its input's way, from the compositor's time to
+  SDL's stamp, to core0's pump and to core1's tick; a rule a refresh. Shown
   again while the next frame was late, the time since is red, at the top;
   with nothing due, the column is empty. Over the bars the screen's word on
   each refresh, green where a new frame showed, red where one repeated
   while the next was late (or, by VSync, a frame was dropped), orange where
   one was dropped by a mode that drops, a pip where its count and its times
   disagree on how far a frame came after the one before (the columns go by
-  the count, now by the times). Over that lane, rising to it, main's
+  the count, now by the times). Over that lane, rising to it, core1's
   ticks by Monitor's phases, in the same columns, by a choice in its
   heading: "Ticks when they ran", those whose work began in that refresh,
   or "Each over its frame", the one that drew the frame new there; over
@@ -1227,7 +1231,7 @@ Decisions worth keeping in mind for the real design:
 - **The profiler hooks into the core.** `src/proc.ss` keeps one hook,
   `*profile-span*` (`#f`, or a pair of procedures, begin and end), and
   `with-profile-span`, in which five places run their work: the step
-  (`schevana-step!`), `safely` (each phase of the main loop, each
+  (`schevana-step!`), `safely` (each phase of core1's loop, each
   surface's draw and tick), a window's handler (`window-call`, keyed
   by the window's id and the handler's kind), its drawing
   (`draw-window-clipped`, the id) and a process's turn (`run-procs!`,
@@ -1368,7 +1372,7 @@ several desktops, every window
 style, a menu and a toast, at 100, 125, 150, 200 and 300%; with nothing
 asked for, no frame comes; every way the screen changes (the clock's second,
 a window, a window under another, hover across windows and both bars, a window
-dragged and resized, another moved, a process asking while the main loop
+dragged and resized, another moved, a process asking while core1's loop
 draws) shows on that frame at 100, 150 and 200%; every style, and one that glows past its frame with
 and without its `'bleed`, moved, resized and hovered, shows the
 reference, and drawn unclipped each registered style keeps to its
@@ -1420,7 +1424,7 @@ scheme --script tests/bench.ss out               # [frames]
 Times frames on four scenes at 100% and 200%: 30 Life windows tiled,
 a typical desktop of five overlapping windows, 30 Life windows cascaded,
 and those under a maximized REPL, with every Life window stepping every
-frame. For each it prints the main thread's time per frame (all the
+frame. For each it prints core1's time per frame (all the
 work: everything runs on it), the wall time, the bytes uploaded and the
 collections, then times a keystroke in the REPL, an idle step (it must
 stay under 0.2 ms and upload nothing), a theme change, and the clock's
@@ -1434,7 +1438,7 @@ times the empty one's in the details and 1.6 times in the editor, which
 draws a screenful of text, and a jump within 2.5 times), the Tree there
 with the seed and with 2,000 tasks more in chains (a key, Space and the
 wheel, the least of three rounds: within 1.5 times the seed's), and
-prints how much of the main thread a busy REPL evaluation gets while 30
+prints how much of core1 a busy REPL evaluation gets while 30
 Life windows animate at 200%, what profiling costs: a step with it on and
 off (S30T at 100% and 200%, an idle step, a busy process), and the crew:
 Life at one pixel a cell, maximized on that 4K screen, and Boids at 150, 450,
@@ -1491,7 +1495,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 - An app in a sandbox keeps no files and writes only to its log (`env-log`):
   the bundles for files and the console are still to come. Environments opens
   a REPL in its sandbox; its window's menu does not yet.
-- A frame draws everything under its rectangle on the main thread. The
+- A frame draws everything under its rectangle on core1. The
   rectangle is one bounding box (the top bar's clock and a window near
   the bottom make a frame of all between them) and grows to hold whole
   every window it touches, so overlapping windows are drawn again with

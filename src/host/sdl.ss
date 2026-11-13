@@ -1,5 +1,5 @@
 ;;; host/sdl.ss — SDL's bindings, core0's alone (.work/gpu-design.md 9.5):
-;;; the window, its events, and the GPU. Main names none of them
+;;; the window, its events, and the GPU. Core1 names none of them
 ;;; (tests/sources.ss) but the two any thread may call, in src/ffi.ss.
 
 ;;; ------------------------------------------------------------------ SDL3

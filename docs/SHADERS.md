@@ -224,8 +224,8 @@ collection finds it, so an app never has to free one.
 The world also has `gpu-compute!`, which runs a shader and waits, and
 `gpu-buffer-read!`, which reads a buffer back. They work only while one
 thread plays both the world and core0, as in the tests. In a running
-Schevana the world has a thread of its own, and both raise rather than
-hold it up: "readbacks never hold main". A shader's results show on the
+Schevana the world has a thread of its own, core1, and both raise rather
+than hold it up: "readbacks never hold core1". A shader's results show on the
 screen through a paint, or come back as a Scheme procedure's through the
 twin.
 

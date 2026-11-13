@@ -1,5 +1,5 @@
 ;;; tests/fork/run.ss — what tests/units/fork.ss has a forked world do:
-;;; loaded by main.ss's --eval on main, its own thread, core0 on the
+;;; loaded by main.ss's --eval on core1, its own thread, core0 on the
 ;;; process's first. It writes what it saw, as a datum, to the file
 ;;; *fork-out* names, then quits.
 
@@ -49,7 +49,7 @@
 (define (fork-done!)
   (let ([seen
          (list (cons 'forked (host-forked?))
-               (cons 'main (main-thread?))
+               (cons 'core1 (core1-thread?))
                (cons 'readback
                      (fork-raises? (lambda ()
                                      (drawing->bytes 2 2 1 (lambda () #t)))))

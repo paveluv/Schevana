@@ -1154,9 +1154,9 @@
     (rec-state-restore! num den ox oy turn clip cx0 cy0 cx1 cy1)))
 
 ;; One step's frame: recorded and sent to the screen. A screen with no room
-;; for it yet asks again. A process may be switched out at any call while the
-;; main loop draws on, so typed in a REPL (a process) or called by a handler,
-;; (render-frame!) only asks for a frame.
+;; for it yet asks again. A process may be switched out at any call while
+;; core1's loop draws on, so typed in a REPL (a process) or called by a
+;; handler, (render-frame!) only asks for a frame.
 (define render-frame!
   (case-lambda
     [() (render-frame! #t)]
@@ -1288,7 +1288,7 @@
 
 ;; The screen as it would be drawn now: its pixels, row after row,
 ;; premultiplied BGRA. What tests and screenshots see; screen-bytes-then
-;; hands them to then on main, nothing waiting.
+;; hands them to then on core1, nothing waiting.
 (define (screen-bytes)
   (drawing->bytes *canvas-pw* *canvas-ph* *canvas-ratio* record-world! #f))
 

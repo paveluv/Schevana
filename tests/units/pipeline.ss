@@ -566,7 +566,7 @@
 (let* ([l (pipeline-test-list
            (lambda ()
              (pipeline-draw-card 10 10 120 60 #t "Who drew the frame"
-                                 '("main 0.43 ms a frame drawing"
+                                 '("core1 0.43 ms a frame drawing"
                                    "the most pixels: Pipeline"))))]
        [right (apply max (map (lambda (i) (caddr (inspect-reach l i)))
                               (filter (lambda (i)
@@ -1060,7 +1060,7 @@
   (let* ([rows (pipeline-who-rows v)]
          [mine (find (lambda (r) (equal? (vector-ref r 0) '("Pipeline" 0)))
                      rows)])
-    (check "Who has a row a drawer, in draw order, of what each cost: main's \
+    (check "Who has a row a drawer, in draw order, of what each cost: core1's \
             time drawing it, its records, the pixels they may touch, the runs \
             they start"
            (and (eq? (pipeline-view-stage v) 'who)
@@ -1644,7 +1644,7 @@
                       parts-n)
                   (near? (list-ref plain 0) (us (- tick (- shown depth))))
                   (equal? (list-head (cdr plain) 3) '(0 0 0))   ; no input
-                  (near? (list-ref plain 4) (us (- publish tick)))   ; main
+                  (near? (list-ref plain 4) (us (- publish tick)))   ; core1
                   (= (list-ref plain 5) 1000)        ; in the box
                   (= (list-ref plain 6) 1000)        ; core0
                   (= (list-ref plain 7) 1000)        ; the GPU
@@ -1656,7 +1656,7 @@
              [old (begin (input! (- tick (* 10 p)) 0 0) (bar))])
         (for-each (lambda (k v) (frame-ring-set! n k v)) '(7 11 12) saved)
         (check (format "under the tick, its input's way: the compositor's \
-                        time to SDL's stamp, to core0's pump and to main's \
+                        time to SDL's stamp, to core0's pump and to core1's \
                         tick; cut at the column's depth (~a; ~a)" way old)
                (and (equal? (list-head (cdr way) 3) '(1000 3000 2000))
                     (near? (list-ref way 0)
@@ -1786,7 +1786,7 @@
              [by-frame (and seq (row-of 1000 #t))]
              [when-ran (and seq (row-of k-ran #f))]
              [ran-seqs (and seq (pipeline-river-ticks-of g k-ran #f '() ran))])
-        (check (format "over the frames, main's ticks: over each refresh the \
+        (check (format "over the frames, core1's ticks: over each refresh the \
                         tick that drew the frame new there, or those whose \
                         work began in it, Monitor's phases summed (~a; ~a)"
                        by-frame when-ran)

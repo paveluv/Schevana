@@ -1,6 +1,6 @@
 ;;; platform.ss — what differs by platform, of the core's: what the host is,
 ;;; as predicates and facts (the OS and CPU are src/base.ss's, the rest
-;;; core0's word in *host-platform*), and what main reads of the system
+;;; core0's word in *host-platform*), and what core1 reads of the system
 ;;; that each system says its own way. Each is #f where the system doesn't
 ;;; say. docs/PLATFORMS.md says where each has run.
 
@@ -42,7 +42,7 @@
     (host-direct3d12? . ,(host-direct3d12?))))
 
 ;;; ------------------------------------------------------------------
-;;; what main reads of the system
+;;; what core1 reads of the system
 
 ;; A Mac's: the resident size of a process, from proc_pid_rusage's
 ;; rusage_info_v0, which holds it after a 16-byte id and six counts.

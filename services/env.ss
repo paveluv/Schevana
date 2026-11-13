@@ -33,7 +33,7 @@
 ;;; confines nothing. Code shares a list of names; every name, followed,
 ;;; is a world namespace's, which a person asks for (tests/sources.ss).
 ;;;
-;;; The tree is the main thread's: only it forks and drops.
+;;; The tree is core1's: only it forks and drops.
 
 ;; An environment: its name and parent (root has none); its base (root's
 ;; is #f); its Chez environment, and an identifier made there, from which
@@ -122,9 +122,9 @@
        => (lambda (c) (loop c (cdr names)))]
       [else #f])))
 
-(define (env-on-main who)
-  (unless (main-thread?)
-    (errorf who "the tree of environments is the main thread's")))
+(define (env-on-core1 who)
+  (unless (core1-thread?)
+    (errorf who "the tree of environments is core1's")))
 
 ;; The bases, largest first.
 (define env-bases '(chez confined core))
@@ -134,7 +134,7 @@
 ;; a sandbox on its base or a smaller one: it may narrow what it hands
 ;; down, never widen it.
 (define (env-child parent name base)
-  (env-on-main 'env-child)
+  (env-on-core1 'env-child)
   (when (and (memq (env-base parent) '(confined core))
              (not (memq base (memq (env-base parent) env-bases))))
     (errorf 'env-child "~a is a sandbox: its children are sandboxes on its \
@@ -273,7 +273,7 @@
 ;; dropped, so that what holds one (a REPL) knows. Not the world, nor
 ;; /worklets, where the worklets live, nor one of a kind kept (/apps).
 (define (env-drop! e)
-  (env-on-main 'env-drop!)
+  (env-on-core1 'env-drop!)
   (let ([p (env-parent e)])
     (cond [(not p) (errorf 'env-drop! "the world is not dropped")]
           [(eq? (env-kind e) 'worklets)

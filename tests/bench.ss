@@ -9,11 +9,11 @@
 ;;;   S30   30 Life windows, cascaded
 ;;;   S30M  S30 under a maximized REPL
 ;;; A fake clock moves 81 ms a step, so every Life window steps, and asks
-;;; for a frame, at every step. Everything runs on the main thread, on
-;;; lavapipe, whose work on its own threads the main thread only hands over.
+;;; for a frame, at every step. Everything runs on core1, on lavapipe,
+;;; whose work on its own threads core1 only hands over.
 ;;; Each scene: 10 steps to warm up, then frames (default 100) measured, each
 ;;; one step:
-;;;   main    the main thread's CPU time (median): events, ticks, recording
+;;;   core1   core1's CPU time (median): events, ticks, recording
 ;;;           the frame, sending it
 ;;;   wall    the step's time, steps back to back (median, and 90th
 ;;;           percentile)
@@ -28,8 +28,8 @@
 ;;; step, a keystroke in a title, two in one step, a card dragged), a
 ;;; keystroke in a long text's worst cases there, in the details and in
 ;;; the description's editor, maximized, the Tree there with the seed and
-;;; with 2,000 tasks more in chains, a busy process's share of the main
-;;; thread while S30T animates at 200%, and the profiler's cost: a step
+;;; with 2,000 tasks more in chains, a busy process's share of core1
+;;; while S30T animates at 200%, and the profiler's cost: a step
 ;;; with profiling on and off (printed, not bounded), then the crew: Life
 ;;; at one pixel a cell, maximized on that screen, and Boids at 150, 450,
 ;;; 2,000 and 5,000, on one thread and more (printed, not bounded). Fails
@@ -59,7 +59,7 @@
 
 (define (ms-of t) (+ (* 1000.0 (time-second t)) (/ (time-nanosecond t) 1e6)))
 (define (wall-ms) (ms-of (current-time 'time-monotonic)))
-(define (main-ms) (ms-of (current-time 'time-thread)))
+(define (core1-ms) (ms-of (current-time 'time-thread)))
 
 (define (median xs)
   (if (null? xs) 0.0 (list-ref (sort < xs) (quotient (length xs) 2))))
@@ -188,13 +188,13 @@
   (let ([u0 *upload-bytes*] [g0 (collections)] [d0 *frames-drawn*])
     (let loop ([i 0] [walls '()] [mains '()])
       (if (< i frames)
-          (let ([w0 (wall-ms)] [m0 (main-ms)])
+          (let ([w0 (wall-ms)] [m0 (core1-ms)])
             (steps 1 81)
-            (let ([m (- (main-ms) m0)] [w (- (wall-ms) w0)])
+            (let ([m (- (core1-ms) m0)] [w (- (wall-ms) w0)])
               (loop (+ i 1) (cons w walls) (cons m mains))))
           (list 'scene name 'scale pct 'windows (length (windows))
                 'drawn (- *frames-drawn* d0)
-                'main (median mains) 'wall (median walls)
+                'core1 (median mains) 'wall (median walls)
                 'wall-p90 (percentile walls 0.9)
                 'upload (/ (- *upload-bytes* u0) frames 1.0)
                 'gcs (/ (- (collections) g0) frames 1.0))))))
@@ -202,13 +202,13 @@
 (define (row r)
   (printf "~5a ~4a ~7a ~7,2f ~7,2f (~6,2f) ~9,2f ~5,2f\n"
           (plist-ref r 'scene #f) (plist-ref r 'scale #f)
-          (plist-ref r 'windows #f) (plist-ref r 'main #f)
+          (plist-ref r 'windows #f) (plist-ref r 'core1 #f)
           (plist-ref r 'wall #f) (plist-ref r 'wall-p90 #f)
           (/ (plist-ref r 'upload #f) 1048576.0) (plist-ref r 'gcs #f)))
 
 (printf "Per frame, ~a frames a scene; ms unless said.\n" frames)
 (printf "~5a ~4a ~7a ~7a ~7a (~6a) ~9a ~5a\n"
-        "scene" "%" "windows" "main" "wall" "p90" "upload MiB" "GCs")
+        "scene" "%" "windows" "core1" "wall" "p90" "upload MiB" "GCs")
 (define results '())
 (for-each (lambda (name)
             (for-each (lambda (pct)
@@ -251,7 +251,7 @@
         (values (median times) uploaded))))
 
 ;; A theme change and the step after it, which paints the wallpaper's new
-;; picture and draws the frame: (values wall main), medians.
+;; picture and draws the frame: (values wall core1), medians.
 (define (theme-change-ms pct)
   (set-theme! 'scale pct)
   (scene! 'S30)
@@ -263,37 +263,37 @@
              [mains '()])
     (if (null? colors)
         (values (median walls) (median mains))
-        (let ([w0 (wall-ms)] [m0 (main-ms)])
+        (let ([w0 (wall-ms)] [m0 (core1-ms)])
           (set-theme! 'accent (car colors))
           (steps 1 17)
           (loop (cdr colors)
                 (cons (- (wall-ms) w0) walls)
-                (cons (- (main-ms) m0) mains))))))
+                (cons (- (core1-ms) m0) mains))))))
 
 ;; A key typed into S5's REPL, the clock standing still: the step that
-;; handles it draws the frame that shows it. (values wall main) medians.
+;; handles it draws the frame that shows it. (values wall core1) medians.
 (define (keystroke-ms pct)
   (set-theme! 'scale pct)
   (scene! 'S5)
   (steps 3 0)
   (let loop ([i 0] [walls '()] [mains '()])
     (if (< i 40)
-        (let ([w0 (wall-ms)] [m0 (main-ms)] [n *frames-drawn*])
+        (let ([w0 (wall-ms)] [m0 (core1-ms)] [n *frames-drawn*])
           (inject! (list 'text (if (even? i) "a" "b")))
           (schevana-step! 0)
           (unless (= *frames-drawn* (+ n 1))
             (errorf 'keystroke-ms "a keystroke drew no frame"))
           (loop (+ i 1)
                 (cons (- (wall-ms) w0) walls)
-                (cons (- (main-ms) m0) mains)))
+                (cons (- (core1-ms) m0) mains)))
         (values (median walls) (median mains)))))
 
 (newline)
 (for-each (lambda (pct)
-            (let-values ([(wall main) (keystroke-ms pct)])
+            (let-values ([(wall core1) (keystroke-ms pct)])
               (printf "a keystroke in S5's REPL at ~a%: ~,2f ms until its \
-                       frame is drawn (main thread ~,2f ms)\n"
-                      pct wall main)))
+                       frame is drawn (core1 ~,2f ms)\n"
+                      pct wall core1)))
           '(100 200))
 (define-values (idle-100 idle-up-100) (idle-steps 100))
 (define-values (idle-200 idle-up-200) (idle-steps 200))
@@ -301,11 +301,11 @@
          ~,3f ms at 200%\n"
         idle-100 idle-200)
 (for-each (lambda (pct)
-            (let-values ([(wall main) (theme-change-ms pct)])
+            (let-values ([(wall core1) (theme-change-ms pct)])
               (printf "a theme change at ~a%: ~,1f ms until its frame is \
                        drawn, the wallpaper painted again \
-                       (main thread ~,1f ms)\n"
-                      pct wall main)))
+                       (core1 ~,1f ms)\n"
+                      pct wall core1)))
           '(100 200))
 
 ;;; ------------------------------------------------------------------
@@ -321,21 +321,21 @@
   (steps 2 17))
 
 ;; Steps that each draw the frame of one thing that changed (change!
-;; makes it change): (values main wall upload), the medians of the main
-;; thread's and the step's ms and the mean bytes uploaded.
+;; makes it change): (values core1 wall upload), the medians of core1's
+;; and the step's ms and the mean bytes uploaded.
 (define (frame-steps change!)
   (steps 3 0)
   (let ([u0 *upload-bytes*])
     (let loop ([i 0] [walls '()] [mains '()])
       (if (< i frames)
-          (let ([w0 (wall-ms)] [m0 (main-ms)] [n *frames-drawn*])
+          (let ([w0 (wall-ms)] [m0 (core1-ms)] [n *frames-drawn*])
             (change! i)
             (schevana-step! 0)
             (unless (= *frames-drawn* (+ n 1))
               (errorf 'frame-steps "a change drew no frame"))
             (loop (+ i 1)
                   (cons (- (wall-ms) w0) walls)
-                  (cons (- (main-ms) m0) mains)))
+                  (cons (- (core1-ms) m0) mains)))
           (values (median mains) (median walls)
                   (/ (- *upload-bytes* u0) frames 1.0))))))
 
@@ -360,13 +360,13 @@
 (for-each
  (lambda (s)
    (apply screen! s)
-   (let*-values ([(tick-main tick-wall tick-up) (idle-ticks)]
-                 [(key-main key-wall key-up) (lone-keystrokes)])
-     (printf "~ax~a at ~a%: the clock's second, no window: main ~,2f ms, \
+   (let*-values ([(tick-core1 tick-wall tick-up) (idle-ticks)]
+                 [(key-core1 key-wall key-up) (lone-keystrokes)])
+     (printf "~ax~a at ~a%: the clock's second, no window: core1 ~,2f ms, \
               wall ~,2f, ~,3f MiB uploaded; a keystroke in a lone REPL: \
-              main ~,2f ms, wall ~,2f, ~,3f MiB uploaded\n"
-             (car s) (cadr s) (caddr s) tick-main tick-wall
-             (/ tick-up 1048576.0) key-main key-wall (/ key-up 1048576.0))))
+              core1 ~,2f ms, wall ~,2f, ~,3f MiB uploaded\n"
+             (car s) (cadr s) (caddr s) tick-core1 tick-wall
+             (/ tick-up 1048576.0) key-core1 key-wall (/ key-up 1048576.0))))
  '((1280 800 100) (1280 800 200) (1920 1080 200)))
 (screen! 1280 800 100)
 
@@ -393,7 +393,7 @@
                      `((mouse-move ,@p) (mouse-down ,@p left 1)
                        (mouse-up ,@p left))))
     (let*-values ([(idle idle-up) (quiet-steps)]
-                  [(key-main key-wall key-up)
+                  [(key-core1 key-wall key-up)
                    (begin
                      (inject! '(key-down return ()))
                      (frame-steps (lambda (i)
@@ -401,13 +401,13 @@
                                                  '(text "a")
                                                  '(key-down backspace
                                                    ()))))))]
-                  [(two-main two-wall two-up)
+                  [(two-core1 two-wall two-up)
                    (frame-steps (lambda (i)
                                   (if (even? i)
                                       (inject! '(text "a") '(text "b"))
                                       (inject! '(key-down backspace ())
                                                '(key-down backspace ())))))]
-                  [(drag-main drag-wall drag-up)
+                  [(drag-core1 drag-wall drag-up)
                    (let ([p (at '(card 10))] [a (at '(column review))]
                          [b (at '(column done))])
                      (inject! '(key-down escape ()) `(mouse-move ,@p)
@@ -420,10 +420,10 @@
       (steps 2 0)
       (close-window! win)
       (printf "Tasks maximized on 1920x1080 at 200%: an idle step ~,3f ms, \
-               ~a bytes uploaded; a keystroke in a title: main ~,2f ms, wall \
-               ~,2f; two in one step: main ~,2f ms, wall ~,2f; a card \
-               dragged, a move: main ~,2f ms, wall ~,2f\n"
-              idle idle-up key-main key-wall two-main two-wall drag-main
+               ~a bytes uploaded; a keystroke in a title: core1 ~,2f ms, wall \
+               ~,2f; two in one step: core1 ~,2f ms, wall ~,2f; a card \
+               dragged, a move: core1 ~,2f ms, wall ~,2f\n"
+              idle idle-up key-core1 key-wall two-core1 two-wall drag-core1
               drag-wall)
       (values idle idle-up))))
 
@@ -464,7 +464,7 @@
     (tasks-changed!)
     (find-task (+ base 49))))
 
-;; => (key space wheel rows): the median main-thread ms of each kind of
+;; => (key space wheel rows): the median core1 ms of each kind of
 ;; step, and the rows the tree showed.
 (define (tree-steps chained?)
   (screen! 1920 1080 200)
@@ -480,14 +480,14 @@
     (steps 2 17)
     (let*-values
         ([(rows) (vector-length (ui-memo ui '(tree rows) '#()))]
-         [(key-main key-wall key-up)
+         [(key-core1 key-wall key-up)
           (frame-steps (lambda (i)
                          (inject! (if (even? i)
                                       '(key-down down ())
                                       '(key-down up ())))))]
-         [(space-main space-wall space-up)
+         [(space-core1 space-wall space-up)
           (frame-steps (lambda (i) (inject! '(key-down #\space ()))))]
-         [(wheel-main wheel-wall wheel-up)
+         [(wheel-core1 wheel-wall wheel-up)
           (let ([r (ui-find ui '(tree body))])
             (let-values ([(cx cy cw ch) (content-rect win)])
               (inject! `(mouse-move ,(exact (floor (+ cx (ui-region-x r) 40)))
@@ -499,7 +499,7 @@
                                         '(wheel 0 1))))))])
       (close-window! win)
       (tasks-reset!)
-      (list key-main space-main wheel-main rows))))
+      (list key-core1 space-core1 wheel-core1 rows))))
 
 (define tree-rounds 3)
 
@@ -521,7 +521,7 @@
 (screen! 1280 800 100)
 (for-each (lambda (r)
             (printf "the Tree in Tasks maximized on 1920x1080 at 200%, ~a \
-                     (~a rows): a key ~,2f ms (main), Space ~,2f, the wheel \
+                     (~a rows): a key ~,2f ms (core1), Space ~,2f, the wheel \
                      ~,2f (the least of ~a rounds)\n"
                     (car r) (list-ref r 4) (cadr r) (caddr r) (cadddr r)
                     tree-rounds))
@@ -569,16 +569,16 @@
                          (loop i (put! (string-append r " ") len) ""))))]))))))
 
 ;; Steps, each handling the next of keys (event lists, in turn): the
-;; median main-thread ms of the steps at each place in the turn.
+;; median core1 ms of the steps at each place in the turn.
 (define (key-turns keys turns)
   (steps 2 0)
   (let loop ([i 0] [times (map (lambda (k) '()) keys)])
     (if (= i (* turns (length keys)))
         (map median times)
-        (let ([m0 (main-ms)] [j (mod i (length keys))])
+        (let ([m0 (core1-ms)] [j (mod i (length keys))])
           (apply inject! (list-ref keys j))
           (schevana-step! 0)
-          (let ([dt (- (main-ms) m0)])
+          (let ([dt (- (core1-ms) m0)])
             (loop (+ i 1)
                   (map (lambda (ts k) (if (= k j) (cons dt ts) ts))
                        times (iota (length keys)))))))))
@@ -643,10 +643,10 @@
              [jump (median
                     (map (lambda (i)
                            (show! where text 0)
-                           (let ([m0 (main-ms)])
+                           (let ([m0 (core1-ms)])
                              (inject! '(key-down end (ctrl)))
                              (schevana-step! 0)
-                             (- (main-ms) m0)))
+                             (- (core1-ms) m0)))
                          (iota 5)))])
         ;; typing, Delete, everything selected and deleted; jumps
         (list where which (max typing delete (car all) (cadr all))
@@ -675,7 +675,7 @@
 (screen! 1280 800 100)
 (for-each (lambda (r)
             (printf "a long text in Tasks maximized on 1920x1080 at 200%, ~a, \
-                     ~a: a keystroke at most ~,2f ms (main), a jump ~,2f \
+                     ~a: a keystroke at most ~,2f ms (core1), a jump ~,2f \
                      (the least of ~a rounds)\n"
                     (car r) (cadr r) (caddr r) (cadddr r) long-text-rounds))
           long-text-results)
@@ -686,7 +686,7 @@
 ;; A REPL evaluation that computes (a loop counting) while S30T animates,
 ;; steps back to back as with a window: its loops a second, as a share of
 ;; what it gets with the Life windows paused, and the frames a second
-;; meanwhile. The frames are drawn on the main thread, between the
+;; meanwhile. The frames are drawn on core1, between the
 ;; process's slices. run-procs!' 10 ms budget needs a clock that moves:
 ;; the fake one goes on with real time, plus 81 ms a step, so every Life
 ;; window steps at every step.
@@ -721,7 +721,7 @@
 ;;; ------------------------------------------------------------------
 ;;; the profiler's cost
 ;;; A step with profiling on and off, in turns of 20 steps, 10 turns
-;;; each: S30T animating (the main thread's ms, medians), an idle step
+;;; each: S30T animating (core1's ms, medians), an idle step
 ;;; (30 paused Life windows), and a busy process with Life paused (its
 ;;; loops a second, 1 s each way, twice).
 
@@ -743,7 +743,9 @@
   (set-theme! 'scale pct)
   (scene! 'S30T)
   (profile-cost-steps (lambda ()
-                        (let ([m0 (main-ms)]) (steps 1 81) (- (main-ms) m0)))))
+                        (let ([m0 (core1-ms)])
+                          (steps 1 81)
+                          (- (core1-ms) m0)))))
 
 (define (profile-cost-idle)
   (set-theme! 'scale 100)
@@ -886,9 +888,9 @@
                     '(0 1 2))))
 (assert! "a busy process and S30T's animation both go on"
          (and (> busy-loops 0) (> busy-fps 1)))
-(printf "S30T main per frame: ~,2f ms at 100%, ~,2f ms at 200%\n"
-        (plist-ref (result 'S30T 100) 'main #f)
-        (plist-ref (result 'S30T 200) 'main #f))
+(printf "S30T core1 per frame: ~,2f ms at 100%, ~,2f ms at 200%\n"
+        (plist-ref (result 'S30T 100) 'core1 #f)
+        (plist-ref (result 'S30T 200) 'core1 #f))
 (printf "~a\n" (if (zero? failures)
                    "all assertions hold"
                    (format "~a assertion(s) FAILED" failures)))

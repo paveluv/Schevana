@@ -505,11 +505,11 @@
                  (set! *wayland-presentation* p))))))))))
 
 ;;; ---- the frame's threads
-;;; On a Mac the OS's main thread, core0's, runs at the user-interactive
-;;; class; a thread forked starts at the default one, which Apple silicon
-;;; may run on an efficiency core and wake late, and main's ticks that
-;;; woke late sent frames past their latch. So main asks for core0's
-;;; class. Elsewhere, nothing yet.
+;;; On a Mac the process's first thread, core0's, runs at the
+;;; user-interactive class; a thread forked starts at the default one,
+;;; which Apple silicon may run on an efficiency core and wake late, and
+;;; core1's ticks that woke late sent frames past their latch. So core1
+;;; asks for core0's class. Elsewhere, nothing yet.
 
 (define mac-system-loaded?
   (and (host-mac?)

@@ -1,4 +1,4 @@
-;;; system.ss — the main loop, timers, boot and reload.
+;;; system.ss — core1's loop, timers, boot and reload.
 
 (defvar *running* #f)
 (defvar *timers* '())     ; (#(due-ms thunk fueled?) ...) by due time
@@ -104,26 +104,26 @@
             ((vector-ref t 1)))
         (loop)))))
 
-;; (post-main! thunk), from any thread: thunk runs on the main thread at
-;; its next step, after the events, in the order each thread posted it,
+;; (post-core1! thunk), from any thread: thunk runs on core1 at its next
+;; step, after the events, in the order each thread posted it,
 ;; under safely (so a service's thunk calls an app's code under
 ;; safe-call). Lock-free: neither a post nor the step ever waits. The
-;; fences hand main what the poster wrote before it posted: box-cas!
+;; fences hand core1 what the poster wrote before it posted: box-cas!
 ;; orders no memory, and ARM keeps no order of its own.
-(defvar *main-mail* (box '()))   ; thunks, the newest first
+(defvar *core1-mail* (box '()))   ; thunks, the newest first
 
-(define (post-main! thunk)
+(define (post-core1! thunk)
   (memory-order-release)
   (let loop ()
-    (let ([mail (unbox *main-mail*)])
-      (unless (box-cas! *main-mail* mail (cons thunk mail)) (loop))))
+    (let ([mail (unbox *core1-mail*)])
+      (unless (box-cas! *core1-mail* mail (cons thunk mail)) (loop))))
   (host-world-wake!))
 
-(define (run-main-mail!)
+(define (run-core1-mail!)
   (let loop ()
-    (let ([mail (unbox *main-mail*)])
+    (let ([mail (unbox *core1-mail*)])
       (cond [(null? mail)]
-            [(box-cas! *main-mail* mail '())
+            [(box-cas! *core1-mail* mail '())
              (memory-order-acquire)
              (for-each (lambda (t) (safely 'jobs t)) (reverse mail))]
             [else (loop)]))))
@@ -179,9 +179,9 @@
     (schevana-turn! wait-ms paced)
     (pacer-step-done! (- (now-ns) start))))
 
-;; One turn of the world: events, mail (post-main!), timers, a tick,
-;; processes, and on a tick a frame if something asked for one. Paced (the
-;; main loop's), it ticks only when a tick is wanted (pacer-wanted?) and
+;; One turn of the world: events, mail (post-core1!), timers, a tick,
+;; processes, and on a tick a frame if something asked for one. Paced
+;; (core1's loop's), it ticks only when a tick is wanted (pacer-wanted?) and
 ;; due, and its processes run until the frame must be drawn for the next
 ;; tick; else (a test's) it always ticks, and its processes run 10 ms. The
 ;; profiler sums the steps between ticks into the next tick.
@@ -202,15 +202,15 @@
             (safely 'event
                     (lambda () (if hold? (hold-event! ev) (handle-event! ev)))))
           (each (cdr evs)))))
-    ;; frames core0 gave back, on its own thread since; on main's, they
-    ;; come back as they're published. One sent, the collections its turn
-    ;; held off.
+    ;; frames core0 gave back, on its own thread since; with one thread,
+    ;; they come back as they're published. One sent, the collections its
+    ;; turn held off.
     (when (host-forked?) (safely 'render render-frames-back!))
     (collector-after-sent!)
     (let ([ticked?
            (and (not (reload-holding?))
                 (begin
-                  (run-main-mail!)
+                  (run-core1-mail!)
                   (safely 'timers run-timers!)
                   (let ([now (and (pair? paced) (now-ns))])
                     (and (or (not now)
@@ -573,7 +573,7 @@
   (and (eqv? (host-frame-report n 1) 1) (host-frame-report n 3)))
 
 ;; Frame n, sent: the lead follows what it took from when its tick was
-;; meant to begin till core0 sent it (main waking late and core0 taking it
+;; meant to begin till core0 sent it (core1 waking late and core0 taking it
 ;; late among it), with the margin, at once when that's more, else fading
 ;; (pacer-lead-fade, a spike's time to fade); two refreshes at most, so
 ;; that a lead longer than a refresh still leaves a tick its time at 120
@@ -651,7 +651,7 @@
 
 ;; How long a paced step may wait for host events (input ends the wait at
 ;; once): until the next tick may begin, a period with none wanted (so mail
-;; is seen) or while core0 still has the last frame to take (it wakes main
+;; is seen) or while core0 still has the last frame to take (it wakes core1
 ;; as it takes it), or the first timer's time; not at all while processes
 ;; are ready. Whole ms, rounded up: a step would spin through the last ms
 ;; before the tick (the 2 ms it may start early hold that one).
@@ -679,7 +679,7 @@
 (define (quit!) (set! *running* #f))
 
 ;; The run is over, and the process ends: at once on one thread; with core0
-;; on its own, once it has closed the window, main waiting for it.
+;; on its own, once it has closed the window, core1 waiting for it.
 (define (schevana-end!)
   (if (host-forked?)
       (let wait () (host-world-wait! 1000) (wait))
@@ -724,7 +724,7 @@
 ;;; ------------------------------------------------------------------ collector
 ;;; A pause is what survived since the last one, whatever the heap holds:
 ;;; whoever asks, only the young generation is collected, and the world
-;;; waits in the oldest. Older ones are collected when main decides, while
+;;; waits in the oldest. Older ones are collected when core1 decides, while
 ;;; nobody is typing or, past a limit on their growth, anyway.
 
 (define collector-young-quiet (* 8 1024 1024))
@@ -759,7 +759,7 @@
         (if pass (collect (car pass) (cdr pass)) (collect 0 1))
         (host-trace! 29 0))))
 
-;; A request now is held off: a frame turn's, and no pass of main's asked.
+;; A request now is held off: a frame turn's, and no pass of core1's asked.
 (define (collector-declining?)
   (and *collector-holding?* (not *collector-pass*)))
 
@@ -772,7 +772,7 @@
   (unless *collector-after* (set! *collector-after* *frame-number*))
   (collector-after-sent!))
 
-;; That frame sent (core0 gave it back; on main's thread, as it was
+;; That frame sent (core0 gave it back; with one thread, as it was
 ;; published): what its turn held off, now.
 (define (collector-after-sent!)
   (when (and *collector-after* (>= *frame-back* *collector-after*))

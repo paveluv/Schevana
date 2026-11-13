@@ -3,16 +3,16 @@
 ;;; own accounting, through the core's hook (with-profile-span,
 ;;; src/proc.ss); nothing in an app's code is instrumented.
 ;;;
-;;; The unit is a tick: the main loop's steps (schevana-step!) from the
+;;; The unit is a tick: the steps of core1's loop (schevana-step!) from the
 ;;; one after a tick's to the next tick's, the steps between ticks (input
 ;;; handled as it comes) summed into the tick they lead up to; a step not
 ;;; paced (a test's) ticks, a tick of its own. In it each span (a phase of
-;;; the main loop, a window's handler or drawing, a surface's draw or
+;;; core1's loop, a window's handler or drawing, a surface's draw or
 ;;; tick, a process's turn, the collector) keeps its self time: its time
 ;;; less the spans inside it, so that the parts add up to the tick; two
 ;;; are waits, input-wait the steps' own (mostly the wait for host
 ;;; events) and vsync-wait the screen's (with core0 on a thread of its
-;;; own, main's wait for core0 to take its frame), for a wait delays the
+;;; own, core1's wait for core0 to take its frame), for a wait delays the
 ;;; next tick as much as work. Each tick's sums go into a ring of the
 ;;; last 30 seconds (at most 100 ticks a second, and as many uses as its
 ;;; ring holds), and into per-second sums kept for 10 minutes, with what
@@ -171,7 +171,7 @@
 
 ;; A tick's fields: its end and length (ns), collections, their ns, bytes
 ;; allocated, heap, where its uses start in their ring and how many; then
-;; the frames that reached the screen, what main itself ran (ns, by the
+;; the frames that reached the screen, what core1 itself ran (ns, by the
 ;; thread's CPU clock), the host window's flags, the host's events, the
 ;; frames tried so far (what became of each is inspect-frame-…'s), and the
 ;; records of the frame last recorded.
@@ -269,7 +269,7 @@
 ;; at the last tick's end: collections, bytes allocated, the collector's
 (defvar *profile-gc-ns* 0)
 (defvar *profile-memory* (make-fxvector 3 0))
-;; at the last tick's end, the frames drawn and main's CPU ns; and when
+;; at the last tick's end, the frames drawn and core1's CPU ns; and when
 ;; the host window was last seen hidden
 (defvar *profile-frames* 0)
 (defvar *profile-cpu* 0)
@@ -599,7 +599,7 @@
 
 ;; A flag: tick seq, the date it ended, what it took and the period it's
 ;; late against (ns), why (profile-tick-why), its phases ((phase . ns) ...),
-;; what main ran, the frames that reached the screen, how long the host
+;; what core1 ran, the frames that reached the screen, how long the host
 ;; window had been showing (ns),
 ;; the ticks about it (profile-tick-row), oldest first, what the host said
 ;; about then ((name . ns after its end) ...) and lines of what else there
@@ -717,7 +717,7 @@
 ;; What made tick seq late: the biggest single thing in it that could, of
 ;; what profile-tick-late? counts, so never the screen's hold. The wait for
 ;; events, but only past a period, for up to that is the wait for its tick,
-;; and in two kinds: main asleep, or running in it (in SDL, for no span
+;; and in two kinds: core1 asleep, or running in it (in SDL, for no span
 ;; covers that); the collector; or someone's work. => (kind ns . who): kind
 ;; asleep, pump, gc or work; who, work's (subject . part).
 (define (profile-tick-why seq period)
@@ -747,8 +747,8 @@
 (define (profile-why-text why)
   (let ([took (profile-ns-text (cadr why))])
     (case (car why)
-      [(asleep) (format "main woke ~a past its time" took)]
-      [(pump) (format "main ran ~a past its time, waiting for events" took)]
+      [(asleep) (format "core1 woke ~a past its time" took)]
+      [(pump) (format "core1 ran ~a past its time, waiting for events" took)]
       [(gc) (format "the collector took ~a" took)]
       [else
        (let* ([subject (caddr why)] [part (cdddr why)]
@@ -810,7 +810,7 @@
               (profile-flag-seq f) (text (profile-flag-ns f))
               (text (profile-flag-period f)))
       (profile-why-text (profile-flag-why f))
-      (format "work ~a, of which the collector ~a; main ran ~a" (text work)
+      (format "work ~a, of which the collector ~a; core1 ran ~a" (text work)
               (text (of 'gc)) (text (profile-flag-cpu f)))
       (format "slept ~a; the screen ~a (~,1f refreshes)"
               (text (of 'input-wait)) (text (of 'vsync-wait))
@@ -1041,8 +1041,8 @@
 ;; and a half periods of period-ns? Half past, not just past: a tick ends
 ;; about at a refresh, a little before or after it, and one that missed a
 ;; refresh waited for the next. The wait for the screen (vsync-wait; with
-;; core0 on a thread of its own, main's wait for core0 to take its frame)
-;; is the screen's or core0's, which main can't shorten: past one and a
+;; core0 on a thread of its own, core1's wait for core0 to take its frame)
+;; is the screen's or core0's, which core1 can't shorten: past one and a
 ;; half periods the tick was held instead, which is shown apart.
 (define (profile-tick-late? seq period-ns)
   (fx> (fx* 2 (fx- (profile-tick-ns seq 'ns)

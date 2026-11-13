@@ -3,13 +3,13 @@
 
 ;;; The pacer: exactly one tick a period while the work fits.
 
-;; The screen held main from start to end: a wait, the profiler's
+;; The screen held core1 from start to end: a wait, the profiler's
 ;; vsync-wait, and no work.
 (define (pacer-test-screen-waited! start end)
   (profile-span-past! 'vsync-wait 'submit start end)
   (pacer-held! (- end start)))
 
-;; The main loop for ms of a fake clock (ns), with a wait for host events
+;; Core1's loop for ms of a fake clock (ns), with a wait for host events
 ;; that only moves the clock, and a frame that, with vsync?, waits for the
 ;; screen's next refresh. In it: a window whose
 ;; tick keeps books (3 ms) and never draws, one that moves at every tick
@@ -192,13 +192,13 @@
          (and (< 20 (length ticks) 45)
               (for-all (lambda (g) (>= g (- period 3000000))) gaps))))
 
-;; The main loop on a fake clock, for ms, against a screen as core0 on a
+;; Core1's loop on a fake clock, for ms, against a screen as core0 on a
 ;; thread of its own has one: the frame it presents is held till the next
 ;; refresh, one a period, then its successor, waiting in the box, is taken
-;; and held till the one after; core0 wakes main as it takes one, and main
+;; and held till the one after; core0 wakes core1 as it takes one, and core1
 ;; wakes up to 9 ms later, and gives each back as it shows. The screen is
 ;; away (holds) from away-from to away-to, and refreshes fast ns sooner
-;; than the period it reports. Main runs as with core0 on a thread of its
+;; than the period it reports. Core1 runs as with core0 on a thread of its
 ;; own. A mover asks a frame each tick, working 1 to 3 ms, and draws at
 ;; every one; a timer counts every 10 ms. Options, a plist: 'rate, the
 ;; pacer's rate for the run; 'draw-every n, the mover drawing at every nth
@@ -240,7 +240,7 @@
     (set! host-events
           (lambda (wait-ms)
             (let ([until (+ t (* wait-ms 1000000))]
-                  ;; core0 wakes main as it takes a frame; main wakes late
+                  ;; core0 wakes core1 as it takes a frame; core1 wakes late
                   [woken (and boxed? held-to
                               (+ held-to
                                  (* 1000000
@@ -329,7 +329,7 @@
   (check (format "frame turns follow the screen: every refresh of ~a, the \
                   screen there, finds a frame waiting (~a froze), each \
                   frame's t is a refresh after the last's, to 0.5 ms, \
-                  however late main wakes, by half a frame too (~a..~a), \
+                  however late core1 wakes, by half a frame too (~a..~a), \
                   and when it shows, to a refresh (~a..~a)"
                  (car r) (cadr r) (apply min steps) (apply max steps)
                  (apply min leads) (apply max leads))
@@ -345,7 +345,7 @@
 
 (let ([r (pacer-test-lock 3000 0 0 100000)])
   (check (format "a screen a little faster than it says still gets a frame \
-                  every refresh: main's clock never holds one back (~a \
+                  every refresh: core1's clock never holds one back (~a \
                   refreshes, ~a froze)" (car r) (cadr r))
          (and (> (car r) 150) (= (cadr r) 0))))
 
@@ -405,14 +405,14 @@
              (and (= p30 33333333)
                   (= screen (- p (quotient p 500))))))))
 
-;; The main loop on a fake clock, for ms, against core0 and a compositor
+;; Core1's loop on a fake clock, for ms, against core0 and a compositor
 ;; that queues frames, as FIFO does, with three images: it latches 4 ms
 ;; before each refresh (the first at phase), takes the oldest queued frame
 ;; whose GPU work is done (1 ms after its submit) and frees the image that
 ;; one replaces; with none, the refresh shows the last frame again. Core0
 ;; takes a boxed frame 50 us after it's free and the frame is there, starts
 ;; the acquire 150 us later, which waits for a free image, and submits 200
-;; us after it returns; it wakes main as it takes a frame and as it gives
+;; us after it returns; it wakes core1 as it takes a frame and as it gives
 ;; one back. A mover starts from stillness, asks a frame each tick and
 ;; draws at every one, working 1 to 3 ms, and once, at long-at ms, long-ms
 ;; more. => the refreshes that showed no new frame once frames had shown.
@@ -439,7 +439,7 @@
       (set! state 'idle)
       (set! at (+ now 200000))
       (set! woken? #t))
-    ;; one event; => #t if it woke main
+    ;; one event; => #t if it woke core1
     (define (event! ev)
       (let ([now (car ev)])
         (case (cdr ev)
@@ -621,7 +621,7 @@
 ;;; that input or a frame drawn asks for. On a fake clock, with no timers.
 (for-each close-window! (windows))
 (let* ([t (* 3000 1000000000)] [events '()]
-       [ticks-in (lambda (n)   ; the ticks of n steps of the main loop
+       [ticks-in (lambda (n)   ; the ticks of n steps of core1's loop
                    (let ([before (pacer-ticks)])
                      (do ([i 0 (+ i 1)]) ((= i n))
                        (schevana-step! (pacer-wait-ms) #t))
@@ -867,7 +867,7 @@
                                                   60000000000)))
                     (= kept 3000000)))))))
 
-(check "while ticks keep to the latches, a tick wanted, main's wait for the \
+(check "while ticks keep to the latches, a tick wanted, core1's wait for the \
         next is the screen's"
        (let ([t (now-ns)])
          (fluid-let ([*pacer-latch* (- t 1000000)] [*pacer-latch-phase* 0]

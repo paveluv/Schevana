@@ -16,11 +16,11 @@
 ;; A row: the frame's number; its kind (0 sent, 1 shown, 2 dropped); when
 ;; it was sent (now-ns); when it showed (now-ns); the refresh (ns); the
 ;; display's sequence; when its GPU work was seen done (now-ns; 0, not
-;; yet); when core0 took it from main, and when its acquire of a swapchain
+;; yet); when core0 took it from core1, and when its acquire of a swapchain
 ;; image began and returned (now-ns).
 (defvar *present-ring* (make-fxvector (* present-rows present-words) 0))
 
-;; When core0 took the frame it presents now from main, and when it asked
+;; When core0 took the frame it presents now from core1, and when it asked
 ;; for an image for it and had one.
 (defvar *present-taken* 0)
 (defvar *present-acquiring* 0)

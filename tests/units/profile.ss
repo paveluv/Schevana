@@ -145,7 +145,7 @@
               (profile-test-near? (apply + (profile-test-phases s))
                                   (profile-tick-ms s)))))
 
-(check "a wait for the screen at a step's top (main's wait for core0) is \
+(check "a wait for the screen at a step's top (core1's wait for core0) is \
         a phase of its own in its use too, not other's"
        (let* ([s (car (profile-test-on-clock
                        1000
@@ -244,7 +244,7 @@
                 (exists (lambda (s) (pair? (profile-test-uses s p))) real)))))
 
 (check "a (collect) shows in the memory numbers, and so does the heap; a \
-        collection requested on the main loop is a span of its own, gc"
+        collection requested on core1's loop is a span of its own, gc"
        (let* ([timer (profile-test-ticks
                       (lambda () (after 0 (lambda () (collect))) (steps 2)))]
               [g0 (collections)]
@@ -581,7 +581,7 @@
                       "slept 30.0 ms; the screen 4.0 ms (0.3 refreshes)")
               (equal? (profile-flag-ticks-text f)
                       "16.0 16.0 16.0 [35.0] 16.0 16.0 16.0")
-              (equal? (cadr lines) "main woke 14.0 ms past its time")
+              (equal? (cadr lines) "core1 woke 14.0 ms past its time")
               (equal? (profile-flag-summary) "1 flag: 1 asleep")
               (let-values ([(port get) (open-string-output-port)])
                 (profile-flag-report port)
@@ -672,7 +672,7 @@
                  (profile-flag-seq (cadr many)))
               (null? (profile-flags)))))
 
-(check "a tick keeps what main itself ran, by its CPU clock"
+(check "a tick keeps what core1 itself ran, by its CPU clock"
        (let ([spent (lambda ()
                       (with-profile-span 'step #f
                         (let loop ([i 0]) (when (< i 3000000) (loop (+ i 1)))))
@@ -726,7 +726,7 @@
               (line? "presenting by vsync")
               (has? "the host said: focus-gained" more))))
 
-(check "main past its time in the wait for events: asleep if it ran little \
+(check "core1 past its time in the wait for events: asleep if it ran little \
         of that, running if it ran most"
        (let* ([cpu 0]
               [why (lambda (ran-ms)

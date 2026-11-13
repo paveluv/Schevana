@@ -436,7 +436,7 @@
 ;; 5,000, measured here, a step takes 9 ms on the crew of 8 with the default
 ;; rules and 16 with the heaviest (both blocker rules, 360°, radii of 200);
 ;; on a thread alone, 72 and 127. What fills the frame then is the drawing,
-;; one line and one circle a boid on the main thread: 23 ms at 100%, about
+;; one line and one circle a boid on core1: 23 ms at 100%, about
 ;; 50 at 200%.
 (define boids-max-count 5000)
 

@@ -16,7 +16,7 @@
 ;;;                 a process) leaves the reference at 100, 150 and 200%
 ;;;   the window    the swapchain's path, on an offscreen window
 ;;;   processes     a process, switched out anywhere, rescales and calls
-;;;                 (render-frame!) while the main loop draws: frames stay whole
+;;;                 (render-frame!) while core1's loop draws: frames stay whole
 ;;;   raising       a window's draw that raises crashes the window; a window-
 ;;;                 bleed that raises is reported, and frames and input go on
 ;;;   redefinition  draw-window, draw-taskbar and a style, redefined: the
@@ -378,8 +378,8 @@
     (move-window! c 1001 451)
     (step! 'moved)
     (set-theme! 'shadow (theme-default 'shadow))
-    ;; A process asks for areas around e, far from b and c, while main
-    ;; changes b and c by turns, compared at each step: none of main's
+    ;; A process asks for areas around e, far from b and c, while core1
+    ;; changes b and c by turns, compared at each step: none of core1's
     ;; areas may be lost, though the process is switched out anywhere.
     (let* ([e (open-window "E" 'size '(81 . 61) 'pos '(41 . 601))]
            [p (spawn "asks"
@@ -404,7 +404,7 @@
     (try! 'process-killed)
     ;; A process moves, resizes and restyles d (to a style that reaches
     ;; less far), switched out right after each area it asks for until
-    ;; main has drawn a frame (a timer may do that), then stays alive: d
+    ;; core1 has drawn a frame (a timer may do that), then stays alive: d
     ;; leaves nothing behind.
     (set-theme! 'shadow 0)
     (let ([d (open-window "D" 'size '(121 . 81) 'pos '(61 . 81)
@@ -537,11 +537,11 @@
 ;;; ------------------------------------------------------------------ processes
 
 ;; A process (a REPL evaluation is one) is an engine, switched out at any
-;; call where interrupts are on, while the main loop draws on, here on the
+;; call where interrupts are on, while core1's loop draws on, here on the
 ;; real clock. At 200% it rescales and calls (render-frame!), which in a
 ;; process only asks for a frame. Besides its time running out, it is
 ;; switched out for a step now and then. No error may come, every frame is
-;; the main loop's (one a step at most), and the frame is the reference.
+;; core1's loop's (one a step at most), and the frame is the reference.
 (set-theme! 'scale 200)
 (scene! 'S5)
 (let* ([acts (make-vector 5 0)] [switches 0] [errors 0] [n0 *frames-drawn*]
@@ -579,7 +579,7 @@
   (let ([frames (- *frames-drawn* n0)])
     (check (format
             "a process, switched out anywhere, rescales and calls \
-             (render-frame!) while the main loop draws \
+             (render-frame!) while core1's loop draws \
              (~a calls by kind ~s, ~a switches): \
              ~a frames in ~a steps, ~a errors"
             (apply + (vector->list acts)) acts switches frames steps-run errors)

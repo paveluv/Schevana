@@ -2,10 +2,11 @@
 
 ;;; The crew (services/crew.ss).
 
-;; Main's budget is for runaways, and on a busy machine an ordinary region here
-;; could run into it. So it's long in this file, but for the check about it.
-(define crew-test-budget crew-main-ms)
-(set! crew-main-ms 60000)
+;; Core1's budget is for runaways, and on a busy machine an ordinary region
+;; here could run into it. So it's long in this file, but for the check
+;; about it.
+(define crew-test-budget crew-core1-ms)
+(set! crew-core1-ms 60000)
 
 ;; About us µs of work, without allocating; the thread's id noted in ids
 ;; (a box of a list) the first time.
@@ -30,12 +31,12 @@
 
 ;; As crew-test-count, but no call ends till the caller and a worker have both
 ;; taken part, however slow a thread is to wake; at most 10 s.
-(define-worklet (crew-test-together lo hi counts main ids)
+(define-worklet (crew-test-together lo hi counts core1 ids)
   (crew-test-count lo hi counts 0 ids)
   (let ([until (+ (now-ns) 10000000000)])
     (let wait ()
       (let ([seen (unbox ids)])
-        (unless (or (and (memv main seen) (pair? (cdr seen)))
+        (unless (or (and (memv core1 seen) (pair? (cdr seen)))
                     (> (now-ns) until))
           (wait))))))
 
@@ -103,18 +104,18 @@
               (< (unbox started) 10000)
               (= (unbox finished) (- (unbox started) 1)))))
 
-;; Forever, but on main's thread: a millisecond there, so that the
+;; Forever, but on core1: a millisecond there, so that the
 ;; workers, however slow to wake, get some of the calls.
-(define-worklet (crew-test-runaway lo hi main)
-  (if (fx= (get-thread-id) main)
+(define-worklet (crew-test-runaway lo hi core1)
+  (if (fx= (get-thread-id) core1)
       (crew-test-busy 1000 (box '()))
       (let loop () (loop))))
 
-(check "on main a runaway call is cancelled at the caller's budget: the \
+(check "on core1 a runaway call is cancelled at the caller's budget: the \
         caller raises the timeout, the worker escapes, and the crew works \
         on"
        (let* ([t0 (now-ms)]
-              [c (fluid-let ([crew-main-ms crew-test-budget])
+              [c (fluid-let ([crew-core1-ms crew-test-budget])
                    (guard (c [#t c])
                      (crew-for* 1 0 64 crew-test-runaway (get-thread-id))
                      #f))]
@@ -141,7 +142,7 @@
 (define-worklet (crew-test-allocate lo hi sum)
   (crew-test-add! sum (vector-length (make-vector 20000 0))))
 
-(check "while workers and main allocate, collections run: no thread waits \
+(check "while workers and core1 allocate, collections run: no thread waits \
         for good"
        (let ([sum (box 0)] [n0 (collections)])
          (do ([k 0 (+ k 1)]) ((= k 20))

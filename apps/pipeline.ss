@@ -5,8 +5,8 @@
 ;;;   Lists   the frame's list by who drew it, and each's records, decoded
 ;;;           in draw order, a run of glyphs as its text; a drawer's checkbox
 ;;;           off leaves it out of the small screen and the Tape
-;;;   Who     what each drawer cost: main's time drawing it, its records, the
-;;;           pixels they may touch, the runs they start, what changed
+;;;   Who     what each drawer cost: core1's time drawing it, its records,
+;;;           the pixels they may touch, the runs they start, what changed
 ;;;   Course  a tick's stages in order, each as wide as its time, render
 ;;;           split into each drawer's draw and the rest
 ;;;   Inside  the record selected, decoded, and the shader it's drawn with,
@@ -252,8 +252,8 @@
   '((#f . #f)
     (chart-muted-1 . "input, to SDL's stamp")
     (chart-muted-2 . "to core0's pump")
-    (chart-5 . "to main's tick")
-    (chart-1 . "main")
+    (chart-5 . "to core1's tick")
+    (chart-1 . "core1")
     (chart-2 . "in the box")
     (chart-3 . "core0")
     (chart-4 . "the GPU")
@@ -475,14 +475,14 @@
                        '(wl sdl pumped tick publish taken sent)
                        '(sdl pumped tick publish taken sent gpu)
                        '("input, to SDL's stamp" "to core0's pump"
-                         "to main's tick" "main" "in the box" "core0"
+                         "to core1's tick" "core1" "in the box" "core0"
                          "the GPU")))
            (if (and seq (profile-tick-kept? seq))
                (string-append "\n\n" (monitor-tick-tip seq (monitor-clock-zero)
                                                        (pacer-period)))
                ""))))))
 
-;; Over the frames, main's ticks, a column a refresh as the frames': the
+;; Over the frames, core1's ticks, a column a refresh as the frames': the
 ;; ticks whose work began in it, or each frame's own, over the refresh it
 ;; showed at. Monitor's phases, rising to the screen's lane, two refreshes
 ;; tall, a refresh as tall as under it; over them, whether a tick came
@@ -498,7 +498,7 @@
             (iota pipeline-collector-levels)))))
 
 (define pipeline-river-ticks-tips
-  (list "Red: main's own work in a tick here took more than one and a half \
+  (list "Red: core1's own work in a tick here took more than one and a half \
          periods, and came late."
         (format "A collection ran in a tick here: the longer it took, the \
                  brighter, at its brightest from ~a."
@@ -927,7 +927,7 @@
     (ui-region! ui '(pipeline timeline) (+ x pipeline-clock-size 8) ty
                 (- w pipeline-clock-size 8) (pipeline-timeline-height)
       'tip "The last six refreshes as they went, a frame a color: its \
-            oldest input, main drawing it, its wait in the box, core0's \
+            oldest input, core1 drawing it, its wait in the box, core0's \
             wait for an image (a mark at the latch its tick aimed at), its \
             time on the screen, red where a refresh repeated. Lines are \
             the screen's refreshes. Held, it ends with the tick picked.")))
@@ -938,11 +938,11 @@
     (+ gh 4 (max pipeline-clock-size (pipeline-timeline-height)))))
 
 ;; The live strip beside the clock: the last six refreshes, each frame
-;; across its lanes as it went, its oldest input, main's draw, its wait in
+;; across its lanes as it went, its oldest input, core1's draw, its wait in
 ;; the box, core0's wait for an image, and its time on the screen, a
 ;; refresh repeated red; the refreshes the screen reported, and the latch
 ;; each tick aimed at. Held, it shows the frame of the tick picked.
-(define pipeline-timeline-lanes '("input" "main" "box" "core0" "screen"))
+(define pipeline-timeline-lanes '("input" "core1" "box" "core0" "screen"))
 (define pipeline-timeline-refreshes 6)
 
 (define (pipeline-timeline-height)
@@ -1107,7 +1107,7 @@
                                (if newest? 3 1))
                     (wind u nx ny)))))))))))
 
-;; The lane's color frame i is in at t: its input's wait, main's draw, the
+;; The lane's color frame i is in at t: its input's wait, core1's draw, the
 ;; box, the wait for an image, then the compositor and the screen.
 (define (pipeline-draw-clock-color i t)
   (cond [(< t (or (inspect-frame-at i 'tick) 0)) 'chart-7]
@@ -1732,10 +1732,11 @@
           (and (< (cadr node) (length same))
                (profile-subject-of (list-ref same (cadr node))))))))
 
-;; What main took to draw who subject is, a surface's draw or a window's frame
-;; and its app's draw: ms a frame, over the last 30 ticks to tick newest that
-;; drew it, of those the profiler keeps; #f when none did. A frame, not a
-;; tick, so that a pause, held or idle, doesn't read as nothing.
+;; What core1 took to draw who subject is, a surface's draw or a window's
+;; frame and its app's draw: ms a frame, over the last 30 ticks to tick
+;; newest that drew it, of those the profiler keeps; #f when none did. A
+;; frame, not a tick, so that a pause, held or idle, doesn't read as
+;; nothing.
 (define (pipeline-drawing-ms subject newest)
   (let loop ([seq newest] [n 0] [ms 0.0])
     (if (or (fx= n 30) (not (profile-tick-kept? seq)))
@@ -1750,7 +1751,7 @@
 
 ;; What each span of the list on view cost, in draw order, a row each:
 ;; #(node i ms records pixels runs changed redrawn same marks), i its
-;; color's index, ms what main took to draw it a frame, up to the frame's
+;; color's index, ms what core1 took to draw it a frame, up to the frame's
 ;; tick, or #f, changed how many of its records differ from the frame
 ;; before's, #f when that one isn't kept; redrawn, same and marks as
 ;; pipeline-redraws says. Made again for each list. (pipeline-who-rows v
@@ -1910,8 +1911,8 @@
          [columns
           `((name "Who" ,(max 140 (- (ui-table-room w) 72 76 84 60 84 84 64
                                      32)))
-            (ms "Main" 72 right
-                "What main took to draw it, ms a frame over its last 30")
+            (ms "Core1" 72 right
+                "What core1 took to draw it, ms a frame over its last 30")
             (records "Records" 76 right)
             (pixels "Pixels" 84 right
                     "What its records may touch: the pixels the GPU shades, \
@@ -2841,7 +2842,7 @@
   (case stage
     [(who)
      (let ([rows (pipeline-who-rows v 'costs)])
-       (list (format "main drew in ~,2f ms"
+       (list (format "core1 drew in ~,2f ms"
                      (fold-left (lambda (ms r) (+ ms (or (vector-ref r 2) 0.0)))
                                 0.0 rows))
              (if (null? rows)

@@ -1,9 +1,11 @@
 ;;; base.ss — small utilities shared by everything else.
 
-;; The thread that loads the core is the main thread. The world's state is
-;; its alone, and so is SDL: a worker runs only worklets
-;; (proc.ss), where neither can be named.
-(define main-thread?
+;; Whether this is the thread that loaded this copy of base.ss: each
+;; environment loads its own, so the world's answers for core1 and core0's
+;; for the process's first thread. The world's state is core1's alone, and
+;; SDL core0's: a worker runs only worklets (proc.ss), where neither can be
+;; named.
+(define core1-thread?
   (if (threaded?)
       (let ([id (get-thread-id)]) (lambda () (fx= (get-thread-id) id)))
       (lambda () #t)))

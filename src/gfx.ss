@@ -1394,7 +1394,7 @@
 
 (define (rec-table-bytes) (* 4 glyph-row-words (+ *glyph-count* 1)))
 
-;; The list written since rec-begin! goes to the screen: main publishes it,
+;; The list written since rec-begin! goes to the screen: core1 publishes it,
 ;; and core0 presents it, at once while it has no thread of its own
 ;; (render-frames-back! tells what came of it). => the frame's number, its
 ;; report's (host-frame-report).
@@ -1405,9 +1405,9 @@
     (unless (host-forked?) (host-step!))
     (gpu-frame-number f)))
 
-;; The list written since rec-begin!, as the frame main hands the host, with
-;; the lists kept from earlier: the past one, and the preview's, which its
-;; procedure makes here, on main, of the frame just recorded.
+;; The list written since rec-begin!, as the frame core1 hands the host,
+;; with the lists kept from earlier: the past one, and the preview's, which
+;; its procedure makes here, on core1, of the frame just recorded.
 (define (rec-publish)
   (rec-freeze! (rec-runs))
   (let* ([preview *rec-preview*]
@@ -1442,7 +1442,7 @@
 
 ;; What thunk draws, on an image pw × ph, scale times bigger, clear or black:
 ;; its pixels, row after row, premultiplied BGRA.
-;; The same, its pixels handed to then on main once core0 has drawn them,
+;; The same, its pixels handed to then on core1 once core0 has drawn them,
 ;; with a frame soon: nothing waits for them (.work/gpu-design.md 9.4). What
 ;; was recorded goes to core0 as its own copy.
 (define (drawing->bytes-then pw ph scale thunk clear? then)

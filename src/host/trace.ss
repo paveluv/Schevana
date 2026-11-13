@@ -1,9 +1,9 @@
-;;; trace.ss — what core0 and main did around each frame, for whoever looks
+;;; trace.ss — what core0 and core1 did around each frame, for whoever looks
 ;;; into missed frames: each thread's steps (code, when, one number) in a
 ;;; ring of its own, the last few minutes of them, and written out with the
 ;;; screen's reports on the frames still kept, to a file of its own, when
-;;; the window closes or on (host-trace-dump!); and when main stops
-;;; stepping, or Ctrl-C ends the run, so that a freeze says where main
+;;; the window closes or on (host-trace-dump!); and when core1 stops
+;;; stepping, or Ctrl-C ends the run, so that a freeze says where core1
 ;;; stopped. On in a checkout with a .work folder and a window; elsewhere
 ;;; host-trace! does nothing.
 
@@ -14,7 +14,7 @@
 
 ;; A ring a thread: rows of (index code ns a), the index written last, so a
 ;; reader on another thread takes a row only once it's whole; and the next
-;; index. Core0's, and main's (or both, with one thread).
+;; index. Core0's, and core1's (or both, with one thread).
 (defvar *host-trace-rings*
   (vector (make-fxvector (* 4 host-trace-rows) -1) (box 0)
           (make-fxvector (* 4 host-trace-rows) -1) (box 0)))
@@ -39,8 +39,8 @@
 (defvar *host-trace-interrupt* #f)
 
 ;; Ctrl-C ends the run as it did, the trace written first. Chez hands the
-;; signal to the OS's main thread, core0's with a window, which goes on
-;; while main is stuck.
+;; signal to the process's first thread, core0's with a window, which goes
+;; on while core1 is stuck.
 (define (host-trace-on-interrupt!)
   (unless *host-trace-interrupt*
     (set! *host-trace-interrupt* (keyboard-interrupt-handler))
@@ -49,14 +49,14 @@
        (guard (c [#t #f]) (host-trace-write! "Ctrl-C ended the run"))
        (*host-trace-interrupt*)))))
 
-;; How long main may go without a step before core0 writes the trace: far
-;; longer than any wait of main's, which is a refresh or a timer's at most.
+;; How long core1 may go without a step before core0 writes the trace: far
+;; longer than any wait of core1's, which is a refresh or a timer's at most.
 (define host-trace-stall-ns 5000000000)
 
-;; Main's count of steps when a stall's trace was written: one a stall.
+;; Core1's count of steps when a stall's trace was written: one a stall.
 (defvar *host-trace-stalled* -1)
 
-;; On core0's step, main on a thread of its own: main's newest step older
+;; On core0's step, core1 on a thread of its own: core1's newest step older
 ;; than host-trace-stall-ns, the trace written, saying which it was.
 (define (host-trace-watch!)
   (when *host-trace-dir*
@@ -70,7 +70,7 @@
               (when (> since host-trace-stall-ns)
                 (set! *host-trace-stalled* n)
                 (host-trace-write!
-                 (format "main hasn't stepped for ~,1f s, since its ~a"
+                 (format "core1 hasn't stepped for ~,1f s, since its ~a"
                          (/ since 1e9)
                          (vector-ref host-trace-names
                                      (fxvector-ref v (fx+ at 1)))))))))))))
@@ -119,7 +119,7 @@
                         (if (file-exists? path) (next (+ k 1)) path)))]
               [rows (sort (lambda (a b) (< (cadr a) (cadr b)))
                           (append (host-trace-rows-of 0 'core0)
-                                  (host-trace-rows-of 2 'main)))]
+                                  (host-trace-rows-of 2 'core1)))]
               [t0 (if (pair? rows) (cadr (car rows)) (now-ns))])
          (unless (file-directory? *host-trace-dir*)
            (mkdir *host-trace-dir*))

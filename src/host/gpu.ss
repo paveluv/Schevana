@@ -1,7 +1,7 @@
 ;;; host/gpu.ss — the GPU layer's device side, in core0 below the core
 ;;; (.work/gpu-design.md 9.5): the device, pipelines, images, buffers and
 ;;; lists on the GPU, uploads, the pass, the swapchain, presenting a frame
-;;; main publishes. Only core0 names SDL; this file alone knows one driver
+;;; core1 publishes. Only core0 names SDL; this file alone knows one driver
 ;;; from another, so that another back end stays a swap. It names nothing
 ;;; of the core above it but what tests/sources.ss lists, on its way out.
 ;;;
@@ -395,7 +395,7 @@
     (gpu-must 'gpu-make-pipeline
               (sdl-create-gpu-pipeline device (gpu-at p)))))
 
-;; The core's shaders, which records are drawn with, as main hands them
+;; The core's shaders, which records are drawn with, as core1 hands them
 ;; over (src/gfx.ss): (vertex . fragments), a vector of the fragment
 ;; shader's variants.
 (defvar *gpu-shaders* #f)
@@ -468,11 +468,11 @@
          p)])))
 
 ;;; ------------------------------------------------------------------ objects
-;;; The SDL objects behind main's handles, by id, (kind object . sizes):
+;;; The SDL objects behind core1's handles, by id, (kind object . sizes):
 ;;; (texture object w h), (buffer object bytes), (atlas object). Made and let
-;;; go of by the jobs main asks, which core0 runs before anything that needs
+;;; go of by the jobs core1 asks, which core0 runs before anything that needs
 ;;; them (.work/gpu-design.md 9.12); the sizes are core0's own, which every
-;;; write main hands it must fit.
+;;; write core1 hands it must fit.
 
 (defvar *gpu-objects* (make-eqv-hashtable))
 
@@ -485,7 +485,7 @@
     (unless o (errorf 'gpu-object "~a has no object: its job hasn't run" id))
     (cadr o)))
 
-;; Main's jobs, in order: (texture id w h usage levels), (buffer id bytes),
+;; Core1's jobs, in order: (texture id w h usage levels), (buffer id bytes),
 ;; zeroed, (atlas id), the glyphs' atlas under id, (shaders vertex
 ;; fragments), the core's, (target w h), the size frames draw to with no
 ;; window, (release id), and (read then recs recs-n extras extras-n table
@@ -493,11 +493,11 @@
 ;; then in *gpu-answers*, newest first.
 (defvar *gpu-answers* (box '()))
 
-;; What core0 read back for main since main last took it, (then . bytes)
-;; each, in order: main hands each to its then. From any thread.
+;; What core0 read back for core1 since core1 last took it, (then . bytes)
+;; each, in order: core1 hands each to its then. From any thread.
 (define (gpu-take-answers!) (host-take! *gpu-answers*))
 
-;; The jobs, and main's writes since it last handed them on (writes, a
+;; The jobs, and core1's writes since it last handed them on (writes, a
 ;; recording of "/recorder"'s, or #f): what makes objects first, then the
 ;; writes into them, then the reads that see them and the releases.
 (define (gpu-run-jobs! jobs writes)
@@ -577,7 +577,7 @@
     (sdl-upload-to-buffer pass (gpu-at from) (gpu-at to) #f)))
 
 ;;; ------------------------------------------------------------------ writes
-;;; What main writes into buffers and images goes in a recording of
+;;; What core1 writes into buffers and images goes in a recording of
 ;;; "/recorder"'s, the frame's writes: its records spans of 32 bytes, (kind
 ;;; id x y src n 0 0), its extras the words they name. Kind 0, n words into
 ;;; buffer id from word x, from src in the extras; kind 1, n pixels into
@@ -642,7 +642,7 @@
                         [else loans])
                   (+ off size)))))))
 
-;; Main's writes (writes, or #f for none) into their objects, by a copy
+;; Core1's writes (writes, or #f for none) into their objects, by a copy
 ;; pass of their own sent now, ahead of anything that reads them, through
 ;; one transfer; then free for the recorder to write again, loans and all,
 ;; core0 done reading them.
@@ -677,7 +677,7 @@
 ;;; ------------------------------------------------------------------ images
 ;;; An image is a texture of premultiplied BGRA, its pixels on the GPU alone.
 
-;; Main's handle on one: its id in *gpu-objects*, its size and levels, the
+;; Core1's handle on one: its id in *gpu-objects*, its size and levels, the
 ;; recording its loans are chained after, "/recorder"'s (#f till it lends
 ;; one), and gone?, let go of, so that a list kept from before that names it
 ;; draws without it.
@@ -695,9 +695,9 @@
 ;;; ------------------------------------------------------------------ buffers
 ;;; A buffer a shader reads or writes: whole numbers or floats, 32 bits each,
 ;;; on the GPU alone. What's set goes up with the next frame, or the next
-;;; compute run, among main's writes.
+;;; compute run, among core1's writes.
 
-;; Main's handle on one: its id in *gpu-objects*, its size in bytes, and
+;; Core1's handle on one: its id in *gpu-objects*, its size in bytes, and
 ;; gone?, let go of, as an image can be.
 (define-record-type (gpu-buffer make-gpu-buffer* gpu-buffer?)
   (nongenerative schevana-gpu-buffer-3)
@@ -760,7 +760,7 @@
   (not (fx= (vector-ref (gpu-list-state l) 2)
             (gpu-recording-version (gpu-list-seen l)))))
 
-;; Its GPU buffers let go of, by main's release job: shown again, it goes
+;; Its GPU buffers let go of, by core1's release job: shown again, it goes
 ;; up again.
 (define (gpu-list-free! id)
   (let ([state (hashtable-ref *gpu-lists* id #f)])
@@ -879,7 +879,7 @@
          (sdl-end-compute-pass pass))))
    run))
 
-;; run, now, main's jobs and writes first, and a wait for it.
+;; run, now, core1's jobs and writes first, and a wait for it.
 (define (gpu-compute-now! run jobs writes)
   (gpu-run-jobs! jobs writes)
   (let* ([r *renderer*]
@@ -892,7 +892,7 @@
 (define (gpu-run-computes! cb runs)
   (for-each (lambda (run) (gpu-dispatch! cb run)) runs))
 
-;; runs that no frame took, main's jobs and writes first, sent with no
+;; runs that no frame took, core1's jobs and writes first, sent with no
 ;; frame and waited for by nobody. The queue keeps the order: what a frame
 ;; sent after them reads finds them done.
 (define (gpu-submit-computes! runs jobs writes)
@@ -903,7 +903,7 @@
     (gpu-run-computes! cb runs)
     (sdl-submit-gpu cb)))
 
-;; What's in buffer id now, main's jobs and writes first: => its bytes, a
+;; What's in buffer id now, core1's jobs and writes first: => its bytes, a
 ;; copy of its own, or #f if id names no buffer.
 (define (gpu-buffer-download! jobs writes id)
   (gpu-run-jobs! jobs writes)
@@ -1345,7 +1345,7 @@
     (set! *gpu-facts-mode* #f)))       ; the facts say so at the next look
 
 ;;; ------------------------------------------------------------------ frames
-;;; A frame as main hands it to the host, which reads nothing else of main's
+;;; A frame as core1 hands it to the host, which reads nothing else of core1's
 ;;; (.work/gpu-design.md 9.5): the root's recording and the frame's number,
 ;;; "/recorder"'s to set (src/recorder/bytes.ss), the glyph table if it
 ;;; changed, the atlas's new pieces, the jobs, the writes and the compute
@@ -1363,7 +1363,7 @@
           (mutable mode) (mutable in-flight) (mutable earlier)
           (mutable shown?)))
 
-;; A frame to fill: main keeps those given back to fill again.
+;; A frame to fill: core1 keeps those given back to fill again.
 (define (gpu-frame-make)
   (make-gpu-frame #f 0 #f 0 '() '() #f '() #f 3 '() #f))
 
@@ -1371,12 +1371,12 @@
 ;; recorder's is free to write again once a later frame doesn't show it.
 (defvar *gpu-frame-back* 0)
 
-;; The frame main published, till core0 takes it, else #f; and those core0
-;; gave back since main last took them, newest first.
+;; The frame core1 published, till core0 takes it, else #f; and those core0
+;; gave back since core1 last took them, newest first.
 (defvar *gpu-published* (box #f))
 (defvar *gpu-given-back* (box '()))
 
-;; Main's side: f to the screen, core0 woken. One waits at a time: main
+;; Core1's side: f to the screen, core0 woken. One waits at a time: core1
 ;; publishes again once core0 has taken it (gpu-frame-waiting?).
 (define (gpu-publish! f)
   (memory-order-release)
@@ -1389,7 +1389,7 @@
 
 (define (gpu-frame-waiting?) (and (unbox *gpu-published*) #t))
 
-;; The frames core0 gave back since main last took them, oldest first.
+;; The frames core0 gave back since core1 last took them, oldest first.
 (define (gpu-frames-back!) (host-take! *gpu-given-back*))
 
 ;; Core0's side, in its step: the frame published, if one is, presented
@@ -1402,21 +1402,21 @@
       (host-trace! 2 (gpu-frame-number f))
       (present-taken!)
       (set! *gpu-booting* #f)
-      ;; taken: main may make the next (.work/gpu-design.md 9.12), with the
+      ;; taken: core1 may make the next (.work/gpu-design.md 9.12), with the
       ;; input that came till now, not only till the last step's pump
       (host-events-pumped!)
       (host-world-wake!)
       (gpu-frame-shown?-set! f (gpu-present! f))
-      ;; the input that came while the acquire held core0, read before main
+      ;; the input that came while the acquire held core0, read before core1
       ;; hears the frame is back and may begin its next turn
       (host-events-pumped!)
       (host-put! *gpu-given-back* f)
       (host-trace! 6 (gpu-frame-number f))
-      ;; given back, with what it read: main takes them at once, whether
+      ;; given back, with what it read: core1 takes them at once, whether
       ;; or not a frame follows
       (host-world-wake!))))
 
-;; Main's jobs and writes, the lists kept from earlier on their images,
+;; Core1's jobs and writes, the lists kept from earlier on their images,
 ;; then the frame. => #t if the frame reached the screen; #f if the window
 ;; had no room for it yet, and it should be tried again.
 (define (gpu-present! f)
@@ -1528,7 +1528,7 @@
     (#\f . #xff8aa8ff)))
 
 ;; How far the world has loaded, (done . total) files of its folders, set
-;; whole by main as it loads them; and whether core0 still boots, till the
+;; whole by core1 as it loads them; and whether core0 still boots, till the
 ;; world publishes its first frame.
 (defvar *gpu-boot-loaded* '(0 . 0))
 (defvar *gpu-booting* #f)
@@ -1644,7 +1644,7 @@
 
 ;; The same, drawn to a new texture w × h and read back: its pixels, row
 ;; after row, premultiplied BGRA. What tests, screenshots and icons see;
-;; jobs, writes and computes, what main asked of the GPU since, go first.
+;; jobs, writes and computes, what core1 asked of the GPU since, go first.
 (define (gpu-drawing->bytes jobs writes computes recs recs-n extras extras-n
                            table table-n atlas-pieces runs w h clear?)
   (gpu-run-jobs! jobs writes)

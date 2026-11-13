@@ -1,8 +1,8 @@
 ;;; tests/units/vat.ss — vats (services/vat.ss): threads with a mailbox and a
-;;; sandbox; jobs, their deliveries on main, and their kills.
+;;; sandbox; jobs, their deliveries on core1, and their kills.
 
 ;;; Vats (services/vat.ss): threads with a mailbox and a sandbox; jobs,
-;;; their deliveries on main, and their kills.
+;;; their deliveries on core1, and their kills.
 
 ;; Steps the world until (pred), for at most 2 s.
 (define (vat-test-until pred)
@@ -20,7 +20,7 @@
 (define vat-test (vat-start! (env-child (env-root) 'vat-test 'core)))
 
 (check "a vat runs a worklet on its own thread, and the job's then runs on \
-        main at a later step, once"
+        core1 at a later step, once"
        (let* ([got '()]
               [j (vat-send! vat-test vat-test-where '()
                             (lambda (id)
@@ -135,7 +135,7 @@
               (= (unbox after) 7)
               (begin (steps 3) (not ran)))))
 
-(check "a result that is a sandbox's own procedure is refused on main"
+(check "a result that is a sandbox's own procedure is refused on core1"
        (let ([w (open-window "Leak" 'size '(200 . 100))] [got #f])
          (parameterize ([current-window w])
            (vat-eval! vat-test 'vat-test-tally! (lambda (p) (set! got p))))

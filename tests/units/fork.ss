@@ -22,8 +22,8 @@
   (define (saw key) (and (pair? seen) (cdr (assq key seen))))
   (check (format "a forked world loads on its own thread, draws frames \
                   core0 presents, and quits, ending the process ~s" seen)
-         (and (eqv? status 0) (saw 'forked) (saw 'main) (saw 'frames)))
-  (check "on a forked world, readbacks that would hold main raise; one by a \
+         (and (eqv? status 0) (saw 'forked) (saw 'core1) (saw 'frames)))
+  (check "on a forked world, readbacks that would hold core1 raise; one by a \
           then hands the screen's bytes back"
          (and (saw 'readback) (saw 'compute) (> (saw 'bytes) 0)))
   (check (format "frame turns follow core0's screen: a window that \
@@ -33,7 +33,7 @@
          (and (saw 'animated)
               (<= (abs (- (saw 'animated) 1 (saw 'refreshes))) 3)
               (= (saw 'uneven) 0)))
-  (check (format "a forked world's ticks add up: main's waits, for input or \
+  (check (format "a forked world's ticks add up: core1's waits, for input or \
                   for core0 to take its frame, are its own, so each tick's \
                   phases sum to its time (~a ticks, ~a not)"
                  (saw 'ticks) (saw 'unsummed))

@@ -1,10 +1,10 @@
 ;;; services/vat.ss — vats: threads, each with a mailbox and a sandbox,
-;;; that run jobs and hand their results back to the main thread.
+;;; that run jobs and hand their results back to core1.
 ;;;
 ;;;   (define v (vat-of (env-fork (env-root) 'thread 'name 'tally)))
 ;;;   (vat-eval! v '(define n 0) #f)       a form, run in v's sandbox
 ;;;   (vat-eval! v '(define (add! k) (set! n (+ n k)) n) #f)
-;;;   (vat-send! v 'add! '(5) show)        v's add!; (show 5) on main
+;;;   (vat-send! v 'add! '(5) show)        v's add!; (show 5) on core1
 ;;;   (vat-send! (vat-pool) step! (list grid) show)   a worklet, on the
 ;;;                                        pool's threads
 ;;;   (vat-repl! v forms 72 show-lines show-error)   forms as a REPL
@@ -27,7 +27,7 @@
 ;;; sandbox, and its arguments; or a form, for vat-eval!. Its arguments
 ;;; hold no procedure but worklets (crew-stray), and so must its results.
 ;;; A vat runs its jobs one at a time, in the order sent. When one
-;;; returns, (then v ...) runs on main at its next step, as a handler of
+;;; returns, (then v ...) runs on core1 at its next step, as a handler of
 ;;; the window it was sent from: (current-window) bound, under the
 ;;; watchdog, an error crashing the window. A job that raises crashes its
 ;;; window too (with no window, a red toast), unless it was sent with a
@@ -39,7 +39,7 @@
 ;;; vat-job-kill!, by its window's closing or crashing, or by its vat's
 ;;; dropping. Killed, it never starts, or, running, escapes within
 ;;; vat-fuel ticks of its own code (its thread's timer looks), and its
-;;; then never runs: the kill is on main, as is the delivery, so the kill
+;;; then never runs: the kill is on core1, as is the delivery, so the kill
 ;;; always wins.
 ;;;
 ;;; The pool, (vat-pool), is a vat on /worklets served by several threads,
@@ -62,12 +62,12 @@
 ;; A job: its vat; its kind: call (proc, a worklet or a name in the
 ;; vat's sandbox, applied to args), eval (args a form) or show (args the
 ;; width and forms of vat-repl!); its then, window and fail (or #f);
-;; whether it was killed, a box main sets and the vat's thread reads.
+;; whether it was killed, a box core1 sets and the vat's thread reads.
 (define-record-type vat-job
   (nongenerative schevana-vat-job-2)
   (fields vat kind proc args then window fail killed))
 
-(defvar *vat-jobs* '())     ; the pending jobs, on main
+(defvar *vat-jobs* '())     ; the pending jobs, on core1
 (defvar *vat-all* '())      ; the vats not dropped, the pool too
 (defvar *vat-pool* #f)
 (defvar *vat-pool-size* 4)
@@ -191,8 +191,8 @@
                 (= n 1000))
       (try (+ n 1)))))
 
-;; The fences hand the vat's thread what main wrote before it sent the job,
-;; as post-main! hands main a job's outcome.
+;; The fences hand the vat's thread what core1 wrote before it sent the
+;; job, as post-core1! hands core1 a job's outcome.
 (define (vat-put! v j)
   (memory-order-release)
   (let loop ()
@@ -256,7 +256,7 @@
 (set! *window-gone* (lambda (win) (vat-window-gone! win)))
 
 ;; On j's vat's thread: runs j, its timer on, and posts the outcome to
-;; main. The way out is let go before j's results leave the call/1cc, so
+;; core1. The way out is let go before j's results leave the call/1cc, so
 ;; the timer never takes it once it is spent.
 (define (vat-run! j)
   (unless (unbox (vat-job-killed j))
@@ -274,7 +274,7 @@
                   r)))])
       (set-timer 0)
       (when r   ; #f: killed, and out
-        (post-main! (lambda () (vat-deliver! j (car r) (cdr r))))))))
+        (post-core1! (lambda () (vat-deliver! j (car r) (cdr r))))))))
 
 (define (vat-call j)
   (let ([e (env-environment (vat-env (vat-job-vat j)))]
@@ -323,8 +323,8 @@
           (begin (vat-current #f) ((cdr now) #f))
           (set-timer vat-fuel)))))
 
-;; On main: j's then, given its results, or its fail, given the error,
-;; unless j was killed meanwhile. The results are walked here, on main,
+;; On core1: j's then, given its results, or its fail, given the error,
+;; unless j was killed meanwhile. The results are walked here, on core1,
 ;; where the worklets' table is.
 (define (vat-deliver! j status value)
   (when (memq j *vat-jobs*)
@@ -346,7 +346,7 @@
                (vat-handle w (vat-job-fail j) (list c) crash)
                (crash c)))]))))
 
-;; (proc arg ...) on main, as a handler of win (or of none): its theme and
+;; (proc arg ...) on core1, as a handler of win (or of none): its theme and
 ;; (current-window) bound, under the watchdog, an error going to crash.
 (define (vat-handle win proc args crash)
   (safe-call 'job

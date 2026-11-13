@@ -775,7 +775,7 @@
     (23 todo chore low #f ("portability") #f ()
      "Try the macOS and Windows libraries"
      "Their names are in ffi.ss but have not been tried. macOS needs the \
-      loop on the main thread, which it already is.")
+      loop on the process's first thread, which it already is.")
     (24 todo feature low #f ("repl") #f ()
      "Namespaces for apps"
      "Apps all share one environment. REPLs can be private or pure; apps \
@@ -802,7 +802,7 @@
       browser or the Inspector can use too.")
     (10 doing feature high "Pavel" ("threads") 14 ()
      "Threads spec: worker pool, jobs, parallel-for"
-     "Jobs on a pool of workers, results handed back to the main thread, \
+     "Jobs on a pool of workers, results handed back to core1, \
       pixmaps filled in parallel. Threads only when measured.")
     (7 review chore urgent "Pavel" ("sdl" "host") 1
      ("HiDPI at 200% on GNOME" "Typing with an IME"

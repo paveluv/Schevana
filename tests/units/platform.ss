@@ -129,9 +129,9 @@
                 (string-prefix? "# steps" (line3 a))
                 (equal? (line3 b) "# written as a check")))))
 
-;; No collection while it looks: one stamps a step of main's (gc).
-(check "main stopped past the limit, core0 writes the trace once, saying \
-        main's last step; a step of main's later, again"
+;; No collection while it looks: one stamps a step of core1's (gc).
+(check "core1 stopped past the limit, core0 writes the trace once, saying \
+        core1's last step; a step of core1's later, again"
        (let ([whys '()])
          (parameterize ([collect-request-handler void])
            (fluid-let ([*host-trace-dir* (string-append out-dir "/traces")]
@@ -150,7 +150,7 @@
                  (host-trace-watch!))
                (and (= once 1)
                     (= 2 (length whys))
-                    (string-prefix? "main hasn't stepped for " (car whys))
+                    (string-prefix? "core1 hasn't stepped for " (car whys))
                     (string-suffix? "since its tick" (cadr whys))
                     (string-suffix? "since its draw" (car whys))))))))
 
@@ -241,7 +241,7 @@
                                       (* 2 (modulo f mac-waiting-rows)))))))))
 
 ;; QOS_CLASS_USER_INTERACTIVE and QOS_CLASS_DEFAULT
-(check "on a Mac a thread forked, as main's, starts at the default class \
+(check "on a Mac a thread forked, as core1, starts at the default class \
         and asks for core0's, the user-interactive one; elsewhere no class \
         is known"
        (let* ([out (box #f)]

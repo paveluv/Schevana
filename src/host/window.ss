@@ -96,7 +96,7 @@
   (values (ftype-ref host-size (w) host-size*)
           (ftype-ref host-size (h) host-size*)))
 
-;; To w × h window units: from main, once core0 has a thread of its own, a
+;; To w × h window units: from core1, once core0 has a thread of its own, a
 ;; job of core0's.
 (define (host-window-resize! w h)
   (if *host-forked*
@@ -493,9 +493,9 @@
   (host-put! *host-jobs* job)
   (host-wake!))
 
-;;; ------------------------------------------------------------------ main
-;;; With a window core0 runs on the OS's main thread and the world on a
-;;; thread of its own, main (.work/gpu-design.md 9.4): main waits for
+;;; ------------------------------------------------------------------ core1
+;;; With a window core0 runs on the process's first thread and the world on
+;;; a thread of its own, core1 (.work/gpu-design.md 9.4): core1 waits for
 ;;; core0's events, frames given back and mail here, woken by whoever
 ;;; brings them. Headless, one thread plays both, and core0's step is the
 ;;; wait.
@@ -509,14 +509,14 @@
 (defvar *host-ready* (make-condition))   ; core0's own
 (defvar *host-woken* #f)                 ; under the mutex
 
-;; Ends main's wait, or the next one: from any thread.
+;; Ends core1's wait, or the next one: from any thread.
 (define (host-world-wake!)
   (when *host-forked*
     (with-mutex *host-world-mutex*
       (set! *host-world-woken* #t)
       (condition-signal *host-world-ready*))))
 
-;; Main waits up to ms, or till it's woken.
+;; Core1 waits up to ms, or till it's woken.
 (define (host-world-wait! ms)
   (with-mutex *host-world-mutex*
     (unless (or *host-world-woken* (<= ms 0))
@@ -530,19 +530,19 @@
 (define (host-post-submit! runs jobs writes)
   (host-post! (list 'gpu-submit-computes! runs jobs writes)))
 
-;; Main is done: core0 closes the window and ends the process.
+;; Core1 is done: core0 closes the window and ends the process.
 (define (host-quit!) (host-post! '(host-quit-now!)))
 (defvar *host-quit* #f)
 (define (host-quit-now!) (set! *host-quit* #t))
 
 ;; How long core0 sleeps with nothing to do: input waits that long at most;
-;; while frames flow (one taken in the last 100 ms), a ms, so that main's
+;; while frames flow (one taken in the last 100 ms), a ms, so that core1's
 ;; turn, which begins just in time for the screen, finds the newest.
 (define host-idle-ms 4)
 (define (host-idle-ms-now)
   (if (< (- (now-ns) *present-taken*) 100000000) 1 host-idle-ms))
 
-;; Core0's loop, on its own thread: its steps till main quits.
+;; Core0's loop, on its own thread: its steps till core1 quits.
 (define (host-loop!)
   (let loop ()
     (host-step!)
@@ -558,7 +558,7 @@
         (loop))))
 
 ;; Ends core0's sleep, or the next one: a job posted, a frame published.
-;; From any thread; on main's own, core0 never sleeps.
+;; From any thread; on core1's own, core0 never sleeps.
 (define (host-wake!)
   (when *host-forked*
     (with-mutex *host-world-mutex*
@@ -585,7 +585,7 @@
 ;; host-idle-ms, which a job or a frame ends; the frames' GPU fences looked
 ;; at and the screen's reports read; the events into the world's inbox,
 ;; what the window says of itself read again first; with none, read again
-;; all the same; main, on a thread of its own, watched for a stall
+;; all the same; core1, on a thread of its own, watched for a stall
 ;; (host-trace-watch!). The sleep comes before
 ;; the pump, so that input that came while it slept goes in before the
 ;; next present can wait for the screen.
@@ -600,9 +600,9 @@
     (unless (host-events-pumped!) (host-facts-refresh! (pair? jobs)))
     (when *host-forked* (host-trace-watch!))))
 
-;; The events come since the last pump into the world's inbox, main woken
+;; The events come since the last pump into the world's inbox, core1 woken
 ;; for them, and when the oldest input came; what the window says of itself
-;; read again before, so that main, taking a resize, finds the new size. A
+;; read again before, so that core1, taking a resize, finds the new size. A
 ;; pump that held core0 past 2 ms is traced, µs, with its events' types.
 ;; => whether any came.
 (define (host-events-pumped!)

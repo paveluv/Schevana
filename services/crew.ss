@@ -15,7 +15,7 @@
 ;;; should take 20 to 200 µs and allocate nothing:
 ;;; allocation stops every thread. A call that raises stops new ones from
 ;;; starting, and its condition is raised in the caller once the running
-;;; ones are done. On main the caller waits at most crew-main-ms, then
+;;; ones are done. On core1 the caller waits at most crew-core1-ms, then
 ;;; cancels its calls (a worker's timer escapes from one within
 ;;; microseconds) and raises, as a runaway handler does. In a process (a
 ;;; REPL evaluation) the caller only waits, a millisecond at a time, and
@@ -36,7 +36,7 @@
 ;;; bytes, and an idle worker nothing.
 
 (define crew-fuel 20000)          ; timer ticks between a worker's looks
-(define crew-main-ms 100)         ; how long main waits for a region
+(define crew-core1-ms 100)         ; how long core1 waits for a region
 ;; made once: a wait allocates nothing
 (define crew-idle-wait (make-time 'time-duration 50000000 0))   ; at most
 (define crew-nap (make-time 'time-duration 20000 0))            ; a waiter's
@@ -44,7 +44,7 @@
 
 ;; A loop's range, chunk, worklet and the arguments after lo and hi; boxes:
 ;; the next index, the workers in it, the first condition raised, whether
-;; it was cancelled; main's deadline (ms) or #f, and the process waiting
+;; it was cancelled; core1's deadline (ms) or #f, and the process waiting
 ;; for it or #f.
 (define-record-type crew-region
   (nongenerative schevana-crew-region-3)
@@ -52,7 +52,7 @@
           process))
 
 ;; SCHEVANA_WORKERS, or one less than the machine's threads, at most 8
-;; (more allocating workers slow the main thread down).
+;; (more allocating workers slow core1 down).
 (define (crew-default-size)
   (let ([n (let ([s (getenv "SCHEVANA_WORKERS")]) (and s (string->number s)))])
     (if (and (fixnum? n) (>= n 0))
@@ -80,7 +80,7 @@
 
 ;;; ------------------------------------------------------------------ workers
 
-;; On main: workers up to the size.
+;; On core1: workers up to the size.
 (define (crew-ensure!)
   (let loop ([i (length *crew-workers*)])
     (when (< i (crew-size))
@@ -188,7 +188,7 @@
   (let loop ()
     (let ([v (unbox b)]) (unless (box-cas! b v (fx+ v n)) (loop)))))
 
-;; By its caller, past main's deadline, or its process gone. It stays so,
+;; By its caller, past core1's deadline, or its process gone. It stays so,
 ;; in the box a claim reads.
 (define (crew-cancelled? r)
   (or (unbox (crew-region-cancelled r))
@@ -274,13 +274,13 @@
      (raise (unbox (crew-region-error r))))
    (lambda () (crew-calls! r #t (list 0 0)))))
 
-;; Until no worker is in r, which is closed by now; on main, at most
-;; crew-main-ms past its deadline (for the cancelled calls to escape).
+;; Until no worker is in r, which is closed by now; on core1, at most
+;; crew-core1-ms past its deadline (for the cancelled calls to escape).
 ;; Looks first, as the calls left are short, and a nap is much longer than
 ;; it asks for.
 (define (crew-wait! r)
   (let ([give-up (let ([d (crew-region-deadline r)])
-                   (and d (+ d crew-main-ms)))])
+                   (and d (+ d crew-core1-ms)))])
     (let loop ([spins 0])
       (unless (crew-done? r)
         (if (fx< spins crew-wait-spins)
@@ -344,7 +344,7 @@
      (let* ([p (current-proc)]
             [r (make-crew-region start end chunk proc args (box start) (box 0)
                                  (box #f) (box #f)
-                                 (and (not p) (+ (now-ms) crew-main-ms)) p)])
+                                 (and (not p) (+ (now-ms) crew-core1-ms)) p)])
        (crew-prune!)
        (crew-ensure!)
        (crew-push! r)

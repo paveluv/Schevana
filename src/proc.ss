@@ -12,7 +12,7 @@
 
 ;; defvar, not define: a reload must not swap out parameters that running
 ;; engines are still parameterizing. Thread parameters: another thread's
-;; binding is never the main thread's.
+;; binding is never core1's.
 (defvar in-engine? (make-thread-parameter #f))
 (defvar current-proc (make-thread-parameter #f))
 

@@ -175,7 +175,7 @@
 
 ;; Steps core0, which drains its events into the world's inbox: on one
 ;; thread, headless, there is nothing to wait for. Or, core0 on a thread
-;; of its own, waits up to wait-ms till it's woken: with a frame of main's
+;; of its own, waits up to wait-ms till it's woken: with a frame of core1's
 ;; waiting for core0, a wait for the screen, which holds core0 meanwhile;
 ;; or, ticks keeping to the compositor's latches, for the next latch.
 ;; Then the inbox: the host's events, each told to *host-event-seen*, as

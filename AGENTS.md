@@ -50,8 +50,8 @@ before it:
 
 | Layer | What goes there |
 |---|---|
-| `src/host/` | Core0, below the core: the host's own code, SDL's bindings, the GPU's device side, and the window and its events. It loads right after `src/ffi.ss` and `src/base.ss`, then makes the world's environment, "/", where everything below loads. |
-| `src/` | The core: the world (windows, focus, the theme's layers, processes, timers, the host's interface), the shader compiler, main's side of the GPU layer, the recorder and fonts, its registries, the hooks later layers fill, and the caches its own procedures need. |
+| `src/host/` | Core0, below the core: the host's own code, SDL's bindings, the GPU's device side, and the window and its events. It loads right after `src/ffi.ss` and `src/base.ss`, then makes the world's environment, "/", where everything below loads, and forks core1, the world's own thread, which loads and runs it (headless, one thread plays both). |
+| `src/` | The core: the world (windows, focus, the theme's layers, processes, timers, the host's interface), the shader compiler, core1's side of the GPU layer, the recorder and fonts, its registries, the hooks later layers fill, and the caches its own procedures need. |
 | `kits/` | Libraries, pure or almost. |
 | `services/` | Long-lived state with an API and no surface: the crew of worker threads, the tree of environments, the apps' sandboxes and what they are allowed, vats and their jobs, the profiler, the saved look. |
 | `desktop/` | The screen's own surfaces and the desktop's behavior: wallpaper, bars, menu, toasts, keys, arranging windows. |
@@ -118,15 +118,15 @@ before it:
 - **S3. Lifetime.** State that must outlive `(reload!)` is a `defvar`; a
   cache may be a `define` that starts empty. A window's state lives in the
   window (`window-ref`, `window-set!`), not in a global table.
-- **S4. Threads.** Global state belongs to the main thread, and only it
-  writes it. The exceptions are a service's own structures that threads
-  share, changed only by `box-cas!` (the main thread's mail, the crew's
+- **S4. Threads.** Global state belongs to core1, the world's thread, and
+  only it writes it. The exceptions are a service's own structures that
+  threads share, changed only by `box-cas!` (core1's mail, the crew's
   loops, a vat's mailbox). A worker runs only worklets (`define-worklet`):
   procedures compiled where SDL and the world's state are out of
   reach, which touch only what they are handed; or, in a vat, code
   compiled in the vat's own sandbox, which its thread alone evaluates in.
   The crew and the vats refuse to hand them any procedure but worklets,
-  and a vat's results come back to main the same way. Don't hand a worker
+  and a vat's results come back to core1 the same way. Don't hand a worker
   world code by other means (`fork-thread`).
 - **S5. Names.** A global is earmuffed and carries its owner's prefix
   (`*status-segments*`, `*repl-inputs*`).

@@ -54,7 +54,7 @@
     ;; thread
     host-wake! gpu-publish! gpu-frame-waiting? gpu-frames-back!
     gpu-take-answers!
-    ;; whether core0 has a thread of its own; main's wait, and its wake from
+    ;; whether core0 has a thread of its own; core1's wait, and its wake from
     ;; any thread; and quitting, a job
     host-forked? host-world-wait! host-world-wake! host-quit!
     ;; and how far the world has loaded, for the boot screen
@@ -78,7 +78,7 @@
 
 ;; Forms evaluated in core0's environment by core0 itself, between frames,
 ;; as a vat takes them: a REPL in "/host" sends them, never touching core0's
-;; state from main's thread. then gets, on main, (ok text ...), what they
+;; state from core1. then gets, on core1, (ok text ...), what they
 ;; printed and their values but (void) written width wide, or (error text).
 (define (host-eval! forms width then)
   (host-post! (list 'host-eval-now! forms width then)))
@@ -213,8 +213,8 @@
 ;; mode sdl), core0 opens it, its size in logical pixels at the desktop's
 ;; scale, or full screen, and clears it; with none (headless, for the
 ;; tests), its GPU draws to a target. Then it makes the environments;
-;; forks main, which loads the world's sources and then script into "/";
-;; and goes on as the host, on this thread, till main quits. Main asks
+;; forks core1, which loads the world's sources and then script into "/";
+;; and goes on as the host, on this thread, till core1 quits. Core1 asks
 ;; core0 to quit when script returns, or raises.
 (define (host-fork! root recorder-sources sources options script)
   (let ([w (cadr (assq 'size options))]
