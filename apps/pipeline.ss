@@ -2541,12 +2541,14 @@
 
 ;; How many device pixels of a viewer w × h a pixel of the screen takes: the
 ;; viewer's box whole, as close as the wheel goes at most, or as much more
-;; as asked.
+;; as asked. Magnified, a whole number of them: an image magnified takes
+;; the nearest pixel, and at 105% one in twenty would come twice.
 (define (pipeline-viewer-fit v w h)
-  (let ([s (draw-scale)] [b (pipeline-viewer-box v)])
-    (min pipeline-zoom-most
-         (/ (* w s) (max 1 (- (caddr b) (car b))))
-         (/ (* h s) (max 1 (- (cadddr b) (cadr b)))))))
+  (let* ([s (draw-scale)] [b (pipeline-viewer-box v)]
+         [z (min pipeline-zoom-most
+                 (/ (* w s) (max 1 (- (caddr b) (car b))))
+                 (/ (* h s) (max 1 (- (cadddr b) (cadr b)))))])
+    (if (< z 1) z (floor z))))
 
 (define (pipeline-viewer-zoom v w h)
   (let ([fit (pipeline-viewer-fit v w h)])
@@ -2562,12 +2564,24 @@
         (let ([b (pipeline-viewer-box v)])
           (cons (/ (+ (car b) (caddr b)) 2) (/ (+ (cadr b) (cadddr b)) 2))))))
 
+;; Where the screen's origin falls in a viewer at x y w h, at a whole zoom on
+;; a whole device pixel, so that each pixel lands on whole ones; and the
+;; logical pixels a screen pixel takes: (values ox oy k).
+(define (pipeline-viewer-origin v x y w h)
+  (let* ([s (draw-scale)] [z (pipeline-viewer-zoom v w h)] [k (/ z s)]
+         [c (pipeline-viewer-center v)]
+         [whole (lambda (from p)
+                  (if (integer? z)
+                      (+ from (/ (round (* s (- p from))) s))
+                      p))])
+    (values (whole x (- (+ x (/ w 2)) (* k (car c))))
+            (whole y (- (+ y (/ h 2)) (* k (cdr c))))
+            k)))
+
 ;; The screen's pixel under (mx, my) of a viewer at x y w h.
 (define (pipeline-viewer-pixel v x y w h mx my)
-  (let ([k (/ (draw-scale) (pipeline-viewer-zoom v w h))]
-        [c (pipeline-viewer-center v)])
-    (cons (+ (car c) (* k (- mx (+ x (/ w 2)))))
-          (+ (cdr c) (* k (- my (+ y (/ h 2))))))))
+  (let-values ([(ox oy k) (pipeline-viewer-origin v x y w h)])
+    (cons (/ (- mx ox) k) (/ (- my oy) k))))
 
 ;; A notch of the wheel, or n: zoomed at (mx, my), the pixel there staying.
 (define (pipeline-zoom-at! v x y w h mx my n)
@@ -2596,12 +2610,8 @@
 ;; The viewer: the screen at its zoom, around its center, what's selected
 ;; outlined (box, screen pixels, or #f).
 (define (pipeline-draw-viewer v image x y w h box)
-  (let* ([z (pipeline-viewer-zoom v w h)]
-         [k (/ z (draw-scale))]
-         [c (pipeline-viewer-center v)]
-         [at (lambda (p mid) (+ mid (* k p)))]
-         [ox (- (+ x (/ w 2)) (* k (car c)))]
-         [oy (- (+ y (/ h 2)) (* k (cdr c)))])
+  (let*-values ([(ox oy k) (pipeline-viewer-origin v x y w h)]
+                [(at) (lambda (p mid) (+ mid (* k p)))])
     (fill-box x y w h 'bg-0)
     (with-clip (x y w h)
       (when image
@@ -2714,7 +2724,7 @@
 (define (pipeline-viewer-bar v ui x y w vw vh popped?)
   (let* ([ch (ui-control-height)] [gap 6]
          [fw (+ 24 (text-width "Fit" 'ui))]
-         [hw (+ 24 (text-width "100%" 'ui))]
+         [hw (+ 24 (text-width "Reset to 100%" 'ui))]
          [lx (+ x fw gap hw gap)])
     (ui-button ui '(pipeline fit) x y fw ch "Fit"
                (lambda ()
@@ -2722,7 +2732,7 @@
                  (pipeline-view-center-set! v #f))
                'tip "Show all it draws: the whole screen, or what the \
                      drawers left in drew")
-    (ui-button ui '(pipeline actual) (+ x fw gap) y hw ch "100%"
+    (ui-button ui '(pipeline actual) (+ x fw gap) y hw ch "Reset to 100%"
                (lambda ()
                  (unless (pipeline-view-zoom v)
                    (pipeline-view-center-set! v (pipeline-viewer-center v)))

@@ -722,7 +722,15 @@
                     (> (pipeline-viewer-fit v vw vh) whole)
                     (equal? (pipeline-viewer-center v)
                             (cons (/ (+ (car box) (caddr box)) 2)
-                                  (/ (+ (cadr box) (cadddr box)) 2))))))
+                                  (/ (+ (cadr box) (cadddr box)) 2)))))
+        (let ([fit (pipeline-viewer-fit v vw vh)] [s (draw-scale)])
+          (let-values ([(ox oy k) (pipeline-viewer-origin v 10 20 vw vh)])
+            (check (format "magnified, it takes a whole number of device \
+                            pixels a screen pixel, from a whole one (~a, \
+                            ~a ~a)" fit ox oy)
+                   (and (>= fit 1) (integer? fit)
+                        (integer? (* s (- ox 10)))
+                        (integer? (* s (- oy 20))))))))
       (pipeline-view-play-secs-set! v 1)
       (pipeline-tape-go! v 0)
       (pipeline-play-toggle! v)
