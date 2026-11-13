@@ -133,8 +133,8 @@
     (result . "counter")
     (input . "(list (screen-w) (screen-h) *scale* (length (windows)) \
               (length (procs)) (apps))")
-    (result . "(1280 800 1.0 5 0 (repl private-repl pure-repl clock life \
-               sketch monitor settings))")
+    (result . "(1280 800 1.0 5 0 (repl clock life sketch monitor \
+               settings))")
     (input . "(string-append \"The quick brown fox \" \
               \"jumps over the lazy dog, \" \"again and again.\")")
     (result . "\"The quick brown fox jumps over the lazy dog, again and \

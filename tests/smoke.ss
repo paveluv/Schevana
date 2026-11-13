@@ -158,7 +158,7 @@
 
 ;; Private and pure REPLs: experiment without touching the world.
 (define world-draw-window draw-window)
-(define p (private-repl))
+(define p (repl 'private))
 (steps 2)
 (check "private repl opens focused" (eq? p (focused-window)))
 (type! "(define (draw-window win) (error 'oops \"broken\"))")
@@ -581,7 +581,7 @@
 (press! 'return)
 (check "(exit) closes only the private repl"
        (wait-for (lambda () (not (memq p (windows))))))
-(define q (pure-repl))
+(define q (repl 'pure))
 (steps 2)
 (type! "(windows)")
 (press! 'return)
@@ -596,9 +596,9 @@
 (check "but is a working Scheme"
        (wait-for (lambda () (member "42" (transcript q)))))
 (check "whose definitions stay put" (not (top-level-bound? 'x)))
-(press! #\p 'ctrl 'shift)
+(repl 'private)
 (steps 2)
-(check "ctrl+shift+p opens a private repl, titled by its environment"
+(check "another private repl opens, titled by its environment"
        (string-prefix? "REPL — /private" (window-title (focused-window))))
 (type! "(define note \"only here\")")
 (press! 'return)

@@ -1457,7 +1457,7 @@
        (repl-add! r 'info "F1 apps · Ctrl+Tab switch · Tab completes · \
                            Shift+Enter newline · Ctrl+C stops")
        (repl-add! r 'info "To experiment without changing anything, \
-                           Ctrl+Shift+P opens a Private REPL;")
+                           (repl 'private) opens a Private REPL;")
        (repl-add! r 'info "(envs) shows the tree of environments, and opens \
                            a REPL in any of them.")]
       [(private)
@@ -1522,8 +1522,6 @@ here"))]
 
 (define-app (repl . what) "REPL"
   (open-repl (if (pair? what) (car what) 'root)))
-(define-app (private-repl) "Private REPL" (open-repl 'private))
-(define-app (pure-repl) "Pure Scheme REPL" (open-repl 'pure))
 
 (define (open-repl-window r)
   (open-window (repl-title r)

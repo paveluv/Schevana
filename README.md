@@ -94,7 +94,6 @@ icons from `.desktop` files instead, so install one once (it goes under
 | F1 / click "λ Schevana" / right-click desktop | launcher (type to filter); apps picked after a right-click open where you clicked |
 | Ctrl+Tab | cycle windows |
 | Ctrl+Shift+W / M / N / T / R | close / maximize / minimize / tile / new REPL |
-| Ctrl+Shift+P | new Private REPL |
 | F11 | full screen on and off (also in the launcher) |
 | F12 | screenshot to `~/schevana-N.png` |
 | drag title, edges, corner; double-click title | move, resize, maximize |
@@ -141,9 +140,9 @@ style shows one. A kind opens a new environment of it, the window's own:
 | | Opens with | What a `define` does |
 | --- | --- | --- |
 | REPL | `(repl)`, Ctrl+Shift+R | changes the running world |
-| Private REPL | `(private-repl)`, Ctrl+Shift+P | stays in its environment and vanishes with it, like private browsing |
+| Private REPL | `(repl 'private)` | stays in its environment and vanishes with it, like private browsing |
 | World REPL | `(repl 'world)` | the same, with every name of the world's |
-| Pure Scheme REPL | `(pure-repl)` | plain Chez Scheme, none of Schevana's names exist |
+| Pure Scheme REPL | `(repl 'pure)` | plain Chez Scheme, none of Schevana's names exist |
 | Sandbox, thread | `(repl 'sandbox)`, `(repl 'thread)` | stays in a sandbox: Scheme's pure core, no files, C or threads |
 
 A private REPL has all of Chez and, of the world, what reads it

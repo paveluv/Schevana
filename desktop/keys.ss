@@ -9,7 +9,6 @@
     ((ctrl shift #\n) . ,(lambda () (when *focus* (minimize-window! *focus*))))
     ((ctrl shift #\t) . ,(lambda () (tile-windows!)))
     ((ctrl shift #\r) . ,(lambda () (app-launch! 'repl)))
-    ((ctrl shift #\p) . ,(lambda () (app-launch! 'private-repl)))
     ((f11) . ,(lambda () (toggle-fullscreen!)))
     ((f12) . ,(lambda ()
                 (png-write-screen-then
