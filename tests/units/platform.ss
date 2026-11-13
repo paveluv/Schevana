@@ -117,6 +117,55 @@
                   (exists (lambda (l) (string-prefix? "# frames" l))
                           lines))))))
 
+(check "a trace says why it was written, if that's said, and a second's \
+        second trace goes beside the first"
+       (fluid-let ([*host-trace-dir* (string-append out-dir "/traces")])
+         (let* ([a (host-trace-write!)] [b (host-trace-write! "a check")]
+                [line3 (lambda (path)
+                         (call-with-input-file path
+                           (lambda (p) (get-line p) (get-line p)
+                                   (get-line p))))])
+           (and (not (equal? a b))
+                (string-prefix? "# steps" (line3 a))
+                (equal? (line3 b) "# written as a check")))))
+
+;; No collection while it looks: one stamps a step of main's (gc).
+(check "main stopped past the limit, core0 writes the trace once, saying \
+        main's last step; a step of main's later, again"
+       (let ([whys '()])
+         (parameterize ([collect-request-handler void])
+           (fluid-let ([*host-trace-dir* (string-append out-dir "/traces")]
+                       [*host-trace-stalled* -1]
+                       [host-trace-stall-ns -1]
+                       [host-trace-write!
+                        (lambda (why) (set! whys (cons why whys)))])
+             (host-trace! 22 0)
+             (host-trace-watch!)
+             (host-trace-watch!)
+             (let ([once (length whys)])
+               (host-trace! 23 0)
+               (host-trace-watch!)
+               (fluid-let ([host-trace-stall-ns 5000000000])
+                 (host-trace! 24 0)
+                 (host-trace-watch!))
+               (and (= once 1)
+                    (= 2 (length whys))
+                    (string-prefix? "main hasn't stepped for " (car whys))
+                    (string-suffix? "since its tick" (cadr whys))
+                    (string-suffix? "since its draw" (car whys))))))))
+
+(check "Ctrl-C writes the trace, then ends the run as the handler before \
+        did"
+       (let ([whys '()] [ended #f])
+         (parameterize ([keyboard-interrupt-handler
+                         (lambda () (set! ended (pair? whys)))])
+           (fluid-let ([*host-trace-interrupt* #f]
+                       [host-trace-write!
+                        (lambda (why) (set! whys (cons why whys)))])
+             (host-trace-on-interrupt!)
+             ((keyboard-interrupt-handler))
+             (and ended (equal? whys '("Ctrl-C ended the run")))))))
+
 (check "with no .work folder, or no window, nothing is traced"
        (fluid-let ([*host-trace-dir* #f])
          (let ([n (unbox (vector-ref *host-trace-rings* 1))])

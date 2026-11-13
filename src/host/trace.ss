@@ -2,8 +2,10 @@
 ;;; into missed frames: each thread's steps (code, when, one number) in a
 ;;; ring of its own, the last few minutes of them, and written out with the
 ;;; screen's reports on the frames still kept, to a file of its own, when
-;;; the window closes or on (host-trace-dump!). On in a checkout with a
-;;; .work folder and a window; elsewhere host-trace! does nothing.
+;;; the window closes or on (host-trace-dump!); and when main stops
+;;; stepping, or Ctrl-C ends the run, so that a freeze says where main
+;;; stopped. On in a checkout with a .work folder and a window; elsewhere
+;;; host-trace! does nothing.
 
 (define host-trace-rows 262144)
 
@@ -30,7 +32,48 @@
   (let ([dir (string-append *schevana-root* "/.work")])
     (set! *host-trace-core0* (get-thread-id))
     (when (file-directory? dir)
-      (set! *host-trace-dir* (string-append dir "/traces")))))
+      (set! *host-trace-dir* (string-append dir "/traces"))
+      (host-trace-on-interrupt!))))
+
+;; The handler Ctrl-C had before the trace's, once it's set.
+(defvar *host-trace-interrupt* #f)
+
+;; Ctrl-C ends the run as it did, the trace written first. Chez hands the
+;; signal to the OS's main thread, core0's with a window, which goes on
+;; while main is stuck.
+(define (host-trace-on-interrupt!)
+  (unless *host-trace-interrupt*
+    (set! *host-trace-interrupt* (keyboard-interrupt-handler))
+    (keyboard-interrupt-handler
+     (lambda ()
+       (guard (c [#t #f]) (host-trace-write! "Ctrl-C ended the run"))
+       (*host-trace-interrupt*)))))
+
+;; How long main may go without a step before core0 writes the trace: far
+;; longer than any wait of main's, which is a refresh or a timer's at most.
+(define host-trace-stall-ns 5000000000)
+
+;; Main's count of steps when a stall's trace was written: one a stall.
+(defvar *host-trace-stalled* -1)
+
+;; On core0's step, main on a thread of its own: main's newest step older
+;; than host-trace-stall-ns, the trace written, saying which it was.
+(define (host-trace-watch!)
+  (when *host-trace-dir*
+    (let ([v (vector-ref *host-trace-rings* 2)]
+          [n (unbox (vector-ref *host-trace-rings* 3))])
+      (unless (or (fx= n 0) (fx= n *host-trace-stalled*))
+        (let ([at (fx* 4 (fxmodulo (fx- n 1) host-trace-rows))])
+          (memory-order-acquire)
+          (when (eqv? (fxvector-ref v at) (fx- n 1))
+            (let ([since (- (now-ns) (fxvector-ref v (fx+ at 2)))])
+              (when (> since host-trace-stall-ns)
+                (set! *host-trace-stalled* n)
+                (host-trace-write!
+                 (format "main hasn't stepped for ~,1f s, since its ~a"
+                         (/ since 1e9)
+                         (vector-ref host-trace-names
+                                     (fxvector-ref v (fx+ at 1)))))))))))))
 
 ;; Step code with a, now, on this thread's ring.
 (define (host-trace! code a)
@@ -52,14 +95,28 @@
 (define (host-trace-dump!) (host-post! '(host-trace-write!)))
 
 ;; The steps of both rings by time, then the frames' reports, to
-;; .work/traces/trace-<date>-<time>.txt. => its path, or #f when off.
-(define (host-trace-write!)
+;; .work/traces/trace-<date>-<time>.txt (-2 on, another in the same
+;; second), after why it was written, if that's said. => its path, or #f
+;; when off.
+(define host-trace-write!
+  (case-lambda
+    [() (host-trace-write! #f)]
+    [(why) (host-trace-write-why! why)]))
+
+(define (host-trace-write-why! why)
   (and *host-trace-dir*
        (let* ([d (current-date)]
-              [path (format "~a/trace-~4,'0d~2,'0d~2,'0d-~2,'0d~2,'0d~2,'0d.txt"
+              [stem (format "~a/trace-~4,'0d~2,'0d~2,'0d-~2,'0d~2,'0d~2,'0d"
                             *host-trace-dir* (date-year d) (date-month d)
                             (date-day d) (date-hour d) (date-minute d)
                             (date-second d))]
+              ;; a second's second trace (a stall's, then Ctrl-C's) beside
+              ;; the first
+              [path (let next ([k 1])
+                      (let ([path (if (= k 1)
+                                      (string-append stem ".txt")
+                                      (format "~a-~a.txt" stem k))])
+                        (if (file-exists? path) (next (+ k 1)) path)))]
               [rows (sort (lambda (a b) (< (cadr a) (cadr b)))
                           (append (host-trace-rows-of 0 'core0)
                                   (host-trace-rows-of 2 'main)))]
@@ -70,6 +127,7 @@
            (lambda (p)
              (fprintf p "# Schevana's trace, ~a~%# ~s~%" (date-and-time d)
                       *host-platform*)
+             (when why (fprintf p "# written as ~a~%" why))
              (fprintf p "# steps: ms since the first, thread, step, number~%")
              (for-each
               (lambda (r)

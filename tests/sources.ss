@@ -193,7 +193,7 @@
 
 ;; Raise it deliberately: the core is what the desktop needs to boot and
 ;; run; everything else belongs in a folder.
-(define src-budget 36490)
+(define src-budget 36631)
 
 ;; The tokens of a datum as read; a list's end is none.
 (define (tokens x)
@@ -587,6 +587,7 @@
     (mac-pump! memory-order-acquire)
     (host-trace! memory-order-release)
     (host-trace-rows-of memory-order-acquire)
+    (host-trace-watch! memory-order-acquire)
     (host-input-set!)
     (host-input-take!)
     (rec-free? memory-order-acquire)))

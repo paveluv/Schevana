@@ -869,7 +869,9 @@ Decisions worth keeping in mind for the real design:
   waits for (gc, by generation, and gced); closing the window, or
   `(host-trace-dump!)`, writes them by time with the screen's reports on
   the frames still kept, the last two minutes or so, to
-  `.work/traces/trace-<date>-<time>.txt`.
+  `.work/traces/trace-<date>-<time>.txt`. So do Ctrl-C in the terminal and
+  main going 5 s without a step, which core0 watches for: the file says
+  why it was written, and a freeze ends on main's last step.
 - **Kernel vs user space via engines.** Each app handler runs in a Chez
   engine with a fuel budget (`safe-call`). An error or an infinite loop
   "crashes" only that window, which then shows the condition and can be

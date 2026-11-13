@@ -585,7 +585,8 @@
 ;; host-idle-ms, which a job or a frame ends; the frames' GPU fences looked
 ;; at and the screen's reports read; the events into the world's inbox,
 ;; what the window says of itself read again first; with none, read again
-;; all the same. The sleep comes before
+;; all the same; main, on a thread of its own, watched for a stall
+;; (host-trace-watch!). The sleep comes before
 ;; the pump, so that input that came while it slept goes in before the
 ;; next present can wait for the screen.
 (define (host-step!)
@@ -596,7 +597,8 @@
     (when (and *host-forked* (not (unbox *gpu-published*)))
       (host-sleep! (host-idle-ms-now)))
     (present-poll!)
-    (unless (host-events-pumped!) (host-facts-refresh! (pair? jobs)))))
+    (unless (host-events-pumped!) (host-facts-refresh! (pair? jobs)))
+    (when *host-forked* (host-trace-watch!))))
 
 ;; The events come since the last pump into the world's inbox, main woken
 ;; for them, and when the oldest input came; what the window says of itself
