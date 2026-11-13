@@ -288,3 +288,13 @@
               (and (equal? (cdr mac) (list 0 (car mac))) (> (car mac) 10)
                    (= (car fixed) 12) (memq 'title-height (cadr fixed))
                    #t))))))
+
+(check "at a REPL, a theme change prints nothing, and a font prints what \
+        makes it, not its caches"
+       (let ([font-text (format "~s" (theme 'mono))])
+         (and (eq? (set-theme! 'accent (theme 'accent)) (void))
+              (eq? (override! 'ui-font-size) (void))
+              (string-prefix? "#<font \"" font-text)
+              (< (string-length font-text) 60)
+              (string-prefix? "#<font-file \""
+                              (format "~s" (font-ready (theme 'mono)))))))

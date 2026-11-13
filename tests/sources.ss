@@ -199,7 +199,7 @@
 ;; run; everything else belongs in a folder. The export.ss files are left
 ;; out: they declare what each layer gives, sized by what's given, each a
 ;; reviewed change.
-(define src-budget 36972)
+(define src-budget 37014)
 
 ;; The tokens of a datum as read; a list's end is none.
 (define (tokens x)

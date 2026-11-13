@@ -46,12 +46,14 @@
 (defvar *theme-file-save-pending* #f)
 
 ;; Saves 600 ms after a change, with the changes made meanwhile.
+;; => void, which set-theme! and the others give at a REPL too.
 (define (theme-file-save-soon!)
   (unless *theme-file-save-pending*
     (set! *theme-file-save-pending* #t)
     (after 600 (lambda ()
                  (set! *theme-file-save-pending* #f)
-                 (theme-file-save!)))))
+                 (theme-file-save!))))
+  (void))
 
 ;; A palette or style that is gone falls back, a wallpaper that is gone
 ;; draws as the default; a value of no kind its defaults have is dropped
