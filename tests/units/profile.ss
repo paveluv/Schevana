@@ -59,15 +59,19 @@
          (profile-on! #f)
          (set! now-ns
            (lambda () (set! reads (+ reads 1)) (clock)))
+         ;; a frame, always, so that its reads are counted each run, not
+         ;; only when the top bar's clock asks for one
+         (invalidate!)
          (steps 5)
          (set! now-ns clock)
          (let ([off (and (not (profile-on?)) (not *profile-span*)
                          (equal? before (profile-ticks))
-                         ;; a step's, only the pacer's, and a frame drawn
-                         ;; (the top bar's clock asks for one each second)
-                         ;; times itself for the frame ring
+                         (> *frames-drawn* frames)
+                         ;; a step's, only the pacer's, four; and a frame
+                         ;; drawn times itself for the frame ring: its
+                         ;; start, its publish, what it took
                          (<= reads (+ (* 5 4)
-                                      (* 2 (- *frames-drawn* frames))))
+                                      (* 3 (- *frames-drawn* frames))))
                          (eq? (collect-request-handler)
                               *profile-plain-collect*))])
            (profile-on! #t)
@@ -88,10 +92,19 @@
               [settled (lambda (thunk)
                          (collector-pass! 0 1)
                          (profile-test-bytes thunk))]
-              [none (settled void)]   ; (statistics)'s own
-              [on (begin (spans) (- (settled spans) none))]
-              [off (begin (profile-on! #f)
-                          (- (settled spans) none))])
+              ;; on the test's clock, and after as many steps of its own as
+              ;; the flags reach back: a late tick in reach, the world's on
+              ;; a busy machine, would be kept as a flag, which allocates,
+              ;; as the step measured ends
+              [measure (lambda ()
+                         (profile-test-on-clock 1
+                           (lambda ()
+                             (do ([i 0 (+ i 1)]) ((> i profile-flag-reach))
+                               (spans))
+                             ;; less (statistics)'s own
+                             (- (settled spans) (settled void)))))]
+              [on (measure)]
+              [off (begin (profile-on! #f) (measure))])
          (profile-on! #t)
          (printf "  ~a bytes on, ~a off, for 20,000 spans and a step\n" on off)
          (and (< on 1000) (= off 0))))
