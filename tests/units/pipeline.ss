@@ -1348,6 +1348,22 @@
                   (ui-find ui '(pipeline unpop))
                   (not (ui-find ui '(pipeline viewer)))
                   (eq? (find-window 'pipeline) w)))
+      ;; each frame it's drawn again with the picture drawn last, never left
+      ;; with the other image, the one drawn on, which leaves it out
+      (let ([shown (map (lambda (k)
+                          (steps 1)
+                          (cons (pipeline-view-image v)
+                                (exists (lambda (run)
+                                          (eq? (cadr run)
+                                               (pipeline-view-image v)))
+                                        (gpu-list-runs
+                                         (window-ref pop 'wm-content-list)))))
+                        (iota 4))])
+        (check "popped out, it shows the picture drawn last, frame after \
+                frame, the small screen in it"
+               (and (for-all cdr shown)
+                    (not (for-all (lambda (s) (eq? (car s) (caar shown)))
+                                  shown)))))
       (focus-window! w)
       (steps 2)
       (check "focused, the Pipeline takes the keyboard, and stays below it"

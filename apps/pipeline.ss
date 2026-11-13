@@ -156,12 +156,15 @@
       (pipeline-preview-on! v back)
       (pipeline-view-flip?-set! v #t))))
 
+;; A window out of its own draws again too: one left showing the other image,
+;; which is drawn on, would show the picture made without it.
 (define (pipeline-flip! v)
   (when (pipeline-view-flip? v)
-    (let ([image (pipeline-view-image v)])
+    (let ([image (pipeline-view-image v)] [popped (pipeline-view-popped v)])
       (pipeline-view-image-set! v (pipeline-view-back v))
       (pipeline-view-back-set! v image)
-      (pipeline-view-flip?-set! v #f))))
+      (pipeline-view-flip?-set! v #f)
+      (when popped (invalidate! popped)))))
 
 ;;; ---- going back
 
