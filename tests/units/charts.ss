@@ -236,6 +236,39 @@
                      (< left px)))))
           '(0 7 100 220))))
 
+(let ([s (ui-stream-new 64 1 '())])
+  (ui-stream-send! s 0 29 (lambda (seq j) 5))
+  (let-values ([(win ui)
+                (chart-test-window
+                 (lambda (ui)
+                   (ui-stream ui 'flow s 10 10 380 150 29 0 10 '()
+                              '((0 . #xff0000)) 10 'tip (lambda (seq) "a"))))])
+    (steps 2)
+    (let* ([r (ui-find ui '(flow))]
+           [end (+ (ui-region-x r) (ui-region-w r))]
+           [y (+ (ui-region-y r) 20)]
+           ;; the moment at x, by the stream's own word
+           [at (lambda (x) ((ui-region-follow r) x y))]
+           [x0 (- end 1)]
+           [x1 (let next ([x (- x0 1)])
+                 (if (= (at x) (at x0)) x (next (+ x 1))))]
+           [x2 (let next ([x x0]) (if (= (at x) (at x0)) (next (- x 1)) x))]
+           [asked (lambda () (hashtable-ref (window-props win) 'wm-asked 0))]
+           [move! (lambda (x)
+                    (let-values ([(cx cy cw ch) (content-rect win)])
+                      (inject! `(mouse-move ,(+ cx x) ,(+ cy y)))
+                      (steps 1)
+                      (asked)))]
+           [entered (move! x0)]
+           [within (move! x1)]
+           [next (move! x2)])
+      (close-window! win)
+      (ui-stream-release! s)
+      (check (format "the pointer moved along a stream draws it again as it \
+                      comes to another moment, not within one (~a ~a ~a)"
+                     entered within next)
+             (and (= within entered) (> next within))))))
+
 (check "restarted, a stream sends again all it's given"
        (let* ([s (ui-stream-new 16 1 '())] [calls 0]
               [word (lambda (seq j) (set! calls (+ calls 1)) seq)])

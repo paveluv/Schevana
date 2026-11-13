@@ -34,7 +34,7 @@
 ;;; ------------------------------------------------------------------ state
 
 (define-record-type ui-region
-  (nongenerative schevana-ui-region-3)
+  (nongenerative schevana-ui-region-4)
   (fields id x y w h   ; what can be hit: cut to the clip (may be 0 × 0)
           frame        ; (x y w h) before the cut, for scrolling into view
           on           ; #f, or (lambda (event) ...): true when handled
@@ -42,7 +42,9 @@
           tip          ; tooltip text, or #f
           cursor       ; pointer shape over it ('ibeam), or #f
           modal?       ; covers the window: what lies under it is not live
-          doc))        ; what the mouse buttons do on it: ((L . "Set") ...)
+          doc          ; what the mouse buttons do on it: ((L . "Set") ...)
+          follow))     ; #f, or (lambda (x y) ...): what it shows for the
+                       ; pointer there, a move that changes it drawn again
 
 (define-record-type ui-state
   (nongenerative schevana-ui-state-4)
@@ -103,9 +105,9 @@
       (values x y w h)))
 
 ;; The one way anything enters the hit list. opts: 'on 'focus 'tip
-;; 'cursor 'modal 'doc. Inside a scroll view the rect is cut to the viewport;
-;; one cut away entirely is still recorded, 0 × 0 at the edge, so it
-;; stays a Tab stop (and can be revealed) but cannot be hit.
+;; 'cursor 'modal 'doc 'follow. Inside a scroll view the rect is cut to the
+;; viewport; one cut away entirely is still recorded, 0 × 0 at the edge, so
+;; it stays a Tab stop (and can be revealed) but cannot be hit.
 (define (ui-region! ui id x y w h . opts)
   (let-values ([(cx cy cw ch) (ui-cut x y w h (ui-state-clip ui))])
     (let ([r (make-ui-region id cx cy cw ch (list x y w h)
@@ -113,7 +115,8 @@
                              (plist-ref opts 'tip #f)
                              (plist-ref opts 'cursor #f)
                              (plist-ref opts 'modal #f)
-                             (plist-ref opts 'doc '()))])
+                             (plist-ref opts 'doc '())
+                             (plist-ref opts 'follow #f))])
       (ui-state-regions-set! ui (cons r (ui-state-regions ui)))
       r)))
 
@@ -372,10 +375,23 @@
         (when ((ui-region-on a) (list 'drag x y (ui-state-clicks ui)))
           (ui-stale! ui)
           (invalidate! win))
-        (unless (ui-hover! ui win x y (now-ms))
-          ;; a tooltip not shown yet waits for the pointer to rest
-          (when (< (now-ms) (+ (car (ui-state-rest ui)) ui-tip-ms))
-            (ui-rest! ui (now-ms) x y))))))
+        (begin
+          (ui-follow! ui win x y)
+          (unless (ui-hover! ui win x y (now-ms))
+            ;; a tooltip not shown yet waits for the pointer to rest
+            (when (< (now-ms) (+ (car (ui-state-rest ui)) ui-tip-ms))
+              (ui-rest! ui (now-ms) x y)))))))
+
+;; A region that follows the pointer within it (a chart's column under
+;; it) draws again when what it shows for the pointer changes: within one
+;; region the hover alone would wait for the window's next draw.
+(define (ui-follow! ui win x y)
+  (let* ([r (ui-region-at ui x y)]
+         [follow (and r (ui-region-follow r))]
+         [shown (and follow (cons (ui-region-id r) (follow x y)))])
+    (unless (equal? shown (ui-memo ui 'ui-follow #f))
+      (ui-memo! ui 'ui-follow shown)
+      (invalidate! win))))
 
 ;; x y button are optional (Settings): a left release at the pointer.
 (define (ui-mouse-up ui . more)
@@ -3593,6 +3609,8 @@
                            #t)))])
       (ui-region! ui (list id) (car plot) (cadr plot) (caddr plot) (cadddr plot)
         'doc (plist-ref opts 'doc '((L . "Select")))
+        'follow (and newest (> count 0)
+                     (lambda (mx my) (ui-stream-seq-at areas mx newest count)))
         'tip (and hover tip-of (tip-of hover))
         'on (lambda (ev)
               (case (car ev)
