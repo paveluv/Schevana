@@ -13,16 +13,6 @@ build step: the whole
 world compiles from source in about 0.8 s at startup, and again at each
 `(reload!)`.
 
-**WARNING:** Schevana is a toy. It's meant to be a happy place for Lisp
-enthusiasts, and it doesn't pretend to be a serious desktop replacement.
-Simplicity is priority #1. The desktop is just a function of the
-environment, drawn by the CPU on the world's own thread, core1. The apps
-that tune the world see all of it; the others run in sandboxes, with the
-permissions they ask for, and loops and background jobs can go to worker
-threads. Future
-versions of Schevana might draw on those threads too, and use the GPU for
-window composition.
-
 ## Running
 
 Schevana needs Chez Scheme 10, SDL 3.2 or later, FreeType, fontconfig, and
