@@ -1170,6 +1170,7 @@
           (rec-begin! *canvas-ratio*)
           (record-world!)
           (frame-number-set! (rec-present!))
+          (pacer-drew!)
           (set! *frame-publish-ns* (now-ns))
           (host-trace! 24 *frame-number*)
           ;; its row first, for core0 may give it back at once

@@ -236,7 +236,6 @@
       (when (and ticked? *dirty* (not (reload-holding?)))
         (set! *dirty* #f)
         (safely 'render render-frame!)
-        (when (pair? paced) (pacer-drew!))
         (frame-turn-soon!))
       ;; the frame is out: the collections it held off, and the older
       ;; generations' passes, once core0 has sent it; input that asked for
@@ -599,14 +598,16 @@
                         (* *pacer-lead* r)
                         (max 1 (pacer-seconds 'pacer-lead-fade)))))))))))
 
-;; A tick drew a frame: the screen goes on pacing (*pacer-shown?*).
+;; A tick sent a frame: the screen goes on pacing (*pacer-shown?*). One held
+;; back (the window hidden) gives it nothing to pace by.
 (define (pacer-drew!) (set! *pacer-drew?* #t))
 
 ;; A tick: the frames windows asked for and the surfaces' (wm-tick!), then
 ;; a frame if one is asked for. Paced (now, the ns it began, else #f), the
 ;; next may come a period after this one was due, or, when that is past
 ;; already (this one held for core0, or the first after a quiet spell), a
-;; period from now.
+;; period from now; never past two: ticks that came early, a period on each,
+;; would put it off without end, and the world with it.
 (define (pacer-tick! now)
   (set! *pacer-aimed* (if (pacer-on-latch?) (pacer-aim) 0))
   (set! *pacer-planned*
@@ -614,7 +615,10 @@
   (when now
     (set! *pacer-began* now)
     (let ([next (+ *pacer-due* (pacer-period))])
-      (set! *pacer-due* (if (> next now) next (+ now (pacer-period))))))
+      (set! *pacer-due*
+        (if (> next now)
+            (min next (+ now (* 2 (pacer-period))))
+            (+ now (pacer-period))))))
   (set! *pacer-wanted?* #f)
   ;; a tick that sent the screen nothing leaves it nothing to pace by
   (unless *pacer-drew?* (set! *pacer-shown?* #f))

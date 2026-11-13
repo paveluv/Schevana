@@ -754,6 +754,34 @@
              (pacer-tick! (+ t 1000000))
              (and paced? (not *pacer-shown?*))))))
 
+(check "the next tick is due two periods from now at most: ticks that \
+        come early, a period on each, never put it off"
+       (let* ([r (pacer-period)] [t (now-ns)])
+         (fluid-let ([*pacer-due* (+ t (* 600 r))] [*pacer-began* 0]
+                     [*pacer-ticks* 0] [*pacer-tick-ms* 0]
+                     [*pacer-frame-ns* 0] [*pacer-wanted?* #f]
+                     [*pacer-drew?* #f] [wm-tick! void])
+           (pacer-tick! t)
+           (let ([far (= *pacer-due* (+ t (* 2 r)))])
+             (for-each (lambda (k) (pacer-tick! (+ t (* k (quotient r 3)))))
+                       (iota 300))
+             (and far
+                  (<= *pacer-due*
+                      (+ t (* 299 (quotient r 3)) (* 2 r))))))))
+
+;; A frame held back is drawn by no one: the window hidden, render-frame!
+;; asks again and sends nothing.
+(check "a tick whose frame was held back, the window hidden, gives the \
+        screen nothing to pace by; one sent does"
+       (let ([drew? (lambda (hidden?)
+                      (fluid-let ([host-hidden? (lambda () hidden?)]
+                                  [*pacer-drew?* #f] [*pacer-due* 0]
+                                  [*pacer-shown?* #f])
+                        (invalidate!)
+                        (schevana-step! 0 #t)
+                        *pacer-drew?*))])
+         (and (not (drew? #t)) (drew? #f))))
+
 (check "a frame that came late moves the ones after it: the next tick aims \
         no earlier than the floor, a latch for each frame on its way"
        (let* ([r (host-frame-ns)] [t (now-ns)] [latch (- t 1000000)])
