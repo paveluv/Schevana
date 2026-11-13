@@ -188,8 +188,8 @@ numbers and offsets. Three forms keep one definition for both:
   ([ink color] [width fixnum])
   (if (fx= 0 (fxand (fxquotient x width) 1)) ink 0))
 
-;; in a window's draw procedure
-(fill-shader 0 0 w h stripes 'accent 8)
+(open-window "Stripes"
+  'draw (lambda (win w h) (fill-shader 0 0 w h stripes 'accent 8)))
 ```
 
 A paint's body gives a color word, `#xAARRGGBB`, alpha not multiplied in;

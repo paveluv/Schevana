@@ -205,6 +205,7 @@ afterwards; `(only …)` or `(prefix … acme:)` keep them apart.
 
 ```scheme
 (windows)                                  ; the window list, as data
+(clock)                                    ; an app is a procedure
 (move-window! (find-window 'clock) 40 60)
 (set-theme! 'accent #xff9e64)              ; recolor everything
 (set-style! 'cons)                         ; or: mac genera fold ...
