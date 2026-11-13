@@ -25,69 +25,27 @@ window composition.
 
 ## Running
 
-Requirements: Chez Scheme 10, SDL 3.2 or later, FreeType and fontconfig
-(usually installed already on a Linux desktop), and a Vulkan driver. On
-Debian 13, SDL3 is `sudo apt install libsdl3-0`, and `mesa-vulkan-drivers`
-holds lavapipe, the Vulkan driver on the CPU that the tests use and that takes
-over when no GPU can open; the tests want `spirv-tools` too (see Tests). SDL
-chooses between Wayland and X11 by itself;
-`SDL_VIDEO_DRIVER=x11 ./schevana` (or `wayland`) chooses for it. With
-NVIDIA's driver on Wayland, set the one module option in
-[docs/LINUX_NVIDIA_TUNING.md](docs/LINUX_NVIDIA_TUNING.md), or the
-compositor now and then shows a frame again although the next was ready.
+Schevana needs Chez Scheme 10, SDL 3.2 or later, FreeType, fontconfig, and
+Vulkan on Linux or Metal on a Mac. On Debian 13:
 
-On a Mac, install them from [Homebrew](https://brew.sh):
+```bash
+sudo apt install libsdl3-0 mesa-vulkan-drivers
+```
+
+On a Mac:
 
 ```bash
 brew install chezscheme sdl3 freetype fontconfig
 ```
 
-On a Mac the world draws on Metal, its shaders written out as Metal's language
-and compiled by the system when a pipeline is made, so Xcode isn't needed.
-
-What has run where, and which features differ by platform, is in
-[docs/PLATFORMS.md](docs/PLATFORMS.md).
-
-For the fonts Linux has, install DejaVu too. Without it, `sans-serif` and
-`monospace` are Lucida Grande and Menlo, not what fontconfig would choose.
-
-```bash
-brew install --cask font-dejavu
-```
-
-Homebrew's Chez Scheme is the command `chez`, not `scheme`: `./schevana`
-runs whichever of the two it finds, and finds Homebrew's libraries in
-`/opt/homebrew/lib` (Apple silicon) or `/usr/local/lib` (Intel). To run
-the tests below on Apple silicon, type `chez` for `scheme` and put
-`DYLD_FALLBACK_LIBRARY_PATH=/opt/homebrew/lib` before it. A Mac has no
-lavapipe, so they run on Metal, with no Dock icon and no window shown.
+Then, with no build step:
 
 ```bash
 ./schevana
 ```
 
-```bash
-./schevana --size 1600x1000 --eval '(life)'
-```
-
-```bash
-./schevana --fullscreen
-```
-
-`~/.schevana.ss` is loaded at boot if it exists, like `.emacs`, and so are
-your own apps, styles, palettes and wallpapers in `~/.schevana.d/` (see
-"Your own apps, styles, palettes and wallpapers" below). The look you choose
-in the Settings app is saved to `~/.schevana-theme.ss` (plain data, never
-evaluated) and loaded at boot too, and so is what you allow the apps in
-sandboxes, in `~/.schevana.d/permissions.ss`. The window's taskbar
-icon is the wallpaper's λ in your theme's colors, drawn by `draw-app-icon` (redefine
-it, then call `(update-app-icon!)`). GNOME and similar desktops take app
-icons from `.desktop` files instead, so install one once (it goes under
-`~/.local/share`; `--uninstall-desktop` removes it):
-
-```bash
-./schevana --install-desktop
-```
+The options, the files it reads and writes, and the details for each
+platform are in [docs/INSTALL.md](docs/INSTALL.md).
 
 | Key | Action |
 | --- | --- |
@@ -442,6 +400,15 @@ with `(app-requests window draw)`. The launcher asks you before its first
 run, and Settings, Permissions changes it later.
 `(apps)`, `(styles)`, `(palettes)`, `(wallpapers)` and
 `(surfaces)` list what is registered.
+
+The sandboxes and their grants are a beta, and will be redesigned after v1
+as a module system of Schevana's own, built on environments: a module
+imports and exports names, and a grant is a module's environment, imported.
+Not R6RS's, so that you can still go into any module's environment and
+inspect or redefine everything in it. Kits, and probably themes, will be
+modules too, installable from third parties; an app will be able to span
+several files and use R6RS libraries; and modules will be compiled ahead,
+for a faster start.
 
 ## Architecture
 
@@ -1285,187 +1252,13 @@ Decisions worth keeping in mind for the real design:
 ```bash
 mkdir -p out
 scheme --script tests/smoke.ss out
-```
-
-This boots the world headlessly, types into the REPL (completing names: Tab's
-pages, its popups, clicks, a small window), defines an app, crashes
-windows, runs away in loops, drags and resizes windows, uses the launcher,
-presses every button of each window style, clicks and drags through every
-Settings tab (checking the theme file round-trips), uses Tasks by mouse and
-keys (typing with selection, the clipboard and Tab, the focused field kept in
-view, dropdowns, the calendar, tags, the checklist, dragging cards, sorting,
-searching, filters, the context menu, the delete dialog, tooltips, the narrow
-page, a description's 65,536 characters, its scroll bar, Ctrl+End and
-Ctrl+Home, Page Down and Up scrolling as far as the caret moves, typing
-that compares no texts, a key typed in another window that runs no scan,
-and its editor's window: Save, Cancel and its question, its line and
-column, Tasks waiting under a scrim, maximized, Save into a task deleted
-meanwhile; what a task waits for and what waits for it in its details,
-Add's menu of what makes no cycle, as much of it as fits on the screen
-with many tasks (an id typed first), a choice the REPL made a cycle
-meanwhile refused with a plain toast, a cycle the REPL refuses, a
-blocked task moved to Done or added done; the Tree, its twisties and
-keys, a shared blocker's later rows, a later row a change takes away, a
-collapse that hides the selection, a search dimming rows or leaving
-nothing to show, a keystroke that works out no tree again, a task
-deleted there, the keys listed; a reload that changes the task record
-and keeps every task) and from the REPL's procedures, uses Monitor (the
-profiler collecting with it closed, its graphs, a window's name and a
-process's Kill, Profiling off, the rows that focus and kill then, and on
-again), uses Environments (a fork of each kind, sharing, loading through
-the file dialog, syncing, dropping, an app's bundles), reloads the sources
-(the profiler's history kept), runs core0's SDL code (uploads, presents, resize events, the window's size)
-against a stand-in that replaces every SDL call, so no window opens, and
-writes screenshots to the given folder. It asks Sketch's permissions
-through the launcher and Settings, never touches your real
-`~/.schevana-theme.ss` or apps' permissions, and no test reads
-`~/.schevana.d`.
-
-```bash
 scheme --script tests/units.ss out
-```
-
-This runs every file of `tests/units/`, a topic each, in a process of its
-own, so that none leans on what another left behind;
-`scheme --script tests/units.ss out life boids` runs those alone. Together
-they test the drawing layer piece by piece: measuring with no device,
-text cut to fit measuring no more of a long text than its width could
-show, cached shadows against the stacked ones, pixmaps, Life's
-generations against a plain reference (a tick's allocates under 8 KB), on
-the crew too, its grid against one rectangle per cell and, at one pixel a
-cell, against the screen's own pixels at 100% and 200%, what a new size
-keeps, its speeds, its threads and its painting, the side panel and its
-button (where the app lays it, either side, by key, with no room), Boids in
-its sandbox, its
-flocking (the Niva version's tests, its steps to the last digit against
-the rules written out plainly, on the crew and off it, the speed limits, a
-flock carried over a reload) and its rules window (where it opens, its
-sliders, buttons and keys), and the invalidation calls; and, with no
-window, the edit kit (insertion, erasing, caret moves, words,
-selection, pages, the most characters a text may hold, what an edit
-changed, wrapping against a plain rule with even and uneven widths and
-against breaking a character at a time, the rows a layout keeps and
-takes back through thousands of random edits, a keystroke's measures in
-each worst case bounded by the rows in view, an edit's rows past it
-taken back, not measured, and a keystroke's work in an engine's ticks
-bounded by the rows in view at any length), dates, flow and table keys,
-and Tasks' sorting, filtering, moving, a search looked through once for
-each change, the editor's line and column against a plain count, the
-REPL's checks, the seed's long descriptions, what a task waits for (each
-once, a cycle refused and named, whom it blocks worked out, a deleted
-task forgotten), the tree of what waits for what with blockers shared,
-the seed's links and what Add offers, what is kept until a link or a
-status changes, Add's entries for what is typed, ids and later rows'
-notes as wide as they fit, a task record from before a reload carried
-over, the tree widget's rows (only expanded nodes' children asked for),
-keys, indentation and dimmed rows, and the characters a keystroke in
-Tasks measures, the same with a title of 100,000 characters as with one
-of 10,000. The kit's charts: the bar chart's areas, the bar under the
-pointer and a press on one reported by index, and each chart's look its
-part's, under a style that replaces it. And the profiler: on at boot,
-off (no tick kept, no clock read) and on again, nothing allocated by
-20,000 spans, spans nesting and every tick's parts adding up to it, a
-slow window first among the consumers, a busy process's share, a
-collection in the memory numbers and as a span of its own, a span
-inside an engine, on another thread or past the stack's depth untimed,
-a raise out of a span, a collector made to fail turning itself off with
-one error while the world draws on, a closed window and an ended
-process not kept alive, two windows of one title told apart, the
-history's lengths, and the charts' colors in every style. And what runs
-apart: worklets and what they are refused, the crew, environments and what
-a child may do with its shares, the confined base, vats and their jobs,
-and apps in sandboxes (their bundles and stubs, a decision saved, read back
-and denied, an app of yours that requests nothing, an app's own worklets
-and what they are refused).
-
-The shaders' topic hands every shader the world and its checks compile to
-`spirv-val`, SPIR-V's own checker, which finds what no picture would: a
-module a driver may take and do anything with. On Debian 13 it is
-`sudo apt install spirv-tools`; without it, or on a Mac, whose shaders are
-Metal's language, that check says it was skipped.
-
-```bash
 scheme --script tests/frame.ss out
-```
-
-This tests frames, on lavapipe (Metal on a Mac), with no window but one
-offscreen (hidden on a Mac) for the swapchain's path: once the frames asked
-for are drawn, the screen is the world drawn into an image, bit for bit, on
-several desktops, every window
-style, a menu and a toast, at 100, 125, 150, 200 and 300%; with nothing
-asked for, no frame comes; every way the screen changes (the clock's second,
-a window, a window under another, hover across windows and both bars, a window
-dragged and resized, another moved, a process asking while core1's loop
-draws) shows on that frame at 100, 150 and 200%; every style, and one that glows past its frame with
-and without its `'bleed`, moved, resized and hovered, shows the
-reference, and drawn unclipped each registered style keeps to its
-extent; with a stand-in window a boot, a resize or a rescale shows
-its own frame at once, never an empty screen; a process, switched out
-anywhere, may free surfaces, rescale and call `(render-frame!)` while
-frames go on; drawing that raises crashes only its window, or shows no
-frame, and a `window-bleed` that raises is reported while frames and
-input go on; redefined `draw-window`, `draw-taskbar` and styles show at
-once and cost the same, and a REPL evaluation asks for the whole screen
-as it ends; a theme change (by `set-theme!` or behind its back) or a
-redefined `draw-wallpaper` paints the wallpaper again for the next
-frame; each generation of 30 Life windows shows on the next frame; and
-Tasks shows the reference after typing, the caret's blink, hover and a
-tooltip, a drag, the wheel, a field scrolled back into view, a menu, the
-calendar, the dialog, a change from the REPL and the narrow page, at 100,
-150 and 200%, and asks for no frame once its window loses the focus, or
-while the dialog covers a field that had the keyboard, and so does its
-Tree (hover, twisties, keys, the wheel, a later row, dimmed rows, links,
-the Add menu); and a long description's scroll bar, drawn from an
-estimate, settles when idle steps finish its rows, and when its editor's
-caret row brings them to the end in the same draw.
-
-```bash
 scheme --script tests/sources.ss
 ```
 
-This checks the sources themselves, and quickly: every line of every
-source file is at most 80 characters, no top-level name is defined in
-two files (an app in a sandbox's names are its own), `src/` stays within
-its size budget, counted in tokens so that comments, names and line breaks
-are free (raise it on purpose), outside `src/` no file sets a global another
-defines, but the core's hooks, nothing reaches C, and only a world namespace
-shares the whole world, every file in a folder registers what it defines,
-under its own name (a kit's with its prefix, the desktop's plain), every
-style sets only settings that exist, in the kits, the services, the desktop
-layer, Tasks, Settings, Environments and Pipeline only the drawing procedures
-(parts,
-`draw-…`, `ui-draw-…`, `complete-draw-…`, `tasks-draw-…`, `settings-draw-…`,
-`envs-draw-…`, `pipeline-draw-…`) draw or name a theme color, the edit kit never does, only
-styles call a part's built-in body, what an app in a sandbox defines stays
-there, a bundle names what the world has, each name in one bundle, and a
-tree app requests what the table approves.
-
-```bash
-scheme --script tests/bench.ss out               # [frames]
-```
-
-Times frames on four scenes at 100% and 200%: 30 Life windows tiled,
-a typical desktop of five overlapping windows, 30 Life windows cascaded,
-and those under a maximized REPL, with every Life window stepping every
-frame. For each it prints core1's time per frame (all the
-work: everything runs on it), the wall time, the bytes uploaded and the
-collections, then times a keystroke in the REPL, an idle step (it must
-stay under 0.2 ms and upload nothing), a theme change, and the clock's
-second with no window and a keystroke in a REPL alone (at 100% and
-200%, and on a 1920 × 1080 screen at 200%, a 4K one), Tasks maximized
-on that screen (an idle step, a keystroke in a title, two in one step, a
-card dragged), a keystroke in a long description's worst cases there,
-in the details and in its editor maximized, against the same in an
-empty one (the least of three rounds each: it must stay within 1.25
-times the empty one's in the details and 1.6 times in the editor, which
-draws a screenful of text, and a jump within 2.5 times), the Tree there
-with the seed and with 2,000 tasks more in chains (a key, Space and the
-wheel, the least of three rounds: within 1.5 times the seed's), and
-prints how much of core1 a busy REPL evaluation gets while 30
-Life windows animate at 200%, what profiling costs: a step with it on and
-off (S30T at 100% and 200%, an idle step, a busy process), and the crew:
-Life at one pixel a cell, maximized on that 4K screen, and Boids at 150, 450,
-2,000 and 5,000, on one thread and more.
+What each suite covers, how to add a check, and the bench are in
+[docs/TESTING.md](docs/TESTING.md).
 
 ## Conventions
 
@@ -1475,39 +1268,8 @@ Life at one pixel a cell, maximized on that 4K screen, and Boids at 150, 450,
 
 ## Credits
 
-Boids (`apps/boids.ss`) is ported from Eduardo Cavazos's
-[Boids in Niva](https://github.com/dharmatech/boids-niva) (MIT). Its two
-blocker rules, clear view and back off, follow Gary William Flake's *The
-Computational Beauty of Nature* (MIT Press, 1998), written from his
-description. Boids 3D (`apps/boids3d.ss`) takes the same rules into three
-dimensions, as Craig Reynolds' "Flocks, Herds, and Schools: A Distributed
-Behavioral Model" (SIGGRAPH 1987) first had them.
-
-The CADR's 5X5 font in `kits/px.ss` (the glyphs of `px-5x5`) is MIT's,
-decoded from System 99's `fonts/5x5.qfasl`:
-
-Copyright (c) 1980, Massachusetts Institute of Technology. All rights
-reserved. Redistribution and use in source and binary forms, with or
-without modification, are permitted provided that the following
-conditions are met: Redistributions of source code must retain the above
-copyright notice, this list of conditions and the following disclaimer.
-Redistributions in binary form must reproduce the above copyright
-notice, this list of conditions and the following disclaimer in the
-documentation and/or other materials provided with the distribution.
-Neither the names of the Massachusetts Institute of Technology nor the
-names of its contributors may be used to endorse or promote products
-derived from this software without specific prior written permission.
-THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS
-IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO,
-THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
-PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR
-CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
-EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
-PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR
-PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF
-LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING
-NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
-SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+What Schevana takes from others, and under which terms, is in
+[CREDITS.md](CREDITS.md).
 
 ## Known gaps and open questions
 

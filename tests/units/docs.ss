@@ -1,6 +1,6 @@
 ;;; tests/units/docs.ss — the docs' examples run as they read: each page's
-;;; scheme blocks (README.md, docs/*.md), in order, as typed at a REPL at
-;;; "/", a page in a world of its own. A comment `; => value`
+;;; scheme blocks (README.md, CREDITS.md, docs/*.md), in order, as typed at
+;;; a REPL at "/", a page in a world of its own. A comment `; => value`
 ;;; after a form, on its line or the next, is checked as what it returns;
 ;;; an error, in a form or in what it left to run later (a timer, a
 ;;; then), fails its block. A block fenced "```scheme no-run" is shown, not
@@ -8,7 +8,7 @@
 
 ;; The pages, from the tree's root.
 (define (docs-pages)
-  (append '("README.md")
+  (append '("README.md" "CREDITS.md")
           (map (lambda (f) (string-append "docs/" f))
                (sort string<?
                      (filter (lambda (f) (string-suffix? ".md" f))
