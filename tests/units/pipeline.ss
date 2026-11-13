@@ -705,7 +705,39 @@
       (check "on again, they're back"
              (and (null? (pipeline-view-off v))
                   (= (vector-length (pipeline-kept v))
-                     (inspect-list-count (pipeline-view-shown v))))))
+                     (inspect-list-count (pipeline-view-shown v)))))
+      ;; all but one span left out
+      (pipeline-view-off-set!
+       v (remove node (pipeline-span-nodes (pipeline-view-groups v))))
+      (pipeline-view-kept-of-set! v #f)
+      (let* ([box (pipeline-kept-box v)] [vw 400] [vh 300]
+             [whole (min (/ (* vw (draw-scale)) *canvas-pw*)
+                         (/ (* vh (draw-scale)) *canvas-ph*))])
+        (check (format "with spans left out, the small screen frames what \
+                        the rest drew: the box around it whole, its middle \
+                        in the middle (~a)" box)
+               (and box
+                    (< (* (- (caddr box) (car box)) (- (cadddr box) (cadr box)))
+                       (/ (* *canvas-pw* *canvas-ph*) 4))
+                    (> (pipeline-viewer-fit v vw vh) whole)
+                    (equal? (pipeline-viewer-center v)
+                            (cons (/ (+ (car box) (caddr box)) 2)
+                                  (/ (+ (cadr box) (cadddr box)) 2))))))
+      (pipeline-view-play-secs-set! v 1)
+      (pipeline-tape-go! v 0)
+      (pipeline-play-toggle! v)
+      (steps 90)
+      (let ([kept (pipeline-kept v)])
+        (check "Play goes through what's left in, and stops on its last \
+                record, selected"
+               (and (not (pipeline-view-playing v))
+                    (= (pipeline-node-first v (pipeline-view-selected v))
+                       (vector-ref kept (- (vector-length kept) 1)))
+                    (< (vector-ref kept (- (vector-length kept) 1))
+                       (- (inspect-list-count (pipeline-view-shown v)) 1)))))
+      (pipeline-view-off-set! v '())
+      (pipeline-view-kept-of-set! v #f)
+      (pipeline-resume! v))
     ;; what's selected: kept with its drawer, named, cleared, shown
     (let ([before (map (lambda (n) (cons n (pipeline-color-index v n)))
                        (pipeline-span-nodes (pipeline-view-groups v)))])

@@ -68,6 +68,8 @@
           (mutable kept)       ; the records drawn of the list on view, a
                                ; vector in order: what the Tape goes through
           (mutable kept-of)    ; the list on view it's of
+          (mutable kept-box)   ; the box around them, while a span is left
+                               ; out: (x0 y0 x1 y1) on the screen, or #f
           (mutable look)       ; what the small screen shows: pipeline-looks
           (mutable painted)    ; a list repainted for it, used again
           (mutable who)        ; what each drew cost: (list . rows)
@@ -1248,13 +1250,17 @@
           (map (lambda (node) (pipeline-node-first v node)) (caddr traced))
           '())))))
 
-;; The small screen draws as far as k records, the last of them selected.
+;; The small screen draws as far as k records, the last of them kept
+;; selected: never one of a span left out, which it doesn't draw.
 (define (pipeline-draw-upto! v k)
   (let* ([l (pipeline-view-shown v)] [n (inspect-list-count l)]
-         [k (max 0 (min k n))])
+         [k (max 0 (min k n))]
+         [kept (pipeline-kept v)]
+         [below (pipeline-kept-below kept k)])
     (pipeline-view-upto-set! v (and (< k n) k))
-    (when (> k 0)
-      (pipeline-view-selected-set! v (car (inspect-rows l (- k 1) 1))))
+    (when (> below 0)
+      (pipeline-view-selected-set!
+       v (car (inspect-rows l (vector-ref kept (- below 1)) 1))))
     (pipeline-preview! v)))
 
 ;; A press on the Tape, or its stepper: the frame stays, drawn as far as there.
@@ -1428,8 +1434,36 @@
                  (loop (+ i (cdar out)) j (cdr out))]
                 [else (vector-set! kept j i) (loop (+ i 1) (+ j 1) out)]))
         (pipeline-view-kept-set! v kept)
+        (pipeline-view-kept-box-set! v (and (pair? out)
+                                            (pipeline-records-box l kept)))
         (pipeline-view-kept-of-set! v l)))
     (pipeline-view-kept v)))
+
+;; The box around the records kept while a span is left out, (x0 y0 x1 y1)
+;; on the screen; #f with none left out, or none kept: the whole screen.
+(define (pipeline-kept-box v)
+  (pipeline-kept v)
+  (pipeline-view-kept-box v))
+
+;; The box around records is of l, each as far as it reaches inside its
+;; clip, on the screen; #f when that's nothing.
+(define (pipeline-records-box l is)
+  (let ([box (fold-left
+              (lambda (b i)
+                (let* ([r (inspect-reach l i)] [c (inspect-clip l i)]
+                       [x0 (max 0 (car r) (if c (car c) 0))]
+                       [y0 (max 0 (cadr r) (if c (cadr c) 0))]
+                       [x1 (min *canvas-pw* (caddr r)
+                                (if c (caddr c) *canvas-pw*))]
+                       [y1 (min *canvas-ph* (cadddr r)
+                                (if c (cadddr c) *canvas-ph*))])
+                  (cond [(or (>= x0 x1) (>= y0 y1)) b]
+                        [(not b) (list x0 y0 x1 y1)]
+                        [else (list (min x0 (car b)) (min y0 (cadr b))
+                                    (max x1 (caddr b))
+                                    (max y1 (cadddr b)))])))
+              #f (vector->list is))])
+    (and box (map (lambda (p) (exact (round p))) box))))
 
 ;; How many of kept come before record i, kept being in order.
 (define (pipeline-kept-below kept i)
@@ -2500,23 +2534,33 @@
 (define pipeline-loupe-size 128)
 (define pipeline-loupe-zoom 8)    ; a screen pixel in the loupe, logical pixels
 
-;; How many device pixels of a viewer w × h a pixel of the screen takes: all
-;; of it, or as much more as asked.
-(define (pipeline-viewer-fit w h)
-  (let ([s (draw-scale)])
-    (min (/ (* w s) *canvas-pw*) (/ (* h s) *canvas-ph*))))
+;; What the viewer shows whole, (x0 y0 x1 y1) on the screen: what the
+;; spans kept drew while one is left out, else all of the screen.
+(define (pipeline-viewer-box v)
+  (or (pipeline-kept-box v) (list 0 0 *canvas-pw* *canvas-ph*)))
+
+;; How many device pixels of a viewer w × h a pixel of the screen takes: the
+;; viewer's box whole, as close as the wheel goes at most, or as much more
+;; as asked.
+(define (pipeline-viewer-fit v w h)
+  (let ([s (draw-scale)] [b (pipeline-viewer-box v)])
+    (min pipeline-zoom-most
+         (/ (* w s) (max 1 (- (caddr b) (car b))))
+         (/ (* h s) (max 1 (- (cadddr b) (cadr b)))))))
 
 (define (pipeline-viewer-zoom v w h)
-  (let ([fit (pipeline-viewer-fit w h)])
+  (let ([fit (pipeline-viewer-fit v w h)])
     (max fit (or (pipeline-view-zoom v) fit))))
 
-;; The screen's pixel at the viewer's middle, on the screen.
+;; The screen's pixel at the viewer's middle, on the screen: the box's
+;; middle till it's zoomed and moved.
 (define (pipeline-viewer-center v)
   (let ([c (and (pipeline-view-zoom v) (pipeline-view-center v))])
     (if c
         (cons (max 0 (min *canvas-pw* (car c)))
               (max 0 (min *canvas-ph* (cdr c))))
-        (cons (/ *canvas-pw* 2) (/ *canvas-ph* 2)))))
+        (let ([b (pipeline-viewer-box v)])
+          (cons (/ (+ (car b) (caddr b)) 2) (/ (+ (cadr b) (cadddr b)) 2))))))
 
 ;; The screen's pixel under (mx, my) of a viewer at x y w h.
 (define (pipeline-viewer-pixel v x y w h mx my)
@@ -2527,7 +2571,7 @@
 
 ;; A notch of the wheel, or n: zoomed at (mx, my), the pixel there staying.
 (define (pipeline-zoom-at! v x y w h mx my n)
-  (let* ([fit (pipeline-viewer-fit w h)]
+  (let* ([fit (pipeline-viewer-fit v w h)]
          [p (pipeline-viewer-pixel v x y w h mx my)]
          [z (max fit (min pipeline-zoom-most
                           (* (pipeline-viewer-zoom v w h)
@@ -2676,7 +2720,8 @@
                (lambda ()
                  (pipeline-view-zoom-set! v #f)
                  (pipeline-view-center-set! v #f))
-               'tip "Show the whole screen")
+               'tip "Show all it draws: the whole screen, or what the \
+                     drawers left in drew")
     (ui-button ui '(pipeline actual) (+ x fw gap) y hw ch "100%"
                (lambda ()
                  (unless (pipeline-view-zoom v)
@@ -3090,7 +3135,7 @@
                                       '() #f #f
                                       #f #f #f #f #f #f 0.0 #f 1
                                       (pipeline-tape-new 0) #f #f 5
-                                      #f #f #f #f '() #f #f 'picture
+                                      #f #f #f #f '() #f #f #f 'picture
                                       (inspect-list-empty) #f #f #f #f
                                       #f #f
                                       (make-hashtable equal-hash equal?))])
