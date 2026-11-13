@@ -10,10 +10,11 @@ What has run where, and which features differ by platform, is in
 
 ## Linux
 
-On Debian 13:
+On Debian 13 (Ubuntu 26.04 or later has these packages too, though it
+hasn't been tried there):
 
 ```bash
-sudo apt install libsdl3-0 mesa-vulkan-drivers
+sudo apt install chezscheme libsdl3-0 mesa-vulkan-drivers
 ```
 
 `mesa-vulkan-drivers` holds lavapipe, the Vulkan driver on the CPU. The

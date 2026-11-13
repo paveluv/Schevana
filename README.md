@@ -18,10 +18,11 @@ startup, and again at each `(reload!)`.
 Schevana needs Chez Scheme 10, SDL 3.2 or later, FreeType, fontconfig, and
 Vulkan on Linux or Metal on a Mac.
 
-On Debian 13:
+On Debian 13 (it should work on Ubuntu 26.04 or later too, although I
+haven't tried):
 
 ```bash
-sudo apt install libsdl3-0 mesa-vulkan-drivers
+sudo apt install chezscheme libsdl3-0 mesa-vulkan-drivers
 ```
 
 With NVIDIA's driver on Wayland, turn on its hardware vblank stamps (one
@@ -63,8 +64,8 @@ Ctrl+C stops what's running. What you type runs as a Schevana process
 
 Every example in [docs/](docs/) works as it is: copy it from your browser
 or editor and paste it into a REPL with Ctrl+V, which reads the system
-clipboard, taking a page's examples in order. (Copying from a REPL to the
-system clipboard comes soon.) A test runs them all
+clipboard, taking a page's examples in order. (I'll add copying from a
+REPL to the system clipboard soon.) A test runs them all
 (`tests/units/docs.ss`). The kinds of REPL, and what a `define` does in
 each, are in [docs/REPL.md](docs/REPL.md).
 
@@ -125,13 +126,13 @@ What Schevana takes from others, and under which terms, is in
   and there's no text editor app yet.
 - Windows and their state vanish on exit: only the look and what you
   allowed the apps are kept.
-- It runs on Linux and on a Mac; Windows hasn't been tried.
+- It runs on Linux and on a Mac; I haven't tried Windows yet.
 
-After v1, the apps' sandboxes and grants become a module system of
-Schevana's own, built on environments: a module imports and exports names,
-and a grant is a module's environment, imported. Kits and probably themes
-become modules too, installable from third parties; an app may span
-several files; and modules are compiled ahead, for a faster start. The
-profiler, which now sees only how long the collector ran, will profile it
-properly: what allocates, by window, process and procedure, and what each
-collection costs.
+After v1, I plan to turn the apps' sandboxes and grants into a module
+system of Schevana's own, built on environments: a module imports and
+exports names, and a grant is a module's environment, imported. Kits and
+probably themes will become modules too, installable from third parties;
+an app will be able to span several files; and modules will be compiled
+ahead, for a faster start. And I'll make the profiler, which now sees
+only how long the collector ran, profile it properly: what allocates, by
+window, process and procedure, and what each collection costs.
