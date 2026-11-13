@@ -16,7 +16,9 @@ startup, and again at each `(reload!)`.
 ## Running
 
 Schevana needs Chez Scheme 10, SDL 3.2 or later, FreeType, fontconfig, and
-Vulkan on Linux or Metal on a Mac. On Debian 13:
+Vulkan on Linux or Metal on a Mac.
+
+On Debian 13:
 
 ```bash
 sudo apt install libsdl3-0 mesa-vulkan-drivers
