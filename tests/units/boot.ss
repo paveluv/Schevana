@@ -5,11 +5,13 @@
 ;; made again, with no sources, shows what the world is given.
 (let ([world (fluid-let ([*host-world* *host-world*]
                          [*host-recorder* *host-recorder*])
-               (host-boot! *schevana-root* *schevana-recorder-sources* '())
+               (host-boot! *schevana-root* *schevana-recorder-sources* '()
+                           '((mode . headless)) #f)
                *host-world*)])
   (define (in-world form) (eval form world))
   (check "core0 makes \"/\" with all of Chez and, of its own names, only its \
-          interface: each core0's binding itself, and read-only"
+          interface: each core0's binding itself, and read-only; and hands \
+          it the tree's sources and the command line's options"
          (and (eq? (in-world 'car) car)
               (eq? (in-world 'gpu-publish!) gpu-publish!)
               (eq? (in-world '*gpu-facts*) *gpu-facts*)
@@ -18,11 +20,13 @@
               (raises? (lambda () (in-world '(set! gpu-publish! #f))))
               (raises? (lambda () (in-world '(fluid-let ([*host* 'sdl]) #t))))
               (equal? (in-world '*schevana-sources*) '())
+              (equal? (in-world '*schevana-options*) '((mode . headless)))
               (not (eq? world core0-env)))))
 
 (let ([world (fluid-let ([*host-world* *host-world*]
                          [*host-recorder* *host-recorder*])
-               (host-boot! *schevana-root* *schevana-recorder-sources* '())
+               (host-boot! *schevana-root* *schevana-recorder-sources* '()
+                           '((mode . headless)) #f)
                *host-world*)])
   (define (named? name) (guard (c [#t #f]) (eval name world) #t))
   (check "\"/recorder\" is sealed: \"/\" holds its interface, read-only, and \
@@ -37,6 +41,32 @@
               (not (named? 'gpu-frame-root-set!))
               (not (named? 'gpu-frame-earlier-set!))
               (eq? (env-kind (env-find "/recorder")) 'recorder))))
+
+;; main.ss reads the command line before anything loads, each option once,
+;; in its defaults' order; a word it doesn't know prints the usage.
+(fluid-let ([main-usage (lambda () 'usage)])
+  (check "main.ss reads the command line once: what's asked over the \
+          defaults, in their order, and the usage for a word it doesn't know"
+         (and (equal? (main-options '())
+                      main-defaults)
+              (equal? (main-options '("--headless" "--size" "400x300"
+                                      "--eval" "1" "--fork" "--eval" "2"))
+                      '((mode . headless)
+                        (size 400 . 300)
+                        (full-screen? . #f)
+                        (fork? . #t)
+                        (desktop . #f)
+                        (evals "1" "2")))
+              (eq? (main-options '("--size" "400")) 'usage)
+              (eq? (main-options '("--size")) 'usage)
+              (eq? (main-options '("--frobnicate")) 'usage)
+              (equal? *schevana-options* (main-options '("--headless")))))
+  (check "a window, or --fork, boots on two threads; installing the \
+          desktop entry on one"
+         (and (main-fork? (main-options '()))
+              (main-fork? (main-options '("--headless" "--fork")))
+              (not (main-fork? (main-options '("--headless"))))
+              (not (main-fork? (main-options '("--install-desktop")))))))
 
 (check "the world runs in an environment of its own, not core0's"
        (and (eq? *world-env* *host-world*)

@@ -43,7 +43,7 @@
   (let ([dir (path-parent (path-parent (car (command-line))))])
     (if (string=? dir "") "." dir)))
 
-(load (string-append *schevana-root* "/load.ss"))
+(load (string-append *schevana-root* "/main.ss"))
 (load (string-append *schevana-root* "/tests/core0.ss"))
 
 (define args (command-line-arguments))

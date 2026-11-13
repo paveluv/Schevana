@@ -8,7 +8,7 @@
   (let ([dir (path-parent (path-parent (car (command-line))))])
     (if (string=? dir "") "." dir)))
 
-(load (string-append *schevana-root* "/load.ss"))
+(load (string-append *schevana-root* "/main.ss"))
 (load (string-append *schevana-root* "/tests/core0.ss"))
 
 (define out-dir
@@ -4295,7 +4295,7 @@
     (system (format "rm -rf '~a' && mkdir -p '~a' && cp -r~{ '~a'~} '~a'"
                     dir dir
                     (map (lambda (f) (string-append *schevana-root* "/" f))
-                         (cons* "load.ss" "src" source-folders))
+                         (cons* "main.ss" "src" source-folders))
                     dir))
     ;; the last file to load into the world: an app in a sandbox would run
     ;; the form there

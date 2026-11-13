@@ -175,12 +175,24 @@
 
 ;; Makes "/recorder", sealed, shared core0's interface, and loads its
 ;; sources there; then "/", shared core0's interface and the recorder's,
-;; and loads the world's sources there, from root.
-(define (host-boot! root recorder-sources sources)
-  (host-load! (host-make-world! root recorder-sources sources) root sources))
+;; and loads the world's sources there, from root, then script (world.ss),
+;; if any, all on this thread.
+(define (host-boot! root recorder-sources sources options script)
+  (host-load-world! (host-make-world! root recorder-sources sources options)
+                    root sources script))
 
-;; The environments, "/recorder" loaded: => "/", empty.
-(define (host-make-world! root recorder-sources sources)
+;; Loads the world's sources into "/", then script, if any, which goes on
+;; there.
+(define (host-load-world! world root sources script)
+  (host-load! world root sources)
+  (when script
+    (interaction-environment world)
+    (load (string-append root "/" script))))
+
+;; The environments, "/recorder" loaded: => "/", empty but for what main.ss
+;; hands the world: where the tree is, its core's sources, and what the
+;; command line asked (main-options).
+(define (host-make-world! root recorder-sources sources options)
   (let* ([core0 (cons host-interface #'host-boot!)]
          [recorder (host-sealed
                     (list (cons (append host-interface host-recorder-share)
@@ -193,43 +205,45 @@
                               (host-anchor recorder))))])
       (define-top-level-value '*schevana-root* root world)
       (define-top-level-value '*schevana-sources* sources world)
+      (define-top-level-value '*schevana-options* options world)
       (set! *host-world* world)
       world)))
 
-;; Core0 on this thread, the world on its own: with a window (mode 'sdl),
-;; core0 opens it, w × h logical pixels at the desktop's scale, or full
-;; screen, and clears it; with none ('headless, for the tests), its GPU
-;; draws to a target. Then it makes the environments; forks main, which
-;; loads the world's sources and then script into "/"; and goes on as the
-;; host, on this thread, till main quits. Main asks core0 to quit when
-;; script returns, or raises.
-(define (host-fork! root recorder-sources sources script mode w h full?)
-  (if (eq? mode 'headless)
-      (host-window-headless!)
-      (begin
-        (host-window-open! w h full?)
-        (unless full?
-          (let-values ([(uw uh pw ph) (host-window-sizes)])
-            (let ([s (/ (if (> (host-window-scale) 0) (host-window-scale) 1)
-                        (/ pw (max uw 1)))])
-              (host-resize-now! (exact (round (* w s)))
-                                (exact (round (* h s)))))))
-        (host-window-show!)
-        (set! *gpu-booting* #t)
-        (gpu-boot-screen!)))
-  (let ([world (host-make-world! root recorder-sources sources)])
+;; Core0 on this thread, the world on its own: with a window (the options'
+;; mode sdl), core0 opens it, its size in logical pixels at the desktop's
+;; scale, or full screen, and clears it; with none (headless, for the
+;; tests), its GPU draws to a target. Then it makes the environments;
+;; forks main, which loads the world's sources and then script into "/";
+;; and goes on as the host, on this thread, till main quits. Main asks
+;; core0 to quit when script returns, or raises.
+(define (host-fork! root recorder-sources sources options script)
+  (let ([w (cadr (assq 'size options))]
+        [h (cddr (assq 'size options))]
+        [full? (cdr (assq 'full-screen? options))])
+    (if (eq? (cdr (assq 'mode options)) 'headless)
+        (host-window-headless!)
+        (begin
+          (host-window-open! w h full?)
+          (unless full?
+            (let-values ([(uw uh pw ph) (host-window-sizes)])
+              (let ([s (/ (if (> (host-window-scale) 0) (host-window-scale) 1)
+                          (/ pw (max uw 1)))])
+                (host-resize-now! (exact (round (* w s)))
+                                  (exact (round (* h s)))))))
+          (host-window-show!)
+          (set! *gpu-booting* #t)
+          (gpu-boot-screen!))))
+  (let ([world (host-make-world! root recorder-sources sources options)])
     (set! *host-forked* #t)
     (fork-thread
      (lambda ()
        (platform-thread-interactive!)
        (guard (c [#t (display-condition c (console-error-port))
                      (newline (console-error-port))])
-         (interaction-environment world)
-         (host-load! world root sources)
-         (load (string-append root "/" script)))
+         (host-load-world! world root sources script))
        (host-quit!))))
   (host-loop!))
 
-;; Moves a script that loaded the tree (main.ss, a test) into "/": its later
+;; Moves a test that loaded the tree (tests/core0.ss) into "/": its later
 ;; forms evaluate there, as the world's.
 (define (host-enter-world!) (interaction-environment *host-world*))

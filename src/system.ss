@@ -830,7 +830,7 @@
            (collector-pass! 1 2)])))))
 
 ;;; ------------------------------------------------------------------ sources
-;;; The core is load.ss's list. After it come the folders, one definition
+;;; The core is main.ss's list. After it come the folders, one definition
 ;;; per file, each folder's files in file-name order: drop a file in and it
 ;;; loads at the next boot or (reload!). A real session then loads the same
 ;;; folders from ~/.schevana.d.
@@ -936,11 +936,11 @@
   (for-each (lambda (f) (safely f (lambda () (load-sources! (list f)))))
             (user-folder-files)))
 
-;; The source files load.ss lists, read from the file itself so that a
+;; The source files main.ss lists, read from the file itself so that a
 ;; reload picks up new ones.
 (define (read-source-list)
   (guard (c [#t *schevana-sources*])
-    (call-with-input-file (string-append *schevana-root* "/load.ss")
+    (call-with-input-file (string-append *schevana-root* "/main.ss")
       (lambda (p)
         (let loop ()
           (let ([x (read p)])
@@ -963,7 +963,7 @@
   (collector-settle!)
   (notify "Sources reloaded" 'green))
 
-;; load.ss loads the core before this file can keep its texts: kept now,
+;; Core0 loads the core before this file can keep its texts: kept now,
 ;; moments after (a reload keeps them as it loads them).
 (for-each (lambda (f)
             (let ([path (source-path f)])
@@ -971,7 +971,7 @@
                 (keep-source-text! path (file-text path)))))
           *schevana-sources*)
 
-;; The folders load from here, the end of the last file in load.ss's list,
+;; The folders load from here, the end of the last file in main.ss's list,
 ;; so that a reload by older code, which loads only that list, loads them
 ;; too. Their files may import the libraries shipped in lib/.
 (add-library-directory! (string-append *schevana-root* "/lib"))

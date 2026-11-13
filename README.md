@@ -504,7 +504,7 @@ src/ffi      the only file that knows about C (SDL3, FreeType, fontconfig);
              only the core uses it
 ```
 
-`src/` is the core, the explicit, ordered lists in `load.ss`. Its last
+`src/` is the core, the explicit, ordered lists in `main.ss`. Its last
 file loads the folders: `kits/`, `services/`, `desktop/`, `styles/`,
 `palettes/`, `wallpapers/` and `apps/`, one definition per file (`kits/`,
 `services/` and `desktop/` aside),

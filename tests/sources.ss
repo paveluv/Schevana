@@ -17,7 +17,7 @@
   (let ([dir (path-parent (path-parent (car (command-line))))])
     (if (string=? dir "") "." dir)))
 
-(load (string-append *schevana-root* "/load.ss"))
+(load (string-append *schevana-root* "/main.ss"))
 (load (string-append *schevana-root* "/tests/core0.ss"))
 
 (define failures 0)
@@ -63,7 +63,7 @@
        (filter (lambda (f) (string=? (path-extension f) "ss"))
                (sort string<? (directory-list (source-path folder))))))
 
-;; Core0's own files, src/host/: load.ss lists them for core0 alone, and
+;; Core0's own files, src/host/: main.ss lists them for core0 alone, and
 ;; (source-files) is the world's.
 (define core0-files
   (remp (lambda (f) (member f *schevana-sources*)) *schevana-core0-sources*))
@@ -80,7 +80,7 @@
           (test-files "tests")
           (test-files "tests/units")
           (test-files "tests/fork")
-          '("load.ss" "main.ss" "world.ss" "schevana")))
+          '("main.ss" "world.ss" "schevana")))
 
 (define (long-lines f)
   (let loop ([ls (file-lines f)] [n 1] [acc '()])
@@ -151,7 +151,7 @@
 (define defined-twice '())
 
 (define world-files
-  (append core0-files recorder-files (source-files) '("load.ss")))
+  (append core0-files recorder-files (source-files) '("main.ss")))
 
 ;; An app in a sandbox (services/grant.ss): what its file defines is the
 ;; sandbox's, but for the app itself, so it collides with nothing.
@@ -193,7 +193,7 @@
 
 ;; Raise it deliberately: the core is what the desktop needs to boot and
 ;; run; everything else belongs in a folder.
-(define src-budget 36638)
+(define src-budget 36682)
 
 ;; The tokens of a datum as read; a list's end is none.
 (define (tokens x)
@@ -296,7 +296,7 @@
 
 (define outside-src
   (remp (lambda (f) (equal? (file-folder f) "src"))
-        (append world-files '("main.ss" "world.ss"))))
+        (append world-files '("world.ss"))))
 
 ;; The GPU layer speaks the world's terms: above it, in the core too, nothing
 ;; names SDL's windowless half, Vulkan, SPIR-V, Metal or MSL, so that another
@@ -310,7 +310,7 @@
                       "src/host/platform.ss" "src/host/gpu.ss"
                       "src/host/present.ss" "src/host/window.ss"
                       "src/font.ss" "src/platform.ss")))
-        (append world-files '("main.ss" "world.ss"))))
+        (append world-files '("world.ss"))))
 
 (define (names-a-back-end? s)
   (let ([name (symbol->string s)])
@@ -379,7 +379,7 @@
                                                   (file-forms f))))))
                           (remp (lambda (f) (member f platform-files))
                                 (append world-files
-                                        '("main.ss" "world.ss")))))))
+                                        '("world.ss")))))))
 
 ;;; ------------------------------------------------------------------
 ;;; core0 below the core
@@ -455,7 +455,7 @@
                             (remp (lambda (f) (or (member f core0-files)
                                                   (member f recorder-files)))
                                   (append world-files
-                                          '("main.ss" "world.ss"))))))))
+                                          '("world.ss"))))))))
 
 ;; "/recorder" is given core0's interface and, alone, recordings and what
 ;; holds them (host-recorder-share in src/host/boot.ss).
@@ -487,7 +487,7 @@
                                                      (file-forms f))))))
                             (remp (lambda (f) (member f recorder-files))
                                   (append world-files
-                                          '("main.ss" "world.ss"))))))))
+                                          '("world.ss"))))))))
 
 ;; The SDL the core above core0 still calls: none since the window went down
 ;; to core0; kept for what a later change may have to list.
@@ -532,7 +532,7 @@
                                                      (file-forms f))))))
                             (remp (lambda (f) (member f core0-files))
                                   (append world-files
-                                          '("main.ss" "world.ss"))))))))
+                                          '("world.ss"))))))))
 
 ;;; ------------------------------------------------------------------
 ;;; sharing the whole world
@@ -610,7 +610,7 @@
         fences"
        (let ([found (apply append
                            (map file-thread-fences
-                                (append world-files '("main.ss" "world.ss"))))])
+                                (append world-files '("world.ss"))))])
          (none? (append
                  (filter-map (lambda (p)
                                (and (not (member p thread-fences))

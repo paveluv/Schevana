@@ -1,5 +1,5 @@
 ;;; tests/core0.ss — how a test reaches into core0, loaded right after
-;;; load.ss: the test goes on in "/", the world core0 made, where every name
+;;; main.ss: the test goes on in "/", the world core0 made, where every name
 ;;; of core0's own is forwarded and may be set (set!, fluid-let), as the
 ;;; tests stand in for SDL and the screen. The world itself sees only
 ;;; core0's interface (host-interface, src/host/boot.ss), read-only. What

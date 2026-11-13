@@ -1,6 +1,6 @@
 ;;; tests/units/reload.ss — what (reload!) reads, and what it leaves.
 
-(check "reload reads the source list from load.ss"
+(check "reload reads the source list from main.ss"
        (and (equal? (read-source-list) *schevana-sources*)
             (member "src/wm.ss" *schevana-sources*)
             #t))
