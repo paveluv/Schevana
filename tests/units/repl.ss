@@ -159,3 +159,26 @@
             and to redefine it in /core1; one of the world's says nothing"
            (and (= after-core 1) (= (notes) 1))))
   (close-window! win))
+
+(check "every kind of REPL says its keys as it opens, and a running form's \
+        tooltip says what Ctrl+C and Backspace do to the forms waiting \
+        under it"
+       (let* ([said? (lambda (win s)
+                       (exists (lambda (l) (string-contains-ci? (cdr l) s))
+                               (transcript-lines
+                                (repl-transcript (window-ref win 'state)))))]
+              [wins (map repl '(root private pure sandbox))]
+              [keys? (for-all (lambda (w)
+                                (and (said? w "↑↓ history")
+                                     (said? w "Tab completes by parts")))
+                              wins)]
+              [root-new? (said? (car wins) "Ctrl+Shift+R")]
+              [r (window-ref (car wins) 'state)]
+              [alone (repl-busy-tip-words r)])
+         (repl-queue-set! r '("(+ 1 2)" "(+ 3 4)"))
+         (let ([waiting (repl-busy-tip-words r)])
+           (repl-queue-set! r '())
+           (for-each close-window! wins)
+           (and keys? root-new? (not (string-contains-ci? alone "waiting"))
+                (string-contains-ci? waiting "drops the 2 waiting")
+                (string-contains-ci? waiting "Backspace")))))

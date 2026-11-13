@@ -1409,14 +1409,23 @@
                       (now-ms))))))
 
 ;; Its words, once the pointer has rested on it, as the kit's tooltips
-;; wait, in a window w × h.
+;; wait, in a window w × h; and, with forms waiting under it, what
+;; becomes of them.
+(define (repl-busy-tip-words r)
+  (let ([n (length (repl-queue r))])
+    (if (= n 0)
+        (repl-busy-words r)
+        (format "~a and drops the ~a waiting (↳).\nBackspace on an empty \
+                 line takes the last back."
+                (repl-busy-words r) n))))
+
 (define (repl-draw-busy-tip r win w h)
   (let ([p (repl-pointer r)])
     (when (and p (repl-over-busy? r win)
                (>= (- (now-ms) (caddr p)) ui-tip-ms))
       (with-place 'tooltip
         (lambda ()
-          (let*-values ([(words) (repl-busy-words r)]
+          (let*-values ([(words) (repl-busy-tip-words r)]
                         [(tw th) (ui-tooltip-size words)]
                         [(tx ty) (ui-popup-place (+ (car p) 12) (+ (cadr p) 20)
                                                  (- (cadr p) 8) tw th w h)])
@@ -1454,8 +1463,8 @@
           "(windows)                        ; the window list, as data"
           "(set-theme! 'accent #xff9e64)    ; recolor the world"
           "(spawn \"spin\" (lambda () (let loop () (loop))))"))
-       (repl-add! r 'info "F1 apps · Ctrl+Tab switch · Tab completes · \
-                           Shift+Enter newline · Ctrl+C stops")
+       (repl-add! r 'info "F1 apps · Ctrl+Tab switch · Ctrl+Shift+R a new \
+                           REPL")
        (repl-add! r 'info "To experiment without changing anything, \
                            (repl 'private) opens a Private REPL;")
        (repl-add! r 'info "(envs) shows the tree of environments, and opens \
@@ -1496,6 +1505,11 @@ here"))]
                                      its vat's thread." path))
        (repl-add! r 'info "Its sandbox is the vat's alone: what you define \
                            lives there. Ctrl+C stops a form there.")])
+    ;; the keys, in every kind
+    (repl-add! r 'info "Enter runs a complete form · Shift+Enter newline · \
+                        ↑↓ history · Ctrl+C stops")
+    (repl-add! r 'info "Tab completes by parts (tdc: text-draw-centered) · \
+                        Ctrl+L clears")
     (when (and (env-parent (repl-env r)) (eq? (env-base (repl-env r)) 'chez))
       (repl-add! r 'info "(exit) closes this REPL."))
     (repl-add! r 'info "")))
