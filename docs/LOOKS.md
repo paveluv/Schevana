@@ -98,9 +98,50 @@ around the content, `frame-under` and `frame-over`.
 ```
 
 `define-part` makes a procedure a part: its body becomes the built-in
-`name*`, and `name` calls the style's. Every widget's drawing in the kit
-is one, and so are the bars', the menus' and the toasts', so a style can
-replace any of them.
+`name*`, and `name` calls the style's. Every widget's drawing, size and
+areas in the kit is one ([UI.md](UI.md)), and so are the bars'
+(`draw-topbar`, `topbar-areas`), the menus' (`draw-menu`, `menu-areas`),
+the toasts' and the popups' pieces (`ui-draw-panel`, `ui-draw-highlight`,
+`ui-draw-separator`, `ui-draw-card`), which menus, dialogs, tooltips and
+the REPL's completion list share. So a style can replace any of them, and
+a window naming a style, `'window-style`, is drawn in that style's theme,
+content included; `(with-style name thunk)` draws in one.
+
+A container draws its inside in its place (`with-place`: a text box's
+`field`, a table's `list`, `dialog`, `tooltip`, `menu`, the bars' `bar`,
+`toast`), so a style can color what sits there by its `'places`, an app's
+own cells too. Settings say the rest: a text's caret (`text-caret`: `bar`
+or `block`) and selection (`text-selection`: `fill` or `underline`), a
+section label's font and case, where a menu's entries go (`menu-align`),
+and the like.
+
+## The built-in styles
+
+The mimicked styles use the original's widgets, and where the original
+has none, what its designers would have made:
+
+- **Interlisp**, from Medley's window system sources (MIT licensed): a
+  border of 2 pixels of ink and 2 of paper, a black title strip, Medley's
+  #x8822 desktop, its scroll bars at the left under the pointer, its
+  dashed outline when dragging, menus chosen on release.
+- **Genera**, built to the margins its 1986 manuals specify: the window's
+  label in its bottom-left corner, where you drag it; the whole screen, no
+  top bar, and at the bottom the who line, what the mouse buttons do over
+  the selected window; no color, gray as stipples; words boxed under the
+  mouse, inverse video for what is chosen. Its numbers are settings
+  (`genera-border`, `genera-margin`, ...).
+- **The CADR**, from MIT's System 99 sources (BSD), is Genera in a few
+  settings: a 1-pixel border and margin, the label upright in the code
+  font, its 5X5 font in people's lozenges, its 3-pixel scroll bar.
+- **Mac** and **Windows**, as their names say.
+
+Each brings the palette of the same name and its wallpaper. Our own
+styles, Cons, Curses, Draft, Fold, Halo, Lambda, Reticle, Slab and Spine,
+choose their feel where it suits them: Fold folds a window up to its title
+on a double click, Lambda rolls it into its tab on the wheel, Halo and
+Reticle show scroll bars under the pointer, Draft drags an outline that
+is a drawing with the live size, Reticle drags its brackets, and Curses
+rings the bell on the whole screen and boxes menu entries.
 
 ## Palettes and wallpapers
 

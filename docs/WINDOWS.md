@@ -24,8 +24,9 @@ what it shows.
 ## Handlers and properties
 
 An option that names a handler becomes the window's handler; any other
-becomes a property, read with `window-ref` and changed with `window-set!`,
-which draws the window again:
+but `open-window`'s own (`'size`, `'min-size`, `'pos` and `'app`) becomes
+a property, read with `window-ref` and changed with `window-set!`, which
+draws the window again:
 
 ```scheme
 (define counter
