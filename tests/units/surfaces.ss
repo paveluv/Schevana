@@ -110,16 +110,20 @@
            (do ([i 0 (+ i 1)]) ((= i 5))
              (request-frame!)
              (steps 1))
-           ;; the clock's seconds may turn meanwhile: no more than that
+           ;; the clock's seconds may turn meanwhile: no more than that,
+           ;; in the steps and in the one that shows the bar
            (let ([between (- asked added)] [turned (- (second) from)])
              (status-show!)
-             (steps 1)
-             (let ([shown (shown-status-strings)] [last asked])
-               (remove-status-segment! 'asked)
-               (and (= added 1)
-                    (<= between turned)
-                    (member (format "asked ~a" last) shown)
-                    (= last (+ added between 1))))))))
+             (let ([before (second)])
+               (steps 1)
+               (let ([shown (shown-status-strings)] [last asked]
+                     [late (- (second) before)])
+                 (remove-status-segment! 'asked)
+                 (and (= added 1)
+                      (<= between turned)
+                      (member (format "asked ~a" last) shown)
+                      (<= (+ added between 1) last
+                          (+ added between 1 late)))))))))
 
 ;;; frames
 
