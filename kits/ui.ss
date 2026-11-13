@@ -991,12 +991,14 @@
             h)))
 
 ;; choices: ((label . value) ...); the one equal? to current is selected.
-(define (ui-segmented ui id x y w h choices current on-select)
+;; opts: 'tip, every choice's.
+(define (ui-segmented ui id x y w h choices current on-select . opts)
   (let ([bw (/ w (length choices))])
     (for-each (lambda (c i)
                 (ui-button ui (list id (cdr c)) (+ x (* i bw)) y (- bw 6) h
                            (car c) (lambda () (on-select (cdr c)))
-                           'selected (equal? current (cdr c))))
+                           'selected (equal? current (cdr c))
+                           'tip (plist-ref opts 'tip #f)))
               choices (iota (length choices)))))
 
 ;; A whole number from lo to hi: a field that takes only digits, at its right
@@ -1145,18 +1147,19 @@
 ;;; ------------------------------------------------------------------ slider
 
 ;; A horizontal slider. on-change receives the new value in [lo, hi].
-;; paint-track, if given, draws the track: (lambda (x y w h) ...).
+;; paint-track, if given, draws the track: (lambda (x y w h) ...). opts:
+;; 'tip.
 (define ui-slider
   (case-lambda
     [(ui id x y w value lo hi on-change)
      (ui-slider ui id x y w value lo hi on-change #f)]
-    [(ui id x y w value lo hi on-change paint-track)
+    [(ui id x y w value lo hi on-change paint-track . opts)
      (let ([h (ui-slider-height)])
        (ui-area ui id (- x 8) y (+ w 16) h #f
                 (lambda (mx my)
                   (on-change
                    (+ lo (* (- hi lo) (clamp (/ (- mx x) w) 0 1)))))
-                'doc '((L . "Set")))
+                'doc '((L . "Set")) 'tip (plist-ref opts 'tip #f))
        (ui-draw-slider x y w h (ui-flags ui id)
                        (clamp (/ (- value lo) (- hi lo)) 0 1) paint-track))]))
 
@@ -2381,7 +2384,10 @@
                 (let* ([row (vector-ref rows i)] [ry (+ top (* i rh))]
                        [rid (list id 'row i)])
                   (ui-region! ui rid x ry w rh 'tip (tip row)
-                    'doc '((L . "Select")) 'on
+                    'doc (if (plist-ref opts 'on-menu #f)
+                             '((L . "Select") (R . "Menu"))
+                             '((L . "Select")))
+                    'on
                     (lambda (ev)
                       (and (eq? (car ev) 'press)
                            (case (list-ref ev 3)
@@ -2799,7 +2805,10 @@
                        [twisty (cdr (assq 'twisty areas))]
                        [c (cdr (assq 'cell areas))])
                   (ui-region! ui rid x ry w rh 'tip (tip node (caddr c))
-                    'doc '((L . "Select or open")) 'on
+                    'doc (if (plist-ref opts 'on-menu #f)
+                             '((L . "Select or open") (R . "Menu"))
+                             '((L . "Select or open")))
+                    'on
                     (lambda (ev)
                       (and (eq? (car ev) 'press)
                            (case (list-ref ev 3)

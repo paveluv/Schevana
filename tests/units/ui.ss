@@ -576,3 +576,27 @@
                       live?
                       (> held-w live-w)))))))
   (close-window! win))
+
+(check "a slider and a segmented choice take a tooltip, and a table's or a \
+        tree's rows say a right press opens their menu where they have one"
+       (let ([ui (make-ui)] [rows '(a b)] [cell (lambda args (void))]
+             [columns '((name "Name" 100))])
+         (image 400 300 1
+                (lambda ()
+                  (ui-begin! ui)
+                  (ui-slider ui 'sl 10 10 100 5 0 10 void #f 'tip "Speed")
+                  (ui-segmented ui 'seg 10 40 200 24 '(("A" . a) ("B" . b))
+                                'a void 'tip "Which")
+                  (ui-table ui 'menu 10 80 200 60 columns rows #f void cell
+                            'on-menu (lambda (r x y) #t))
+                  (ui-table ui 'plain 10 150 200 60 columns rows #f void cell)
+                  (ui-tree ui 'tree 210 80 180 80 columns rows
+                           (lambda (n) '()) #f void cell
+                           'on-menu (lambda (n x y) #t))
+                  (ui-end! ui 400 300)))
+         (let ([doc (lambda (id) (ui-region-doc (ui-find ui id)))])
+           (and (equal? (ui-region-tip (ui-find ui 'sl)) "Speed")
+                (equal? (ui-region-tip (ui-find ui '(seg b))) "Which")
+                (assq 'R (doc '(menu row 0)))
+                (not (assq 'R (doc '(plain row 0))))
+                (assq 'R (doc '(tree row 0)))))))
