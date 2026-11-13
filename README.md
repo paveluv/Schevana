@@ -22,6 +22,11 @@ Vulkan on Linux or Metal on a Mac. On Debian 13:
 sudo apt install libsdl3-0 mesa-vulkan-drivers
 ```
 
+With NVIDIA's driver on Wayland, turn on its hardware vblank stamps (one
+module option and a reboot,
+[docs/LINUX_NVIDIA_TUNING.md](docs/LINUX_NVIDIA_TUNING.md)) to improve
+frame syncing.
+
 On a Mac:
 
 ```bash
