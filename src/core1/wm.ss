@@ -1200,6 +1200,10 @@
                     (request-frame!))
                 (gpu-frame-free! f)))
             (gpu-frames-back!))
+  (render-answers!))
+
+;; What core0 read back, each handed to its then.
+(define (render-answers!)
   (for-each (lambda (answer)
               (safely 'readback (lambda () ((car answer) (cdr answer)))))
             (gpu-take-answers!)))

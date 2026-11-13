@@ -31,7 +31,7 @@
     *gpu-bytes-made* *gpu-held-gone* gpu-image-make gpu-image-make-target
     gpu-image-release! gpu-atlas-image gpu-list-new make-gpu-buffer
     gpu-buffer-set! gpu-buffer-release! gpu-buffer-read! *gpu-computes*
-    gpu-compute-soon!
+    gpu-compute-soon! gpu-buffer-read-then! gpu-compute!
     ;; src/core1/font.ss: fonts and text
     font-file-upem font-file-pages font-library-versions make-font* *font-specs*
     font get-font font-advance font-ascent font-descent font-line-height
@@ -59,6 +59,7 @@
     clip-row-ry1 clip-row-words clip-row-x0 clip-row-x1 clip-row-y0
     clip-row-y1
     ;; src/core1/proc.ss: processes, errors, toasts, worklets
+    proc-wait
     in-engine? current-proc make-timeout-condition safe-call safely *toasts*
     notify *last-error* report-error! proc proc? proc-id proc-name proc-state
     proc-ticks proc-started proc-wake *procs* spawn procs find-proc kill!

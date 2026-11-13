@@ -83,7 +83,8 @@
     gpu-frame-root gpu-frame-root-set! gpu-frame-number-set!
     gpu-frame-earlier-set! gpu-frame-writes-set!
     *gpu-frame-back* gpu-drawing->bytes gpu-compute-now!
-    gpu-submit-computes! gpu-buffer-download! core0-post-submit!)
+    gpu-submit-computes! gpu-buffer-download! core0-post-submit!
+    gpu-reads-now! core0-post-reads!)
   ;; What core1 alone needs of core0's: the clock and the CPU count, from
   ;; any thread, and the means to bind C of its own (src/core1/ffi.ss).
   (export (core1)

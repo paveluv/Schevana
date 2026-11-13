@@ -18,6 +18,31 @@
                       (invalidate! win))
              'draw (lambda (win w h) (fill-box 0 0 w h 'accent)))
 
+;; A compute run, and what it wrote read back by a then, as a REPL's would
+;; be: core1 never waits for it.
+(define-compute-shader (fork-squares x y) ([out fx-buffer write])
+  (fx-set! out x (fx* x x)))
+(define fork-read #f)
+(let ([b (make-gpu-buffer 4)])
+  (gpu-compute-soon! fork-squares 4 1 b)
+  (gpu-buffer-read-then! b
+    (lambda (bytes)
+      (set! fork-read
+        (map (lambda (i) (bytevector-s32-native-ref bytes (* 4 i)))
+             (iota 4))))))
+
+;; The same as a REPL's input asks it, in a process: gpu-compute! and
+;; gpu-buffer-read! wait there, core1 going on.
+(define fork-waited #f)
+(spawn "fork-wait"
+       (lambda ()
+         (let ([b (make-gpu-buffer 4)])
+           (gpu-compute! fork-squares 4 1 b)
+           (let ([bytes (gpu-buffer-read! b)])
+             (set! fork-waited
+               (map (lambda (i) (bytevector-s32-native-ref bytes (* 4 i)))
+                    (iota 4)))))))
+
 ;; The ticks kept whose phases don't add up to their time, as Monitor's and
 ;; the Pipeline's bars stack them.
 (define (fork-unsummed)
@@ -56,7 +81,9 @@
                                      (drawing->bytes 2 2 1 (lambda () #t)))))
                (cons 'compute
                      (fork-raises?
-                      (lambda () (gpu-buffer-read! (make-gpu-buffer 1))))))])
+                      (lambda () (gpu-buffer-read! (make-gpu-buffer 1)))))
+               (cons 'read-then fork-read)
+               (cons 'waited fork-waited))])
     (screen-bytes-then
      (lambda (bytes)
        (call-with-output-file *fork-out*

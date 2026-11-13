@@ -95,7 +95,7 @@ before it:
   updates `docs/PLATFORMS.md`: where it ran, where it should work, what
   happens without it. Monitor's Platform tab shows it all, and copies a
   run as a row of it.
-- **The core has a budget**, 36,786 tokens (atoms as read; comments,
+- **The core has a budget**, 36,972 tokens (atoms as read; comments,
   whitespace and names' lengths are free; the `export.ss` files, which
   declare, are left out), in `tests/sources.ss`. Don't join lines or
   shorten names to fit it. Code the core doesn't need moves out to the

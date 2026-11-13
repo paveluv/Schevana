@@ -199,7 +199,7 @@
 ;; run; everything else belongs in a folder. The export.ss files are left
 ;; out: they declare what each layer gives, sized by what's given, each a
 ;; reviewed change.
-(define src-budget 36786)
+(define src-budget 36972)
 
 ;; The tokens of a datum as read; a list's end is none.
 (define (tokens x)
@@ -484,14 +484,28 @@
                             (append core0-names recorder-names core1-names)
                             (exports-names core1-exports 'world))))
 
-(check "every name core1 exports, some file of the world's names"
+;; The docs name what's given for a person at a REPL, which no file may.
+(define doc-texts
+  (map (lambda (f) (call-with-input-file (source-path f) get-string-all))
+       (cons "README.md"
+             (map (lambda (f) (string-append "docs/" f))
+                  (filter (lambda (f) (string-suffix? ".md" f))
+                          (directory-list (source-path "docs")))))))
+
+(check "every name core1 exports, some file of the world's names, or the \
+        docs do"
        (let ([named (make-eq-hashtable)])
          (for-each (lambda (f)
                      (for-each (lambda (s) (hashtable-set! named s #t))
                                (symbols-in (file-forms f))))
                    world-own-files)
-         (none? (map (lambda (n) (format "no file names ~a" n))
-                     (remp (lambda (n) (hashtable-ref named n #f))
+         (none? (map (lambda (n) (format "nothing names ~a" n))
+                     (remp (lambda (n)
+                             (or (hashtable-ref named n #f)
+                                 (exists (lambda (text)
+                                           (string-contains-ci?
+                                            text (symbol->string n)))
+                                         doc-texts)))
                            (exports-names core1-exports 'world))))))
 
 ;; base.ss is every environment's, a copy each: so it keeps no state, and

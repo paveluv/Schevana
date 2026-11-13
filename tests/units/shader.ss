@@ -259,6 +259,26 @@
            (gpu-buffer-release! out)
            ok)))
 
+;;; A read back by a then: what core1 does, never waiting.
+
+(define-compute-shader (shader-test-squares x y) ([out fx-buffer write])
+  (fx-set! out x (fx* x x)))
+
+(check "a buffer read back by a then: not at once but at a later step, \
+        after the compute runs asked before it; one let go of reads #f"
+       (let ([out (make-gpu-buffer 10)] [gone (make-gpu-buffer 1)]
+             [got #f] [gone-got 'none])
+         (gpu-compute-soon! shader-test-squares 10 1 out)
+         (gpu-buffer-read-then! out (lambda (bytes) (set! got bytes)))
+         (gpu-buffer-release! gone)
+         (gpu-buffer-read-then! gone (lambda (bytes) (set! gone-got bytes)))
+         (let ([at-once got])
+           (steps 2)
+           (gpu-buffer-release! out)
+           (and (not at-once) got (not gone-got)
+                (equal? (map (lambda (i) (shader-test-word got i)) (iota 10))
+                        (map (lambda (i) (* i i)) (iota 10)))))))
+
 ;;; A texture at a level.
 
 (define shader-test-texture-params '((tex texture)))

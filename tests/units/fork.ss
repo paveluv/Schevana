@@ -23,9 +23,15 @@
   (check (format "a forked world loads on its own thread, draws frames \
                   core0 presents, and quits, ending the process ~s" seen)
          (and (eqv? status 0) (saw 'forked) (saw 'core1) (saw 'frames)))
-  (check "on a forked world, readbacks that would hold core1 raise; one by a \
-          then hands the screen's bytes back"
-         (and (saw 'readback) (saw 'compute) (> (saw 'bytes) 0)))
+  (check (format "on a forked world, readbacks that would hold core1 raise \
+                  outside a process; one by a then hands the screen's bytes \
+                  back, and a buffer's, after the compute run asked before \
+                  it (~s); in a process, gpu-compute! and gpu-buffer-read! \
+                  wait for theirs (~s)"
+                 (saw 'read-then) (saw 'waited))
+         (and (saw 'readback) (saw 'compute) (> (saw 'bytes) 0)
+              (equal? (saw 'read-then) '(0 1 4 9))
+              (equal? (saw 'waited) '(0 1 4 9))))
   (check (format "frame turns follow core0's screen: a window that \
                   animates gets a frame a refresh, each one's t a period \
                   after the last (~a frames in ~a refreshes, ~a uneven)"

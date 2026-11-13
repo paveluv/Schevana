@@ -221,13 +221,52 @@ A buffer, an image or a list nothing holds any more is let go of once a
 collection finds it, so an app never has to free one.
 `gpu-buffer-release!` frees at once, and is optional.
 
-The world also has `gpu-compute!`, which runs a shader and waits, and
-`gpu-buffer-read!`, which reads a buffer back. They work only while one
-thread plays both the world and core0, as in the tests. In a running
-Schevana the world has a thread of its own, core1, and both raise rather
-than hold it up: "readbacks never hold core1". A shader's results show on the
-screen through a paint, or come back as a Scheme procedure's through the
-twin.
+A shader's results show on the screen through a paint, or come back to
+Scheme.
+
+### At a REPL, on the GPU and back
+
+`squares` from above, run on the GPU over ten cells, and what it wrote read
+back:
+
+```scheme
+(define-compute-shader (squares x y)
+  ([out fx-buffer write])
+  (fx-set! out x (fx* x x)))
+
+(define b (make-gpu-buffer 10))
+(gpu-compute! squares 10 1 b)
+(define bytes (gpu-buffer-read! b))   ; 4 bytes a word, as the GPU wrote them
+
+(map (lambda (i) (bytevector-s32-native-ref bytes (* 4 i))) (iota 10))
+; => (0 1 4 9 16 25 36 49 64 81)
+```
+
+`gpu-compute!` runs the shader and `gpu-buffer-read!` reads the buffer
+back, each waiting till it's done, while the world goes on: a REPL's input
+runs as a process, and a process can wait without holding core1, the
+world's thread. Core0 reads the buffer between frames and hands the bytes
+back. Ctrl+C stops the wait like any other. A float buffer (`fl-buffer`)
+reads the same way, each word with `bytevector-ieee-single-native-ref`.
+
+Code that isn't in a process (a window's handler, a timer, an app) can't
+wait, and the two raise there. It asks for the bytes with a procedure to
+hand them to, `gpu-buffer-read-then!`, which nothing waits for:
+
+```scheme
+(gpu-compute-soon! squares 10 1 b)
+(gpu-buffer-read-then! b (lambda (bytes) (set! squared bytes)))
+```
+
+The run goes with the next frame; the read goes after it, and the
+procedure runs on core1 a step or two later. A buffer let go of meanwhile
+reads `#f`. The waiting calls are this, inside a process: `(proc-wait who
+start)` waits for what `start` hands its `done`, and wraps any call that
+hands its result to a procedure later.
+
+With one thread playing both core0 and core1, as in the tests, the two
+read at once, waiting for the GPU itself. The twin, below, runs a shader
+on the CPU, where waiting is always fine.
 
 ## The twin
 

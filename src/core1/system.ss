@@ -203,15 +203,21 @@
                     (lambda () (if hold? (hold-event! ev) (handle-event! ev)))))
           (each (cdr evs)))))
     ;; frames core0 gave back, on its own thread since; with one thread,
-    ;; they come back as they're published. One sent, the collections its
-    ;; turn held off.
-    (when (core0-forked?) (safely 'render render-frames-back!))
+    ;; they come back as they're published, and what it read back as it
+    ;; was asked. One sent, the collections its turn held off.
+    (if (core0-forked?)
+        (safely 'render render-frames-back!)
+        (render-answers!))
     (collector-after-sent!)
     (let ([ticked?
            (and (not (reload-holding?))
                 (begin
                   (run-core1-mail!)
                   (safely 'timers run-timers!)
+                  ;; reads asked for, before a tick publishes a frame: a
+                  ;; tick comes only once none waits, so they go, however
+                  ;; fast frames flow
+                  (when (pair? *gpu-reads*) (safely 'readback gpu-reads-send!))
                   (let ([now (and (pair? paced) (now-ns))])
                     (and (or (not now)
                              (and (pacer-wanted?) (>= now (pacer-start))
@@ -247,7 +253,9 @@
       ;; writes no frame took go on their own
       (gpu-held-sweep!)
       (when (and (gpu-asks-pending?) (not (reload-holding?)))
-        (safely 'render gpu-computes-send!)))))
+        (safely 'render gpu-computes-send!))
+      ;; reads asked for, guarded only then: a quiet step's guards are four
+      (when (pair? *gpu-reads*) (safely 'readback gpu-reads-send!)))))
 
 ;;; ------------------------------------------------------------------ pacer
 

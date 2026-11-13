@@ -903,6 +903,20 @@
     (gpu-run-computes! cb runs)
     (sdl-submit-gpu cb)))
 
+;; runs, then the buffers reads names read back, (id . then) each, core1's
+;; jobs and writes first: each buffer's bytes, a copy of its own, or #f if
+;; id names none, left with its then in *gpu-answers*, core1 woken for
+;; them. The queue keeps the order: a read finds the runs done. Core0 waits
+;; for its copies, between frames; core1 never does.
+(define (gpu-reads-now! runs jobs writes reads)
+  (gpu-submit-computes! runs jobs writes)
+  (for-each (lambda (read)
+              (core0-put! *gpu-answers*
+                          (cons (cdr read)
+                                (gpu-buffer-download! '() #f (car read)))))
+            reads)
+  (core0-world-wake!))
+
 ;; What's in buffer id now, core1's jobs and writes first: => its bytes, a
 ;; copy of its own, or #f if id names no buffer.
 (define (gpu-buffer-download! jobs writes id)

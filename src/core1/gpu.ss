@@ -134,10 +134,37 @@
   (gpu-buffer-gone?-set! b #t)
   (gpu-ask! (list 'release (gpu-buffer-id b))))
 
-;; What the buffer holds, what was set and what shaders wrote, read back
-;; now: => its bytes, a copy of the world's own, or #f once it's let go of.
+;; What the buffer holds, what was set and what shaders wrote: => its
+;; bytes, a copy of the world's own, or #f once it's let go of. Read now
+;; while one thread plays core0 and core1; on core1's own, read back by a
+;; then while the process that asked waits (proc-wait): outside a process,
+;; nothing may wait, and gpu-buffer-read-then! is the way.
 (define (gpu-buffer-read! b)
-  (rec-buffer-read! (gpu-take-jobs!) (gpu-buffer-id b)))
+  (if (core0-forked?)
+      (proc-wait 'gpu-buffer-read!
+                 (lambda (done) (gpu-buffer-read-then! b done)))
+      (rec-buffer-read! (gpu-take-jobs!) (gpu-buffer-id b))))
+
+;; The reads asked for, (id . then), the newest first. A frame published
+;; and not yet taken goes after core0's jobs, so its compute runs would
+;; follow a read sent now: one goes once no frame waits.
+(defvar *gpu-reads* '())
+
+;; What the buffer holds once what was asked of the GPU before is done,
+;; handed to then on core1 later: its bytes, a copy of the world's own, or
+;; #f once it's let go of. Nothing waits for it: core0 reads it back
+;; between frames.
+(define (gpu-buffer-read-then! b then)
+  (set! *gpu-reads* (cons (cons (gpu-buffer-id b) then) *gpu-reads*)))
+
+;; Once no frame waits for core0, before a tick or at a turn's end: the
+;; reads asked for, after the compute runs, jobs and writes no frame took.
+(define (gpu-reads-send!)
+  (when (and (pair? *gpu-reads*) (not (gpu-frame-waiting?)))
+    (let ([reads (reverse *gpu-reads*)])
+      (set! *gpu-reads* '())
+      (let-values ([(jobs runs) (gpu-take-asks!)])
+        (rec-buffer-read-then! runs jobs reads)))))
 
 ;;; ------------------------------------------------------------------ calls
 
@@ -183,10 +210,19 @@
 
 ;;; ------------------------------------------------------------------ compute
 
-;; Runs a compute shader over w × h cells, now, and waits for it: its buffers
-;; are then ready to read with gpu-buffer-read!.
+;; Runs a compute shader over w × h cells now, and waits: while one thread
+;; plays core0 and core1, for its end; on core1's own, in a process, till
+;; core0 has sent it, a read of no buffer answered after it. Either way, a
+;; read after it finds what it wrote.
 (define (gpu-compute! shader w h . args)
-  (rec-compute-now! (gpu-compute-run shader w h args) (gpu-take-jobs!)))
+  (if (core0-forked?)
+      (begin
+        (proc-wait 'gpu-compute!
+                   (lambda (done)
+                     (apply gpu-compute-soon! shader w h args)
+                     (set! *gpu-reads* (cons (cons #f done) *gpu-reads*))))
+        (void))
+      (rec-compute-now! (gpu-compute-run shader w h args) (gpu-take-jobs!))))
 
 ;; Compute runs to go with the next frame, the newest first.
 (defvar *gpu-computes* '())

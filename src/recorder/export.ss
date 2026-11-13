@@ -12,4 +12,4 @@
     gpu-list-runs gpu-list-version gpu-list-recs gpu-list-extras
     rec-earlier-add! rec-recordings rec-buffer-set! rec-pixel-set!
     rec-image-rows! rec-writes-pending? rec-compute-now!
-    rec-submit-computes! rec-buffer-read!))
+    rec-submit-computes! rec-buffer-read! rec-buffer-read-then!))

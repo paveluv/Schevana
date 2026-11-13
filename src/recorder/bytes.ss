@@ -374,7 +374,7 @@
 (define (rec-one-thread who)
   (when (core0-forked?)
     (errorf who "readbacks never hold core1: on a world of its own thread, \
-                 use what hands the bytes to a then")))
+                 use what hands the bytes to a then (gpu-buffer-read-then!)")))
 
 (define (rec-compute-now! run jobs)
   (rec-one-thread 'gpu-compute!)
@@ -382,6 +382,16 @@
 (define (rec-buffer-read! jobs id)
   (rec-one-thread 'gpu-buffer-read!)
   (gpu-buffer-download! jobs (rec-writes-take!) id))
+
+;; The compute runs no frame took and the writes, then the buffers reads
+;; names read back, (id . then) each, their bytes left for core1 to hand
+;; each then: by a job of core0's, or at once while one thread plays both.
+;; Core1 never waits for them.
+(define (rec-buffer-read-then! runs jobs reads)
+  (let ([writes (rec-writes-take!)])
+    (if (core0-forked?)
+        (core0-post-reads! runs jobs writes reads)
+        (gpu-reads-now! runs jobs writes reads))))
 
 ;; The compute runs no frame took, and the writes, sent with no frame: by a
 ;; job of core0's, or at once while one thread plays both.

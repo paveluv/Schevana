@@ -142,7 +142,8 @@
      make-gpu-buffer
      gpu-buffer-set!
      gpu-buffer-release!
-     gpu-compute-soon!)
+     gpu-compute-soon!
+     gpu-buffer-read-then!)
     (toasts "Show notifications"
      notify)
     (launch "Open other apps"

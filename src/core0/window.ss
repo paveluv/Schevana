@@ -531,6 +531,10 @@
 (define (core0-post-submit! runs jobs writes)
   (core0-post! (list 'gpu-submit-computes! runs jobs writes)))
 
+;; The same, and buffers read back after them (gpu-reads-now!).
+(define (core0-post-reads! runs jobs writes reads)
+  (core0-post! (list 'gpu-reads-now! runs jobs writes reads)))
+
 ;; Core1 is done: core0 closes the window and ends the process.
 (define (core0-quit!) (core0-post! '(core0-quit-now!)))
 (defvar *core0-quit* #f)

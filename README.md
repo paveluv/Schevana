@@ -672,7 +672,9 @@ Decisions worth keeping in mind for the real design:
   for with `(gpu-compute-soon! shader w h arg ...)` goes with the next frame,
   ahead of its drawing, so a paint shows what it wrote, and nothing waits
   for it; `gpu-compute!`, which waits, and `gpu-buffer-read!`, which reads
-  a buffer back, are the world's alone. What's set goes up with the next
+  a buffer back, are the world's alone, and wait only in a process (a
+  REPL's input), core1 going on; elsewhere `gpu-buffer-read-then!` hands
+  the bytes to a procedure later. What's set goes up with the next
   frame or compute run, and core0 checks every write against the sizes it
   made the buffer or image with. `(inspect-computes)` lists the runs waiting for the frame.
 - **Nothing on the GPU has to be let go of.** A buffer, an image or a list

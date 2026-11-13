@@ -226,6 +226,22 @@
 ;; Give up the rest of this slice.
 (define (yield) (when (current-proc) (engine-block)))
 
+;; Inside a process, the values something done elsewhere hands a then:
+;; (start done) begins it, and it calls (done v ...) later on core1 (a
+;; read back from the GPU, a vat's job), or at once. The process waits
+;; meanwhile, never run, and core1 goes on: so a REPL's input reads as if
+;; the call returned them. Outside a process nothing may wait, and who
+;; raises, start never called.
+(define (proc-wait who start)
+  (let ([p (current-proc)] [got #f])
+    (unless p
+      (errorf who "only a process waits (spawn): here, hand a then what it \
+                   gives"))
+    (proc-wake-set! p (most-positive-fixnum))
+    (start (lambda vals (set! got vals) (proc-wake-set! p 0)))
+    (let loop () (unless got (engine-block) (loop)))
+    (apply values got)))
+
 ;;; ------------------------------------------------------------------ worklets
 ;;; What a worker thread runs. A worklet is a procedure compiled in the
 ;;; worklet environment, where only this is in reach: Scheme's pure core
