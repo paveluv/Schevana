@@ -612,7 +612,7 @@
               (let* ([shown ((cdr (assq 'busy *status-segments*)))]
                      [after (begin (steps 1) (pacer-peak-ms!))])
                 (and (not (assq 'frame *status-segments*))
-                     (equal? shown "5.0 ms/tick")
+                     (equal? shown "busiest tick 5.0 ms")
                      (= after 3.0)
                      (= (pacer-peak-ms!) 0.0)))))))
   (close-window! win))

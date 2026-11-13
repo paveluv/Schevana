@@ -872,8 +872,8 @@
          [head (if (menu-filter? m) (+ (ui-control-height) pad) 0)]
          [w (fold-left (lambda (acc e)
                          (if (pair? e)
-                             (max acc (+ pad tx (text-width (car e) font) tx c
-                                         pad))
+                             (max acc (+ pad tx (menu-label-width (car e) font)
+                                         tx c pad))
                              acc))
                        (theme 'menu-min-width) es)]
          [h (fold-left (lambda (acc e) (+ acc (if (pair? e) ih sh)))
@@ -927,10 +927,18 @@
                                            'cons-ink))]
                             [px (+ x pad)] [pw (- w pad pad c)])
                        (cons-pair-h! px y pw c c 'cons-ink 1 tint #f)
-                       (draw-text (+ px tx) (+ y (/ (- c lh) 2))
-                                  (text-fit (car (vector-ref es i)) (- pw tx 4)
-                                            font)
-                                  (if tint 'window-bg (theme 'menu-ink)) font)
+                       (let* ([label (car (vector-ref es i))]
+                              [key (menu-label-key label)]
+                              [kw (if key (+ (text-width key font) 12) 0)]
+                              [ink (if tint 'window-bg (theme 'menu-ink))])
+                         (draw-text (+ px tx) (+ y (/ (- c lh) 2))
+                                    (text-fit (menu-label-text label)
+                                              (- pw tx 4 kw) font)
+                                    ink font)
+                         (when key
+                           (draw-text (- (+ px pw) tx (- kw 12))
+                                      (+ y (/ (- c lh) 2)) key
+                                      (if tint ink 'text-faint) font)))
                        (if next
                            (cons-down! (cons-dot-x (+ px pw) c 1)
                                        (cons-dot-y y c 1) (caddr next) c

@@ -1239,7 +1239,9 @@
   (steps 2)
   (check "so the right-button menu on its title closes it"
          (and (menu-open?)
-              (find (lambda (e) (and (pair? e) (string=? (car e) "Close")))
+              (find (lambda (e)
+                      (and (pair? e)
+                           (string=? (menu-label-text (car e)) "Close")))
                     (menu-entries *menu*))))
   (close-menu!))
 

@@ -63,12 +63,37 @@
   (set! *menu* #f)
   (request-frame!))
 
+;; An entry's label may end in a tab and the key that does the same, which
+;; the menu shows at the entry's right: "Close\tCtrl+Shift+W". => its
+;; text, or the key or #f.
+(define (menu-label-text label)
+  (let ([i (menu-label-tab label)]) (if i (substring label 0 i) label)))
+
+(define (menu-label-key label)
+  (let ([i (menu-label-tab label)])
+    (and i (substring label (+ i 1) (string-length label)))))
+
+(define (menu-label-tab label)
+  (let ([n (string-length label)])
+    (let loop ([i 0])
+      (cond [(= i n) #f]
+            [(char=? (string-ref label i) #\tab) i]
+            [else (loop (+ i 1))]))))
+
+;; As wide as an entry's text and key, a gap between.
+(define (menu-label-width label font)
+  (let ([key (menu-label-key label)])
+    (+ (text-width (menu-label-text label) font)
+       (if key (+ 24 (text-width key font)) 0))))
+
 (define (menu-entries m)
   (let ([f (menu-filter m)] [items (menu-items m)])
     (cond [(procedure? items) (items f)]   ; (lambda (filter) entries)
           [(string=? f "") items]
           [else (filter (lambda (e)
-                          (and (pair? e) (string-contains-ci? (car e) f)))
+                          (and (pair? e)
+                               (string-contains-ci? (menu-label-text (car e))
+                                                    f)))
                         items)])))
 
 ;; Where menu m and its pieces are, which its drawing, its clicks and the
@@ -82,8 +107,8 @@
          [w (fold-left (lambda (acc e)
                          (if (pair? e)
                              (max acc (+ 8 (* 2 (theme 'menu-text-x))
-                                         (text-width (car e)
-                                                     (theme 'menu-font))))
+                                         (menu-label-width
+                                          (car e) (theme 'menu-font))))
                              acc))
                        (theme 'menu-min-width) es)]
          [h (fold-left (lambda (acc e) (+ acc (if (pair? e) ih sh)))
@@ -219,22 +244,26 @@
                                     (and (= what (cadr b))
                                          (odd? (menu-phase b)))
                                     (= what (menu-sel m)))]
-                          [flags (if sel? (menu-entry-flags what) '())])
+                          [flags (if sel? (menu-entry-flags what) '())]
+                          [label (car (vector-ref es what))]
+                          [text (menu-label-text label)]
+                          [key (menu-label-key label)]
+                          [ink (theme (cond [(not sel?) 'menu-ink]
+                                            [(and (memq 'outline flags)
+                                                  (memq 'pressed flags))
+                                             'menu-ink-pressed]
+                                            [else 'menu-ink-selected]))])
                      (when sel? (ui-draw-highlight (+ x 5) y (- w 10) h flags))
                      (draw-text (if (eq? (theme 'menu-align) 'center)
-                                    (+ x (/ (- w (text-width
-                                                  (car (vector-ref es what))
-                                                  font))
-                                            2))
+                                    (+ x (/ (- w (text-width text font)) 2))
                                     (+ x (theme 'menu-text-x)))
-                                (+ y (/ (- h lh) 2))
-                                (car (vector-ref es what))
-                                (theme (cond [(not sel?) 'menu-ink]
-                                             [(and (memq 'outline flags)
-                                                   (memq 'pressed flags))
-                                              'menu-ink-pressed]
-                                             [else 'menu-ink-selected]))
-                                font))]))
+                                (+ y (/ (- h lh) 2)) text ink font)
+                     ;; the key that does the same, at the right
+                     (when key
+                       (draw-text (- (+ x w) (theme 'menu-text-x)
+                                     (text-width key font))
+                                  (+ y (/ (- h lh) 2)) key
+                                  (if sel? ink 'text-faint) font)))]))
               a))
            areas))))))
 
@@ -318,10 +347,11 @@
                     (launch-app-asking! a)))))
         (sort (lambda (a b) (string<? (app-title a) (app-title b))) *apps*))
    (list 'separator
-         (cons "Tile windows" (lambda () (tile-windows!)))
+         (cons "Tile windows\tCtrl+Shift+T" (lambda () (tile-windows!)))
          (cons "Cascade windows" (lambda () (cascade-windows!)))
-         (cons (if (fullscreen?) "Leave full screen" "Full screen")
+         (cons (if (fullscreen?) "Leave full screen\tF11" "Full screen\tF11")
                (lambda () (toggle-fullscreen!)))
+         (cons "Screenshot\tF12" (lambda () (save-screenshot!)))
          (cons "Reload sources" (lambda () (spawn "reload" reload!)))
          (cons "Quit Schevana" (lambda () (quit!))))))
 
@@ -345,15 +375,17 @@
                  . ,(lambda ()
                       (define-top-level-value '$w win)
                       (notify (format "$w = ~s" win))))
-                (,(if (eq? (window-state win) 'maximized) "Restore" "Maximize")
+                (,(if (eq? (window-state win) 'maximized)
+                      "Restore\tCtrl+Shift+M"
+                      "Maximize\tCtrl+Shift+M")
                  . ,(lambda () (toggle-maximize! win)))
-                ("Minimize" . ,(lambda () (minimize-window! win)))
+                ("Minimize\tCtrl+Shift+N" . ,(lambda () (minimize-window! win)))
                 ,@(if (or (shaded? win) (shades? win))
                       `((,(if (shaded? win) "Unshade" "Shade")
                          . ,(lambda () (toggle-shade! win))))
                       '())
                 separator
-                ("Close" . ,(lambda () (close-window! win))))
+                ("Close\tCtrl+Shift+W" . ,(lambda () (close-window! win))))
               'tag (cons 'window win)))
 
 ;; Does win's style shade it: a shade button, or a double click or the

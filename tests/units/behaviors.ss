@@ -340,7 +340,9 @@
 
 ;; The middle of the open menu's entry labeled label.
 (define (menu-entry-point label)
-  (let* ([i (list-index (lambda (e) (and (pair? e) (string=? (car e) label)))
+  (let* ([i (list-index (lambda (e)
+                          (and (pair? e)
+                               (string=? (menu-label-text (car e)) label)))
                         (menu-entries *menu*))]
          [a (assv i (placed-menu-areas *menu*))])
     (values (+ (cadr a) (quotient (cadddr a) 2))
@@ -1167,3 +1169,35 @@
              (and (same 'sort-up 'up) (same 'sort-down 'down)
                   (not (window-error w))
                   (equal? doc '((L . "Edit me"))))))))
+
+(check "a menu shows the key that does what an entry does, at its right, \
+        and filters by the entry's text alone; the launcher can take a \
+        screenshot"
+       (let* ([keys (lambda (entries)
+                      (filter-map (lambda (e)
+                                    (and (pair? e)
+                                         (let ([k (menu-label-key (car e))])
+                                           (and k (cons (menu-label-text
+                                                         (car e))
+                                                        k)))))
+                                  entries))]
+              [launcher (keys (launcher-items #f))]
+              [w (open-window "Keys")])
+         (open-window-menu w 10 10)
+         (let ([window-keys (keys (menu-entries *menu*))])
+           (menu-filter-set! *menu* "ctrl")
+           (let ([filtered (menu-entries *menu*)])
+             (close-menu!)
+             (close-window! w)
+             (and (equal? (assoc "Screenshot" launcher) '("Screenshot" . "F12"))
+                  (equal? (assoc "Tile windows" launcher)
+                          '("Tile windows" . "Ctrl+Shift+T"))
+                  (equal? (assoc "Close" window-keys)
+                          '("Close" . "Ctrl+Shift+W"))
+                  (assoc "Minimize" window-keys)
+                  (null? filtered)
+                  (equal? (menu-label-text "Plain") "Plain")
+                  (not (menu-label-key "Plain"))
+                  (> (menu-label-width "Close\tCtrl+Shift+W" 'ui)
+                     (+ (text-width "Close" 'ui)
+                        (text-width "Ctrl+Shift+W" 'ui))))))))

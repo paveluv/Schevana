@@ -86,7 +86,7 @@
               [heap (bytes-allocated)]
               [number (lambda (s)
                         (string->number
-                         (car (string-split s #\space))))]
+                         (cadr (string-split s #\space))))]
               [heap-only (fluid-let ([platform-process-bytes (lambda () #f)])
                            (status-memory))]
               [whole (fluid-let ([platform-process-bytes
@@ -95,9 +95,7 @@
          (and (or (not process)       ; no /proc here
                   (> process (* 1/2 heap)))
               (assq 'memory *status-segments*)
-              (let ([parts (string-split whole #\/)])
-                (and (= 2 (length parts))
-                     (equal? (cadr parts) "1024.0 MB")))
+              (string-suffix? " · process 1024.0 MB" whole)
               (< (abs (- (number heap-only) (/ heap 1048576.0))) 20))))
 
 (check "the top bar takes its numbers once a second, however many frames \

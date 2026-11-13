@@ -10,10 +10,12 @@
     ((ctrl shift #\t) . ,(lambda () (tile-windows!)))
     ((ctrl shift #\r) . ,(lambda () (app-launch! 'repl)))
     ((f11) . ,(lambda () (toggle-fullscreen!)))
-    ((f12) . ,(lambda ()
-                (png-write-screen-then
-                 (next-screenshot-path)
-                 (lambda (path) (notify (format "Saved ~a" path))))))))
+    ((f12) . ,(lambda () (save-screenshot!)))))
+
+;; The screen, as a PNG in the home folder, and a toast saying where.
+(define (save-screenshot!)
+  (png-write-screen-then (next-screenshot-path)
+                         (lambda (path) (notify (format "Saved ~a" path)))))
 
 (define (install-default-keys!)
   (for-each (lambda (b)

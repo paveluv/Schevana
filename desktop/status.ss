@@ -72,12 +72,12 @@
   (let ([heap (/ (bytes-allocated) 1048576.0)]
         [process (platform-process-bytes)])
     (if process
-        (format "~,1f/~,1f MB" heap (/ process 1048576.0))
-        (format "~,1f MB" heap))))
+        (format "heap ~,1f · process ~,1f MB" heap (/ process 1048576.0))
+        (format "heap ~,1f MB" heap))))
 
 ;; The most a tick took since the bar last looked, a second ago, but its
 ;; waits: past a period, a tick was late.
-(define (status-busy) (format "~,1f ms/tick" (pacer-peak-ms!)))
+(define (status-busy) (format "busiest tick ~,1f ms" (pacer-peak-ms!)))
 
 (define day-names '#("Sun" "Mon" "Tue" "Wed" "Thu" "Fri" "Sat"))
 (define month-names
