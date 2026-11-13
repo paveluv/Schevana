@@ -253,25 +253,8 @@ the machine's load and SDL's last error. `(profile-flag-log! path)`
 adds each flag to the end of a file as it comes, to outlive a run; a run
 from a checkout with a `.work` folder logs to `.work/flags.log`.
 
-The history is data, read in place: `(profile-ticks)` and
-`(profile-seconds)` give the ticks kept and the seconds done as seqs,
-the newest first; `(profile-tick-ms seq)`, `(profile-tick-phase-ms seq
-'render)`, `(profile-tick-phases seq)` (where its time went, waits too,
-the most first), `(profile-tick-ref seq 'heap)` and
-`(profile-tick-uses seq)`
-(what each key spent: a window's handler, a surface, a process) read a
-tick, and `profile-second-phase-ms`, ... a second; `(profile-totals seconds)`
-sums seconds by subject, the most first, each with its parts, and
-`(profile-totals ticks #t)` ticks. The same as Monitor's Ticks, for a
-reader without eyes (a headless agent, a test): `(profile-slow-ticks)`
-gives the ticks that came late, by the pacer's period
-(`(pacer-period)`), so `(map profile-tick-phases (profile-slow-ticks))`
-says where each late tick's time went, and
-`(profile-totals (profile-slow-ticks) #t)` who spent it. The ticks go
-into a ring of 2 minutes, each second's sums into one of an hour and the last minute's
-uses into one of their own, all made once; a window or a process is
-kept by its id, with its title or name when first seen, so the history
-keeps no closed window or ended process alive. Monitor
+The profiler's history is data, read at a REPL as Monitor reads it:
+[docs/MEASURING.md](docs/MEASURING.md). Monitor
 draws all of it with the widget kit: its charts (`ui-bar-chart`,
 `ui-draw-line-chart`, `ui-draw-sparkline`, `ui-draw-legend`), its tree,
 its tables and its labels. A chart's series are the kit's color
@@ -281,32 +264,6 @@ settings `chart-1` to `chart-8`, from the palette's hues,
 its share, its reference lines and a flag over a bar: Genera and the CADR, which have no color, give them as
 stipples of ink.
 
-
-### The Debug REPL
-
-`(debug-repl)` opens a window that lets something outside Schevana, a debugger
-or an agent, evaluate Scheme in the running world, and shows every request and
-answer as they come. Nobody types in it. The window is the switch: the socket
-exists only while it's open, at `$XDG_RUNTIME_DIR/schevana-debug.sock`, for its
-owner alone; closing it stops whatever was running.
-
-One connection, one request: send the forms as text and stop writing. The
-answer comes back as one datum, and the connection closes:
-
-```
-(ok "what it printed" ("a value, as text" ...) ms)
-(error "what went wrong" "what it printed" ms)
-(killed "what it printed" ms)
-```
-
-```bash
-printf '(+ 1 2)' | nc -UN "$XDG_RUNTIME_DIR/schevana-debug.sock"
-```
-
-A request runs as a process, so a long one doesn't hold the world up, and one
-past 10 seconds is stopped. It has all the power of the world's own REPL. It's
-drawn by `kits/transcript.ss`, the REPL's transcript, which is there for other
-apps to derive from.
 
 ## Your own apps, styles, palettes and wallpapers
 
@@ -462,58 +419,6 @@ Decisions worth keeping in mind for the real design:
   and state among them, are in `AGENTS.md`. R6RS libraries are one-way black
   boxes, like C libraries: the world imports them, they never call into the
   world.
-- **Worker threads run worklets.** A worklet (`define-worklet`, or
-  `worklet` like `lambda`) is compiled in an environment of its own:
-  Scheme's pure core, fixnums, flonums, bytevectors, fxvectors, flvectors,
-  boxes, the clock and the other worklets, and nothing of the world. One that names a
-  world procedure, SDL, `eval`, a `#%` primitive or a local of the
-  code around it, or sets a top-level name, is refused when it is
-  defined, so a worklet touches only what it is handed, by construction;
-  worklets call each other by name and see each other redefined, through
-  read-only forwarders to the world's bindings, which refuse a worklet's
-  `set!` of another as it expands. Of what it is handed, a worklet opens
-  only pairs, vectors and boxes, and the crew refuses any procedure there
-  that is no worklet.
-- **Environments are a tree.** The world is its root (`services/env.ss`).
-  A child is of a kind, `(env-fork e 'sandbox 'name 'tally 'share
-  '(add!))`, which says its base (all of Chez, what is always safe, or
-  Scheme's pure core), what it is shared at once and what it may fork in
-  turn (a registry, which vats and apps add to);
-  `(env-child e name base)` makes a bare one. It is
-  shared only the names its parent lists, as in
-  `(env-share! e '(windows (clock . now-ms)))`. Each is a read-only
-  forwarder, a macro that makes code in the child refer to the parent's
-  binding itself: live, at no cost a call. A `set!` of it is refused as
-  it expands, in the words Chez uses for an R6RS import's: "attempt to
-  assign read-only variable farewell". A setter may take the `set!`
-  instead (`env-share-setter!`), and the child's `define` makes its own.
-  So a child changes its parent's state only through what it was shared.
-  A sandbox's children are sandboxes on its base or a smaller one, shared
-  what it holds: it narrows what it hands down, never widens it. Every name
-  of the world's, followed, is a world namespace's alone, which a person asks
-  for. A dropped one is marked so (`env-dropped?`): what holds it knows.
-  A child on Chez's base still reaches the world through Chez, so it
-  organizes state and confines nothing. The confined base is what is
-  always safe, for apps: R6RS's libraries and Chez's pure extras, but no
-  files, eval, C, threads, clock or inspector. Its record types are its
-  own: a uid is taken under its path, so a type stays one across a reload
-  and is never the world's. Its console writes to its log (`env-log`).
-- **A crew of threads for loops.** `(crew-for start end worklet arg ...)`
-  (`services/crew.ss`) calls `(worklet lo hi arg ...)` on disjoint slices
-  of the range on worker threads, the caller among them, and returns when
-  all have. A call writes only its own slice and allocates nothing (that
-  stops every thread), and the crew adds nothing to it: a call is one
-  `box-cas!`, a region a few hundred bytes, an idle worker nothing. It should
-  take 20 to 200 µs: `(crew-for* chunk
-  start end worklet arg ...)` gives each call at least chunk indices, and a
-  range of one chunk runs on the caller alone, so a small grid never wakes
-  the crew. An error in a call is
-  raised in the caller; on core1 a runaway call is cancelled after 100 ms
-  and the caller raises, as a runaway handler does; in a REPL evaluation
-  the caller waits a millisecond at a time and the desktop runs on.
-  `(crew-size)` workers, by default one less than the machine's threads,
-  at most 8 (`SCHEVANA_WORKERS` sets it, 0 for none). Everything else stays
-  on core1; `(post-core1! thunk)` hands work back to it from any thread.
 - **Apps use the crew through a bundle.** `crew`, "Compute on worker
   threads", gives an app `crew-for`, `crew-for*`, `crew-map`, `crew-size`,
   `crew-size-set!` (at most one thread short of the machine's), and
@@ -578,22 +483,6 @@ Decisions worth keeping in mind for the real design:
   lies beside the rest, which gets its room when it hides. With `'floating #t`
   it lies over the rest, showing it through where the style lets it, so the
   rest never changes size: Life's grid, which a resize would have to rebuild.
-- **Vats run jobs in the background.** A vat (`services/vat.ss`) is a
-  thread, its mailbox and a sandbox only its thread evaluates in, so its
-  state is its own: `(vat-eval! v '(define n 0) #f)` defines there, and
-  `(vat-send! v 'add! '(5) show)` calls the vat's `add!` there.
-  `(vat-send! (vat-pool) step! (list grid) show)` runs a worklet on the
-  pool's threads, 4 until `(vat-pool-size-set! n)`. When a job returns,
-  its `then` (`show`) runs on core1 at the next step as a handler of the
-  window that sent the job: an error in
-  the job or in `then` crashes that window. Closing or crashing the window
-  kills its jobs, as `(vat-job-kill! j)` does: a job killed never starts,
-  or escapes within microseconds, and its `then` never runs.
-  `(vat-job-pending? j)` holds until `then` has run. Jobs carry and return
-  no procedure but worklets. A job sent with a `fail` gives it the error
-  instead of crashing the window; `(vat-repl! v forms width then fail)`
-  prints what the forms return on the vat's thread, where the values
-  live, as a REPL in a thread's environment does.
 - **A tick's busy time is always kept.** What a tick took but its waits for
   input and for the screen, profiling on or off: past a period, the next
   tick is late. `(pacer-busy-ms)` is the last tick's, Monitor shows it, and
