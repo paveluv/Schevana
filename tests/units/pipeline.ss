@@ -843,20 +843,22 @@
   ;; the River: a few ticks to go back through
   (steps 6)
   (let* ([history (pipeline-view-history v)]
-         [river (pipeline-view-river v)])
+         [river (pipeline-view-river v)]
+         [k (ui-stream-sent river)]
+         ;; now, read before the row: reading it back waits for the GPU to
+         ;; finish the frame on its way, which on lavapipe can take a
+         ;; refresh or two
+         [now (inspect-refresh-of (inspect-refresh-grid) (now-ns))])
     (check (format "the River flows a column a refresh, the newest at the \
                     right the one before the refresh its frame will show \
                     at: the frames are kept, each refresh's row its bar's \
                     parts and the screen's word (~a, now ~a)"
-                   (ui-stream-sent river)
-                   (inspect-refresh-of (inspect-refresh-grid) (now-ns)))
-           (let* ([g (inspect-refresh-grid)]
-                  [k (ui-stream-sent river)]
-                  [row (and (ui-stream-buffer river) (ui-stream-row river k))])
+                   k now)
+           (let ([row (and (ui-stream-buffer river) (ui-stream-row river k))])
              (and row (> (inspect-history-count history) 3)
                   (= (length row) (+ (length pipeline-draw-river-parts) 1))
                   ;; a refresh or two may pass between the draw and this
-                  (<= -2 (- k (inspect-refresh-of g (now-ns))) 2))))
+                  (<= -2 (- k now) 2))))
     ;; the ticks over the River, by a choice that names both ways
     (let* ([ran? (not (pipeline-view-ticks-by-frame? v))]
            [frame? (begin (press! '((pipeline ticks) frame))
