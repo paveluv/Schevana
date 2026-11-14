@@ -401,21 +401,22 @@
               (lambda (t) (edit-erase (ed t 40 63) 0)))))
 
 ;; What an engine counts of a thunk: a tick for each procedure call or
-;; turn of a loop, so a character looked at in a loop is one; a copy
-;; (string-copy!, fxvector-copy) is one call. From Chez 10.4.0 a copy
-;; also counts by its size, up to a timer period (1,000) for a long one:
-;; its release notes' "Interrupts and Large-Vector Operations".
+;; turn of a loop, so a character looked at in a loop is one. A copy
+;; (string-copy!, fxvector-copy) is one call before Chez 10.4.0; from it,
+;; a copy counts by its size, up to a timer period (1,000) for a long one
+;; (its release notes' "Interrupts and Large-Vector Operations").
 (define (ticks thunk)
   ((make-engine thunk) 1000000000 (lambda (left . r) (- 1000000000 left))
    (lambda (e) +inf.0)))
 
-;; A row's ticks at most. From Chez 10.4.0 a keystroke's copies of the
-;; text count up to a period each, which put its worst case at 9,424
-;; ticks on x86-64, from 5,527 under 10.3.
-(define edit-test-row-ticks 560)
+;; A row's ticks at most. The worst case is 5,527 ticks before Chez
+;; 10.4.0 and 9,424 from it, where a keystroke's copies of the text count
+;; a period each; the bound leaves room for both, and stays under what a
+;; look at every character would count.
+(define edit-test-row-ticks 600)
 
-(check "a keystroke's text work, in an engine's ticks, is about 500 a row \
-        in view (at most 9,520 for 17 rows) at 65,535 characters as at \
+(check "a keystroke's text work, in an engine's ticks, is at most 600 a \
+        row in view (10,200 for 17 rows) at 65,535 characters as at \
         16,383, in each worst case, where a look at every character would \
         be 16,383 at least: the edit (as a description's box makes it), \
         Tasks taking the text from the box, the rows that follow it to the \
