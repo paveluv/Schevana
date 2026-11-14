@@ -30,9 +30,9 @@ Versions come from the machine (`scheme --version`, the package manager,
 
 | Date | Commit | OS | Session | GPU and driver | Display | SDL | Chez | What ran | Result |
 |---|---|---|---|---|---|---|---|---|---|
+| 2026-11-14 | `ffdfb07` (chez-10.4) | Debian 13.7, Linux 6.12 | GNOME Shell 48.7, Wayland | GeForce RTX 5090, NVIDIA 615.71.10 (open kernel module), `nvidia-drm vblank=1` | one, 3840×2160, 60 Hz, HDMI | 3.2.10 | 10.0.0 (Debian's) and 10.4.1 (built from its tag) | the four suites under each (lavapipe, Mesa 25.0.7, headless) | pass under both |
 | 2026-11-11 | `b32e4fb` (gpu-first) with the Mac's reports, the pacer's depth and the collections after the send, the commits after it | macOS 15.7.9, Darwin 24.6.0 | the Mac's | Apple M3 Pro, Metal 3 | built-in Liquid Retina XDR, 3024×1964, ProMotion (120 Hz) | 3.4.18 | 10.4.1 | the four suites (Metal, headless); a real window | pass; works, every frame reported |
 | 2026-11-11 | `85bf525` (gpu-first) and the pacer's newest reports | Debian 13.7, Linux 6.12 | GNOME Shell 48.7, Wayland | Intel Arrow Lake-U (Core Ultra 7 255U), Mesa 25.0.7 (ANV), i915 | built-in OLED, 2880×1800, 120 Hz, scale 2, HDR (BT.2100) | 3.2.10 | 10.0.0 | the four suites (lavapipe, headless); a real window | the suites' style, looks, Pipeline, Tasks and frame checks fail alike at `85bf525` (sans-serif is Noto Sans here); works |
-| 2026-11-10 | `290f48b` (gpu-first) | Debian 13.7, Linux 6.12 | GNOME Shell 48.7, Wayland | GeForce RTX 5090, NVIDIA 615.71.10 (open kernel module), `nvidia-drm vblank=1` | one, 3840×2160, 60 Hz, HDMI | 3.2.10 | 10.0.0 | the four suites (lavapipe, Mesa 25.0.7, headless); a real window | pass; works |
 | 2026-11-07 | `9a652e7` (gpu-first) | macOS, version not recorded | the Mac's | Apple M3 Pro, Metal | built-in, ProMotion (120 Hz) | 3.4 (Homebrew) | Homebrew's, version not recorded | the four suites (Metal, headless); a real window | pass; works |
 
 Never run: Windows; X11 sessions (Xorg) and XWayland; KDE's KWin and the
