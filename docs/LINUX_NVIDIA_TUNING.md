@@ -26,7 +26,10 @@ The first should say `Y`, and the second `0`. To undo it, delete the file,
 run `sudo update-initramfs -u` again and reboot.
 
 Measured on Debian 13 (Linux 6.12), NVIDIA 615.71.10 and GNOME Shell 48.7,
-at 60 Hz. Other versions may differ: NVIDIA ships the option off.
+at 60 Hz. Other versions may differ: NVIDIA ships the option off. NVIDIA
+595.99.02, Ubuntu 26.04's, has none to turn on: `modinfo -p nvidia_drm`
+lists `modeset` and `fbdev` alone. There, Boids 3D shows a refresh again
+about every 3 s ([PLATFORMS.md](PLATFORMS.md)).
 
 ## Why
 
