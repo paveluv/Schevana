@@ -4,9 +4,10 @@ What every change, and so every pull request, must follow. `README.md`
 explains the system; this file is the rules. Where a rule is checked by a
 test, the test is named.
 
-## Before you open a pull request
+## Before every commit
 
-All four suites pass, run from the repository's root:
+All four suites pass under Chez Scheme 10.0.0 and under 10.4.1, run from
+the repository's root:
 
 ```bash
 mkdir -p out
@@ -16,6 +17,12 @@ scheme --script tests/frame.ss out
 scheme --script tests/sources.ss
 ```
 
+- Both versions, because they count differently: from 10.4.0 a copy
+  counts against an engine's ticks by its size, so a check can pass under
+  one and fail under the other. A suite runs under the `scheme` first on
+  `PATH`, and `tests/units.ss` runs its topics by `chez` if `PATH` has
+  one, else by `scheme`: to run them under the other version, build it
+  from its release tag and put its `bin` first on `PATH`.
 - A change in behavior comes with a test of it.
 - A unit check goes in its topic's file in `tests/units/` (an app's, a
   kit's, a service's, a part of the core's), which `tests/units.ss` runs in a
