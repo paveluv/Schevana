@@ -72,8 +72,8 @@ USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR
 OTHER TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR
 PERFORMANCE OF THIS SOFTWARE.
 
-Its shades and frame in `styles/open-look.ss` are translated from OLGX
-and olwm (XView 3.2), whose notice asks for these words:
+Its shades, frame and buttons in `styles/open-look.ss` are translated
+from OLGX and olwm (XView 3.2), whose notice asks for these words:
 
 (c) Copyright 1989, 1990, 1991 Sun Microsystems, Inc. Sun design patents
 pending in the U.S. and foreign countries. OPEN LOOK is a trademark of

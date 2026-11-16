@@ -1035,3 +1035,103 @@
            (equal? r (list (list #t (color->pixel #xb7b7b7))
                            (list #t (color->pixel #x000000))
                            (list #f (color->pixel #xcccccc)))))))
+
+;;; OPEN LOOK's controls: OLGX's buttons on XView's panes
+
+(check "OPEN LOOK's buttons are OLGX's: 18, 20, 22 and 28 high in 2D and \
+        a pixel less in 3D, the control height; as wide as the label and \
+        an end of 8, 9, 11 and 18 each side; a glyph alone an abbreviated \
+        button, 14, 16, 18 and 21 wide and a pixel less high"
+       (begin
+         (set-style! 'open-look)
+         (let ([r (map (lambda (depth)
+                         (set-theme! 'open-look-depth depth)
+                         (map (lambda (size)
+                                (set-theme! 'ui-font-size size)
+                                (let-values
+                                    ([(w h) (ui-button-size "Button" #f)]
+                                     [(aw ah) (ui-button-size #f 'plus)])
+                                  (list h (ui-control-height)
+                                        (- w (exact (ceiling
+                                                     (text-width "Button"
+                                                                 'ui))))
+                                        aw ah)))
+                              '(10 12 14 19)))
+                       '(2d 3d))])
+           (reset-style!)
+           (set-style! 'mac)
+           (equal? r '(((18 18 16 14 13) (20 20 18 16 15) (22 22 22 18 17)
+                        (28 28 36 21 20))
+                       ((17 17 16 14 13) (19 19 18 16 15) (21 21 22 18 17)
+                        (27 27 36 21 20)))))))
+
+(check "OPEN LOOK has OLGX's button glyphs: an end's top-left piece as \
+        tall as the button, 2D's right end a pixel wider for the shadow, \
+        and each middle a pixel wide, drawn as long as the run"
+       (let ([g open-look-font-glyph] [sizes '(10 12 14 19)])
+         (and (equal? (map (lambda (s) (cadr (g s 'button-ul))) sizes)
+                      '(18 20 22 28))
+              (equal? (map (lambda (s) (car (g s 'button-outline-right-endcap)))
+                           sizes)
+                      '(9 10 12 19))
+              (for-all (lambda (s)
+                         (for-all (lambda (m) (= 1 (car (g s m))))
+                                  '(button-top-1 button-bottom-1 button-fill-1
+                                    dflt-button-middle-1
+                                    button-outline-middle-1
+                                    button-fill-2d-middle-1)))
+                       sizes))))
+
+(check "OLGX cuts a label too wide for its button by the character that \
+        passes the width and the one before it; one that fits stays whole"
+       (let* ([one (lambda (c) (text-width (string c) 'ui))]
+              [w (+ 1/2 (apply + (map one (string->list "Butt"))))])
+         (and (string=? (open-look-label-cut "Button" w 'ui) "But")
+              (string=? (open-look-label-cut "Butt" w 'ui) "Butt"))))
+
+(check "an OPEN LOOK button is OLGX's: in 3D a highlight top, a BG3 \
+        default ring a pixel inside it, a BG2 face when pressed; in 2D an \
+        outline of ink, the ring a pixel in, ink inside when pressed; the \
+        pane BG1 in 3D and white in 2D; inactive, the pane's color over \
+        every pixel where x + y is odd, counted from the pane's corner"
+       (let ([probe
+              (lambda (depth)
+                (set-style! 'open-look)
+                (set-theme! 'ui-font-size 12)
+                (set-theme! 'open-look-depth depth)
+                (let* ([h (ui-control-height)]
+                       [w (open-window "Buttons" 'size '(200 . 120)
+                                       'pos '(100 . 100)
+                                       'draw (lambda (win ww wh)
+                                               (ui-draw-button 10 10 60 h
+                                                               '(primary)
+                                                               "a" #f)
+                                               (ui-draw-button 10 40 60 h
+                                                               '(pressed)
+                                                               "a" #f)
+                                               (ui-draw-button 10 70 60 h
+                                                               '(disabled)
+                                                               "a" #f)))])
+                  (focus-window! w)
+                  (steps 2)
+                  (let-values ([(l t r b) (frame-insets w)])
+                    (let* ([ox (+ (window-x w) l)] [oy (+ (window-y w) t)]
+                           [px (lambda (x y) (canvas-pixel (+ ox x)
+                                                           (+ oy y)))]
+                           [r (list (even? (+ ox oy))
+                                    (px 40 10) (px 40 11) (px 40 12)
+                                    (px 40 45) (px 5 5)
+                                    (px 40 70) (px 41 70))])
+                      (close-window! w)
+                      (steps 1)
+                      r))))])
+         (let ([r3 (probe '3d)] [r2 (probe '2d)])
+           (reset-style!)
+           (set-style! 'mac)
+           (let ([c color->pixel])
+             (and (equal? r3 (list #t (c #xf4f4f4) (c #xcccccc) (c #x666666)
+                                   (c #xb7b7b7) (c #xcccccc)
+                                   (c #xf4f4f4) (c #xcccccc)))
+                  (equal? r2 (list #t (c #x000000) (c #xffffff) (c #x000000)
+                                   (c #x000000) (c #xffffff)
+                                   (c #x000000) (c #xffffff))))))))

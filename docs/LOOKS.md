@@ -152,8 +152,13 @@ has none, what its designers would have made:
   value, BG3 50 %, the highlight 120 %. Drawn where olwm's
   own screenshots have their frames, at every size in 2D and 3D, its
   frames are olwm's to the pixel but for three, where olwm's corner shows
-  the desktop through. It asks for Lucida Sans, OpenWindows' face, and
-  takes the sans where that isn't installed.
+  the desktop through. Its buttons are OLGX's as XView drew them, on
+  panes of the window color in 3D and white in 2D: oblong, the default
+  ringed a pixel inside, a glyph alone in an abbreviated button, pressed
+  recessed in 3D and filled with ink in 2D, inactive grayed over every
+  other pixel. Drawn alone, each state is OLGX's to the pixel. It asks
+  for Lucida Sans, OpenWindows' face, and takes the sans where that isn't
+  installed.
 - **Mac** and **Windows**, as their names say.
 
 Each brings the palette of the same name and its wallpaper. Our own
