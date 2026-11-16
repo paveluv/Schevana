@@ -73,6 +73,10 @@ Clock's:
 (repl "/apps/clock")                       ; a REPL among them
 ```
 
+And what another app opens stays that app's: an app allowed `launch`
+opens one as the launcher does, and gets back nothing, not the window
+the launcher returns at "/", whose handlers `window-call` would drive.
+
 Settings, Monitor, Tasks, the REPL and Environments request nothing: they
 tune the world, and run in it.
 

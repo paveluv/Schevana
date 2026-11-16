@@ -131,6 +131,33 @@
                 (not (memq 'open-window
                            (environment-symbols (env-environment e))))))))
 
+(check "an app allowed to open other apps opens one and is handed back \
+        nothing of it, not its window, whose handlers it could drive; the \
+        world's app-launch! still returns the window"
+       (let ([dir (string-append out-dir "/apps")]
+             [clocks (lambda ()
+                       (filter (lambda (w) (eq? (window-app w) 'clock))
+                               (windows)))])
+         (unless (file-directory? dir) (mkdir dir))
+         (call-with-output-file (string-append dir "/units-opener.ss")
+           (lambda (p)
+             (for-each (lambda (form) (write form p) (newline p))
+                       '((app-requests window launch)
+                         (define-app (units-opener) "Opener" (void)))))
+           'replace)
+         (grant-decide! 'units-opener '(window launch) '())
+         (grant-load-app! (string-append dir "/units-opener.ss"))
+         (let* ([before (clocks)]
+                [got (env-eval (grant-env 'units-opener)
+                               '(app-launch! 'clock))]
+                [opened (remp (lambda (w) (memq w before)) (clocks))]
+                [w (app-launch! 'clock)]
+                [ok (and (eq? got (void))
+                         (= (length opened) 1)
+                         (window? w) (eq? (window-app w) 'clock))])
+           (for-each close-window! (cons w opened))
+           ok)))
+
 ;;; An app's worklets (services/grant.ss).
 
 (define-worklet (grant-test-square x) (* x x))

@@ -20,8 +20,9 @@
 ;;; Every app holds define-app, which registers only the app named after
 ;;; its file, app-requests, which does nothing (the loader read it), and
 ;;; defvar, which asks its own sandbox; a window it opens is its own
-;;; (window-app) or no app's, never another's. The world's (clock) still
-;;; opens Clock: it forwards to the sandbox's launcher.
+;;; (window-app) or no app's, never another's, and an app it launches
+;;; hands it back none of that app's. The world's (clock) still opens
+;;; Clock: it forwards to the sandbox's launcher.
 
 ;;; ------------------------------------------------------------------ bundles
 
@@ -398,8 +399,10 @@
       e)))
 
 ;; The world's name n, made for app, or #f: a window it opens is its own,
-;; or no app's where it says so (a secondary one), never another's; the
-;; crew it sets is at most one thread short of the machine's.
+;; or no app's where it says so (a secondary one), never another's; an app
+;; it launches hands it back nothing, as the launcher's value is that
+;; app's window, whose handlers window-call would drive (the REPL's too);
+;; the crew it sets is at most one thread short of the machine's.
 (define (grant-narrow app n)
   (case n
     [(open-window)
@@ -407,6 +410,8 @@
        (if (plist-ref opts 'app app)
            (apply open-window title 'app app opts)
            (apply open-window title opts)))]
+    [(app-launch!)
+     (lambda (name) (app-launch! name) (void))]
     [(crew-size-set!)
      (lambda (k)
        (crew-size-set! (max 0 (min k (- (platform-cpu-count) 1)))))]
