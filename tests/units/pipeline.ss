@@ -1897,7 +1897,8 @@
     (fluid-let ([*present-refresh* 5000] [*present-refresh-at* 0]
                 [*present-late-run* 0] [*present-late-least* 0]
                 [*present-shown* 0] [*present-sent* 0]
-                [*present-held* -1] [*present-held-last* -1])
+                [*present-held* -1] [*present-held-last* -1]
+                [*present-refresh-said* p])
       (for-each
        (lambda (n j)
          (let ([at (present-at n)])

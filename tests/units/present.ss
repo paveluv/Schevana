@@ -12,13 +12,20 @@
     (fxvector-set! *present-ring* (+ at 2) sent)
     (fxvector-set! *present-ring* at n)))
 
+;; The screen's word on frame n: kind (1 shown, 2 dropped), stamp, and the
+;; refresh's length it says (0, no steady refresh), on a display whose
+;; mode says p ns (headless, with no mode: said in its place).
+(define (present-test-reported! n kind stamp p refresh)
+  (fluid-let ([*present-refresh-said* p])
+    (present-reported! n kind stamp refresh)))
+
 ;; Frame i's report, as core0 begins it at sent and the screen fills it:
 ;; kind (1 shown, 2 dropped), the screen's stamp, GPU done.
 (define (present-test-report! i sent kind stamp done)
   (let ([n (inspect-frame-ref i 6)])
     (present-test-sent! n sent)
     (fxvector-set! *present-ring* (+ (present-at n) 6) done)
-    (present-reported! n kind stamp (core0-frame-ns))))
+    (present-test-reported! n kind stamp (core0-frame-ns) (core0-frame-ns))))
 
 ;; thunk with the screen's clock as at boot: no refresh placed, no report
 ;; held.
@@ -98,12 +105,13 @@
 ;;; and reported as the screen's callbacks would.
 
 ;; Frames from first on: each (sent stamp), or (sent stamp refresh), sent
-;; and reported shown in turn, a refresh p ns long by the screen's word.
+;; and reported shown in turn, a refresh p ns long as the display's mode
+;; says.
 (define (present-test-shown! first p frames)
   (for-each (lambda (f k)
               (present-test-sent! (+ first k) (car f))
-              (present-reported! (+ first k) 1 (cadr f)
-                                 (if (pair? (cddr f)) (caddr f) p)))
+              (present-test-reported! (+ first k) 1 (cadr f) p
+                                      (if (pair? (cddr f)) (caddr f) p)))
             frames (iota (length frames))))
 
 ;; A flow from first on: frame k sent at t and k refreshes, two before its
@@ -204,10 +212,10 @@
                             '(2 3 4 5))
                    (= *present-held* -1)))))))
 
-(check "with no steady refresh said (a Mac's, a variable one), each stamp \
-        is taken as it is, at the window's rate, to the nearest refresh, \
-        and no report is held; one that comes out of order is placed \
-        before the newest"
+(check "with no steady refresh said by the screen (a Mac's, a variable \
+        one), each stamp is taken as it is, at the window's rate, to the \
+        nearest refresh, and no report is held; one that comes out of \
+        order is placed before the newest"
        (present-test-fresh
         (lambda ()
           (let* ([p (core0-frame-ns)] [t (* 1000 p)] [f 2000051]
@@ -346,8 +354,8 @@
                          (eqv? 1 (list-ref run 4))))
                   runs)))
 
-;; A stream of n frames from first on, a refresh p ns long as the screen
-;; says: each shows a refresh after the one before, one in 53 two (the
+;; A stream of n frames from first on, a refresh p ns long as the display's
+;; mode says: each shows a refresh after the one before, one in 53 two (the
 ;; compositor held it), is sent two refreshes before it shows, and is
 ;; stamped tens of microseconds after its refresh, one in 97 between 0.5
 ;; and 9 ms after, none before the stamp before it, as one thread sends
@@ -376,7 +384,7 @@
             (vector-set! flow (+ k 1) #f))
           (present-held-poll! stamp)
           (present-test-sent! (+ first k) (+ t (* (- sent 2) p)))
-          (present-reported! (+ first k) 1 stamp p)
+          (present-test-reported! (+ first k) 1 stamp p p)
           (feed (+ k 1) (+ tick pause (if (= 0 (modulo k 53)) 2 1))
                 (+ sent pause 1) stamp))))
     (present-held-poll! (* 2 (+ t (* 2 n 41 p))))
@@ -398,18 +406,22 @@
 (let* ([p (core0-frame-ns)]
        [at-60 (present-test-fresh
                (lambda () (present-test-stream 2001001 p 3000 0)))]
-       ;; a screen at 144 Hz: a stamp may run more than a refresh late
+       ;; at 120 and 144 Hz a stamp may run more than three quarters of a
+       ;; refresh late, at 144 Hz more than a whole one
+       [at-120 (present-test-fresh
+                (lambda () (present-test-stream 2025001 8333333 3000 0)))]
        [at-144 (present-test-fresh
                 (lambda () (present-test-stream 2005001 6944444 3000 0)))])
   (check (format "3,000 frames stamped as a kernel thread stamps them, one \
                   in 97 late by 0.5 to 9 ms, one in 53 held a refresh by \
-                  the compositor: every step is counted right, at the \
-                  window's rate and at 144 Hz, and at the window's rate \
-                  each frame's time by the clock is within 0.1 ms of its \
-                  refresh's (~a wrong, ~a ns off; at 144 Hz ~a wrong)"
-                 (car at-60) (cadr at-60) (car at-144))
-         (and (= 0 (car at-60)) (< (cadr at-60) 100000)
-              (= 0 (car at-144)))))
+                  the compositor: every step is counted right, and each \
+                  frame's time by the clock is within 0.1 ms of its \
+                  refresh's, at the window's rate, at 120 Hz and at 144 Hz \
+                  (~a wrong, ~a ns off; ~a, ~a; ~a, ~a)"
+                 (car at-60) (cadr at-60) (car at-120) (cadr at-120)
+                 (car at-144) (cadr at-144))
+         (for-all (lambda (run) (and (= 0 (car run)) (< (cadr run) 100000)))
+                  (list at-60 at-120 at-144))))
 
 (let* ([p (core0-frame-ns)]
        [at-60 (present-test-fresh
@@ -503,9 +515,10 @@
            (let ([three (in-flight)])
              (and (equal? two '(2 . 2)) (equal? three '(3 . 3)))))))
 
-(check "a person may say the refresh's length in place of the screen's: \
-        from 1 to 100 ms, or 0 for the screen's own again; anything else \
-        is refused and changes nothing; a screen that says none keeps none"
+(check "a person may say the refresh's length in place of the display \
+        mode's: from 1 to 100 ms, or 0 for the mode's again; anything else \
+        is refused and changes nothing; the screen's own word on it is not \
+        read"
        (present-test-fresh
         (lambda ()
           (fluid-let ([*present-refresh-said* 0])
@@ -517,21 +530,21 @@
                    [refused (map core0-refresh-ns!
                                  '(-1 999999 100000001 16.7 #f "16"))]
                    [unsaid *present-refresh-said*]
-                   [own (word 1 1000000000 16666667)]
+                   [own (word 1 1000000000 8333333)]
                    [taken (core0-refresh-ns! 16667505)]
                    [posted (begin (steps 1) *present-refresh-said*)]
-                   [said (word 2 2000000000 16666667)]
+                   [said (word 2 2000000000 8333333)]
                    [none (word 3 3000000000 0)]
                    [back (begin (core0-refresh-ns! 0) (steps 1)
-                                (word 4 4000000000 16666667))])
+                                (word 4 4000000000 8333333))])
               (present-refresh-say! 5)
               (and (equal? refused '(#f #f #f #f #f #f))
                    (= unsaid 0)
-                   (= own 16666667)
+                   (= own (core0-frame-ns))
                    taken
                    (= posted 16667505)
                    (= said 16667505)
-                   (= none (core0-frame-ns))
-                   (= back 16666667)
+                   (= none 16667505)
+                   (= back (core0-frame-ns))
                    (= *present-refresh-said* 0)
                    (= 0 (cdr (assq 'refresh-said (inspect-core0))))))))))

@@ -251,8 +251,12 @@ that refresh came by the clock; the stamp is kept beside it. A stamp can
 run a whole refresh late, which only the next frame's report can tell,
 since a frame shows after the one before it: so a report that says a
 refresh was missed in a flow of frames is held till the next agrees, or
-three refreshes pass. Where the screen says it keeps no steady refresh (a
-variable one; a Mac's, which says none), each stamp is taken as it is.
+three refreshes pass, and its stamp moves the clock not at all: one that
+ran more than three quarters of a refresh late reads as a refresh on, and
+taken, would leave the clock early for the frames after it. Shown, a held
+frame keeps the earlier of its stamp and the clock's time for it. Where
+the screen says it keeps no steady refresh (a variable one; a Mac's,
+which says none), each stamp is taken as it is.
 
 The display's own count of its refreshes, the protocol's sequence, isn't
 read. The protocol lets it be 0, and KWin's always is; Mutter's counts
@@ -273,20 +277,22 @@ refresh under its column: how far the clock moved at each one
 (`inspect-clock-moves`). Under 0, a stamp came earlier than the clock had
 it; over 0, the clock gave way to late stamps.
 
-The refresh's length is the screen's own word, which is the display
-mode's rate and can be a little off the display's real one. To try
+The refresh's length is the display mode's. The screen's own word on it,
+where it gives one, is the same rate, and isn't read: not every platform
+gives one, so the screen's word says only whether the refresh is steady.
+The mode's rate can be a little off the display's real one. To try
 another, say it at a REPL, in nanoseconds:
 
 ```scheme
 (core0-refresh-ns! 16667505)   ; => #t, taken from the next report on
-(core0-refresh-ns! 0)          ; the screen's own word again
+(core0-refresh-ns! 0)          ; the display mode's again
 (cdr (assq 'refresh-said (inspect-core0)))   ; what is said now
 ```
 
 A length is taken from 1 to 100 ms (1,000,000 to 100,000,000), or 0;
 anything else is refused with `#f` and changes nothing. It stands in for
-the screen's word only where the screen says one: a screen with no
-steady refresh keeps none. It isn't saved: it lasts till it's set to 0 or
+the mode's; a screen that says it keeps no steady refresh still keeps
+none. It isn't saved: it lasts till it's set to 0 or
 Schevana quits. A length that suits the display shows as a drift that
 keeps to 0 between the clock's real moves.
 
