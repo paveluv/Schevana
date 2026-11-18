@@ -203,25 +203,69 @@
                     '(sizes scale flags frame-ns jobs events failed
                       refresh-said))))
 
-;; Core0's sleep, on a thread of its own: a job posted or a frame published
-;; wakes it, at once or from the next sleep; its events never do, so a
-;; sleep with nothing to wake it lasts its whole time.
-(fluid-let ([*core0-forked* #t] [*core0-woken* #f])
+;; Core0's sleep, on a thread of its own, with a window and nothing of a
+;; frame's awaited: SDL's wait for events, which a job posted or a frame
+;; published ends, at once or from the next sleep, by an event it pushes;
+;; nothing else does, so a sleep with nothing to wake it lasts its whole
+;; time. Headless, SDL has no window to wait on, and looks at its queue
+;; each ms instead, which the event pushed ends all the same.
+(fluid-let ([*core0-forked* #t] [*core0-woken* #f] [*core0-mode* 'sdl]
+            [present-awaiting? (lambda (now) #f)])
+  (core0-window-pump)                   ; SDL's queue, emptied
   (core0-wake!)
   (let ([t0 (now-ms)])
-    (core0-sleep! 1000)
+    (core0-sleep!)
     (let ([before (- (now-ms) t0)] [t1 (now-ms)])
-      (core0-sleep! 20)
+      (fluid-let ([core0-idle-ms 100]) (core0-sleep!))
       (let ([alone (- (now-ms) t1)] [t2 (now-ms)])
         (fork-thread (lambda ()
                        (sleep (make-time 'time-duration 30000000 0))
                        (core0-wake!)))
-        (core0-sleep! 1000)
-        (let ([during (- (now-ms) t2)])
-          (check (format "a wake ends core0's sleep, before it or during it, \
-                          and nothing else does (~a ~a ~a ms)"
-                         before alone during)
-                 (and (< before 100) (>= alone 15) (< 25 during 500))))))))
+        (core0-sleep!)
+        (let ([during (- (now-ms) t2)]
+              [types (let-values ([(events types first)
+                                   (core0-window-pump)])
+                       types)])
+          (check (format "a wake ends core0's wait for events, before it or \
+                          during it, by an event the pump passes over, and \
+                          nothing else ends it (~a ~a ~a ms, ~a)"
+                         before alone during types)
+                 (and (< before 100) (>= alone 80) (< 25 during 500)
+                      (null? types))))))))
+
+;; While core0 awaits a frame's GPU work or its report, it looks: its sleep
+;; is a timed wait on its condition, core0-look-ns, never SDL's.
+(fluid-let ([*core0-forked* #t] [*core0-woken* #f] [*core0-mode* 'sdl]
+            [present-awaiting? (lambda (now) #t)])
+  (let ([t0 (now-ms)])
+    (core0-sleep!)
+    (let ([look (- (now-ms) t0)])
+      (check (format "while core0 awaits something of a frame its sleep is \
+                      a look, ended by itself (~a ms, of ~a µs)"
+                     look (quotient core0-look-ns 1000))
+             (< look (quotient core0-idle-ms 2))))))
+
+;; Core1's wait, with core0 on a thread of its own: up to ns, or with no
+;; end (#f); at once when woken before it, and a wake ends it.
+(fluid-let ([*core0-forked* #t] [*core0-world-woken* #f])
+  (core0-world-wake!)
+  (let ([t0 (now-ns)])
+    (core0-world-wait-ns! 2000000000)
+    (let ([before (- (now-ns) t0)] [t1 (now-ns)])
+      (core0-world-wait-ns! 1500000)
+      (let ([alone (- (now-ns) t1)] [t2 (now-ns)])
+        (fork-thread (lambda ()
+                       (sleep (make-time 'time-duration 30000000 0))
+                       (core0-world-wake!)))
+        (core0-world-wait-ns! #f)
+        (let ([during (- (now-ns) t2)])
+          (check (format "core1's wait lasts its ns, a ms and a half, ends \
+                          at a wake before it or during it, and with no end \
+                          waits for one (~a ~a ~a µs)"
+                         (quotient before 1000) (quotient alone 1000)
+                         (quotient during 1000))
+                 (and (< before 100000000) (>= alone 1400000)
+                      (< 25000000 during 500000000))))))))
 
 ;; The boot screen, which draws only with a window, by its blits onto a
 ;; texture: the λ scaled up four times, sharp, on the ground; under it the

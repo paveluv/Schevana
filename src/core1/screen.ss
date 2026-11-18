@@ -183,13 +183,14 @@
 ;; the world's.
 (define (screen-events wait-ms)
   (core0-trace! 20 wait-ms)
-  (cond [(not (core0-forked?)) (core0-step!)]
-        [(gpu-frame-waiting?)
-         (with-profile-span 'vsync-wait 'acquire (core0-world-wait! wait-ms))]
-        ;; till the next latch: the screen's, though input wakes it
-        [(and (pacer-wanted?) (pacer-on-latch?))
-         (with-profile-span 'vsync-wait 'latch (core0-world-wait! wait-ms))]
-        [else (core0-world-wait! wait-ms)])
+  (let ([ns (* wait-ms 1000000)])
+    (cond [(not (core0-forked?)) (core0-step!)]
+          [(gpu-frame-waiting?)
+           (with-profile-span 'vsync-wait 'acquire (core0-world-wait-ns! ns))]
+          ;; till the next latch: the screen's, though input wakes it
+          [(and (pacer-wanted?) (pacer-on-latch?))
+           (with-profile-span 'vsync-wait 'latch (core0-world-wait-ns! ns))]
+          [else (core0-world-wait-ns! ns)]))
   (core0-trace! 21 0)
   (let-values ([(events types) (core0-window-events)])
     (unless (null? types) (core0-trace! 27 (length types)))

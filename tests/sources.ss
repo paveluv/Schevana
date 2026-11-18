@@ -189,7 +189,7 @@
 ;; run; everything else belongs in a folder. The export.ss files are left
 ;; out: they declare what each layer gives, sized by what's given, each a
 ;; reviewed change.
-(define src-budget 37574)
+(define src-budget 37787)
 
 ;; The tokens of a datum as read; a list's end is none.
 (define (tokens x)
@@ -527,6 +527,8 @@
     "SDL_SubmitGPUCommandBuffer"
     "SDL_SubmitGPUCommandBufferAndAcquireFence"
     "SDL_PollEvent"
+    "SDL_WaitEventTimeout"
+    "SDL_PushEvent"
     "SDL_WaitForGPUFences"
     "SDL_WaitForGPUIdle"
     "SDL_SetGPUSwapchainParameters"))

@@ -441,6 +441,32 @@
          (and (= 0 (car at-60)) (< (cadr at-60) 100000)
               (= 0 (car at-144)))))
 
+;; What core0 awaits of a frame at now, by which it looks rather than wait
+;; for events (core0-sleep!): of the newest frame sent at sent, its report
+;; where the screen gives them (reports?), till it's in, or its kind is k;
+;; and, fence?, a fence of its GPU work not seen signaled.
+(define (present-test-awaiting? now sent reports? k fence?)
+  (let ([n 3001001] [fences (make-vector present-fence-slots 0)])
+    (when fence? (vector-set! fences 2 1))
+    (fluid-let ([*present-fences* fences] [*present-newest* n]
+                [platform-reports? (lambda () reports?)])
+      (present-test-sent! n sent)
+      (fxvector-set! *present-ring* (+ (present-at n) 1) k)
+      (present-awaiting? now))))
+
+(let ([sent (now-ns)])
+  (check "core0 awaits the newest frame's report till it comes, a second \
+          from its send at most, where the screen reports; and a frame's \
+          GPU work till its fence is seen signaled, report or not"
+         (and (present-test-awaiting? sent sent #t 0 #f)
+              (present-test-awaiting? (+ sent 999000000) sent #t 0 #f)
+              (not (present-test-awaiting? (+ sent 1000000000) sent #t 0 #f))
+              (not (present-test-awaiting? sent sent #t 1 #f))
+              (not (present-test-awaiting? sent sent #t 2 #f))
+              (not (present-test-awaiting? sent sent #f 0 #f))
+              (present-test-awaiting? (+ sent 2000000000) sent #f 1 #t)
+              (present-test-awaiting? sent sent #t 1 #t))))
+
 (check "input that asked for no frame shows in none: the next frame says \
         nothing of it"
        (begin

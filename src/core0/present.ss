@@ -42,8 +42,12 @@
          (begin (memory-order-acquire)
                 (fxvector-ref *present-ring* (fx+ at k))))))
 
+;; The newest frame sent to the screen.
+(defvar *present-newest* 0)
+
 ;; Frame's row begun, as core0 sends it: the screen asked to report on it.
 (define (present-sent! frame)
+  (set! *present-newest* frame)
   (let ([r *present-ring*] [at (present-at frame)])
     (fxvector-set! r (fx+ at 1) 0)
     (fxvector-set! r (fx+ at 2) (now-ns))
@@ -303,6 +307,24 @@
                         (fxvector-ref *present-fence-frames* oldest))
                    i
                    oldest))]))))
+
+;; Whether core0 awaits something of a frame at now, and so looks
+;; (core0-sleep!): a fence not seen signaled yet; or, where the screen
+;; reports, the newest frame's report, for a second after its send. Core0's
+;; own queue brings the reports, and SDL's wait for events doesn't end for
+;; them; one that never comes keeps core0 looking a second at most.
+(define (present-awaiting? now)
+  (or (let loop ([i 0])
+        (and (fx< i present-fence-slots)
+             (or (not (eqv? (vector-ref *present-fences* i) 0))
+                 (loop (fx+ i 1)))))
+      (let* ([r *present-ring*] [at (present-at *present-newest*)]
+             [sent (fxvector-ref r (fx+ at 2))])
+        (and (platform-reports?)
+             (fx= (fxvector-ref r at) *present-newest*)
+             (fx= (fxvector-ref r (fx+ at 1)) 0)
+             (fx< 0 sent)
+             (fx< now (fx+ sent 1000000000))))))
 
 ;; The fences signaled since the last look: their frames' GPU times. And
 ;; the reports held too long (present-held-poll!).

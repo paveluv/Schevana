@@ -60,7 +60,7 @@
                                 (string-prefix? "SDL_" (caddr x))
                                 ;; plain memory and the GPU's: kept
                                 (not (member (caddr x)
-                                             '("SDL_memcmp" "SDL_memcpy")))
+                                             '("SDL_memcpy" "SDL_memset")))
                                 (not (string-contains-ci? (caddr x) "GPU")))
                            (loop (cons (cadr x) acc))]
                           [else (loop acc)]))))))
@@ -90,6 +90,8 @@
            #t)))
   (case name
     [(sdl-init) (lambda (flags) #t)]
+    ;; the type of core0's wake event: SDL's first of its users'
+    [(sdl-register-events) (lambda (n) #x8000)]
     [(sdl-set-hint)
      (lambda (k v) (set! fake-hints (cons (cons k v) fake-hints)) #t)]
     [(sdl-start-text-input) (lambda (win) #t)]

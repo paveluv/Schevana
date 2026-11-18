@@ -176,10 +176,13 @@ tick's frame, at least 1 ms a step.
 With a window, the screen sets the pace. Core0 presents frames on its own
 thread, holding at most the one it presents and one more, and no tick runs
 while the last frame published waits for core0 to take it, which it does
-as the screen frees an image. After a tick whose frame the screen holds,
-the next may come as soon as half a period later, once core0 has taken
-that frame, so each refresh gets a new frame, never one drawn on a clock
-that drifts against the screen's. A window's `'frame` is told `t`, when
+as the screen frees an image. Between frames core0 looks every quarter
+ms while it awaits a frame's GPU work or the screen's report on it, and
+otherwise sits in SDL's own wait for events, which input ends at once,
+and a frame or a job by an event it pushes (`core0-wake!`). After a tick
+whose frame the screen holds, the next may come as soon as half a period
+later, once core0 has taken that frame, so each refresh gets a new frame,
+never one drawn on a clock that drifts against the screen's. A window's `'frame` is told `t`, when
 its frame should show: a refresh after the last one's, a few after the
 tick, so what moves by `t` moves as evenly as the screen shows frames.
 While the window is hidden or covered no frame is drawn; input, timers and

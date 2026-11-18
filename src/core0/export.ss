@@ -55,9 +55,9 @@
     ;; thread
     core0-wake! gpu-publish! gpu-frame-waiting? gpu-frames-back!
     gpu-take-answers!
-    ;; whether core0 has a thread of its own; core1's wait, and its wake from
-    ;; any thread; and quitting, a job
-    core0-forked? core0-world-wait! core0-world-wake! core0-quit!
+    ;; whether core0 has a thread of its own; core1's wait, ns, and its wake
+    ;; from any thread; and quitting, a job
+    core0-forked? core0-world-wait-ns! core0-world-wake! core0-quit!
     ;; and how far the world has loaded, for the boot screen
     core0-world-loaded!
     ;; Calls into SDL or core0's own state: safe only on core0's thread.

@@ -707,7 +707,7 @@
 ;; on its own, once it has closed the window, core1 waiting for it.
 (define (schevana-end!)
   (if (core0-forked?)
-      (let wait () (core0-world-wait! 1000) (wait))
+      (let wait () (core0-world-wait-ns! #f) (wait))
       (exit 0)))
 
 (define (uptime-ms) (- (now-ms) *boot-ms*))

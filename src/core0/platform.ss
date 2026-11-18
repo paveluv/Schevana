@@ -136,11 +136,13 @@
 (define (platform-report-ask! frame)
   (cond
     [(not (eqv? *wayland-presentation* 0))
-     (with-interrupts-disabled
-      (let ([proxy (wayland-marshal-2 *wayland-presentation* 1
-                                      wayland-feedback-interface 1 0
-                                      *wayland-surface* 0)])
-        (wayland-add-listener proxy wayland-feedback-listener frame)))]
+     ;; interrupts off without a winder: nothing is allocated
+     (disable-interrupts)
+     (wayland-add-listener
+      (wayland-marshal-2 *wayland-presentation* 1 wayland-feedback-interface
+                         1 0 *wayland-surface* 0)
+      wayland-feedback-listener frame)
+     (enable-interrupts)]
     [(not (eqv? *mac-layer* 0)) (mac-ask! frame)]))
 
 ;; Reports from now on for the window, where its platform gives them.
@@ -149,12 +151,25 @@
   (mac-start! sdl-window)
   (core0-platform-read!))
 
-;; The reports come since the last look, without waiting.
+;; The reports come since the last look, without waiting. At each look, so
+;; interrupts go off without a winder, which would allocate.
 (define (platform-reports-pump!)
   (unless (eqv? *wayland-queue* 0)
-    (with-interrupts-disabled
-     (wayland-dispatch *wayland-display* *wayland-queue*)))
+    (disable-interrupts)
+    (wayland-dispatch *wayland-display* *wayland-queue*)
+    (enable-interrupts))
   (unless (eqv? *mac-layer* 0) (mac-pump!)))
+
+;; Whether the screen reports on the window's frames.
+(define (platform-reports?)
+  (not (and (eqv? *wayland-presentation* 0) (eqv? *mac-layer* 0))))
+
+;; How often core0 looks while it awaits a frame's GPU work or report, ns:
+;; how finely it sees them come. What a thread's timed wait keeps: a
+;; quarter ms where it ends as asked to a tenth of that (Linux's, 0.06 ms
+;; late at the median); whole ms on Windows, where Chez rounds the wait to
+;; them.
+(define core0-look-ns (if (platform-windows?) 1000000 250000))
 
 ;; Where the reports come from, as a person reads it: (source clock clock
 ;; flags), the clock the compositor says and the one its times fit; or #f
