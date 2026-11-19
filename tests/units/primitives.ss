@@ -506,6 +506,49 @@
   (gpu-buffer-release! b)
   (gpu-image-release! target))
 
+;; With no window a frame has a row as a screen's has, and no report ever
+;; comes for it.
+(let ([w (lambda (k) (core0-frame-report (gpu-frame-number *gpu-frame-last*)
+                                         k))])
+  (check "with no window a frame has a row too: taken, sent, its GPU work \
+          done as it went back, no acquire and no report"
+         (and (= (w 1) 0) (< 0 (w 7)) (<= (w 7) (w 2) (w 6))
+              (= (w 8) (w 9) 0))))
+
+;; Frames go back on a chain by their own link, which core1 then keeps
+;; them on to fill again.
+(let ([fs (map (lambda (n)
+                 (let ([f (gpu-frame-make)])
+                   (gpu-frame-number-set! f n)
+                   (gpu-frame-shown?-set! f #t)
+                   f))
+               '(901 902 903))]
+      [latched '()])
+  (for-each gpu-give-back! fs)
+  (let* ([newest (gpu-frames-back!)]
+         [chain (let walk ([f newest])
+                  (if f (cons (gpu-frame-number f) (walk (gpu-frame-next f)))
+                      '()))]
+         [none (gpu-frames-back!)])
+    (for-each gpu-give-back! fs)
+    (fluid-let ([*gpu-frames-free* #f] [*gpu-frame-last* #f] [*frame-back* 0]
+                [*frames-drawn* 0]
+                [pacer-latch! (lambda (n) (set! latched (cons n latched)))]
+                [pacer-frame-back! (lambda (shown?) (void))]
+                [frame-ring-set! (lambda (n k v) (void))])
+      (render-frames-back!)
+      (check "core0 gives frames back by their own link, the newest first; \
+              core1 takes them oldest first, and keeps them by the link to \
+              fill again"
+             (and (equal? chain '(903 902 901)) (not none)
+                  (equal? (reverse latched) '(901 902 903))
+                  (= *frame-back* 903) (= *frames-drawn* 3)
+                  (eq? *gpu-frames-free* (caddr fs))
+                  (eq? (gpu-frame-next (caddr fs)) (cadr fs))
+                  (eq? (gpu-frame-next (cadr fs)) (car fs))
+                  (not (gpu-frame-next (car fs)))
+                  (not (gpu-frames-back!)))))))
+
 ;; An image or a buffer is a handle with an integer id; core0 makes the SDL
 ;; object behind it from a job the next frame carries, and lets it go by
 ;; another.

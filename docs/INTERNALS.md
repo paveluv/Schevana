@@ -193,10 +193,11 @@ the Mac's), a tick begins just in time instead, aimed at a latch, and at a
 later one than the tick before it, so the screen's queue never grows. It
 begins its lead before that latch: what frames took lately from their tick
 to core0's sending them, the screen's time left out (an acquire it held,
-and the wait for core0 held in the frame before's), and a margin. A frame
-that showed late though sent about the margin before its latch grows the
-margin by a step; one late though sent well before it was the
-compositor's, and teaches nothing, unless lateness keeps coming in a
+or a submit that took over a look, and the wait for core0 held in the
+frame before's), and a margin. A frame that showed late though sent
+about the margin before its latch grows the margin by a step; one late
+though sent well before it was the compositor's, and teaches nothing,
+unless lateness keeps coming in a
 chain. A margin that reaches a refresh becomes the compositor's depth, a
 refresh more that it keeps frames (WindowServer keeps two). What frames
 whose GPU work was still going a refresh and an eighth after their send
@@ -223,7 +224,8 @@ seldom waits, and a newer frame replaces one not shown yet.
 On Wayland core0 asks the compositor to report on each frame it presents
 (`wp_presentation`): when it showed and how long a refresh is, or that it
 was dropped. On a Mac, Metal tells a drawable's presented handlers when it
-was shown. X11 and headless runs report nothing yet.
+was shown. X11 and headless runs report nothing yet; a headless frame's
+GPU work is taken as done as core0 gives it back.
 
 A compositor says which of the system's clocks its times are on, and may
 be wrong: GNOME's over NVIDIA's driver says the monotonic clock and stamps
@@ -308,11 +310,13 @@ learns as SDL and the GPU start; what has run where is in
 
 In a checkout with a `.work` folder, core0 and core1 stamp their steps
 around each frame (take, acquire, submit, tick, draw, publish, collect) on
-rings of their own, with each event pump that held core0 past 2 ms and
-each collection. Closing the window, Ctrl-C in the terminal, core1 going
-5 s without a step, or `(core0-trace-dump!)` writes the last two minutes
-or so, with the screen's reports, to `.work/traces/trace-<date>-<time>.txt`,
-saying why it was written.
+rings of their own, with each event pump that held core0 past 2 ms, each
+collection and each change of present mode. Closing the window, Ctrl-C in
+the terminal, core1 going 5 s without a step but in its wait, or
+`(core0-trace-dump!)` writes the last two minutes or so, with the screen's
+reports, to `.work/traces/trace-<date>-<time>.txt`, saying why it was
+written, how the window presents, how often core0 looks, and when the
+first step came on the clock.
 
 ## The GPU
 

@@ -1185,21 +1185,23 @@
                            (flonum->fixnum
                             (flround (fl* 1000.0 *frame-ms*)))))])]))
 
-;; The frames core0 gave back: each told to the pacer, and marked in its row
-;; as having reached the screen or not; counted if it did, else one asked
-;; again. Then what core0 read back, handed to its then.
+;; The frames core0 gave back, oldest first, the chain they come on newest
+;; first: each told to the pacer, and marked in its row as having reached
+;; the screen or not; counted if it did, else one asked again. Then what
+;; core0 read back, handed to its then.
 (define (render-frames-back!)
-  (for-each (lambda (f)
-              (let ([shown? (gpu-frame-shown? f)])
-                (set! *frame-back* (gpu-frame-number f))
-                (pacer-frame-back! shown?)
-                (pacer-latch! (gpu-frame-number f))
-                (frame-ring-set! (gpu-frame-number f) 5 (if shown? 1 2))
-                (if shown?
-                    (set! *frames-drawn* (+ *frames-drawn* 1))
-                    (request-frame!))
-                (gpu-frame-free! f)))
-            (gpu-frames-back!))
+  (let back ([f (gpu-frames-back!)])
+    (when f
+      (back (gpu-frame-next f))
+      (let ([shown? (gpu-frame-shown? f)])
+        (set! *frame-back* (gpu-frame-number f))
+        (pacer-frame-back! shown?)
+        (pacer-latch! (gpu-frame-number f))
+        (frame-ring-set! (gpu-frame-number f) 5 (if shown? 1 2))
+        (if shown?
+            (set! *frames-drawn* (+ *frames-drawn* 1))
+            (request-frame!))
+        (gpu-frame-free! f))))
   (render-answers!))
 
 ;; What core0 read back, each handed to its then.

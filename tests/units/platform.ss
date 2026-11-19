@@ -135,6 +135,7 @@
          (fluid-let ([*core0-trace-dir* dir])
            (core0-trace! 22 0)
            (core0-trace! 24 7)
+           (core0-trace! 30 2)
            (let* ([path (core0-trace-write!)]
                   [lines (call-with-input-file path
                            (lambda (p)
@@ -146,8 +147,29 @@
              (and (string-prefix? (string-append dir "/trace-") path)
                   (exists (lambda (l) (string-suffix? "tick 0" l)) lines)
                   (exists (lambda (l) (string-suffix? "publish 7" l)) lines)
+                  (exists (lambda (l) (string-suffix? "mode 2" l)) lines)
                   (exists (lambda (l) (string-prefix? "# frames" l))
                           lines))))))
+
+(check "a trace's head says how the window presents, how often core0 looks, \
+        and when its first step came on the clock"
+       (fluid-let ([*core0-trace-dir* (string-append out-dir "/traces")])
+         (core0-trace! 22 0)
+         (let* ([path (core0-trace-write!)]
+                [lines (call-with-input-file path
+                         (lambda (p)
+                           (let loop ([acc '()] [k 0])
+                             (let ([l (get-line p)])
+                               (if (or (eof-object? l) (= k 5))
+                                   (reverse acc)
+                                   (loop (cons l acc) (+ k 1)))))))]
+                [head (format "# presents by ~a, looks every ~,3f ms; the \
+                               first step at "
+                              *gpu-present-mode* (/ core0-look-ns 1e6))])
+           (exists (lambda (l)
+                     (and (string-prefix? head l)
+                          (string-suffix? " ns on the clock" l)))
+                   lines))))
 
 (check "a trace says why it was written, if that's said, and a second's \
         second trace goes beside the first"
@@ -158,7 +180,7 @@
                            (lambda (p) (get-line p) (get-line p)
                                    (get-line p))))])
            (and (not (equal? a b))
-                (string-prefix? "# steps" (line3 a))
+                (string-prefix? "# presents" (line3 a))
                 (equal? (line3 b) "# written as a check")))))
 
 ;; No collection while it looks: one stamps a step of core1's (gc).
@@ -185,6 +207,20 @@
                     (string-prefix? "core1 hasn't stepped for " (car whys))
                     (string-suffix? "since its tick" (cadr whys))
                     (string-suffix? "since its draw" (car whys))))))))
+
+(check "core1 in its wait past the limit is not stalled: no trace is \
+        written"
+       (let ([whys '()])
+         (parameterize ([collect-request-handler void])
+           (fluid-let ([*core0-trace-dir* (string-append out-dir "/traces")]
+                       [*core0-trace-stalled* -1]
+                       [core0-trace-stall-ns -1]
+                       [*core0-world-waiting?* #t]
+                       [core0-trace-write!
+                        (lambda (why) (set! whys (cons why whys)))])
+             (core0-trace! 22 0)
+             (core0-trace-watch!)
+             (null? whys)))))
 
 (check "Ctrl-C writes the trace, then ends the run as the handler before \
         did"

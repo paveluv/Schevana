@@ -170,3 +170,17 @@
                     bytes)"
                    step)
            (<= step 16))))
+
+;;; A frame's way back, by its own link, and onto core1's chain to fill
+;;; again; and core0's hold of a frame with no window, on a thread of its
+;;; own, a frame each refresh.
+(let ([f (gpu-frame-make)])
+  (fluid-let ([*gpu-frames-free* #f] [*gpu-frame-last* #f])
+    (check "a frame given back, taken back and kept to fill again allocates \
+            nothing"
+           (= 0 (allocation-least 20 (lambda ()
+                                       (gpu-give-back! f)
+                                       (gpu-frame-free! (gpu-frames-back!))
+                                       (set! *gpu-frames-free* #f)))))))
+(check "core0's hold of a frame with no window allocates nothing"
+       (= 0 (allocation-least 5 gpu-headless-hold!)))

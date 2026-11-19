@@ -1348,7 +1348,8 @@
                  (sdl-set-swapchain-parameters
                   (renderer-device r) (renderer-sdl-window r)
                   gpu-composition-sdr (cdr (assq mode gpu-present-codes))))
-        (set! *gpu-present-mode* mode)))))
+        (set! *gpu-present-mode* mode)
+        (core0-trace! 30 (cdr (assq mode gpu-present-codes)))))))
 
 ;; Between frames, n frames in flight from now on, 1 to 3, as SDL allows:
 ;; the swapchain is built again. Another count is left as it is.
@@ -1368,27 +1369,29 @@
 ;;; recorder's copies.
 ;;; It comes back with whether it reached the screen.
 ;;; The same few records go back and forth, filled again for each frame: a
-;;; frame allocates none.
+;;; frame allocates none. Each goes back, and waits to be filled again, on
+;;; a chain by its own link (next), which whoever holds it sets.
 
 (define-record-type gpu-frame
-  (nongenerative schevana-gpu-frame-7)
+  (nongenerative schevana-gpu-frame-8)
   (fields (mutable root) (mutable number) (mutable table) (mutable table-n)
           (mutable pieces) (mutable jobs) (mutable writes) (mutable computes)
           (mutable mode) (mutable in-flight) (mutable earlier)
-          (mutable shown?)))
+          (mutable shown?) (mutable next)))
 
 ;; A frame to fill: core1 keeps those given back to fill again.
 (define (gpu-frame-make)
-  (make-gpu-frame #f 0 #f 0 '() '() #f '() #f 3 '() #f))
+  (make-gpu-frame #f 0 #f 0 '() '() #f '() #f 3 '() #f #f))
 
 ;; The number of the last frame core0 gave back: what it read of the
 ;; recorder's is free to write again once a later frame doesn't show it.
 (defvar *gpu-frame-back* 0)
 
-;; The frame core1 published, till core0 takes it, else #f; and those core0
-;; gave back since core1 last took them, newest first.
+;; The frame core1 published, till core0 takes it, else #f; and the newest
+;; of those core0 gave back since core1 last took them, linked to the
+;; older, else #f.
 (defvar *gpu-published* (box #f))
-(defvar *gpu-given-back* (box '()))
+(defvar *gpu-given-back* (box #f))
 
 ;; Core1's side: f to the screen, core0 woken. One waits at a time: core1
 ;; publishes again once core0 has taken it (gpu-frame-waiting?).
@@ -1403,8 +1406,24 @@
 
 (define (gpu-frame-waiting?) (and (unbox *gpu-published*) #t))
 
-;; The frames core0 gave back since core1 last took them, oldest first.
-(define (gpu-frames-back!) (core0-take! *gpu-given-back*))
+;; Core0's side: f given back, by its own link.
+(define (gpu-give-back! f)
+  (memory-order-release)
+  (let loop ()
+    (let ([newest (unbox *gpu-given-back*)])
+      (gpu-frame-next-set! f newest)
+      (unless (box-cas! *gpu-given-back* newest f) (loop)))))
+
+;; Core1's side: the frames core0 gave back since core1 last took them,
+;; the newest, linked to the older (gpu-frame-next); or #f.
+(define (gpu-frames-back!)
+  (let loop ()
+    (let ([newest (unbox *gpu-given-back*)])
+      (cond [(not newest) #f]
+            [(box-cas! *gpu-given-back* newest #f)
+             (memory-order-acquire)
+             newest]
+            [else (loop)]))))
 
 ;; Core0's side, in its step: the frame published, if one is, presented
 ;; and given back.
@@ -1424,7 +1443,7 @@
       ;; the input that came while the acquire held core0, read before core1
       ;; hears the frame is back and may begin its next turn
       (core0-events-pumped!)
-      (core0-put! *gpu-given-back* f)
+      (gpu-give-back! f)
       (core0-trace! 6 (gpu-frame-number f))
       ;; given back, with what it read: core1 takes them at once, whether
       ;; or not a frame follows
@@ -1452,10 +1471,23 @@
 ;; With no window, core0 on a thread of its own holds each frame till the
 ;; next refresh of a screen of its own, at the window's rate, as a screen
 ;; holds the acquire: the screen of a forked run's tests. Its refreshes
-;; fall on whole periods of now-ns's clock.
+;; fall on whole periods of now-ns's clock. It sleeps on core0's own time
+;; record, set again: nothing is allocated.
 (define (gpu-headless-hold!)
-  (let ([p (core0-frame-ns)])
-    (sleep (make-time 'time-duration (- p (mod (now-ns) p)) 0))))
+  (let ([p (core0-frame-ns)] [t *core0-time*])
+    (set-time-nanosecond! t (fx- p (fxmodulo (now-ns) p)))
+    (sleep t)))
+
+;; Where the acquire writes the image it gives and its size, kept.
+(define gpu-swapchain-texture
+  (ftype-pointer-address
+   (ftype-&ref gpu-swapchain-out (texture) gpu-swapchain-out*)))
+(define gpu-swapchain-w
+  (ftype-pointer-address
+   (ftype-&ref gpu-swapchain-out (w) gpu-swapchain-out*)))
+(define gpu-swapchain-h
+  (ftype-pointer-address
+   (ftype-&ref gpu-swapchain-out (h) gpu-swapchain-out*)))
 
 ;; One frame: uploads, then the runs, to the window or the target. => #t if
 ;; it reached the screen; #f if the window had no room for it yet (a frame
@@ -1476,11 +1508,15 @@
           (when *core0-forked* (gpu-headless-hold!))
           (gpu-draw-runs! r cb (renderer-target r) gpu-format-bgra8
                           (renderer-target-w r) (renderer-target-h r) runs #f)
+          ;; a row as a screen's frame has, its GPU work taken as done as
+          ;; it goes back: no report ever comes
+          (present-sent! (gpu-frame-number f))
           ;; no screen paces these, and frames sent faster than they're drawn
           ;; would pile up without end: one waits behind the one being drawn
           (let ([fence (gpu-must 'gpu-frame! (sdl-submit-gpu-fence cb))])
             (when (renderer-fence r) (gpu-wait! (renderer-fence r)))
             (renderer-fence-set! r fence))
+          (present-done! (gpu-frame-number f))
           #t)
         ;; the driver may hold either end of this till the screen is ready
         (let* ([out gpu-swapchain-out*]
@@ -1489,13 +1525,8 @@
                             (core0-trace! 3 (gpu-frame-number f))
                             (present-acquiring!)
                             (sdl-acquire-swapchain
-                           cb (renderer-sdl-window r)
-                           (ftype-pointer-address
-                            (ftype-&ref gpu-swapchain-out (texture) out))
-                           (ftype-pointer-address
-                            (ftype-&ref gpu-swapchain-out (w) out))
-                           (ftype-pointer-address
-                            (ftype-&ref gpu-swapchain-out (h) out))))])
+                             cb (renderer-sdl-window r) gpu-swapchain-texture
+                             gpu-swapchain-w gpu-swapchain-h))])
                   (present-acquired!)
                   (core0-trace! 4 (if ok 1 0))
                   (and ok
@@ -1510,8 +1541,10 @@
                             runs #f))
           ;; the screen asked to report on it, before the submit presents it
           (when shown? (present-sent! (gpu-frame-number f)))
+          (present-submitting!)
           (present-fence! (gpu-frame-number f)
                           (gpu-must 'gpu-frame! (sdl-submit-gpu-fence cb)))
+          (when shown? (present-submitted! (gpu-frame-number f)))
           (core0-trace! 5 (gpu-frame-number f))
           shown?))))
 

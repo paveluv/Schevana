@@ -18,20 +18,24 @@
 ;; screen's clock (now-ns); the refresh (ns); that refresh's number; when
 ;; its GPU work was seen done (now-ns; 0, not yet); when core0 took it
 ;; from core1, and when its acquire of a swapchain image began and
-;; returned (now-ns); the screen's own stamp of its showing (now-ns; 0,
-;; none); and the last look that found its GPU work not done yet
-;; (now-ns; 0, none): seen done tells only when core0 looked, which an
-;; acquire the screen holds puts off; this, that the work was still going.
+;; returned, the submit's hold added (now-ns); the screen's own stamp of
+;; its showing (now-ns; 0, none); and the last look that found its GPU
+;; work not done yet (now-ns; 0, none): seen done tells only when core0
+;; looked, which an acquire the screen holds puts off; this, that the work
+;; was still going. With no window a frame has a row too, its GPU work
+;; done as it goes back.
 (defvar *present-ring* (make-fxvector (* present-rows present-words) 0))
 
-;; When core0 took the frame it presents now from core1, and when it asked
-;; for an image for it and had one.
+;; When core0 took the frame it presents now from core1, when it asked for
+;; an image for it and had one, and when it began to submit it.
 (defvar *present-taken* 0)
 (defvar *present-acquiring* 0)
 (defvar *present-acquired* 0)
+(defvar *present-submitting* 0)
 (define (present-taken!) (set! *present-taken* (now-ns)))
 (define (present-acquiring!) (set! *present-acquiring* (now-ns)))
 (define (present-acquired!) (set! *present-acquired* (now-ns)))
+(define (present-submitting!) (set! *present-submitting* (now-ns)))
 
 (define (present-at frame) (fx* present-words (fxmodulo frame present-rows)))
 
@@ -61,6 +65,18 @@
     (memory-order-release)
     (fxvector-set! r at frame))
   (platform-report-ask! frame))
+
+;; Frame submitted: a screen may hold core0 in the submit in the acquire's
+;; place, so a submit that took over a look is the screen's as the
+;; acquire's is, and the row's acquire returns that much later. One
+;; shorter is the submit's own work (Mesa on Intel: 58 µs at the median,
+;; most over a tenth of a look). Core1 reads it once the frame is given
+;; back, after this.
+(define (present-submitted! frame)
+  (let ([at (present-at frame)] [took (fx- (now-ns) *present-submitting*)])
+    (when (and (fx> took core0-look-ns)
+               (fx= (fxvector-ref *present-ring* at) frame))
+      (fxvector-set! *present-ring* (fx+ at 9) (fx+ *present-acquired* took)))))
 
 ;; The screen's word on frame: dropped (kind 2), or shown (1) at stamp
 ;; (now-ns), at a refresh it keeps steady (refresh, its length by the
@@ -325,6 +341,12 @@
              (fx= (fxvector-ref r (fx+ at 1)) 0)
              (fx< 0 sent)
              (fx< now (fx+ sent 1000000000))))))
+
+;; Frame's GPU work seen done, now: with no window, as it goes back.
+(define (present-done! frame)
+  (let ([at (present-at frame)])
+    (when (fx= (fxvector-ref *present-ring* at) frame)
+      (fxvector-set! *present-ring* (fx+ at 6) (now-ns)))))
 
 ;; The fences signaled since the last look: their frames' GPU times. And
 ;; the reports held too long (present-held-poll!).

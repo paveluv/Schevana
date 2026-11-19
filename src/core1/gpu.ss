@@ -256,22 +256,22 @@
 
 ;;; ------------------------------------------------------------------ frames
 
-;; The frames core0 gave back, to fill again, and the last of them.
-(defvar *gpu-frames-free* '())
+;; The frames core0 gave back, to fill again, linked by their own link (#f,
+;; none), and the last of them.
+(defvar *gpu-frames-free* #f)
 (defvar *gpu-frame-last* #f)
 
 (define (gpu-frame-free! f)
-  (set! *gpu-frames-free* (cons f *gpu-frames-free*))
+  (gpu-frame-next-set! f *gpu-frames-free*)
+  (set! *gpu-frames-free* f)
   (set! *gpu-frame-last* f))
 
 ;; Core1's side: the frame filled, what it asked of the GPU since handed on
 ;; with it; its writes "/recorder"'s to hand (rec-lend!). => the frame
 (define (gpu-publish table table-n pieces mode in-flight)
-  (let ([f (if (pair? *gpu-frames-free*)
-               (let ([f (car *gpu-frames-free*)])
-                 (set! *gpu-frames-free* (cdr *gpu-frames-free*))
-                 f)
-               (gpu-frame-make))])
+  (let ([f (let ([f *gpu-frames-free*])
+             (cond [f (set! *gpu-frames-free* (gpu-frame-next f)) f]
+                   [else (gpu-frame-make)]))])
     (let-values ([(jobs computes) (gpu-take-asks!)])
       (gpu-frame-jobs-set! f jobs)
       (gpu-frame-computes-set! f computes))

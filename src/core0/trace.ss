@@ -24,7 +24,8 @@
 (define core0-trace-names
   '#(#f step take acquire acquired submit back sleep woke pump shown
      dropped gpu-done slow-pump event #f #f #f #f #f
-     wait waited tick draw publish collect collected events gc gced))
+     wait waited tick draw publish collect collected events gc gced
+     mode))
 
 ;; From now on, if the checkout has a .work folder: on core0's thread, as
 ;; the window opens.
@@ -57,12 +58,14 @@
 (defvar *core0-trace-stalled* -1)
 
 ;; On core0's step, core1 on a thread of its own: core1's newest step older
-;; than core0-trace-stall-ns, the trace written, saying which it was.
+;; than core0-trace-stall-ns, the trace written, saying which it was. A
+;; core1 that waits, for as long as it likes, is not stalled.
 (define (core0-trace-watch!)
   (when *core0-trace-dir*
     (let ([v (vector-ref *core0-trace-rings* 2)]
           [n (unbox (vector-ref *core0-trace-rings* 3))])
-      (unless (or (fx= n 0) (fx= n *core0-trace-stalled*))
+      (unless (or (fx= n 0) (fx= n *core0-trace-stalled*)
+                  *core0-world-waiting?*)
         (let ([at (fx* 4 (fxmodulo (fx- n 1) core0-trace-rows))])
           (memory-order-acquire)
           (when (eqv? (fxvector-ref v at) (fx- n 1))
@@ -128,6 +131,10 @@
              (fprintf p "# Schevana's trace, ~a~%# ~s~%" (date-and-time d)
                       *core0-platform*)
              (when why (fprintf p "# written as ~a~%" why))
+             ;; so that a step's number that's a time can be placed
+             (fprintf p "# presents by ~a, looks every ~,3f ms; the first \
+                         step at ~a ns on the clock~%"
+                      *gpu-present-mode* (/ core0-look-ns 1e6) t0)
              (fprintf p "# steps: ms since the first, thread, step, number~%")
              (for-each
               (lambda (r)

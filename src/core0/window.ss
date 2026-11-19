@@ -518,6 +518,7 @@
 (defvar *core0-ready* (make-condition))   ; core0's own
 (defvar *core0-woken* #f)                 ; under the mutex
 (defvar *core0-waiting?* #f)   ; core0 in SDL's wait for events, the same
+(defvar *core0-world-waiting?* #f)   ; core1 in its wait, the same
 
 ;; A time record a thread, set again for each timed wait: core1's, core0's.
 (defvar *core0-world-time* (make-time 'time-duration 0 0))
@@ -543,11 +544,13 @@
       (set-time-second! t (fxquotient ns 1000000000))
       (set-time-nanosecond! t (fxremainder ns 1000000000)))
     (mutex-acquire *core0-world-mutex*)
+    (set! *core0-world-waiting?* #t)
     (cond
       [(or *core0-world-woken* (and ns (fx<= ns 0))) (void)]
       [ns (condition-wait *core0-world-ready* *core0-world-mutex* t)]
       [else (condition-wait *core0-world-ready* *core0-world-mutex*)])
     (set! *core0-world-woken* #f)
+    (set! *core0-world-waiting?* #f)
     (mutex-release *core0-world-mutex*)))
 
 ;; Compute runs and writes no frame took, sent by a job, "/recorder"'s.
