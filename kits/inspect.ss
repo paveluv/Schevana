@@ -1217,9 +1217,9 @@
 ;; report gives one, its rate, the turns so far, how often core0 looks; and
 ;; what the rule keeps between frames: t, the last turn's aim and plan, the
 ;; hold and the floor under a closer call (ns; 0, none), the hold a descent
-;; has proven and its probe's aim (0, none), when the last descent began,
-;; whether the last raise was a look, the rows judged, and the begin the
-;; loop sleeps to (0, none).
+;; has proven, its probe's aim and the lead a probe missed by (0, none),
+;; when the last descent began, whether the last raise was a look, the rows
+;; judged, and the begin the loop sleeps to (0, none).
 (define (inspect-pacer)
   (let ([d (core0-display)])
     `((period . ,(pacer-period))
@@ -1228,8 +1228,8 @@
       (ticks . ,(pacer-ticks))
       (look . ,core0-look-ns)
       ,@(map (lambda (key) (cons key (pacer-state key)))
-             '(t aim plan hold floor proven probe probed soft? judged
-               waited)))))
+             '(t aim plan hold floor proven probe probe-miss probed soft?
+               judged waited)))))
 
 ;; The last sixteen rows as the pacer reads them, oldest first: each its
 ;; turn's begin, the begin planned (0, at once), the refresh aimed at, the

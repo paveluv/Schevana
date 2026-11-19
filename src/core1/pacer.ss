@@ -9,27 +9,36 @@
 ;;; refresh reported, or our own a 512th fast; the work is the largest of
 ;;; the last eight rows'. A turn waits while the newest frame's GPU work is
 ;;; not seen done (eight refreshes at most), aims at the first refresh the
-;;; frames out leave it, and begins a hold, the work and a slack before it.
-;;; The hold, how long before a refresh GPU work must be seen done, is the
-;;; one number learned: from the first frame shown, lowered by one shown in
-;;; time with less lead, raised by a pair of clean misses, and tried lower
-;;; once in a few minutes, one probe frame at a time.
+;;; frames out leave it, and begins a hold, a margin, the work and a slack
+;;; before it. The hold, how long before a refresh GPU work must be seen
+;;; done, is the one number learned: from the first frame shown, lowered by
+;;; one shown in time with less lead, raised by a pair of clean misses, and
+;;; tried lower once in a few minutes, one probe frame at a time. The
+;;; margin is the screen's: its cutoff moves, and a frame done just over
+;;; the hold still misses now and then.
 
 ;; One descent begun a period, ns: the few minutes a repeated refresh may be
 ;; risked in.
 (define pacer-descent-ns 180000000000)
 
+;; The margin over the hold, a part of the period p: how far past the hold
+;; a frame done still misses more often than the compositor loses a
+;; refresh of its own (GNOME's: a ms at 60 Hz, half of it at 120).
+(define (pacer-margin p) (fxquotient p 16))
+
 ;; What the rows can't give: the last turn's time, its aim; the hold (0,
 ;; not known), and the floor a closer call stops at (0, none); while a
-;; descent is in course, the hold proven (0, none) and the aim of its probe
-;; out (0, none), and when the last began; the last raise was a look and no
-;; frame has been in time since; the rows judged, of *frame-ring-n*; the
-;; begin the loop sleeps to (0, none).
+;; descent is in course, the hold proven (0, none), the aim of its probe
+;; out (0, none) and the lead a probe missed by (0, none), and when the
+;; last began; the last raise was a look and no frame has been in time
+;; since; the rows judged, of *frame-ring-n*; the begin the loop sleeps to
+;; (0, none).
 (defvar *pacer-t* 0)
 (defvar *pacer-hold* 0)
 (defvar *pacer-floor* 0)
 (defvar *pacer-proven* 0)
 (defvar *pacer-probe* 0)
+(defvar *pacer-probe-miss* 0)
 (defvar *pacer-probed* (- pacer-descent-ns))
 (defvar *pacer-soft?* #f)
 (defvar *pacer-judged* 0)
@@ -81,6 +90,7 @@
   (set! *pacer-floor* 0)
   (set! *pacer-proven* 0)
   (set! *pacer-probe* 0)
+  (set! *pacer-probe-miss* 0)
   (set! *pacer-probed* (fx- now pacer-descent-ns))
   (set! *pacer-soft?* #f))
 
@@ -164,10 +174,10 @@
                   (loop (fx+ j 1)))))))
 
 ;; Row i, its report in: once. Its verdict is traced with its number: 0 in
-;; time, 1 late and no clean miss, 2 a clean miss alone, 3 the probe's miss
-;; (the descent ends), 4 a pair (a look up), 5 a miss after it (a refresh
-;; up), 6 the probe in time (a look lower proven), 7 in time, and a descent
-;; begins.
+;; time, 1 late and no clean miss, 2 a clean miss alone (a probe's first
+;; too), 3 a probe's second (the descent ends), 4 a pair (a look up), 5 a
+;; miss after it (a refresh up), 6 the probe in time (a look lower proven),
+;; 7 in time, and a descent begins.
 (define (pacer-judge! i lo now)
   (let ([look core0-look-ns] [r (pacer-refresh i)] [S (pacer-seen i 3)]
         [done (pacer-seen i 6)] [in-time? (pacer-on-time? i)])
@@ -213,23 +223,39 @@
                        (pacer-settled? i lo))
                   (set! *pacer-proven* *pacer-hold*)
                   (set! *pacer-floor* 0)
+                  (set! *pacer-probe-miss* 0)
                   (set! *pacer-probed* now)
                   7]
                  [else 0])]
               [(not x) 1]
-              ;; it lands two looks over the lead that failed, never over
-              ;; where it began; a closer call stops a look over it
+              ;; a probe's first clean miss may be the compositor's, as any
+              ;; frame's alone: the next frame probes the same hold. The
+              ;; second lands it two looks over the larger lead of the two
+              ;; that failed (one whose work ran long failed with less),
+              ;; never over where it began; a closer call stops a look
+              ;; over that lead
+              [(and probe? (fx= *pacer-probe-miss* 0))
+               (set! *pacer-probe-miss* x)
+               2]
               [probe?
-               (set! *pacer-hold* (fxmin *pacer-hold* (fx+ x (fx* 2 look))))
-               (set! *pacer-floor* (fx+ x look))
+               (let ([x (fxmax x *pacer-probe-miss*)])
+                 (set! *pacer-hold* (fxmin *pacer-hold* (fx+ x (fx* 2 look))))
+                 (set! *pacer-floor* (fx+ x look)))
                (set! *pacer-proven* 0)
                3]
               ;; one clean miss alone is the compositor's; a pair raises the
-              ;; hold a look over the lead that failed, and a miss after it,
-              ;; no frame in time between, a refresh over, which owes a
-              ;; descent. A raise ends a descent in course.
+              ;; hold a look over the lead that failed, never past the
+              ;; margin over the hold it was planned with (more lead failed
+              ;; by no cutoff: the compositor held a refresh, or the GPU
+              ;; was slow), and a miss after it, no frame in time between,
+              ;; a refresh over, which owes a descent. A raise ends a
+              ;; descent in course.
               [(or *pacer-soft?* (pacer-missed-before? i lo))
-               (set! *pacer-hold* (fx+ x (if *pacer-soft?* r look)))
+               (set! *pacer-hold*
+                 (if *pacer-soft?*
+                     (fx+ x r)
+                     (fx+ (fxmin x (fx+ (pacer-hold-of i) (pacer-margin r)))
+                          look)))
                (when *pacer-soft?*
                  (set! *pacer-probed* (fx- now pacer-descent-ns)))
                (set! *pacer-soft?* (not *pacer-soft?*))
@@ -345,7 +371,10 @@
                             (fx+ v s)]
                            [else v]))]
                  [A (fxmax F (pacer-ceiling (fx+ now (fx+ least need)) v s))]
-                 [B (fx- (fx- A h) (fx+ most slack))])
+                 ;; the margin is the begin's alone: the chain and the aim
+                 ;; ask where a frame can still make it, at the hold
+                 [B (fx- (fx- A (fx+ h (pacer-margin p)))
+                         (fx+ most slack))])
             (cond
               ;; work over a refresh begins the next turn as the gate
               ;; opens: that turn, not the ones after it that draw nothing
@@ -418,6 +447,7 @@
     [(floor) *pacer-floor*]
     [(proven) *pacer-proven*]
     [(probe) *pacer-probe*]
+    [(probe-miss) *pacer-probe-miss*]
     [(probed) *pacer-probed*]
     [(soft?) *pacer-soft?*]
     [(aim) *pacer-aim*]

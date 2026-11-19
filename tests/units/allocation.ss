@@ -212,7 +212,8 @@
   (row! 14 (+ T (* 14 r)) (- (+ T (* 14 r)) (* 4 ms)) (+ T (* 15 r)))
   (row! 15 (+ T (* 16 r)) (- (+ T (* 16 r)) (* 5 ms)) (+ T (* 17 r)))
   (fluid-let ([*pacer-t* 0] [*pacer-hold* 0] [*pacer-floor* 0]
-              [*pacer-proven* 0] [*pacer-probe* 0] [*pacer-probed* T]
+              [*pacer-proven* 0] [*pacer-probe* 0]
+              [*pacer-probe-miss* 0] [*pacer-probed* T]
               [*pacer-soft?* #f] [*pacer-waited* 0] [*pacer-aim* 0]
               [*pacer-plan* 0] [*pacer-rate* 'screen] [*dirty* #f]
               [*pacer-wanted?* #f] [*timers* '()]
@@ -252,6 +253,8 @@
                       and with (~a ~a)"
                      judging raised planning begun not-begun unpaced share
                      wait wait-timer)
-             (and (= raised (+ (* 5 ms) core0-look-ns))
+             ;; the pair's 5 ms of lead over the hold of 3 by more than
+             ;; the margin: raised to the margin and a look over it
+             (and (= raised (+ (* 3 ms) (pacer-margin r) core0-look-ns))
                   (for-all zero? (list judging planning begun not-begun
                                        unpaced share wait wait-timer)))))))

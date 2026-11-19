@@ -182,17 +182,20 @@ report, its own grid, a 512th short of the display mode's refresh, so it
 is never held back by a screen a little faster than it says. The work is
 the largest of the last eight rows', begin to GPU-done less the screen's
 waits; the slack two of core0's looks and the latest any of those ticks
-began after its plan.
+began after its plan. The margin is a 16th of the refresh: a compositor's
+cutoff moves, and a frame done just over the hold still misses now and
+then (on GNOME, one in a hundred at 60 Hz; a ms more lead and they are as
+rare as the refreshes it loses on its own).
 
 No tick begins while the newest frame's GPU work isn't seen done, eight
 refreshes at most: core0 wakes the world when it sees it done. Each frame
 on its way takes the first refresh a hold less the slack after its GPU
 work, one after the frame before it; the next tick aims at the refresh
-after that, and begins the hold, the work and the slack before it. A
-window's `'frame` is told `t`, the refresh it aims at: when its frame will
-show. Past a refresh of work the next tick begins as soon as the GPU work
-is done, aimed at the refresh it can still make; none is skipped. Processes
-run till the next tick's planned begin, at least 1 ms a step.
+after that, and begins the hold, the margin, the work and the slack before
+it. A window's `'frame` is told `t`, the refresh it aims at: when its frame
+will show. Past a refresh of work the next tick begins as soon as the GPU
+work is done, aimed at the refresh it can still make; none is skipped.
+Processes run till the next tick's planned begin, at least 1 ms a step.
 
 The hold, how long before a refresh a frame's GPU work must be seen done,
 is the one thing learned, from the screen's reports. The first frame shown
@@ -200,17 +203,20 @@ gives it; one shown in time with less lead lowers it, never under the floor
 a descent leaves. A frame that missed its refresh though begun on plan, its
 GPU work done the hold before it, and its predecessor shown, is a clean
 miss: one alone is the compositor's, and two within the sixteen rows raise
-the hold a look over the lead that failed; another before any frame is in
-time, a refresh over, which owes a descent. Every three minutes, once eight
+the hold a look over the lead that failed, never past the margin over the
+hold the frame was planned with (more lead than that failed by no cutoff:
+the compositor held a refresh, or the GPU was slow); another before any
+frame is in time, a refresh over, which owes a descent. Every three minutes, once eight
 frames in a row were in time and on plan, a descent tries the hold lower,
 one probe frame at a time a look under what it has proven, the frames
 around it at that. A probe in time proves a look lower, and the next frame
-probes; one that misses ends it, the hold two looks over the lead that
-failed, never over where the descent began, and the floor a look over it.
-A refresh of another length starts all of it over. Each verdict is in the
-trace with its frame. With no reports, nothing is learned, and an acquire
-the screen held leaves a refresh out of its own grid, where three frames
-are in flight.
+probes. A probe's first clean miss is a miss alone, and the next frame
+probes the same hold; the second ends the descent, the hold two looks over
+the larger lead of the two that failed, never over where the descent
+began, and the floor a look over that lead. A refresh of another length
+starts all of it over. Each verdict is in the trace with its frame. With no
+reports, nothing is learned, and an acquire the screen held leaves a
+refresh out of its own grid, where three frames are in flight.
 
 How a frame reaches the screen is `present-mode`, in Settings' Display tab
 or `(override! 'present-mode 'mailbox)`, among what the window offers

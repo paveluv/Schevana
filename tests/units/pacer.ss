@@ -39,7 +39,8 @@
   (fluid-let ([now-ns pacer-test-ns] [now-ms pacer-test-ms]
               [*pacer-t* 0] [*pacer-hold* 0]
               [*pacer-floor* 0] [*pacer-proven* 0] [*pacer-probe* 0]
-              [*pacer-probed* 0] [*pacer-soft?* #f] [*pacer-judged* 0]
+              [*pacer-probe-miss* 0] [*pacer-probed* 0] [*pacer-soft?* #f]
+              [*pacer-judged* 0]
               [*pacer-waited* 0] [*pacer-aim* 0] [*pacer-plan* 0]
               [*pacer-rate* 'screen])
     (pacer-forget!)
@@ -936,28 +937,34 @@
                             (* 9/2 ms))))))))
 
 (check "a clean miss alone is the compositor's; a pair raises the hold a \
-        look over the lead that failed; a third before a frame in time, a \
-        refresh over, which owes a descent"
+        look over the lead that failed, never past the margin over the \
+        hold; a third before a frame in time, a refresh over, which owes a \
+        descent"
        (let ([r pacer-test-r] [T pacer-test-T] [ms 1000000]
              [L core0-look-ns])
-         (pacer-test-rows
-          (lambda ()
-            ;; each late a refresh, the frame before it shown before its
-            ;; aim, begun on plan and done at least the hold before it
-            (define (miss! k x)
-              (pacer-test-flow-row! (+ T (* k r)) x r (+ T (* (+ k 1) r)))
-              (pacer-test-judge! (+ T (* (+ k 2) r)))
-              (list (pacer-state 'hold) (pacer-state 'soft?)))
-            (pacer-test-flow-row! T (* 6 ms) r)
-            (pacer-test-judge! (+ T r))
-            (let* ([alone (miss! 1 (* 7 ms))]
-                   [pair (miss! 3 (* 8 ms))]
-                   [third (miss! 5 (* 9 ms))]
-                   [owed (- (+ T (* 7 r)) (pacer-state 'probed))])
-              (and (equal? alone (list (* 6 ms) #f))
-                   (equal? pair (list (+ (* 8 ms) L) #t))
-                   (equal? third (list (+ (* 9 ms) r) #f))
-                   (= owed pacer-descent-ns)))))))
+         ;; the hold 6 ms; the misses' leads 7 ms, then pair, then 9 ms
+         (define (misses pair)
+           (pacer-test-rows
+            (lambda ()
+              ;; each late a refresh, the frame before it shown before its
+              ;; aim, begun on plan and done at least the hold before it
+              (define (miss! k x)
+                (pacer-test-flow-row! (+ T (* k r)) x r (+ T (* (+ k 1) r)))
+                (pacer-test-judge! (+ T (* (+ k 2) r)))
+                (list (pacer-state 'hold) (pacer-state 'soft?)))
+              (pacer-test-flow-row! T (* 6 ms) r)
+              (pacer-test-judge! (+ T r))
+              (let* ([alone (miss! 1 (* 7 ms))]
+                     [pair (miss! 3 pair)]
+                     [third (miss! 5 (* 9 ms))]
+                     [owed (- (+ T (* 7 r)) (pacer-state 'probed))])
+                (list alone pair third owed)))))
+         (let ([near (misses (* 13/2 ms))] [far (misses (* 8 ms))])
+           (and (equal? near
+                        (list (list (* 6 ms) #f) (list (+ (* 13/2 ms) L) #t)
+                              (list (+ (* 9 ms) r) #f) pacer-descent-ns))
+                (equal? (cadr far)
+                        (list (+ (* 6 ms) (pacer-margin r) L) #t))))))
 
 (check "a descent begins after eight frames in time and on plan: one probe \
         at a time, a look under the hold proven, the frames around it at \
@@ -973,7 +980,7 @@
             (pacer-test-judge! (+ T (* 8 r)))
             (let* ([begun (list (pacer-state 'proven) (pacer-state 'probe)
                                 (pacer-state 'floor))]
-                   ;; the work 1.9 ms, the slack two looks
+                   ;; the work 1.9 ms, the margin, the slack two looks
                    [probe (pacer-test-turn! (+ T (* 7 r)))]
                    [probe-at (pacer-state 'probe)]
                    [next (pacer-test-turn! pacer-test-t)])
@@ -990,19 +997,41 @@
                 (and (equal? begun (list (* 3 ms) 0 0))
                      (= (cdr probe) (+ T (* 8 r)) probe-at)
                      (= (- (cdr probe) (car probe))
-                        (+ (- (* 3 ms) L) (* 19/10 ms) (* 2 L)))
+                        (+ (- (* 3 ms) L) (pacer-margin r) (* 19/10 ms)
+                           (* 2 L)))
                      (= (cdr next) (+ T (* 9 r)))
                      (= (- (cdr next) (car next))
-                        (+ (* 3 ms) (* 19/10 ms) (* 2 L)))
+                        (+ (* 3 ms) (pacer-margin r) (* 19/10 ms) (* 2 L)))
                      (equal? proved (list (- (* 3 ms) L) 0 (* 3 ms)))
                      (= (pacer-state 'probe) (cdr again)))))))))
 
-(check "a probe's clean miss ends the descent: the hold two looks over the \
-        lead that failed, never over where it began, and the floor a look \
-        over it"
+(check "a probe's first clean miss is a miss alone: the descent goes on, \
+        and the next frame probes the same hold"
        (let ([r pacer-test-r] [T pacer-test-T] [ms 1000000]
              [L core0-look-ns])
-         (define (probe-miss! hold proven x)
+         (pacer-test-rows
+          (lambda ()
+            (pacer-test-flow-row! T (* 9 ms) r)
+            (pacer-test-judge! (+ T r))
+            (set! *pacer-hold* (* 9 ms))
+            (set! *pacer-proven* (* 7 ms))
+            (set! *pacer-probe* (+ T r))
+            (pacer-test-flow-row! (+ T r) (* 7 ms) r (+ T (* 2 r)))
+            (pacer-test-judge! (+ T (* 3 r)))
+            (let* ([after (map pacer-state
+                               '(hold floor proven probe probe-miss))]
+                   [next (pacer-test-turn! (+ T (* 3 r)))])
+              (and (equal? after (list (* 9 ms) 0 (* 7 ms) 0 (* 7 ms)))
+                   next
+                   (= (pacer-state 'probe) (cdr next))
+                   (= (pacer-probe-hold) (- (* 7 ms) L))))))))
+
+(check "a probe's second clean miss ends the descent: the hold two looks \
+        over the larger lead of the two that failed, never over where it \
+        began, and the floor a look over that lead"
+       (let ([r pacer-test-r] [T pacer-test-T] [ms 1000000]
+             [L core0-look-ns])
+         (define (probe-miss! hold proven first x)
            (pacer-test-rows
             (lambda ()
               (pacer-test-flow-row! T (* 9 ms) r)
@@ -1010,13 +1039,17 @@
               (set! *pacer-hold* hold)
               (set! *pacer-proven* proven)
               (set! *pacer-probe* (+ T r))
+              (set! *pacer-probe-miss* first)
               (pacer-test-flow-row! (+ T r) x r (+ T (* 2 r)))
               (pacer-test-judge! (+ T (* 3 r)))
               (list (pacer-state 'hold) (pacer-state 'floor)
                     (pacer-state 'proven) (pacer-state 'probe)))))
-         (let ([under (probe-miss! (* 9 ms) (* 7 ms) (* 7 ms))]
-               [over (probe-miss! (* 6 ms) (* 6 ms) (* 6 ms))])
+         (let ([under (probe-miss! (* 9 ms) (* 7 ms) (* 13/2 ms) (* 7 ms))]
+               [first (probe-miss! (* 9 ms) (* 7 ms) (* 15/2 ms) (* 7 ms))]
+               [over (probe-miss! (* 6 ms) (* 6 ms) (* 6 ms) (* 6 ms))])
            (and (equal? under (list (+ (* 7 ms) (* 2 L)) (+ (* 7 ms) L) 0 0))
+                (equal? first
+                        (list (+ (* 15/2 ms) (* 2 L)) (+ (* 15/2 ms) L) 0 0))
                 (equal? over (list (* 6 ms) (+ (* 6 ms) L) 0 0))))))
 
 (check "while a descent is in course, a clean miss of a frame not the \
