@@ -342,14 +342,17 @@
              (fx< 0 sent)
              (fx< now (fx+ sent 1000000000))))))
 
-;; Frame's GPU work seen done, now: with no window, as it goes back.
+;; Frame's GPU work seen done, now: with no window, as it goes back. The
+;; world is woken: its pacer waits for this before its next turn.
 (define (present-done! frame)
   (let ([at (present-at frame)])
     (when (fx= (fxvector-ref *present-ring* at) frame)
-      (fxvector-set! *present-ring* (fx+ at 6) (now-ns)))))
+      (fxvector-set! *present-ring* (fx+ at 6) (now-ns))))
+  (core0-world-wake!))
 
-;; The fences signaled since the last look: their frames' GPU times. And
-;; the reports held too long (present-held-poll!).
+;; The fences signaled since the last look: their frames' GPU times, and
+;; the world woken for them (present-done!). And the reports held too long
+;; (present-held-poll!).
 (define (present-poll!)
   (present-held-poll! (now-ns))
   (when *renderer*
@@ -357,13 +360,15 @@
       (do ([i 0 (fx+ i 1)]) ((fx= i present-fence-slots))
         (let ([fence (vector-ref fs i)])
           (unless (eqv? fence 0)
-            (let* ([frame (fxvector-ref *present-fence-frames* i)]
-                   [at (present-at frame)]
-                   [done? (sdl-query-gpu-fence dev fence)])
-              (when (fx= (fxvector-ref *present-ring* at) frame)
-                (fxvector-set! *present-ring* (fx+ at (if done? 6 11))
-                               (now-ns)))
-              (when done?
-                (core0-trace! 12 frame)
-                (sdl-release-gpu-fence dev fence)
-                (vector-set! fs i 0)))))))))
+            (let ([frame (fxvector-ref *present-fence-frames* i)])
+              (cond
+                [(sdl-query-gpu-fence dev fence)
+                 (present-done! frame)
+                 (core0-trace! 12 frame)
+                 (sdl-release-gpu-fence dev fence)
+                 (vector-set! fs i 0)]
+                [else
+                 (let ([at (present-at frame)])
+                   (when (fx= (fxvector-ref *present-ring* at) frame)
+                     (fxvector-set! *present-ring* (fx+ at 11)
+                                    (now-ns))))]))))))))

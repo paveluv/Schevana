@@ -1761,8 +1761,9 @@
                           not in yet, the same (~a; ~a)" reported late)
                  (and (= reported (max 1001 soonest))
                       (= late reported)))))
-      ;; this frame on its way, the latch a refresh before 10 ms in
-      (fluid-let ([*pacer-latch-phase* 10000000])
+      ;; this frame on its way, the cutoff 10 ms into the refresh before:
+      ;; the hold a refresh less 10 ms
+      (fluid-let ([*pacer-hold* (- p 10000000)])
         (let* ([latch (+ publish 10000000)]
                [before (now-ns)]
                [way (begin (fxvector-set! r (+ at 1) 0)

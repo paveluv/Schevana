@@ -114,12 +114,3 @@
   (+ (* 1000000000 (foreign-ref 'long thread-cpu-time 0))
      (foreign-ref 'long thread-cpu-time 8)))
 
-;;; ------------------------------------------------------------------
-;;; the pacer here
-
-;; How fast the pacer's margin fades, seconds, or 0: never; the default
-;; of its pacer-margin-fade setting. A Mac's fades in a minute, as its
-;; pacer was measured with (WindowServer). Elsewhere it stays: under Mutter
-;; a margin that fades sends a frame late now and then, finding out
-;; whether the compositor would take frames later again.
-(define platform-pacer-margin-fade (if (platform-mac?) 60 0))

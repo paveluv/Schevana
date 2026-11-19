@@ -157,8 +157,8 @@ asks for a frame.
 
 A tick is a frame turn: the windows that asked for their `'frame` get it,
 then each surface its own, then a frame is drawn if something asked for
-one. Ticks run only while one is wanted, on a grid a period apart: a
-refresh of the screen's by default.
+one. Ticks run only while one is wanted; with none wanted the world waits
+with no end, till input, mail or a timer wakes it.
 
 ```scheme
 (pacer-period)                             ; ns
@@ -167,51 +167,50 @@ refresh of the screen's by default.
 (pacer-rate! 30)                           ; 30 a second from now on
 (pacer-rate! 'screen)                      ; the screen's again
 (inspect-pacer)
+(inspect-pacer-rows)
 ```
 
-Past a period of work the world slows down: the next tick comes right
-after, none skipped. Processes run in the time left before the next
-tick's frame, at least 1 ms a step.
+The pacer (`src/core1/pacer.ss`) reads what every platform has. Each frame
+published leaves a row: when its tick began and the begin it was planned
+for, the refresh it aimed at, when it was published and core0 took it, how
+long the screen held core0 for it (an acquire it held, or a submit that
+took over a look), when its GPU work was first seen done, and what the
+screen reported (`inspect-pacer-rows` shows the rows as the pacer reads
+them). At each decision it reads the last sixteen again. The grid is the
+newest refresh reported, at the length core0's clock gives it; with no
+report, its own grid, a 512th short of the display mode's refresh, so it
+is never held back by a screen a little faster than it says. The work is
+the largest of the last eight rows', begin to GPU-done less the screen's
+waits; the slack two of core0's looks and the latest any of those ticks
+began after its plan.
 
-With a window, the screen sets the pace. Core0 presents frames on its own
-thread, holding at most the one it presents and one more, and no tick runs
-while the last frame published waits for core0 to take it, which it does
-as the screen frees an image. Between frames core0 looks every quarter
-ms while it awaits a frame's GPU work or the screen's report on it, and
-otherwise sits in SDL's own wait for events, which input ends at once,
-and a frame or a job by an event it pushes (`core0-wake!`). After a tick
-whose frame the screen holds, the next may come as soon as half a period
-later, once core0 has taken that frame, so each refresh gets a new frame,
-never one drawn on a clock that drifts against the screen's. A window's `'frame` is told `t`, when
-its frame should show: a refresh after the last one's, a few after the
-tick, so what moves by `t` moves as evenly as the screen shows frames.
-While the window is hidden or covered no frame is drawn; input, timers and
-processes go on.
+No tick begins while the newest frame's GPU work isn't seen done, eight
+refreshes at most: core0 wakes the world when it sees it done. Each frame
+on its way takes the first refresh a hold less the slack after its GPU
+work, one after the frame before it; the next tick aims at the refresh
+after that, and begins the hold, the work and the slack before it. A
+window's `'frame` is told `t`, the refresh it aims at: when its frame will
+show. Past a refresh of work the next tick begins as soon as the GPU work
+is done, aimed at the refresh it can still make; none is skipped. Processes
+run till the next tick's planned begin, at least 1 ms a step.
 
-Where the screen reports when the compositor latches a frame (Wayland's,
-the Mac's), a tick begins just in time instead, aimed at a latch, and at a
-later one than the tick before it, so the screen's queue never grows. It
-begins its lead before that latch: what frames took lately from their tick
-to core0's sending them, the screen's time left out (an acquire it held,
-or a submit that took over a look, and the wait for core0 held in the
-frame before's), and a margin. A frame that showed late though sent
-about the margin before its latch grows the margin by a step; one late
-though sent well before it was the compositor's, and teaches nothing,
-unless lateness keeps coming in a
-chain. A margin that reaches a refresh becomes the compositor's depth, a
-refresh more that it keeps frames (WindowServer keeps two). What frames
-whose GPU work was still going a refresh and an eighth after their send
-taught is the GPU's: a GPU slow to wake as an app opens, which ends a
-frame every other refresh for a quarter second and so taught three
-refreshes of depth, or an app too heavy for it, whose frames then queue so
-the GPU is never idle. Once 240 frames are judged with none so slow, the
-pacer learns afresh. On a Mac the margin fades over a minute; elsewhere
-it stays. The choices are settings, read live: `pacer-margin-start`,
-`pacer-margin-step`, `pacer-miss-own`, `pacer-lead-fade`,
-`pacer-margin-fade` and `frames-in-flight`. The Pacer Lab,
-`(pacer-lab)`, tries their values on Schevana itself while it's used,
-ten minutes each, and keeps how many frames came late with each, in
-`~/.schevana.d/pacer-lab.ss`.
+The hold, how long before a refresh a frame's GPU work must be seen done,
+is the one thing learned, from the screen's reports. The first frame shown
+gives it; one shown in time with less lead lowers it, never under the floor
+a descent leaves. A frame that missed its refresh though begun on plan, its
+GPU work done the hold before it, and its predecessor shown, is a clean
+miss: one alone is the compositor's, and two within the sixteen rows raise
+the hold a look over the lead that failed; another before any frame is in
+time, a refresh over, which owes a descent. Every three minutes, once eight
+frames in a row were in time and on plan, a descent tries the hold lower,
+one probe frame at a time a look under what it has proven, the frames
+around it at that. A probe in time proves a look lower, and the next frame
+probes; one that misses ends it, the hold two looks over the lead that
+failed, never over where the descent began, and the floor a look over it.
+A refresh of another length starts all of it over. Each verdict is in the
+trace with its frame. With no reports, nothing is learned, and an acquire
+the screen held leaves a refresh out of its own grid, where three frames
+are in flight.
 
 How a frame reaches the screen is `present-mode`, in Settings' Display tab
 or `(override! 'present-mode 'mailbox)`, among what the window offers
@@ -311,7 +310,10 @@ learns as SDL and the GPU start; what has run where is in
 In a checkout with a `.work` folder, core0 and core1 stamp their steps
 around each frame (take, acquire, submit, tick, draw, publish, collect) on
 rings of their own, with each event pump that held core0 past 2 ms, each
-collection and each change of present mode. Closing the window, Ctrl-C in
+collection and each change of present mode. A tick says the begin it was
+planned for, its aim, its `t` and the pacer's hold; each frame the pacer
+judges, its verdict (in time, late, a clean miss alone, a pair, a probe's
+miss); a wait, how long, in µs. Closing the window, Ctrl-C in
 the terminal, core1 going 5 s without a step but in its wait, or
 `(core0-trace-dump!)` writes the last two minutes or so, with the screen's
 reports, to `.work/traces/trace-<date>-<time>.txt`, saying why it was

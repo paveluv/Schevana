@@ -1366,22 +1366,22 @@
 ;;; changed, the atlas's new pieces, the jobs, the writes and the compute
 ;;; runs asked for since, the present mode, the frames in flight, and lists
 ;;; kept from earlier to draw on images first, (image . recording) each, the
-;;; recorder's copies.
+;;; recorder's copies; and whether core1 asks to be woken as it comes back.
 ;;; It comes back with whether it reached the screen.
 ;;; The same few records go back and forth, filled again for each frame: a
 ;;; frame allocates none. Each goes back, and waits to be filled again, on
 ;;; a chain by its own link (next), which whoever holds it sets.
 
 (define-record-type gpu-frame
-  (nongenerative schevana-gpu-frame-8)
+  (nongenerative schevana-gpu-frame-9)
   (fields (mutable root) (mutable number) (mutable table) (mutable table-n)
           (mutable pieces) (mutable jobs) (mutable writes) (mutable computes)
           (mutable mode) (mutable in-flight) (mutable earlier)
-          (mutable shown?) (mutable next)))
+          (mutable shown?) (mutable next) (mutable wake-back?)))
 
 ;; A frame to fill: core1 keeps those given back to fill again.
 (define (gpu-frame-make)
-  (make-gpu-frame #f 0 #f 0 '() '() #f '() #f 3 '() #f #f))
+  (make-gpu-frame #f 0 #f 0 '() '() #f '() #f 3 '() #f #f #f))
 
 ;; The number of the last frame core0 gave back: what it read of the
 ;; recorder's is free to write again once a later frame doesn't show it.
@@ -1435,19 +1435,20 @@
       (core0-trace! 2 (gpu-frame-number f))
       (present-taken!)
       (set! *gpu-booting* #f)
-      ;; taken: core1 may make the next (.work/gpu-design.md 9.12), with the
-      ;; input that came till now, not only till the last step's pump
+      ;; taken: the input that came till now goes with the frame core1
+      ;; makes next, not only that till the last step's pump. Core1 hears
+      ;; of it at the frame's GPU-done (present-done!), its pacer's gate.
       (core0-events-pumped!)
-      (core0-world-wake!)
       (gpu-frame-shown?-set! f (gpu-present! f))
       ;; the input that came while the acquire held core0, read before core1
       ;; hears the frame is back and may begin its next turn
       (core0-events-pumped!)
       (gpu-give-back! f)
       (core0-trace! 6 (gpu-frame-number f))
-      ;; given back, with what it read: core1 takes them at once, whether
-      ;; or not a frame follows
-      (core0-world-wake!))))
+      ;; core1 woken now only for a frame the window had no room for,
+      ;; which it asks again, or one whose collection waits for its send
+      (unless (and (gpu-frame-shown? f) (not (gpu-frame-wake-back? f)))
+        (core0-world-wake!)))))
 
 ;; Core1's jobs and writes, the lists kept from earlier on their images,
 ;; then the frame. => #t if the frame reached the screen; #f if the window

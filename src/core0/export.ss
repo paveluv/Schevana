@@ -10,6 +10,9 @@
     ;; Constants, and procedures of their arguments alone: safe anywhere.
     core0-app-id gpu-atlas-side gpu-usage-sampler gpu-usage-target
     core0-flag-names core0-event-name gpu-show-run? gpu-run-gone?
+    ;; how often core0 looks while it awaits something of a frame, ns: this
+    ;; platform's fact
+    core0-look-ns
     ;; The records the two share. Their procedures touch nothing else, so
     ;; what's safe is who holds the record: a thread writes only those it
     ;; holds, and a frame is the world's from gpu-frame-make, or
@@ -31,10 +34,11 @@
     gpu-frame-pieces-set! gpu-frame-jobs-set! gpu-frame-computes-set!
     gpu-frame-mode-set! gpu-frame-in-flight-set! gpu-frame-number
     gpu-frame-shown? gpu-frame-next gpu-frame-next-set!
+    gpu-frame-wake-back?-set!
     ;; What core0 says of itself, in variables it sets whole: another thread
     ;; reads each whole (Chez lets no thread see an object half made), but
     ;; not in step with the others, as ARM keeps no order between stores.
-    *gpu-facts* *core0-mode* *core0-platform*
+    *gpu-facts* *core0-mode* *core0-platform* *gpu-frames-in-flight*
     ;; The same, read through procedures: the window's facts as core0's
     ;; step last read them, made again whole when they change; what became
     ;; of each frame, by its report; and the events its steps put in the

@@ -267,7 +267,9 @@
   (set! *gpu-frame-last* f))
 
 ;; Core1's side: the frame filled, what it asked of the GPU since handed on
-;; with it; its writes "/recorder"'s to hand (rec-lend!). => the frame
+;; with it, and whether core1 would hear at once that core0 sent it
+;; (collector-waiting?); its writes "/recorder"'s to hand (rec-lend!). =>
+;; the frame
 (define (gpu-publish table table-n pieces mode in-flight)
   (let ([f (let ([f *gpu-frames-free*])
              (cond [f (set! *gpu-frames-free* (gpu-frame-next f)) f]
@@ -280,4 +282,5 @@
     (gpu-frame-pieces-set! f pieces)
     (gpu-frame-mode-set! f mode)
     (gpu-frame-in-flight-set! f in-flight)
+    (gpu-frame-wake-back?-set! f (collector-waiting?))
     f))

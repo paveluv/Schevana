@@ -1172,7 +1172,6 @@
           (rec-begin! *canvas-ratio*)
           (record-world!)
           (frame-number-set! (rec-present!))
-          (pacer-drew!)
           (set! *frame-publish-ns* (now-ns))
           (core0-trace! 24 *frame-number*)
           ;; its row first, for core0 may give it back at once
@@ -1186,17 +1185,16 @@
                             (flround (fl* 1000.0 *frame-ms*)))))])]))
 
 ;; The frames core0 gave back, oldest first, the chain they come on newest
-;; first: each told to the pacer, and marked in its row as having reached
-;; the screen or not; counted if it did, else one asked again. Then what
-;; core0 read back, handed to its then.
+;; first: each marked in its row as having reached the screen or not,
+;; counted if it did, else one asked again, and kept to fill again, so that
+;; the last sent is the newest. Then what core0 read back, handed to its
+;; then.
 (define (render-frames-back!)
   (let back ([f (gpu-frames-back!)])
     (when f
       (back (gpu-frame-next f))
       (let ([shown? (gpu-frame-shown? f)])
         (set! *frame-back* (gpu-frame-number f))
-        (pacer-frame-back! shown?)
-        (pacer-latch! (gpu-frame-number f))
         (frame-ring-set! (gpu-frame-number f) 5 (if shown? 1 2))
         (if shown?
             (set! *frames-drawn* (+ *frames-drawn* 1))
@@ -1215,8 +1213,9 @@
 ;; given back yet); its number (its report's, core0-frame-report), and when
 ;; the oldest input it shows came (now-ns; 0, none) by SDL's stamp; then
 ;; when its tick began, its draw began and it was published, and when that
-;; input came by core0's pump and by the compositor's time; the latch its
-;; tick aimed at (0, none), and when the pacer meant its tick to begin.
+;; input came by core0's pump and by the compositor's time; the refresh its
+;; tick aimed at (now-ns; 0, unpaced), and the begin its tick was planned
+;; for (now-ns; 0, begun at once): the rows the pacer reads.
 ;; Always kept: a few numbers a frame, for as many frames as the reports
 ;; keep.
 (define frame-ring-rows 2048)
@@ -1264,8 +1263,8 @@
     (fxvector-set! ring (+ at 10) *frame-publish-ns*)
     (fxvector-set! ring (+ at 11) *frame-input-pumped*)
     (fxvector-set! ring (+ at 12) *frame-input-wl*)
-    (fxvector-set! ring (+ at 13) *pacer-aimed*)
-    (fxvector-set! ring (+ at 14) *pacer-planned*)
+    (fxvector-set! ring (+ at 13) *pacer-aim*)
+    (fxvector-set! ring (+ at 14) *pacer-plan*)
     (frame-input-drop!)
     (fxvector-set! ring at 0)
     ;; the frame's, published: the recorder writes nothing now

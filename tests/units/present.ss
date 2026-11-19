@@ -157,8 +157,8 @@
                      (quotient p 4096))
                  (= (present-test-word (+ f 2) 10) (+ t (* 2 p) 5000000))
                  (= (present-test-word (+ f 3) 3) (+ t (* 3 p)))
-                 (= (pacer-refresh-seen (+ f 2))
-                    (present-test-word (+ f 2) 3)))))))
+                 ;; shown, at the clock's time, as the pacer reads it
+                 (= (core0-frame-report (+ f 2) 1) 1))))))
 
 (check "a stamp that runs more than a refresh late reads as a refresh \
         missed, so its report is held; the next frame's, which leaves it \

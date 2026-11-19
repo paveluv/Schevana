@@ -82,7 +82,7 @@ platform, as plain data, which the Pipeline draws.
 
 ```scheme
 (inspect-platform)                         ; the OS, CPU, Chez, the display
-(inspect-pacer)                            ; when frames are due
+(inspect-pacer)                            ; what the pacer keeps, learned
 (inspect-core0)                            ; core0's side: sizes, jobs, events
 (inspect-gpu-held)                         ; what the GPU holds
 ```

@@ -162,6 +162,11 @@ level above tests only what it adds, trusting the levels below.
   longer in an ordinary call. The crew's topic checks it at what it is.
 - No check compares two of the machine's clocks: the monotonic clock and
   raw drift apart with the time a machine is up, either way.
+- A check may fake core1's clock (`now-ns`) while core0 stamps its words
+  of a frame's row on its own: the pacer's sums take a core0 time only
+  from a core0 time (a frame's work: done less taken, and publish less
+  begin), so they hold; no new term may take a core1 time from a core0
+  one.
 
 ## Both Chez versions
 

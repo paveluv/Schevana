@@ -213,12 +213,14 @@
            ready)
           (loop))))))
 
-;; Give up the CPU for ms milliseconds (only inside a process).
+;; Give up the CPU for ms milliseconds (only inside a process). A timer
+;; ends the loop's wait for it: a still world waits with no end.
 (define (sleep-ms ms)
   (let ([p (current-proc)])
     (unless p (errorf 'sleep-ms "can only sleep inside a process (use spawn)"))
     (let ([until (+ (now-ms) ms)])
       (proc-wake-set! p until)
+      (after ms void)
       (let loop ()
         (engine-block)
         (when (< (now-ms) until) (loop))))))

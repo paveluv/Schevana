@@ -259,20 +259,21 @@
                                     (inspect-frame-at i 'publish))))]
     [else #f]))
 
-;; The refresh frame i was meant for: the one after the latch its tick aimed
-;; at; with no aim, the second after its tick began. #f with no tick.
+;; The refresh frame i was meant for: the one its tick aimed at; with no
+;; aim (an unpaced tick), the second after its tick began. #f with no tick.
 (define (inspect-frame-target g i)
   (let ([aimed (inspect-frame-ref i 13)])
     (if (and aimed (> aimed 0))
-        (+ 1 (inspect-refresh-of g aimed))
+        (inspect-refresh-of g aimed)
         (let ([tick (inspect-frame-at i 'tick)])
           (and tick (+ 2 (inspect-refresh-of g tick)))))))
 
-;; When the compositor took the frame shown at refresh k: in the refresh
-;; before, at the latch's phase, as the pacer learned it; or #f.
+;; Where the cutoff for refresh k lies as the pacer holds it: the hold
+;; before the refresh, by which a frame's GPU work must be seen done; or #f
+;; while the hold is not known.
 (define (inspect-refresh-latch g k)
-  (and *pacer-latch-phase*
-       (+ (inspect-refresh-time g (- k 1)) *pacer-latch-phase*)))
+  (let ([hold (pacer-state 'hold)])
+    (and (> hold 0) (- (inspect-refresh-time g k) hold))))
 
 ;; When the oldest input frame i shows came: by the compositor's own time,
 ;; else SDL's stamp, else core0's pump; #f with none.
@@ -1211,34 +1212,52 @@
       ;; the refresh's length said in place of the screen's (0, none)
       (refresh-said . ,(cdr (assq 'refresh-said state))))))
 
-;; The pacer: its period and its grid's next tick (ns), whether the screen
-;; paces it (frames back by vsync), and its t; the
-;; compositor's last latch seen and the lead before one (pacer-just-in-time),
-;; its margin, its counts (frames judged, late of its own, the
-;; compositor's), the trial holding its choices (the pacer lab's), the
-;; closest to its latch a frame that made its latch was sent lately, the
-;; newest late run's first frame and how many runs came in a chain, the
-;; frames judged since the last the GPU made late once such a frame taught
-;; it (#f, none), the first latch the next frame may take, the compositor's
-;; depth, and when the next tick may begin.
+;; The pacer (src/core1/pacer.ss): the refresh's length (ns), whether the
+;; platform states the display's rate or the length is core0's guess until a
+;; report gives one, its rate, the turns so far, how often core0 looks; and
+;; what the rule keeps between frames: t, the last turn's aim and plan, the
+;; hold and the floor under a closer call (ns; 0, none), the hold a descent
+;; has proven and its probe's aim (0, none), when the last descent began,
+;; whether the last raise was a look, the rows judged, and the begin the
+;; loop sleeps to (0, none).
 (define (inspect-pacer)
-  `((period . ,(pacer-period))
-    (due . ,*pacer-due*)
-    (shown . ,*pacer-shown?*)
-    (frame . ,*pacer-frame-ns*)
-    (latch . ,*pacer-latch*)
-    (lead . ,*pacer-lead*)
-    (margin . ,(pacer-margin (core0-frame-ns)))
-    (counts . ,(fxvector->list *pacer-counts*))
-    (trial . ,*pacer-trial*)
-    (made . ,*pacer-made*)
-    (late . ,*pacer-late-run*)
-    (chain . ,*pacer-late-chain*)
-    (gpu-taught . ,*pacer-gpu-taught*)
-    (floor . ,*pacer-floor*)
-    (depth . ,*pacer-depth*)
-    (aimed . ,*pacer-aimed*)
-    (start . ,(pacer-start))))
+  (let ([d (core0-display)])
+    `((period . ,(pacer-period))
+      (period-stated? . ,(and d (> (caddr d) 0) (> (cadddr d) 0)))
+      (rate . ,(pacer-rate))
+      (ticks . ,(pacer-ticks))
+      (look . ,core0-look-ns)
+      ,@(map (lambda (key) (cons key (pacer-state key)))
+             '(t aim plan hold floor proven probe probed soft? judged
+               waited)))))
+
+;; The last sixteen rows as the pacer reads them, oldest first: each its
+;; turn's begin, the begin planned (0, at once), the refresh aimed at, the
+;; publish, core0's take (0, still in the slot), how long the screen held
+;; core0 for it, its GPU work seen done (0, not yet), its kind (out, shown,
+;; dropped, or back: the window had no room), and the refresh that showed
+;; it and that refresh's length (0, none reported). Times are ns.
+(define (inspect-pacer-rows)
+  (let* ([n *frame-ring-n*] [lo (max 0 (- n 16))])
+    (map (lambda (k)
+           (let* ([i (+ lo k)]
+                  [seen (lambda (k) (or (inspect-frame-report i k) 0))])
+             `((b . ,(inspect-frame-ref i 8))
+               (plan . ,(inspect-frame-ref i 14))
+               (aim . ,(inspect-frame-ref i 13))
+               (p . ,(inspect-frame-ref i 10))
+               (taken . ,(seen 7))
+               (held . ,(- (seen 9) (seen 8)))
+               (done . ,(seen 6))
+               (kind . ,(if (eqv? (inspect-frame-ref i 5) 2)
+                            'back
+                            (case (seen 1)
+                              [(1) 'shown]
+                              [(2) 'dropped]
+                              [else 'out])))
+               (shown . ,(seen 3))
+               (refresh . ,(seen 4)))))
+         (iota (- n lo)))))
 
 ;;; ---- what shaders share
 

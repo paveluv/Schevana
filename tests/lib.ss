@@ -140,7 +140,7 @@
         (let loop ()
           (or (pred)
               (and (< (now-ms) until)
-                   (begin (schevana-step! 5) (loop))))))))
+                   (begin (schevana-step! 5000000) (loop))))))))
 
 (define (raises? thunk) (guard (c [#t #t]) (thunk) #f))
 

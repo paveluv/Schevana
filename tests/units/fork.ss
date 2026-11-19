@@ -33,14 +33,17 @@
               (equal? (saw 'read-then) '(0 1 4 9))
               (equal? (saw 'waited) '(0 1 4 9))))
   ;; by the frames' own t, core0's screen: how many refreshes a busy
-  ;; machine is late for is the bench's
+  ;; machine is late for is the bench's. Each frame's GPU work, done as
+  ;; core0 gives it back, wakes the world: frames don't wait out the
+  ;; pacer's gate, eight refreshes each.
   (check (format "frame turns follow core0's screen: a window that \
                   animates gets its frames, each one's t whole refreshes \
-                  after the last (~a frames, ~a uneven; ~a refreshes by \
-                  the machine's clock)"
+                  after the last, far more often than one in eight (~a \
+                  frames, ~a uneven; ~a refreshes by the machine's clock)"
                  (saw 'animated) (saw 'uneven) (saw 'refreshes))
          (and (saw 'animated) (> (saw 'animated) 30)
-              (= (saw 'uneven) 0)))
+              (= (saw 'uneven) 0)
+              (< (saw 'refreshes) (* 4 (saw 'animated)))))
   (check (format "a forked world's ticks add up: core1's waits, for input or \
                   for core0 to take its frame, are its own, so each tick's \
                   phases sum to its time (~a ticks, ~a not)"

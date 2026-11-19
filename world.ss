@@ -37,8 +37,6 @@
                   (schevana-option 'full-screen?)))
 (update-app-icon!)
 (load-user-init!)
-;; The pacer lab goes on if it was on (services/pacer-lab.ss).
-(pacer-lab-log-load!)
 (let ([w (screen-w)])
   (clock)
   (move-window! (find-window 'clock) (- w 270) 60)

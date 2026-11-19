@@ -91,20 +91,18 @@
     window-frame-soon! window-hover draw-window* *frame-ms* *frames-drawn*
     frame-ring-rows frame-ring-words *frame-ring* *frame-ring-n* screen-bytes
     screen-bytes-then
-    ;; src/core1/system.ss: the step, the pacer, timers, sources and reload
-    *timers* *input-step?* *pacer-due* *pacer-frame-ns* *pacer-shown?*
-    *pacer-latch* *pacer-lead* *pacer-counts* *pacer-aimed* *pacer-floor*
-    *pacer-latch-phase* *pacer-depth* *pacer-made* *pacer-late-run*
-    *pacer-late-chain* *pacer-gpu-taught* *pacer-between?* after post-core1!
-    pacer-busy-ms pacer-peak-ms! pacer-rate pacer-ticks pacer-period
-    pacer-start *pacer-trial* pacer-trial! pacer-margin schevana-run! quit!
-    schevana-end! uptime-ms
+    ;; src/core1/pacer.ss: the pacer's rate, turns, period and state
+    pacer-rate pacer-ticks pacer-period pacer-state
+    ;; src/core1/system.ss: the step, its books, timers, sources and reload
+    *timers* *input-step?* *pacer-between?* after post-core1! pacer-busy-ms
+    pacer-peak-ms! schevana-run! quit! schevana-end! uptime-ms
     load-user-init! user-directory schevana-boot! collector-declining?
     source-path source-files *source-texts* keep-source-text! load-file!
     load-user-folders! reload!
     ;; Given again: core0's (src/core0/export.ss), which Monitor, the
     ;; Pipeline and inspect read
     core0-app-id gpu-atlas-side core0-flag-names core0-event-name gpu-show-run?
+    core0-look-ns
     gpu-run-gone? shader shader-name shader-stage shader-coords shader-params
     shader-source shader-words gpu-list-id gpu-list-labels gpu-list-recorded
     gpu-list-took gpu-image-id gpu-image-w gpu-image-h gpu-image-levels

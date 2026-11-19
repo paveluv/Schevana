@@ -23,7 +23,7 @@
 ;; The steps' names, by code.
 (define core0-trace-names
   '#(#f step take acquire acquired submit back sleep woke pump shown
-     dropped gpu-done slow-pump event #f #f #f #f #f
+     dropped gpu-done slow-pump event #f aim frame-time hold verdict
      wait waited tick draw publish collect collected events gc gced
      mode))
 

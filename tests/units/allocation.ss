@@ -184,3 +184,74 @@
                                        (set! *gpu-frames-free* #f)))))))
 (check "core0's hold of a frame with no window allocates nothing"
        (= 0 (allocation-least 5 gpu-headless-hold!)))
+
+;;; The pacer's calls (src/core1/pacer.ss), on sixteen rows written as a
+;;; turn and core0 write them: fourteen frames of a flow, then two that
+;;; missed their refresh, done the hold before it, a pair. The loop's wait,
+;;; with a timer and without; a turn begun and one not; processes' share;
+;;; and the question, judging the rows and raising the hold, then planning.
+(let* ([r 10000000] [T 1000000000000] [ms 1000000] [first 7000001]
+       [row! (lambda (k aim done shown)
+               (let ([f (+ first k)] [b (- aim (quotient r 2))]
+                     [at (* frame-ring-words
+                            (modulo *frame-ring-n* frame-ring-rows))]
+                     [pa (present-at (+ first k))])
+                 (for-each (lambda (w v)
+                             (fxvector-set! *frame-ring* (+ at w) v))
+                           '(5 6 8 10 13 14)
+                           (list 0 f b (+ b 100000) aim b))
+                 (set! *frame-ring-n* (+ *frame-ring-n* 1))
+                 (for-each (lambda (w v)
+                             (fxvector-set! *present-ring* (+ pa w) v))
+                           '(1 3 4 6 7 8 9)
+                           (list 1 shown r done (+ b 200000) (+ b 200000)
+                                 (+ b 200000)))
+                 (fxvector-set! *present-ring* pa f)))])
+  (do ([k 0 (+ k 1)]) ((= k 14))
+    (let ([aim (+ T (* k r))]) (row! k aim (- aim (* 3 ms)) aim)))
+  (row! 14 (+ T (* 14 r)) (- (+ T (* 14 r)) (* 4 ms)) (+ T (* 15 r)))
+  (row! 15 (+ T (* 16 r)) (- (+ T (* 16 r)) (* 5 ms)) (+ T (* 17 r)))
+  (fluid-let ([*pacer-t* 0] [*pacer-hold* 0] [*pacer-floor* 0]
+              [*pacer-proven* 0] [*pacer-probe* 0] [*pacer-probed* T]
+              [*pacer-soft?* #f] [*pacer-waited* 0] [*pacer-aim* 0]
+              [*pacer-plan* 0] [*pacer-rate* 'screen] [*dirty* #f]
+              [*pacer-wanted?* #f] [*timers* '()]
+              [*pacer-judged* (- *frame-ring-n* 16)])
+    (let* ([lo (- *frame-ring-n* 16)] [now (+ T (* 18 r))]
+           [judging (allocation-least 20
+                      (lambda ()
+                        (set! *pacer-judged* lo)
+                        (set! *pacer-hold* (* 3 ms))
+                        (set! *pacer-soft?* #f)
+                        (pacer-decide! now)))]
+           [raised *pacer-hold*]
+           [planning (allocation-least 20
+                       (lambda ()
+                         (set! *pacer-wanted?* #t)
+                         (pacer-decide! now)))]
+           [begun (allocation-least 20
+                    (lambda ()
+                      (set! *pacer-wanted?* #t)
+                      (pacer-begin? (+ now r))))]
+           [not-begun (allocation-least 20
+                        (lambda ()
+                          (set! *pacer-wanted?* #t)
+                          (pacer-begin? (- now (* 5 r)))))]
+           [unpaced (allocation-least 20 (lambda () (pacer-begin? #f)))]
+           [share (allocation-least 20 pacer-procs-ms)]
+           [wait (allocation-on-clock
+                  (lambda () (allocation-least 20 pacer-wait-ns)))]
+           [wait-timer (fluid-let ([*timers* '()])
+                         (after 60000 void)
+                         (allocation-on-clock
+                          (lambda () (allocation-least 20 pacer-wait-ns))))])
+      (check (format "the pacer allocates nothing: judging rows with a pair \
+                      of misses (~a bytes; the hold raised to ~a), planning \
+                      (~a), a turn begun and not, and unpaced (~a ~a ~a), \
+                      processes' share (~a), the loop's wait without a timer \
+                      and with (~a ~a)"
+                     judging raised planning begun not-begun unpaced share
+                     wait wait-timer)
+             (and (= raised (+ (* 5 ms) core0-look-ns))
+                  (for-all zero? (list judging planning begun not-begun
+                                       unpaced share wait wait-timer)))))))

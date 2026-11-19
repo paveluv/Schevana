@@ -523,7 +523,7 @@
                    (gpu-frame-shown?-set! f #t)
                    f))
                '(901 902 903))]
-      [latched '()])
+      [marked '()])
   (for-each gpu-give-back! fs)
   (let* ([newest (gpu-frames-back!)]
          [chain (let walk ([f newest])
@@ -533,15 +533,14 @@
     (for-each gpu-give-back! fs)
     (fluid-let ([*gpu-frames-free* #f] [*gpu-frame-last* #f] [*frame-back* 0]
                 [*frames-drawn* 0]
-                [pacer-latch! (lambda (n) (set! latched (cons n latched)))]
-                [pacer-frame-back! (lambda (shown?) (void))]
-                [frame-ring-set! (lambda (n k v) (void))])
+                [frame-ring-set! (lambda (n k v)
+                                   (set! marked (cons (list n k v) marked)))])
       (render-frames-back!)
       (check "core0 gives frames back by their own link, the newest first; \
               core1 takes them oldest first, and keeps them by the link to \
               fill again"
              (and (equal? chain '(903 902 901)) (not none)
-                  (equal? (reverse latched) '(901 902 903))
+                  (equal? (reverse marked) '((901 5 1) (902 5 1) (903 5 1)))
                   (= *frame-back* 903) (= *frames-drawn* 3)
                   (eq? *gpu-frames-free* (caddr fs))
                   (eq? (gpu-frame-next (caddr fs)) (cadr fs))
