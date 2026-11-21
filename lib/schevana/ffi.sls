@@ -8,7 +8,7 @@
   (export
     load-first-library define-foreign define-foreign/collect-safe
     c-clock-gettime c-close c-string->string)
-  (import (chezscheme))
+  (import (chezscheme) (schevana base))
 
   (define (load-first-library names)
     (let loop ([ns names])
@@ -44,18 +44,20 @@
                                #'(type ...) #'(arg ...))]
                          [(ctype ...) (map c-type #'(type ...))]
                          [cret (c-type #'ret)])
-             #`(define name
-                 (let ([f (begin
-                            ffi-process   ; before any binding is made
-                            #,(if (is? #'how 'collect-safe)
-                                  #'(foreign-procedure __collect_safe cname
-                                                       (ctype ...) cret)
-                                  #'(foreign-procedure cname (ctype ...)
-                                                       cret)))])
-                   (lambda (arg ...)
-                     #,(if (is? #'ret 'bool)
-                           #'(not (fx= 0 (f conv ...)))
-                           #'(f conv ...)))))))])))
+             ;; the foreign procedure is made as the library loads, and
+             ;; so held as a made value: name carries nothing
+             #`(begin
+                 (define-made f
+                   (begin
+                     ffi-process   ; before any binding is made
+                     #,(if (is? #'how 'collect-safe)
+                           #'(foreign-procedure __collect_safe cname
+                                                (ctype ...) cret)
+                           #'(foreign-procedure cname (ctype ...) cret))))
+                 (define (name arg ...)
+                   #,(if (is? #'ret 'bool)
+                         #'(not (fx= 0 (f conv ...)))
+                         #'(f conv ...))))))])))
 
   (define-syntax define-foreign
     (syntax-rules () [(_ . spec) (define-foreign-as plain . spec)]))

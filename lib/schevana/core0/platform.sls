@@ -26,7 +26,7 @@
   ;; An entry of C's, or #f where this platform's libraries lack it.
   (define-syntax define-optional-foreign
     (syntax-rules ()
-      [(_ name form) (define name (guard (c [#t #f]) form))]))
+      [(_ name form) (define-made name (guard (c [#t #f]) form))]))
 
   ;; s in C's memory, kept for good.
   (define (platform-c-string s)
@@ -215,12 +215,12 @@
   ;;; pump without waiting. Its callbacks run with interrupts off, so that no
   ;;; engine's timer leaves through a C frame.
 
-  (define wayland-loaded?
+  (define-made wayland-loaded?
     (guard (c [#t #f]) (load-shared-object "libwayland-client.so.0") #t))
 
   (define-syntax define-wayland
     (syntax-rules ()
-      [(_ name form) (define name (and wayland-loaded? form))]))
+      [(_ name form) (define-made name (and wayland-loaded? form))]))
 
   (define-wayland wayland-marshal-1
     (foreign-procedure (__varargs_after 5) "wl_proxy_marshal_flags"
@@ -254,7 +254,7 @@
             [event-count int] [events void*]))
 
   ;; Eight null types, for messages whose arguments name no interface.
-  (define wayland-nulls
+  (define-made wayland-nulls
     (and wayland-loaded?
          (let ([p (foreign-alloc 64)])
            (do ([i 0 (+ i 8)]) ((= i 64)) (foreign-set! 'uptr p i 0))
@@ -285,14 +285,14 @@
       (ftype-set! wayland-interface (events) i (wayland-messages events))
       p))
 
-  (define wayland-feedback-interface
+  (define-made wayland-feedback-interface
     (and wayland-loaded?
          (wayland-interface-new "wp_presentation_feedback" 1 '()
            (list (list "sync_output" "o" wayland-nulls)
                  (list "presented" "uuuuuuu" wayland-nulls)
                  (list "discarded" "" wayland-nulls)))))
 
-  (define wayland-presentation-interface
+  (define-made wayland-presentation-interface
     (and wayland-loaded?
          (let ([types (foreign-alloc 16)])
            (foreign-set! 'uptr types 0 (foreign-entry "wl_surface_interface"))
@@ -321,7 +321,7 @@
   (define-syntax define-wayland-callback
     (syntax-rules ()
       [(_ name handler (type ...))
-       (define name
+       (define-made name
          (and wayland-loaded?
               (let ([code (foreign-callable handler (type ...) void)])
                 (lock-object code)
@@ -363,23 +363,6 @@
       (set! *wayland-used* clock))
     (uptr uptr unsigned-32))
 
-  ;; A report's time t, on now-ns's clock, its refresh as the screen says
-  ;; (ns; 0, none). A frame shows after it's sent, and its report comes after
-  ;; it showed, or up to a refresh before where a compositor foretells the
-  ;; time: a compositor whose times break that on the clock it says (GNOME's
-  ;; with NVIDIA's vblank stamps, on CLOCK_MONOTONIC_RAW, which runs behind
-  ;; the monotonic clock on one machine and ahead of it on another) is read
-  ;; on the first of Linux's clocks that fits.
-  (define (wayland-shown-ns frame t refresh)
-    (let ([low (- (fxvector-ref *present-ring* (fx+ (present-at frame) 2))
-                  1000000)])
-      (unless (platform-fits? t *wayland-used* low refresh)
-        (let ([clock (platform-fitting t *wayland-clock* low refresh)])
-          (when clock
-            (set! *wayland-used* clock)
-            (core0-platform-read!))))
-      (+ t (platform-clock-offset *wayland-used*))))
-
   ;; Whether time t on clock falls, on now-ns's, from low to ahead ns after
   ;; now; the first of said and Linux's clocks on which it does, or #f. Now
   ;; is read after the clock's offset: a time gone by never reads as one to
@@ -396,6 +379,23 @@
           [(platform-fits? t 7 low ahead) 7]
           [(platform-fits? t 0 low ahead) 0]
           [else #f]))
+
+  ;; A report's time t, on now-ns's clock, its refresh as the screen says
+  ;; (ns; 0, none). A frame shows after it's sent, and its report comes after
+  ;; it showed, or up to a refresh before where a compositor foretells the
+  ;; time: a compositor whose times break that on the clock it says (GNOME's
+  ;; with NVIDIA's vblank stamps, on CLOCK_MONOTONIC_RAW, which runs behind
+  ;; the monotonic clock on one machine and ahead of it on another) is read
+  ;; on the first of Linux's clocks that fits.
+  (define (wayland-shown-ns frame t refresh)
+    (let ([low (- (fxvector-ref *present-ring* (fx+ (present-at frame) 2))
+                  1000000)])
+      (unless (platform-fits? t *wayland-used* low refresh)
+        (let ([clock (platform-fitting t *wayland-clock* low refresh)])
+          (when clock
+            (set! *wayland-used* clock)
+            (core0-platform-read!))))
+      (+ t (platform-clock-offset *wayland-used*))))
 
   ;; An input's time, its event's ms on the compositor's clock (which wraps
   ;; at 32 bits), as core0 reads the event at now-ns at: on the clock under
@@ -484,17 +484,18 @@
                      entries (iota (length entries)))
            p)))
 
-  (define wayland-feedback-listener
+  (define-made wayland-feedback-listener
     (wayland-listener wayland-output-code wayland-shown-code
                       wayland-dropped-code))
-  (define wayland-presentation-listener (wayland-listener wayland-clock-code))
-  (define wayland-registry-listener
+  (define-made wayland-presentation-listener
+    (wayland-listener wayland-clock-code))
+  (define-made wayland-registry-listener
     (wayland-listener wayland-global-code wayland-global-gone-code))
-  (define wayland-seat-listener (wayland-listener wayland-seat-code))
-  (define wayland-pointer-listener
+  (define-made wayland-seat-listener (wayland-listener wayland-seat-code))
+  (define-made wayland-pointer-listener
     (wayland-listener wayland-enter-code wayland-leave-code wayland-motion-code
                       wayland-button-code wayland-axis-code))
-  (define wayland-keyboard-listener
+  (define-made wayland-keyboard-listener
     (wayland-listener wayland-keymap-code wayland-keys-code wayland-leave-code
                       wayland-key-code wayland-modifiers-code))
 
@@ -543,7 +544,7 @@
   ;;; core1's ticks that woke late sent frames past their latch. So core1
   ;;; asks for core0's class. Elsewhere, nothing yet.
 
-  (define mac-system-loaded?
+  (define-made mac-system-loaded?
     (and (platform-mac?)
          (guard (c [#t #f])
            (load-shared-object "/usr/lib/libSystem.B.dylib")
@@ -578,7 +579,7 @@
   ;;; for the frames it sent. Keeping the drawables to read them later would
   ;;; keep them from the layer's pool, which holds three.
 
-  (define mac-objc-loaded?
+  (define-made mac-objc-loaded?
     (and (platform-mac?)
          (guard (c [#t #f])
            (load-shared-object "/usr/lib/libobjc.A.dylib")
@@ -586,7 +587,7 @@
 
   (define-syntax define-objc
     (syntax-rules ()
-      [(_ name form) (define name (and mac-objc-loaded? form))]))
+      [(_ name form) (define-made name (and mac-objc-loaded? form))]))
 
   (define-objc objc-class (foreign-procedure "objc_getClass" (string) uptr))
   (define-objc objc-selector
@@ -641,7 +642,7 @@
 
   ;; Collect-safe: Chez makes the thread of Apple's that calls it one of its
   ;; own for the call.
-  (define mac-handler-code
+  (define-made mac-handler-code
     (and mac-objc-loaded?
          (let ([code (foreign-callable __collect_safe
                        (lambda (block drawable) (mac-presented! drawable))
@@ -651,7 +652,7 @@
 
   ;; The handler as a block: a global one (flag 1 << 28), which copying and
   ;; releasing leave as it is, with its signature (1 << 30). Never freed.
-  (define mac-handler-block
+  (define-made mac-handler-block
     (and mac-objc-loaded?
          (let ([b (foreign-alloc 32)] [d (foreign-alloc 24)])
            (foreign-set! 'unsigned-64 d 0 0)
@@ -673,7 +674,7 @@
 
   ;; nextDrawable, as core0's class has it: the layer's own, and the drawable
   ;; it returns given our handler.
-  (define mac-next-code
+  (define-made mac-next-code
     (and mac-objc-loaded?
          (let ([code (foreign-callable __collect_safe
                        (lambda (layer cmd)
@@ -744,18 +745,6 @@
         (fxvector-set! *mac-waiting* (fx+ at 1) *mac-drawable*))
       (set! *mac-drawable* -1)))
 
-  ;; The reports the handlers wrote since the last look.
-  (define (mac-pump!)
-    (let ([w *mac-waiting*] [s *mac-shown*])
-      (do ([i 0 (fx+ i 2)]) ((fx= i (fx* 2 mac-waiting-rows)))
-        (let ([frame (fxvector-ref w i)] [id (fxvector-ref w (fx+ i 1))])
-          (unless (fx< frame 0)
-            (let ([at (fx* 2 (fxmodulo id mac-rows))])
-              (when (fx= (fxvector-ref s at) (fx+ id 1))
-                (memory-order-acquire)
-                (mac-reported! frame (fxvector-ref s (fx+ at 1)))
-                (fxvector-set! w i -1))))))))
-
   ;; Frame's word from Metal: t, when it was shown in Apple's host time, or 0
   ;; for never. A time is taken on now-ns's clock when its frame shows after
   ;; it was sent, and within a second; else the report says nothing. Metal
@@ -769,4 +758,16 @@
               [sent (fxvector-ref *present-ring* (fx+ (present-at frame) 2))])
           (when (<= (- sent 1000000) shown (+ sent 1000000000))
             (present-reported! frame 1 shown 0)
-            (core0-trace! 10 frame))))))
+            (core0-trace! 10 frame)))))
+
+  ;; The reports the handlers wrote since the last look.
+  (define (mac-pump!)
+    (let ([w *mac-waiting*] [s *mac-shown*])
+      (do ([i 0 (fx+ i 2)]) ((fx= i (fx* 2 mac-waiting-rows)))
+        (let ([frame (fxvector-ref w i)] [id (fxvector-ref w (fx+ i 1))])
+          (unless (fx< frame 0)
+            (let ([at (fx* 2 (fxmodulo id mac-rows))])
+              (when (fx= (fxvector-ref s at) (fx+ id 1))
+                (memory-order-acquire)
+                (mac-reported! frame (fxvector-ref s (fx+ at 1)))
+                (fxvector-set! w i -1)))))))))

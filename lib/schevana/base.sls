@@ -4,7 +4,7 @@
 
 (library (schevana base)
   (export
-    at-load define-state define-view define-hook set-hook!
+    at-load define-state define-view define-made define-hook set-hook!
     clamp string-split string-join string-prefix? string-suffix? filter-map
     string-contains-ci? plist-ref plist-keys condition->string list-index
     registry-add
@@ -29,25 +29,28 @@
   ;; must hold, so that a thunk which only calls such a procedure is
   ;; allocated each time it is made. $top-level-value and
   ;; $set-top-level-value! are Chez's internals, the two its expander
-  ;; writes for every variable of the top level.
+  ;; writes for every variable of the top level. Each use names
+  ;; state-made too, a variable of the library's, where it is never
+  ;; reached: Chez runs a library only for code that names a variable of
+  ;; it, and code that used only its states would find them unbound. The
+  ;; optimizer drops the branch.
   (define-syntax define-state
     (lambda (x)
       (syntax-case x ()
         [(_ name init)
-         (with-syntax ([g (datum->syntax #'name (gensym "state"))])
+         (with-syntax ([g (datum->syntax #'name (gensym "state"))]
+                       [get #'($primitive $top-level-value)]
+                       [put #'($primitive $set-top-level-value!)])
            #'(begin
-               (define state-made
-                 (($primitive $set-top-level-value!) 'g init))
+               (define state-made (put 'g init))
                (define-syntax name
                  (make-variable-transformer
                   (lambda (x)
                     (syntax-case x (set!)
-                      [(set! _ v)
-                       #'(($primitive $set-top-level-value!) 'g v)]
-                      [id (identifier? #'id)
-                       #'(($primitive $top-level-value) 'g)]
+                      [(set! _ v) #'(if #f state-made (put 'g v))]
+                      [id (identifier? #'id) #'(if #f state-made (get 'g))]
                       [(_ . rest)
-                       #'((($primitive $top-level-value) 'g) . rest)]))))))])))
+                       #'(if #f state-made ((get 'g) . rest))]))))))])))
 
   ;; (define-view name state): state under another name, to read and never
   ;; to set: what a library gives on of a state it imports. A set! of it
@@ -63,6 +66,18 @@
                (syntax-error #'n "attempt to assign read-only variable")]
               [id (identifier? #'id) #'state]
               [(_ . rest) #'(state . rest)]))))]))
+
+  ;; (define-made name init): a value made as the library loads, read and
+  ;; never set: a buffer, a table, a foreign procedure, a fact found out. A
+  ;; state under a view, not a definition: a library's own variable is held
+  ;; by every procedure that reads it, and by every procedure that calls
+  ;; one of those, so that a closure made at run time which only calls one
+  ;; carries it, and is allocated where the top level's was not. With none,
+  ;; a library's procedures carry nothing (tests/units/allocation.ss).
+  (define-syntax define-made
+    (syntax-rules ()
+      [(_ name init)
+       (begin (define-state made init) (define-view name made))]))
 
   ;; (define-hook (name . formals) body ...), or (define-hook name
   ;; procedure): a procedure that may be replaced, under its own name. The

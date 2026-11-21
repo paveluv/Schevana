@@ -49,10 +49,10 @@
   ;;; and which back end this machine speaks.
 
   ;; This machine's back end: a Mac has Metal, everything else Vulkan.
-  (define shader-target (if (platform-mac?) 'msl 'spirv))
+  (define-made shader-target (if (platform-mac?) 'msl 'spirv))
 
   ;; What a shader's entry is called: main is no function's name in MSL.
-  (define shader-entry (if (eq? shader-target 'msl) "main0" "main"))
+  (define-made shader-entry (if (eq? shader-target 'msl) "main0" "main"))
 
   ;; A compute shader's group, across: a dispatch counts in these.
   (define shader-group-x 64)
@@ -98,7 +98,7 @@
   ;; What shaders share, by name. A constant is one definition for shaders
   ;; and Scheme alike, so that what writes a number and what reads it can't
   ;; disagree.
-  (define *shader-constants* (make-eq-hashtable))
+  (define-made *shader-constants* (make-eq-hashtable))
   (define-syntax define-shader-constant
     (syntax-rules ()
       [(_ name value)
@@ -109,7 +109,7 @@
   ;; A set of local functions, which a shader takes with
   ;; (use-shader-helpers name) where a define could go. They see what's in scope
   ;; there, and what isn't called costs nothing.
-  (define *shader-helpers* (make-eq-hashtable))
+  (define-made *shader-helpers* (make-eq-hashtable))
   (define-syntax define-shader-helpers
     (syntax-rules ()
       [(_ name form ...)
@@ -122,7 +122,7 @@
   ;; In a shader, (glyph-row-v row) reads that word through the reader, a
   ;; buffer or a function in scope there; with no row, the reader takes the
   ;; offset alone.
-  (define *shader-fields* (make-eq-hashtable))
+  (define-made *shader-fields* (make-eq-hashtable))
   (define-syntax define-shader-layout
     (lambda (x)
       (syntax-case x ()

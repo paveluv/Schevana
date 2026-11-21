@@ -91,7 +91,7 @@ before it:
   updates `docs/PLATFORMS.md`: where it ran, where it should work, what
   happens without it. Monitor's Platform tab shows it all, and copies a
   run as a row of it.
-- **The core has a budget**, 37,778 tokens (atoms as read; comments,
+- **The core has a budget**, 37,802 tokens (atoms as read; comments,
   whitespace and names' lengths are free; the `export.ss` files, which
   declare, are left out), in `tests/sources.ss`. Don't join lines or
   shorten names to fit it. Code the core doesn't need moves out to the
@@ -152,6 +152,13 @@ before it:
   namespace's alone, which a person asks for at a REPL or in Environments
   (`tests/sources.ss`). An environment forks only the kinds its own
   allows (`env-forks`).
+- **S7. Libraries.** What a library of the core's makes as it loads is
+  kept in a state (`define-state`, when it is set) or a made value
+  (`define-made`, when it never is: a buffer, a table, a foreign
+  procedure, a fact found out). A plain definition there is a procedure
+  or a literal, so no procedure it defines carries anything, and a
+  closure that calls one costs what it did at the top level
+  (`tests/units/allocation.ss`).
 
 ## Names
 

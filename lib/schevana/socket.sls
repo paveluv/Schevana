@@ -28,17 +28,18 @@
   (define-ftype socket-sockaddr
     (struct [family unsigned-16] [path (array 104 unsigned-8)]))
   (define-ftype socket-pollfd (struct [fd int] [events short] [revents short]))
-  (define *socket-memory*
+  (define-made *socket-memory*
     (foreign-alloc (+ (ftype-sizeof socket-sockaddr)
                       (ftype-sizeof socket-pollfd))))
-  (define socket-sockaddr* (make-ftype-pointer socket-sockaddr *socket-memory*))
-  (define socket-pollfd*
+  (define-made socket-sockaddr*
+    (make-ftype-pointer socket-sockaddr *socket-memory*))
+  (define-made socket-pollfd*
     (make-ftype-pointer socket-pollfd
                         (+ *socket-memory*
                            (ftype-sizeof socket-sockaddr))))
   ;; a write's most at once: poll's "writable" means this much goes unblocked
   (define socket-chunk 2048)
-  (define *socket-chunk* (make-bytevector socket-chunk))
+  (define-made *socket-chunk* (make-bytevector socket-chunk))
 
   ;; The address of path, in the memory above. => its length
   (define (socket-address! path)

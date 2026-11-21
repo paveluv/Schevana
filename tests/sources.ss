@@ -128,8 +128,8 @@
       (let ([head (cadr form)])
         (case (car form)
           [(begin) (apply append (map defined (cdr form)))]
-          [(define defvar define-hook define-state define-syntax define-foreign
-            define-foreign/collect-safe define-worklet)
+          [(define defvar define-hook define-state define-made define-syntax
+            define-foreign define-foreign/collect-safe define-worklet)
            (names 'name (list (if (pair? head) (car head) head)))]
           [(define-app)
            (list (cons 'name (car head)) (cons 'app (car head)))]
@@ -155,11 +155,11 @@
 (define defined-twice
   '(((name . now-ns) "core0's clock and core1's, each in its own \
                       environment, so a test fakes core1's alone")
-    ((name . define-hook) "a library's keeps the procedure in a box; the \
-                           top level's, where any procedure may be \
+    ((name . define-hook) "a library's keeps the procedure as a state; \
+                           the top level's, where any procedure may be \
                            replaced, is a definition like another")
-    ((name . define-state) "a library's keeps the value in a box; the top \
-                            level's is a definition")))
+    ((name . define-state) "a library's keeps the value in a global of \
+                            Chez's; the top level's is a definition")))
 
 (define world-files
   (append library-files core0-files recorder-files (source-files)
@@ -208,7 +208,7 @@
 ;; the libraries they import (lib/schevana/). What declares is left out,
 ;; sized by what's given, each a reviewed change: the export.ss files, a
 ;; library's exports and imports (file-forms), a file's imports.
-(define src-budget 37778)
+(define src-budget 37802)
 
 ;; The tokens of a datum as read; a list's end is none.
 (define (tokens x)

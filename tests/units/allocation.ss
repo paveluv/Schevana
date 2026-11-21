@@ -148,3 +148,53 @@
              (fluid-let ([now-ms (lambda () (expt 10 15))])
                (run-timers!)))
            (and later (= errors 1)))))
+
+;;; A library's procedures carry nothing. A variable of a library's own is
+;;; held by every procedure that reads it, and by every procedure that
+;;; calls one of those, so that a closure made at run time which only calls
+;;; one carries it, and is allocated where the top level's, which named a
+;;; global, was not. So what a library makes as it loads is a state or a
+;;; made value (define-state, define-made: lib/schevana/base.sls), and a
+;;; procedure it defines is no closure at all. Asked of Chez's inspector,
+;;; of each procedure a library of the core's defines and exports; what a
+;;; state, a made value or a hook holds is its own.
+(let ()
+  ;; a library's file, read: (library name (export ...) (import ...) . body)
+  (define (library-form file)
+    (call-with-input-file (string-append *schevana-root* "/" file) read))
+  ;; the names its body defines as procedures
+  (define (procedures-defined body)
+    (filter-map
+     (lambda (x)
+       (and (pair? x) (pair? (cdr x))
+            (case (car x)
+              [(define)
+               (cond [(pair? (cadr x)) (caadr x)]
+                     [(and (pair? (cddr x)) (pair? (caddr x))
+                           (memq (car (caddr x)) '(lambda case-lambda)))
+                      (cadr x)]
+                     [else #f])]
+              [(define-foreign define-foreign/collect-safe) (cadr x)]
+              [else #f])))
+     body))
+  (define (carries p) ((inspect/object p) 'length))
+  (check "no procedure a library of the core's defines carries anything"
+         (let ([found
+                (apply
+                 append
+                 (map (lambda (file)
+                        (let* ([form (library-form file)]
+                               [name (cadr form)]
+                               [exported (library-exports name)]
+                               [e (environment name)])
+                          (filter-map
+                           (lambda (p)
+                             (and (memq p exported)
+                                  (let ([v (eval p e)])
+                                    (and (procedure? v) (> (carries v) 0)
+                                         (format "~s: ~a carries ~a" name p
+                                                 (carries v))))))
+                           (procedures-defined (cddddr form)))))
+                      (top-level-value '*schevana-libraries* core0-env)))])
+           (for-each (lambda (f) (printf "  ~a\n" f)) found)
+           (null? found))))
