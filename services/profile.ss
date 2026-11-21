@@ -1279,4 +1279,4 @@
 ;; Loading this file (at boot, or in a reload) sets the hooks as the flag
 ;; says, the spans open dropped.
 (profile-on! *profile-on?*)
-(set! *screen-event-seen* (lambda (type) (profile-core0-event! type)))
+(set-hook! (screen-event-seen! type) (profile-core0-event! type))

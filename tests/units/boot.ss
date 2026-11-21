@@ -65,14 +65,14 @@
               (not (named? 'gpu-publish!))))
   (check "a hook is settable from \"/\", reaching the core's variable, \
           but only with what the core calls"
-         (let ([real (top-level-value '*window-gone* core1-env)]
+         (let ([real (top-level-value 'window-gone! core1-env)]
                [mine (lambda (win) 'gone)])
-           (and (raises? (lambda () (in-world '(set! *window-gone* 5))))
-                (eq? (top-level-value '*window-gone* core1-env) real)
-                (eq? (in-world `(fluid-let ([*window-gone* ',mine])
-                                  *window-gone*))
+           (and (raises? (lambda () (in-world '(set! window-gone! 5))))
+                (eq? (top-level-value 'window-gone! core1-env) real)
+                (eq? (in-world `(fluid-let ([window-gone! ',mine])
+                                  window-gone!))
                      mine)
-                (eq? (top-level-value '*window-gone* core1-env) real)))))
+                (eq? (top-level-value 'window-gone! core1-env) real)))))
 
 (check "an export list names only the chain's environments, and a name \
         that isn't there to give stops the install"

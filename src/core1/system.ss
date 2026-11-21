@@ -38,13 +38,13 @@
 (define (inject! . events)
   (set! *injected* (append *injected* events)))
 
-;; What an event goes to: the windows and the surfaces
-;; (src/core1/wm.ss sets this); till then nothing takes it. Quitting is
+;; An event of the screen's, to the windows and the surfaces
+;; (src/core1/wm.ss sets it); till then nothing takes it. Quitting is
 ;; the loop's own.
-(defvar *loop-event* (lambda (ev) (void)))
+(define-hook (wm-event! ev) (void))
 
 (define (handle-event! ev)
-  (if (eq? (car ev) 'quit) (quit!) (*loop-event* ev)))
+  (if (eq? (car ev) 'quit) (quit!) (wm-event! ev)))
 
 ;; A reload that failed or was killed: the world goes on as far as it got.
 (define (reload-ended! msg)
@@ -396,14 +396,14 @@
   (load path))
 
 ;; Loads an app's file (one in an apps folder, the tree's or the user's):
-;; into the world, until services/grant.ss sets this hook to give each
-;; app a sandbox of its own.
-(defvar *app-loader* (lambda (path) (load-file! path)))
+;; into the world, until services/grant.ss sets it to give each app a
+;; sandbox of its own.
+(define-hook (app-load! path) (load-file! path))
 
 (define (load-source f)
   (let ([path (source-path f)])
     (if (equal? (path-last (path-parent path)) "apps")
-        (*app-loader* path)
+        (app-load! path)
         (load-file! path))))
 
 ;; Loads files into the world (from a private REPL too), or into env

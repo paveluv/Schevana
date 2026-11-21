@@ -5,7 +5,8 @@
 (library (schevana theme)
   (export)
   (import (chezscheme) (schevana layer) (schevana base) (schevana theme-table)
-          (schevana fonts) (schevana draw))
+          (schevana processes) (schevana fonts) (schevana draw)
+          (schevana screen))
 
   (include-sources "src/core1/theme.ss")
 
@@ -14,14 +15,14 @@
 
   (define-exports theme-exports
     (export (world)
-      *theme-version* (settable *theme-saver*) *style-name* *style-changes*
+      *theme-version* (settable theme-save!) *style-name* *style-changes*
       *theme-overrides* *scale-setting* default-theme color-keys
       common-options theme-default *palettes* define-palette palettes
       palette-title palette-colors style style-name style-title style-settings
       *styles* define-style find-style styles current-style define-part
       color-default! theme-default! style-theme with-style with-place
       style-changes-of style-chain chain-ref honored? resolve-theme
-      (settable *theme-change-seen*) theme-font-rule chrome-height
-      title-height frame-over* change-layers! theme-layers-set! set-style!
-      set-theme! reset-style! override! theme-overrides set-scale!
-      set-palette! reset-theme!)))
+      wm-chrome-changed! theme-font-rule chrome-height title-height
+      frame-over* change-layers! theme-layers-set! set-style! set-theme!
+      reset-style! override! theme-overrides set-scale! set-palette!
+      reset-theme!)))

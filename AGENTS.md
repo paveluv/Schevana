@@ -64,8 +64,8 @@ before it:
   `tests/sources.ss` checks that no layer names another's beyond it.
 - **The core never depends on a later layer.** It reaches them only
   through registries, parts and settings they fill, and hooks they set:
-  core1's `settable` exports (`*profile-span*`, `*theme-saver*`,
-  `*window-gone*`, `*app-loader*`, ...).
+  core1's `settable` exports (`*profile-span*`, `theme-save!`,
+  `window-gone!`, `app-load!`, ...).
 - **Core0 sits below the core.** `src/core0/` names nothing of the core
   above it but what it boots it by, and only it names SDL: the clock and
   the CPU count are core0's, which it gives core1. What still crosses is
@@ -90,7 +90,7 @@ before it:
   updates `docs/PLATFORMS.md`: where it ran, where it should work, what
   happens without it. Monitor's Platform tab shows it all, and copies a
   run as a row of it.
-- **The core has a budget**, 37,670 tokens (atoms as read; comments,
+- **The core has a budget**, 37,778 tokens (atoms as read; comments,
   whitespace and names' lengths are free; the `export.ss` files, which
   declare, are left out), in `tests/sources.ss`. Don't join lines or
   shorten names to fit it. Code the core doesn't need moves out to the
@@ -140,7 +140,11 @@ before it:
   and a vat's results come back to core1 the same way. Don't hand a worker
   world code by other means (`fork-thread`).
 - **S5. Names.** A global is earmuffed and carries its owner's prefix
-  (`*status-segments*`, `*repl-inputs*`).
+  (`*status-segments*`, `*repl-inputs*`). A hook is no state: it is a
+  procedure that may be replaced, defined with `define-hook` and named
+  as a procedure is, with a `!` when it changes state (`window-gone!`,
+  `record-world!`). The file that has what it does sets it
+  (`set-hook!`).
 - **S6. Environments.** Code that makes an environment shares it a list
   of names (`env-share!`, `env-fork`'s `'share`), each read-only, or
   through a setter that may refuse. Every name of the world's is a world

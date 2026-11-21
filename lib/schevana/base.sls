@@ -4,7 +4,7 @@
 
 (library (schevana base)
   (export
-    at-load
+    at-load define-state define-view define-hook set-hook!
     clamp string-split string-join string-prefix? string-suffix? filter-map
     string-contains-ci? plist-ref plist-keys condition->string list-index
     registry-add
@@ -18,6 +18,69 @@
   (define-syntax at-load
     (syntax-rules ()
       [(_ form ...) (define at-load-done (begin form ...))]))
+
+  ;; (define-state name init): a variable a library may export, to be read
+  ;; and set by those that import it. Chez exports no variable that is
+  ;; assigned, so the value is a global of Chez's own, under a symbol
+  ;; nobody can type and that says nothing of what it holds, and name
+  ;; reads it, or sets it under set! (and so under fluid-let). A global,
+  ;; not a box: Chez reads it from the symbol itself, one load, where a
+  ;; box would be a variable of the library that every closure reading it
+  ;; must hold, so that a thunk which only calls such a procedure is
+  ;; allocated each time it is made. $top-level-value and
+  ;; $set-top-level-value! are Chez's internals, the two its expander
+  ;; writes for every variable of the top level.
+  (define-syntax define-state
+    (lambda (x)
+      (syntax-case x ()
+        [(_ name init)
+         (with-syntax ([g (datum->syntax #'name (gensym "state"))])
+           #'(begin
+               (define state-made
+                 (($primitive $set-top-level-value!) 'g init))
+               (define-syntax name
+                 (make-variable-transformer
+                  (lambda (x)
+                    (syntax-case x (set!)
+                      [(set! _ v)
+                       #'(($primitive $set-top-level-value!) 'g v)]
+                      [id (identifier? #'id)
+                       #'(($primitive $top-level-value) 'g)]
+                      [(_ . rest)
+                       #'((($primitive $top-level-value) 'g) . rest)]))))))])))
+
+  ;; (define-view name state): state under another name, to read and never
+  ;; to set: what a library gives on of a state it imports. A set! of it
+  ;; is refused as it expands, in the words Chez uses for an import's.
+  (define-syntax define-view
+    (syntax-rules ()
+      [(_ name state)
+       (define-syntax name
+         (make-variable-transformer
+          (lambda (x)
+            (syntax-case x (set!)
+              [(set! n . _)
+               (syntax-error #'n "attempt to assign read-only variable")]
+              [id (identifier? #'id) #'state]
+              [(_ . rest) #'(state . rest)]))))]))
+
+  ;; (define-hook (name . formals) body ...), or (define-hook name
+  ;; procedure): a procedure that may be replaced, under its own name. The
+  ;; piece that has what it does sets it (set-hook!), where the one that
+  ;; calls it sits below; a test puts its own there for a while. Kept as
+  ;; a state is: called by its name, set by set!.
+  (define-syntax define-hook
+    (syntax-rules ()
+      [(_ (name . formals) body ...)
+       (define-state name (lambda formals body ...))]
+      [(_ name procedure) (define-state name procedure)]))
+
+  ;; (set-hook! (name . formals) body ...): what the hook name does, from
+  ;; here on. A definition, so it stands among a library's.
+  (define-syntax set-hook!
+    (syntax-rules ()
+      [(_ (name . formals) body ...)
+       (at-load (set! name (lambda formals body ...)))]))
 
   (define (clamp x lo hi) (max lo (min hi x)))
 

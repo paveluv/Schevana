@@ -56,10 +56,10 @@
 
 (define game-headless? (member "--headless" (command-line-arguments)))
 
-(set! *frame-drawing* game-draw)
-(set! *loop-event* game-event)
+(set! record-world! game-draw)
+(set! wm-event! game-event)
 ;; a frame after every frame: the rings spread
-(set! *pacer-turn* (lambda () (unless game-headless? (request-frame!))))
+(set! wm-tick! (lambda () (unless game-headless? (request-frame!))))
 
 (loop-main (if game-headless? 'headless 'sdl) 640 400 #f
   (lambda ()

@@ -17,9 +17,9 @@
 ;;; Anywhere a color is expected you may pass a theme key symbol instead.
 
 (defvar *theme-version* 0)
-;; Keeps a change to the layers: void, or what services/theme-file.ss sets
-;; (the file saved soon after).
-(defvar *theme-saver* void)
+;; Keeps a change to the layers: services/theme-file.ss sets it (the
+;; file saved soon after); till then nothing.
+(define-hook (theme-save!) (void))
 
 (defvar *style-name* 'mac)   ; the chosen style's name
 ;; ((style key value ...) ...): yours, per style
@@ -336,16 +336,13 @@
 (define (compute-rules! t)
   (fluid-let ([*theme* t]) (vector-for-each theme (hashtable-keys t))))
 
-;; The canvas at another scale: every rule is computed again.
-(at-load (set! *canvas-rescaled* (lambda () (theme-changed!))))
+;; A change not only of colors changes the chrome: the windows hear of
+;; their new frames (src/core1/wm.ss sets it); till then nothing.
+(define-hook (wm-chrome-changed!) (void))
 
-;; Told of every change, and whether the scale changed, and the chrome (a
-;; change not only of colors): what lays the screen out and draws it again
-;; (src/core1/system.ss sets this); till then nobody.
-(defvar *theme-change-seen* (lambda (scale? chrome?) (void)))
-
-;; Whatever changed: build the theme again, then tell who cares.
-(define (theme-changed!)
+;; Whatever changed: build the theme again, then tell who cares: a change
+;; not only of colors changes the chrome.
+(set-hook! (theme-changed!)
   (let* ([old *main-theme*]
          [new (resolve-theme *style-name* *theme-overrides*
                              (style-changes-of *style-name*))]
@@ -357,11 +354,12 @@
     (set! *theme* new)
     (hashtable-clear! *style-themes*)
     (set! *theme-version* (+ *theme-version* 1))
-    (*theme-change-seen*
-     (changed? 'scale)
-     (not (for-all (lambda (k) (or (memq k color-keys) (not (changed? k))))
-                   (append (vector->list (hashtable-keys old))
-                           (vector->list (hashtable-keys new))))))))
+    (when (changed? 'scale) (screen-rescale!))
+    (unless (for-all (lambda (k) (or (memq k color-keys) (not (changed? k))))
+                     (append (vector->list (hashtable-keys old))
+                             (vector->list (hashtable-keys new))))
+      (wm-chrome-changed!))
+    (request-redraw!)))
 
 ;;; ------------------------------------------------------------------
 ;;; fonts and heights
@@ -485,7 +483,7 @@
 (define (set-style! name)
   (unless (find-style name) (errorf 'set-style! "no style ~s" name))
   (change-layers! (lambda () (set! *style-name* name)))
-  (*theme-saver*))
+  (theme-save!))
 
 ;; Your change to the chosen style, remembered for it. window-style
 ;; chooses a style, scale the display's scale.
@@ -499,7 +497,7 @@
         (set-changes! *style-name*
                       (cons* key value (plist-remove
                                         (style-changes-of *style-name*) key)))))
-     (*theme-saver*)]))
+     (theme-save!)]))
 
 ;; Forgets your changes to the chosen style: those keys, or all.
 (define (reset-style! . keys)
@@ -510,7 +508,7 @@
                        '()
                        (fold-left plist-remove (style-changes-of *style-name*)
                                   keys)))))
-  (*theme-saver*))
+  (theme-save!))
 
 ;; (override! key value) holds in every style that honors key;
 ;; (override! key) clears it. The style and the scale are not a style's.
@@ -522,14 +520,14 @@
      (set! *theme-overrides*
        (let ([rest (plist-remove *theme-overrides* key)])
          (if (pair? value) (cons* key (car value) rest) rest)))))
-  (*theme-saver*))
+  (theme-save!))
 
 (define (theme-overrides) *theme-overrides*)
 
 ;; The display's scale in percent, 0 to follow the desktop: not a style's.
 (define (set-scale! pct)
   (change-layers! (lambda () (set! *scale-setting* pct)))
-  (*theme-saver*))
+  (theme-save!))
 
 ;; Old names, kept.
 (define (set-theme-plist! plist)
@@ -547,7 +545,7 @@
 (define (reset-theme!)
   (change-layers!
    (lambda () (set! *style-changes* '()) (set! *theme-overrides* '())))
-  (*theme-saver*))
+  (theme-save!))
 
 ;; The theme until its first change, its rules computed when read (no
 ;; color can be mixed before gfx.ss loads).

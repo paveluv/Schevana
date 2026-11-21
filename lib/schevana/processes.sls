@@ -18,4 +18,4 @@
       (settable *reloading*) spawn procs find-proc kill! procs-ready?
       run-procs! sleep-ms proc-wait worklet-base-environment
       *worklet-environment* worklet? worklet-compile worklet
-      (settable *worklet-spread*) worklet-spread define-worklet)))
+      (settable worklet-spread) define-worklet)))

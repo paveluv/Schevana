@@ -3,8 +3,8 @@
 
 (library (schevana core0 gpu)
   (export)
-  (import (chezscheme) (schevana layer) (schevana base) (schevana sdl)
-          (schevana shader) (schevana core0 mail) (schevana core0 trace)
+  (import (chezscheme) (schevana layer) (schevana base) (schevana shader)
+          (schevana sdl) (schevana core0 mail) (schevana core0 trace)
           (schevana core0 renderer) (schevana core0 present)
           (schevana core0 platform))
 

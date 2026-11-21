@@ -92,7 +92,7 @@
 ;; what the next frame draws: #f, #t (the whole screen) or (x0 y0 x1 y1)
 (defvar *dirty* #t)
 
-(define request-frame!
+(define-hook request-frame!
   (case-lambda
     [() (set! *dirty* #t)]
     [(x y w h) (when (and (> w 0) (> h 0)) (set! *dirty* #t))]))
@@ -143,7 +143,7 @@
 
 (defvar *toasts* '())   ; (#(expires-at text color) ...)
 
-(define notify
+(define-hook notify
   (case-lambda
     [(msg) (notify msg 'accent)]
     [(msg color)
@@ -166,7 +166,7 @@
 (defvar *last-error* (cons "" 0))
 
 ;; System-level errors become a red notification (and a line on stderr).
-(define (report-error! who c)
+(define-hook (report-error! who c)
   (let ([msg (format "~a: ~a" who (condition->string c))])
     (unless (and (string=? msg (car *last-error*))
                  (< (- (now-ms) (cdr *last-error*)) 5000))
@@ -385,15 +385,9 @@
 
 ;; (worklet-spread chunk start end worklet arg ...): (worklet lo hi arg
 ;; ...) over [start, end), in chunks of at least chunk, the crew's threads
-;; sharing them once services/crew.ss sets the hook; on this one till
-;; then.
-(defvar *worklet-spread* #f)
-
-(define (worklet-spread chunk start end proc . args)
-  (let ([spread *worklet-spread*])
-    (if spread
-        (apply spread chunk start end proc args)
-        (when (< start end) (apply proc start end args)))))
+;; sharing them once services/crew.ss sets it; on this one till then.
+(define-hook (worklet-spread chunk start end proc . args)
+  (when (< start end) (apply proc start end args)))
 
 ;; (define-worklet (name . formals) body ...): a worklet, defined where the
 ;; form is, and forwarded to from the worklet environment before it

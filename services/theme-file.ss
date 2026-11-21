@@ -2,7 +2,7 @@
 ;;; the file holds the chosen style, the scale, the Overrides and your
 ;;; changes per style. It is plain data: loading it never evaluates code. A
 ;;; rule or a procedure typed at the REPL lasts the session. Every change
-;;; to the layers saves it soon after, through the core's *theme-saver*;
+;;; to the layers saves it soon after, through the core's theme-save!;
 ;;; world.ss loads it before boot (theme-file-load!).
 
 (defvar *theme-file-path*
@@ -150,4 +150,4 @@
             (change-layers!
              (lambda () (theme-file-load-data! (filter pair? data))))))))))
 
-(set! *theme-saver* (lambda () (theme-file-save-soon!)))
+(set-hook! (theme-save!) (theme-file-save-soon!))

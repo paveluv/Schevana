@@ -4,9 +4,9 @@
 
 (library (schevana core0 trace-file)
   (export)
-  (import (chezscheme) (schevana layer) (schevana base) (schevana boot)
-          (schevana core0 mail) (schevana core0 trace)
-          (schevana core0 present) (schevana core0 platform))
+  (import (chezscheme) (schevana layer) (schevana base) (schevana core0 mail)
+          (schevana boot) (schevana core0 trace) (schevana core0 present)
+          (schevana core0 platform))
 
   (include-sources "src/core0/trace-file.ss")
 

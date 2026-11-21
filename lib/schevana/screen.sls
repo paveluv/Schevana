@@ -12,7 +12,6 @@
 
   (define-exports screen-exports
     (export (world)
-      (settable *screen-event-seen*) system-scale-percent
-      (settable *screen-resized*) screen-rescale! screen-init!
-      screen-shutdown! fullscreen? set-fullscreen! toggle-fullscreen!
-      screen-set-icon! screen-events)))
+      (settable screen-event-seen!) system-scale-percent wm-screen-resized!
+      screen-rescale! screen-init! screen-shutdown! fullscreen?
+      set-fullscreen! toggle-fullscreen! screen-set-icon! screen-events)))

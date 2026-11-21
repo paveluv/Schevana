@@ -128,7 +128,7 @@
       (let ([head (cadr form)])
         (case (car form)
           [(begin) (apply append (map defined (cdr form)))]
-          [(define defvar define-syntax define-foreign
+          [(define defvar define-hook define-state define-syntax define-foreign
             define-foreign/collect-safe define-worklet)
            (names 'name (list (if (pair? head) (car head) head)))]
           [(define-app)
@@ -154,7 +154,12 @@
 ;; Names defined in two files on purpose: ((kind . name) reason) ...
 (define defined-twice
   '(((name . now-ns) "core0's clock and core1's, each in its own \
-                      environment, so a test fakes core1's alone")))
+                      environment, so a test fakes core1's alone")
+    ((name . define-hook) "a library's keeps the procedure in a box; the \
+                           top level's, where any procedure may be \
+                           replaced, is a definition like another")
+    ((name . define-state) "a library's keeps the value in a box; the top \
+                            level's is a definition")))
 
 (define world-files
   (append library-files core0-files recorder-files (source-files)
@@ -203,7 +208,7 @@
 ;; the libraries they import (lib/schevana/). What declares is left out,
 ;; sized by what's given, each a reviewed change: the export.ss files, a
 ;; library's exports and imports (file-forms), a file's imports.
-(define src-budget 37670)
+(define src-budget 37778)
 
 ;; The tokens of a datum as read; a list's end is none.
 (define (tokens x)
@@ -216,7 +221,9 @@
                       (cons f (apply + (map tokens
                                             (remp (lambda (x)
                                                     (and (pair? x)
-                                                         (eq? (car x) 'import)))
+                                                         (memq (car x)
+                                                               '(import
+                                                                 export))))
                                                   (file-forms f))))))
                     (remp (lambda (f) (equal? (path-last f) "export.ss"))
                           (append library-files core0-files recorder-files
@@ -290,13 +297,15 @@
 ;;; only the core calls C
 ;;; One of the core's roles is to keep C away from the rest: outside src/
 ;;; and the core's libraries no file names a binding of (schevana ffi)'s,
-;;; (schevana sdl)'s, (schevana freetype)'s or (schevana fontconfig)'s, a
+;;; (schevana sdl)'s three, (schevana freetype)'s or (schevana fontconfig)'s, a
 ;;; foreign-… procedure, an ftype form or load-shared-object. The tests
 ;;; may: they inspect what is drawn and stand in for SDL.
 
 (define ffi-names
   (map cdr (append (definitions "lib/schevana/ffi.sls")
-                   (definitions "lib/schevana/sdl.sls")
+                   (definitions "lib/schevana/sdl/system.sls")
+                   (definitions "lib/schevana/sdl/window.sls")
+                   (definitions "lib/schevana/sdl/gpu.sls")
                    (definitions "lib/schevana/freetype.sls")
                    (definitions "lib/schevana/fontconfig.sls"))))
 
@@ -330,7 +339,10 @@
 (define above-gpu-files
   (remp (lambda (f)
           (member f '("lib/schevana/ffi.sls" "lib/schevana/shader.sls"
-                      "lib/schevana/sdl.sls" "src/core0/mail.ss"
+                      "lib/schevana/sdl.sls" "lib/schevana/sdl/system.sls"
+                      "lib/schevana/sdl/window.sls"
+                      "lib/schevana/sdl/gpu.sls"
+                      "lib/schevana/core0/mail.sls"
                       "src/core0/renderer.ss" "src/core0/platform.ss"
                       "src/core0/gpu.ss" "src/core0/present.ss"
                       "src/core0/window.ss" "src/core1/font.ss"
@@ -373,9 +385,11 @@
 ;;; (AGENTS.md); the rest asks their predicates and facts. Monitor's
 ;;; Platform tab shows Chez's machine type as it is.
 
-;; and (schevana sdl), which binds SDL's video driver for core0's to read
+;; and (schevana sdl window), which binds SDL's video driver for core0's to
+;; read
 (define platform-files
-  '("lib/schevana/base.sls" "src/core1/platform.ss" "lib/schevana/sdl.sls"
+  '("lib/schevana/base.sls" "src/core1/platform.ss"
+    "lib/schevana/sdl/window.sls"
     "src/core0/platform.ss" "kits/inspect.ss"))
 
 ;; The strings in x.
@@ -561,7 +575,8 @@
     "SDL_SetGPUSwapchainParameters"))
 
 (check "every SDL call that may block is collect-safe"
-       (let ([forms (file-forms "lib/schevana/sdl.sls")])
+       (let ([forms (append (file-forms "lib/schevana/sdl/window.sls")
+                            (file-forms "lib/schevana/sdl/gpu.sls"))])
          (none? (filter-map
                  (lambda (c)
                    (let ([f (find (lambda (x)

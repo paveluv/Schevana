@@ -34,7 +34,7 @@
 
 ;; How long core1 may go without a step before core0 writes the trace: far
 ;; longer than any wait of core1's, which is a refresh or a timer's at most.
-(define core0-trace-stall-ns 5000000000)
+(define-state core0-trace-stall-ns 5000000000)
 
 ;; Core1's count of steps when a stall's trace was written: one a stall.
 (defvar *core0-trace-stalled* -1)
@@ -65,7 +65,7 @@
 ;; .work/traces/trace-<date>-<time>.txt (-2 on, another in the same
 ;; second), after why it was written, if that's said. => its path, or #f
 ;; when off.
-(define core0-trace-write!
+(define-hook core0-trace-write!
   (case-lambda
     [() (core0-trace-write! #f)]
     [(why) (core0-trace-write-why! why)]))

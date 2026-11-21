@@ -82,10 +82,9 @@
 
 ;; the window whose handler is running
 (defvar current-window (make-thread-parameter #f))
-;; Told of each window that closes or crashes, to stop what works for it:
-;; a hook a later layer sets (its background jobs, services/vat.ss); till
-;; then values, which takes the window and does nothing (void takes none).
-(defvar *window-gone* values)
+;; Told of each window that closes or crashes, to stop what works for it
+;; (its background jobs: services/vat.ss sets it); till then nothing.
+(define-hook (window-gone! win) (void))
 
 ;; Each (invalidate!) is a new generation (request-redraw!), and each
 ;; (invalidate! win) a new ask of win's: a list of win's drawn before
@@ -94,7 +93,7 @@
 ;; or one a preview draws) or not seen (minimized) asks for no frame: a
 ;; timer it left behind, or one an app steps on unseen, draws nothing; one
 ;; brought back is drawn as it comes.
-(define invalidate!
+(define-hook invalidate!
   (case-lambda
     [() (request-redraw!)]
     [(win) (when win
@@ -120,7 +119,7 @@
 ;; How far past its frame a window may draw, never less than 0: its
 ;; style's frame-bleed. A style that strokes inside its frame needs none:
 ;; anti-aliasing stays in the device pixels the frame touches.
-(define (window-bleed win)
+(define-hook (window-bleed win)
   (if (eq? (window-theme win) *theme*)
       (window-bleed-here win)
       (in-window-theme win (lambda () (window-bleed-here win)))))
@@ -426,7 +425,7 @@
 ;; (focus, order, titles) half changed.
 (define (window-crash! win kind c)
   (window-error-set! win (cons kind c))
-  (*window-gone* win)
+  (window-gone! win)
   (invalidate!))
 
 ;; The window win waits on, its 'modal-child while that is open (a
@@ -501,7 +500,7 @@
     (window-call win 'close)
     (set! *windows* (remq win *windows*))
     (window-lists-release! win)
-    (*window-gone* win)
+    (window-gone! win)
     (when (and *drag* (eq? (drag-win *drag*) win))
       (set! *drag* #f)
       (set! *drag-outline* #f))
@@ -616,7 +615,7 @@
 ;; Core0's window was resized.
 ;; The screen changed size (or scale): refit maximized windows, and pull
 ;; others back until their title bar can be reached.
-(define (wm-screen-resized!)
+(set-hook! (wm-screen-resized!)
   ;; (also called while loading, before there is a canvas to measure)
   (unless (null? *windows*)
     (let-values ([(dx dy dw dh) (desktop-rect)])
@@ -634,7 +633,7 @@
 
 ;; The style or title height changed: frames keep their outer size, so
 ;; every app hears its new content size, a shaded one what it unshades to.
-(define (wm-chrome-changed!)
+(set-hook! (wm-chrome-changed!)
   (wm-screen-resized!)
   (for-each (lambda (w)
               (let ([shaded? (shaded? w)])
@@ -977,13 +976,10 @@
           (window-call (car ws) 'frame t)))
       (loop (cdr ws)))))
 
-;; A tick's turn is this file's (*pacer-turn*, src/core1/pacer.ss).
-(at-load (set! *pacer-turn* (lambda () (wm-tick!))))
-
 ;; The frames windows asked for, then each surface's, in depth order,
 ;; before the frame is drawn: what it finds changed (the mouse's
 ;; documentation) shows in it.
-(define (wm-tick!)
+(set-hook! (wm-tick!)
   (let ([t (pacer-frame-ns)])
     (wm-frames! t)
     (for-each (lambda (s)
@@ -995,7 +991,7 @@
 
 ;; The style draws the frame in two passes around the content, all in the
 ;; window's theme.
-(define (draw-window win) (draw-window* win (eq? win *focus*)))
+(define-hook (draw-window win) (draw-window* win (eq? win *focus*)))
 
 ;; The part of win under the mouse, and the drag kind holding it, as the
 ;; style sees them (#f when none).
@@ -1093,13 +1089,10 @@
 
 ;; The whole screen, as a list. A crashed draw leaves nothing to unwind: the
 ;; state it left goes when the next one starts.
-(define (record-world!)
+(set-hook! (record-world!)
   (record-surfaces! *surfaces* #f)
   (record-windows! *windows*)
   (record-surfaces! *surfaces* #t))
-
-;; A frame draws this (*frame-drawing*, src/core1/pacer.ss).
-(at-load (set! *frame-drawing* (lambda () (record-world!))))
 
 ;; The surfaces under the windows, or over them.
 (define (record-surfaces! ss over?)
@@ -1128,10 +1121,11 @@
                      (show-list l (window-x w) (window-y w)))))))))))))
 
 ;;; ------------------------------------------------------------------
-;;; what the layers below are told through
+;;; the screen's events
 
-;; An event of the screen's (*loop-event*, src/core1/system.ss).
-(define (wm-event! ev)
+;; An event of the screen's, to the windows and the surfaces: the loop
+;; hands each here (src/core1/system.ss).
+(set-hook! (wm-event! ev)
   (case (car ev)
     [(mouse-move) (apply wm-mouse-move (cdr ev))]
     [(mouse-down) (apply wm-mouse-down (cdr ev))]
@@ -1142,17 +1136,3 @@
     [(resize) (wm-screen-resized!)]
     [(expose) (request-frame!)]
     [(mouse-leave) (set! *hover* #f) (request-frame!)]))
-(at-load (set! *loop-event* (lambda (ev) (wm-event! ev))))
-
-;; The screen at another size or scale (*screen-resized*,
-;; src/core1/screen.ss).
-(at-load (set! *screen-resized* (lambda () (wm-screen-resized!))))
-
-;; A theme's change, seen (*theme-change-seen*): the screen at its new
-;; scale, the windows in their new chrome, and a frame.
-(at-load
- (set! *theme-change-seen*
-   (lambda (scale? chrome?)
-     (when scale? (screen-rescale!))
-     (when chrome? (wm-chrome-changed!))
-     (invalidate!))))

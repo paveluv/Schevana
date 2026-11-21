@@ -52,18 +52,19 @@
         [(k) (datum->syntax #'k (form-root x))])))
 
   ;; A library exports no variable it assigns, not even through a macro.
-  ;; So a defvar's value is in a box, which nothing assigns, and its name
-  ;; a macro that reads the box, or fills it. state-cell is the property
-  ;; by which define-exports knows such a name.
+  ;; So a defvar's value is a global of Chez's, under a symbol nobody can
+  ;; type, as (schevana base)'s define-state has it, and its name a macro
+  ;; that reads the global, or sets it. state-cell is the property by
+  ;; which define-exports knows such a name: the symbol.
   (define state-cell)
 
   (define (state-settable cell)
     (make-variable-transformer
      (lambda (x)
        (syntax-case x (set!)
-         [(set! _ v) #`(set-box! #,cell v)]
-         [id (identifier? #'id) #`(unbox #,cell)]
-         [(_ . rest) #`((unbox #,cell) . rest)]))))
+         [(set! _ v) #`(($primitive $set-top-level-value!) '#,cell v)]
+         [id (identifier? #'id) #`(($primitive $top-level-value) '#,cell)]
+         [(_ . rest) #`((($primitive $top-level-value) '#,cell) . rest)]))))
 
   ;; What another library has of it: a set! is refused as it expands, in
   ;; the words Chez uses for an import's.
@@ -73,8 +74,8 @@
        (syntax-case x (set!)
          [(set! name . _)
           (syntax-error #'name "attempt to assign read-only variable")]
-         [id (identifier? #'id) #`(unbox #,cell)]
-         [(_ . rest) #`((unbox #,cell) . rest)]))))
+         [id (identifier? #'id) #`(($primitive $top-level-value) '#,cell)]
+         [(_ . rest) #`((($primitive $top-level-value) '#,cell) . rest)]))))
 
   ;; A hook: another library sets it, if (check value).
   (define (state-checked cell check)
@@ -82,13 +83,14 @@
      (lambda (x)
        (syntax-case x (set!)
          [(set! name v)
-          #`(set-box! #,cell
-                      (let ([value v])
-                        (if (#,check value)
-                            value
-                            (errorf 'set! "~s may not be ~s" 'name value))))]
-         [id (identifier? #'id) #`(unbox #,cell)]
-         [(_ . rest) #`((unbox #,cell) . rest)]))))
+          #`(($primitive $set-top-level-value!)
+             '#,cell
+             (let ([value v])
+               (if (#,check value)
+                   value
+                   (errorf 'set! "~s may not be ~s" 'name value))))]
+         [id (identifier? #'id) #`(($primitive $top-level-value) '#,cell)]
+         [(_ . rest) #`((($primitive $top-level-value) '#,cell) . rest)]))))
 
   ;; A variable of the layer's that is a plain define, and assigned: read
   ;; by another library through a procedure, reader.
@@ -117,12 +119,15 @@
                ...))])))
 
   (define-syntax defvar
-    (syntax-rules ()
-      [(_ name init)
-       (begin
-         (define cell (box init))
-         (define-syntax name (state-settable #'cell))
-         (define-property name state-cell #'cell))]))
+    (lambda (x)
+      (syntax-case x ()
+        [(_ name init)
+         (with-syntax ([g (datum->syntax #'name (gensym "state"))])
+           #'(begin
+               (define state-made
+                 (($primitive $set-top-level-value!) 'g init))
+               (define-syntax name (state-settable #'g))
+               (define-property name state-cell #'g)))])))
 
   ;; (define-exports name (export (destination ...) entry ...) ...), as
   ;; src/base.ss has it: the library exports every entry, to whoever
@@ -140,23 +145,27 @@
           (syntax-case entry (settable)
             [(settable . _) #t]
             [_ #f]))
-        (define (cell-of name)
-          (or (lookup name #'state-cell)
-              (syntax-error name "settable, but no defvar:")))
         (define (face entry)
           (with-syntax ([(face) (generate-temporaries '(face))])
             (syntax-case entry (settable)
               ;; a face another library may set keeps the property, so
               ;; that a library above gives it on read-only, or checked
               [(settable name)
-               (with-syntax ([cell (cell-of #'name)])
-                 #'((define-syntax face (state-settable #'cell))
-                    (define-property face state-cell #'cell)
-                    (export (rename (face name)))))]
+               (let ([cell (lookup #'name #'state-cell)])
+                 (if cell
+                     (with-syntax ([cell cell])
+                       #'((define-syntax face (state-settable #'cell))
+                          (define-property face state-cell #'cell)
+                          (export (rename (face name)))))
+                     ;; no defvar's: a hook's (define-hook), set as it is
+                     #'((export name))))]
               [(settable name check)
-               (with-syntax ([cell (cell-of #'name)])
-                 #'((define-syntax face (state-checked #'cell #'check))
-                    (export (rename (face name)))))]
+               (let ([cell (lookup #'name #'state-cell)])
+                 (if cell
+                     (with-syntax ([cell cell])
+                       #'((define-syntax face (state-checked #'cell #'check))
+                          (export (rename (face name)))))
+                     #'((export name))))]
               [name
                (let ([cell (lookup #'name #'state-cell)]
                      [reader (lookup #'name #'state-reader)])

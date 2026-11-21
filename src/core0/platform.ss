@@ -103,7 +103,7 @@
 ;; (src/core1/platform.ss), never asking SDL itself.
 (defvar *core0-platform* '())
 
-(define (core0-platform-read!)
+(define-hook (core0-platform-read!)
   (let ([video (sdl-get-current-video-driver)])
     (set! *core0-platform*
       `((windowing
@@ -143,7 +143,7 @@
   (core0-platform-read!))
 
 ;; The reports come since the last look, without waiting.
-(define (platform-reports-pump!)
+(define-hook (platform-reports-pump!)
   (unless (eqv? *wayland-queue* 0)
     (with-interrupts-disabled
      (wayland-dispatch *wayland-display* *wayland-queue*)))
@@ -167,7 +167,7 @@
 ;; ns to add to a time on clock (a POSIX clock's number) for now-ns's, read
 ;; at each report: two clocks may drift apart by a few ms an hour.
 (defvar *platform-timespec* (foreign-alloc 16))
-(define (platform-clock-offset clock)
+(define-hook (platform-clock-offset clock)
   (let ([ts *platform-timespec*])
     (c-clock-gettime clock ts)
     (- (now-ns)

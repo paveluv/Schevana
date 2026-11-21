@@ -22,8 +22,7 @@
     *toasts* notify *last-error* report-error! proc proc? proc-id proc-name
     proc-state proc-ticks proc-started proc-wake *procs* spawn procs find-proc
     kill! sleep-ms worklet-base-environment *worklet-environment* worklet?
-    worklet-compile worklet worklet-spread define-worklet request-frame!
-    *timers* after
+    worklet-compile worklet define-worklet request-frame! *timers* after
     ;; src/core1/gpu.ss: the GPU's world side: images, buffers, lists, computes
     *gpu-bytes-made* *gpu-held-gone* gpu-image-make gpu-image-make-target
     gpu-image-release! gpu-atlas-image gpu-list-new make-gpu-buffer
@@ -124,8 +123,8 @@
     ;; The hooks later layers fill (AGENTS.md, S1): each set by the one
     ;; file that fills it, with what the core calls.
     (settable *profile-span* (lambda (v) (or (not v) (pair? v))))
-    (settable *theme-saver* procedure?)
-    (settable *window-gone* procedure?)
-    (settable *app-loader* procedure?)
-    (settable *screen-event-seen* procedure?)
-    (settable *worklet-spread* (lambda (v) (or (not v) (procedure? v))))))
+    (settable theme-save! procedure?)
+    (settable window-gone! procedure?)
+    (settable app-load! procedure?)
+    (settable screen-event-seen! procedure?)
+    (settable worklet-spread procedure?)))

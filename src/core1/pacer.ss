@@ -245,7 +245,7 @@
 ;; is ready for; and less than the 0.1 ms a tick's t may move, so that
 ;; with no screen to hold the ticks t keeps to the clock. Or a fixed
 ;; rate's.
-(define (pacer-period)
+(define-hook (pacer-period)
   (if (eq? *pacer-rate* 'screen)
       (let ([p (core0-frame-ns)]) (- p (quotient p 500)))
       (quotient 1000000000 *pacer-rate*)))
@@ -523,8 +523,9 @@
 (define (pacer-drew!) (set! *pacer-drew?* #t))
 
 ;; What a tick does, its frame turn: what's on the screen looks at what
-;; changed and draws (src/core1/wm.ss sets this); till then nothing.
-(defvar *pacer-turn* void)
+;; changed and asks for its frames (src/core1/wm.ss sets it); till then
+;; nothing.
+(define-hook (wm-tick!) (void))
 
 ;; A tick: the frames windows asked for and the surfaces' (wm-tick!), then
 ;; a frame if one is asked for. Paced (now, the ns it began, else #f), the
@@ -551,7 +552,7 @@
   (set! *pacer-tick-ms* (now-ms))
   (set! *pacer-frame-ns*
     (if now (pacer-next-frame-ns now) (* *pacer-tick-ms* 1000000)))
-  (safely 'tick *pacer-turn*))
+  (safely 'tick wm-tick!))
 
 ;; Core0, on a thread of its own, gave back a frame that reached the screen
 ;; (shown?) or not: by vsync, at the screen's rate, the screen held it, and
@@ -595,8 +596,8 @@
 ;;; ------------------------------------------------------------------ frames
 
 ;; What a frame draws, the whole screen: the windows and the surfaces
-;; (src/core1/wm.ss sets this); till then nothing.
-(defvar *frame-drawing* void)
+;; (src/core1/wm.ss sets it); till then nothing.
+(define-hook (record-world!) (void))
 
 ;; thunk's drawing, which may crash: what it left of the recorder's state
 ;; goes, the state as it was kept in variables.
@@ -624,7 +625,7 @@
           (core0-trace! 23 0)
           (set! *frame-draw-ns* t0)
           (rec-begin! *canvas-ratio*)
-          (*frame-drawing*)
+          (record-world!)
           (frame-number-set! (rec-present!))
           (pacer-drew!)
           (set! *frame-publish-ns* (now-ns))
@@ -642,7 +643,7 @@
 ;; The frames core0 gave back: each told to the pacer, and marked in its row
 ;; as having reached the screen or not; counted if it did, else one asked
 ;; again. Then what core0 read back, handed to its then.
-(define (render-frames-back!)
+(define-hook (render-frames-back!)
   (for-each (lambda (f)
               (let ([shown? (gpu-frame-shown? f)])
                 (set! *frame-back* (gpu-frame-number f))
@@ -666,8 +667,8 @@
 ;; premultiplied BGRA. What tests and screenshots see; screen-bytes-then
 ;; hands them to then on core1, nothing waiting.
 (define (screen-bytes)
-  (drawing->bytes *canvas-pw* *canvas-ph* *canvas-ratio* *frame-drawing* #f))
+  (drawing->bytes *canvas-pw* *canvas-ph* *canvas-ratio* record-world! #f))
 
 (define (screen-bytes-then then)
-  (drawing->bytes-then *canvas-pw* *canvas-ph* *canvas-ratio* *frame-drawing* #f
+  (drawing->bytes-then *canvas-pw* *canvas-ph* *canvas-ratio* record-world! #f
                        then))

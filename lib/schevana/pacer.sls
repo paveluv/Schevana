@@ -21,7 +21,6 @@
       frame-input-came! frame-input-drop! pacer-waited! pacer-step-done!
       pacer-busy-ms pacer-peak-ms! pacer-rate pacer-ticks frame-turn-soon!
       pacer-wanted? pacer-frame-ns pacer-period pacer-start pacer-on-latch?
-      pacer-trial! pacer-margin (settable *pacer-turn*) pacer-tick!
-      pacer-procs-ms pacer-wait-ms (settable *frame-drawing*) record-safely
-      render-frame! render-frames-back! render-answers! screen-bytes
-      screen-bytes-then)))
+      pacer-trial! pacer-margin wm-tick! pacer-tick! pacer-procs-ms
+      pacer-wait-ms record-world! record-safely render-frame!
+      render-frames-back! render-answers! screen-bytes screen-bytes-then)))

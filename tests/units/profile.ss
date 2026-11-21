@@ -712,9 +712,9 @@
                        (profile-test-flags
                         (lambda ()
                           (profile-test-calm!)
-                          (*screen-event-seen* #x20E)   ; focus-gained
+                          (screen-event-seen! #x20E)   ; focus-gained
                           (profile-test-pass! 5)
-                          (*screen-event-seen* #x400)   ; motion: counted
+                          (screen-event-seen! #x400)   ; motion: counted
                           (with-profile-span 'step #f
                             (profile-test-pass! 25)   ; asleep: late
                             (with-profile-span 'vsync-wait 'acquire

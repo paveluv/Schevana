@@ -21,7 +21,7 @@
 (defvar *core0-trace-thread* #f)   ; core0's thread id
 
 ;; Step code with a, now, on this thread's ring.
-(define (core0-trace! code a)
+(define-hook (core0-trace! code a)
   (when *core0-trace-dir*
     (let* ([k (if (eqv? (get-thread-id) *core0-trace-thread*) 0 2)]
            [v (vector-ref *core0-trace-rings* k)]

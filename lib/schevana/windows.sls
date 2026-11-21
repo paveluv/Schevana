@@ -18,7 +18,7 @@
       window-h window-h-set! window-state window-state-set!
       window-restore-set! window-handlers window-props window-error *windows*
       *focus* *drag-outline* *hover* *mouse-x* *mouse-y* *mouse-button* drag
-      current-window (settable *window-gone*) invalidate! window-shadow
+      current-window (settable window-gone!) invalidate! window-shadow
       window-extent screen-w screen-h screen-scale point-in? surface
       surface-doc define-surface find-surface surface-call define-strip
       desktop-rect app app-name app-title app-launch *apps* register-app!

@@ -49,7 +49,7 @@ link makes the next one's environment, gives it what its `export.ss`
 lists, loads it, and calls its boot; nothing reaches back up, and nothing
 else of a layer's is there to name. Each name goes down read-only unless
 its entry says `settable`: those are the hooks the folders fill
-(`*profile-span*`, `*theme-saver*`, `*window-gone*`, `*app-loader*`), so
+(`*profile-span*`, `theme-save!`, `window-gone!`, `app-load!`), so
 the core never names a later layer.
 
 Core0 is the bottom: SDL, the GPU's device side, the window and its

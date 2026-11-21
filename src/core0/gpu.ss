@@ -239,7 +239,7 @@
 
 ;; Waits till the device has done all it was sent, if one is open: before
 ;; the window goes, and before the process ends.
-(define (gpu-idle!)
+(define-hook (gpu-idle!)
   (when *renderer* (sdl-wait-gpu-idle (renderer-device *renderer*))))
 
 ;; Every exit waits for the GPU first, whoever calls it: the world's quit,
@@ -265,7 +265,7 @@
 
 ;; The window this renderer draws to from now on. The count goes
 ;; first: on a claimed window, setting it builds the swapchain again.
-(define (gpu-claim-window! sdl-window)
+(define-hook (gpu-claim-window! sdl-window)
   (sdl-set-frames-in-flight (renderer-device *renderer*)
                             *gpu-frames-in-flight*)
   (unless (sdl-claim-window (renderer-device *renderer*) sdl-window)
@@ -1242,7 +1242,7 @@
 (define gpu-present-codes '((vsync . 0) (immediate . 1) (mailbox . 2)))
 (define gpu-composition-sdr 0)   ; the one a claim gives: colors stay the same
 
-(define (gpu-present-modes)
+(define-hook (gpu-present-modes)
   (let ([r *renderer*])
     (if (eqv? 0 (renderer-sdl-window r))
         '()
@@ -1370,7 +1370,7 @@
           [(not (box-cas! *gpu-published* #f f)) (loop)]))
   (core0-wake!))
 
-(define (gpu-frame-waiting?) (and (unbox *gpu-published*) #t))
+(define-hook (gpu-frame-waiting?) (and (unbox *gpu-published*) #t))
 
 ;; The frames core0 gave back since core1 last took them, oldest first.
 (define (gpu-frames-back!) (core0-take! *gpu-given-back*))

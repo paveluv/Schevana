@@ -22,9 +22,11 @@
 
 ;; Each name of the three's, in "/": a variable's, settable, from the first
 ;; of core1, the recorder and core0 that has it as a variable; a macro's,
-;; from the first that has it (by its names: top-level-syntax? says so of
-;; any name). A name "/" had already stays as it is but for core1's
-;; exports, which become settable.
+;; from the lowest that has it (by its names: top-level-syntax? says so of
+;; any name): a state or a hook of a library core0 imports is a macro
+;; there, to be set, where the layers above have it only to read. A name
+;; "/" had already stays as it is but for core1's exports, which become
+;; settable.
 (let ([had (make-eq-hashtable)]
       [exported (exports-names (top-level-value 'core1-exports core1-env)
                                'world)]
@@ -33,7 +35,7 @@
             (environment-symbols world-env))
   (for-each (lambda (n) (hashtable-delete! had n)) exported)
   (let ([anchors (map environment-anchor envs)])
-    (define (reach! n bound?)
+    (define (reach! n bound? envs anchors)
       (unless (or (gensym? n) (hashtable-ref had n #f))
         (let loop ([es envs] [as anchors])
           (cond
@@ -45,7 +47,7 @@
                world-env)]
             [else (loop (cdr es) (cdr as))]))))
     (for-each (lambda (e)
-                (for-each (lambda (n) (reach! n top-level-bound?))
+                (for-each (lambda (n) (reach! n top-level-bound? envs anchors))
                           (environment-symbols e)))
               envs)
     (let ([has (map (lambda (e)
@@ -56,9 +58,11 @@
                     envs)])
       (for-each (lambda (e)
                   (for-each (lambda (n)
-                              (reach! n (lambda (n e)
-                                          (hashtable-ref (cdr (assq e has))
-                                                         n #f))))
+                              (reach! n
+                                      (lambda (n e)
+                                        (hashtable-ref (cdr (assq e has))
+                                                       n #f))
+                                      (reverse envs) (reverse anchors)))
                             (environment-symbols e)))
                 envs))))
 

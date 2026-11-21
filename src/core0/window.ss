@@ -251,7 +251,7 @@
 
 ;; Hidden, minimized or covered, the window shows nothing: no frames,
 ;; which wait until it shows.
-(define (core0-hidden?)
+(define-hook (core0-hidden?)
   ;; SDL_WINDOW_OCCLUDED, _HIDDEN and _MINIMIZED
   (and (eq? *core0-mode* 'sdl) (logtest (core0-flags) #x4c)))
 
@@ -364,7 +364,7 @@
 ;; events as sdl-event->list gives them, every event's number in order,
 ;; whether it means anything or not, and when SDL took the first that came
 ;; from the keyboard or the mouse (now-ns; 0, none).
-(define (core0-window-pump)
+(define-hook (core0-window-pump)
   (if (eq? *core0-mode* 'sdl)
       (let ([buf *sdl-event*])
         (let loop ([more? (sdl-poll-event buf)] [acc '()] [types '()]
@@ -441,7 +441,7 @@
 ;;; core0 has a thread, its loop does (.work/gpu-design.md 9.4).
 
 ;; The events pumped and not yet taken, newest first, each (events .
-;; types) of a step; the jobs posted are src/core0/mail.ss's.
+;; types) of a step; the jobs posted are (schevana core0 mail)'s.
 (defvar *core0-inbox* (box '()))
 (defvar *core0-job-failed* #f)   ; (job . condition): the last job that raised
 
@@ -585,7 +585,7 @@
 ;; The facts read again: the flags and sizes each step, and made again when
 ;; they changed; the scale, the display and the last error too after
 ;; events or jobs (all?), as they change only with those.
-(define (core0-facts-refresh! all?)
+(define-hook (core0-facts-refresh! all?)
   (when (eq? *core0-mode* 'sdl)
     (let*-values ([(f) (sdl-get-window-flags *sdl-window*)]
                   [(w h) (core0-size-from sdl-get-window-size)]

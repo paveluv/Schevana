@@ -4,7 +4,8 @@
 ;;; each environment loads a copy of its own, and any copy is as good as
 ;;; another (tests/sources.ss).
 
-(import (schevana base))
+;; define-hook and define-state are the top level's own, below.
+(import (except (schevana base) define-hook define-state))
 
 ;; State variables that must survive (reload!) are declared with defvar,
 ;; like in Emacs: the initial value is only used if the name is unbound.
@@ -12,6 +13,21 @@
   (syntax-rules ()
     [(_ name init)
      (define name (if (top-level-bound? 'name) (top-level-value 'name) init))]))
+
+;; (define-hook (name . formals) body ...): a procedure that may be
+;; replaced, which a library keeps in a box ((schevana base)). At the top
+;; level every procedure may be, so here it is a definition like any
+;; other, and set-hook! sets it.
+(define-syntax define-hook
+  (syntax-rules ()
+    [(_ (name . formals) body ...) (define (name . formals) body ...)]
+    [(_ name procedure) (define name procedure)]))
+
+;; (define-state name init): a variable a library may export and another
+;; set, kept there in a box too. Here it is a definition, made again at a
+;; reload; what must outlive one is a defvar.
+(define-syntax define-state
+  (syntax-rules () [(_ name init) (define name init)]))
 
 ;; A procedure handed over by its name, so that a redefinition takes at
 ;; the next call (world-value). In a library, where nothing is redefined

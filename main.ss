@@ -48,22 +48,28 @@
 
 ;; The pieces of the core that are R6RS libraries (lib/schevana/), which
 ;; the environments below import: the basics, how C is bound, SDL's
-;; bindings, the shader compiler, sockets, FreeType's bindings and
-;; fontconfig's. Sealed: they change with a restart.
+;; bindings (SDL itself, the window's, the GPU's, and all three as one),
+;; the shader compiler, sockets, FreeType's bindings and fontconfig's,
+;; and the first of core0's own files, its mail. Sealed: they change with
+;; a restart.
 (define *schevana-libraries*
-  '("lib/schevana/base.sls" "lib/schevana/ffi.sls" "lib/schevana/sdl.sls"
+  '("lib/schevana/base.sls" "lib/schevana/ffi.sls"
+    "lib/schevana/sdl/system.sls" "lib/schevana/sdl/window.sls"
+    "lib/schevana/sdl/gpu.sls" "lib/schevana/sdl.sls"
     "lib/schevana/shader.sls" "lib/schevana/socket.sls"
-    "lib/schevana/freetype.sls" "lib/schevana/fontconfig.sls"))
+    "lib/schevana/freetype.sls" "lib/schevana/fontconfig.sls"
+    "lib/schevana/core0/mail.sls"))
 
 ;; Core0, below the core: the basics, then core0's own code (src/core0/:
-;; what its threads hand each other, the trace, the renderer, the screen's
-;; reports, what differs by platform, the GPU's device side, the trace's
-;; file, the window, what it exports, the boot).
+;; the trace, the renderer, the screen's reports, what differs by
+;; platform, the GPU's device side, the trace's file, the window, what it
+;; exports, the boot). What its threads hand each other is a library
+;; already ((schevana core0 mail)).
 (define *schevana-core0-sources*
-  '("src/base.ss" "src/core0/mail.ss" "src/core0/trace.ss"
-    "src/core0/renderer.ss" "src/core0/present.ss" "src/core0/platform.ss"
-    "src/core0/gpu.ss" "src/core0/trace-file.ss" "src/core0/window.ss"
-    "src/core0/export.ss" "src/core0/boot.ss"))
+  '("src/base.ss" "src/core0/trace.ss" "src/core0/renderer.ss"
+    "src/core0/present.ss" "src/core0/platform.ss" "src/core0/gpu.ss"
+    "src/core0/trace-file.ss" "src/core0/window.ss" "src/core0/export.ss"
+    "src/core0/boot.ss"))
 
 ;; "/recorder", sealed, made by core0 before "/core1": the basics, then the
 ;; bytes of frames and their writers, and what it exports (src/recorder/).
@@ -154,7 +160,8 @@
 (library-directories
  (let ([lib (string-append *schevana-root* "/lib")])
    (cons (cons lib lib) (library-directories))))
-(import (schevana ffi) (schevana sdl) (schevana shader))
+(import (schevana ffi) (schevana sdl) (schevana shader)
+        (schevana core0 mail))
 (for-each (lambda (name) (define-top-level-value name (eval name)))
           (library-exports '(schevana sdl)))
 (for-each (lambda (f) (load (string-append *schevana-root* "/" f)))

@@ -22,9 +22,10 @@
 (defvar *canvas-pw* 0)
 (defvar *canvas-ph* 0)
 
-;; Told when the canvas takes another scale: what is computed from it, a
-;; theme's rules, is computed again (src/core1/theme.ss sets this).
-(defvar *canvas-rescaled* void)
+;; Whatever changed in the look, the theme is built again
+;; (src/core1/theme.ss sets it); with no theme, nothing. Here, as a
+;; canvas at another scale changes what a theme's rules compute.
+(define-hook (theme-changed!) (void))
 
 ;; A canvas pw × ph pixels big, drawn scale times bigger than the logical
 ;; pixels apps use; its logical size is the whole part of pw / scale.
@@ -39,7 +40,7 @@
     ;; with no window, frames draw to a target this big
     (when (eq? *core0-mode* 'headless) (gpu-ask! (list 'target pw ph)))
     (request-frame!)
-    (when rescaled? (*canvas-rescaled*))))
+    (when rescaled? (theme-changed!))))
 
 ;; A canvas of w × h logical pixels.
 (define (canvas-create! w h scale)
@@ -645,7 +646,7 @@
 ;;; ---- text
 
 ;; Draws str with its top-left at (x, y). => the x where the text ends.
-(define draw-text
+(define-hook draw-text
   (case-lambda
     [(x y str) (draw-text x y str 'text 'ui)]
     [(x y str color) (draw-text x y str color 'ui)]
@@ -1370,7 +1371,7 @@
 ;; and core0 presents it, at once while it has no thread of its own
 ;; (render-frames-back! tells what came of it). => the frame's number, its
 ;; report's (core0-frame-report).
-(define (rec-present!)
+(define-hook (rec-present!)
   (rec-run-end!)
   (let ([f (rec-publish)])
     (gpu-publish! f)

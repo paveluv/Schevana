@@ -10,9 +10,9 @@
 ;;; 'left, 'f1, ...); mods is a list drawn from (ctrl alt shift super).
 
 ;; told of every event core0 sends, by its number, whether it means
-;; anything to the world or not; till a later layer listens, values, which
-;; takes the number and does nothing (void takes none)
-(defvar *screen-event-seen* values)
+;; anything to the world or not (services/profile.ss sets it); till then
+;; nothing
+(define-hook (screen-event-seen! type) (void))
 (defvar *screen-fullscreen* #f)   ; what headless mode pretends
 ;; the scale chosen (the setting's, or else the desktop's) that the canvas
 ;; was made at: physical pixels per logical pixel, exact
@@ -49,14 +49,14 @@
 (define (screen-units->world v)
   (floor (/ (* (exact v) *pixel-ratio*) *screen-chosen-scale*)))
 
-;; Told when the screen has another size or scale: what lays out what is
-;; on it (src/core1/wm.ss sets this); till then nobody.
-(defvar *screen-resized* void)
+;; The screen has another size or scale: what is on it is laid out again
+;; (src/core1/wm.ss sets it); till then nothing.
+(define-hook (wm-screen-resized!) (void))
 
 ;; After the 'scale setting changed: lay the world out again at the new scale.
 (define (screen-rescale!)
   (when (screen-sync-size!)
-    (*screen-resized*)))
+    (wm-screen-resized!)))
 
 ;; Core0's window's size in window units for a w × h logical world drawn
 ;; at scale, with ratio physical pixels per window unit.
@@ -186,9 +186,9 @@
 ;; of its own, waits up to wait-ms till it's woken: with a frame of core1's
 ;; waiting for core0, a wait for the screen, which holds core0 meanwhile;
 ;; or, ticks keeping to the compositor's latches, for the next latch.
-;; Then the inbox: core0's events, each told to *screen-event-seen*, as
+;; Then the inbox: core0's events, each told to screen-event-seen!, as
 ;; the world's.
-(define (screen-events wait-ms)
+(define-hook (screen-events wait-ms)
   (core0-trace! 20 wait-ms)
   (cond [(not (core0-forked?)) (core0-step!)]
         [(gpu-frame-waiting?)
@@ -201,7 +201,7 @@
   (let-values ([(events types) (core0-window-events)])
     (unless (null? types) (core0-trace! 27 (length types)))
     (call-with-values core0-input-ns-take! frame-input-came!)
-    (for-each (lambda (type) (*screen-event-seen* type)) types)
+    (for-each (lambda (type) (screen-event-seen! type)) types)
     (filter values (map screen-event->world events))))
 
 ;; An event of core0's as the world's: positions in logical pixels; a

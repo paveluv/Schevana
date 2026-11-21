@@ -334,7 +334,7 @@
                                   path (or requests '()))
                   path))))
 
-(set! *app-loader* (lambda (path) (grant-load-app! path)))
+(set-hook! (app-load! path) (grant-load-app! path))
 
 (define (grant-sandbox! app path requests)
   (for-each (lambda (b)

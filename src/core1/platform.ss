@@ -57,7 +57,7 @@
 ;; The process's memory in RAM, bytes: the heap, and what SDL and the
 ;; drivers hold outside it, which neither reports; #f where the system
 ;; doesn't say.
-(define (platform-process-bytes)
+(define-hook (platform-process-bytes)
   (cond
     [(file-exists? "/proc/self/status")
      (guard (c [#t #f])
@@ -95,13 +95,13 @@
              load)))))
 
 ;; The monotonic clock in ns, a fixnum: what the profiler times with.
-;; Core1's own, read from core0's (src/core0/mail.ss), so a test fakes it
+;; Core1's own, read from core0's ((schevana core0 mail)), so a test fakes it
 ;; without moving core0's.
-(define (now-ns) (core0-clock-ns))
+(define-hook (now-ns) (core0-clock-ns))
 
 ;; The same clock in ms: what apps and timers go by. It reads the clock
 ;; itself, so a test can fake either without moving the other.
-(define (now-ms) (quotient (core0-clock-ns) 1000000))
+(define-hook (now-ms) (quotient (core0-clock-ns) 1000000))
 
 ;; The CPU time this thread has had, in ns: a number, read into memory
 ;; kept for it, so that reading it allocates nothing. The clock's number is

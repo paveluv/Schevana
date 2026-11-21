@@ -36,7 +36,7 @@
                       '(#f #f #f #f (wheel 0 -1))))))
 
 ;;; Core0's SDL code, run against a stand-in for SDL: every SDL call
-;;; (schevana sdl) binds is replaced in core0's environment, which has
+;;; (schevana sdl window) binds is replaced in core0's environment, which has
 ;;; them as its own variables (main.ss; one with no stand-in raises), so
 ;;; nothing here reaches the real SDL or opens a window. The fake window is
 ;;; fake-units window units big with fake-ratio physical pixels per unit,
@@ -49,8 +49,9 @@
 (define fake-sdl-names
   ;; the library's body: what follows its name, exports and imports
   (let loop ([forms (cddddr (call-with-input-file
-                                (string-append *schevana-root*
-                                               "/lib/schevana/sdl.sls")
+                                (string-append
+                                 *schevana-root*
+                                 "/lib/schevana/sdl/window.sls")
                               read))]
              [acc '()])
     (cond

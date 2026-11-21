@@ -28,8 +28,8 @@
 
   (define-exports loop-exports
     (export (world)
-      *input-step?* post-core1! (settable *loop-event*) schevana-step!
-      schevana-run! quit! schevana-end! uptime-ms load-user-init!
-      user-directory schevana-boot! collector-declining? source-path
-      source-files *source-texts* keep-source-text! load-file!
-      (settable *app-loader*) load-user-folders! reload! loop-main)))
+      *input-step?* post-core1! wm-event! schevana-step! schevana-run! quit!
+      schevana-end! uptime-ms load-user-init! user-directory schevana-boot!
+      collector-declining? source-path source-files *source-texts*
+      keep-source-text! load-file! (settable app-load!) load-user-folders!
+      reload! loop-main)))

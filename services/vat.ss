@@ -253,7 +253,7 @@
   (for-each (lambda (j) (when (eq? (vat-job-window j) win) (vat-job-kill! j)))
             *vat-jobs*))
 
-(set! *window-gone* (lambda (win) (vat-window-gone! win)))
+(set-hook! (window-gone! win) (vat-window-gone! win))
 
 ;; On j's vat's thread: runs j, its timer on, and posts the outcome to
 ;; core1. The way out is let go before j's results leave the call/1cc, so

@@ -277,7 +277,7 @@
 (define (font-ready f)
   (or (font-file-cache f) (font-file-of f)))
 
-(define text-width
+(define-hook text-width
   (case-lambda
     [(str) (text-width str 'ui)]
     [(str font)
