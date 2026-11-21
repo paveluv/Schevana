@@ -8,6 +8,8 @@
           (schevana theme-table) (schevana processes) (schevana draw)
           (schevana pacer))
 
+  (library-layer core)
+
   (include-sources "src/core1/screen.ss")
 
   (define-exports screen-exports

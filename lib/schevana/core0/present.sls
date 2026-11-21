@@ -27,6 +27,8 @@
           (schevana core0 trace)
           (schevana core0 renderer))
 
+  (library-layer core0)
+
   (define present-rows 8192)
   (define present-words 12)
   ;; A row: the frame's number; its kind (0 sent, 1 shown, 2 dropped); when

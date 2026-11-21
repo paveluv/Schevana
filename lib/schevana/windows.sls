@@ -9,6 +9,8 @@
           (schevana gpu) (schevana draw) (schevana pacer) (schevana screen)
           (schevana loop) (schevana theme))
 
+  (library-layer core)
+
   (include-sources "src/core1/wm.ss")
 
   (define-exports windows-exports

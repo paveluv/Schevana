@@ -16,6 +16,8 @@
           (schevana core0 present)
           (schevana core0 platform))
 
+  (library-layer core0)
+
   ;; The steps' names, by code.
   (define core0-trace-names
     '#(#f step take acquire acquired submit back sleep woke pump shown

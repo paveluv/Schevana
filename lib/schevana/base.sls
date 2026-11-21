@@ -4,7 +4,8 @@
 
 (library (schevana base)
   (export
-    at-load define-state define-view define-made define-hook set-hook!
+    library-layer at-load define-state define-view define-made define-hook
+    set-hook!
     clamp string-split string-join string-prefix? string-suffix? filter-map
     string-contains-ci? plist-ref plist-keys condition->string list-index
     registry-add
@@ -18,6 +19,139 @@
   (define-syntax at-load
     (syntax-rules ()
       [(_ form ...) (define at-load-done (begin form ...))]))
+
+  ;;; ------------------------------------------------------------------ layers
+  ;;; (library-layer layer), or (library-layer layer facade), first in a
+  ;;; library's body: the layer it belongs to. As the library compiles, its
+  ;;; imports are held to the layers' order: none of a layer above its own,
+  ;;; and of a sealed layer other than its own only the facade, the front
+  ;;; door it declares. A library not of Schevana's (Chez's own) is below
+  ;;; them all; one of Schevana's declares its layer. Programs and tests
+  ;;; import anything.
+
+  ;; The layers, lowest first; a sealed one is reached from outside it
+  ;; only through its facade.
+  (meta define library-layers
+    '((foundation) (core0 sealed) (recorder sealed) (core sealed) (kits)
+      (services) (desktop) (looks) (apps)))
+
+  (meta define (library-layer-rank layer)
+    (let loop ([ls library-layers] [i 0])
+      (cond [(null? ls) #f]
+            [(eq? (caar ls) layer) i]
+            [else (loop (cdr ls) (+ i 1))])))
+
+  (meta define (library-layer-sealed? layer)
+    (let ([l (assq layer library-layers)]) (and l (memq 'sealed l) #t)))
+
+  ;; The file a library is compiled from, as Chez's library manager finds
+  ;; it (library-directories, library-extensions), or #f.
+  (meta define (library-layer-source name)
+    (let ([path (apply string-append
+                       (map (lambda (part)
+                              (string-append "/" (symbol->string part)))
+                            name))])
+      (let loop ([dirs (library-directories)])
+        (and (pair? dirs)
+             (or (exists (lambda (ext)
+                           (let ([f (string-append (caar dirs) path
+                                                   (car ext))])
+                             (and (file-regular? f) f)))
+                         (library-extensions))
+                 (loop (cdr dirs)))))))
+
+  ;; A library's form as its file holds it, or #f.
+  (meta define (library-layer-form file)
+    (let ([form (guard (c [#t #f]) (call-with-input-file file read))])
+      (and (list? form) (>= (length form) 4) (eq? (car form) 'library)
+           form)))
+
+  ;; What each library declares, by name: (layer . facade?), or none.
+  (meta define library-layer-known (make-hashtable equal-hash equal?))
+
+  (meta define (library-layer-declared form)
+    (let ([d (find (lambda (x) (and (pair? x) (eq? (car x) 'library-layer)
+                                    (pair? (cdr x))))
+                   (cddddr form))])
+      (if d
+          (cons (cadr d) (and (pair? (cddr d)) (eq? (caddr d) 'facade)))
+          'none)))
+
+  (meta define (library-layer-of name)
+    (or (hashtable-ref library-layer-known name #f)
+        (let* ([file (library-layer-source name)]
+               [form (and file (library-layer-form file))]
+               [layer (if form (library-layer-declared form) 'none)])
+          (hashtable-set! library-layer-known name layer)
+          layer)))
+
+  ;; The library an import spec names, its version left out.
+  (meta define (library-layer-imported spec)
+    (cond
+      [(and (pair? spec) (memq (car spec) '(only except prefix rename for))
+            (pair? (cdr spec)) (pair? (cadr spec)))
+       (library-layer-imported (cadr spec))]
+      [(and (pair? spec) (eq? (car spec) 'library) (pair? (cdr spec)))
+       (library-layer-imported (cadr spec))]
+      [else (filter symbol? spec)]))
+
+  ;; What is wrong with each of form's imports, for a library of layer.
+  (meta define (library-layer-faults form layer)
+    (let ([rank (library-layer-rank layer)] [name (cadr form)])
+      ;; filter-map is this library's, out of reach at expansion
+      (filter
+       string?
+       (map
+       (lambda (spec)
+         (let* ([m (library-layer-imported spec)]
+                [theirs (library-layer-of m)])
+           (cond
+             [(eq? theirs 'none)
+              (and (pair? m) (eq? (car m) 'schevana)
+                   (format "~s imports ~s, which declares no layer" name m))]
+             [(not (library-layer-rank (car theirs)))
+              (format "~s imports ~s, of no such layer ~s" name m
+                      (car theirs))]
+             [(> (library-layer-rank (car theirs)) rank)
+              (format "~s, of layer ~s, imports ~s, of ~s, above it" name
+                      layer m (car theirs))]
+             [(and (not (eq? (car theirs) layer))
+                   (library-layer-sealed? (car theirs))
+                   (not (cdr theirs)))
+              (format "~s imports ~s, a piece of the sealed layer ~s, \
+                       not its facade" name m (car theirs))]
+             [else #f])))
+       (let ([clause (cadddr form)])
+         (if (and (pair? clause) (eq? (car clause) 'import))
+             (cdr clause)
+             '()))))))
+
+  (define-syntax library-layer
+    (lambda (x)
+      (syntax-case x ()
+        [(_ layer opt ...)
+         (let* ([me (syntax->datum #'layer)]
+                [a (syntax->annotation x)]
+                [s (and a (annotation-source a))]
+                [form (and s (library-layer-form
+                              (source-file-descriptor-path
+                               (source-object-sfd s))))])
+           (unless (library-layer-rank me)
+             (syntax-error #'layer "no such layer:"))
+           (when form
+             (hashtable-set! library-layer-known (cadr form)
+                             (cons me (memq 'facade
+                                            (syntax->datum #'(opt ...)))))
+             (let ([faults (library-layer-faults form me)])
+               (unless (null? faults)
+                 (syntax-error x (apply string-append
+                                        (map (lambda (f)
+                                               (string-append "\n  " f))
+                                             faults))))))
+           #'(define library-layer-declared 'layer))])))
+
+  ;; this library's own, once the form is there to say it
+  (library-layer foundation)
 
   ;; (define-global name g init kept?): a global of Chez's own under the
   ;; symbol g, and name a macro that reads it, or sets it under set! (and

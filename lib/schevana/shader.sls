@@ -44,6 +44,8 @@
   (import (chezscheme)
           (schevana base))
 
+  (library-layer foundation)
+
   ;;; ------------------------------------------------------------------ shaders
   ;;; What a compiled shader is, the compiler's and the device's contract,
   ;;; and which back end this machine speaks.

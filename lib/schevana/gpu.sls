@@ -7,6 +7,8 @@
   (import (chezscheme) (schevana layer) (schevana base) (schevana shader)
           (schevana core0) (schevana recorder) (schevana processes))
 
+  (library-layer core)
+
   (include-sources "src/core1/gpu.ss")
 
   (define-exports gpu-exports

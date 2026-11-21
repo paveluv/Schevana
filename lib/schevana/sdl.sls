@@ -5,7 +5,9 @@
 
 (library (schevana sdl)
   (export)
-  (import (chezscheme))
+  (import (chezscheme) (only (schevana base) library-layer))
+
+  (library-layer foundation)
 
   ;; each of the three's exports, as this library's own
   (export (import (schevana sdl system) (schevana sdl window)

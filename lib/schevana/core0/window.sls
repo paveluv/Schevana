@@ -35,6 +35,8 @@
           (schevana core0 trace-file)
           (schevana core0 gpu))
 
+  (library-layer core0)
+
   (define-state *core0-mode* 'none)
   (define-state *sdl-window* 0)
   (define-state *sdl-event* (foreign-alloc 128))   ; an SDL_Event

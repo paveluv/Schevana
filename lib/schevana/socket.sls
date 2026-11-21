@@ -11,6 +11,8 @@
           (schevana base)
           (schevana ffi))
 
+  (library-layer foundation)
+
   ;; The C library's sockets come with what's loaded.
   (define-foreign c-socket "socket" (int int int) int)
   (define-foreign c-bind "bind" (int uptr unsigned-32) int)

@@ -10,6 +10,8 @@
     c-clock-gettime c-close c-string->string)
   (import (chezscheme) (schevana base))
 
+  (library-layer foundation)
+
   (define (load-first-library names)
     (let loop ([ns names])
       (cond

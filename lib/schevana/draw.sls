@@ -9,6 +9,8 @@
           (schevana theme-table) (schevana processes) (schevana gpu)
           (schevana fonts))
 
+  (library-layer core)
+
   (include-sources "src/core1/gfx.ss")
 
   (define-exports draw-exports

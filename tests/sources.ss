@@ -78,6 +78,30 @@
 ;; three import.
 (define library-files *schevana-libraries*)
 
+;; Every library under lib/schevana, the ones the core is built of and
+;; those that still include a layer's files.
+(define all-library-files
+  (let walk ([dir "lib/schevana"])
+    (apply append
+           (map (lambda (f)
+                  (let ([path (string-append dir "/" f)])
+                    (cond [(file-directory? (source-path path)) (walk path)]
+                          [(string=? (path-extension f) "sls") (list path)]
+                          [else '()])))
+                (sort string<? (directory-list (source-path dir)))))))
+
+;; Each declares its layer first (library-layer, (schevana base)), which
+;; holds its imports to the layers' order as it compiles.
+(check "every library under lib/schevana declares its layer first"
+       (none? (filter-map
+               (lambda (f)
+                 (let ([body (file-forms f)])
+                   (and (not (and (pair? body) (pair? (car body))
+                                  (eq? (caar body) 'library-layer)))
+                        (not (equal? f "lib/schevana/base.sls"))
+                        (format "~a declares no layer first" f))))
+               all-library-files)))
+
 ;; Those of a layer's own, sealed: its folder of lib/schevana.
 (define (layer-libraries folder)
   (filter (lambda (f)
@@ -218,7 +242,7 @@
 ;; the libraries they import (lib/schevana/). What declares is left out,
 ;; sized by what's given, each a reviewed change: the export.ss files, a
 ;; library's exports and imports (file-forms), a file's imports.
-(define src-budget 38406)
+(define src-budget 38870)
 
 ;; The tokens of a datum as read; a list's end is none.
 (define (tokens x)

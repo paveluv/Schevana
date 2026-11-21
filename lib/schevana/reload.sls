@@ -15,6 +15,8 @@
   (import (chezscheme)
           (schevana base))
 
+  (library-layer foundation)
+
   ;; Each library's file text as it was evaluated last, by name: a
   ;; library whose file differs has changed.
   (define-state *reload-texts* (make-hashtable equal-hash equal?))

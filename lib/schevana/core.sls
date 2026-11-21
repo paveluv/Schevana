@@ -17,6 +17,8 @@
           (schevana screen) (schevana loop) (schevana theme)
           (schevana windows))
 
+  (library-layer core facade)
+
   ;; A program on the whole core: the loop's main (loop-main), defined
   ;; here so that a program compiled as one carries this library, which
   ;; a REPL's environment is made of.

@@ -6,8 +6,10 @@
     fc-config-get-current fc-get-version fc-name-parse fc-config-substitute
     fc-default-substitute fc-font-match fc-pattern-get-string
     fc-pattern-get-integer fc-pattern-destroy)
-  (import (chezscheme)
+  (import (chezscheme) (only (schevana base) library-layer)
           (schevana ffi))
+
+  (library-layer foundation)
 
   (define libfontconfig
     (load-first-library

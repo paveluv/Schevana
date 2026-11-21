@@ -8,6 +8,8 @@
           (schevana processes) (schevana fonts) (schevana draw)
           (schevana screen))
 
+  (library-layer core)
+
   (include-sources "src/core1/theme.ss")
 
   ;; plain defines that their file assigns

@@ -6,8 +6,10 @@
 (library (schevana sdl system)
   (export
     sdl-library sdl-get-ticks-ns sdl-get-num-logical-cpu-cores)
-  (import (chezscheme)
+  (import (chezscheme) (only (schevana base) library-layer)
           (schevana ffi))
+
+  (library-layer foundation)
 
   ;; SDL3 gives a window, input events, a clipboard and the GPU.
   (define sdl-library

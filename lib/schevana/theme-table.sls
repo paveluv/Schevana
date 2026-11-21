@@ -6,6 +6,8 @@
   (export)
   (import (chezscheme) (schevana layer) (schevana base) (schevana boot))
 
+  (library-layer core)
+
   (include-sources "src/core1/theme-table.ss")
 
   (define-exports theme-table-exports

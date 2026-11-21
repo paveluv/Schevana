@@ -52,6 +52,8 @@
           (schevana core0 present)
           (schevana core0 platform))
 
+  (library-layer core0)
+
   ;; structs, on their way to SDL
   (define-state *gpu-scratch* (foreign-alloc 2048))
 

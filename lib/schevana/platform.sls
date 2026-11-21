@@ -7,6 +7,8 @@
   (import (chezscheme) (schevana layer) (schevana base) (schevana ffi)
           (schevana core0))
 
+  (library-layer core)
+
   (include-sources "src/core1/platform.ss")
 
   (define-exports platform-exports

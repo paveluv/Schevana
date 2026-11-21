@@ -9,6 +9,8 @@
           (schevana processes) (schevana gpu) (schevana pacer)
           (schevana screen))
 
+  (library-layer core)
+
   (include-sources "src/core1/system.ss")
   ;; Boots the screen, mode sdl (a window w × h logical pixels, or full
   ;; screen) or headless, runs world, a thunk that opens what the program

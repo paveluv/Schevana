@@ -6,8 +6,10 @@
   (export
     ft-init-freetype ft-library-version ft-new-face ft-set-char-size
     ft-set-transform ft-load-char ft-get-first-char ft-get-next-char)
-  (import (chezscheme)
+  (import (chezscheme) (only (schevana base) library-layer)
           (schevana ffi))
+
+  (library-layer foundation)
 
   (define libfreetype
     (load-first-library

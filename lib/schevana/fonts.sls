@@ -7,6 +7,8 @@
           (schevana shader) (schevana freetype) (schevana fontconfig)
           (schevana core0) (schevana theme-table))
 
+  (library-layer core)
+
   (include-sources "src/core1/font.ss")
 
   (define-exports fonts-exports

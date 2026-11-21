@@ -28,6 +28,8 @@
           (schevana ffi)
           (schevana sdl system))
 
+  (library-layer foundation)
+
   ;; SDL3, loaded before a binding to it is made.
   (at-load sdl-library)
 

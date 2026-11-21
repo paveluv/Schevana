@@ -6,7 +6,10 @@
 (library (schevana boot)
   (export core1-thread? core1-thread! world-value core1-exported
           core1-exports *schevana-root*)
-  (import (chezscheme) (schevana layer) (schevana tree))
+  (import (chezscheme) (only (schevana base) library-layer) (schevana layer)
+          (schevana tree))
+
+  (library-layer core)
 
   ;; Whether this is core1, the world's thread: the one that said so
   ;; (core1-thread!, as schevana-main runs the world); till then, the one

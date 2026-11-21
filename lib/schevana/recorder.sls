@@ -4,6 +4,9 @@
 
 (library (schevana recorder)
   (export)
-  (import (chezscheme) (schevana layer) (schevana recorder bytes))
+  (import (chezscheme) (only (schevana base) library-layer) (schevana layer)
+          (schevana recorder bytes))
+
+  (library-layer recorder facade)
 
   (include-sources "src/recorder/export.ss"))

@@ -23,6 +23,8 @@
           (schevana core0 renderer)
           (schevana core0 present))
 
+  (library-layer core0)
+
   ;; An entry of C's, or #f where this platform's libraries lack it.
   (define-syntax define-optional-foreign
     (syntax-rules ()

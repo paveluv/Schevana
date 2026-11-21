@@ -17,6 +17,8 @@
           (schevana base)
           (schevana sdl))
 
+  (library-layer core0)
+
   (define-record-type renderer
     (nongenerative schevana-renderer-1)
     (fields kind device sampler atlas blank

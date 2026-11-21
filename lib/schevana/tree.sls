@@ -5,7 +5,9 @@
 
 (library (schevana tree)
   (export *schevana-root*)
-  (import (chezscheme))
+  (import (chezscheme) (only (schevana base) library-layer))
+
+  (library-layer foundation)
 
   (define-syntax tree-root
     (lambda (x)

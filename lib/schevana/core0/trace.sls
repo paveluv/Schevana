@@ -15,6 +15,8 @@
           (schevana base)
           (schevana core0 mail))
 
+  (library-layer core0)
+
   (define core0-trace-rows 262144)
 
   ;; Where the files go, or #f: off.

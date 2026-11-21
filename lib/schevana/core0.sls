@@ -10,6 +10,8 @@
           (schevana core0 platform) (schevana core0 trace-file)
           (schevana core0 gpu) (schevana core0 window))
 
+  (library-layer core0 facade)
+
   ;; A library is no environment and takes no forms to evaluate: the top
   ;; level's names for those (src/core0/boot.ss), for what still asks.
   (define (core0-environment)

@@ -11,7 +11,9 @@
           state-cell state-reader
           ;; the top level's own (src/base.ss), which a file still names
           forwarder-to forwarder-settable exports-install! exports-names)
-  (import (chezscheme))
+  (import (chezscheme) (only (schevana base) library-layer))
+
+  (library-layer foundation)
 
   ;; Where the tree is, from where a form of it was read: its file is
   ;; under <root>/lib.

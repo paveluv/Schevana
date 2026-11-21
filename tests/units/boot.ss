@@ -285,3 +285,46 @@
                  (fluid-let ([gpu-idle! (lambda () (real) (k 'waited))])
                    ((exit-handler) 1)
                    'went-on))))))
+
+;;; A library is held to its layer as it compiles (library-layer, in
+;;; (schevana base)): one that imports a layer above its own, or a piece of
+;;; a sealed layer not its own, is refused; one that imports its own layer
+;;; or below loads. Libraries of the test's own, in a folder of out/.
+(let* ([dir (string-append out-dir "/library-layers")]
+       [write! (lambda (name layer imports)
+                 (call-with-output-file
+                   (string-append dir "/units/layers/" (symbol->string name)
+                                  ".sls")
+                   (lambda (p)
+                     (write `(library (units layers ,name)
+                               (export ,name)
+                               (import (chezscheme) (schevana base)
+                                       ,@(map (lambda (i)
+                                                `(units layers ,i))
+                                              imports))
+                               (library-layer ,@layer)
+                               (define (,name) ',name))
+                            p))
+                   'replace))]
+       [loads? (lambda (name)
+                 (guard (c [#t #f])
+                   (eval `(import (units layers ,name))
+                         (copy-environment (scheme-environment) #t))
+                   #t))])
+  (system (format "rm -rf '~a' && mkdir -p '~a/units/layers'" dir dir))
+  (write! 'high '(apps) '())
+  (write! 'piece '(core0) '())
+  (write! 'door '(core0 facade) '(piece))
+  (write! 'above '(kits) '(high))
+  (write! 'inside '(kits) '(piece))
+  (write! 'through '(kits) '(door))
+  (write! 'beside '(apps) '(high))
+  (parameterize ([library-directories (cons (cons dir dir)
+                                            (library-directories))])
+    (check "a library importing a layer above its own, or a piece of a \
+            sealed layer not through its facade, is refused as it compiles; \
+            one importing its own layer, or a sealed one's facade, loads"
+           (and (not (loads? 'above))
+                (not (loads? 'inside))
+                (loads? 'through)
+                (loads? 'beside)))))

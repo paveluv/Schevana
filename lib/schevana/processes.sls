@@ -6,6 +6,8 @@
   (export)
   (import (chezscheme) (schevana layer) (schevana base) (schevana platform))
 
+  (library-layer core)
+
   (include-sources "src/core1/proc.ss")
 
   (define-exports processes-exports

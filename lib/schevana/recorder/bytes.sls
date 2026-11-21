@@ -33,6 +33,8 @@
           (schevana base)
           (schevana core0))
 
+  (library-layer recorder)
+
   ;; Written to between a publish and the next list: a write there raises.
   ;; A state, as *rec-now* holds it: a reload keeps the two one.
   (define-state rec-nothing

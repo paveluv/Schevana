@@ -8,6 +8,8 @@
           (schevana recorder) (schevana platform) (schevana theme-table)
           (schevana processes) (schevana gpu) (schevana fonts) (schevana draw))
 
+  (library-layer core)
+
   (include-sources "src/core1/pacer.ss")
 
   (define-exports pacer-exports
