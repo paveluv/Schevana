@@ -143,6 +143,33 @@
            (and (equal? (list-head ran 2) '(4 3))
                 (eq? (car *core0-job-failed*) raising)))))
 
+;;; Core0's sleep, unwound from inside its wait: a second Ctrl-C before
+;;; the first is answered makes Chez drop the first thread's stack where
+;;; it stands, in the wait too, where the mutex is given up. Here the
+;;; release that unwinding runs, in each of the three places.
+(check "core0's sleep, dropped in its wait, unwinds without a word of the \
+        mutex it gave up, and releases the one it holds, in the wait or not"
+       (let ([held? (lambda ()   ; whether a release of the mutex is taken
+                      (guard (c [#t #f])
+                        (mutex-release *core0-world-mutex*)
+                        #t))])
+         (and
+          ;; in the wait, the mutex not this thread's: nothing is raised
+          (fluid-let ([*core0-sleeping* #t])
+            (guard (c [#t #f])
+              (core0-sleep-release!)
+              (not *core0-sleeping*)))
+          ;; in the wait's own frame, the mutex still held: released
+          (fluid-let ([*core0-sleeping* #t])
+            (mutex-acquire *core0-world-mutex*)
+            (core0-sleep-release!)
+            (not (held?)))
+          ;; out of the wait: released, as with-mutex would
+          (begin
+            (mutex-acquire *core0-world-mutex*)
+            (core0-sleep-release!)
+            (not (held?))))))
+
 (fluid-let ([*core0-inbox* (box '())])
   (core0-put! *core0-inbox* '(((key-down #\a ())) . (#x300)))
   (core0-put! *core0-inbox* '(((text "a")) . (#x303)))

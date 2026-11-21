@@ -490,13 +490,31 @@
 ;; Core0 sleeps up to ms, or till it's woken. Its events aren't a wake:
 ;; it looks for them each time it wakes, so ms bounds how long input
 ;; waits while nothing else comes (core0-idle-ms).
+;;
+;; A second Ctrl-C before the first is answered makes Chez drop the first
+;; thread's stack where it stands (its noncontinuable interrupt): in the
+;; wait too, where the mutex is given up. What unwinds then releases the
+;; mutex only if it is held, where with-mutex's release would raise, and
+;; say so as the run ends.
+(defvar *core0-sleeping* #f)   ; in the wait
+(define (core0-sleep-release!)
+  (if *core0-sleeping*
+      (begin
+        (set! *core0-sleeping* #f)
+        (guard (c [#t (void)]) (mutex-release *core0-world-mutex*)))
+      (mutex-release *core0-world-mutex*)))
 (define (core0-sleep! ms)
-  (with-mutex *core0-world-mutex*
-    (unless (or *core0-woken* (<= ms 0))
-      (core0-trace! 7 ms)
-      (condition-wait *core0-ready* *core0-world-mutex* (core0-ms ms))
-      (core0-trace! 8 0))
-    (set! *core0-woken* #f)))
+  (dynamic-wind
+    (lambda () (mutex-acquire *core0-world-mutex*))
+    (lambda ()
+      (unless (or *core0-woken* (<= ms 0))
+        (core0-trace! 7 ms)
+        (set! *core0-sleeping* #t)
+        (condition-wait *core0-ready* *core0-world-mutex* (core0-ms ms))
+        (set! *core0-sleeping* #f)
+        (core0-trace! 8 0))
+      (set! *core0-woken* #f))
+    core0-sleep-release!))
 
 ;; Core0's side, in its step: the frame published, if one is, presented
 ;; and given back.
