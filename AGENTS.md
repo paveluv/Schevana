@@ -89,7 +89,7 @@ before it:
   updates `docs/PLATFORMS.md`: where it ran, where it should work, what
   happens without it. Monitor's Platform tab shows it all, and copies a
   run as a row of it.
-- **The core has a budget**, 37,545 tokens (atoms as read; comments,
+- **The core has a budget**, 37,586 tokens (atoms as read; comments,
   whitespace and names' lengths are free; the `export.ss` files, which
   declare, are left out), in `tests/sources.ss`. Don't join lines or
   shorten names to fit it. Code the core doesn't need moves out to the
@@ -101,7 +101,7 @@ before it:
 - **The GPU layer speaks the world's terms.** Above core0, in the core too,
   nothing names SDL's GPU, Vulkan, SPIR-V, Metal or MSL, so that another
   back end or raw Vulkan stays core0's business alone (`tests/sources.ss`;
-  the compiler, `src/core1/shader.ss`, writes the back ends' code).
+  the compiler, `lib/schevana/shader.sls`, writes the back ends' code).
 - **The shader language is the contract.** What a back end can't do doesn't
   get in: the twin (`kits/twin.ss`) is a second back end from the start, and
   `tests/units/shader.ss` holds it and the device together.

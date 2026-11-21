@@ -95,7 +95,7 @@
              load)))))
 
 ;; The monotonic clock in ns, a fixnum: what the profiler times with.
-;; Core1's own, read from core0's (src/core0/ffi.ss), so a test fakes it
+;; Core1's own, read from core0's (src/core0/platform.ss), so a test fakes it
 ;; without moving core0's.
 (define (now-ns) (core0-clock-ns))
 

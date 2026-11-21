@@ -14,7 +14,8 @@
 ;;; giving it what its export.ss says, and loading it:
 ;;;
 ;;;   1. This file boots core0, the code below the core (src/core0/), in
-;;;      this thread's environment, "/core0".
+;;;      this thread's environment, "/core0", which imports the libraries
+;;;      core0 is built on (lib/schevana/).
 ;;;   2. Core0 makes "/recorder" and "/core1", loads the core into
 ;;;      "/core1", and boots core1 (src/core0/boot.ss).
 ;;;   3. Core1 makes the world's environment, "/", and loads the world into
@@ -45,14 +46,22 @@
         (if (string=? dir "") "." dir))
       (top-level-value '*schevana-root*)))
 
+;; The pieces of the core that are R6RS libraries (lib/schevana/), which
+;; the environments below import: the basics, how C is bound, SDL's
+;; bindings, the shader compiler, sockets, FreeType's bindings and
+;; fontconfig's. Sealed: they change with a restart.
+(define *schevana-libraries*
+  '("lib/schevana/base.sls" "lib/schevana/ffi.sls" "lib/schevana/sdl.sls"
+    "lib/schevana/shader.sls" "lib/schevana/socket.sls"
+    "lib/schevana/freetype.sls" "lib/schevana/fontconfig.sls"))
+
 ;; Core0, below the core: the basics, then core0's own code (src/core0/:
-;; the C bindings, SDL, what differs by platform, the GPU's device side,
-;; the screen's reports, the trace, the window, what it exports, the boot).
+;; what differs by platform, the GPU's device side, the screen's reports,
+;; the trace, the window, what it exports, the boot).
 (define *schevana-core0-sources*
-  '("src/base.ss" "src/core0/ffi.ss" "src/core0/sdl.ss"
-    "src/core0/platform.ss" "src/core0/gpu.ss" "src/core0/present.ss"
-    "src/core0/trace.ss" "src/core0/window.ss" "src/core0/export.ss"
-    "src/core0/boot.ss"))
+  '("src/base.ss" "src/core0/platform.ss" "src/core0/gpu.ss"
+    "src/core0/present.ss" "src/core0/trace.ss" "src/core0/window.ss"
+    "src/core0/export.ss" "src/core0/boot.ss"))
 
 ;; "/recorder", sealed, made by core0 before "/core1": the basics, then the
 ;; bytes of frames and their writers, and what it exports (src/recorder/).
@@ -67,11 +76,11 @@
 ;; (reload!) loads these again, read from this file; core0's stay as they
 ;; are.
 (define *schevana-core1-sources*
-  '("src/base.ss" "src/core1/boot.ss" "src/core1/ffi.ss"
-    "src/core1/platform.ss" "src/core1/shader.ss" "src/core1/theme.ss"
-    "src/core1/gpu.ss" "src/core1/font.ss" "src/core1/gfx.ss"
-    "src/core1/proc.ss" "src/core1/screen.ss" "src/core1/socket.ss"
-    "src/core1/wm.ss" "src/core1/system.ss" "src/core1/export.ss"))
+  '("src/base.ss" "src/core1/boot.ss" "src/core1/platform.ss"
+    "src/core1/theme-table.ss" "src/core1/proc.ss" "src/core1/gpu.ss"
+    "src/core1/font.ss" "src/core1/gfx.ss" "src/core1/theme.ss"
+    "src/core1/pacer.ss" "src/core1/wm.ss" "src/core1/screen.ss"
+    "src/core1/system.ss" "src/core1/export.ss"))
 
 ;;; ---------------------------------------------------------- the command line
 
@@ -136,7 +145,16 @@
 
 ;;; ------------------------------------------------------------------ the boot
 
-;; 1. Core0.
+;; 1. Core0. Its libraries first: (import (schevana ...)) finds them in
+;; the tree's lib. SDL's bindings become core0's own variables here, as
+;; they were when a file of core0's bound them: a test stands in for SDL
+;; by setting them (tests/units/sdl.ss), and a library's it could not.
+(library-directories
+ (let ([lib (string-append *schevana-root* "/lib")])
+   (cons (cons lib lib) (library-directories))))
+(import (schevana ffi) (schevana sdl) (schevana shader))
+(for-each (lambda (name) (define-top-level-value name (eval name)))
+          (library-exports '(schevana sdl)))
 (for-each (lambda (f) (load (string-append *schevana-root* "/" f)))
           *schevana-core0-sources*)
 

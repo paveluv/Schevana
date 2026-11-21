@@ -583,7 +583,7 @@
 
 (define (core0-run-job! job)
   (guard (c [#t (set! *core0-job-failed* (cons job c))])
-    (apply (core0-job (car job)) (cdr job))))
+    (apply (top-level-value (car job) (core0-environment)) (cdr job))))
 
 ;; One step of core0's: the jobs posted, in order; the frame published, if
 ;; one is; with none, on a thread of its own, a sleep of up to

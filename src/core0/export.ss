@@ -87,7 +87,7 @@
     gpu-submit-computes! gpu-buffer-download! core0-post-submit!
     gpu-reads-now! core0-post-reads!)
   ;; What core1 alone needs of core0's: the clock and the CPU count, from
-  ;; any thread, and the means to bind C of its own (src/core1/ffi.ss).
+  ;; any thread, and the means to bind C of its own ((schevana ffi)).
   (export (core1)
     core0-clock-ns platform-cpu-count
     load-first-library define-foreign c-clock-gettime c-close

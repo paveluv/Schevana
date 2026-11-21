@@ -50,8 +50,6 @@
 (defvar *windows* '())        ; z-order, topmost first
 (defvar *focus* #f)
 (defvar *next-window-id* 1)
-;; what the next frame draws: #f, #t (the whole screen) or (x0 y0 x1 y1)
-(defvar *dirty* #t)
 (defvar *drag* #f)            ; the current mouse interaction, see drag record
 (defvar *drag-outline* #f)    ; (x y w h): where an outline drag would put it
 (defvar *hover* #f)
@@ -89,11 +87,6 @@
 ;; then values, which takes the window and does nothing (void takes none).
 (defvar *window-gone* values)
 
-(define request-frame!
-  (case-lambda
-    [() (set! *dirty* #t)]
-    [(x y w h) (when (and (> w 0) (> h 0)) (set! *dirty* #t))]))
-
 ;; Each (invalidate!) is a new generation, and each (invalidate! win) a new
 ;; ask of win's: a list of win's drawn before either is drawn again. Asked
 ;; while it draws, it draws again the next frame. A window not open (closed,
@@ -111,6 +104,9 @@
            (when (or (not win) (and (memq win *windows*) (visible? win)))
              (request-frame!))]
     [(win x y w h) (invalidate! win)]))
+
+;; A process ended: what shows the processes is drawn again.
+(at-load (set! *proc-ended* (lambda () (invalidate!))))
 
 ;; A window's shadow, for its style: the theme key 'shadow, half unfocused;
 ;; a maximized window has none.
@@ -151,18 +147,6 @@
 (define (screen-w) *canvas-w*)
 (define (screen-h) *canvas-h*)
 (define (screen-scale) *scale*)   ; the screen's pixels to a logical one
-;; A title's or a bar's height, key: the setting, grown to the room its
-;; text needs (the setting min, named key-min) unless the style fixes
-;; it, meaning its pixels; 0 is none. At the default fonts the text fits
-;; every setting the Settings app offers.
-(define (chrome-height key min)
-  (let ([v (theme key)])
-    (if (or (eqv? v 0) (memq key (theme 'fixed))) v (max v (theme min)))))
-
-(at-load
- (theme-default! 'title-height-min
-                 (theme-rule (exact (round (+ (font-line-height 'title) 7))))))
-(define (title-height) (chrome-height 'title-height 'title-height-min))
 
 (define (point-in? px py x y w h)
   (and (>= px x) (< px (+ x w)) (>= py y) (< py (+ y h))))
@@ -997,6 +981,9 @@
           (window-call (car ws) 'frame t)))
       (loop (cdr ws)))))
 
+;; A tick's turn is this file's (*pacer-turn*, src/core1/pacer.ss).
+(at-load (set! *pacer-turn* (lambda () (wm-tick!))))
+
 ;; The frames windows asked for, then each surface's, in depth order,
 ;; before the frame is drawn: what it finds changed (the mouse's
 ;; documentation) shows in it.
@@ -1108,12 +1095,6 @@
                   (hashtable-delete! (window-props win) name))))
             '(wm-list wm-content-list)))
 
-;; the last frame's time: its work, not its wait for the screen
-(defvar *frame-ms* 0.0)
-(defvar *frames-drawn* 0)
-;; the newest frame core0 gave back: sent, or found no room
-(defvar *frame-back* 0)
-
 ;; The whole screen, as a list. A crashed draw leaves nothing to unwind: the
 ;; state it left goes when the next one starts.
 (define (record-world!)
@@ -1210,88 +1191,6 @@
   (for-each (lambda (answer)
               (safely 'readback (lambda () ((car answer) (cdr answer)))))
             (gpu-take-answers!)))
-
-;; The last frames, for kits/inspect.ss: what each took and held, and what
-;; became of it (1 it reached the screen, 2 the window had no room, 0 not
-;; given back yet); its number (its report's, core0-frame-report), and when
-;; the oldest input it shows came (now-ns; 0, none) by SDL's stamp; then
-;; when its tick began, its draw began and it was published, and when that
-;; input came by core0's pump and by the compositor's time; the latch its
-;; tick aimed at (0, none), and when the pacer meant its tick to begin.
-;; Always kept: a few numbers a frame, for as many frames as the reports
-;; keep.
-(define frame-ring-rows 2048)
-(define frame-ring-words 15)
-(defvar *frame-ring* (make-fxvector (* frame-ring-rows frame-ring-words) 0))
-(defvar *frame-ring-n* 0)   ; frames so far
-;; the frame being drawn's number, its times, and the oldest input not
-;; drawn yet three ways (core0-input-ns-take!)
-(defvar *frame-number* 0)
-(defvar *frame-tick-ns* 0)
-(defvar *frame-draw-ns* 0)
-(defvar *frame-publish-ns* 0)
-(defvar *frame-input-ns* 0)
-(defvar *frame-input-pumped* 0)
-(defvar *frame-input-wl* 0)
-
-(define (frame-number-set! n) (set! *frame-number* n))
-;; The tick began at now (now-ns), or, unpaced, its ms: the pacer's read.
-(define (frame-ticked! now)
-  (set! *frame-tick-ns* (or now (* *pacer-tick-ms* 1000000))))
-
-;; Input came (now-ns; 0, none), by SDL's stamp, core0's pump and the
-;; compositor: the next frame shows it, if no older input waits.
-(define (frame-input-came! ns pumped wl)
-  (unless (or (eqv? ns 0) (not (eqv? *frame-input-ns* 0)))
-    (set! *frame-input-ns* ns))
-  (unless (or (eqv? pumped 0) (not (eqv? *frame-input-pumped* 0)))
-    (set! *frame-input-pumped* pumped))
-  (unless (or (eqv? wl 0) (not (eqv? *frame-input-wl* 0)))
-    (set! *frame-input-wl* wl)))
-
-;; Input that asked for no frame: no frame shows it.
-(define (frame-input-drop!)
-  (set! *frame-input-ns* 0)
-  (set! *frame-input-pumped* 0)
-  (set! *frame-input-wl* 0))
-
-(define (frame-ring-add!)
-  (let ([at (* frame-ring-words (modulo *frame-ring-n* frame-ring-rows))]
-        [ring *frame-ring*])
-    (fxvector-set! ring (+ at 6) *frame-number*)
-    (fxvector-set! ring (+ at 7) *frame-input-ns*)
-    (fxvector-set! ring (+ at 8) *frame-tick-ns*)
-    (fxvector-set! ring (+ at 9) *frame-draw-ns*)
-    (fxvector-set! ring (+ at 10) *frame-publish-ns*)
-    (fxvector-set! ring (+ at 11) *frame-input-pumped*)
-    (fxvector-set! ring (+ at 12) *frame-input-wl*)
-    (fxvector-set! ring (+ at 13) *pacer-aimed*)
-    (fxvector-set! ring (+ at 14) *pacer-planned*)
-    (frame-input-drop!)
-    (fxvector-set! ring at 0)
-    ;; the frame's, published: the recorder writes nothing now
-    (let-values ([(recs-n extras-n) (rec-last-sizes)])
-      (fxvector-set! ring (+ at 1) (fxquotient recs-n 32))
-      (fxvector-set! ring (+ at 2) (fxquotient extras-n 4)))
-    (fxvector-set! ring (+ at 3) (length (rec-runs)))
-    (fxvector-set! ring (+ at 4) *glyph-count*)
-    (fxvector-set! ring (+ at 5) 0))
-  (set! *frame-ring-n* (+ *frame-ring-n* 1)))
-
-;; Where frame n's row starts, among the newest sixteen, which hold every
-;; frame not given back or judged yet; else #f.
-(define (frame-ring-at n)
-  (let loop ([i (- *frame-ring-n* 1)] [j 0])
-    (and (< j 16) (>= i 0)
-         (let ([at (* frame-ring-words (modulo i frame-ring-rows))])
-           (if (eqv? (fxvector-ref *frame-ring* (+ at 6)) n)
-               at
-               (loop (- i 1) (+ j 1)))))))
-
-;; Word k of frame n's row set to v, while the ring has it.
-(define (frame-ring-set! n k v)
-  (let ([at (frame-ring-at n)])
-    (when at (fxvector-set! *frame-ring* (+ at k) v))))
 
 ;; The screen as it would be drawn now: its pixels, row after row,
 ;; premultiplied BGRA. What tests and screenshots see; screen-bytes-then

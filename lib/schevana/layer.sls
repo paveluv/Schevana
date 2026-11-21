@@ -8,7 +8,9 @@
   (export defvar define-exports assigned-variables live-name
           include-sources tree-root
           state-settable state-read-only state-checked state-through
-          state-cell state-reader)
+          state-cell state-reader
+          ;; the top level's own (src/base.ss), which a file still names
+          forwarder-to forwarder-settable exports-install! exports-names)
   (import (chezscheme))
 
   ;; Where the tree is, from where a form of it was read: its file is
@@ -139,9 +141,12 @@
         (define (face entry)
           (with-syntax ([(face) (generate-temporaries '(face))])
             (syntax-case entry (settable)
+              ;; a face another library may set keeps the property, so
+              ;; that a library above gives it on read-only, or checked
               [(settable name)
                (with-syntax ([cell (cell-of #'name)])
                  #'((define-syntax face (state-settable #'cell))
+                    (define-property face state-cell #'cell)
                     (export (rename (face name)))))]
               [(settable name check)
                (with-syntax ([cell (cell-of #'name)])
@@ -177,4 +182,9 @@
   ;; In a library a procedure is handed over itself: nothing redefines
   ;; it, and no name reaches it.
   (define-syntax live-name
-    (syntax-rules () [(_ name) name])))
+    (syntax-rules () [(_ name) name]))
+
+  ;; What src/base.ss has that works in a library as it is. The rest of
+  ;; it (its defvar, its define-exports, its live-name) stays inside.
+  (module (forwarder-to forwarder-settable exports-install! exports-names)
+    (include-sources "src/base.ss")))

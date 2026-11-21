@@ -10,38 +10,6 @@
 ;;; holds: buffers uploaded and transfer buffers mapped with cycling on are
 ;;; ring buffers, and no fence bookkeeping is needed for them.
 
-;;; ------------------------------------------------------------------ shaders
-;;; What a compiled shader is, the compiler's (src/core1/shader.ss) and the
-;;; device's contract, and which back end this machine speaks.
-
-;; This machine's back end: a Mac has Metal, everything else Vulkan.
-(define shader-target (if (platform-mac?) 'msl 'spirv))
-
-;; What a shader's entry is called: main is no function's name in MSL.
-(define shader-entry (if (eq? shader-target 'msl) "main0" "main"))
-
-;; A compute shader's group, across: a dispatch counts in these.
-(define shader-group-x 64)
-
-(define-record-type shader
-  (nongenerative schevana-shader-1)
-  (fields name stage coords params source code price))
-
-;; The uniforms a stage's block holds, hidden ones first: ((name type) ...).
-;; After the parameters, each buffer's length in words, in their order: no
-;; GPU API but Vulkan tells a shader how long its buffers are.
-(define (shader-uniforms stage params)
-  (append (if (eq? stage 'compute)
-              '((shader-w fixnum) (shader-h fixnum))
-              '())
-          (filter (lambda (p) (memq (cadr p) '(fixnum flonum))) params)
-          (map (lambda (p) (list (shader-words (car p)) 'fixnum))
-               (filter (lambda (p) (memq (cadr p) '(fx-buffer fl-buffer)))
-                       params))))
-
-;; The uniform holding buffer name's length: a name no parameter can have.
-(define (shader-words name) (string->symbol (format "~a words" name)))
-
 (define-record-type renderer
   (nongenerative schevana-renderer-1)
   (fields kind device sampler atlas blank

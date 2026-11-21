@@ -132,7 +132,7 @@
      crew-size
      crew-size-set!
      platform-cpu-count)
-    ;; a shader touches only the buffers it's handed (src/core1/shader.ss), and
+    ;; a shader touches only the buffers it's handed ((schevana shader)), and
     ;; nothing here waits for the GPU
     (gpu "Compute and draw on the GPU"
      define-compute-shader

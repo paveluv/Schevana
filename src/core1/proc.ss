@@ -85,6 +85,50 @@
     (guard (c [#t (report-error! who c)]) (thunk))))
 
 ;;; ------------------------------------------------------------------
+;;; asked of the loop
+;;; A frame, and a call after a while: the loop (src/core1/system.ss)
+;;; looks at both each step.
+
+;; what the next frame draws: #f, #t (the whole screen) or (x0 y0 x1 y1)
+(defvar *dirty* #t)
+
+(define request-frame!
+  (case-lambda
+    [() (set! *dirty* #t)]
+    [(x y w h) (when (and (> w 0) (> h 0)) (set! *dirty* #t))]))
+
+(defvar *timers* '())     ; (#(due-ms thunk fueled?) ...) by due time
+
+;; (after 1000 (lambda () (notify "a second later"))). Linked in place,
+;; after those due no later: a vector and a pair, however many are set.
+;; One set in an engine (an app's handler, a process, a timer of theirs)
+;; runs in one too, with a fuel; the world's own runs as it is.
+(define (after ms thunk)
+  (let* ([due (+ (now-ms) ms)]
+         [t (vector due thunk (in-engine?))]
+         [cell (list t)])
+    (if (or (null? *timers*) (< due (vector-ref (car *timers*) 0)))
+        (begin (set-cdr! cell *timers*) (set! *timers* cell))
+        (let ins ([ts *timers*])
+          (if (or (null? (cdr ts)) (< due (vector-ref (cadr ts) 0)))
+              (begin (set-cdr! cell (cdr ts)) (set-cdr! ts cell))
+              (ins (cdr ts)))))
+    t))
+
+;; The timers due, in order. An error in one of the world's own ends the
+;; turn's (run-timers! runs under safely); those still due run next turn.
+(define (run-timers!)
+  (let loop ()
+    (when (and (pair? *timers*) (<= (vector-ref (car *timers*) 0) (now-ms)))
+      (let ([t (car *timers*)])
+        (set! *timers* (cdr *timers*))
+        (if (vector-ref t 2)
+            (safe-call 'timer (vector-ref t 1)
+                       (lambda (c) (report-error! 'timer c)))
+            ((vector-ref t 1)))
+        (loop)))))
+
+;;; ------------------------------------------------------------------
 ;;; notifications
 ;;; The queue is the core's; how a toast looks is the desktop's.
 
@@ -165,13 +209,17 @@
 (define (find-proc p)
   (if (proc? p) p (find (lambda (q) (eqv? (proc-id q) p)) *procs*)))
 
+;; Told when a process ends: what shows the processes draws again
+;; (src/core1/wm.ss sets this); till then nobody.
+(defvar *proc-ended* void)
+
 (define (proc-finish! p state value)
   (when (memq p *procs*)
     (set! *procs* (remq p *procs*))
     (proc-state-set! p state)
     (safe-call 'on-done (lambda () ((proc-on-done p) state value))
                (lambda (c) (report-error! 'proc c)))
-    (invalidate!)))
+    (*proc-ended*)))
 
 (define (kill! p)
   (let ([p (find-proc p)])

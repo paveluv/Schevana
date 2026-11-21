@@ -33,12 +33,20 @@
                            #\newline))])
     (reverse (if (and (pair? ls) (string=? (car ls) "")) (cdr ls) ls))))
 
+;; A file's forms; a library's file's, those of its body: what it exports
+;; and imports declares, as an export.ss does.
 (define (file-forms f)
-  (call-with-input-file (source-path f)
-    (lambda (p)
-      (let loop ([acc '()])
-        (let ([x (read p)])
-          (if (eof-object? x) (reverse acc) (loop (cons x acc))))))))
+  (let ([forms (call-with-input-file (source-path f)
+                 (lambda (p)
+                   (let loop ([acc '()])
+                     (let ([x (read p)])
+                       (if (eof-object? x)
+                           (reverse acc)
+                           (loop (cons x acc)))))))])
+    (if (and (pair? forms) (null? (cdr forms)) (pair? (car forms))
+             (eq? (caar forms) 'library))
+        (cddddr (car forms))
+        forms)))
 
 ;; "styles/mac.ss" -> "styles", "mac"
 (define (file-folder f) (path-first f))
@@ -66,8 +74,12 @@
 ;; The core's, in "/core1".
 (define core1-files *schevana-core1-sources*)
 
+;; The pieces of the core that are libraries (lib/schevana/), which the
+;; three import.
+(define library-files *schevana-libraries*)
+
 (define line-files
-  (append core0-files recorder-files
+  (append library-files core0-files recorder-files
           (source-files)
           (test-files "tests")
           (test-files "tests/units")
@@ -145,7 +157,8 @@
                       environment, so a test fakes core1's alone")))
 
 (define world-files
-  (append core0-files recorder-files (source-files) '("main.ss")))
+  (append library-files core0-files recorder-files (source-files)
+          '("main.ss")))
 
 ;; An app in a sandbox (services/grant.ss): what its file defines is the
 ;; sandbox's, but for the app itself, so it collides with nothing.
@@ -186,10 +199,11 @@
 ;;; code itself: less of it, or some of it moved to a later layer.
 
 ;; Raise it deliberately: the core is what the desktop needs to boot and
-;; run; everything else belongs in a folder. The export.ss files are left
-;; out: they declare what each layer gives, sized by what's given, each a
-;; reviewed change.
-(define src-budget 37545)
+;; run; everything else belongs in a folder. The core is src/'s files and
+;; the libraries they import (lib/schevana/). What declares is left out,
+;; sized by what's given, each a reviewed change: the export.ss files, a
+;; library's exports and imports (file-forms), a file's imports.
+(define src-budget 37586)
 
 ;; The tokens of a datum as read; a list's end is none.
 (define (tokens x)
@@ -198,12 +212,18 @@
         [(vector? x) (apply + (map tokens (vector->list x)))]
         [else 1]))
 
-(let* ([counts (map (lambda (f) (cons f (apply + (map tokens (file-forms f)))))
+(let* ([counts (map (lambda (f)
+                      (cons f (apply + (map tokens
+                                            (remp (lambda (x)
+                                                    (and (pair? x)
+                                                         (eq? (car x) 'import)))
+                                                  (file-forms f))))))
                     (remp (lambda (f) (equal? (path-last f) "export.ss"))
-                          (append core0-files recorder-files core1-files)))]
+                          (append library-files core0-files recorder-files
+                                  core1-files)))]
        [n (apply + (map cdr counts))])
-  (check (format "src/ is ~a tokens, within its budget of ~a (to grow the \
-                  core, raise src-budget in tests/sources.ss on purpose)"
+  (check (format "the core is ~a tokens, within its budget of ~a (to grow \
+                  it, raise src-budget in tests/sources.ss on purpose)"
                  n src-budget)
          (or (<= n src-budget)
              ;; over: each file's share, the largest first
@@ -269,14 +289,16 @@
 ;;; ------------------------------------------------------------------
 ;;; only the core calls C
 ;;; One of the core's roles is to keep C away from the rest: outside src/
-;;; no file names a binding of src/core0/ffi.ss's or src/core1/ffi.ss's, a
+;;; and the core's libraries no file names a binding of (schevana ffi)'s,
+;;; (schevana sdl)'s, (schevana freetype)'s or (schevana fontconfig)'s, a
 ;;; foreign-… procedure, an ftype form or load-shared-object. The tests
 ;;; may: they inspect what is drawn and stand in for SDL.
 
 (define ffi-names
-  (map cdr (append (definitions "src/core0/ffi.ss")
-                   (definitions "src/core1/ffi.ss")
-                   (definitions "src/core0/sdl.ss"))))
+  (map cdr (append (definitions "lib/schevana/ffi.sls")
+                   (definitions "lib/schevana/sdl.sls")
+                   (definitions "lib/schevana/freetype.sls")
+                   (definitions "lib/schevana/fontconfig.sls"))))
 
 (define (reaches-c? s)
   (or (and (memq s (append ffi-names
@@ -296,7 +318,7 @@
           [else acc])))
 
 (define outside-src
-  (remp (lambda (f) (equal? (file-folder f) "src"))
+  (remp (lambda (f) (member (file-folder f) '("src" "lib")))
         (append world-files '("world.ss"))))
 
 ;; The GPU layer speaks the world's terms: above it, in the core too, nothing
@@ -307,8 +329,8 @@
 ;; src/core1/platform.ss.
 (define above-gpu-files
   (remp (lambda (f)
-          (member f '("src/core0/ffi.ss" "src/core1/shader.ss"
-                      "src/core0/sdl.ss" "src/core0/platform.ss"
+          (member f '("lib/schevana/ffi.sls" "lib/schevana/shader.sls"
+                      "lib/schevana/sdl.sls" "src/core0/platform.ss"
                       "src/core0/gpu.ss" "src/core0/present.ss"
                       "src/core0/window.ss" "src/core1/font.ss"
                       "src/core1/platform.ss")))
@@ -350,9 +372,9 @@
 ;;; (AGENTS.md); the rest asks their predicates and facts. Monitor's
 ;;; Platform tab shows Chez's machine type as it is.
 
-;; and src/core0/sdl.ss, which binds SDL's video driver for core0's to read
+;; and (schevana sdl), which binds SDL's video driver for core0's to read
 (define platform-files
-  '("src/base.ss" "src/core1/platform.ss" "src/core0/sdl.ss"
+  '("lib/schevana/base.sls" "src/core1/platform.ss" "lib/schevana/sdl.sls"
     "src/core0/platform.ss" "kits/inspect.ss"))
 
 ;; The strings in x.
@@ -398,10 +420,13 @@
 (define recorder-names (layer-names recorder-files))
 
 ;; Core1's, as it has them once loaded: what its macros define too (a
-;; layout's fields), and what it was given; not Chez's, nor base.ss's.
+;; layout's fields), and what it was given; not Chez's, nor base.ss's, nor
+;; the libraries', which any layer may import.
 (define core1-names
   (let ([chez (scheme-environment)]
-        [base (map cdr (definitions "src/base.ss"))])
+        [base (map cdr (append (definitions "src/base.ss")
+                               (apply append
+                                      (map definitions library-files))))])
     (remp (lambda (s)
             (or (gensym? s) (memq s base)
                 (top-level-bound? s chez) (top-level-syntax? s chez)))
@@ -499,10 +524,13 @@
                            (exports-names core1-exports 'world))))))
 
 ;; base.ss is every environment's, a copy each: so it keeps no state, and
-;; calls no C.
-(check "src/base.ss is pure: no defvar, no set! of its own names, no C"
-       (let ([forms (file-forms "src/base.ss")]
-             [own (map cdr (definitions "src/base.ss"))])
+;; calls no C. Nor does the library the basics are.
+(check "src/base.ss and (schevana base) are pure: no defvar, no set! of \
+        their own names, no C"
+       (let ([forms (append (file-forms "src/base.ss")
+                            (file-forms "lib/schevana/base.sls"))]
+             [own (map cdr (append (definitions "src/base.ss")
+                                   (definitions "lib/schevana/base.sls")))])
          (none? (append
                  (filter-map (lambda (x)
                                (and (pair? x) (eq? (car x) 'defvar)
@@ -532,7 +560,7 @@
     "SDL_SetGPUSwapchainParameters"))
 
 (check "every SDL call that may block is collect-safe"
-       (let ([forms (file-forms "src/core0/sdl.ss")])
+       (let ([forms (file-forms "lib/schevana/sdl.sls")])
          (none? (filter-map
                  (lambda (c)
                    (let ([f (find (lambda (x)

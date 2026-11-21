@@ -8,15 +8,14 @@
 ;;; (set-theme! 'accent #xff9e64)   your change, remembered for this style
 ;;; (override! 'ui-font-size 15)    on top of every style that honors it
 ;;;
+;;; The table itself, and (theme key), are src/core1/theme-table.ss's,
+;;; below drawing; this file fills it, and loads once colors can be mixed.
+;;;
 ;;; A rule is a setting computed from others when the table is built:
 ;;; 'selection (theme-rule (mix 'accent 'bg-1 0.65)). A part is a setting
 ;;; whose value is a procedure or its name: 'frame-under 'mac-draw-under.
 ;;; Anywhere a color is expected you may pass a theme key symbol instead.
 
-(defvar *theme* (make-eq-hashtable))   ; every setting in effect
-;; the chosen style's: *theme* is another while a window of another style,
-;; a preview or a place is drawn, or a window's handler runs
-(defvar *main-theme* *theme*)
 (defvar *theme-version* 0)
 ;; Keeps a change to the layers: void, or what services/theme-file.ss sets
 ;; (the file saved soon after).
@@ -27,16 +26,6 @@
 (defvar *style-changes* '())
 (defvar *theme-overrides* '())   ; (key value ...): on top of every style
 (defvar *scale-setting* 0)   ; the display's, in percent; 0 follows it
-
-;; A setting computed from others when the theme is built.
-(define-record-type (theme-rule-box make-theme-rule theme-rule?)
-  (nongenerative schevana-rule-1)
-  (fields thunk))
-(define-syntax theme-rule
-  (syntax-rules () [(_ e) (make-theme-rule (lambda () e))]))
-
-(define theme-unset (list 'unset))
-(define theme-busy (list 'busy))
 
 ;; The built-in defaults, the bottom layer: Tokyo Night's colors, the
 ;; rest derived from them as every palette's are, and the metrics.
@@ -140,33 +129,8 @@
     (topbar-height "Top bar" 22 40 topbar-height-min)
     (taskbar-height "Taskbar" 28 56 taskbar-height-min)))
 
-;; thunk's values with t (a resolved theme) in effect meanwhile: a look
-;; that isn't on, read as if it were (a preview, a comparison).
-(define (call-with-theme t thunk)
-  (fluid-let ([*theme* t]) (thunk)))
-
-;; A rule still in the table is computed the first time it is read.
-(define (theme key)
-  (let ([v (hashtable-ref *theme* key theme-unset)])
-    (cond [(eq? v theme-unset) (errorf 'theme "unknown theme key ~s" key)]
-          [(theme-rule? v) (compute-rule! key v)]
-          [(eq? v theme-busy) (errorf 'theme "~s is computed from itself" key)]
-          [else v])))
-
-(define (compute-rule! key r)
-  (hashtable-set! *theme* key theme-busy)
-  (let ([v (guard (c [#t (hashtable-set! *theme* key r) (raise c)])
-             ((theme-rule-box-thunk r)))])
-    (hashtable-set! *theme* key v)
-    v))
-
 ;; The built-in value of key (a rule as it is).
 (define (theme-default key) (plist-ref default-theme key #f))
-
-(define (theme-keys)
-  (vector->list
-   (vector-sort (lambda (a b) (string<? (symbol->string a) (symbol->string b)))
-                (hashtable-keys *theme*))))
 
 ;;; ------------------------------------------------------------------
 ;;; palettes
@@ -236,13 +200,6 @@
 
 ;;; ------------------------------------------------------------------
 ;;; parts
-
-;; The procedure the theme gives for key: a procedure, or the name of a
-;; top-level one, looked up at each call, so a redefinition shows on the
-;; next frame.
-(define (theme-part key)
-  (let ([v (theme key)])
-    (if (symbol? v) (world-value v) v)))
 
 ;; (define-part (name formal ...) body ...) defines name* as the body (the
 ;; built-in) and name as a call to the theme's part for the key name,
@@ -395,8 +352,15 @@
 (define (compute-rules! t)
   (fluid-let ([*theme* t]) (vector-for-each theme (hashtable-keys t))))
 
-;; Whatever changed: build the theme again, then tell who cares: a change
-;; not only of colors changes the chrome.
+;; The canvas at another scale: every rule is computed again.
+(at-load (set! *canvas-rescaled* (lambda () (theme-changed!))))
+
+;; Told of every change, and whether the scale changed, and the chrome (a
+;; change not only of colors): what lays the screen out and draws it again
+;; (src/core1/system.ss sets this); till then nobody.
+(defvar *theme-change-seen* (lambda (scale? chrome?) (void)))
+
+;; Whatever changed: build the theme again, then tell who cares.
 (define (theme-changed!)
   (let* ([old *main-theme*]
          [new (resolve-theme *style-name* *theme-overrides*
@@ -409,12 +373,55 @@
     (set! *theme* new)
     (hashtable-clear! *style-themes*)
     (set! *theme-version* (+ *theme-version* 1))
-    (when (changed? 'scale) (screen-rescale!))
-    (unless (for-all (lambda (k) (or (memq k color-keys) (not (changed? k))))
-                     (append (vector->list (hashtable-keys old))
-                             (vector->list (hashtable-keys new))))
-      (wm-chrome-changed!))
-    (invalidate!)))
+    (*theme-change-seen*
+     (changed? 'scale)
+     (not (for-all (lambda (k) (or (memq k color-keys) (not (changed? k))))
+                   (append (vector->list (hashtable-keys old))
+                           (vector->list (hashtable-keys new))))))))
+
+;;; ------------------------------------------------------------------
+;;; fonts and heights
+;;; The fonts' roles (src/core1/font.ss), from the four font settings (a
+;;; style may give any): the ui or mono family at its size plus d (or
+;;; twice it).
+
+(define (theme-font-rule family d . opts)
+  (theme-rule
+   (let ([size (theme (if (eq? family 'ui) 'ui-font-size 'mono-font-size))])
+     (apply font (theme (if (eq? family 'ui) 'ui-font 'mono-font))
+            (if (eq? d 'twice) (* 2 size) (+ size d)) opts))))
+(at-load
+ (let loop ([roles (list 'ui (theme-font-rule 'ui 0)
+                         'ui-bold (theme-font-rule 'ui 0 'bold)
+                         'ui-small (theme-font-rule 'ui -2)
+                         'ui-italic (theme-font-rule 'ui 0 'italic)
+                         'title (theme-font-rule 'ui 0 'bold)
+                         'heading (theme-font-rule 'ui 5 'bold)
+                         'big (theme-font-rule 'ui 'twice 'bold)
+                         'huge (theme-rule (font "serif" 360 'bold))
+                         'mono (theme-font-rule 'mono 0)
+                         'mono-small (theme-font-rule 'mono -2)
+                         'mono-bold (theme-font-rule 'mono 0 'bold))])
+   (unless (null? roles)
+     (theme-default! (car roles) (cadr roles))
+     (loop (cddr roles)))))
+
+;; Faint text's font is its own (#f), or what a style's procedure makes
+;; of it, a part: drawing asks (faint-font, src/core1/gfx.ss).
+(at-load (theme-default! 'faint-text-font #f))
+
+;; A title's or a bar's height, key: the setting, grown to the room its
+;; text needs (the setting min, named key-min) unless the style fixes
+;; it, meaning its pixels; 0 is none. At the default fonts the text fits
+;; every setting the Settings app offers.
+(define (chrome-height key min)
+  (let ([v (theme key)])
+    (if (or (eqv? v 0) (memq key (theme 'fixed))) v (max v (theme min)))))
+
+(at-load
+ (theme-default! 'title-height-min
+                 (theme-rule (exact (round (+ (font-line-height 'title) 7))))))
+(define (title-height) (chrome-height 'title-height 'title-height-min))
 
 ;;; ------------------------------------------------------------------
 ;;; the frame

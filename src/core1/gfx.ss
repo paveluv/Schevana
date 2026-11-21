@@ -22,6 +22,10 @@
 (defvar *canvas-pw* 0)
 (defvar *canvas-ph* 0)
 
+;; Told when the canvas takes another scale: what is computed from it, a
+;; theme's rules, is computed again (src/core1/theme.ss sets this).
+(defvar *canvas-rescaled* void)
+
 ;; A canvas pw × ph pixels big, drawn scale times bigger than the logical
 ;; pixels apps use; its logical size is the whole part of pw / scale.
 (define (canvas-create-pixels! pw ph scale)
@@ -35,7 +39,7 @@
     ;; with no window, frames draw to a target this big
     (when (eq? *core0-mode* 'headless) (gpu-ask! (list 'target pw ph)))
     (request-frame!)
-    (when rescaled? (theme-changed!))))
+    (when rescaled? (*canvas-rescaled*))))
 
 ;; A canvas of w × h logical pixels.
 (define (canvas-create! w h scale)
@@ -110,34 +114,8 @@
          (fxior (fxsll (byte a) 24) (fxsll (byte r) 16)
                 (fxsll (byte g) 8) (byte b))))]))
 
-;;; ------------------------------------------------------------------ fonts
-;;; (src/core1/font.ss). The roles, from the four font settings (a style may
-;;; give any): the ui or mono family at its size plus d (or twice it).
-
-(define (theme-font-rule family d . opts)
-  (theme-rule
-   (let ([size (theme (if (eq? family 'ui) 'ui-font-size 'mono-font-size))])
-     (apply font (theme (if (eq? family 'ui) 'ui-font 'mono-font))
-            (if (eq? d 'twice) (* 2 size) (+ size d)) opts))))
-(at-load
- (let loop ([roles (list 'ui (theme-font-rule 'ui 0)
-                         'ui-bold (theme-font-rule 'ui 0 'bold)
-                         'ui-small (theme-font-rule 'ui -2)
-                         'ui-italic (theme-font-rule 'ui 0 'italic)
-                         'title (theme-font-rule 'ui 0 'bold)
-                         'heading (theme-font-rule 'ui 5 'bold)
-                         'big (theme-font-rule 'ui 'twice 'bold)
-                         'huge (theme-rule (font "serif" 360 'bold))
-                         'mono (theme-font-rule 'mono 0)
-                         'mono-small (theme-font-rule 'mono -2)
-                         'mono-bold (theme-font-rule 'mono 0 'bold))])
-   (unless (null? roles)
-     (theme-default! (car roles) (cadr roles))
-     (loop (cddr roles)))))
-
 ;; Faint text's font: its own (#f), or what a style's procedure makes of
 ;; it, a part (Genera, with no gray, sets its hints in italic).
-(at-load (theme-default! 'faint-text-font #f))
 (define (faint-font color f)
   (let ([make (and (eq? color 'text-faint) (theme-part 'faint-text-font))])
     (if make (make f) f)))

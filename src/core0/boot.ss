@@ -10,9 +10,6 @@
 (define core0-environment
   (let ([e (interaction-environment)]) (lambda () e)))
 
-;; A job's procedure, by the name it was posted with (core0-run-job!).
-(define (core0-job name) (top-level-value name (core0-environment)))
-
 ;; Forms evaluated in core0's environment by core0 itself, between frames,
 ;; as a vat takes them: a REPL in "/core0" sends them, never touching core0's
 ;; state from core1. then gets, on core1, (ok text ...), what they

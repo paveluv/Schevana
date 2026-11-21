@@ -140,7 +140,7 @@ undefined, and every back end keeps to it:
 
 1. **Defining it compiles it.** `define-compute-shader` (and
    `define-paint`) is a macro: as it expands, the front end in
-   `src/core1/shader.ss` checks the forms and lowers them to a small typed tree,
+   `lib/schevana/shader.sls` checks the forms and lowers them to a small typed tree,
    with every local function inlined, every `cond`, `case` and `when` turned
    into `if`, and every constant replaced by its number. A test it can work
    out leaves only its arm. The back end for this machine then writes the
@@ -414,7 +414,7 @@ comes back to the CPU.
 
 | File | What it holds |
 |---|---|
-| `src/core1/shader.ss` | the language: the front end, the SPIR-V and MSL back ends, `define-compute-shader`, constants, helpers and layouts |
+| `lib/schevana/shader.sls` | the language: the front end, the SPIR-V and MSL back ends, `define-compute-shader`, constants, helpers and layouts |
 | `src/core1/gfx.ss` | `define-paint`, `fill-shader`, the core's own shaders and their helpers |
 | `src/core1/gpu.ss` | buffers and images as handles, calls, compute runs |
 | `src/core0/gpu.ss` | core0: pipelines, dispatch, drawing |

@@ -4,6 +4,12 @@
 ;;; world into it. The first of the core's files, as the rest name what it
 ;;; defines.
 
+;; The libraries the core is built on (lib/schevana/), in "/core1" for
+;; all its files: how C is bound, the shader compiler, sockets, FreeType
+;; and fontconfig.
+(import (schevana ffi) (schevana shader) (schevana socket)
+        (schevana freetype) (schevana fontconfig))
+
 ;; Whether this is core1, the thread that loaded the core. The world's
 ;; state is core1's alone, and SDL core0's: a worker runs only worklets
 ;; (proc.ss), where neither can be named.

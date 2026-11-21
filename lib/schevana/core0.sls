@@ -6,42 +6,34 @@
 
 (library (schevana core0)
   (export core0-run!)
-  (import (chezscheme) (schevana layer) (schevana base))
+  (import (chezscheme) (schevana layer) (schevana base) (schevana ffi)
+          (schevana sdl) (schevana shader))
 
   ;; Where the tree is, which the top level's main.ss says.
   (define *schevana-root* (tree-root))
 
-  (include-sources "src/core0/ffi.ss" "src/core0/sdl.ss"
-                   "src/core0/platform.ss" "src/core0/gpu.ss"
+  (include-sources "src/core0/platform.ss" "src/core0/gpu.ss"
                    "src/core0/present.ss" "src/core0/trace.ss"
                    "src/core0/window.ss")
 
-  ;; A job's procedure, by the name it was posted with (core0-run-job!):
-  ;; the top level looks it up in core0's environment; a library has
-  ;; none, and knows its jobs.
-  (define (core0-job name)
-    (case name
-      [(core0-resize-now!) core0-resize-now!]
-      [(core0-minimum-now!) core0-minimum-now!]
-      [(core0-fullscreen-now!) core0-fullscreen-now!]
-      [(core0-icon-now!) core0-icon-now!]
-      [(core0-cursor-now!) core0-cursor-now!]
-      [(core0-clipboard-now!) core0-clipboard-now!]
-      [(core0-quit-now!) core0-quit-now!]
-      [(core0-trace-write!) core0-trace-write!]
-      [(present-refresh-say!) present-refresh-say!]
-      [(gpu-submit-computes!) gpu-submit-computes!]
-      [(gpu-reads-now!) gpu-reads-now!]
-      [else (errorf 'core0-job "~s is no job of core0's" name)]))
-
-  ;; What core0 exports, as an environment, for who asks to look: there
-  ;; only while the program's libraries are visible (a whole program
-  ;; hides them unless compiled to show them).
+  ;; Core0's loop finds a job's procedure by its name in core0's
+  ;; environment (core0-run-job!). A library is no environment: this one
+  ;; is made for the jobs, and has nothing else of core0's.
   (define core0-environment
-    (let ([e #f])
-      (lambda ()
-        (unless e (set! e (environment '(chezscheme) '(schevana core0))))
-        e)))
+    (let ([e (copy-environment (scheme-environment) #t)])
+      (for-each (lambda (job) (define-top-level-value (car job) (cdr job) e))
+                `((core0-resize-now! . ,core0-resize-now!)
+                  (core0-minimum-now! . ,core0-minimum-now!)
+                  (core0-fullscreen-now! . ,core0-fullscreen-now!)
+                  (core0-icon-now! . ,core0-icon-now!)
+                  (core0-cursor-now! . ,core0-cursor-now!)
+                  (core0-clipboard-now! . ,core0-clipboard-now!)
+                  (core0-quit-now! . ,core0-quit-now!)
+                  (core0-trace-write! . ,core0-trace-write!)
+                  (present-refresh-say! . ,present-refresh-say!)
+                  (gpu-submit-computes! . ,gpu-submit-computes!)
+                  (gpu-reads-now! . ,gpu-reads-now!)))
+      (lambda () e)))
 
   (define core0-recorder-environment
     (let ([e #f])

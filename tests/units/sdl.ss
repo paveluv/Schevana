@@ -36,35 +36,34 @@
                       '(#f #f #f #f (wheel 0 -1))))))
 
 ;;; Core0's SDL code, run against a stand-in for SDL: every SDL call
-;;; src/core0/ffi.ss and src/core0/sdl.ss bind is replaced in core0's
-;;; environment (one with no stand-in raises), so nothing here reaches the
-;;; real SDL or opens a window. The fake window is fake-units window units
-;;; big with fake-ratio physical pixels per unit, on a desktop that asks
-;;; for fake-desktop (Xft.dpi / 96 under X11), so its display scale is
-;;; their product, as SDL3's is; its texture is an image that uploads copy
-;;; rows into, as SDL_UpdateTexture does. *core0-mode* is 'sdl only around
-;;; single core0 calls, so steps stay headless.
+;;; (schevana sdl) binds is replaced in core0's environment, which has
+;;; them as its own variables (main.ss; one with no stand-in raises), so
+;;; nothing here reaches the real SDL or opens a window. The fake window is
+;;; fake-units window units big with fake-ratio physical pixels per unit,
+;;; on a desktop that asks for fake-desktop (Xft.dpi / 96 under X11), so
+;;; its display scale is their product, as SDL3's is; its texture is an
+;;; image that uploads copy rows into, as SDL_UpdateTexture does.
+;;; *core0-mode* is 'sdl only around single core0 calls, so steps stay
+;;; headless.
 
 (define fake-sdl-names
-  (apply append
-         (map (lambda (f)
-                (call-with-input-file (string-append *schevana-root* f)
-                  (lambda (p)
-                    (let loop ([acc '()])
-                      (let ([x (read p)])
-                        (cond
-                          [(eof-object? x) acc]
-                          [(and (pair? x)
-                                (memq (car x) '(define-foreign
-                                                define-foreign/collect-safe))
-                                (string-prefix? "SDL_" (caddr x))
-                                ;; plain memory and the GPU's: kept
-                                (not (member (caddr x)
-                                             '("SDL_memcmp" "SDL_memcpy")))
-                                (not (string-contains-ci? (caddr x) "GPU")))
-                           (loop (cons (cadr x) acc))]
-                          [else (loop acc)]))))))
-              '("/src/core0/ffi.ss" "/src/core0/sdl.ss"))))
+  ;; the library's body: what follows its name, exports and imports
+  (let loop ([forms (cddddr (call-with-input-file
+                                (string-append *schevana-root*
+                                               "/lib/schevana/sdl.sls")
+                              read))]
+             [acc '()])
+    (cond
+      [(null? forms) acc]
+      [(let ([x (car forms)])
+         (and (pair? x)
+              (memq (car x) '(define-foreign define-foreign/collect-safe))
+              (string-prefix? "SDL_" (caddr x))
+              ;; plain memory and the GPU's: kept
+              (not (member (caddr x) '("SDL_memcmp" "SDL_memcpy")))
+              (not (string-contains-ci? (caddr x) "GPU"))))
+       (loop (cdr forms) (cons (cadar forms) acc))]
+      [else (loop (cdr forms) acc)])))
 
 (define fake-units '(1280 . 800))
 (define fake-ratio 1)
