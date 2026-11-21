@@ -6,8 +6,8 @@ test, the test is named.
 
 ## Before every commit
 
-All four suites pass under Chez Scheme 10.0.0 and under 10.4.1, run from
-the repository's root:
+All four suites pass under Chez Scheme 10.4.1, and before every push
+under 10.0.0 too, run from the repository's root:
 
 ```bash
 mkdir -p out
