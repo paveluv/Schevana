@@ -36,15 +36,14 @@
                       '(#f #f #f #f (wheel 0 -1))))))
 
 ;;; Core0's SDL code, run against a stand-in for SDL: every SDL call
-;;; (schevana sdl window) binds is replaced in core0's environment, which has
-;;; them as its own variables (main.ss; one with no stand-in raises), so
-;;; nothing here reaches the real SDL or opens a window. The fake window is
-;;; fake-units window units big with fake-ratio physical pixels per unit,
-;;; on a desktop that asks for fake-desktop (Xft.dpi / 96 under X11), so
-;;; its display scale is their product, as SDL3's is; its texture is an
-;;; image that uploads copy rows into, as SDL_UpdateTexture does.
-;;; *core0-mode* is 'sdl only around single core0 calls, so steps stay
-;;; headless.
+;;; (schevana sdl window) binds is a hook, and each is set to its stand-in
+;;; here (one with none raises), so nothing reaches the real SDL or opens a
+;;; window. The fake window is fake-units window units big with fake-ratio
+;;; physical pixels per unit, on a desktop that asks for fake-desktop
+;;; (Xft.dpi / 96 under X11), so its display scale is their product, as
+;;; SDL3's is; its texture is an image that uploads copy rows into, as
+;;; SDL_UpdateTexture does. *core0-mode* is 'sdl only around single core0
+;;; calls, so steps stay headless.
 
 (define fake-sdl-names
   ;; the library's body: what follows its name, exports and imports
@@ -58,7 +57,8 @@
       [(null? forms) acc]
       [(let ([x (car forms)])
          (and (pair? x)
-              (memq (car x) '(define-foreign define-foreign/collect-safe))
+              (memq (car x)
+                    '(define-sdl-hook define-sdl-hook/collect-safe))
               (string-prefix? "SDL_" (caddr x))
               ;; plain memory and the GPU's: kept
               (not (member (caddr x) '("SDL_memcmp" "SDL_memcpy")))
@@ -139,18 +139,17 @@
 ;; Runs thunk with the fake SDL in place of the real one, the GPU's frames
 ;; going on to its target.
 (define (with-fake-sdl thunk)
-  (let ([saved (map (lambda (n) (top-level-value n core0-env))
-                    fake-sdl-names)]
+  ;; a hook is set by set!, in core0's environment, which imports it
+  (define (hook-set! n v) (eval `(set! ,n ',v) core0-env))
+  (let ([saved (map (lambda (n) (eval n core0-env)) fake-sdl-names)]
         [claim gpu-claim-window!])
     (dynamic-wind
       (lambda ()
-        (for-each (lambda (n) (set-top-level-value! n (fake-sdl n) core0-env))
-                  fake-sdl-names)
+        (for-each (lambda (n) (hook-set! n (fake-sdl n))) fake-sdl-names)
         (set! gpu-claim-window! (lambda (window) (void))))
       thunk
       (lambda ()
-        (for-each (lambda (n v) (set-top-level-value! n v core0-env))
-                  fake-sdl-names saved)
+        (for-each hook-set! fake-sdl-names saved)
         (set! gpu-claim-window! claim)))))
 
 ;; SDL reports window events (through core0's real event loop); the

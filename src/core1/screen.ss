@@ -1,7 +1,7 @@
 ;;; screen.ss — the world's side of core0's window, the one it lives in:
 ;;; its scale and canvas, full screen, its icon, and core0's events as the
 ;;; world reads them. The window itself, SDL's, is core0's
-;;; (src/core0/window.ss).
+;;; ((schevana core0 window)).
 ;;;
 ;;; Core0's events are translated into plain Scheme lists:
 ;;;   (mouse-move x y) (mouse-down x y button clicks) (mouse-up x y button)

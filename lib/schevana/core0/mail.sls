@@ -47,7 +47,7 @@
 
   ;; With a window core0 runs on the process's first thread and the world
   ;; on a thread of its own, core1; headless, one thread plays both
-  ;; (src/core0/window.ss).
+  ;; ((schevana core0 window)).
   (define-state *core0-forked* #f)
   (define (core0-forked?) *core0-forked*)
 

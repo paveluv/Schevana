@@ -129,7 +129,8 @@
         (case (car form)
           [(begin) (apply append (map defined (cdr form)))]
           [(define defvar define-hook define-state define-made define-syntax
-            define-foreign define-foreign/collect-safe define-worklet)
+            define-foreign define-foreign/collect-safe define-sdl-hook
+            define-sdl-hook/collect-safe define-worklet)
            (names 'name (list (if (pair? head) (car head) head)))]
           [(define-app)
            (list (cons 'name (car head)) (cons 'app (car head)))]
@@ -211,7 +212,7 @@
 ;; the libraries they import (lib/schevana/). What declares is left out,
 ;; sized by what's given, each a reviewed change: the export.ss files, a
 ;; library's exports and imports (file-forms), a file's imports.
-(define src-budget 37863)
+(define src-budget 37916)
 
 ;; The tokens of a datum as read; a list's end is none.
 (define (tokens x)
@@ -349,7 +350,8 @@
                       "lib/schevana/core0/renderer.sls"
                       "lib/schevana/core0/present.sls"
                       "lib/schevana/core0/platform.sls"
-                      "lib/schevana/core0/gpu.sls" "src/core0/window.ss"
+                      "lib/schevana/core0/gpu.sls"
+                      "lib/schevana/core0/window.sls"
                       "src/core1/font.ss" "src/core1/platform.ss")))
         (append world-files '("world.ss"))))
 
@@ -589,7 +591,9 @@
                                          (equal? (caddr x) c)))
                                   forms)])
                      (cond [(not f) (format "not bound: ~a" c)]
-                           [(eq? (car f) 'define-foreign/collect-safe) #f]
+                           [(memq (car f) '(define-foreign/collect-safe
+                                            define-sdl-hook/collect-safe))
+                            #f]
                            [else (format "not collect-safe: ~a" c)])))
                  sdl-blocking))))
 

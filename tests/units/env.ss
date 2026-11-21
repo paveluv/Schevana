@@ -470,13 +470,23 @@
               (env-eval h '(procedure? gpu-frame!))
               (not (top-level-bound? 'gpu-frame! *world-env*))
               (not (top-level-bound? 'gpu-frame! core1-env))))
-  (check "a definition there takes at core0's next call, through the \
-          world's forwarder too"
-         (let ([real (env-eval h 'core0-error-text)])
+  (check "a definition there is /core0's own: what is evaluated there \
+          after it sees it, and core0's code, sealed in its libraries, and \
+          what was compiled against it go on with the library's; a hook \
+          set there is core0's"
+         (let ([real (env-eval h 'core0-error-text)]
+               [idle (env-eval h 'gpu-idle!)])
            (env-eval h '(define core0-error-text (lambda () "from /core0")))
-           (let ([seen (core0-error-text)])
+           (env-eval h '(set! gpu-idle! (lambda () 'from-core0)))
+           (let ([there (env-eval h '(core0-error-text))]
+                 [seen (core0-error-text)]
+                 [hooked (gpu-idle!)])
              (env-eval h `(define core0-error-text ',real))
-             (and (equal? seen "from /core0")
+             (env-eval h `(set! gpu-idle! ',idle))
+             (and (equal? there "from /core0")
+                  (equal? seen (real))
+                  (eq? hooked 'from-core0)
+                  (eq? (env-eval h 'gpu-idle!) idle)
                   (eq? (env-eval h 'core0-error-text) real)))))
   (check "it isn't dropped, forks nothing, and is shared nothing of the \
           world's"

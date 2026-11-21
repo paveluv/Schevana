@@ -80,9 +80,10 @@ stopped or fails. State that must survive it is a `defvar`, and record
 types are nongenerative.
 
 The core's own names are redefined in a REPL in "/core1", where a
-`define` takes at the core's next call. Core0's change with a restart, or
-in a REPL in "/core0", whose forms core0 runs between frames on its own
-thread:
+`define` takes at the core's next call. Core0 is sealed in its libraries
+(`lib/schevana/core0/`) and changes with a restart; a REPL in "/core0",
+whose forms core0 runs between frames on its own thread, reads it and
+sets its states and hooks:
 
 ```scheme
 (repl "/core1")

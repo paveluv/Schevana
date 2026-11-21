@@ -10,4 +10,16 @@
           (schevana core0 platform) (schevana core0 trace-file)
           (schevana core0 gpu) (schevana core0 window))
 
+  ;; A library is no environment and takes no forms to evaluate: the top
+  ;; level's names for those (src/core0/boot.ss), for what still asks.
+  (define (core0-environment)
+    (errorf 'core0-environment "core0 is a library, and has no environment"))
+  (define core0-recorder-environment
+    (let ([e #f])
+      (lambda ()
+        (unless e (set! e (environment '(chezscheme) '(schevana recorder))))
+        e)))
+  (define (core0-eval! forms width then)
+    (errorf 'core0-eval! "core0 is a library, and evaluates no forms"))
+
   (include-sources "src/core0/export.ss"))

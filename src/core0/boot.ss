@@ -100,37 +100,15 @@
   (core0-boot-core1! (core0-make! root recorder-sources sources options)
                      root sources script))
 
-;; Core0 on this thread, the world on its own: with a window (the options'
-;; mode sdl), core0 opens it, its size in logical pixels at the desktop's
-;; scale, or full screen, and clears it; with none (headless, for the
-;; tests), its GPU draws to a target. Then it makes the environments;
-;; forks core1's thread, which loads the core and boots it; and goes on
-;; with its own loop, on this thread, till core1 quits. Core1 asks core0 to
-;; quit when script returns, or raises.
+;; Core0 on this thread, the world on its own (core0-window-start!,
+;; core0-fork-loop!): between the two core0 makes the environments, so
+;; the boot screen shows while they load. Core1's thread loads the core
+;; and boots it.
 (define (core0-fork! root recorder-sources sources options script)
-  (let ([w (cadr (assq 'size options))]
-        [h (cddr (assq 'size options))]
-        [full? (cdr (assq 'full-screen? options))])
-    (if (eq? (cdr (assq 'mode options)) 'headless)
-        (core0-window-headless!)
-        (begin
-          (core0-window-open! w h full?)
-          (unless full?
-            (let-values ([(uw uh pw ph) (core0-window-sizes)])
-              (let ([s (/ (if (> (core0-window-scale) 0) (core0-window-scale) 1)
-                          (/ pw (max uw 1)))])
-                (core0-resize-now! (exact (round (* w s)))
-                                  (exact (round (* h s)))))))
-          (core0-window-show!)
-          (set! *gpu-booting* #t)
-          (gpu-boot-screen!))))
+  (core0-window-start! (cdr (assq 'mode options))
+                       (cadr (assq 'size options))
+                       (cddr (assq 'size options))
+                       (cdr (assq 'full-screen? options)))
   (let ([core1 (core0-make! root recorder-sources sources options)])
-    (set! *core0-forked* #t)
-    (fork-thread
-     (lambda ()
-       (platform-thread-interactive!)
-       (guard (c [#t (display-condition c (console-error-port))
-                     (newline (console-error-port))])
-         (core0-boot-core1! core1 root sources script))
-       (core0-quit!))))
-  (core0-loop!))
+    (core0-fork-loop!
+     (lambda () (core0-boot-core1! core1 root sources script)))))

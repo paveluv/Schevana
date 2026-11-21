@@ -60,16 +60,17 @@
     "lib/schevana/fontconfig.sls" "lib/schevana/core0/mail.sls"
     "lib/schevana/core0/trace.sls" "lib/schevana/core0/renderer.sls"
     "lib/schevana/core0/present.sls" "lib/schevana/core0/platform.sls"
-    "lib/schevana/core0/trace-file.sls" "lib/schevana/core0/gpu.sls"))
+    "lib/schevana/core0/trace-file.sls" "lib/schevana/core0/gpu.sls"
+    "lib/schevana/core0/window.sls"))
 
-;; Core0, below the core: the basics, then what is left of core0's own
-;; code in src/core0/ (the window, what it exports, the boot). The rest
-;; are libraries already (lib/schevana/core0/): what its threads hand each
-;; other, the trace and its file, the renderer's record, the frames'
-;; reports, what differs by platform, the GPU's device side.
+;; Core0, below the core. Its code is libraries (lib/schevana/core0/):
+;; what its threads hand each other, the trace and its file, the
+;; renderer's record, the frames' reports, what differs by platform, the
+;; GPU's device side, the window. Left in src/core0/ is what the top
+;; level's boot is made of: what core0 exports to the environments it
+;; makes, and the making of them.
 (define *schevana-core0-sources*
-  '("src/base.ss" "src/core0/window.ss" "src/core0/export.ss"
-    "src/core0/boot.ss"))
+  '("src/base.ss" "src/core0/export.ss" "src/core0/boot.ss"))
 
 ;; "/recorder", sealed, made by core0 before "/core1": the basics, then the
 ;; bytes of frames and their writers, and what it exports (src/recorder/).
@@ -154,19 +155,15 @@
 ;;; ------------------------------------------------------------------ the boot
 
 ;; 1. Core0. Its libraries first: (import (schevana ...)) finds them in
-;; the tree's lib. SDL's bindings for the window become core0's own
-;; variables here, as they were when a file of core0's bound them: a test
-;; stands in for them by setting them (tests/units/sdl.ss), and a
-;; library's it could not.
+;; the tree's lib.
 (library-directories
  (let ([lib (string-append *schevana-root* "/lib")])
    (cons (cons lib lib) (library-directories))))
 (import (schevana ffi) (schevana sdl) (schevana shader)
         (schevana core0 mail) (schevana core0 trace) (schevana core0 renderer)
         (schevana core0 present) (schevana core0 platform)
-        (schevana core0 trace-file) (schevana core0 gpu))
-(for-each (lambda (name) (define-top-level-value name (eval name)))
-          (library-exports '(schevana sdl window)))
+        (schevana core0 trace-file) (schevana core0 gpu)
+        (schevana core0 window))
 (for-each (lambda (f) (load (string-append *schevana-root* "/" f)))
           *schevana-core0-sources*)
 

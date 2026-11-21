@@ -804,12 +804,13 @@
   'base 'chez
   'forks '()
   'fork #f
-  'kept "core0 runs the window and the screen there; its files load \
-         again into it, or with a restart"
+  'kept "core0 runs the window and the screen there; its libraries \
+         change with a restart"
   'doc "Core0, below the core: the window, its events and the GPU's \
-        device side. Of the world's names it holds none; what is defined \
-        here changes core0 at its next call. A REPL here sends its forms \
-        to core0, which runs them between frames")
+        device side, sealed in its libraries. Of the world's names it \
+        holds none; a state or a hook set here is core0's at its next \
+        call, and a definition is this environment's own. A REPL here \
+        sends its forms to core0, which runs them between frames")
 
 (env-register-kind! 'core1
   'title "Core1"

@@ -1,7 +1,8 @@
 ;;; (schevana sdl window) — SDL3's bindings for the window, its events,
 ;;; the display and the clipboard, as SDL names them: what a test stands
-;;; in for when it runs core0 with no window (tests/units/sdl.ss). Only
-;;; core0 imports it, the one thread that may call them.
+;;; in for when it runs core0 with no window (tests/units/sdl.ss), so each
+;;; call is a hook. Only core0 imports it, the one thread that may call
+;;; them.
 
 (library (schevana sdl window)
   (export
@@ -33,6 +34,18 @@
   ;; SDL3, loaded before a binding to it is made.
   (at-load sdl-library)
 
+  ;; A call bound here is a hook holding the binding: the test sets its
+  ;; stand-in there, and core0's libraries call whatever it holds.
+  (define-syntax define-sdl-hook
+    (syntax-rules ()
+      [(_ name . spec)
+       (begin (define-foreign bound . spec) (define-hook name bound))]))
+  (define-syntax define-sdl-hook/collect-safe
+    (syntax-rules ()
+      [(_ name . spec)
+       (begin (define-foreign/collect-safe bound . spec)
+              (define-hook name bound))]))
+
   (define SDL_INIT_VIDEO #x20)
   (define SDL_WINDOW_FULLSCREEN #x1)
   (define SDL_WINDOW_HIDDEN #x8)
@@ -54,59 +67,60 @@
   (define SDL_EVENT_MOUSE_BUTTON_UP #x402)
   (define SDL_EVENT_MOUSE_WHEEL #x403)
 
-  (define-foreign sdl-init "SDL_Init" (unsigned-32) bool)
-  (define-foreign sdl-quit "SDL_Quit" () void)
-  (define-foreign sdl-get-error "SDL_GetError" () string)
-  (define-foreign sdl-set-hint "SDL_SetHint" (string string) bool)
-  (define-foreign sdl-create-window "SDL_CreateWindow"
+  (define-sdl-hook sdl-init "SDL_Init" (unsigned-32) bool)
+  (define-sdl-hook sdl-quit "SDL_Quit" () void)
+  (define-sdl-hook sdl-get-error "SDL_GetError" () string)
+  (define-sdl-hook sdl-set-hint "SDL_SetHint" (string string) bool)
+  (define-sdl-hook sdl-create-window "SDL_CreateWindow"
     (string int int unsigned-64) uptr)
   ;; Collect-safe, as is what may size, show or let go of the window's Metal
   ;; layer once it has run: Core Animation may hold the layer's lock running
   ;; a presented handler of core0's, which may wait for a collection
   ;; ((schevana core0 platform)).
-  (define-foreign/collect-safe sdl-destroy-window "SDL_DestroyWindow" (uptr)
+  (define-sdl-hook/collect-safe sdl-destroy-window "SDL_DestroyWindow" (uptr)
     void)
-  (define-foreign/collect-safe sdl-set-window-minimum-size
+  (define-sdl-hook/collect-safe sdl-set-window-minimum-size
     "SDL_SetWindowMinimumSize" (uptr int int) bool)
-  (define-foreign/collect-safe sdl-set-window-size "SDL_SetWindowSize"
+  (define-sdl-hook/collect-safe sdl-set-window-size "SDL_SetWindowSize"
     (uptr int int) bool)
-  (define-foreign sdl-set-window-position "SDL_SetWindowPosition"
+  (define-sdl-hook sdl-set-window-position "SDL_SetWindowPosition"
     (uptr int int) bool)
-  (define-foreign sdl-show-window "SDL_ShowWindow" (uptr) bool)
-  (define-foreign sdl-get-window-size "SDL_GetWindowSize" (uptr uptr uptr) bool)
-  (define-foreign sdl-get-window-display-scale "SDL_GetWindowDisplayScale"
-    (uptr) float)
-  (define-foreign sdl-get-window-size-in-pixels "SDL_GetWindowSizeInPixels"
+  (define-sdl-hook sdl-show-window "SDL_ShowWindow" (uptr) bool)
+  (define-sdl-hook sdl-get-window-size "SDL_GetWindowSize"
     (uptr uptr uptr) bool)
-  (define-foreign sdl-get-display-for-window "SDL_GetDisplayForWindow"
+  (define-sdl-hook sdl-get-window-display-scale "SDL_GetWindowDisplayScale"
+    (uptr) float)
+  (define-sdl-hook sdl-get-window-size-in-pixels "SDL_GetWindowSizeInPixels"
+    (uptr uptr uptr) bool)
+  (define-sdl-hook sdl-get-display-for-window "SDL_GetDisplayForWindow"
     (uptr) unsigned-32)
-  (define-foreign sdl-get-current-display-mode "SDL_GetCurrentDisplayMode"
+  (define-sdl-hook sdl-get-current-display-mode "SDL_GetCurrentDisplayMode"
     (unsigned-32) uptr)
-  (define-foreign/collect-safe sdl-poll-event "SDL_PollEvent" (uptr) bool)
-  (define-foreign sdl-start-text-input "SDL_StartTextInput" (uptr) bool)
-  (define-foreign sdl-get-clipboard-text "SDL_GetClipboardText" () uptr)
-  (define-foreign sdl-set-clipboard-text "SDL_SetClipboardText" (string) bool)
-  (define-foreign sdl-free "SDL_free" (uptr) void)
-  (define-foreign sdl-create-system-cursor "SDL_CreateSystemCursor" (int) uptr)
-  (define-foreign sdl-set-cursor "SDL_SetCursor" (uptr) bool)
-  (define-foreign/collect-safe sdl-set-window-fullscreen
+  (define-sdl-hook/collect-safe sdl-poll-event "SDL_PollEvent" (uptr) bool)
+  (define-sdl-hook sdl-start-text-input "SDL_StartTextInput" (uptr) bool)
+  (define-sdl-hook sdl-get-clipboard-text "SDL_GetClipboardText" () uptr)
+  (define-sdl-hook sdl-set-clipboard-text "SDL_SetClipboardText" (string) bool)
+  (define-sdl-hook sdl-free "SDL_free" (uptr) void)
+  (define-sdl-hook sdl-create-system-cursor "SDL_CreateSystemCursor" (int) uptr)
+  (define-sdl-hook sdl-set-cursor "SDL_SetCursor" (uptr) bool)
+  (define-sdl-hook/collect-safe sdl-set-window-fullscreen
     "SDL_SetWindowFullscreen" (uptr bool) bool)
-  (define-foreign sdl-get-window-flags "SDL_GetWindowFlags" (uptr) unsigned-64)
-  (define-foreign sdl-create-surface-from "SDL_CreateSurfaceFrom"
+  (define-sdl-hook sdl-get-window-flags "SDL_GetWindowFlags" (uptr) unsigned-64)
+  (define-sdl-hook sdl-create-surface-from "SDL_CreateSurfaceFrom"
     (int int unsigned-32 uptr int) uptr)
-  (define-foreign sdl-destroy-surface "SDL_DestroySurface" (uptr) void)
-  (define-foreign sdl-set-window-icon "SDL_SetWindowIcon" (uptr uptr) bool)
-  (define-foreign sdl-memset "SDL_memset" (uptr int size_t) uptr)
+  (define-sdl-hook sdl-destroy-surface "SDL_DestroySurface" (uptr) void)
+  (define-sdl-hook sdl-set-window-icon "SDL_SetWindowIcon" (uptr uptr) bool)
+  (define-sdl-hook sdl-memset "SDL_memset" (uptr int size_t) uptr)
 
   ;; What the window and the platform say of themselves.
-  (define-foreign sdl-get-window-properties "SDL_GetWindowProperties" (uptr)
+  (define-sdl-hook sdl-get-window-properties "SDL_GetWindowProperties" (uptr)
     unsigned-32)
-  (define-foreign sdl-get-pointer-property "SDL_GetPointerProperty"
+  (define-sdl-hook sdl-get-pointer-property "SDL_GetPointerProperty"
     (unsigned-32 string uptr) uptr)
-  (define-foreign sdl-get-number-property "SDL_GetNumberProperty"
+  (define-sdl-hook sdl-get-number-property "SDL_GetNumberProperty"
     (unsigned-32 string integer-64) integer-64)
-  (define-foreign sdl-get-string-property "SDL_GetStringProperty"
+  (define-sdl-hook sdl-get-string-property "SDL_GetStringProperty"
     (unsigned-32 string string) string)
-  (define-foreign sdl-get-version "SDL_GetVersion" () int)
-  (define-foreign sdl-get-current-video-driver "SDL_GetCurrentVideoDriver" ()
+  (define-sdl-hook sdl-get-version "SDL_GetVersion" () int)
+  (define-sdl-hook sdl-get-current-video-driver "SDL_GetCurrentVideoDriver" ()
     string))
