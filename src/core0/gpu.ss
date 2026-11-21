@@ -10,22 +10,6 @@
 ;;; holds: buffers uploaded and transfer buffers mapped with cycling on are
 ;;; ring buffers, and no fence bookkeeping is needed for them.
 
-(define-record-type renderer
-  (nongenerative schevana-renderer-1)
-  (fields kind device sampler atlas blank
-          (mutable pipelines)      ; (format . vector of pipelines by mode)
-          (mutable paints)         ; shader: ((format . pipeline) ...)
-          (mutable records)        ; each (buffer . capacity)
-          (mutable extras)
-          (mutable glyphs)
-          (mutable transfer)       ; (transfer buffer . capacity)
-          (mutable sdl-window)     ; core0's window it draws to, or 0
-          (mutable target)         ; an offscreen texture, or 0
-          (mutable target-w)
-          (mutable target-h)
-          (mutable fence)))        ; the last frame's, or #f
-
-(defvar *renderer* #f)
 (defvar *gpu-scratch* (foreign-alloc 2048))   ; structs, on their way to SDL
 
 (define gpu-atlas-side 4096)
@@ -1254,9 +1238,7 @@
                       8)
     (sdl-push-fragment-uniform cb 0 u (bytevector-length u))))
 
-;; The driver's name, and how this window may present.
-(define (gpu-driver-name) (sdl-gpu-driver (renderer-device *renderer*)))
-
+;; How this window may present.
 (define gpu-present-codes '((vsync . 0) (immediate . 1) (mailbox . 2)))
 (define gpu-composition-sdr 0)   ; the one a claim gives: colors stay the same
 
@@ -1393,30 +1375,6 @@
 ;; The frames core0 gave back since core1 last took them, oldest first.
 (define (gpu-frames-back!) (core0-take! *gpu-given-back*))
 
-;; Core0's side, in its step: the frame published, if one is, presented
-;; and given back.
-(define (gpu-present-published!)
-  (let ([f (unbox *gpu-published*)])
-    (when f
-      (memory-order-acquire)
-      (let loop () (unless (box-cas! *gpu-published* f #f) (loop)))
-      (core0-trace! 2 (gpu-frame-number f))
-      (present-taken!)
-      (set! *gpu-booting* #f)
-      ;; taken: core1 may make the next (.work/gpu-design.md 9.12), with the
-      ;; input that came till now, not only till the last step's pump
-      (core0-events-pumped!)
-      (core0-world-wake!)
-      (gpu-frame-shown?-set! f (gpu-present! f))
-      ;; the input that came while the acquire held core0, read before core1
-      ;; hears the frame is back and may begin its next turn
-      (core0-events-pumped!)
-      (core0-put! *gpu-given-back* f)
-      (core0-trace! 6 (gpu-frame-number f))
-      ;; given back, with what it read: core1 takes them at once, whether
-      ;; or not a frame follows
-      (core0-world-wake!))))
-
 ;; Core1's jobs and writes, the lists kept from earlier on their images,
 ;; then the frame. => #t if the frame reached the screen; #f if the window
 ;; had no room for it yet, and it should be tried again.
@@ -1496,7 +1454,9 @@
                             (ftype-ref gpu-swapchain-out (h) out)
                             runs #f))
           ;; the screen asked to report on it, before the submit presents it
-          (when shown? (present-sent! (gpu-frame-number f)))
+          (when shown?
+            (present-sent! (gpu-frame-number f))
+            (platform-report-ask! (gpu-frame-number f)))
           (present-fence! (gpu-frame-number f)
                           (gpu-must 'gpu-frame! (sdl-submit-gpu-fence cb)))
           (core0-trace! 5 (gpu-frame-number f))

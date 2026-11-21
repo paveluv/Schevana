@@ -14,14 +14,19 @@
   (import (chezscheme))
 
   ;; Where the tree is, from where a form of it was read: its file is
-  ;; <root>/lib/schevana/<name>.sls.
+  ;; under <root>/lib.
   (meta define (form-root x)
     (let* ([a (syntax->annotation x)]
            [path (and a (source-file-descriptor-path
                          (source-object-sfd (annotation-source a))))]
            [up (lambda (p)
                  (let ([d (path-parent p)]) (if (string=? d "") "." d)))]
-           [root (if path (up (up (up path))) ".")])
+           [root (if path
+                     (let loop ([p (up path)])
+                       (cond [(string=? (path-last p) "lib") (up p)]
+                             [(member p '("." "/")) "."]
+                             [else (loop (up p))]))
+                     ".")])
       (if (path-absolute? root)
           root
           (string-append (current-directory) "/" root))))

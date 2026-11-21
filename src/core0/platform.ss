@@ -34,13 +34,6 @@
 ;; thread.
 (define (platform-cpu-count) (sdl-get-num-logical-cpu-cores))
 
-;; The monotonic clock in ns, a fixnum: core0's, and what core1's is read
-;; from (src/core1/platform.ss), from any thread. Core1 has a clock of its
-;; own, so a test fakes the world's without moving the one core0 times the
-;; screen by.
-(define (core0-clock-ns) (sdl-get-ticks-ns))
-(define (now-ns) (sdl-get-ticks-ns))
-
 ;; The system's name and version, the kernel's, where the system says them.
 (define-optional-foreign platform-uname
   (foreign-procedure "uname" (uptr) int))

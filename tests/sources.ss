@@ -203,7 +203,7 @@
 ;; the libraries they import (lib/schevana/). What declares is left out,
 ;; sized by what's given, each a reviewed change: the export.ss files, a
 ;; library's exports and imports (file-forms), a file's imports.
-(define src-budget 37669)
+(define src-budget 37670)
 
 ;; The tokens of a datum as read; a list's end is none.
 (define (tokens x)
@@ -330,7 +330,8 @@
 (define above-gpu-files
   (remp (lambda (f)
           (member f '("lib/schevana/ffi.sls" "lib/schevana/shader.sls"
-                      "lib/schevana/sdl.sls" "src/core0/platform.ss"
+                      "lib/schevana/sdl.sls" "src/core0/mail.ss"
+                      "src/core0/renderer.ss" "src/core0/platform.ss"
                       "src/core0/gpu.ss" "src/core0/present.ss"
                       "src/core0/window.ss" "src/core1/font.ss"
                       "src/core1/platform.ss")))

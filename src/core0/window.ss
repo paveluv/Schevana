@@ -163,10 +163,6 @@
         (quotient (* 1000000000 per) hz)
         (quotient 1000000000 60))))
 
-;; The same, as core0 last read them.
-(define (core0-frame-ns) (vector-ref *core0-facts* 6))
-(define (core0-display) (vector-ref *core0-facts* 7))
-
 ;; The display as a person reads it: (w h refresh-numerator denominator
 ;; density), or #f.
 (define (core0-read-display)
@@ -387,26 +383,6 @@
               (values (reverse acc) (reverse types) first))))
       (values '() '() 0)))
 
-;; When the oldest input not yet taken came (now-ns; 0, none), three ways:
-;; by SDL's stamp; when core0's pump first saw it; by the compositor's own
-;; time where core0 reads it (src/core0/platform.ss). Core0's pump sets them,
-;; the world takes them with the events, both by box-cas!.
-(defvar *core0-input-ns* (box 0))
-(defvar *core0-input-pumped* (box 0))
-(defvar *core0-input-wl* (box 0))
-
-;; Box b holds ns, unless it holds an older input's.
-(define (core0-input-set! b ns)
-  (let loop ()
-    (let ([old (unbox b)])
-      (unless (or (not (eqv? old 0)) (box-cas! b old ns))
-        (loop)))))
-
-(define (core0-input-take! b)
-  (let loop ()
-    (let ([old (unbox b)])
-      (if (box-cas! b old 0) old (loop)))))
-
 ;; When the oldest input since the last take came, taken, by SDL, core0's
 ;; pump and the compositor: (values sdl pumped compositor), 0 for none.
 (define (core0-input-ns-take!)
@@ -464,35 +440,10 @@
 ;;; again. On one thread the world steps it where it waits for input; once
 ;;; core0 has a thread, its loop does (.work/gpu-design.md 9.4).
 
-;; The jobs posted, newest first, each (name arg ...): core0's procedure by
-;; name, so a redefinition in "/core0" takes; and the events pumped and not
-;; yet taken, newest first, each (events . types) of a step.
-(defvar *core0-jobs* (box '()))
+;; The events pumped and not yet taken, newest first, each (events .
+;; types) of a step; the jobs posted are src/core0/mail.ss's.
 (defvar *core0-inbox* (box '()))
 (defvar *core0-job-failed* #f)   ; (job . condition): the last job that raised
-
-;; What SDL says of the window, as core0 read it last: #(flags w h pw ph
-;; scale frame-ns display error-text). Made again whole when it changes, so
-;; another thread reads it whole.
-(defvar *core0-facts* (vector 0 0 0 0 0 1 (quotient 1000000000 60) #f ""))
-
-;; x onto box b's list, what came before it handed over with it.
-(define (core0-put! b x)
-  (memory-order-release)
-  (let loop ()
-    (let ([l (unbox b)]) (unless (box-cas! b l (cons x l)) (loop)))))
-
-;; Box b's list, taken, the oldest first.
-(define (core0-take! b)
-  (let loop ()
-    (let ([l (unbox b)])
-      (cond [(null? l) l]
-            [(box-cas! b l '()) (memory-order-acquire) (reverse l)]
-            [else (loop)]))))
-
-(define (core0-post! job)
-  (core0-put! *core0-jobs* job)
-  (core0-wake!))
 
 ;;; ------------------------------------------------------------------ core1
 ;;; With a window core0 runs on the process's first thread and the world on
@@ -500,32 +451,6 @@
 ;;; core0's events, frames given back and mail here, woken by whoever
 ;;; brings them. Headless, one thread plays both, and core0's step is the
 ;;; wait.
-
-(defvar *core0-forked* #f)
-(define (core0-forked?) *core0-forked*)
-
-(defvar *core0-world-mutex* (make-mutex))
-(defvar *core0-world-ready* (make-condition))
-(defvar *core0-world-woken* #f)   ; under the mutex
-(defvar *core0-ready* (make-condition))   ; core0's own
-(defvar *core0-woken* #f)                 ; under the mutex
-
-;; Ends core1's wait, or the next one: from any thread.
-(define (core0-world-wake!)
-  (when *core0-forked*
-    (with-mutex *core0-world-mutex*
-      (set! *core0-world-woken* #t)
-      (condition-signal *core0-world-ready*))))
-
-;; Core1 waits up to ms, or till it's woken.
-(define (core0-world-wait! ms)
-  (with-mutex *core0-world-mutex*
-    (unless (or *core0-world-woken* (<= ms 0))
-      (condition-wait *core0-world-ready* *core0-world-mutex* (core0-ms ms)))
-    (set! *core0-world-woken* #f)))
-
-(define (core0-ms ms)
-  (make-time 'time-duration (* 1000000 (modulo ms 1000)) (quotient ms 1000)))
 
 ;; Compute runs and writes no frame took, sent by a job, "/recorder"'s.
 (define (core0-post-submit! runs jobs writes)
@@ -562,14 +487,6 @@
           (exit 0))
         (loop))))
 
-;; Ends core0's sleep, or the next one: a job posted, a frame published.
-;; From any thread; on core1's own, core0 never sleeps.
-(define (core0-wake!)
-  (when *core0-forked*
-    (with-mutex *core0-world-mutex*
-      (set! *core0-woken* #t)
-      (condition-signal *core0-ready*))))
-
 ;; Core0 sleeps up to ms, or till it's woken. Its events aren't a wake:
 ;; it looks for them each time it wakes, so ms bounds how long input
 ;; waits while nothing else comes (core0-idle-ms).
@@ -580,6 +497,30 @@
       (condition-wait *core0-ready* *core0-world-mutex* (core0-ms ms))
       (core0-trace! 8 0))
     (set! *core0-woken* #f)))
+
+;; Core0's side, in its step: the frame published, if one is, presented
+;; and given back.
+(define (gpu-present-published!)
+  (let ([f (unbox *gpu-published*)])
+    (when f
+      (memory-order-acquire)
+      (let loop () (unless (box-cas! *gpu-published* f #f) (loop)))
+      (core0-trace! 2 (gpu-frame-number f))
+      (present-taken!)
+      (set! *gpu-booting* #f)
+      ;; taken: core1 may make the next (.work/gpu-design.md 9.12), with the
+      ;; input that came till now, not only till the last step's pump
+      (core0-events-pumped!)
+      (core0-world-wake!)
+      (gpu-frame-shown?-set! f (gpu-present! f))
+      ;; the input that came while the acquire held core0, read before core1
+      ;; hears the frame is back and may begin its next turn
+      (core0-events-pumped!)
+      (core0-put! *gpu-given-back* f)
+      (core0-trace! 6 (gpu-frame-number f))
+      ;; given back, with what it read: core1 takes them at once, whether
+      ;; or not a frame follows
+      (core0-world-wake!))))
 
 (define (core0-run-job! job)
   (guard (c [#t (set! *core0-job-failed* (cons job c))])

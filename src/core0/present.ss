@@ -42,7 +42,8 @@
          (begin (memory-order-acquire)
                 (fxvector-ref *present-ring* (fx+ at k))))))
 
-;; Frame's row begun, as core0 sends it: the screen asked to report on it.
+;; Frame's row begun, as core0 sends it; who sends it asks the screen to
+;; report on it (platform-report-ask!, src/core0/platform.ss).
 (define (present-sent! frame)
   (let ([r *present-ring*] [at (present-at frame)])
     (fxvector-set! r (fx+ at 1) 0)
@@ -55,8 +56,7 @@
     (fxvector-set! r (fx+ at 10) 0)
     (fxvector-set! r (fx+ at 11) 0)
     (memory-order-release)
-    (fxvector-set! r at frame))
-  (platform-report-ask! frame))
+    (fxvector-set! r at frame)))
 
 ;; The screen's word on frame: dropped (kind 2), or shown (1) at stamp
 ;; (now-ns), a refresh refresh ns long by the screen's word (0, none: it

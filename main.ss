@@ -56,11 +56,13 @@
     "lib/schevana/freetype.sls" "lib/schevana/fontconfig.sls"))
 
 ;; Core0, below the core: the basics, then core0's own code (src/core0/:
-;; what differs by platform, the GPU's device side, the screen's reports,
-;; the trace, the window, what it exports, the boot).
+;; what its threads hand each other, the trace, the renderer, the screen's
+;; reports, what differs by platform, the GPU's device side, the trace's
+;; file, the window, what it exports, the boot).
 (define *schevana-core0-sources*
-  '("src/base.ss" "src/core0/platform.ss" "src/core0/gpu.ss"
-    "src/core0/present.ss" "src/core0/trace.ss" "src/core0/window.ss"
+  '("src/base.ss" "src/core0/mail.ss" "src/core0/trace.ss"
+    "src/core0/renderer.ss" "src/core0/present.ss" "src/core0/platform.ss"
+    "src/core0/gpu.ss" "src/core0/trace-file.ss" "src/core0/window.ss"
     "src/core0/export.ss" "src/core0/boot.ss"))
 
 ;; "/recorder", sealed, made by core0 before "/core1": the basics, then the
