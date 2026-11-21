@@ -19,38 +19,64 @@
     (syntax-rules ()
       [(_ form ...) (define at-load-done (begin form ...))]))
 
-  ;; (define-state name init): a variable a library may export, to be read
-  ;; and set by those that import it. Chez exports no variable that is
-  ;; assigned, so the value is a global of Chez's own, under a symbol
-  ;; nobody can type and that says nothing of what it holds, and name
-  ;; reads it, or sets it under set! (and so under fluid-let). A global,
-  ;; not a box: Chez reads it from the symbol itself, one load, where a
-  ;; box would be a variable of the library that every closure reading it
-  ;; must hold, so that a thunk which only calls such a procedure is
-  ;; allocated each time it is made. $top-level-value and
-  ;; $set-top-level-value! are Chez's internals, the two its expander
-  ;; writes for every variable of the top level. Each use names
-  ;; state-made too, a variable of the library's, where it is never
-  ;; reached: Chez runs a library only for code that names a variable of
-  ;; it, and code that used only its states would find them unbound. The
-  ;; optimizer drops the branch.
-  (define-syntax define-state
+  ;; (define-global name g init kept?): a global of Chez's own under the
+  ;; symbol g, and name a macro that reads it, or sets it under set! (and
+  ;; so under fluid-let). A global, not a box: Chez reads it from the
+  ;; symbol itself, one load, where a box would be a variable of the
+  ;; library that every closure reading it must hold, so that a thunk which
+  ;; only calls such a procedure is allocated each time it is made.
+  ;; $top-level-value and $set-top-level-value! are Chez's internals, the
+  ;; two its expander writes for every variable of the top level. kept?: a
+  ;; value already there stays as the library is evaluated again (a
+  ;; reload). Each use names global-made too, a variable of the library's,
+  ;; where it is never reached: Chez runs a library only for code that
+  ;; names a variable of it, and code that used only its globals would
+  ;; find them unbound. The optimizer drops the branch.
+  (define-syntax define-global
     (lambda (x)
       (syntax-case x ()
-        [(_ name init)
-         (with-syntax ([g (datum->syntax #'name (gensym "state"))]
-                       [get #'($primitive $top-level-value)]
-                       [put #'($primitive $set-top-level-value!)])
+        [(_ name g init kept?)
+         (with-syntax ([get #'($primitive $top-level-value)]
+                       [put #'($primitive $set-top-level-value!)]
+                       [bound? #'($primitive $top-level-bound?)])
            #'(begin
-               (define state-made (put 'g init))
+               (define global-made
+                 (unless (and kept? (bound? 'g)) (put 'g init)))
                (define-syntax name
                  (make-variable-transformer
                   (lambda (x)
                     (syntax-case x (set!)
-                      [(set! _ v) #'(if #f state-made (put 'g v))]
-                      [id (identifier? #'id) #'(if #f state-made (get 'g))]
+                      [(set! _ v) #'(if #f global-made (put 'g v))]
+                      [id (identifier? #'id) #'(if #f global-made (get 'g))]
                       [(_ . rest)
-                       #'(if #f state-made ((get 'g) . rest))]))))))])))
+                       #'(if #f global-made ((get 'g) . rest))]))))))])))
+
+  ;; The symbol a state is kept under: fixed by the file it is defined in
+  ;; and its name, so that the library evaluated again finds it; a fresh
+  ;; one where the expander knows no file. Its pretty name says nothing of
+  ;; what it holds.
+  (meta define (state-symbol id)
+    (let* ([a (syntax->annotation id)]
+           [s (and a (annotation-source a))])
+      (if s
+          (gensym "state"
+                  (format "schevana-state ~a ~a"
+                          (source-file-descriptor-path (source-object-sfd s))
+                          (syntax->datum id)))
+          (gensym "state"))))
+
+  ;; (define-state name init): a variable a library may export, to be read
+  ;; and set by those that import it, kept as the library is evaluated
+  ;; again (reload-libraries!) as a defvar is. Chez exports no variable
+  ;; that is assigned, so the value is a global (define-global). name is
+  ;; the definer's own, never one a macro makes up: two states a macro
+  ;; made in one file would share the symbol.
+  (define-syntax define-state
+    (lambda (x)
+      (syntax-case x ()
+        [(_ name init)
+         (with-syntax ([g (datum->syntax #'name (state-symbol #'name))])
+           #'(define-global name g init #t))])))
 
   ;; (define-view name state): state under another name, to read and never
   ;; to set: what a library gives on of a state it imports. A set! of it
@@ -69,26 +95,37 @@
 
   ;; (define-made name init): a value made as the library loads, read and
   ;; never set: a buffer, a table, a foreign procedure, a fact found out. A
-  ;; state under a view, not a definition: a library's own variable is held
-  ;; by every procedure that reads it, and by every procedure that calls
-  ;; one of those, so that a closure made at run time which only calls one
-  ;; carries it, and is allocated where the top level's was not. With none,
-  ;; a library's procedures carry nothing (tests/units/allocation.ss).
+  ;; global under a view, not a definition: a library's own variable is
+  ;; held by every procedure that reads it, and by every procedure that
+  ;; calls one of those, so that a closure made at run time which only
+  ;; calls one carries it, and is allocated where the top level's was not.
+  ;; With none, a library's procedures carry nothing
+  ;; (tests/units/allocation.ss). Made again as the library is evaluated
+  ;; again; a value a state may hold is a state itself, so the two stay
+  ;; one.
   (define-syntax define-made
-    (syntax-rules ()
-      [(_ name init)
-       (begin (define-state made init) (define-view name made))]))
+    (lambda (x)
+      (syntax-case x ()
+        [(_ name init)
+         (with-syntax ([g (datum->syntax #'name (gensym "made"))])
+           #'(begin (define-global made g init #f)
+                    (define-view name made)))])))
 
   ;; (define-hook (name . formals) body ...), or (define-hook name
   ;; procedure): a procedure that may be replaced, under its own name. The
   ;; piece that has what it does sets it (set-hook!), where the one that
-  ;; calls it sits below; a test puts its own there for a while. Kept as
-  ;; a state is: called by its name, set by set!.
+  ;; calls it sits below; a test puts its own there for a while. Called by
+  ;; its name, set by set!, as a state is; made again as the library is
+  ;; evaluated again, and set again by the piece that sets it, which
+  ;; imports it and so is evaluated again after it.
   (define-syntax define-hook
-    (syntax-rules ()
-      [(_ (name . formals) body ...)
-       (define-state name (lambda formals body ...))]
-      [(_ name procedure) (define-state name procedure)]))
+    (lambda (x)
+      (syntax-case x ()
+        [(k (name . formals) body ...)
+         #'(k name (lambda formals body ...))]
+        [(_ name procedure)
+         (with-syntax ([g (datum->syntax #'name (gensym "hook"))])
+           #'(define-global name g procedure #f))])))
 
   ;; (set-hook! (name . formals) body ...): what the hook name does, from
   ;; here on. A definition, so it stands among a library's.

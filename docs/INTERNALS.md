@@ -71,13 +71,21 @@ checks that no folder names one, nor anything of the core's it isn't given.
 
 ## Reloading
 
-`(reload!)` loads the core's files again into "/core1", gives "/" what the
-core exports anew, and loads the world's. It runs as a process, and while
+`(reload!)` evaluates again each library whose file changed since it was
+evaluated, and every library that imports it, after it (Chez links a
+library to the instance of each it was evaluated against), and imports
+them again where they were imported; then it loads the core's files again
+into "/core1", gives "/" what the core exports anew, and loads the
+world's. A library's states stay (`define-state`), its made values and
+hooks are made again, and what sets a hook sets it again; a closure made
+before keeps the code it was made with. Core0's libraries, and all they
+import, stay as they were booted: core0's thread runs them, and they
+change with a restart. It runs as a process, and while
 it loads nothing else runs half-loaded code: no frames, timers, ticks or
 other processes, and input waits to be handled in order when it's done.
 Ctrl+C stops it, and a toast names the file it was loading if it's
-stopped or fails. State that must survive it is a `defvar`, and record
-types are nongenerative.
+stopped or fails. State that must survive it is a `defvar`, in a
+library a `define-state`, and record types are nongenerative.
 
 The core's own names are redefined in a REPL in "/core1", where a
 `define` takes at the core's next call. Core0 is sealed in its libraries

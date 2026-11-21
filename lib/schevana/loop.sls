@@ -4,9 +4,10 @@
 
 (library (schevana loop)
   (export)
-  (import (chezscheme) (schevana layer) (schevana base) (schevana core0)
-          (schevana boot) (schevana platform) (schevana processes)
-          (schevana gpu) (schevana pacer) (schevana screen))
+  (import (chezscheme) (schevana layer) (schevana base) (schevana reload)
+          (schevana core0) (schevana boot) (schevana platform)
+          (schevana processes) (schevana gpu) (schevana pacer)
+          (schevana screen))
 
   (include-sources "src/core1/system.ss")
   ;; Boots the screen, mode sdl (a window w × h logical pixels, or full

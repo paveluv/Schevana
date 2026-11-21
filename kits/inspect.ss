@@ -1195,6 +1195,11 @@
 (define (inspect-present-mode)
   (let ([f (assq 'present-mode *gpu-facts*)]) (and f (cdr f))))
 
+;; Libraries reloaded in place ((schevana reload)): how many it holds the
+;; text of, the environments it imports them into again, and what the
+;; last reload evaluated again, in order.
+(define (inspect-reload) (reload-facts))
+
 ;;; ---- the pacer
 
 ;; Core0's step: the window's facts as it last read them, the jobs posted

@@ -91,7 +91,7 @@ before it:
   updates `docs/PLATFORMS.md`: where it ran, where it should work, what
   happens without it. Monitor's Platform tab shows it all, and copies a
   run as a row of it.
-- **The core has a budget**, 37,917 tokens (atoms as read; comments,
+- **The core has a budget**, 38,406 tokens (atoms as read; comments,
   whitespace and names' lengths are free; the `export.ss` files, which
   declare, are left out), in `tests/sources.ss`. Don't join lines or
   shorten names to fit it. Code the core doesn't need moves out to the
@@ -127,8 +127,9 @@ before it:
   caller holds (a ui, an edit, an owner's completion list). A service keeps
   long-lived state behind its procedures. The desktop keeps its surfaces'
   state; an app its own data, per window where it can.
-- **S3. Lifetime.** State that must outlive `(reload!)` is a `defvar`; a
-  cache may be a `define` that starts empty. A window's state lives in the
+- **S3. Lifetime.** State that must outlive `(reload!)` is a `defvar`,
+  in a library a `define-state`; a cache may be a `define` that starts
+  empty. A window's state lives in the
   window (`window-ref`, `window-set!`), not in a global table.
 - **S4. Threads.** Global state belongs to core1, the world's thread, and
   only it writes it. The exceptions are a service's own structures that
@@ -180,9 +181,12 @@ before it:
 - A hook or a registry calls procedures by name, so a redefinition takes
   effect at the next call: `(lambda () (theme-file-save-soon!))`, not
   `theme-file-save-soon!` captured as a value.
-- `(reload!)` of the tree into itself must keep working. It loads the
-  core's files again into "/core1" and the world's into "/"; core0's
-  change with a restart. The core's own names are redefined in "/core1":
+- `(reload!)` of the tree into itself must keep working. It evaluates
+  again each library whose file changed, and every library that imports
+  it (`lib/schevana/reload.sls`), loads the core's files again into
+  "/core1" and the world's into "/"; core0's libraries, with all they
+  import, change with a restart (`tests/units/reload.ss`). The core's own
+  names are redefined in "/core1":
   a `define` in "/" of one makes the world's own, which the core never
   calls.
 

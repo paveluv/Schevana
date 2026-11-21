@@ -218,7 +218,7 @@
 ;; the libraries they import (lib/schevana/). What declares is left out,
 ;; sized by what's given, each a reviewed change: the export.ss files, a
 ;; library's exports and imports (file-forms), a file's imports.
-(define src-budget 37917)
+(define src-budget 38406)
 
 ;; The tokens of a datum as read; a list's end is none.
 (define (tokens x)

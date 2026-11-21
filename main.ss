@@ -61,7 +61,8 @@
     "lib/schevana/core0/trace.sls" "lib/schevana/core0/renderer.sls"
     "lib/schevana/core0/present.sls" "lib/schevana/core0/platform.sls"
     "lib/schevana/core0/trace-file.sls" "lib/schevana/core0/gpu.sls"
-    "lib/schevana/core0/window.sls" "lib/schevana/recorder/bytes.sls"))
+    "lib/schevana/core0/window.sls" "lib/schevana/recorder/bytes.sls"
+    "lib/schevana/reload.sls"))
 
 ;; Core0, below the core. Its code is libraries (lib/schevana/core0/):
 ;; what its threads hand each other, the trace and its file, the
@@ -163,7 +164,7 @@
         (schevana core0 mail) (schevana core0 trace) (schevana core0 renderer)
         (schevana core0 present) (schevana core0 platform)
         (schevana core0 trace-file) (schevana core0 gpu)
-        (schevana core0 window))
+        (schevana core0 window) (schevana reload))
 (for-each (lambda (f) (load (string-append *schevana-root* "/" f)))
           *schevana-core0-sources*)
 

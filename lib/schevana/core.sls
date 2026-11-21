@@ -10,11 +10,12 @@
 (library (schevana core)
   (export schevana-main)
   (import (chezscheme) (schevana layer) (schevana base) (schevana shader)
-          (schevana socket) (schevana core0) (schevana recorder)
-          (except (schevana boot) core1-exports) (schevana platform)
-          (schevana theme-table) (schevana processes) (schevana gpu)
-          (schevana fonts) (schevana draw) (schevana pacer) (schevana screen)
-          (schevana loop) (schevana theme) (schevana windows))
+          (schevana socket) (schevana reload) (schevana core0)
+          (schevana recorder) (except (schevana boot) core1-exports)
+          (schevana platform) (schevana theme-table) (schevana processes)
+          (schevana gpu) (schevana fonts) (schevana draw) (schevana pacer)
+          (schevana screen) (schevana loop) (schevana theme)
+          (schevana windows))
 
   ;; A program on the whole core: the loop's main (loop-main), defined
   ;; here so that a program compiled as one carries this library, which

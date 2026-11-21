@@ -34,7 +34,8 @@
           (schevana core0))
 
   ;; Written to between a publish and the next list: a write there raises.
-  (define-made rec-nothing
+  ;; A state, as *rec-now* holds it: a reload keeps the two one.
+  (define-state rec-nothing
     (make-gpu-recording (make-bytevector 0) 0 (make-bytevector 0) 4 '() 0 #f
                         #f))
 

@@ -455,11 +455,23 @@
                (cadr (caddr x))]
               [else (loop)])))))))
 
-;; Re-read every source file: the core's into "/core1", then the world's
-;; into "/", given first what the core exports that it wasn't before; what
-;; it was keeps its forwarder. Code changes take effect; state declared
-;; with defvar (windows, theme, processes...) survives.
+;; Core0's libraries stay as core0 booted them, with all they import: its
+;; thread runs them, and they change with a restart.
+(define (source-held-libraries)
+  (filter (lambda (name)
+            (and (> (length name) 2)
+                 (eq? (car name) 'schevana)
+                 (eq? (cadr name) 'core0)))
+          (library-list)))
+
+;; Re-read every source file: the libraries whose files changed, and those
+;; that import them (reload-libraries!); the core's into "/core1"; then
+;; the world's into "/", given first what the core exports that it wasn't
+;; before; what it was keeps its forwarder. Code changes take effect;
+;; state declared with defvar or define-state (windows, theme,
+;; processes...) survives.
 (define (reload!)
+  (reload-libraries! (source-held-libraries))
   (let ([files (read-source-list)] [before (core1-exported)])
     (set! *schevana-core1-sources* files)
     (load-sources! files *core1-env*)
@@ -484,7 +496,9 @@
            *schevana-core1-sources*))
 
 ;; The world's files into "/" (core1-boot!, reload!). The folders may
-;; import the libraries shipped in lib/.
+;; import the libraries shipped in lib/; each loaded by then is seen as it
+;; reads, for the next reload to tell a change (reload-mark!).
 (define (load-world!)
   (add-library-directory! (string-append *schevana-root* "/lib"))
-  (load-sources! (world-sources)))
+  (load-sources! (world-sources))
+  (reload-mark!))

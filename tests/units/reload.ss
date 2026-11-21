@@ -222,3 +222,66 @@
   (close-window! p)
   (set! *toasts* '())
   (steps 1))
+
+;;; Libraries reloaded in place (reload-libraries!, which reload! runs
+;;; first): one whose file changed is evaluated again, then each that
+;;; imports it, and an environment that imported them imports them again.
+;;; Its states stay; its made values and hooks are made again, and what
+;;; sets a hook sets it again; one held stays as it was. Three libraries of
+;;; the test's own, in a folder of out/.
+(let* ([dir (string-append out-dir "/reload-libraries")]
+       [file (lambda (name)
+               (string-append dir "/units/reload/" name ".sls"))]
+       [write! (lambda (name form)
+                 (call-with-output-file (file name)
+                   (lambda (p) (write form p) (newline p))
+                   'replace))]
+       [a (lambda (value)
+            `(library (units reload a)
+               (export ura-val *ura-count* ura-bump! ura-hook ura-made)
+               (import (chezscheme) (schevana base))
+               (define-state *ura-count* 0)
+               (define-made ura-made (list 'made))
+               (define-hook (ura-hook) 'default)
+               (define (ura-val) ',value)
+               (define (ura-bump!) (set! *ura-count* (+ *ura-count* 1)))))]
+       [c (lambda (value)
+            `(library (units reload c)
+               (export urc-val)
+               (import (chezscheme))
+               (define (urc-val) ',value)))]
+       [e (copy-environment (scheme-environment) #t)]
+       [in-e (lambda (form) (eval form e))]
+       [held '((units reload c))])
+  (system (format "rm -rf '~a' && mkdir -p '~a/units/reload'" dir dir))
+  (write! "a" (a 'old))
+  (write! "b" '(library (units reload b)
+                 (export urb-val)
+                 (import (chezscheme) (schevana base) (units reload a))
+                 (set-hook! (ura-hook) 'from-b)
+                 (define (urb-val) (list (ura-val) *ura-count*))))
+  (write! "c" (c 'held))
+  (parameterize ([library-directories (cons (cons dir dir)
+                                            (library-directories))])
+    (reload-import! e '(units reload a) '(units reload b) '(units reload c))
+    (in-e '(begin (ura-bump!) (ura-bump!)))
+    (let* ([before (in-e '(urb-val))]
+           [made (in-e 'ura-made)]
+           [none (reload-libraries! held)])
+      (write! "a" (a 'new))
+      (write! "c" (c 'changed))
+      (let ([order (reload-libraries! held)])
+        (check "a library whose file changed is evaluated again, then the \
+                one that imports it; the environment that imported them \
+                has the new ones, the state as it was, the made value made \
+                again and the hook set again; the held one stays, and \
+                nothing changed reloads nothing"
+               (and (equal? before '(old 2))
+                    (null? none)
+                    (equal? order '((units reload a) (units reload b)))
+                    (equal? (in-e '(urb-val)) '(new 2))
+                    (equal? (in-e '(ura-val)) 'new)
+                    (eq? (in-e '(ura-hook)) 'from-b)
+                    (not (eq? (in-e 'ura-made) made))
+                    (eq? (in-e '(urc-val)) 'held)
+                    (equal? (cdr (assq 'last (inspect-reload))) order)))))))

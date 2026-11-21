@@ -103,6 +103,8 @@
     shader-type shader-tree define-compute-shader
     ;; (schevana socket): sockets
     socket-listen socket-accept socket-read socket-write socket-close
+    ;; (schevana reload): what a reload of the libraries keeps
+    reload-facts
     ;; Given again: core0's (src/core0/export.ss), which Monitor, the
     ;; Pipeline and inspect read
     core0-app-id gpu-atlas-side core0-flag-names core0-event-name gpu-show-run?

@@ -76,7 +76,8 @@
 ;; the command line asked (main-options). => "/core1", not loaded yet.
 (define (core0-make! root recorder-sources sources options)
   (let ([recorder (core0-sealed)] [core1 (core0-sealed)])
-    (eval '(import (schevana recorder bytes)) recorder)
+    ;; kept, so that a reload of the library imports it there again
+    (reload-import! recorder '(schevana recorder bytes))
     (set! *core0-recorder* recorder)
     (core0-load! recorder root recorder-sources)
     (exports-install! core0-exports (core0-environment) 'core1 core1)
