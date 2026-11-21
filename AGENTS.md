@@ -46,7 +46,7 @@ before it:
 |---|---|
 | `src/base.ss` | What every environment has, a copy each: the basics, and `define-exports`, by which a layer gives the next its names. Pure: no state, no C. |
 | `lib/schevana/core0/` | Core0, below the core, sealed in its libraries: the GPU's device side, the window and its events, the trace, what differs by platform. `main.ss` imports them and boots it; it makes "/core1" (`src/core0/boot.ss`), loads the core there, and boots core1, the world's own thread (headless, one thread plays both). The core has of it only its facade, `(schevana core0)`; the recorder, `lib/schevana/recorder/` (the bytes of frames and their writers), has `(schevana core0 for-recorder)`, and the core has of the recorder its facade, `(schevana recorder)`. |
-| `src/core1/` | The core, in "/core1": the world (windows, focus, the theme's layers, processes, timers, its side of core0's window and events), the shader compiler, core1's side of the GPU layer, the recorder and fonts, its registries, the hooks later layers fill, and the caches its own procedures need. It makes the world's environment, "/", where everything below loads. |
+| `lib/schevana/core/` | The core, sealed in its libraries, `(schevana core <piece>)`: the world (windows, focus, the theme's layers, processes, timers, its side of core0's window and events), core1's side of the GPU layer, drawing and fonts, the pacer, the loop, its registries, the hooks later layers fill, and the caches its own procedures need. "/core1" imports them; what is left in `src/core1/` is the old boot's own: making the world's environment, "/", where everything below loads (`boot.ss`), loading the world's files and reloading (`sources.ss`), and what the world is given (`export.ss`). |
 | `kits/` | Libraries, pure or almost. |
 | `services/` | Long-lived state with an API and no surface: the crew of worker threads, the tree of environments, the apps' sandboxes and what they are allowed, vats and their jobs, the profiler, the saved look. |
 | `desktop/` | The screen's own surfaces and the desktop's behavior: wallpaper, bars, menu, toasts, keys, arranging windows. |
@@ -85,7 +85,7 @@ before it:
 - **What differs by platform lives in the platform files**:
   `lib/schevana/core0/platform.sls` for core0's (a folder,
   `lib/schevana/core0/platform/`, once it outgrows a file),
-  `src/core1/platform.ss` for the core's. A stack
+  `lib/schevana/core/platform.sls` for the core's. A stack
   differs by OS, windowing system, compositor, SDL, GPU API, driver and
   monitor. Which one this is comes from their predicates and facts alone
   (`platform-mac?`, `platform-wayland?`, `platform-vulkan?`,

@@ -1,4 +1,4 @@
-;;; kits/theme.ss — questions about the theme (src/core1/theme.ss): which
+;;; kits/theme.ss — questions about the theme ((schevana core theme)): which
 ;;; layer gives a setting, and what a palette would show (Settings, the
 ;;; REPL).
 ;;;

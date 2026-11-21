@@ -76,15 +76,6 @@
   ;; The file written, from any thread: a job of core0's.
   (define (core0-trace-dump!) (core0-post! (list core0-trace-write!)))
 
-  ;; The steps of both rings by time, then the frames' reports, to
-  ;; .work/traces/trace-<date>-<time>.txt (-2 on, another in the same
-  ;; second), after why it was written, if that's said. => its path, or #f
-  ;; when off.
-  (define-hook core0-trace-write!
-    (case-lambda
-      [() (core0-trace-write! #f)]
-      [(why) (core0-trace-write-why! why)]))
-
   (define (core0-trace-write-why! why)
     (and *core0-trace-dir*
          (let* ([d (current-date)]
@@ -123,6 +114,15 @@
                            found its GPU work going~%")
                (core0-trace-frames p t0)))
            path)))
+
+  ;; The steps of both rings by time, then the frames' reports, to
+  ;; .work/traces/trace-<date>-<time>.txt (-2 on, another in the same
+  ;; second), after why it was written, if that's said. => its path, or #f
+  ;; when off.
+  (define-hook core0-trace-write!
+    (case-lambda
+      [() (core0-trace-write! #f)]
+      [(why) (core0-trace-write-why! why)]))
 
   ;; Ring k's whole rows, oldest first: (thread ns name a).
   (define (core0-trace-rows-of k who)

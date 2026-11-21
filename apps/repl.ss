@@ -516,29 +516,43 @@
         (hashtable-delete! *repl-source-docs* name)
         (hashtable-set! *repl-source-docs* name ds))))
 
-;; Indexes every top-level definition in text: its argument list and the
-;; ;; comment lines right above it. => the names it defines.
+;; Indexes every top-level definition in text, and every one in a
+;; library's body: its argument list and the ;; comment lines right above
+;; it. => the names it defines.
 (define (index-text! source serial text)
   (let ([n (string-length text)] [port (open-string-input-port text)]
         [names '()])
-    (guard (c [#t (void)])   ; a text that does not read gives what it read
-      (let loop ([prev 0])
+    (define (index! form prev start)
+      (for-each
+       (lambda (d)   ; (name . signature)
+         (hashtable-update! *repl-source-docs* (car d)
+           (lambda (ds)
+             (cons (list source serial (cdr d)
+                         (comment-above text prev start))
+                   ds))
+           '())
+         (set! names (cons (car d) names)))
+       (form-definitions form)))
+    ;; The forms from i on, till the text ends or a ) closes the form they
+    ;; are in: a library's, whose body is read past its name, exports and
+    ;; imports.
+    (define (forms! i)
+      (let loop ([prev i])
         (let ([start (skip-blank-and-comments text prev)])
-          (when (< start n)
+          (when (and (< start n) (not (char=? (string-ref text start) #\))))
             (set-port-position! port start)
-            (let ([form (read port)])
+            (let* ([form (read port)] [end (port-position port)])
               (unless (eof-object? form)
-                (for-each
-                 (lambda (d)   ; (name . signature)
-                   (hashtable-update! *repl-source-docs* (car d)
-                     (lambda (ds)
-                       (cons (list source serial (cdr d)
-                                   (comment-above text prev start))
-                             ds))
-                     '())
-                   (set! names (cons (car d) names)))
-                 (form-definitions form))
-                (loop (port-position port))))))))
+                (if (and (list? form) (>= (length form) 4)
+                         (eq? (car form) 'library))
+                    (begin
+                      (set-port-position! port (+ start 1))
+                      (do ([k 0 (+ k 1)]) ((= k 4)) (read port))
+                      (forms! (port-position port)))
+                    (index! form prev start))
+                (loop end)))))))
+    (guard (c [#t (void)])   ; a text that does not read gives what it read
+      (forms! 0))
     names))
 
 (define (skip-blank-and-comments text i)
@@ -571,7 +585,7 @@
   (if (and (pair? form) (pair? (cdr form)))
       (let ([head (cadr form)])
         (case (car form)
-          [(define defvar)
+          [(define defvar define-state define-made)
            (cond
              [(and (pair? head) (symbol? (car head)))
               (def (car head) (format "~s" head))]
@@ -588,10 +602,12 @@
                               "  "))]
                   [else (def head (symbol->string head))]))]
              [else '()])]
-          [(define-app)
-           (if (and (pair? head) (symbol? (car head)))
-               (def (car head) (format "~s" head))
-               '())]
+          [(define-app define-hook)
+           (cond [(and (pair? head) (symbol? (car head)))
+                  (def (car head) (format "~s" head))]
+                 [(and (symbol? head) (eq? (car form) 'define-hook))
+                  (def head (symbol->string head))]
+                 [else '()])]
           [(define-part)   ; the part, and its built-in body
            (if (and (pair? head) (symbol? (car head)))
                (let ([built-in (string->symbol (format "~a*" (car head)))])

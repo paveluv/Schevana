@@ -8,9 +8,13 @@
 ;; all its files: how C is bound, the shader compiler, sockets, FreeType
 ;; and fontconfig, how a library is reloaded in place, and what core0 and
 ;; the recorder give the core.
-(import (schevana ffi) (schevana shader) (schevana socket)
-        (schevana freetype) (schevana fontconfig) (schevana reload)
-        (schevana core0) (schevana recorder))
+(import (schevana ffi) (schevana shader) (schevana socket) (schevana freetype)
+        (schevana fontconfig) (schevana reload) (schevana core0)
+        (schevana recorder) (schevana core platform)
+        (schevana core theme-table) (schevana core processes)
+        (schevana core gpu) (schevana core fonts) (schevana core draw)
+        (schevana core pacer) (schevana core screen) (schevana core loop)
+        (schevana core theme) (schevana core windows))
 
 ;; Whether this is core1, the thread that loaded the core. The world's
 ;; state is core1's alone, and SDL core0's: a worker runs only worklets
@@ -31,7 +35,7 @@
 ;; "/" has as a forwarder, and top-level-value can't follow one. What
 ;; calls a procedure by its name, so that a redefinition takes at the next
 ;; call, looks it up so.
-(define (world-value name)
+(set-hook! (world-value name)
   (if (and *world-env* (top-level-bound? name *world-env*))
       (top-level-value name *world-env*)
       (top-level-value name *core1-env*)))

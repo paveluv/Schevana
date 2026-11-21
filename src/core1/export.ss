@@ -9,33 +9,34 @@
     ;; src/core1/boot.ss: core1's thread, and the world's environment
     core1-thread? *core1-env* *world-env* world-value core1-exported
     *schevana-root* *schevana-options*
-    ;; src/core1/platform.ss: which platform this is, the clocks, the system's
-    ;; figures
+    ;; (schevana core platform): which platform this is, the clocks, the
+    ;; system's figures
     platform-fact platform-windowing platform-gpu-api platform-predicates
     platform-process-bytes platform-machine-load now-ns now-ms thread-cpu-ns
-    ;; src/core1/theme-table.ss: the settings in effect, which drawing reads
+    ;; (schevana core theme-table): the settings in effect, which drawing reads
     theme-rule? theme-rule call-with-theme theme theme-keys theme-part
     *pacer-trial* plist-has? plist-remove
-    ;; src/core1/proc.ss: processes, errors, toasts, worklets, and what is
-    ;; asked of the loop
+    ;; (schevana core processes): processes, errors, toasts, worklets, and
+    ;; what is asked of the loop
     proc-wait in-engine? current-proc make-timeout-condition safe-call safely
     *toasts* notify *last-error* report-error! proc proc? proc-id proc-name
     proc-state proc-ticks proc-started proc-wake *procs* spawn procs find-proc
     kill! sleep-ms worklet-base-environment *worklet-environment* worklet?
     worklet-compile worklet define-worklet request-frame! *timers* after
-    ;; src/core1/gpu.ss: the GPU's world side: images, buffers, lists, computes
+    ;; (schevana core gpu): the GPU's world side: images, buffers, lists,
+    ;; computes
     *gpu-bytes-made* *gpu-held-gone* gpu-image-make gpu-image-make-target
     gpu-image-release! gpu-atlas-image gpu-list-new make-gpu-buffer
     gpu-buffer-set! gpu-buffer-release! gpu-buffer-read! *gpu-computes*
     gpu-compute-soon! gpu-buffer-read-then! gpu-compute!
-    ;; src/core1/font.ss: fonts and text
+    ;; (schevana core fonts): fonts and text
     font-file-upem font-file-pages font-library-versions make-font*
     *font-specs* font get-font font-advance font-ascent font-descent
     font-line-height font-char-width font-ready text-width *glyph-count*
     *atlas-y* *atlas-row* glyph-row-ref font-family font-size font-sized
     font-weight glyph-row-character glyph-row-h glyph-row-left glyph-row-top
     glyph-row-w
-    ;; src/core1/gfx.ss: drawing: colors, shapes, text, runs and labels
+    ;; (schevana core draw): drawing: colors, shapes, text, runs and labels
     pi *canvas-w* *canvas-h* *scale* *canvas-ratio* *canvas-pw* *canvas-ph*
     canvas-pixel-width canvas-pixel-height rgb alpha stipple stipple?
     linear-gradient radial-gradient color-rgba mix color-word *rec-labels*
@@ -52,7 +53,7 @@
     gradient-row-x1 gradient-row-y0 gradient-row-y1 clip-row-parent
     clip-row-radius clip-row-rx0 clip-row-rx1 clip-row-ry0 clip-row-ry1
     clip-row-words clip-row-x0 clip-row-x1 clip-row-y0 clip-row-y1
-    ;; src/core1/pacer.ss: the pacer, the last frames' numbers, and a frame's
+    ;; (schevana core pacer): the pacer, the last frames' numbers, and a frame's
     ;; way to the screen
     *frame-ms* *frames-drawn* frame-ring-rows frame-ring-words *frame-ring*
     *frame-ring-n* *pacer-due* *pacer-frame-ns* *pacer-shown?* *pacer-latch*
@@ -61,15 +62,16 @@
     *pacer-gpu-taught* *pacer-between?* pacer-busy-ms pacer-peak-ms! pacer-rate
     pacer-ticks pacer-period pacer-start pacer-trial! pacer-margin screen-bytes
     screen-bytes-then
-    ;; src/core1/screen.ss: the screen core0 shows
+    ;; (schevana core screen): the screen core0 shows
     system-scale-percent fullscreen? set-fullscreen! toggle-fullscreen!
     screen-set-icon!
-    ;; src/core1/system.ss: the step, boot, sources and reload
+    ;; (schevana core loop) and src/core1/sources.ss: the step, boot,
+    ;; sources and reload
     *input-step?* post-core1! schevana-run! quit! schevana-end! uptime-ms
     load-user-init! user-directory schevana-boot! collector-declining?
     source-path source-files *source-texts* keep-source-text! load-file!
     load-user-folders! reload!
-    ;; src/core1/theme.ss: the theme, styles, palettes and parts
+    ;; (schevana core theme): the theme, styles, palettes and parts
     *theme-version* *style-name* *style-changes* *theme-overrides*
     *scale-setting* default-theme color-keys common-options theme-default
     *palettes* define-palette palettes palette-title palette-colors style
@@ -79,7 +81,7 @@
     frame-over* change-layers! theme-layers-set! set-style! set-theme!
     reset-style! override! theme-overrides set-scale! set-palette! reset-theme!
     theme-font-rule chrome-height title-height
-    ;; src/core1/wm.ss: windows, focus, surfaces and strips
+    ;; (schevana core windows): windows, focus, surfaces and strips
     window window? window-id window-app window-title window-title-set! window-x
     window-x-set! window-y window-y-set! window-w window-w-set! window-h
     window-h-set! window-state window-state-set! window-restore-set!

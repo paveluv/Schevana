@@ -65,7 +65,13 @@
     "lib/schevana/core0/trace-file.sls" "lib/schevana/core0/gpu.sls"
     "lib/schevana/core0/window.sls" "lib/schevana/core0/for-recorder.sls"
     "lib/schevana/core0.sls" "lib/schevana/recorder/bytes.sls"
-    "lib/schevana/recorder.sls" "lib/schevana/reload.sls"))
+    "lib/schevana/recorder.sls" "lib/schevana/reload.sls"
+    "lib/schevana/core/platform.sls" "lib/schevana/core/theme-table.sls"
+    "lib/schevana/core/processes.sls" "lib/schevana/core/gpu.sls"
+    "lib/schevana/core/fonts.sls" "lib/schevana/core/draw.sls"
+    "lib/schevana/core/pacer.sls" "lib/schevana/core/screen.sls"
+    "lib/schevana/core/loop.sls" "lib/schevana/core/theme.sls"
+    "lib/schevana/core/windows.sls"))
 
 ;; Core0, below the core. Its code is libraries (lib/schevana/core0/):
 ;; what its threads hand each other, the trace and its file, the
@@ -78,15 +84,12 @@
 ;; The core, in load order, in "/core1": the basics, a copy of its own,
 ;; then core1's code (src/core1/), its boot first and what it exports last.
 ;; The world it makes loads the folders (kits, services, desktop, styles,
-;; palettes, wallpapers, apps): see source-folders in src/core1/system.ss.
+;; palettes, wallpapers, apps): see source-folders in src/core1/sources.ss.
 ;; (reload!) loads these again, read from this file; core0's stay as they
 ;; are.
 (define *schevana-core1-sources*
-  '("src/base.ss" "src/core1/boot.ss" "src/core1/platform.ss"
-    "src/core1/theme-table.ss" "src/core1/proc.ss" "src/core1/gpu.ss"
-    "src/core1/font.ss" "src/core1/gfx.ss" "src/core1/pacer.ss"
-    "src/core1/screen.ss" "src/core1/system.ss" "src/core1/theme.ss"
-    "src/core1/wm.ss" "src/core1/export.ss"))
+  '("src/base.ss" "src/core1/boot.ss" "src/core1/sources.ss"
+    "src/core1/export.ss"))
 
 ;;; ---------------------------------------------------------- the command line
 

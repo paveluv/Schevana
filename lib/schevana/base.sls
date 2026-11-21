@@ -344,7 +344,7 @@
   ;;; anything loads, so here, where every environment has them. What is
   ;;; known only once SDL and the GPU start (the windowing system, the GPU's
   ;;; API) core0 says in *core0-platform* ((schevana core0 platform)), and the
-  ;;; world asks src/core1/platform.ss. These say what the platform is;
+  ;;; world asks (schevana core platform). These say what the platform is;
   ;;; whether it can do a thing is asked of the thing.
 
   ;; 'linux, 'macos, 'windows, or 'other.

@@ -19,7 +19,7 @@
   (library-layer core0)
 
   ;; The monotonic clock in ns, a fixnum: core0's, and what core1's is read
-  ;; from (src/core1/platform.ss), from any thread. Core1 has a clock of its
+  ;; from ((schevana core platform)), from any thread. Core1 has a clock of its
   ;; own, so a test fakes the world's without moving the one core0 times the
   ;; screen by.
   (define (core0-clock-ns) (sdl-get-ticks-ns))

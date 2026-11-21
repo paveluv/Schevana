@@ -11,11 +11,12 @@
   (export schevana-main)
   (import (chezscheme) (schevana layer) (schevana base) (schevana shader)
           (schevana socket) (schevana reload) (schevana core0)
-          (schevana recorder) (except (schevana boot) core1-exports)
-          (schevana platform) (schevana theme-table) (schevana processes)
-          (schevana gpu) (schevana fonts) (schevana draw) (schevana pacer)
-          (schevana screen) (schevana loop) (schevana theme)
-          (schevana windows))
+          (schevana recorder) (schevana core windows) (schevana core theme)
+          (schevana core loop) (schevana core screen) (schevana core pacer)
+          (schevana core draw) (schevana core fonts) (schevana core gpu)
+          (schevana core processes) (schevana core theme-table)
+          (schevana core platform) (except (schevana boot) core1-exports)
+          (schevana sources))
 
   (library-layer core facade)
 

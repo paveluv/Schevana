@@ -1,4 +1,4 @@
-;;; services/theme-file.ss — the saved look (src/core1/theme.ss's layers):
+;;; services/theme-file.ss — the saved look ((schevana core theme)'s layers):
 ;;; the file holds the chosen style, the scale, the Overrides and your
 ;;; changes per style. It is plain data: loading it never evaluates code. A
 ;;; rule or a procedure typed at the REPL lasts the session. Every change

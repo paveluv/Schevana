@@ -4,7 +4,7 @@
 ;;; environments, which a library has none of.
 
 (library (schevana boot)
-  (export core1-thread? core1-thread! world-value core1-exported
+  (export core1-thread? core1-thread! core1-exported
           core1-exports *schevana-root*)
   (import (chezscheme) (only (schevana base) library-layer) (schevana layer)
           (schevana tree))
@@ -22,12 +22,6 @@
   ;; neither.
   (defvar *core1-env* #f)
   (defvar *world-env* #f)
-
-  ;; A procedure by its name, which the top level looks up in "/": a
-  ;; library is handed the procedure itself.
-  (define (world-value name)
-    (errorf 'world-value
-            "~s: a library is handed the procedure, not its name" name))
 
   ;; What the top level's core1 gives the world, by its export.ss: a
   ;; library's exports are its own.

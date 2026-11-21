@@ -45,15 +45,15 @@ styles/  palettes/  wallpapers/  apps/   one definition a file
 ## The boot chain
 
 `main.ss` boots core0, core0 boots core1, and core1 boots the world. Each
-link makes the next one's environment, loads it, and calls its boot.
-Core0 and the recorder are sealed in their libraries: the core imports
-only what their facades give it, `(schevana core0)` and `(schevana
-recorder)`, a state or a hook core0 sets as a read-only view, so core1's
-thread never sets core0's. Core1 gives "/" what its `export.ss` lists;
-nothing reaches back up, and nothing else of a layer's is there to name. Each name goes down read-only unless
-its entry says `settable`: those are the hooks the folders fill
-(`*profile-span*`, `theme-save!`, `window-gone!`, `app-load!`), so
-the core never names a later layer.
+link makes the next one's environment, loads it, and calls its boot. Core0
+and the recorder are sealed in their libraries: the core imports only what
+their facades give it, `(schevana core0)` and `(schevana recorder)`, a
+state or a hook core0 sets as a read-only view, so core1's thread never
+sets core0's. Core1 gives "/" what its `export.ss` lists; nothing reaches
+back up, and nothing else of a layer's is there to name. Each name goes
+down read-only unless its entry says `settable`: those are the hooks the
+folders fill (`*profile-span*`, `theme-save!`, `window-gone!`,
+`app-load!`), so the core never names a later layer.
 
 Core0 is the bottom: SDL, the GPU's device side, the window and its
 events, and the only code that names SDL. It makes "/core1", loads the
@@ -139,15 +139,15 @@ draw for a run of records that are alike, in variants: a run of boxes and
 text in solid colors draws with none of the code for lines, shadows,
 gradients, stipples or images. Glyphs come from an atlas on the GPU.
 
-A list can show another, `(show-list lst x y)`, inside the clip around
-it: what was recorded into it keeps its own coordinates and its own
-buffers on the GPU, so moving it changes one run and records nothing
-again. A window is a list from its corner, what `draw-window` draws, and
-its content a list of its own shown in it. A frame records the wallpaper,
-the panels, the menu and the toasts, shows each window's list from the
-bottom up, each clipped to its extent (`record-world!` in
-`src/core1/wm.ss`), and sends them; a list that changed goes up to the
-GPU, and the others are there.
+A list can show another, `(show-list lst x y)`, inside the clip around it:
+what was recorded into it keeps its own coordinates and its own buffers on
+the GPU, so moving it changes one run and records nothing again. A window
+is a list from its corner, what `draw-window` draws, and its content a
+list of its own shown in it. A frame records the wallpaper, the panels,
+the menu and the toasts, shows each window's list from the bottom up, each
+clipped to its extent (`record-world!` in
+`lib/schevana/core/windows.sls`), and sends them; a list that changed goes
+up to the GPU, and the others are there.
 
 A window draws again only when it opens or resizes, when what its frame is
 drawn with changes (its focus, the part under the mouse, its title, its
@@ -340,11 +340,11 @@ GPU memory, so the bytes made count toward its old generations' growth.
 
 ## The profiler's hook
 
-`src/core1/proc.ss` keeps one hook, `*profile-span*` (`#f`, or a pair of
-procedures, begin and end), and `with-profile-span`, in which five places
-run their work: the step, `safely` (each phase of core1's loop, each
-surface's draw and tick), a window's handler, its drawing, and a
-process's turn. Off, each costs a variable read and a branch. On,
+`lib/schevana/core/processes.sls` keeps one hook, `*profile-span*` (`#f`,
+or a pair of procedures, begin and end), and `with-profile-span`, in which
+five places run their work: the step, `safely` (each phase of core1's
+loop, each surface's draw and tick), a window's handler, its drawing, and
+a process's turn. Off, each costs a variable read and a branch. On,
 `services/profile.ss` times each on the monotonic clock in fixnum ns, on a
 stack of fixed depth, giving each its self time, so the parts add up to
 the tick; a span allocates nothing. A span inside an engine runs untimed,

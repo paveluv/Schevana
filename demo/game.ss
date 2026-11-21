@@ -8,8 +8,8 @@
 ;;;                                              read back and told
 
 (import (chezscheme)
-        (schevana platform) (schevana processes) (schevana fonts)
-        (schevana draw) (schevana pacer) (schevana loop))
+        (schevana core platform) (schevana core processes) (schevana core fonts)
+        (schevana core draw) (schevana core pacer) (schevana core loop))
 
 ;; Rings that spread with t from the middle.
 (define-paint (game-rings x y)

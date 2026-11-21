@@ -2,19 +2,23 @@
 
 (check "reload reads the source list from main.ss"
        (and (equal? (read-source-list) *schevana-core1-sources*)
-            (member "src/core1/wm.ss" *schevana-core1-sources*)
+            (member "src/core1/boot.ss" *schevana-core1-sources*)
             #t))
 
 (check "reload leaves core0 as it booted: none of its files is the core's \
-        to load, and its procedures stay the same; the core's load into \
-        /core1, the world given what it exports again"
-       (let ([present gpu-publish!] [theme-was (top-level-value 'theme
-                                                               core1-env)])
+        to load, and its procedures stay the same; a library of the \
+        core's whose file didn't change stays as it was; the core's files \
+        load into /core1 again, the world given what it exports again"
+       (let ([present gpu-publish!]
+             [theme-was (top-level-value 'theme core1-env)]
+             [exports-were (top-level-value 'core1-exports core1-env)])
          (reload!)
          (and (not (exists (lambda (f) (string-prefix? "src/core0/" f))
                            *schevana-core1-sources*))
               (eq? gpu-publish! present)
-              (not (eq? (top-level-value 'theme core1-env) theme-was))
+              (eq? (top-level-value 'theme core1-env) theme-was)
+              (not (eq? (top-level-value 'core1-exports core1-env)
+                        exports-were))
               (not (top-level-bound? 'theme *world-env*))
               (for-all (lambda (n) (top-level-syntax? n *world-env*))
                        (core1-exported)))))
@@ -202,12 +206,13 @@
     (set! *toasts* '())
     (steps 1)))
 
-;; (reload!) in a world REPL reloads the world, not the REPL.
-(let ([p (repl 'world)] [old render-frame!])
+;; (reload!) in a world REPL reloads the world, not the REPL: a file of the
+;; world's (kits/ui.ss) defines its procedures again.
+(let ([p (repl 'world)] [old ui-button])
   (steps 2)
   (test-type! "(reload!)")
   (test-press! 'return)
-  (let ([reloaded? (test-wait 10000 (lambda () (not (eq? render-frame! old))))])
+  (let ([reloaded? (test-wait 10000 (lambda () (not (eq? ui-button old))))])
     (test-wait 10000 (lambda () (not (repl-proc (window-ref p 'state)))))
     ;; the REPL's own: the world's styles must not see it
     (test-type! "(define (title-height) 99)")

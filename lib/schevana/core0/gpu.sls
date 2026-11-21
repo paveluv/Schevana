@@ -312,18 +312,6 @@
   ;; latency when the queue fills.
   (define-state *gpu-frames-in-flight* 3)
 
-  ;; The window this renderer draws to from now on. The count goes
-  ;; first: on a claimed window, setting it builds the swapchain again.
-  (define-hook (gpu-claim-window! sdl-window)
-    (sdl-set-frames-in-flight (renderer-device *renderer*)
-                              *gpu-frames-in-flight*)
-    (unless (sdl-claim-window (renderer-device *renderer*) sdl-window)
-      (errorf 'gpu-claim-window! "~a" (sdl-get-error)))
-    (set! *gpu-present-mode* 'vsync)   ; as a claim leaves it
-    (set! *gpu-present-asked* 'vsync)
-    (renderer-sdl-window-set! *renderer* sdl-window)
-    (gpu-facts-refresh!))
-
   ;; What frames draw to with no window: a texture w × h.
   (define (gpu-set-target! w h)
     (let ([r *renderer*])
@@ -416,7 +404,7 @@
                 (sdl-create-gpu-pipeline device (gpu-at p)))))
 
   ;; The core's shaders, which records are drawn with, as core1 hands them
-  ;; over (src/core1/gfx.ss): (vertex . fragments), a vector of the fragment
+  ;; over ((schevana core draw)): (vertex . fragments), a vector of the fragment
   ;; shader's variants.
   (define-state *gpu-shaders* #f)
 
@@ -1363,6 +1351,18 @@
              (transfer buffer . ,(cdr (renderer-transfer r)))
              (target texture
                      . ,(* 4 (renderer-target-w r) (renderer-target-h r)))))))))
+
+  ;; The window this renderer draws to from now on. The count goes
+  ;; first: on a claimed window, setting it builds the swapchain again.
+  (define-hook (gpu-claim-window! sdl-window)
+    (sdl-set-frames-in-flight (renderer-device *renderer*)
+                              *gpu-frames-in-flight*)
+    (unless (sdl-claim-window (renderer-device *renderer*) sdl-window)
+      (errorf 'gpu-claim-window! "~a" (sdl-get-error)))
+    (set! *gpu-present-mode* 'vsync)   ; as a claim leaves it
+    (set! *gpu-present-asked* 'vsync)
+    (renderer-sdl-window-set! *renderer* sdl-window)
+    (gpu-facts-refresh!))
 
   ;; Between frames, the window presents by mode from now on. A mode it doesn't
   ;; offer leaves it as it is, and is asked once a change: a choice saved on

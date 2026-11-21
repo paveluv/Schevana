@@ -11,7 +11,8 @@
 ;;; booted, with all they import: what reload-libraries! is given as held.
 
 (library (schevana reload)
-  (export reload-import! reload-mark! reload-libraries! reload-facts)
+  (export reload-import! reload-mark! reload-libraries! reload-facts
+          reload-source)
   (import (chezscheme)
           (schevana base))
 

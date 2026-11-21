@@ -26,10 +26,10 @@
        [(_ . rest) #`(#,id . rest)]))))
 
 ;; Each name of the two's, in "/": a variable's, settable, from the first
-;; of core1 and main.ss's that has it as a variable; a macro's, from the
-;; lowest that has it (by its names: top-level-syntax? says so of any
-;; name): a state or a hook of a library main.ss imports is a macro there,
-;; to be set, where core1 has it only to read, a view. A name
+;; of core1 and main.ss's that has it as a variable; a macro's (a state or
+;; a hook of a library's) from core1's, but for what core1 has of core0's
+;; facade, a view, which comes from main.ss's, which has the state itself,
+;; to be set (by its names: top-level-syntax? says so of any name). A name
 ;; "/" had already stays as it is but for core1's exports, which become
 ;; settable.
 (let ([had (make-eq-hashtable)]
@@ -61,15 +61,21 @@
                                   (environment-symbols e))
                         (cons e t)))
                     envs)])
-      (for-each (lambda (e)
-                  (for-each (lambda (n)
-                              (reach! n
-                                      (lambda (n e)
-                                        (hashtable-ref (cdr (assq e has))
-                                                       n #f))
-                                      (reverse envs) (reverse anchors)))
-                            (environment-symbols e)))
-                envs))))
+      ;; what core1 has of core0's facade it has as a view: main.ss's is
+      ;; the state itself; any other name core1 has is its own
+      (let ([given (library-exports '(schevana core0))])
+        (for-each (lambda (e)
+                    (for-each (lambda (n)
+                                (let ([main? (memq n given)])
+                                  (reach! n
+                                          (lambda (n e)
+                                            (hashtable-ref (cdr (assq e has))
+                                                           n #f))
+                                          (if main? (reverse envs) envs)
+                                          (if main? (reverse anchors)
+                                              anchors))))
+                              (environment-symbols e)))
+                  envs)))))
 
 ;; Core0's own clock, which times the screen's waits: the world's now-ns is
 ;; another, core1's.

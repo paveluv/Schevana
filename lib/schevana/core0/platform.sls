@@ -120,24 +120,8 @@
                      '("name" "driver_name" "driver_version" "driver_info"))))))
 
   ;; What core0 knows of the platform, an alist it sets whole: the world
-  ;; reads it (src/core1/platform.ss), never asking SDL itself.
+  ;; reads it ((schevana core platform)), never asking SDL itself.
   (define-state *core0-platform* '())
-
-  (define-hook (core0-platform-read!)
-    (let ([video (sdl-get-current-video-driver)])
-      (set! *core0-platform*
-        `((windowing
-           . ,(cond [(not video) 'none]
-                    [(string=? video "windows") 'win32]
-                    [else (string->symbol video)]))
-          (gpu-api . ,(and *renderer* (string->symbol (gpu-driver-name))))
-          (gpu-device . ,(platform-gpu-device))
-          (sdl . ,(platform-sdl-version))
-          (system . ,(platform-system))
-          (kernel . ,(platform-kernel))
-          ;; the session's word for its desktop: a hint, not the compositor's
-          (desktop . ,(getenv "XDG_CURRENT_DESKTOP"))
-          (reports . ,(platform-reports))))))
 
   ;;; ------------------------------------------------------------------
   ;;; the screen's reports
@@ -162,13 +146,6 @@
     (mac-start! sdl-window)
     (core0-platform-read!))
 
-  ;; The reports come since the last look, without waiting.
-  (define-hook (platform-reports-pump!)
-    (unless (eqv? *wayland-queue* 0)
-      (with-interrupts-disabled
-       (wayland-dispatch *wayland-display* *wayland-queue*)))
-    (unless (eqv? *mac-layer* 0) (mac-pump!)))
-
   ;; Where the reports come from, as a person reads it: (source clock clock
   ;; flags), the clock the compositor says and the one its times fit; or #f
   ;; with none.
@@ -183,6 +160,22 @@
       [(not (eqv? *mac-layer* 0))
        (list 'metal-presented-handler 'uptime-raw 'uptime-raw '())]
       [else #f]))
+
+  (define-hook (core0-platform-read!)
+    (let ([video (sdl-get-current-video-driver)])
+      (set! *core0-platform*
+        `((windowing
+           . ,(cond [(not video) 'none]
+                    [(string=? video "windows") 'win32]
+                    [else (string->symbol video)]))
+          (gpu-api . ,(and *renderer* (string->symbol (gpu-driver-name))))
+          (gpu-device . ,(platform-gpu-device))
+          (sdl . ,(platform-sdl-version))
+          (system . ,(platform-system))
+          (kernel . ,(platform-kernel))
+          ;; the session's word for its desktop: a hint, not the compositor's
+          (desktop . ,(getenv "XDG_CURRENT_DESKTOP"))
+          (reports . ,(platform-reports))))))
 
   ;; ns to add to a time on clock (a POSIX clock's number) for now-ns's, read
   ;; at each report: two clocks may drift apart by a few ms an hour.
@@ -772,4 +765,11 @@
               (when (fx= (fxvector-ref s at) (fx+ id 1))
                 (memory-order-acquire)
                 (mac-reported! frame (fxvector-ref s (fx+ at 1)))
-                (fxvector-set! w i -1)))))))))
+                (fxvector-set! w i -1))))))))
+
+  ;; The reports come since the last look, without waiting.
+  (define-hook (platform-reports-pump!)
+    (unless (eqv? *wayland-queue* 0)
+      (with-interrupts-disabled
+       (wayland-dispatch *wayland-display* *wayland-queue*)))
+    (unless (eqv? *mac-layer* 0) (mac-pump!))))

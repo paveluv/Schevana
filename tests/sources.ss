@@ -370,7 +370,7 @@
 ;; back end, or raw Vulkan, is the GPU layer's business alone. Core0 keeps
 ;; SDL, the clock and the CPU count among it. Which platform this is, its
 ;; GPU's API among it, is named only where it's said,
-;; src/core1/platform.ss.
+;; (schevana core platform).
 (define above-gpu-files
   (remp (lambda (f)
           (member f '("lib/schevana/ffi.sls" "lib/schevana/shader.sls"
@@ -383,7 +383,8 @@
                       "lib/schevana/core0/platform.sls"
                       "lib/schevana/core0/gpu.sls"
                       "lib/schevana/core0/window.sls"
-                      "src/core1/font.ss" "src/core1/platform.ss")))
+                      "lib/schevana/core/fonts.sls"
+                      "lib/schevana/core/platform.sls")))
         (append world-files '("world.ss"))))
 
 (define (names-a-back-end? s)
@@ -425,7 +426,7 @@
 ;; and (schevana sdl window), which binds SDL's video driver for core0's to
 ;; read
 (define platform-files
-  '("lib/schevana/base.sls" "src/core1/platform.ss"
+  '("lib/schevana/base.sls" "lib/schevana/core/platform.sls"
     "lib/schevana/sdl/window.sls"
     "lib/schevana/core0/platform.sls" "kits/inspect.ss"))
 
@@ -473,6 +474,7 @@
 (define core0-chain-files (append core0-files (layer-libraries "core0")))
 (define recorder-chain-files
   (append recorder-files (layer-libraries "recorder")))
+(define core1-chain-files (append core1-files (layer-libraries "core")))
 
 (define core0-names (layer-names core0-chain-files))
 (define recorder-names (layer-names recorder-chain-files))
@@ -548,7 +550,8 @@
 
 (check "core1 names nothing of core0's or the recorder's but what their \
         facades give it"
-       (none? (names-beyond core1-files (append core0-names recorder-names)
+       (none? (names-beyond core1-chain-files
+                            (append core0-names recorder-names)
                             (append (library-exports '(schevana core0))
                                     (library-exports '(schevana recorder))))))
 
@@ -557,6 +560,34 @@
        (none? (names-beyond world-own-files
                             (append core0-names recorder-names core1-names)
                             (exports-names core1-exports 'world))))
+
+;; In a library, a hook made as it loads (define-hook, set-hook!) names
+;; nothing the library defines after it: Chez would check each such
+;; reference at every call, and the check's flag goes into closures made
+;; as the world runs, which then allocate (tests/units/allocation.ss).
+(define (hook-faults f)
+  (let loop ([forms (file-forms f)] [acc '()])
+    (if (null? forms)
+        (reverse acc)
+        (let* ([x (car forms)]
+               [hook? (and (pair? x) (pair? (cdr x))
+                           (memq (car x) '(define-hook set-hook!)))]
+               [later (if hook?
+                          (map cdr (apply append (map defined (cdr forms))))
+                          '())]
+               [name (and hook? (if (pair? (cadr x)) (caadr x) (cadr x)))])
+          (loop (cdr forms)
+                (append (reverse
+                         (map (lambda (s)
+                                (format "~a: hook ~a names ~a, defined after it"
+                                        f name s))
+                              (filter (lambda (s) (memq s later))
+                                      (if hook? (code-symbols-in (cddr x))
+                                          '()))))
+                        acc))))))
+
+(check "in a library, no hook names what the library defines after it"
+       (none? (apply append (map hook-faults all-library-files))))
 
 ;; The docs name what's given for a person at a REPL, which no file may.
 (define doc-texts

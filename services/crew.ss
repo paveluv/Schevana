@@ -6,21 +6,21 @@
 ;;;   (crew-map square list)              (map square list) on the crew
 ;;;   (crew-size) (crew-size-set! 4)      how many workers
 ;;;
-;;; What the crew calls is a worklet (define-worklet, src/core1/proc.ss): it
-;;; touches only what it is handed, and each call writes only its own
-;;; slice. What it is handed holds no procedure but worklets: crew-for
-;;; refuses any other among its arguments, or in the pairs, vectors and
-;;; boxes they hold, the containers a worklet can open. The caller takes
-;;; part, and crew-for returns when every call has returned. A call
-;;; should take 20 to 200 µs and allocate nothing:
-;;; allocation stops every thread. A call that raises stops new ones from
-;;; starting, and its condition is raised in the caller once the running
-;;; ones are done. On core1 the caller waits at most crew-core1-ms, then
-;;; cancels its calls (a worker's timer escapes from one within
-;;; microseconds) and raises, as a runaway handler does. In a process (a
-;;; REPL evaluation) the caller only waits, a millisecond at a time, and
-;;; killing the process cancels its calls. With no workers, or a range of
-;;; one chunk, crew-for is (worklet start end arg ...).
+;;; What the crew calls is a worklet (define-worklet, (schevana core
+;;; processes)): it touches only what it is handed, and each call writes
+;;; only its own slice. What it is handed holds no procedure but worklets:
+;;; crew-for refuses any other among its arguments, or in the pairs, vectors
+;;; and boxes they hold, the containers a worklet can open. The caller takes
+;;; part, and crew-for returns when every call has returned. A call should
+;;; take 20 to 200 µs and allocate nothing: allocation stops every thread. A
+;;; call that raises stops new ones from starting, and its condition is
+;;; raised in the caller once the running ones are done. On core1 the caller
+;;; waits at most crew-core1-ms, then cancels its calls (a worker's timer
+;;; escapes from one within microseconds) and raises, as a runaway handler
+;;; does. In a process (a REPL evaluation) the caller only waits, a
+;;; millisecond at a time, and killing the process cancels its calls. With
+;;; no workers, or a range of one chunk, crew-for is (worklet start end arg
+;;; ...).
 ;;;
 ;;; The crew's state changes only by box-cas!: no thread waits on another
 ;;; but the idle workers, on the one lock, outside any call. Workers run

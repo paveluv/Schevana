@@ -4,7 +4,7 @@
 ;;; gives it (src/recorder/export.ss's list), and the world through what
 ;;; core1 gives it again, so nothing either does, however written, can
 ;;; write a byte core0 reads. Core1 keeps the rest of the recorder
-;;; (src/core1/gfx.ss): colors, shapes, text, runs and labels.
+;;; ((schevana core draw)): colors, shapes, text, runs and labels.
 ;;;
 ;;; What's recorded goes into a recording (gpu-recording, (schevana core0
 ;;; gpu)): a list's, or the root's, the frame's. Recorded, it's frozen with

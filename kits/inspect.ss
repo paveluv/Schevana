@@ -5,8 +5,8 @@
 ;;; read from a copy of the last frame's: (inspect-list), about 2 µs for 150
 ;;; KB. What's read of it comes in device pixels, the screen's.
 
-;; What src/core1/gfx.ss's record kinds and paints are, by number; a test holds
-;; the two together.
+;; What (schevana core draw)'s record kinds and paints are, by number; a
+;; test holds the two together.
 (define inspect-kinds '#(box segment polygon glyph shadow))
 (define inspect-paints '#(solid gradient stipple image shader))
 

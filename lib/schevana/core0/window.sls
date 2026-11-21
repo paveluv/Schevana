@@ -1,6 +1,6 @@
 ;;; (schevana core0 window) — core0's window (.work/gpu-design.md 9.12): SDL's
 ;;; window, its events and what it says of itself, as plain data the world
-;;; reads (src/core1/screen.ss), never SDL's pointers. Positions come in the
+;;; reads ((schevana core screen)), never SDL's pointers. Positions come in the
 ;;; window's units, as SDL gives them; the world lays them out.
 ;;;
 ;;; *core0-mode* says what core0 runs, 'none before it starts:

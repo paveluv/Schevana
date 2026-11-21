@@ -1,6 +1,6 @@
 ;;; (schevana freetype) — FreeType's bindings: a face from a file, its
 ;;; glyphs and their bitmaps, as FreeType names them. What reads the
-;;; structs it fills is (src/core1/font.ss).
+;;; structs it fills is ((schevana core fonts)).
 
 (library (schevana freetype)
   (export

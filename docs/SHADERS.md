@@ -15,7 +15,7 @@ gets from its definition to the GPU, and two examples to type at a REPL.
 - **The core draws everything with them.** A window's drawing is a list of
   records (boxes, glyphs, lines, shadows, gradients, stipples, images). One
   vertex shader, `gfx-vertex`, and a fragment shader in seven variants,
-  `gfx-fragments`, draw those records, all in `src/core1/gfx.ss` and all in this
+  `gfx-fragments`, draw those records, all in `lib/schevana/core/draw.sls` and all in this
   language. Each variant holds only the code its records need, so a pixel
   pays only for what it draws.
 - **Apps add their own, of two kinds.** A *paint* (`define-paint`) gives a
@@ -415,8 +415,8 @@ comes back to the CPU.
 | File | What it holds |
 |---|---|
 | `lib/schevana/shader.sls` | the language: the front end, the SPIR-V and MSL back ends, `define-compute-shader`, constants, helpers and layouts |
-| `src/core1/gfx.ss` | `define-paint`, `fill-shader`, the core's own shaders and their helpers |
-| `src/core1/gpu.ss` | buffers and images as handles, calls, compute runs |
+| `lib/schevana/core/draw.sls` | `define-paint`, `fill-shader`, the core's own shaders and their helpers |
+| `lib/schevana/core/gpu.sls` | buffers and images as handles, calls, compute runs |
 | `lib/schevana/core0/gpu.sls` | core0: pipelines, dispatch, drawing |
 | `kits/twin.ss` | the twin |
 | `kits/inspect.ss` | `inspect-shader-…`, `inspect-computes` |

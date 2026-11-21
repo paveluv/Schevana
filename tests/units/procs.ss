@@ -1,5 +1,5 @@
-;;; tests/units/procs.ss — processes (src/core1/proc.ss): a process waits
-;;; for what something done elsewhere hands a then (proc-wait).
+;;; tests/units/procs.ss — processes ((schevana core processes)): a process
+;;; waits for what something done elsewhere hands a then (proc-wait).
 
 (for-each close-window! (windows))
 (steps 2)
