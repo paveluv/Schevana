@@ -61,7 +61,7 @@
     "lib/schevana/core0/trace.sls" "lib/schevana/core0/renderer.sls"
     "lib/schevana/core0/present.sls" "lib/schevana/core0/platform.sls"
     "lib/schevana/core0/trace-file.sls" "lib/schevana/core0/gpu.sls"
-    "lib/schevana/core0/window.sls"))
+    "lib/schevana/core0/window.sls" "lib/schevana/recorder/bytes.sls"))
 
 ;; Core0, below the core. Its code is libraries (lib/schevana/core0/):
 ;; what its threads hand each other, the trace and its file, the
@@ -72,11 +72,11 @@
 (define *schevana-core0-sources*
   '("src/base.ss" "src/core0/export.ss" "src/core0/boot.ss"))
 
-;; "/recorder", sealed, made by core0 before "/core1": the basics, then the
-;; bytes of frames and their writers, and what it exports (src/recorder/).
-;; Like core0's, these change with a restart.
+;; "/recorder", sealed, made by core0 before "/core1", importing the
+;; recorder's library (src/core0/boot.ss): the basics, then what it
+;; exports. Like core0's, these change with a restart.
 (define *schevana-recorder-sources*
-  '("src/base.ss" "src/recorder/bytes.ss" "src/recorder/export.ss"))
+  '("src/base.ss" "src/recorder/export.ss"))
 
 ;; The core, in load order, in "/core1": the basics, a copy of its own,
 ;; then core1's code (src/core1/), its boot first and what it exports last.

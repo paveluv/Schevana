@@ -170,9 +170,10 @@
   (x0 y0 x1 y1 radius parent rx0 ry0 rx1 ry1))
 (define rec-most-points 256)
 
-;; The bytes recorded into, records and extras, are "/recorder"'s, sealed
-;; (src/recorder/bytes.ss): written only through rec-write!, rec-extra! and
-;; rec-extra-u32!, read through rec-extra-ref, rec-extra-at and rec-count.
+;; The bytes recorded into, records and extras, are the recorder's, sealed
+;; ((schevana recorder bytes)): written only through rec-write!, rec-extra!
+;; and rec-extra-u32!, read through rec-extra-ref, rec-extra-at and
+;; rec-count.
 ;; the transform: num/den device pixels a logical pixel, the origin in
 ;; 1/256ths of a device pixel; a turn, as cos and sin, or #f
 (defvar *rec-num* 1)

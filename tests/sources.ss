@@ -78,6 +78,12 @@
 ;; three import.
 (define library-files *schevana-libraries*)
 
+;; Those of a layer's own, sealed: its folder of lib/schevana.
+(define (layer-libraries folder)
+  (filter (lambda (f)
+            (string-prefix? (string-append "lib/schevana/" folder "/") f))
+          library-files))
+
 (define line-files
   (append library-files core0-files recorder-files
           (source-files)
@@ -212,7 +218,7 @@
 ;; the libraries they import (lib/schevana/). What declares is left out,
 ;; sized by what's given, each a reviewed change: the export.ss files, a
 ;; library's exports and imports (file-forms), a file's imports.
-(define src-budget 37916)
+(define src-budget 37917)
 
 ;; The tokens of a datum as read; a list's end is none.
 (define (tokens x)
@@ -437,8 +443,14 @@
 (define (layer-names files)
   (map cdr (apply append (map definitions (remove "src/base.ss" files)))))
 
-(define core0-names (layer-names core0-files))
-(define recorder-names (layer-names recorder-files))
+;; A layer is its files and its libraries: core0's and the recorder's code
+;; is sealed in theirs, which their environments import.
+(define core0-chain-files (append core0-files (layer-libraries "core0")))
+(define recorder-chain-files
+  (append recorder-files (layer-libraries "recorder")))
+
+(define core0-names (layer-names core0-chain-files))
+(define recorder-names (layer-names recorder-chain-files))
 
 ;; Core1's, as it has them once loaded: what its macros define too (a
 ;; layout's fields), and what it was given; not Chez's, nor base.ss's, nor
@@ -500,12 +512,13 @@
 ;; them.
 (check "core0 names nothing of the recorder's or core1's but what it boots \
         them by"
-       (none? (names-beyond core0-files (append recorder-names core1-names)
+       (none? (names-beyond core0-chain-files
+                            (append recorder-names core1-names)
                             (append core0-reaches-up
                                     (map cdr (definitions "main.ss"))))))
 
 (check "the recorder names nothing of core0's but what core0 exports to it"
-       (none? (names-beyond recorder-files core0-names
+       (none? (names-beyond recorder-chain-files core0-names
                             (exports-names core0-exports 'recorder))))
 
 (check "core1 names nothing of core0's or the recorder's but what they \
@@ -609,7 +622,7 @@
                                                   (not (memq s core-sdl-left))))
                                            (reverse (symbols-in
                                                      (file-forms f))))))
-                            (remp (lambda (f) (member f core0-files))
+                            (remp (lambda (f) (member f core0-chain-files))
                                   (append world-files
                                           '("world.ss"))))))))
 

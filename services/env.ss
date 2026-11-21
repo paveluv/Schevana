@@ -830,7 +830,7 @@
   'forks '()
   'fork #f
   'kept "the bytes of frames are written there, and nowhere else; its \
-         files load again into it, or with a restart"
+         library changes with a restart"
   'doc "Sealed: the bytes of what the world records and hands core0 with \
         a frame, and the only code that writes them. The world names only \
         its interface")

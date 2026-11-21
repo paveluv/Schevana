@@ -69,13 +69,14 @@
   (parameterize ([interaction-environment e])
     (for-each (lambda (f) (load (string-append root "/" f))) sources)))
 
-;; Makes "/recorder", given core0's exports to it, and loads its sources
-;; there; then "/core1", given core0's exports and the recorder's, and
+;; Makes "/recorder", which imports the recorder's library, and loads its
+;; sources there (what it exports); then "/core1", given core0's exports
+;; and the recorder's, and
 ;; what main.ss hands down: where the tree is, the core's sources, and what
 ;; the command line asked (main-options). => "/core1", not loaded yet.
 (define (core0-make! root recorder-sources sources options)
   (let ([recorder (core0-sealed)] [core1 (core0-sealed)])
-    (exports-install! core0-exports (core0-environment) 'recorder recorder)
+    (eval '(import (schevana recorder bytes)) recorder)
     (set! *core0-recorder* recorder)
     (core0-load! recorder root recorder-sources)
     (exports-install! core0-exports (core0-environment) 'core1 core1)

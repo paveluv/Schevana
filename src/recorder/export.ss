@@ -1,6 +1,8 @@
-;;; recorder/export.ss — what "/recorder" gives core1, read-only
-;;; (src/base.ss's define-exports): the world has of it only what core1
-;;; gives it again (src/core1/export.ss).
+;;; recorder/export.ss — what the recorder gives core1, read-only
+;;; (src/base.ss's define-exports): "/recorder", which imports (schevana
+;;; recorder bytes), and the library (schevana recorder) give this alone.
+;;; The world has of it only what core1 gives it again
+;;; (src/core1/export.ss).
 
 (define-exports recorder-exports
   (export (core1)

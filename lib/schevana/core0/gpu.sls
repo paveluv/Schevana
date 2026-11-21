@@ -729,12 +729,12 @@
     (nongenerative schevana-gpu-call-1)
     (fields shader uniforms buffers))
 
-  ;; What a recording left, "/recorder"'s (src/recorder/bytes.ss), the only
-  ;; code that writes one: its records and extras, as bytes, and how many of
-  ;; them; its runs; its version, its list's count of recordings. Frozen once
-  ;; recorded, it's what core0 reads, whole: a list or a frame swaps to a
-  ;; newer one by one store. until and next are the recorder's own: when it
-  ;; may be written again, and its list's other recordings.
+  ;; What a recording left, the recorder's ((schevana recorder bytes)), the
+  ;; only code that writes one: its records and extras, as bytes, and how
+  ;; many of them; its runs; its version, its list's count of recordings.
+  ;; Frozen once recorded, it's what core0 reads, whole: a list or a frame
+  ;; swaps to a newer one by one store. until and next are the recorder's
+  ;; own: when it may be written again, and its list's other recordings.
   (define-record-type gpu-recording
     (nongenerative schevana-gpu-recording-1)
     (fields (mutable recs) (mutable recs-n) (mutable extras) (mutable extras-n)
@@ -1386,7 +1386,7 @@
   ;;; ------------------------------------------------------------------ frames
   ;;; A frame as core1 hands it to core0, which reads nothing else of core1's
   ;;; (.work/gpu-design.md 9.5): the root's recording and the frame's number,
-  ;;; "/recorder"'s to set (src/recorder/bytes.ss), the glyph table if it
+  ;;; "/recorder"'s to set ((schevana recorder bytes)), the glyph table if it
   ;;; changed, the atlas's new pieces, the jobs, the writes and the compute
   ;;; runs asked for since, the present mode, the frames in flight, and lists
   ;;; kept from earlier to draw on images first, (image . recording) each, the

@@ -1,9 +1,9 @@
-;;; (schevana recorder) — the bytes of frames and their writers
-;;; (src/recorder/), between core0 and the core: what
-;;; src/recorder/export.ss lists.
+;;; (schevana recorder) — the recorder (lib/schevana/recorder/), between
+;;; core0 and the core: what src/recorder/export.ss lists, and nothing else
+;;; of it, so that the core names no byte core0 reads.
 
 (library (schevana recorder)
   (export)
-  (import (chezscheme) (schevana layer) (schevana base) (schevana core0))
+  (import (chezscheme) (schevana layer) (schevana recorder bytes))
 
-  (include-sources "src/recorder/bytes.ss" "src/recorder/export.ss"))
+  (include-sources "src/recorder/export.ss"))
