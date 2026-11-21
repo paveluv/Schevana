@@ -86,7 +86,15 @@ how you can:
 ```
 
 The others are `(mouse-move x y)`, `(wheel dx dy)` and `(text "abc")`, on
-the screen's coordinates.
+the screen's coordinates. What is at a point of the screen, as the mouse
+finds it, `screen-at` says: a window and the part of it, or a surface (a
+bar, the desktop) and what of it, or `#f`:
+
+```scheme
+(let-values ([(x y w h) (content-rect counter)])
+  (cddr (screen-at (+ x 10) (+ y 10))))     ; => (content)
+(screen-at 5 5)                            ; => (surface topbar launcher)
+```
 
 ## Moving
 

@@ -28,7 +28,7 @@
     compute-rules! wm-chrome-changed! theme-font-rule chrome-height
     title-height frame-over* change-layers! theme-layers-set! set-changes!
     set-style! set-theme! reset-style! override! theme-overrides set-scale!
-    set-theme-plist! set-palette! reset-theme!)
+    set-theme-plist! set-palette! set-accent! reset-theme!)
   (import (chezscheme)
           (schevana base)
           (schevana core theme-table)

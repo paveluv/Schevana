@@ -13,6 +13,9 @@ values shown are a fresh world's, in the Mac style it starts in.
 (theme-source 'accent)                     ; => (changes mac 16752228)
 (reset-style! 'accent)                     ; your change forgotten
 (theme-source 'accent)                     ; => (built-in 8037111)
+(set-accent! #x9ece6a)                     ; the accent's own word for it
+(theme 'accent)                            ; => 10407530
+(reset-style! 'accent)
 ```
 
 A color is a fixnum, `#xRRGGBB`, and wherever a color is taken a theme

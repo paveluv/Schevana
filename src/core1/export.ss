@@ -79,7 +79,8 @@
     styles current-style define-part color-default! theme-default! with-style
     with-place style-changes-of style-chain chain-ref honored? resolve-theme
     frame-over* change-layers! theme-layers-set! set-style! set-theme!
-    reset-style! override! theme-overrides set-scale! set-palette! reset-theme!
+    reset-style! override! theme-overrides set-scale! set-palette! set-accent!
+    reset-theme!
     theme-font-rule chrome-height title-height
     ;; (schevana core windows): windows, focus, surfaces and strips
     window window? window-id window-app window-title window-title-set! window-x
@@ -97,7 +98,8 @@
     window-content-size window-local window-call window-crash!
     window-modal-child focus-window! close-window! minimize-window!
     set-geometry! move-window! resize-window! restore-window! toggle-maximize!
-    window-action! shaded? unshade-window! toggle-shade! window-at resize-kinds
+    window-action! shaded? unshade-window! toggle-shade! window-at screen-at
+    resize-kinds
     window-region *global-keys* bind-key! window-frame-soon! window-hover
     draw-window*
     ;; (schevana shader): the shader language

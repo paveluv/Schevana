@@ -43,7 +43,7 @@
     window-owned window-root focus-window! raise-window! close-window!
     minimize-window! set-geometry! move-window! resize-window! depth-window!
     maximize-window! restore-window! toggle-maximize! window-action! shaded?
-    shade-window! unshade-window! toggle-shade! window-at resize-kinds
+    shade-window! unshade-window! toggle-shade! window-at screen-at resize-kinds
     window-region region-cursor wm-mouse-move wm-mouse-down wm-mouse-up
     *global-keys* bind-key! unbind-key! window-frame-soon! draw-window
     window-hover
