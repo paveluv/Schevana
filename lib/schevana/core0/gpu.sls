@@ -519,7 +519,7 @@
   (define (gpu-take-answers!) (core0-take! *gpu-answers*))
 
   ;; The jobs, and core1's writes since it last handed them on (writes, a
-  ;; recording of "/recorder"'s, or #f): what makes objects first, then the
+  ;; recording of the recorder's, or #f): what makes objects first, then the
   ;; writes into them, then the reads that see them and the releases.
   (define (gpu-run-jobs! jobs writes)
     (for-each (lambda (job)
@@ -599,7 +599,7 @@
 
   ;;; ------------------------------------------------------------------ writes
   ;;; What core1 writes into buffers and images goes in a recording of
-  ;;; "/recorder"'s, the frame's writes: its records spans of 32 bytes, (kind
+  ;;; the recorder's, the frame's writes: its records spans of 32 bytes, (kind
   ;;; id x y src n 0 0), its extras the words they name. Kind 0, n words into
   ;;; buffer id from word x, from src in the extras; kind 1, n pixels into
   ;;; image id at (x, y), from src; kind 2, rows y .. y + n of image id from
@@ -700,7 +700,7 @@
   ;;; An image is a texture of premultiplied BGRA, its pixels on the GPU alone.
 
   ;; Core1's handle on one: its id in *gpu-objects*, its size and levels, the
-  ;; recording its loans are chained after, "/recorder"'s (#f till it lends
+  ;; recording its loans are chained after, the recorder's (#f till it lends
   ;; one), and gone?, let go of, so that a list kept from before that names it
   ;; draws without it.
   (define-record-type gpu-image
@@ -1388,7 +1388,7 @@
   ;;; ------------------------------------------------------------------ frames
   ;;; A frame as core1 hands it to core0, which reads nothing else of core1's
   ;;; (.work/gpu-design.md 9.5): the root's recording and the frame's number,
-  ;;; "/recorder"'s to set ((schevana recorder bytes)), the glyph table if it
+  ;;; the recorder's to set ((schevana recorder bytes)), the glyph table if it
   ;;; changed, the atlas's new pieces, the jobs, the writes and the compute
   ;;; runs asked for since, the present mode, the frames in flight, and lists
   ;;; kept from earlier to draw on images first, (image . recording) each, the

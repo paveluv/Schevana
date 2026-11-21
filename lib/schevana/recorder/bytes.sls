@@ -31,7 +31,7 @@
     rec-drawing->bytes rec-bytes-copies)
   (import (chezscheme)
           (schevana base)
-          (schevana core0))
+          (schevana core0 for-recorder))
 
   (library-layer recorder)
 

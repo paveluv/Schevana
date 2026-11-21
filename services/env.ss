@@ -74,17 +74,14 @@
             (make-eq-hashtable) (make-eq-hashtable) '() #f kind may-fork
             #f (make-eq-hashtable) ""))
 
-;; Root, with the worklets' environment its first child, core0's, "/core0",
-;; its second, the recorder's, "/recorder", sealed, its third, and the
-;; core's, "/core1", its fourth.
+;; Root, with the worklets' environment its first child and the core's,
+;; "/core1", its second. Core0 and the recorder are sealed in their
+;; libraries, and have no environment.
 (defvar *env-root*
   (let ([root (env-new 'root #f #f *world-env* 'root 'all)])
     (env-children-set! root
       (list (env-new 'worklets root 'core *worklet-environment*
                      'worklets '())
-            (env-new 'core0 root 'chez (core0-environment) 'core0 '())
-            (env-new 'recorder root 'chez (core0-recorder-environment)
-                     'recorder '())
             (env-new 'core1 root 'chez *core1-env* 'core1 '())))
     root))
 
@@ -799,19 +796,6 @@
   'forks '()
   'doc "All of Chez, and nothing of the world's")
 
-(env-register-kind! 'core0
-  'title "Core0"
-  'base 'chez
-  'forks '()
-  'fork #f
-  'kept "core0 runs the window and the screen there; its libraries \
-         change with a restart"
-  'doc "Core0, below the core: the window, its events and the GPU's \
-        device side, sealed in its libraries. Of the world's names it \
-        holds none; a state or a hook set here is core0's at its next \
-        call, and a definition is this environment's own. A REPL here \
-        sends its forms to core0, which runs them between frames")
-
 (env-register-kind! 'core1
   'title "Core1"
   'base 'chez
@@ -823,17 +807,6 @@
         the GPU's world side, fonts, processes and timers. The world has \
         only what it exports, read-only; what is defined here changes the \
         core, and the world with it, at its next call")
-
-(env-register-kind! 'recorder
-  'title "The recorder"
-  'base 'chez
-  'forks '()
-  'fork #f
-  'kept "the bytes of frames are written there, and nowhere else; its \
-         library changes with a restart"
-  'doc "Sealed: the bytes of what the world records and hands core0 with \
-        a frame, and the only code that writes them. The world names only \
-        its interface")
 
 (env-register-kind! 'sandbox
   'title "Sandbox"

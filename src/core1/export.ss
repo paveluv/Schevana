@@ -105,7 +105,7 @@
     socket-listen socket-accept socket-read socket-write socket-close
     ;; (schevana reload): what a reload of the libraries keeps
     reload-facts
-    ;; Given again: core0's (src/core0/export.ss), which Monitor, the
+    ;; Given again: core0's ((schevana core0)), which Monitor, the
     ;; Pipeline and inspect read
     core0-app-id gpu-atlas-side core0-flag-names core0-event-name gpu-show-run?
     gpu-run-gone? shader shader-name shader-stage shader-coords shader-params
@@ -114,10 +114,8 @@
     gpu-call? gpu-call-shader *gpu-facts* core0-display core0-frame-ns
     core0-hidden? core0-flags core0-error-text core0-step-state
     core0-frame-report core0-window-sizes core0-window-scale clipboard-get
-    core0-set-cursor! clipboard-set! core0-eval! core0-refresh-ns!
-    core0-environment
-    core0-recorder-environment platform-cpu-count
-    ;; Given again: the recorder's (src/recorder/export.ss), which the
+    core0-set-cursor! clipboard-set! core0-refresh-ns! platform-cpu-count
+    ;; Given again: the recorder's ((schevana recorder)), which the
     ;; Pipeline reads of a list
     rec-count rec-last-sizes rec-last-copy! rec-last-runs rec-list-copy
     gpu-list-recs-n gpu-list-extras-n gpu-list-runs gpu-list-version

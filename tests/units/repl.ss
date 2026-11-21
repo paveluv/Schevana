@@ -119,29 +119,6 @@
   (complete-close! r)
   (close-window! win))
 
-;; "/core0": core0 runs the forms, between frames, in its own environment
-(let* ([win (repl "/core0")]
-       [r (window-ref win 'state)]
-       [said? (lambda (s)
-                (exists (lambda (l) (string-contains-ci? (cdr l) s))
-                        (transcript-lines (repl-transcript r))))])
-  (steps 2)
-  (repl-run! r win "(begin (display \"from-core0\") (core0-forked?))")
-  (let loop ([n 0])
-    (when (and (repl-proc r) (< n 200)) (steps 1) (loop (+ n 1))))
-  (check "a REPL in /core0 sends its forms to core0, which prints and returns \
-          from its own environment"
-         (and (not (repl-proc r)) (said? "from-core0") (said? "#f")))
-  (repl-run! r win "(car '())")
-  (let loop ([n 0])
-    (when (and (repl-proc r) (< n 200)) (steps 1) (loop (+ n 1))))
-  (check "an error there comes back as one, and core0 goes on"
-         (and (not (repl-proc r)) (said? "car")))
-  (check "and its (exit) is still core0's: the REPL leaves it alone"
-         (eq? (top-level-value 'exit (core0-environment))
-              (top-level-value 'exit (scheme-environment))))
-  (close-window! win))
-
 ;; "/": a define of a name the core gives the world is said once, as it's
 ;; evaluated, to be the world's own; one of the world's own is not.
 (let* ([win (repl "/")]

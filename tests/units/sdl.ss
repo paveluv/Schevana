@@ -130,8 +130,8 @@
     [(sdl-get-error) (lambda () "")]
     [(sdl-get-clipboard-text) (lambda () 0)]
     [(sdl-poll-event) poll]
-    [(sdl-get-ticks-ns) (top-level-value name core0-env)]   ; SDL's own
-    [(sdl-get-num-logical-cpu-cores) (top-level-value name core0-env)]
+    [(sdl-get-ticks-ns) (top-level-value name main-env)]   ; SDL's own
+    [(sdl-get-num-logical-cpu-cores) (top-level-value name main-env)]
     [else (lambda args
             (set! fake-unfaked (cons name fake-unfaked))
             (errorf name "the fake SDL has no stand-in for this"))]))
@@ -140,8 +140,8 @@
 ;; going on to its target.
 (define (with-fake-sdl thunk)
   ;; a hook is set by set!, in core0's environment, which imports it
-  (define (hook-set! n v) (eval `(set! ,n ',v) core0-env))
-  (let ([saved (map (lambda (n) (eval n core0-env)) fake-sdl-names)]
+  (define (hook-set! n v) (eval `(set! ,n ',v) main-env))
+  (let ([saved (map (lambda (n) (eval n main-env)) fake-sdl-names)]
         [claim gpu-claim-window!])
     (dynamic-wind
       (lambda ()

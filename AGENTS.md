@@ -45,7 +45,7 @@ before it:
 | Layer | What goes there |
 |---|---|
 | `src/base.ss` | What every environment has, a copy each: the basics, and `define-exports`, by which a layer gives the next its names. Pure: no state, no C. |
-| `src/core0/` | Core0, below the core, in "/core0": SDL's bindings, the GPU's device side, and the window and its events. `main.ss` boots it; it makes "/recorder" (`src/recorder/`, sealed: the bytes of frames and their writers) and "/core1", loads the core there, and boots core1, the world's own thread (headless, one thread plays both). |
+| `lib/schevana/core0/` | Core0, below the core, sealed in its libraries: the GPU's device side, the window and its events, the trace, what differs by platform. `main.ss` imports them and boots it; it makes "/core1" (`src/core0/boot.ss`), loads the core there, and boots core1, the world's own thread (headless, one thread plays both). The core has of it only its facade, `(schevana core0)`; the recorder, `lib/schevana/recorder/` (the bytes of frames and their writers), has `(schevana core0 for-recorder)`, and the core has of the recorder its facade, `(schevana recorder)`. |
 | `src/core1/` | The core, in "/core1": the world (windows, focus, the theme's layers, processes, timers, its side of core0's window and events), the shader compiler, core1's side of the GPU layer, the recorder and fonts, its registries, the hooks later layers fill, and the caches its own procedures need. It makes the world's environment, "/", where everything below loads. |
 | `kits/` | Libraries, pure or almost. |
 | `services/` | Long-lived state with an API and no surface: the crew of worker threads, the tree of environments, the apps' sandboxes and what they are allowed, vats and their jobs, the profiler, the saved look. |
@@ -55,13 +55,21 @@ before it:
 | `demo/` | Programs on the core's libraries (`lib/schevana/`), one per file: each imports what it needs and runs (`scheme --libdirs lib --program demo/game.ss`). |
 
 - **The boot is a chain**: `main.ss` boots core0, core0 boots core1, core1
-  boots the world. Each link makes the next one's environment and gives it
-  only what its `export.ss` lists (`src/core0/`, `src/recorder/`,
-  `src/core1/`), each name read-only unless its entry is `settable`;
-  nothing else of a layer's is there to name, and nothing reaches back up.
-  The world has of core0's and the recorder's only what core1 gives it
-  again. A new name in an `export.ss` is a reviewed change, and
-  `tests/sources.ss` checks that no layer names another's beyond it.
+  boots the world. A sealed layer gives the next only what its facade
+  exports (`(schevana core0)`, `(schevana recorder)`), a state or a hook
+  of another thread's as a read-only view; core1 gives the world what its
+  `export.ss` lists, each name read-only unless its entry is `settable`.
+  Nothing else of a layer's is there to name, and nothing reaches back
+  up. The world has of core0's and the recorder's only what core1 gives
+  it again. A new name in a facade or an `export.ss` is a reviewed
+  change, and `tests/sources.ss` checks that no layer names another's
+  beyond it.
+- **A library declares its layer** first in its body, `(library-layer
+  core0)`, or `(library-layer core0 facade)` for a sealed layer's front
+  door, and is held to the layers' order as it compiles (`(schevana
+  base)`): it imports no layer above its own, and of a sealed layer not
+  its own only the facade (`tests/units/boot.ss`; that every library
+  declares one, `tests/sources.ss`).
 - **The core never depends on a later layer.** It reaches them only
   through registries, parts and settings they fill, and hooks they set:
   core1's `settable` exports (`*profile-span*`, `theme-save!`,

@@ -265,7 +265,7 @@
   (set! *gpu-frame-last* f))
 
 ;; Core1's side: the frame filled, what it asked of the GPU since handed on
-;; with it; its writes "/recorder"'s to hand (rec-lend!). => the frame
+;; with it; its writes the recorder's to hand (rec-lend!). => the frame
 (define (gpu-publish table table-n pieces mode in-flight)
   (let ([f (if (pair? *gpu-frames-free*)
                (let ([f (car *gpu-frames-free*)])

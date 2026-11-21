@@ -11,7 +11,7 @@ one ([REPL.md](REPL.md)), and `(envs)` shows the tree.
 (env-root)                                 ; the world, "/"
 (map env-path (env-children (env-root)))
 (env-find "/apps/clock")
-(env-kinds)       ; => (private world pure core0 core1 recorder sandbox apps app thread)
+(env-kinds)       ; => (private world pure core1 sandbox apps app thread)
 (env-forks (env-root))                     ; => (private world pure sandbox thread)
 ```
 
@@ -112,8 +112,8 @@ sandbox on Scheme's pure core has none. Dropping an environment drops what is un
 stops their threads; what still holds it can ask `env-dropped?`.
 
 The tree's apps live in sandboxes made this way, under "/apps"
-([APPS.md](APPS.md)), and the core in environments of its own: "/core0",
-"/recorder" and "/core1" ([INTERNALS.md](INTERNALS.md)).
+([APPS.md](APPS.md)), and the core in one of its own, "/core1"; core0 and
+the recorder are sealed in their libraries ([INTERNALS.md](INTERNALS.md)).
 
 ## The Environments app
 

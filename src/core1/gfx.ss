@@ -340,7 +340,7 @@
        (set! *rec-oy* 0)
        (set! *rec-turn* #f)
        (set! *rec-clip* 0))
-     ;; its bytes, "/recorder"'s, written there; its runs end while they're
+     ;; its bytes, the recorder's, written there; its runs end while they're
      ;; the ones written
      (lambda ()
        (rec-into-list! lst thunk (lambda () (rec-runs))))
@@ -1393,13 +1393,13 @@
          [kept (and preview
                     (guard (c [#t (report-error! 'preview c) #f])
                       ((cdr preview))))])
-    ;; the past one first; each copied by "/recorder" as it's handed
+    ;; the past one first; each copied by the recorder as it's handed
     (when *rec-past* (apply rec-earlier-add! *rec-past*))
     (when kept (apply rec-earlier-add! (car preview) kept))
     (set! *rec-preview* #f)
     (set! *rec-past* #f)
     ;; its recording, the frozen one, and those copies it's lent by
-    ;; "/recorder"
+    ;; the recorder
     (let ([f (gpu-publish (rec-take-table!) (rec-table-bytes)
                           (rec-take-atlas-pieces!) (theme 'present-mode)
                           (pacer-knob 'frames-in-flight))])

@@ -368,8 +368,7 @@
               (equal? (envs-chip-picked "a") '(a "" "")))))
 
 (check "dropping a child takes it, and its children, out of the tree and \
-        marks them dropped; not the world, nor /worklets, /core0, \
-        /recorder, /core1 or /apps"
+        marks them dropped; not the world, nor /worklets, /core1 or /apps"
        (let ([g (env-child units-env-world 'grand 'chez)])
          (env-drop! units-env-world)
          (env-drop! units-env)
@@ -378,15 +377,13 @@
               (raises? (lambda () (env-child g 'more 'chez)))
               (raises? (lambda () (env-drop! (env-root))))
               (raises? (lambda () (env-drop! (env-worklets))))
-              (raises? (lambda () (env-drop! (env-find "/core0"))))
-              (raises? (lambda () (env-drop! (env-find "/recorder"))))
               (raises? (lambda () (env-drop! (env-find "/core1"))))
               (raises? (lambda () (env-drop! (grant-apps-env))))
               (not (env-find "/units-world/grand"))
               (not (env-find "/units"))
               (not (memq units-env (env-children (env-root))))
               (equal? (map env-name (env-children (env-root)))
-                      '(worklets core0 recorder core1 apps)))))
+                      '(worklets core1 apps)))))
 
 ;;; The confined base (services/env.ss): what is always safe, for apps.
 
@@ -459,57 +456,6 @@
                         (equal? (get-output-string out) "a\n1b\"c\""))])
            (env-drop! e)
            ok)))
-
-;;; /core0: core0's own environment, under the root, for the person.
-
-(let ([h (env-find "/core0")])
-  (check "/core0 is core0's environment: its names, none of the world's, \
-          which \"/\" doesn't hold"
-         (and h (eq? (env-parent h) (env-root)) (eq? (env-kind h) 'core0)
-              (eq? (env-environment h) core0-env)
-              (env-eval h '(procedure? gpu-frame!))
-              (not (top-level-bound? 'gpu-frame! *world-env*))
-              (not (top-level-bound? 'gpu-frame! core1-env))))
-  (check "a definition there is /core0's own: what is evaluated there \
-          after it sees it, and core0's code, sealed in its libraries, and \
-          what was compiled against it go on with the library's; a hook \
-          set there is core0's"
-         (let ([real (env-eval h 'core0-error-text)]
-               [idle (env-eval h 'gpu-idle!)])
-           (env-eval h '(define core0-error-text (lambda () "from /core0")))
-           (env-eval h '(set! gpu-idle! (lambda () 'from-core0)))
-           (let ([there (env-eval h '(core0-error-text))]
-                 [seen (core0-error-text)]
-                 [hooked (gpu-idle!)])
-             (env-eval h `(define core0-error-text ',real))
-             (env-eval h `(set! gpu-idle! ',idle))
-             (and (equal? there "from /core0")
-                  (equal? seen (real))
-                  (eq? hooked 'from-core0)
-                  (eq? (env-eval h 'gpu-idle!) idle)
-                  (eq? (env-eval h 'core0-error-text) real)))))
-  (check "it isn't dropped, forks nothing, and is shared nothing of the \
-          world's"
-         (and (raises? (lambda () (env-drop! h)))
-              (null? (env-forks h))
-              (envs-why-not h 'share)
-              (not (envs-why-not h 'repl))))
-  (check "Environments shows it with an icon of its own, not the folder \
-          any other kind falls to"
-         (let* ([icon (lambda (kind)
-                        (image 16 16 1
-                               (lambda () (ui-draw-env-icon 0 0 16 '() kind))))]
-                [core0 (icon 'core0)] [other (icon 'no-such-kind)]
-                [differ (not (equal? (picture-bytes core0)
-                                     (picture-bytes other)))])
-           (picture-free! core0)
-           (picture-free! other)
-           differ))
-  (let* ([win (repl "/core0")] [r (window-ref win 'state)])
-    (check "a REPL opens there, in core0's look"
-           (and (equal? (window-title win) "REPL — /core0")
-                (eq? (repl-kind r) 'core0)))
-    (close-window! win)))
 
 ;;; /core1: the core's own environment, under the root; what the world is
 ;;; given forwards there.

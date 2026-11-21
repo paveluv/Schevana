@@ -255,7 +255,7 @@
 
 (define (bytes-total) (+ (bytes-allocated) (bytes-deallocated)))
 
-;; The last frame published, its bytes as "/recorder" holds them (tests
+;; The last frame published, its bytes as the recorder holds them (tests
 ;; reach inside the seal): (values recs recs-n extras extras-n).
 (define (rec-last)
   (let ([r *rec-root*])

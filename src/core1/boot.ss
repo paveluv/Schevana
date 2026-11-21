@@ -6,9 +6,11 @@
 
 ;; The libraries the core is built on (lib/schevana/), in "/core1" for
 ;; all its files: how C is bound, the shader compiler, sockets, FreeType
-;; and fontconfig, and how a library is reloaded in place.
+;; and fontconfig, how a library is reloaded in place, and what core0 and
+;; the recorder give the core.
 (import (schevana ffi) (schevana shader) (schevana socket)
-        (schevana freetype) (schevana fontconfig) (schevana reload))
+        (schevana freetype) (schevana fontconfig) (schevana reload)
+        (schevana core0) (schevana recorder))
 
 ;; Whether this is core1, the thread that loaded the core. The world's
 ;; state is core1's alone, and SDL core0's: a worker runs only worklets

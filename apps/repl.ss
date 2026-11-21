@@ -58,17 +58,15 @@
     (world accent repl-bg-world)
     (pure green repl-bg-pure)
     (sandbox teal repl-bg-sandbox)
-    (thread orange repl-bg-thread)
-    (core0 red repl-bg-core0)       ; core0's: the screen's own code
-    (recorder red repl-bg-core0)))   ; the bytes of frames, sealed
+    (thread orange repl-bg-thread)))
 
 ;; The backgrounds, tinted by the prompt's color: rules, so that they
 ;; follow the style and palette as they change, as an open REPL must.
 (for-each (lambda (key tint)
             (color-default! key (theme-rule (mix 'bg-0 tint 0.06))))
           '(repl-bg-private repl-bg-world repl-bg-pure repl-bg-sandbox
-            repl-bg-thread repl-bg-core0)
-          '(accent-2 accent green teal orange red))
+            repl-bg-thread)
+          '(accent-2 accent green teal orange))
 
 (define (repl-kind r) (vat-env-kind (repl-env r)))
 
@@ -259,11 +257,9 @@
                                      nowhere now" (env-path e)))
         (let ([v (vat-of e)])
           (repl-started-set! r (now-ms))
-          (repl-proc-set! r (cond
-                              [v (repl-send! r win v forms width)]
-                              [(eq? (env-kind e) 'core0)
-                               (repl-core0-send! r win forms width)]
-                              [else (repl-spawn! r win forms width)]))
+          (repl-proc-set! r (if v
+                                (repl-send! r win v forms width)
+                                (repl-spawn! r win forms width)))
           ;; its frames while it runs: what it prints, the busy mark
           (window-frame-soon! win)))))
 
@@ -319,18 +315,6 @@
                (repl-add! r 'error text)
                (repl-done! r win))))
 
-;; "/core0": core0 runs the forms between frames, in its own environment, and
-;; the texts come back. => what Ctrl+C finds: core0 is never interrupted.
-(define (repl-core0-send! r win forms width)
-  (core0-eval! forms width
-              (lambda (answer)
-                (if (eq? (car answer) 'ok)
-                    (for-each (lambda (t) (repl-add! r 'result t))
-                              (cdr answer))
-                    (repl-add! r 'error (cadr answer)))
-                (repl-done! r win)))
-  'core0)
-
 ;; The evaluation is over: the window is no longer busy, and the next
 ;; waiting input runs.
 (define (repl-done! r win)
@@ -350,10 +334,7 @@
         (begin (vat-job-kill! p)
                (repl-add! r 'info "; interrupted")
                (repl-done! r win))
-        (if (eq? p 'core0)
-            (repl-add! r 'info "; core0 runs it between frames, and isn't \
-                                interrupted")
-            (kill! p)))))
+        (kill! p))))
 
 ;;; ------------------------------------------------------------------ editing
 
@@ -1524,9 +1505,9 @@ here"))]
       (repl-banner! r)
       (let ([win (open-repl-window r)])
         ;; In a namespace, (exit) closes the window, not the world; but in
-        ;; core0's and core1's, where exit is how the process ends
+        ;; core1's, where exit is how the process ends
         (when (and (env-parent e) (eq? (env-base e) 'chez)
-                   (not (memq (env-kind e) '(core0 core1))))
+                   (not (eq? (env-kind e) 'core1)))
           (repl-define-exit! win e))
         win))))
 

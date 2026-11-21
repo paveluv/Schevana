@@ -1,24 +1,25 @@
-;;; tests/units/boot.ss — the boot's chain: core0 makes "/recorder" and
-;;; "/core1" (src/core0/boot.ss), core1 makes "/" (src/core1/boot.ss), each
-;;; given what the one before exports (src/base.ss's define-exports).
+;;; tests/units/boot.ss — the boot's chain: core0 makes "/core1"
+;;; (src/core0/boot.ss), where the core imports what core0 and the recorder
+;;; give it, their facades; core1 makes "/" (src/core1/boot.ss), given what
+;;; core1 exports (src/base.ss's define-exports).
 
-;; core0 makes the two again, with no sources for core1, to show what core1
-;; is given; the tests' own stay as they were.
-(let ([core1 (fluid-let ([*core0-core1* *core0-core1*]
-                         [*core0-recorder* *core0-recorder*])
-               (core0-make! *schevana-root* *schevana-recorder-sources* '()
-                            '((mode . headless))))])
+;; core0 makes "/core1" again, with no sources for core1, and the facades
+;; are imported there as the core's boot does, to show what the core is
+;; given; the tests' own stays as it was.
+(let ([core1 (fluid-let ([*core0-core1* *core0-core1*])
+               (core0-make! *schevana-root* '() '((mode . headless))))])
   (define (in-core1 form) (eval form core1))
   (define (named? name) (guard (c [#t #f]) (in-core1 name) #t))
-  (check "core0 makes \"/core1\" with all of Chez and, of its own names, \
-          only what it exports there: each core0's binding itself, and \
-          read-only; and hands it the core's sources and the command \
-          line's options"
+  (in-core1 '(import (schevana core0) (schevana recorder)))
+  (check "core0 makes \"/core1\" with all of Chez, and hands it the core's \
+          sources and the command line's options; of core0's names the \
+          core has what its facade gives, each core0's binding itself, and \
+          read-only, a state or a hook core0 sets as a view"
          (and (eq? (in-core1 'car) car)
               (eq? (in-core1 'gpu-publish!) gpu-publish!)
               (eq? (in-core1 '*gpu-facts*) *gpu-facts*)
               (eq? (in-core1 'core0-clock-ns) (top-level-value 'core0-clock-ns
-                                                               core0-env))
+                                                               main-env))
               (not (named? 'gpu-frame!))
               (not (named? '*sdl-window*))
               (not (named? 'sdl-get-ticks-ns))
@@ -27,8 +28,8 @@
                          (in-core1 '(fluid-let ([*core0-mode* 'sdl]) #t))))
               (equal? (in-core1 '*schevana-core1-sources*) '())
               (equal? (in-core1 '*schevana-options*) '((mode . headless)))
-              (not (eq? core1 core0-env))))
-  (check "\"/recorder\" is sealed: \"/core1\" holds what it exports, \
+              (not (eq? core1 main-env))))
+  (check "the recorder is sealed: the core holds what its facade gives, \
           read-only, and none of the bytes it hands core0, nor what writes \
           them"
          (and (procedure? (in-core1 'rec-write!))
@@ -39,8 +40,7 @@
               (not (named? 'gpu-list-recording-set!))
               (not (named? 'make-gpu-list))
               (not (named? 'gpu-frame-root-set!))
-              (not (named? 'gpu-frame-earlier-set!))
-              (eq? (env-kind (env-find "/recorder")) 'recorder))))
+              (not (named? 'gpu-frame-earlier-set!)))))
 
 ;; A "/" made as core1 makes it, given core1's exports: the tests' own has
 ;; them settable (tests/reach.ss).
@@ -78,7 +78,7 @@
         that isn't there to give stops the install"
        (and (raises? (lambda ()
                        (eval '(define-exports units-x (export (moon) car))
-                             core0-env)))
+                             main-env)))
             (raises? (lambda ()
                        (exports-install!
                         (list (cons '(world) '((units-no-such-name . #f))))
@@ -117,8 +117,8 @@
             (eq? *core1-env* core1-env)
             (eq? core1-env *core0-core1*)
             (not (eq? *world-env* core1-env))
-            (not (eq? *world-env* core0-env))
-            (not (eq? core1-env core0-env))))
+            (not (eq? *world-env* main-env))
+            (not (eq? core1-env main-env))))
 
 ;;; Core0's step: jobs posted (each a procedure and its arguments) run at
 ;;; its next step, in order; the events it pumps wait in the world's inbox

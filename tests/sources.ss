@@ -67,9 +67,8 @@
 (define core0-files
   (remove "src/base.ss" *schevana-core0-sources*))
 
-;; "/recorder"'s own files, src/recorder/, sealed between core0 and core1.
-(define recorder-files
-  (remove "src/base.ss" *schevana-recorder-sources*))
+;; The recorder's files: none, its code is its libraries'.
+(define recorder-files '())
 
 ;; The core's, in "/core1".
 (define core1-files *schevana-core1-sources*)
@@ -102,10 +101,12 @@
                         (format "~a declares no layer first" f))))
                all-library-files)))
 
-;; Those of a layer's own, sealed: its folder of lib/schevana.
+;; Those of a layer's own, sealed: its folder of lib/schevana, and its
+;; facade beside it.
 (define (layer-libraries folder)
   (filter (lambda (f)
-            (string-prefix? (string-append "lib/schevana/" folder "/") f))
+            (or (string-prefix? (string-append "lib/schevana/" folder "/") f)
+                (string=? (string-append "lib/schevana/" folder ".sls") f)))
           library-files))
 
 (define line-files
@@ -529,8 +530,8 @@
                 files))))
 
 ;; What core0 names of the core above it: what it reads by name as it boots
-;; the next link, the recorder's exports and core1's boot.
-(define core0-reaches-up '(recorder-exports core1-boot!))
+;; the next link, core1's boot.
+(define core0-reaches-up '(core1-boot!))
 
 ;; main.ss's own names are core0's too: it loads core0 where it defines
 ;; them.
@@ -541,15 +542,15 @@
                             (append core0-reaches-up
                                     (map cdr (definitions "main.ss"))))))
 
-(check "the recorder names nothing of core0's but what core0 exports to it"
+(check "the recorder names nothing of core0's but what core0 gives it"
        (none? (names-beyond recorder-chain-files core0-names
-                            (exports-names core0-exports 'recorder))))
+                            (library-exports '(schevana core0 for-recorder)))))
 
-(check "core1 names nothing of core0's or the recorder's but what they \
-        export to it"
+(check "core1 names nothing of core0's or the recorder's but what their \
+        facades give it"
        (none? (names-beyond core1-files (append core0-names recorder-names)
-                            (append (exports-names core0-exports 'core1)
-                                    (exports-names recorder-exports 'core1)))))
+                            (append (library-exports '(schevana core0))
+                                    (library-exports '(schevana recorder))))))
 
 (check "the world names nothing of the core's (core0's, the recorder's, \
         core1's) but what core1 exports to it"

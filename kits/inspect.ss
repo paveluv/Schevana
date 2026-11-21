@@ -299,7 +299,7 @@
 ;; buffers when they're big enough: they stay where they are, and a
 ;; collection needn't copy them.
 ;; The last frame's records and extras as the kit reads them: its own copy
-;; ("/recorder" lends a frame's bytes to no one), its buffers kept to grow.
+;; (the recorder lends a frame's bytes to no one), its buffers kept to grow.
 (define inspect-last-bytes (vector (make-bytevector 0) (make-bytevector 0)))
 (define (inspect-last-read!)
   (let-values ([(recs-n extras-n) (rec-last-sizes)])
@@ -380,7 +380,7 @@
     (recorded . ,(gpu-list-recorded lst))
     (took . ,(gpu-list-took lst))))
 
-;; The recordings x holds, "/recorder"'s, newest first: a list's, the
+;; The recordings x holds, the recorder's, newest first: a list's, the
 ;; root's (#f, the frames'), the copies drawn ahead of frames ('earlier),
 ;; the writes handed to core0 ('writes), or an image's loans.
 ;; ((version . n) (until . frame) (free . bool)) each, until #f for the

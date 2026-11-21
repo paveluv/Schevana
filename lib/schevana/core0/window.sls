@@ -484,7 +484,7 @@
   ;;; brings them. Headless, one thread plays both, and core0's step is the
   ;;; wait.
 
-  ;; Compute runs and writes no frame took, sent by a job, "/recorder"'s.
+  ;; Compute runs and writes no frame took, sent by a job, the recorder's.
   (define (core0-post-submit! runs jobs writes)
     (core0-post! (list gpu-submit-computes! runs jobs writes)))
 

@@ -10,10 +10,10 @@ pieces work.
 main.ss      boots core0
 src/base.ss  what every environment has, a copy each: pure, no state, no C;
              define-exports, by which a layer gives the next its names
-src/core0/   "/core0", below the core: SDL, the window and its events, the
-             GPU's device side, the trace; how a C binding is made; makes
-             "/recorder" and "/core1"
-src/recorder/  "/recorder", sealed: the bytes of frames and their writers
+src/core0/   core0's boot: makes "/core1"; core0 itself, below the core, is
+             sealed in lib/schevana/core0/: the window and its events, the
+             GPU's device side, the trace; the recorder, the bytes of
+             frames and their writers, in lib/schevana/recorder/
 src/core1/   "/core1", the core, the world's runtime:
   boot       core1's thread and environment; making "/"
   system     core1's loop, timers, inject!, reload!, loading the world
@@ -45,16 +45,19 @@ styles/  palettes/  wallpapers/  apps/   one definition a file
 ## The boot chain
 
 `main.ss` boots core0, core0 boots core1, and core1 boots the world. Each
-link makes the next one's environment, gives it what its `export.ss`
-lists, loads it, and calls its boot; nothing reaches back up, and nothing
-else of a layer's is there to name. Each name goes down read-only unless
+link makes the next one's environment, loads it, and calls its boot.
+Core0 and the recorder are sealed in their libraries: the core imports
+only what their facades give it, `(schevana core0)` and `(schevana
+recorder)`, a state or a hook core0 sets as a read-only view, so core1's
+thread never sets core0's. Core1 gives "/" what its `export.ss` lists;
+nothing reaches back up, and nothing else of a layer's is there to name. Each name goes down read-only unless
 its entry says `settable`: those are the hooks the folders fill
 (`*profile-span*`, `theme-save!`, `window-gone!`, `app-load!`), so
 the core never names a later layer.
 
 Core0 is the bottom: SDL, the GPU's device side, the window and its
-events, and the only code that names SDL. It makes "/recorder" and
-"/core1", loads the core into "/core1", and boots core1 there, on a thread
+events, and the only code that names SDL. It makes "/core1", loads the
+core into it, and boots core1 there, on a thread
 of its own, the world's, while core0 runs its loop on the process's first
 thread. Headless, one thread plays both. Core1 makes "/", gives it what
 its `export.ss` lists, core0's and the recorder's that the world uses
@@ -62,7 +65,7 @@ among it, and loads a copy of `src/base.ss` and the folders, each in
 file-name order:
 
 ```scheme
-(map env-path (env-children (env-root)))   ; "/core0", "/recorder", "/core1", ...
+(map env-path (env-children (env-root)))   ; "/worklets", "/core1", ...
 (length (source-files))                    ; every file the world loaded
 ```
 
@@ -89,9 +92,7 @@ library a `define-state`, and record types are nongenerative.
 
 The core's own names are redefined in a REPL in "/core1", where a
 `define` takes at the core's next call. Core0 is sealed in its libraries
-(`lib/schevana/core0/`) and changes with a restart; a REPL in "/core0",
-whose forms core0 runs between frames on its own thread, reads it and
-sets its states and hooks:
+(`lib/schevana/core0/`) and changes with a restart:
 
 ```scheme
 (repl "/core1")

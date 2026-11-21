@@ -10,14 +10,15 @@
 ;;;   --eval '(after 2000 (lambda () (png-write-screen-then "s.png" \
 ;;;                                    (lambda (p) (quit!)))))'
 ;;;
-;;; The boot is a chain, each link making the next one's environment,
-;;; giving it what its export.ss says, and loading it:
+;;; The boot is a chain, each link making the next one's environment and
+;;; loading it:
 ;;;
-;;;   1. This file boots core0, the code below the core (src/core0/), in
-;;;      this thread's environment, "/core0", which imports the libraries
-;;;      core0 is built on (lib/schevana/).
-;;;   2. Core0 makes "/recorder" and "/core1", loads the core into
-;;;      "/core1", and boots core1 (src/core0/boot.ss).
+;;;   1. This file boots core0, the code below the core, sealed in its
+;;;      libraries (lib/schevana/core0/), which this thread's environment
+;;;      imports.
+;;;   2. Core0 makes "/core1", loads the core there, which imports what
+;;;      core0 and the recorder give it ((schevana core0), (schevana
+;;;      recorder)), and boots core1 (src/core0/boot.ss).
 ;;;   3. Core1 makes the world's environment, "/", and loads the world into
 ;;;      it: the basics and the folders (src/core1/boot.ss).
 ;;;   4. world.ss, in "/", reads the user's settings, opens the first
@@ -46,12 +47,13 @@
         (if (string=? dir "") "." dir))
       (top-level-value '*schevana-root*)))
 
-;; The pieces of the core that are R6RS libraries (lib/schevana/), which
-;; the environments below import: the basics, how C is bound, SDL's
-;; bindings (SDL itself, the window's, the GPU's, and all three as one),
-;; the shader compiler, sockets, FreeType's bindings and fontconfig's,
-;; and the first of core0's own files, its mail. Sealed: they change with
-;; a restart.
+;; The pieces of the core that are R6RS libraries (lib/schevana/): the
+;; basics, where the tree is, how C is bound, SDL's bindings (SDL itself,
+;; the window's, the GPU's, and all three as one), the shader compiler,
+;; sockets, FreeType's bindings and fontconfig's; core0's own, and its
+;; facades, what it gives core1 and what it gives the recorder; the
+;; recorder and its facade; and how a library is reloaded in place. Each
+;; declares its layer (library-layer, in (schevana base)).
 (define *schevana-libraries*
   '("lib/schevana/base.sls" "lib/schevana/tree.sls" "lib/schevana/ffi.sls"
     "lib/schevana/sdl/system.sls" "lib/schevana/sdl/window.sls"
@@ -61,23 +63,17 @@
     "lib/schevana/core0/trace.sls" "lib/schevana/core0/renderer.sls"
     "lib/schevana/core0/present.sls" "lib/schevana/core0/platform.sls"
     "lib/schevana/core0/trace-file.sls" "lib/schevana/core0/gpu.sls"
-    "lib/schevana/core0/window.sls" "lib/schevana/recorder/bytes.sls"
-    "lib/schevana/reload.sls"))
+    "lib/schevana/core0/window.sls" "lib/schevana/core0/for-recorder.sls"
+    "lib/schevana/core0.sls" "lib/schevana/recorder/bytes.sls"
+    "lib/schevana/recorder.sls" "lib/schevana/reload.sls"))
 
 ;; Core0, below the core. Its code is libraries (lib/schevana/core0/):
 ;; what its threads hand each other, the trace and its file, the
 ;; renderer's record, the frames' reports, what differs by platform, the
-;; GPU's device side, the window. Left in src/core0/ is what the top
-;; level's boot is made of: what core0 exports to the environments it
-;; makes, and the making of them.
+;; GPU's device side, the window. Left in src/core0/ is the boot's making
+;; of "/core1".
 (define *schevana-core0-sources*
-  '("src/base.ss" "src/core0/export.ss" "src/core0/boot.ss"))
-
-;; "/recorder", sealed, made by core0 before "/core1", importing the
-;; recorder's library (src/core0/boot.ss): the basics, then what it
-;; exports. Like core0's, these change with a restart.
-(define *schevana-recorder-sources*
-  '("src/base.ss" "src/recorder/export.ss"))
+  '("src/base.ss" "src/core0/boot.ss"))
 
 ;; The core, in load order, in "/core1": the basics, a copy of its own,
 ;; then core1's code (src/core1/), its boot first and what it exports last.
@@ -172,11 +168,11 @@
 ;; here. A test's boot stops at the world, loaded.
 (cond
   [(not main-script?)
-   (core0-boot! *schevana-root* *schevana-recorder-sources*
-                *schevana-core1-sources* *schevana-options* #f)]
+   (core0-boot! *schevana-root* *schevana-core1-sources* *schevana-options*
+                #f)]
   [(main-fork? *schevana-options*)
-   (core0-fork! *schevana-root* *schevana-recorder-sources*
-                *schevana-core1-sources* *schevana-options* "world.ss")]
+   (core0-fork! *schevana-root* *schevana-core1-sources* *schevana-options*
+                "world.ss")]
   [else
-   (core0-boot! *schevana-root* *schevana-recorder-sources*
-                *schevana-core1-sources* *schevana-options* "world.ss")])
+   (core0-boot! *schevana-root* *schevana-core1-sources* *schevana-options*
+                "world.ss")])
