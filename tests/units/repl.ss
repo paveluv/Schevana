@@ -125,15 +125,15 @@
        [r (window-ref win 'state)]
        [notes (lambda ()
                 (length (filter (lambda (l)
-                                  (string-contains-ci? (cdr l)
-                                                       "redefine it in /core1"))
+                                  (string-contains-ci?
+                                   (cdr l) "edit the core's library"))
                                 (transcript-lines (repl-transcript r)))))])
   (repl-note-core! r '(define (platform-machine-load) "mine"))
   (let ([after-core (notes)])
     (repl-note-core! r '(define (units-repl-own) 1))
     (repl-note-core! r '(+ 1 2))
     (check "a define in \"/\" of a core name says it's the world's own, \
-            and to redefine it in /core1; one of the world's says nothing"
+            and to edit the core's library; one of the world's says nothing"
            (and (= after-core 1) (= (notes) 1))))
   (close-window! win))
 

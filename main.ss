@@ -16,16 +16,18 @@
 ;;;   1. This file boots core0, the code below the core, sealed in its
 ;;;      libraries (lib/schevana/core0/), which this thread's environment
 ;;;      imports.
-;;;   2. Core0 makes "/core1", loads the core there, which imports what
-;;;      core0 and the recorder give it ((schevana core0), (schevana
-;;;      recorder)), and boots core1 (src/core0/boot.ss).
-;;;   3. Core1 makes the world's environment, "/", and loads the world into
-;;;      it: the basics and the folders (src/core1/boot.ss).
+;;;   2. Core0 boots core1 (core1-boot!, (schevana core sources)): the core
+;;;      is sealed in its libraries too (lib/schevana/core/), and has of
+;;;      core0's and the recorder's only their facades, (schevana core0)
+;;;      and (schevana recorder).
+;;;   3. Core1 makes the world's environment, "/", which imports what the
+;;;      core gives it, (schevana core), and loads the world into it: the
+;;;      basics and the folders.
 ;;;   4. world.ss, in "/", reads the user's settings, opens the first
 ;;;      windows and runs the world till it quits.
 ;;;
 ;;; With a window, core0 opens it first and keeps this thread for the
-;;; screen, so the core loads, and steps 3 and 4 run, on the world's own
+;;; screen, so the core loads, and steps 2 to 4 run, on the world's own
 ;;; thread, core1. Headless, this thread does them all, unless --fork asks
 ;;; for the two threads with no window (for the tests). The tests load this
 ;;; file too, for steps 1 to 3 alone, and go on in "/" (tests/reach.ss).
@@ -47,13 +49,14 @@
         (if (string=? dir "") "." dir))
       (top-level-value '*schevana-root*)))
 
-;; The pieces of the core that are R6RS libraries (lib/schevana/): the
+;; Schevana's R6RS libraries below the world (lib/schevana/): the
 ;; basics, where the tree is, how C is bound, SDL's bindings (SDL itself,
 ;; the window's, the GPU's, and all three as one), the shader compiler,
 ;; sockets, FreeType's bindings and fontconfig's; core0's own, and its
 ;; facades, what it gives core1 and what it gives the recorder; the
-;; recorder and its facade; and how a library is reloaded in place. Each
-;; declares its layer (library-layer, in (schevana base)).
+;; recorder and its facade; how a library is reloaded in place; the
+;; core's own, and its facade, what it gives the world. Each declares its
+;; layer (library-layer, in (schevana base)).
 (define *schevana-libraries*
   '("lib/schevana/base.sls" "lib/schevana/tree.sls" "lib/schevana/ffi.sls"
     "lib/schevana/sdl/system.sls" "lib/schevana/sdl/window.sls"
@@ -71,25 +74,8 @@
     "lib/schevana/core/fonts.sls" "lib/schevana/core/draw.sls"
     "lib/schevana/core/pacer.sls" "lib/schevana/core/screen.sls"
     "lib/schevana/core/loop.sls" "lib/schevana/core/theme.sls"
-    "lib/schevana/core/windows.sls"))
-
-;; Core0, below the core. Its code is libraries (lib/schevana/core0/):
-;; what its threads hand each other, the trace and its file, the
-;; renderer's record, the frames' reports, what differs by platform, the
-;; GPU's device side, the window. Left in src/core0/ is the boot's making
-;; of "/core1".
-(define *schevana-core0-sources*
-  '("src/base.ss" "src/core0/boot.ss"))
-
-;; The core, in load order, in "/core1": the basics, a copy of its own,
-;; then core1's code (src/core1/), its boot first and what it exports last.
-;; The world it makes loads the folders (kits, services, desktop, styles,
-;; palettes, wallpapers, apps): see source-folders in src/core1/sources.ss.
-;; (reload!) loads these again, read from this file; core0's stay as they
-;; are.
-(define *schevana-core1-sources*
-  '("src/base.ss" "src/core1/boot.ss" "src/core1/sources.ss"
-    "src/core1/export.ss"))
+    "lib/schevana/core/windows.sls" "lib/schevana/core/sources.sls"
+    "lib/schevana/core.sls"))
 
 ;;; ---------------------------------------------------------- the command line
 
@@ -120,8 +106,8 @@
   (exit 1))
 
 ;; What args ask, as main-defaults has it, read before anything loads: a
-;; word it doesn't know prints the usage and stops. The world reads it too,
-;; as *schevana-options* (world.ss).
+;; word it doesn't know prints the usage and stops. Core1's boot is handed
+;; it, which the world reads as *schevana-options* (world.ss).
 (define (main-options args)
   (let loop ([args args] [opts main-defaults])
     (define (next n key value)
@@ -142,7 +128,7 @@
       [else (main-usage)])))
 
 ;; A test's tree is headless, on its own thread.
-(define *schevana-options*
+(define *main-options*
   (main-options (if main-script? (command-line-arguments) '("--headless"))))
 
 ;; A window wants the two threads, core0's for the screen and core1 for
@@ -155,7 +141,8 @@
 ;;; ------------------------------------------------------------------ the boot
 
 ;; 1. Core0. Its libraries first: (import (schevana ...)) finds them in
-;; the tree's lib.
+;; the tree's lib. This thread's environment has the basics too, a copy
+;; of its own.
 (library-directories
  (let ([lib (string-append *schevana-root* "/lib")])
    (cons (cons lib lib) (library-directories))))
@@ -164,18 +151,22 @@
         (schevana core0 present) (schevana core0 platform)
         (schevana core0 trace-file) (schevana core0 gpu)
         (schevana core0 window) (schevana reload))
-(for-each (lambda (f) (load (string-append *schevana-root* "/" f)))
-          *schevana-core0-sources*)
+(load (string-append *schevana-root* "/src/base.ss"))
 
-;; 2 to 4. With two threads, core0 never comes back: its loop runs from
-;; here. A test's boot stops at the world, loaded.
+;; 2 and 3. Core1's boot, named rather than imported: the core loads as
+;; it is first named, so with two threads it loads on core1's while the
+;; boot screen shows.
+(define (main-core1-boot! script)
+  ((eval 'core1-boot! (environment '(schevana core sources)))
+   *main-options* script))
+
+;; With two threads, core0 never comes back: its loop runs from here. A
+;; test's boot stops at the world, loaded.
 (cond
-  [(not main-script?)
-   (core0-boot! *schevana-root* *schevana-core1-sources* *schevana-options*
-                #f)]
-  [(main-fork? *schevana-options*)
-   (core0-fork! *schevana-root* *schevana-core1-sources* *schevana-options*
-                "world.ss")]
-  [else
-   (core0-boot! *schevana-root* *schevana-core1-sources* *schevana-options*
-                "world.ss")])
+  [(not main-script?) (main-core1-boot! #f)]
+  [(main-fork? *main-options*)
+   (let ([option (lambda (key) (cdr (assq key *main-options*)))])
+     (core0-run! (option 'mode) (car (option 'size)) (cdr (option 'size))
+                 (option 'full-screen?)
+                 (lambda () (main-core1-boot! "world.ss"))))]
+  [else (main-core1-boot! "world.ss")])

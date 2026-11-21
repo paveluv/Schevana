@@ -22,8 +22,7 @@
           (schevana core fonts)
           (schevana core draw)
           (schevana core pacer)
-          (schevana core screen)
-          (only (schevana boot) core1-thread!))
+          (schevana core screen))
 
   (library-layer core)
 

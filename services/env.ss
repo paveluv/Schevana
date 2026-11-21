@@ -74,25 +74,19 @@
             (make-eq-hashtable) (make-eq-hashtable) '() #f kind may-fork
             #f (make-eq-hashtable) ""))
 
-;; Root, with the worklets' environment its first child and the core's,
-;; "/core1", its second. Core0 and the recorder are sealed in their
-;; libraries, and have no environment.
+;; Root, with the worklets' environment its child. Core0, the recorder
+;; and the core are sealed in their libraries, and have no environment.
 (defvar *env-root*
   (let ([root (env-new 'root #f #f *world-env* 'root 'all)])
     (env-children-set! root
       (list (env-new 'worklets root 'core *worklet-environment*
-                     'worklets '())
-            (env-new 'core1 root 'chez *core1-env* 'core1 '())))
+                     'worklets '())))
     root))
 
 (define (env-root) *env-root*)
 
-;; "/core1": what the world forwards to.
-(define (env-core1)
-  (find (lambda (c) (eq? (env-kind c) 'core1)) (env-children *env-root*)))
-
-;; The world's shares are what core1 gives it, at each load: a reload may
-;; bring new ones.
+;; The world's shares are what the core gives it, at each load: a reload
+;; may bring new ones.
 (for-each (lambda (n) (hashtable-set! (env-shares *env-root*) n n))
           (core1-exported))
 
@@ -250,9 +244,9 @@
 ;; to the environment holding the binding, so that what describes a name
 ;; (the REPL's help) describes what it forwards to. A shared name e
 ;; defined itself is e's. An env's shares come from its parent; the
-;; world's, which has none, from /core1.
+;; world's, which has none, hold what the core gives it.
 (define (env-holder e name)
-  (let* ([from (or (env-parent e) (env-core1))]
+  (let* ([from (env-parent e)]
          [target (and from (hashtable-ref (env-shares e) name #f))])
     (if (and target (not (top-level-bound? name (env-environment e))))
         (env-holder from target)
@@ -795,18 +789,6 @@
   'base 'chez
   'forks '()
   'doc "All of Chez, and nothing of the world's")
-
-(env-register-kind! 'core1
-  'title "Core1"
-  'base 'chez
-  'forks '()
-  'fork #f
-  'kept "the core runs the world from there; its files load again into \
-         it with a reload"
-  'doc "The core: the pacer, the step, windows, focus, the theme's layers, \
-        the GPU's world side, fonts, processes and timers. The world has \
-        only what it exports, read-only; what is defined here changes the \
-        core, and the world with it, at its next call")
 
 (env-register-kind! 'sandbox
   'title "Sandbox"

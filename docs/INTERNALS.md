@@ -7,96 +7,117 @@ pieces work.
 ## The tree
 
 ```
-main.ss      boots core0
-src/base.ss  what every environment has, a copy each: pure, no state, no C;
-             define-exports, by which a layer gives the next its names
-src/core0/   core0's boot: makes "/core1"; core0 itself, below the core, is
-             sealed in lib/schevana/core0/: the window and its events, the
-             GPU's device side, the trace; the recorder, the bytes of
-             frames and their writers, in lib/schevana/recorder/
-src/core1/   "/core1", the core, the world's runtime:
-  boot       core1's thread and environment; making "/"
-  system     core1's loop, timers, inject!, reload!, loading the world
-  wm         windows, z-order, focus, hit testing, dragging, dispatch;
-             the registries of surfaces and strips
-  proc       processes and the watchdog (Chez engines); notify,
-             report-error!; the profiler's hook; worklets
-  screen     core0's window as the world sees it: scale, full screen,
-             icon, SDL's events as Scheme lists
-  gfx        the drawing procedures, colors, stipples, gradients, clips,
-             images and paints, all written as records
-  gpu        the GPU layer in the world's terms: frames, images, buffers,
-             compute
-  shader     the shader language's compiler, to SPIR-V or Metal's language
-  font       fonts by fontconfig, glyphs by FreeType, the atlas, measuring
-  theme      settings in layers, rules, palettes, styles, parts
-  platform   what differs by platform, of the core's; core1's clocks
-  socket     local sockets, for what talks to the world from outside
-  ffi        core1's own C: FreeType, fontconfig, sockets
-  export     what the world is given of the core
-kits/        libraries, pure or almost: ui, edit, text, color, px, ...
-services/    long-lived state behind procedures: crew, env, grant,
-             profile, theme-file, vat
-desktop/     the screen's own surfaces: wallpaper, bars, menu, toasts;
-             keys, arranging, the file dialog, the permissions dialog
-styles/  palettes/  wallpapers/  apps/   one definition a file
+main.ss        boots core0, then core1
+world.ss       the world's boot, in "/": the user's settings, the first
+               windows
+src/base.ss    what every environment of the top level has, a copy each:
+               pure, no state, no C; forwarders, by which an environment
+               gives another its names
+lib/schevana/  the libraries below the world, each declaring its layer:
+  base         the basics; the layers and their check; states, made
+               values, hooks and views
+  tree         where the tree is
+  ffi  sdl  freetype  fontconfig  socket
+               bindings to C
+  shader       the shader language's compiler, to SPIR-V or Metal's
+               language
+  reload       reloading a library in place
+  core0/       core0, below the core: the window and its events, the
+               GPU's device side, the trace; its facade, core0.sls
+  recorder/    the bytes of frames and their writers; its facade,
+               recorder.sls
+  core/        the core, the world's runtime; its facade, core.sls, what
+               the world is given:
+    platform     what differs by platform, of the core's; the clocks
+    theme-table  the settings in effect, which drawing reads
+    processes    processes and the watchdog (Chez engines); notify,
+                 report-error!; the profiler's hook; worklets
+    gpu          the GPU layer in the world's terms: images, buffers,
+                 lists, compute
+    fonts        fonts by fontconfig, glyphs by FreeType, the atlas,
+                 measuring
+    draw         the drawing procedures, colors, stipples, gradients,
+                 clips, images and paints, all written as records
+    pacer        when frames are due, and what became of each
+    screen       core0's window as the world sees it: scale, full screen,
+                 icon, SDL's events as Scheme lists
+    loop         core1's loop and step, the boot, the collector
+    theme        settings in layers, rules, palettes, styles, parts
+    windows      windows, z-order, focus, hit testing, dragging,
+                 dispatch; the registries of surfaces and strips
+    sources      "/", the world's files, loading them and reload!
+kits/          libraries, pure or almost: ui, edit, text, color, px, ...
+services/      long-lived state behind procedures: crew, env, grant,
+               profile, theme-file, vat
+desktop/       the screen's own surfaces: wallpaper, bars, menu, toasts;
+               keys, arranging, the file dialog, the permissions dialog
+styles/  palettes/  wallpapers/  apps/     one definition a file
+demo/          programs on the core's libraries, one a file
 ```
 
 ## The boot chain
 
-`main.ss` boots core0, core0 boots core1, and core1 boots the world. Each
-link makes the next one's environment, loads it, and calls its boot. Core0
-and the recorder are sealed in their libraries: the core imports only what
-their facades give it, `(schevana core0)` and `(schevana recorder)`, a
-state or a hook core0 sets as a read-only view, so core1's thread never
-sets core0's. Core1 gives "/" what its `export.ss` lists; nothing reaches
-back up, and nothing else of a layer's is there to name. Each name goes
-down read-only unless its entry says `settable`: those are the hooks the
-folders fill (`*profile-span*`, `theme-save!`, `window-gone!`,
-`app-load!`), so the core never names a later layer.
+`main.ss` boots core0, core0 boots core1, and core1 boots the world.
+Core0, the recorder and the core are sealed in their libraries, and each
+layer has of the one below only what its facade gives: the core imports
+`(schevana core0)` and `(schevana recorder)`, the world `(schevana
+core)`. A state or a hook the layer below sets comes as a read-only view,
+so one thread never sets another's. Nothing reaches back up, and nothing
+else of a layer's is there to name: a library declares its layer
+(`library-layer`) and is held to the layers' order as it compiles. Each
+name goes down read-only but the hooks the folders fill
+(`*profile-span*`, `theme-save!`, `window-gone!`, `app-load!`, ...), so
+the core never names a later layer.
 
 Core0 is the bottom: SDL, the GPU's device side, the window and its
-events, and the only code that names SDL. It makes "/core1", loads the
-core into it, and boots core1 there, on a thread
-of its own, the world's, while core0 runs its loop on the process's first
-thread. Headless, one thread plays both. Core1 makes "/", gives it what
-its `export.ss` lists, core0's and the recorder's that the world uses
-among it, and loads a copy of `src/base.ss` and the folders, each in
-file-name order:
+events, and the only code that names SDL. With a window it opens it
+first and runs its loop on the process's first thread, and core1 boots
+on a thread of its own, the world's, the core loading as the boot screen
+shows. Headless, one thread plays both. Core1 makes "/", which imports
+the core's facade, core0's and the recorder's that the world uses among
+it, and loads a copy of `src/base.ss` and the folders, each in file-name
+order:
 
 ```scheme
-(map env-path (env-children (env-root)))   ; "/worklets", "/core1", ...
+(map env-path (env-children (env-root)))   ; "/worklets", "/apps", ...
 (length (source-files))                    ; every file the world loaded
 ```
 
 Only the core calls C. No binding reaches "/", and `tests/sources.ss`
 checks that no folder names one, nor anything of the core's it isn't given.
 
+A program stands on the core alone (`demo/`): it imports the core's
+facade, or the pieces it needs, and runs with `schevana-main`, which boots
+the screen, calls a thunk that opens what the program shows, and runs the
+world till it quits:
+
+```scheme no-run
+(import (chezscheme) (schevana core))
+(schevana-main 'sdl 640 400 #f
+  (lambda () (open-window "Hello" 'size '(300 . 200))))
+```
+
 ## Reloading
 
 `(reload!)` evaluates again each library whose file changed since it was
 evaluated, and every library that imports it, after it (Chez links a
 library to the instance of each it was evaluated against), and imports
-them again where they were imported; then it loads the core's files again
-into "/core1", gives "/" what the core exports anew, and loads the
-world's. A library's states stay (`define-state`), its made values and
-hooks are made again, and what sets a hook sets it again; a closure made
-before keeps the code it was made with. Core0's libraries, and all they
-import, stay as they were booted: core0's thread runs them, and they
-change with a restart. It runs as a process, and while
+them again where they were imported, "/" the core's facade; then it loads
+the world's files. A library's states stay (`define-state`), its made
+values and hooks are made again, and what sets a hook sets it again; a
+closure made before keeps the code it was made with. Core0's libraries,
+and all they import, stay as they were booted: core0's thread runs them,
+and they change with a restart. It runs as a process, and while
 it loads nothing else runs half-loaded code: no frames, timers, ticks or
 other processes, and input waits to be handled in order when it's done.
 Ctrl+C stops it, and a toast names the file it was loading if it's
 stopped or fails. State that must survive it is a `defvar`, in a
 library a `define-state`, and record types are nongenerative.
 
-The core's own names are redefined in a REPL in "/core1", where a
-`define` takes at the core's next call. Core0 is sealed in its libraries
-(`lib/schevana/core0/`) and changes with a restart:
-
-```scheme
-(repl "/core1")
-```
+The core's own code changes with its library's file: edit it and
+`(reload!)`. A `define` in "/" of a name the core gives makes the
+world's own, which the core never calls; what the core calls by a hook
+is set from "/" (`set-hook!`).
 
 ## Surfaces and strips
 

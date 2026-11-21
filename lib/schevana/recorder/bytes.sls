@@ -1,8 +1,8 @@
 ;;; (schevana recorder bytes) — the recorder (.work/gpu-design.md 9.14): the
 ;;; bytes of what the world records and hands core0, and the only code that
-;;; writes them. Core1 reaches it only through what (schevana recorder)
-;;; gives it (src/recorder/export.ss's list), and the world through what
-;;; core1 gives it again, so nothing either does, however written, can
+;;; writes them. Core1 reaches it only through what its facade,
+;;; (schevana recorder), gives it, and the world through what the core's
+;;; gives it again, so nothing either does, however written, can
 ;;; write a byte core0 reads. Core1 keeps the rest of the recorder
 ;;; ((schevana core draw)): colors, shapes, text, runs and labels.
 ;;;

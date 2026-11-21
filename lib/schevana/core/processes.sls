@@ -13,7 +13,8 @@
 
 (library (schevana core processes)
   (export
-    in-engine? current-proc handler-fuel *profile-span* profile-span-past!
+    core1-thread? core1-thread! in-engine? current-proc handler-fuel
+    *profile-span* profile-span-past!
     with-profile-span make-timeout-condition safe-call safely *dirty*
     request-frame! *frame-generation* request-redraw! *timers* after
     run-timers! *toasts* notify *last-error* report-error! proc proc? proc-id
@@ -23,11 +24,17 @@
     worklet-compile worklet worklet-spread define-worklet)
   (import (chezscheme)
           (schevana base)
-          (schevana core platform)
-          ;; the worklets' environment is given its names so
-          (only (schevana layer) forwarder-to))
+          (schevana core platform))
 
   (library-layer core)
+
+  ;; Whether this is core1, the world's thread: the one that said so
+  ;; (core1-thread!, as the world boots on it); till then, the one that
+  ;; loaded this library. The world's state is core1's alone, and SDL
+  ;; core0's: a worker runs only worklets, where neither can be named.
+  (define-state *core1-thread-id* (get-thread-id))
+  (define (core1-thread?) (fx= (get-thread-id) *core1-thread-id*))
+  (define (core1-thread!) (set! *core1-thread-id* (get-thread-id)))
 
   ;; defvar, not define: a reload must not swap out parameters that running
   ;; engines are still parameterizing. Thread parameters: another thread's

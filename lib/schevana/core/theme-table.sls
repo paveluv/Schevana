@@ -59,7 +59,7 @@
 
   ;; A procedure of the world's by its name, looked up at each call, so that
   ;; a redefinition takes at the next: the world's boot says how
-  ;; (src/core1/boot.ss); a library is handed the procedure itself.
+  ;; ((schevana core sources)); a library is handed the procedure itself.
   (define-hook (world-value name)
     (errorf 'world-value "~s: a library is handed the procedure, not its name"
             name))

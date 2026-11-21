@@ -38,10 +38,11 @@ manager. `(reload!)` loads the sources again and undoes what you redefined:
 (reload!)
 ```
 
-The core's own names (`open-window`, `fill-box`, the window manager) live
-in "/core1", below the world, which calls its own definitions. A `define`
-at "/" of one of those makes the world's own, which the core never calls;
-the REPL says so when it happens.
+The core's own names (`open-window`, `fill-box`, the window manager) are
+its libraries', below the world, which call their own definitions: the
+world imports them. A `define` at "/" of one of those makes the world's
+own, which the core never calls; the REPL says so when it happens. The
+core's code changes with its library's file, at `(reload!)`.
 
 ## What you type runs as a process
 

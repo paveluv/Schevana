@@ -291,7 +291,8 @@
 
 ;; A define in the world of a name the core gives it makes the world's
 ;; own, which the core never calls: said once, as it's evaluated, since
-;; what was meant is likely a redefinition, which is /core1's to make.
+;; what was meant is likely a redefinition, which is the core's library's
+;; to make, edited and reloaded.
 (define (repl-note-core! r form)
   (let ([name (and (pair? form) (memq (car form) '(define defvar))
                    (pair? (cdr form))
@@ -300,8 +301,9 @@
                (not (top-level-bound? name *world-env*))
                (memq name (core1-exported)))
       (repl-add! r 'info
-                 (format "; ~a is /core1's: this defines the world's own, \
-                          which the core doesn't call; redefine it in /core1"
+                 (format "; ~a is the core's: this defines the world's own, \
+                          which the core doesn't call; edit the core's \
+                          library and (reload!)"
                          name)))))
 
 ;; The vat's thread runs the forms and prints what they return there,
@@ -780,8 +782,9 @@
                               (loop (+ i 1))
                               i))])
                (string->symbol (substring s (+ open 1) end)))])
+    ;; op a procedure there: a variable, or a view of the core's (a macro)
     (and (let-values ([(env name) (env-binding (repl-env r) op)])
-           (top-level-bound? name env))
+           (guard (c [#t #f]) (procedure? (interpret name env))))
          (let ([entry (find (lambda (e)
                               (and (eq? (car e) op)
                                    (or (null? (cdddr e))
@@ -1520,10 +1523,8 @@ here"))]
       (repl-port-set! r (make-repl-port r))
       (repl-banner! r)
       (let ([win (open-repl-window r)])
-        ;; In a namespace, (exit) closes the window, not the world; but in
-        ;; core1's, where exit is how the process ends
-        (when (and (env-parent e) (eq? (env-base e) 'chez)
-                   (not (eq? (env-kind e) 'core1)))
+        ;; In a namespace, (exit) closes the window, not the world
+        (when (and (env-parent e) (eq? (env-base e) 'chez))
           (repl-define-exit! win e))
         win))))
 

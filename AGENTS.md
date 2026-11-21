@@ -44,9 +44,9 @@ before it:
 
 | Layer | What goes there |
 |---|---|
-| `src/base.ss` | What every environment has, a copy each: the basics, and `define-exports`, by which a layer gives the next its names. Pure: no state, no C. |
-| `lib/schevana/core0/` | Core0, below the core, sealed in its libraries: the GPU's device side, the window and its events, the trace, what differs by platform. `main.ss` imports them and boots it; it makes "/core1" (`src/core0/boot.ss`), loads the core there, and boots core1, the world's own thread (headless, one thread plays both). The core has of it only its facade, `(schevana core0)`; the recorder, `lib/schevana/recorder/` (the bytes of frames and their writers), has `(schevana core0 for-recorder)`, and the core has of the recorder its facade, `(schevana recorder)`. |
-| `lib/schevana/core/` | The core, sealed in its libraries, `(schevana core <piece>)`: the world (windows, focus, the theme's layers, processes, timers, its side of core0's window and events), core1's side of the GPU layer, drawing and fonts, the pacer, the loop, its registries, the hooks later layers fill, and the caches its own procedures need. "/core1" imports them; what is left in `src/core1/` is the old boot's own: making the world's environment, "/", where everything below loads (`boot.ss`), loading the world's files and reloading (`sources.ss`), and what the world is given (`export.ss`). |
+| `src/base.ss` | What every environment of the top level has, a copy each: the basics, forwarders, by which an environment gives another its names, and the top level's own forms. Pure: no state, no C. |
+| `lib/schevana/core0/` | Core0, below the core, sealed in its libraries: the GPU's device side, the window and its events, the trace, what differs by platform. `main.ss` imports them and boots it, and it boots core1, the world's own thread (headless, one thread plays both). The core has of it only its facade, `(schevana core0)`; the recorder, `lib/schevana/recorder/` (the bytes of frames and their writers), has `(schevana core0 for-recorder)`, and the core has of the recorder its facade, `(schevana recorder)`. |
+| `lib/schevana/core/` | The core, sealed in its libraries, `(schevana core <piece>)`: the world (windows, focus, the theme's layers, processes, timers, its side of core0's window and events), core1's side of the GPU layer, drawing and fonts, the pacer, the loop, its registries, the hooks later layers fill, and the caches its own procedures need; making the world's environment, "/", where everything below loads, loading the world's files and reloading (`sources.sls`). The world has of it only its facade, `(schevana core)`, which lists what the world is given. |
 | `kits/` | Libraries, pure or almost. |
 | `services/` | Long-lived state with an API and no surface: the crew of worker threads, the tree of environments, the apps' sandboxes and what they are allowed, vats and their jobs, the profiler, the saved look. |
 | `desktop/` | The screen's own surfaces and the desktop's behavior: wallpaper, bars, menu, toasts, keys, arranging windows. |
@@ -56,14 +56,13 @@ before it:
 
 - **The boot is a chain**: `main.ss` boots core0, core0 boots core1, core1
   boots the world. A sealed layer gives the next only what its facade
-  exports (`(schevana core0)`, `(schevana recorder)`), a state or a hook
-  of another thread's as a read-only view; core1 gives the world what its
-  `export.ss` lists, each name read-only unless its entry is `settable`.
+  exports (`(schevana core0)`, `(schevana recorder)`, `(schevana core)`),
+  a state or a hook it sets as a read-only view; the core's facade gives
+  the hooks later layers fill settable, checked (`define-settable`).
   Nothing else of a layer's is there to name, and nothing reaches back
-  up. The world has of core0's and the recorder's only what core1 gives
-  it again. A new name in a facade or an `export.ss` is a reviewed
-  change, and `tests/sources.ss` checks that no layer names another's
-  beyond it.
+  up. The world has of core0's and the recorder's only what the core
+  gives it again. A new name in a facade is a reviewed change, and
+  `tests/sources.ss` checks that no layer names another's beyond it.
 - **A library declares its layer** first in its body, `(library-layer
   core0)`, or `(library-layer core0 facade)` for a sealed layer's front
   door, and is held to the layers' order as it compiles (`(schevana
@@ -72,16 +71,17 @@ before it:
   declares one, `tests/sources.ss`).
 - **The core never depends on a later layer.** It reaches them only
   through registries, parts and settings they fill, and hooks they set:
-  core1's `settable` exports (`*profile-span*`, `theme-save!`,
+  what its facade gives settable (`*profile-span*`, `theme-save!`,
   `window-gone!`, `app-load!`, ...).
-- **Core0 sits below the core.** `src/core0/` names nothing of the core
-  above it but what it boots it by, and only it names SDL: the clock and
+- **Core0 sits below the core.** Core0's libraries and `main.ss` name
+  nothing of the core above it (core1's boot is named as data), and only
+  core0 names SDL: the clock and
   the CPU count are core0's, which it gives core1. What still crosses is
   listed in `tests/sources.ss`, and the lists only shrink
   (`.work/gpu-design.md` 9.5, 9.12).
 - **`src/base.ss` is pure**: it keeps no state and calls no C, so each
   environment's copy is as good as another (`tests/sources.ss`). What
-  isn't pure is core0's or core1's, and exported.
+  isn't pure is core0's or the core's, and given by a facade.
 - **What differs by platform lives in the platform files**:
   `lib/schevana/core0/platform.sls` for core0's (a folder,
   `lib/schevana/core0/platform/`, once it outgrows a file),
@@ -100,8 +100,8 @@ before it:
   happens without it. Monitor's Platform tab shows it all, and copies a
   run as a row of it.
 - **The core has a budget**, 38,870 tokens (atoms as read; comments,
-  whitespace and names' lengths are free; the `export.ss` files, which
-  declare, are left out), in `tests/sources.ss`. Don't join lines or
+  whitespace and names' lengths are free; a library's exports and
+  imports, which declare, are left out), in `tests/sources.ss`. Don't join lines or
   shorten names to fit it. Code the core doesn't need moves out to the
   next layer, kits first; the budget is raised only on purpose.
 - **Only the core calls C.** No SDL, FreeType or fontconfig binding, or
@@ -125,8 +125,8 @@ before it:
 ## State
 
 - **S1. One owner.** Outside the core, only the file that defines a global
-  sets it; the others call its procedures. The core's hooks, core1's
-  `settable` exports, are the exception, and `fluid-let` for a temporary
+  sets it; the others call its procedures. The core's hooks, which its
+  facade gives settable, are the exception, and `fluid-let` for a temporary
   view is not a set (`tests/sources.ss`). The world is given the rest of
   the core's read-only: a look that isn't on is read with
   `call-with-theme`.
@@ -184,19 +184,19 @@ before it:
 
 ## Live redefinition
 
-- Definitions are top-level, never in R6RS libraries, so the REPL can
-  redefine any of them in the running world.
+- The world's definitions are top-level, never in R6RS libraries, so the
+  REPL can redefine any of them in the running world. The layers below it
+  are libraries, which change with their files at a reload.
 - A hook or a registry calls procedures by name, so a redefinition takes
   effect at the next call: `(lambda () (theme-file-save-soon!))`, not
   `theme-file-save-soon!` captured as a value.
 - `(reload!)` of the tree into itself must keep working. It evaluates
   again each library whose file changed, and every library that imports
-  it (`lib/schevana/reload.sls`), loads the core's files again into
-  "/core1" and the world's into "/"; core0's libraries, with all they
-  import, change with a restart (`tests/units/reload.ss`). The core's own
-  names are redefined in "/core1":
-  a `define` in "/" of one makes the world's own, which the core never
-  calls.
+  it (`lib/schevana/reload.sls`), imports them again where they were
+  imported, and loads the world's files into "/"; core0's libraries, with
+  all they import, change with a restart (`tests/units/reload.ss`). A
+  `define` in "/" of a name the core gives makes the world's own, which
+  the core never calls.
 
 ## Drawing and the look
 

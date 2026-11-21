@@ -34,7 +34,7 @@
     (reverse (if (and (pair? ls) (string=? (car ls) "")) (cdr ls) ls))))
 
 ;; A file's forms; a library's file's, those of its body: what it exports
-;; and imports declares, as an export.ss does.
+;; and imports declares.
 (define (file-forms f)
   (let ([forms (call-with-input-file (source-path f)
                  (lambda (p)
@@ -61,20 +61,9 @@
        (filter (lambda (f) (string=? (path-extension f) "ss"))
                (sort string<? (directory-list (source-path folder))))))
 
-;; Core0's own files, src/core0/: main.ss lists them for core0 alone, and
-;; (source-files) is core1's and the world's. Each environment loads its
-;; own copy of src/base.ss, counted with core1's.
-(define core0-files
-  (remove "src/base.ss" *schevana-core0-sources*))
-
-;; The recorder's files: none, its code is its libraries'.
-(define recorder-files '())
-
-;; The core's, in "/core1".
-(define core1-files *schevana-core1-sources*)
-
-;; The pieces of the core that are libraries (lib/schevana/), which the
-;; three import.
+;; The libraries below the world (lib/schevana/), main.ss's list: core0's,
+;; the recorder's and the core's code is all in them, sealed. The world's
+;; files are (source-files).
 (define library-files *schevana-libraries*)
 
 ;; Every library under lib/schevana, the ones the core is built of and
@@ -110,7 +99,7 @@
           library-files))
 
 (define line-files
-  (append library-files core0-files recorder-files
+  (append library-files
           (source-files)
           (test-files "tests")
           (test-files "tests/units")
@@ -197,8 +186,7 @@
                                library asks (schevana tree)")))
 
 (define world-files
-  (append library-files core0-files recorder-files (source-files)
-          '("main.ss")))
+  (append library-files (source-files) '("main.ss")))
 
 ;; An app in a sandbox (services/grant.ss): what its file defines is the
 ;; sandbox's, but for the app itself, so it collides with nothing.
@@ -239,10 +227,10 @@
 ;;; code itself: less of it, or some of it moved to a later layer.
 
 ;; Raise it deliberately: the core is what the desktop needs to boot and
-;; run; everything else belongs in a folder. The core is src/'s files and
-;; the libraries they import (lib/schevana/). What declares is left out,
-;; sized by what's given, each a reviewed change: the export.ss files, a
-;; library's exports and imports (file-forms), a file's imports.
+;; run; everything else belongs in a folder. The core is the libraries
+;; below the world (lib/schevana/). What declares is left out, sized by
+;; what's given, each a reviewed change: a library's exports and imports
+;; (file-forms).
 (define src-budget 38870)
 
 ;; The tokens of a datum as read; a list's end is none.
@@ -260,9 +248,7 @@
                                                                '(import
                                                                  export))))
                                                   (file-forms f))))))
-                    (remp (lambda (f) (equal? (path-last f) "export.ss"))
-                          (append library-files core0-files recorder-files
-                                  core1-files)))]
+                    library-files)]
        [n (apply + (map cdr counts))])
   (check (format "the core is ~a tokens, within its budget of ~a (to grow \
                   it, raise src-budget in tests/sources.ss on purpose)"
@@ -279,13 +265,11 @@
 ;;; are there for a later layer to set. fluid-let (a view for a while) is
 ;;; not a set.
 
-;; core1's settable exports (src/core1/export.ss).
+;; What the core's facade gives settable (define-settable).
 (define core-hooks
-  (apply append
-         (map (lambda (clause)
-                (filter-map (lambda (entry) (and (cdr entry) (car entry)))
-                            (cdr clause)))
-              core1-exports)))
+  (filter-map (lambda (x)
+                (and (pair? x) (eq? (car x) 'define-settable) (cadr x)))
+              (file-forms "lib/schevana/core.sls")))
 
 ;; The names a file defines at its top level.
 (define (top-level-names f)
@@ -459,43 +443,45 @@
 
 ;;; ------------------------------------------------------------------
 ;;; the chain: core0, the recorder, core1, the world
-;;; Each environment is given what the one that made it exports (its
-;;; export.ss), and names nothing else of that one's, nor of those it gave
-;;; again; core0 names nothing of the core above it, which it boots by
-;;; name. An environment can't reach past it anyway, sealed; these say
-;;; where, before a boot finds it.
+;;; Each layer is given what the one below gives it (its facade), and
+;;; names nothing else of that one's, nor of those it gave again; core0
+;;; names nothing of the core above it, which it boots by name. A library
+;;; can't reach past a facade anyway, held to its layer as it compiles;
+;;; these say where, before a boot finds it.
 
 ;; The names each layer defines; base.ss's are every environment's own.
 (define (layer-names files)
   (map cdr (apply append (map definitions (remove "src/base.ss" files)))))
 
-;; A layer is its files and its libraries: core0's and the recorder's code
-;; is sealed in theirs, which their environments import.
-(define core0-chain-files (append core0-files (layer-libraries "core0")))
-(define recorder-chain-files
-  (append recorder-files (layer-libraries "recorder")))
-(define core1-chain-files (append core1-files (layer-libraries "core")))
+;; A layer is its libraries, its code sealed in them.
+(define core0-chain-files (layer-libraries "core0"))
+(define recorder-chain-files (layer-libraries "recorder"))
+(define core1-chain-files (layer-libraries "core"))
 
 (define core0-names (layer-names core0-chain-files))
 (define recorder-names (layer-names recorder-chain-files))
 
-;; Core1's, as it has them once loaded: what its macros define too (a
-;; layout's fields), and what it was given; not Chez's, nor base.ss's, nor
-;; the libraries', which any layer may import.
+;; Core1's: what its libraries define, and what they export, their
+;; macros' too (a layout's fields); not Chez's, nor base.ss's, nor the
+;; libraries' below the layers, which any layer may import.
 (define core1-names
-  (let ([chez (scheme-environment)]
-        [base (map cdr (append (definitions "src/base.ss")
-                               (apply append
-                                      (map definitions library-files))))])
+  (let* ([chez (scheme-environment)]
+         [sealed (append core0-chain-files recorder-chain-files
+                         core1-chain-files)]
+         [base (map cdr (append (definitions "src/base.ss")
+                                (apply append
+                                       (map definitions
+                                            (remp (lambda (f)
+                                                    (member f sealed))
+                                                  library-files)))))])
     (remp (lambda (s)
             (or (gensym? s) (memq s base)
                 (top-level-bound? s chez) (top-level-syntax? s chez)))
-          (environment-symbols core1-env))))
+          (append (layer-names core1-chain-files)
+                  (environment-symbols core-env)))))
 
 ;; The world's own files: the basics, the folders, world.ss.
-(define world-own-files
-  (append (remp (lambda (f) (member f core1-files)) (source-files))
-          '("src/base.ss" "world.ss")))
+(define world-own-files (append (source-files) '("world.ss")))
 
 ;; The symbols x names as code, each once: what's quoted is data, and in a
 ;; quasiquote only what's unquoted is code.
@@ -528,18 +514,23 @@
                        (filter (lambda (s)
                                  (and (memq s names) (not (memq s given))
                                       (not (memq s own))))
-                               (reverse (code-symbols-in (file-forms f))))))
+                               (reverse
+                                (code-symbols-in
+                                 ;; an import form names libraries
+                                 (remp (lambda (x)
+                                         (and (pair? x) (eq? (car x) 'import)))
+                                       (file-forms f)))))))
                 files))))
 
-;; What core0 names of the core above it: what it reads by name as it boots
-;; the next link, core1's boot.
-(define core0-reaches-up '(core1-boot!))
+;; What core0 names of the core above it as code: nothing, as it boots
+;; core1 by its library's name and core1-boot!'s, data (main.ss).
+(define core0-reaches-up '())
 
 ;; main.ss's own names are core0's too: it loads core0 where it defines
 ;; them.
 (check "core0 names nothing of the recorder's or core1's but what it boots \
         them by"
-       (none? (names-beyond core0-chain-files
+       (none? (names-beyond (cons "main.ss" core0-chain-files)
                             (append recorder-names core1-names)
                             (append core0-reaches-up
                                     (map cdr (definitions "main.ss"))))))
@@ -556,10 +547,10 @@
                                     (library-exports '(schevana recorder))))))
 
 (check "the world names nothing of the core's (core0's, the recorder's, \
-        core1's) but what core1 exports to it"
+        core1's) but what the core's facade gives it"
        (none? (names-beyond world-own-files
                             (append core0-names recorder-names core1-names)
-                            (exports-names core1-exports 'world))))
+                            (library-exports '(schevana core)))))
 
 ;; In a library, a hook made as it loads (define-hook, set-hook!) names
 ;; nothing the library defines after it: Chez would check each such
@@ -597,8 +588,8 @@
                   (filter (lambda (f) (string-suffix? ".md" f))
                           (directory-list (source-path "docs")))))))
 
-(check "every name core1 exports, some file of the world's names, or the \
-        docs do"
+(check "every name the core gives the world, some file of the world's \
+        names, or the docs do"
        (let ([named (make-eq-hashtable)])
          (for-each (lambda (f)
                      (for-each (lambda (s) (hashtable-set! named s #t))
@@ -611,7 +602,7 @@
                                            (string-contains-ci?
                                             text (symbol->string n)))
                                          doc-texts)))
-                           (exports-names core1-exports 'world))))))
+                           (library-exports '(schevana core)))))))
 
 ;; base.ss is every environment's, a copy each: so it keeps no state, and
 ;; calls no C. Nor does the library the basics are.

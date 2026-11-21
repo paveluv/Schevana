@@ -5,7 +5,7 @@
 
 (library (schevana tree)
   (export *schevana-root*)
-  (import (chezscheme) (only (schevana base) library-layer))
+  (import (chezscheme) (only (schevana base) library-layer define-state))
 
   (library-layer foundation)
 
@@ -24,4 +24,5 @@
            (datum->syntax #'k
              (path-parent (path-parent (path-parent file)))))])))
 
-  (define *schevana-root* (tree-root)))
+  ;; A state, which a test sets to a copy of the tree.
+  (define-state *schevana-root* (tree-root)))

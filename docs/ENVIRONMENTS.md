@@ -1,8 +1,8 @@
 # Environments
 
 An environment is where a name means something. Schevana keeps them in a
-tree whose root is the world, "/": the core below it in "/core1", the
-apps' sandboxes under "/apps", and whatever you make. A REPL evaluates in
+tree whose root is the world, "/": the worklets' under it in "/worklets",
+the apps' sandboxes under "/apps", and whatever you make. A REPL evaluates in
 one ([REPL.md](REPL.md)), and `(envs)` shows the tree.
 
 ## The tree
@@ -11,7 +11,7 @@ one ([REPL.md](REPL.md)), and `(envs)` shows the tree.
 (env-root)                                 ; the world, "/"
 (map env-path (env-children (env-root)))
 (env-find "/apps/clock")
-(env-kinds)       ; => (private world pure core1 sandbox apps app thread)
+(env-kinds)       ; => (private world pure sandbox apps app thread)
 (env-forks (env-root))                     ; => (private world pure sandbox thread)
 ```
 
@@ -112,8 +112,9 @@ sandbox on Scheme's pure core has none. Dropping an environment drops what is un
 stops their threads; what still holds it can ask `env-dropped?`.
 
 The tree's apps live in sandboxes made this way, under "/apps"
-([APPS.md](APPS.md)), and the core in one of its own, "/core1"; core0 and
-the recorder are sealed in their libraries ([INTERNALS.md](INTERNALS.md)).
+([APPS.md](APPS.md)). Core0, the recorder and the core are sealed in
+their libraries, and have no environment: the world imports what the
+core gives it ([INTERNALS.md](INTERNALS.md)).
 
 ## The Environments app
 

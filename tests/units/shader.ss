@@ -1012,7 +1012,7 @@
                                            (and (top-level-bound? n env)
                                                 (top-level-value n env)))
                                          (environment-symbols env)))
-                                  (list core1-env (interaction-environment)))))]
+                                  (list core-env (interaction-environment)))))]
              [spirv (lambda (s)
                       (shader-spirv (shader-stage s) (shader-coords s)
                                     (shader-params s) (shader-tree s)))]

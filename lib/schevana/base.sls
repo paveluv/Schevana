@@ -4,11 +4,12 @@
 
 (library (schevana base)
   (export
-    library-layer at-load define-state define-view define-made define-hook
+    library-layer at-load define-state define-view define-settable define-made
+    define-hook
     set-hook!
     clamp string-split string-join string-prefix? string-suffix? filter-map
     string-contains-ci? plist-ref plist-keys condition->string list-index
-    registry-add
+    registry-add forwarder-to
     ;; which OS and CPU this is
     platform-os platform-linux? platform-mac? platform-windows? platform-cpu
     platform-x86-64? platform-arm64?)
@@ -227,6 +228,24 @@
               [id (identifier? #'id) #'state]
               [(_ . rest) #'(state . rest)]))))]))
 
+  ;; (define-settable name state check): state again, as a facade gives a
+  ;; hook a later layer fills, whose set! (set-hook!, fluid-let) takes
+  ;; only a value check passes.
+  (define-syntax define-settable
+    (syntax-rules ()
+      [(_ name state check)
+       (define-syntax name
+         (make-variable-transformer
+          (lambda (x)
+            (syntax-case x (set!)
+              [(set! n e)
+               #'(let ([v e])
+                   (unless (check v)
+                     (errorf 'set! "~s can't be ~s" 'n v))
+                   (set! state v))]
+              [id (identifier? #'id) #'state]
+              [(_ . rest) #'(state . rest)]))))]))
+
   ;; (define-made name init): a value made as the library loads, read and
   ;; never set: a buffer, a table, a foreign procedure, a fact found out. A
   ;; global under a view, not a definition: a library's own variable is
@@ -329,6 +348,19 @@
   (define (list-index pred lst)
     (let loop ([l lst] [i 0])
       (cond [(null? l) #f] [(pred (car l)) i] [else (loop (cdr l) (+ i 1))])))
+
+  ;; A read-only forwarder to the identifier id's binding: a macro that,
+  ;; installed in another environment, makes code there refer to that
+  ;; binding itself (live, and at no cost a call). A set! of it is refused
+  ;; as it expands, in the words Chez uses for an R6RS import's.
+  (define (forwarder-to id)
+    (make-variable-transformer
+     (lambda (x)
+       (syntax-case x (set!)
+         [(set! name . _)
+          (syntax-error #'name "attempt to assign read-only variable")]
+         [_ (identifier? x) id]
+         [(_ . rest) #`(#,id . rest)]))))
 
   ;; A registry (apps, styles, palettes, wallpapers) is a list in
   ;; first-registration order. An entry whose name is already there replaces

@@ -1,19 +1,33 @@
 ;;; tests/reach.ss — how a test reaches past the exports, loaded right after
 ;;; main.ss: the test goes on in "/", the world core1 made, where every name
-;;; of core1's, and of main.ss's environment (core0's libraries and the
-;;; recorder's, imported there whole), is forwarded and may be set (set!,
-;;; fluid-let), as the tests stand in for SDL and the screen and look into
-;;; the core. The world itself has only what core1 exports
-;;; (src/core1/export.ss), read-only. What the test defined before it loaded
-;;; the tree is forwarded too, and so are main-env and core1-env, main.ss's
-;;; environment and core1's, for what goes by name (top-level-value).
+;;; of the core's libraries, and of main.ss's environment (core0's libraries
+;;; and the recorder's, imported there whole), is forwarded and may be set
+;;; (set!, fluid-let), as the tests stand in for SDL and the screen and look
+;;; into the core. The world itself has only what the core's facade gives
+;;; it, (schevana core), read-only. What the test defined before it loaded
+;;; the tree is forwarded too, and so are main-env and core-env, main.ss's
+;;; environment and one of the core's libraries whole, for what goes by
+;;; name (top-level-value).
 
 (define main-env (interaction-environment))
-(define core1-env *core0-core1*)
-(define world-env (top-level-value '*world-env* core1-env))
+
+;; The core's libraries whole, their internals with them, which the tests
+;; look into, and the sockets' (a client's end); the world has only what
+;; the core's facade gives. Imported again as a reload evaluates one again
+;; (reload-import!).
+(define core-env (copy-environment (scheme-environment) #t))
+(for-each (lambda (lib) (reload-import! core-env lib))
+          '((schevana tree) (schevana socket) (schevana core platform)
+            (schevana core theme-table)
+            (schevana core processes) (schevana core gpu)
+            (schevana core fonts) (schevana core draw) (schevana core pacer)
+            (schevana core screen) (schevana core loop)
+            (schevana core theme) (schevana core windows)
+            (schevana core sources)))
+(define world-env (eval '*world-env* core-env))
 
 ;; The recorder's library whole, its internals with it, which the tests
-;; look into; core1 has only its facade's.
+;; look into; the core has only its facade's.
 (eval '(import (schevana recorder bytes)) main-env)
 
 ;; A forwarder to id's binding that a set! goes through, as fluid-let's do.
@@ -25,60 +39,33 @@
        [_ (identifier? x) id]
        [(_ . rest) #`(#,id . rest)]))))
 
-;; Each name of the two's, in "/": a variable's, settable, from the first
-;; of core1 and main.ss's that has it as a variable; a macro's (a state or
-;; a hook of a library's) from core1's, but for what core1 has of core0's
-;; facade, a view, which comes from main.ss's, which has the state itself,
-;; to be set (by its names: top-level-syntax? says so of any name). A name
-;; "/" had already stays as it is but for core1's exports, which become
-;; settable.
+;; Each name of the two's, in "/", from the first of the core's and
+;; main.ss's that has it, a state or a hook (a macro) as a variable is,
+;; to be set (by its names: top-level-syntax? says so of any name). What
+;; the facade gives of core0's, a view, comes from main.ss's, which has
+;; the state itself. A name "/" had already stays as it is but for what
+;; the facade gives, which becomes settable.
 (let ([had (make-eq-hashtable)]
-      [exported (exports-names (top-level-value 'core1-exports core1-env)
-                               'world)]
-      [envs (list core1-env main-env)])
+      [envs (list core-env main-env)])
   (for-each (lambda (n) (hashtable-set! had n #t))
             (environment-symbols world-env))
-  (for-each (lambda (n) (hashtable-delete! had n)) exported)
-  (let ([anchors (map environment-anchor envs)])
-    (define (reach! n bound? envs anchors)
-      (unless (or (gensym? n) (hashtable-ref had n #f))
-        (let loop ([es envs] [as anchors])
-          (cond
-            [(null? es) #f]
-            [(bound? n (car es))
-             (hashtable-set! had n #t)
-             (define-top-level-syntax n
-               (reach-forwarder (datum->syntax (car as) n))
-               world-env)]
-            [else (loop (cdr es) (cdr as))]))))
-    (for-each (lambda (e)
-                (for-each (lambda (n) (reach! n top-level-bound? envs anchors))
-                          (environment-symbols e)))
-              envs)
-    (let ([has (map (lambda (e)
-                      (let ([t (make-eq-hashtable)])
-                        (for-each (lambda (n) (hashtable-set! t n #t))
-                                  (environment-symbols e))
-                        (cons e t)))
-                    envs)])
-      ;; what core1 has of core0's facade it has as a view: main.ss's is
-      ;; the state itself; any other name core1 has is its own
-      (let ([given (library-exports '(schevana core0))])
-        (for-each (lambda (e)
-                    (for-each (lambda (n)
-                                (let ([main? (memq n given)])
-                                  (reach! n
-                                          (lambda (n e)
-                                            (hashtable-ref (cdr (assq e has))
-                                                           n #f))
-                                          (if main? (reverse envs) envs)
-                                          (if main? (reverse anchors)
-                                              anchors))))
-                              (environment-symbols e)))
-                  envs)))))
+  (for-each (lambda (n) (hashtable-delete! had n))
+            (library-exports '(schevana core)))
+  (for-each
+   (lambda (e)
+     (let ([anchor (environment-anchor e)])
+       (for-each
+        (lambda (n)
+          (unless (or (gensym? n) (hashtable-ref had n #f))
+            (hashtable-set! had n #t)
+            (define-top-level-syntax n
+              (reach-forwarder (datum->syntax anchor n))
+              world-env)))
+        (environment-symbols e))))
+   envs))
 
 ;; Core0's own clock, which times the screen's waits: the world's now-ns is
-;; another, core1's.
+;; another, the core's.
 (define-top-level-syntax 'core0-now-ns
   (reach-forwarder (datum->syntax #'main-env 'now-ns))
   world-env)

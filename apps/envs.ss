@@ -50,8 +50,9 @@
 (define (envs-kind-doc e)
   (case (env-kind e)
     [(root) "The world itself: the folders' names, Chez's, and what the \
-             core gives it (/core1). What is defined here changes the \
-             running world; the core's own are redefined in /core1."]
+             core gives it ((schevana core)). What is defined here changes \
+             the running world; the core's own change with its libraries' \
+             files, at a reload."]
     [(worklets) "Where the worklets live (define-worklet); the pool's \
                  threads run them."]
     [(#f) (format "Made by code (env-child): ~a, and what is shared with it"
@@ -115,8 +116,6 @@
               "/worklets holds worklets only: define-worklet puts them there"]
              [(and (eq? what 'share) (memq kind '(apps app)))
               "An app holds the bundles it is allowed, and no more"]
-             [(and (eq? what 'share) (eq? kind 'core1))
-              "It names nothing of the world's: it sits below it"]
              [vat? "Its sandbox is its vat's: share and load before its \
                     thread starts"]
              [(and (eq? what 'share) (not (env-parent e)))

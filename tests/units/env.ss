@@ -368,7 +368,7 @@
               (equal? (envs-chip-picked "a") '(a "" "")))))
 
 (check "dropping a child takes it, and its children, out of the tree and \
-        marks them dropped; not the world, nor /worklets, /core1 or /apps"
+        marks them dropped; not the world, nor /worklets or /apps"
        (let ([g (env-child units-env-world 'grand 'chez)])
          (env-drop! units-env-world)
          (env-drop! units-env)
@@ -377,13 +377,12 @@
               (raises? (lambda () (env-child g 'more 'chez)))
               (raises? (lambda () (env-drop! (env-root))))
               (raises? (lambda () (env-drop! (env-worklets))))
-              (raises? (lambda () (env-drop! (env-find "/core1"))))
               (raises? (lambda () (env-drop! (grant-apps-env))))
               (not (env-find "/units-world/grand"))
               (not (env-find "/units"))
               (not (memq units-env (env-children (env-root))))
               (equal? (map env-name (env-children (env-root)))
-                      '(worklets core1 apps)))))
+                      '(worklets apps)))))
 
 ;;; The confined base (services/env.ss): what is always safe, for apps.
 
@@ -457,35 +456,19 @@
            (env-drop! e)
            ok)))
 
-;;; /core1: the core's own environment, under the root; what the world is
-;;; given forwards there.
+;;; The core is sealed in its libraries, and has no environment: what
+;;; the world is given it imports.
 
-(let ([h (env-find "/core1")])
-  (check "/core1 is the core's environment: kept, forking nothing, shared \
-          nothing of the world's"
-         (and h (eq? (env-parent h) (env-root)) (eq? (env-kind h) 'core1)
-              (eq? (env-environment h) core1-env)
-              (raises? (lambda () (env-drop! h)))
-              (null? (env-forks h))
-              (envs-why-not h 'share)
-              (not (envs-why-not h 'repl))))
-  (check "describing a name the core gives the world, from \"/\" or from a \
-          world namespace, reaches /core1"
-         (let ([w (env-fork (env-root) 'world)])
-           (let-values ([(e n) (env-holder (env-root) 'theme)]
-                        [(e2 n2) (env-holder w 'theme)])
-             (env-drop! w)
-             (and (eq? e h) (eq? n 'theme) (eq? e2 h) (eq? n2 'theme)))))
-  (check "a definition there takes at the core's next call, the world's \
-          through its forwarder; one the core doesn't export stays its own"
-         (let ([real (env-eval h 'platform-machine-load)])
-           (env-eval h '(define (platform-machine-load) "from /core1"))
-           (env-eval h '(define units-core1-own 1))
-           (let ([seen (eval '(platform-machine-load) *world-env*)])
-             (env-eval h `(define platform-machine-load ',real))
-             (and (equal? seen "from /core1")
-                  (eq? (env-eval h 'platform-machine-load) real)
-                  (not (memq 'units-core1-own (core1-exported))))))))
+(check "the core has no environment in the tree; describing a name it \
+        gives the world, from \"/\" or from a world namespace, reaches \
+        the world, which imports it"
+       (let ([w (env-fork (env-root) 'world)])
+         (let-values ([(e n) (env-holder (env-root) 'theme)]
+                      [(e2 n2) (env-holder w 'theme)])
+           (env-drop! w)
+           (and (not (env-find "/core1"))
+                (eq? e (env-root)) (eq? n 'theme)
+                (eq? e2 (env-root)) (eq? n2 'theme)))))
 
 (check "Environments says a job's × stops it, while a vat has jobs"
        (let* ([w (envs)] [v (window-ref w 'state)]

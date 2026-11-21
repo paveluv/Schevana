@@ -1,26 +1,18 @@
 ;;; tests/units/reload.ss — what (reload!) reads, and what it leaves.
 
-(check "reload reads the source list from main.ss"
-       (and (equal? (read-source-list) *schevana-core1-sources*)
-            (member "src/core1/boot.ss" *schevana-core1-sources*)
-            #t))
-
-(check "reload leaves core0 as it booted: none of its files is the core's \
-        to load, and its procedures stay the same; a library of the \
-        core's whose file didn't change stays as it was; the core's files \
-        load into /core1 again, the world given what it exports again"
+(check "reload leaves core0 as it booted, its procedures the same; a \
+        library of the core's whose file didn't change stays as it was, \
+        and the world still has what the core gives it"
        (let ([present gpu-publish!]
-             [theme-was (top-level-value 'theme core1-env)]
-             [exports-were (top-level-value 'core1-exports core1-env)])
+             [theme-was (eval 'theme core-env)])
          (reload!)
-         (and (not (exists (lambda (f) (string-prefix? "src/core0/" f))
-                           *schevana-core1-sources*))
-              (eq? gpu-publish! present)
-              (eq? (top-level-value 'theme core1-env) theme-was)
-              (not (eq? (top-level-value 'core1-exports core1-env)
-                        exports-were))
-              (not (top-level-bound? 'theme *world-env*))
-              (for-all (lambda (n) (top-level-syntax? n *world-env*))
+         (and (eq? gpu-publish! present)
+              (eq? (eval 'theme core-env) theme-was)
+              (eq? (eval 'theme *world-env*) theme-was)
+              (for-all (lambda (n)
+                         (guard (c [#t #f])
+                           (or (top-level-bound? n *world-env*)
+                               (top-level-syntax? n *world-env*))))
                        (core1-exported)))))
 
 ;;; Reloading as a process.
