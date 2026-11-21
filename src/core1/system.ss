@@ -1006,11 +1006,12 @@
 
 ;; Core0 loads the core before this file can keep its texts: kept now,
 ;; moments after (a reload keeps them as it loads them).
-(for-each (lambda (f)
-            (let ([path (source-path f)])
-              (unless (hashtable-contains? *source-texts* path)
-                (keep-source-text! path (file-text path)))))
-          *schevana-core1-sources*)
+(at-load
+ (for-each (lambda (f)
+             (let ([path (source-path f)])
+               (unless (hashtable-contains? *source-texts* path)
+                 (keep-source-text! path (file-text path)))))
+           *schevana-core1-sources*))
 
 ;; The world's files into "/" (core1-boot!, reload!). The folders may
 ;; import the libraries shipped in lib/.

@@ -10,8 +10,9 @@
 ;;; 'left, 'f1, ...); mods is a list drawn from (ctrl alt shift super).
 
 ;; told of every event core0 sends, by its number, whether it means
-;; anything to the world or not
-(defvar *screen-event-seen* void)
+;; anything to the world or not; till a later layer listens, values, which
+;; takes the number and does nothing (void takes none)
+(defvar *screen-event-seen* values)
 (defvar *screen-fullscreen* #f)   ; what headless mode pretends
 ;; the scale chosen (the setting's, or else the desktop's) that the canvas
 ;; was made at: physical pixels per logical pixel, exact

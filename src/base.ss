@@ -10,6 +10,20 @@
     [(_ name init)
      (define name (if (top-level-bound? 'name) (top-level-value 'name) init))]))
 
+;; Expressions among definitions, as a definition of a name nobody can
+;; type: an R6RS library's body takes no definition after an expression,
+;; and a file may be one's (lib/schevana/).
+(define-syntax at-load
+  (syntax-rules ()
+    [(_ form ...) (define at-load-done (begin form ...))]))
+
+;; A procedure handed over by its name, so that a redefinition takes at
+;; the next call (world-value). In a library, where nothing is redefined
+;; and a name is no way to reach it, the procedure itself
+;; (lib/schevana/layer.sls).
+(define-syntax live-name
+  (syntax-rules () [(_ name) 'name]))
+
 ;; A read-only forwarder to the identifier id's binding: a macro that,
 ;; installed in another environment, makes code there refer to that
 ;; binding itself (live, and at no cost a call). A set! of it is refused

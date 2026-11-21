@@ -52,7 +52,7 @@
     [(_ name value)
      (begin
        (define name value)
-       (hashtable-set! *shader-constants* 'name name))]))
+       (at-load (hashtable-set! *shader-constants* 'name name)))]))
 
 ;; A set of local functions, which a shader takes with
 ;; (use-shader-helpers name) where a define could go. They see what's in scope
@@ -61,7 +61,7 @@
 (define-syntax define-shader-helpers
   (syntax-rules ()
     [(_ name form ...)
-     (hashtable-set! *shader-helpers* 'name '(form ...))]))
+     (at-load (hashtable-set! *shader-helpers* 'name '(form ...)))]))
 
 ;; Names for a row's words, so that what writes a table and what reads it can't
 ;; disagree. (define-shader-layout glyph-row glyphs (u v)) gives
@@ -88,7 +88,8 @@
                (define-shader-constant words n)
                (begin
                  (define-shader-constant full at)
-                 (hashtable-set! *shader-fields* 'full '(reader . at)))
+                 (at-load
+                  (hashtable-set! *shader-fields* 'full '(reader . at))))
                ...)))])))
 
 ;; cond as ifs. With no else, it has no value: what wants one refuses it.
@@ -1159,17 +1160,18 @@
   (shader-lower (shader-stage s) (shader-coords s) (shader-params s)
                 (shader-source s)))
 
+;; The shader of a source, compiled where it is defined: as the definition
+;; runs, when what it names (constants, helpers, layouts) is there.
+(define (shader-make name stage coords params forms)
+  (let ([compiled (shader-compile stage coords params forms)])
+    (make-shader name stage coords params forms (car compiled)
+                 (cdr compiled))))
+
 (define-syntax shader-define
-  (lambda (x)
-    (syntax-case x ()
-      [(_ stage (name . coords) params form ...)
-       (let ([compiled (shader-compile (datum stage) (datum coords)
-                                       (datum params) (datum (form ...)))])
-         (with-syntax ([code (datum->syntax #'name (car compiled))]
-                       [price (datum->syntax #'name (cdr compiled))])
-           #'(define name
-               (make-shader 'name 'stage 'coords 'params '(form ...)
-                            'code price))))])))
+  (syntax-rules ()
+    [(_ stage (name . coords) params form ...)
+     (define name
+       (shader-make 'name 'stage 'coords 'params '(form ...)))]))
 
 (define-syntax define-compute-shader
   (syntax-rules ()

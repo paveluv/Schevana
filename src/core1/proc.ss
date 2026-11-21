@@ -128,9 +128,11 @@
   (fields id name (mutable engine) (mutable state) on-done
           (mutable ticks) started (mutable wake)))
 
-(record-writer (record-type-descriptor proc)
-  (lambda (p port wr)
-    (fprintf port "#<proc ~a ~s ~a>" (proc-id p) (proc-name p) (proc-state p))))
+(at-load
+ (record-writer (record-type-descriptor proc)
+   (lambda (p port wr)
+     (fprintf port "#<proc ~a ~s ~a>" (proc-id p) (proc-name p)
+              (proc-state p)))))
 
 (defvar *procs* '())
 (defvar *next-pid* 1)
@@ -347,7 +349,7 @@
   (syntax-rules ()
     [(_ (name . formals) body ...)
      (begin
-       (define-top-level-syntax 'name (forwarder-to #'name)
-                                *worklet-environment*)
+       (at-load (define-top-level-syntax 'name (forwarder-to #'name)
+                                         *worklet-environment*))
        (define name (worklet-compile 'name '(lambda formals body ...)
                                      *worklet-environment*)))]))

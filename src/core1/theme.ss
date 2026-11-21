@@ -260,14 +260,14 @@
          #'(begin
              (define (built-in formal ...) body ...)
              (define (name formal ...) ((theme-part 'name) formal ...))
-             (theme-default! 'name 'built-in)))]
+             (at-load (theme-default! 'name (live-name built-in)))))]
       [(k (name formal ... . rest) body ...)
        (with-syntax ([built-in (star #'name)])
          #'(begin
              (define (built-in formal ... . rest) body ...)
              (define (name formal ... . rest)
                (apply (theme-part 'name) formal ... rest))
-             (theme-default! 'name 'built-in)))])))
+             (at-load (theme-default! 'name (live-name built-in)))))])))
 
 ;; A built-in color setting: a change of colors alone changes no chrome.
 (define (color-default! key value)
@@ -458,11 +458,13 @@
 (define (frame-under* win x y w h focused? hover pressed) (void))
 (define (frame-over* win x y w h focused? hover pressed) (void))
 
-(for-each theme-default!
-          '(frame-insets frame-regions frame-radius frame-bleed frame-under
-            frame-over)
-          '(frame-insets* frame-regions* frame-radius* frame-bleed*
-            frame-under* frame-over*))
+(at-load
+ (for-each theme-default!
+           '(frame-insets frame-regions frame-radius frame-bleed frame-under
+             frame-over)
+           (list (live-name frame-insets*) (live-name frame-regions*)
+                 (live-name frame-radius*) (live-name frame-bleed*)
+                 (live-name frame-under*) (live-name frame-over*))))
 
 ;;; ------------------------------------------------------------------
 ;;; changing settings
@@ -562,6 +564,7 @@
 
 ;; The theme until its first change, its rules computed when read (no
 ;; color can be mixed before gfx.ss loads).
-(set! *theme* (resolve-theme *style-name* *theme-overrides*
-                             (style-changes-of *style-name*)))
-(set! *main-theme* *theme*)
+(at-load
+ (set! *theme* (resolve-theme *style-name* *theme-overrides*
+                              (style-changes-of *style-name*)))
+ (set! *main-theme* *theme*))

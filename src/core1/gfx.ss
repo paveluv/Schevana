@@ -119,24 +119,25 @@
    (let ([size (theme (if (eq? family 'ui) 'ui-font-size 'mono-font-size))])
      (apply font (theme (if (eq? family 'ui) 'ui-font 'mono-font))
             (if (eq? d 'twice) (* 2 size) (+ size d)) opts))))
-(let loop ([roles (list 'ui (theme-font-rule 'ui 0)
-                        'ui-bold (theme-font-rule 'ui 0 'bold)
-                        'ui-small (theme-font-rule 'ui -2)
-                        'ui-italic (theme-font-rule 'ui 0 'italic)
-                        'title (theme-font-rule 'ui 0 'bold)
-                        'heading (theme-font-rule 'ui 5 'bold)
-                        'big (theme-font-rule 'ui 'twice 'bold)
-                        'huge (theme-rule (font "serif" 360 'bold))
-                        'mono (theme-font-rule 'mono 0)
-                        'mono-small (theme-font-rule 'mono -2)
-                        'mono-bold (theme-font-rule 'mono 0 'bold))])
-  (unless (null? roles)
-    (theme-default! (car roles) (cadr roles))
-    (loop (cddr roles))))
+(at-load
+ (let loop ([roles (list 'ui (theme-font-rule 'ui 0)
+                         'ui-bold (theme-font-rule 'ui 0 'bold)
+                         'ui-small (theme-font-rule 'ui -2)
+                         'ui-italic (theme-font-rule 'ui 0 'italic)
+                         'title (theme-font-rule 'ui 0 'bold)
+                         'heading (theme-font-rule 'ui 5 'bold)
+                         'big (theme-font-rule 'ui 'twice 'bold)
+                         'huge (theme-rule (font "serif" 360 'bold))
+                         'mono (theme-font-rule 'mono 0)
+                         'mono-small (theme-font-rule 'mono -2)
+                         'mono-bold (theme-font-rule 'mono 0 'bold))])
+   (unless (null? roles)
+     (theme-default! (car roles) (cadr roles))
+     (loop (cddr roles)))))
 
 ;; Faint text's font: its own (#f), or what a style's procedure makes of
 ;; it, a part (Genera, with no gray, sets its hints in italic).
-(theme-default! 'faint-text-font #f)
+(at-load (theme-default! 'faint-text-font #f))
 (define (faint-font color f)
   (let ([make (and (eq? color 'text-faint) (theme-part 'faint-text-font))])
     (if make (make f) f)))
@@ -830,42 +831,31 @@
     (list-ox fixnum)
     (list-oy fixnum)))
 
+;; A paint's parameters as the compiler has them: to it, a color is a
+;; whole number.
+(define (gfx-paint-plain params)
+  (map (lambda (p) (if (eq? (cadr p) 'color) (list (car p) 'fixnum) p))
+       params))
+
+;; The paint of a source, compiled where it is defined (shader-make).
+(define (gfx-paint-of name x y params forms)
+  (make-gfx-paint
+   (shader-make name 'fragment '(px py id)
+                (append gfx-paint-hidden (gfx-paint-plain params))
+                (gfx-paint-source x y forms))
+   params))
+
 (define-syntax define-paint
-  (lambda (x)
-    (syntax-case x ()
-      [(k (name x y) params form ...)
-       (let* ([given (datum params)]
-              ;; to the compiler, a color is a whole number
-              [plain (map (lambda (p)
-                            (if (eq? (cadr p) 'color)
-                                (list (car p) 'fixnum)
-                                p))
-                          given)]
-              [source (gfx-paint-source (datum x) (datum y)
-                                        (datum (form ...)))]
-              [compiled (shader-compile 'fragment '(px py id)
-                                        (append gfx-paint-hidden plain)
-                                        source)])
-         (with-syntax ([code (datum->syntax #'k (car compiled))]
-                       [price (datum->syntax #'k (cdr compiled))]
-                       [plain (datum->syntax #'k plain)]
-                       [source (datum->syntax #'k source)])
-           #'(define name
-               (make-gfx-paint
-                (make-shader 'name 'fragment '(px py id)
-                             (append gfx-paint-hidden 'plain)
-                             'source 'code price)
-                'params))))])))
+  (syntax-rules ()
+    [(_ (name x y) params form ...)
+     (define name (gfx-paint-of 'name 'x 'y 'params '(form ...)))]))
 
 ;; A box filled by a paint, its arguments in its parameters' order: a color
 ;; as ever (a theme key, say), whole numbers, floats, buffers.
 (define (fill-shader x y w h paint . args)
   (let ([params (gfx-paint-params paint)])
     (rec-run! 0 (gpu-make-call
-                 (gfx-paint-shader paint) '(0 0)
-                 (map (lambda (p)
-                        (if (eq? (cadr p) 'color) (list (car p) 'fixnum) p))
-                      params)
+                 (gfx-paint-shader paint) '(0 0) (gfx-paint-plain params)
                  (map (lambda (p a) (if (eq? (cadr p) 'color) (color-word a) a))
                       params args)))
     (let ([x0 (rec-snap (rec-device x *rec-ox*))]
@@ -1375,9 +1365,11 @@
 
 ;; Core0 draws records with these, handed to it as they are (a reload may
 ;; bring new ones), never looked up by name.
-(gpu-ask! (list 'shaders gfx-vertex
-                (vector-map (lambda (name) (top-level-value name))
-                            gfx-fragments)))
+(at-load
+ (gpu-ask! (list 'shaders gfx-vertex
+                 (vector gfx-fragment gfx-line-fragment gfx-shadow-fragment
+                         gfx-gradient-fragment gfx-stipple-fragment
+                         gfx-image-fragment gfx-full-fragment))))
 
 ;;; ------------------------------------------------------------------ frames
 

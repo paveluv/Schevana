@@ -57,8 +57,9 @@
           (mutable size)))     ; the size FreeType is set to, in 1/64 pixels
 
 ;; At a REPL, the face's file, not its tables.
-(record-writer (record-type-descriptor font-file)
-  (lambda (ff p wr) (fprintf p "#<font-file ~s>" (font-file-path ff))))
+(at-load
+ (record-writer (record-type-descriptor font-file)
+   (lambda (ff p wr) (fprintf p "#<font-file ~s>" (font-file-path ff)))))
 
 ;; What FreeType and fontconfig take or give through a pointer, one at a
 ;; time: a place for it, a pointer made once.
@@ -193,11 +194,12 @@
           (mutable sized font-sized font-sized-set!)))
 
 ;; At a REPL, what makes the font, not its caches: #<font "monospace" 14>.
-(record-writer (record-type-descriptor font-type)
-  (lambda (f p wr)
-    (fprintf p "#<font ~s ~a~a~a>" (font-family f) (font-size f)
-             (if (eq? (font-weight f) 'bold) " bold" "")
-             (if (eq? (font-slant f) 'italic) " italic" ""))))
+(at-load
+ (record-writer (record-type-descriptor font-type)
+   (lambda (f p wr)
+     (fprintf p "#<font ~s ~a~a~a>" (font-family f) (font-size f)
+              (if (eq? (font-weight f) 'bold) " bold" "")
+              (if (eq? (font-slant f) 'italic) " italic" "")))))
 
 (define (make-font* family size . opts)
   (let ([italic? (memq 'italic opts)]

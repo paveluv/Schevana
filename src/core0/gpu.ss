@@ -296,12 +296,13 @@
 ;; exit() would tear down under them. Set on the thread that loads core0,
 ;; the process's first, whose exit alone ends the process (on one that
 ;; Chez forked, exit ends that thread).
-(exit-handler
- (let ([chez (exit-handler)])
-   (lambda args
-     ;; a wait that fails never keeps the process from ending
-     (guard (c [#t #f]) (gpu-idle!))
-     (apply chez args))))
+(at-load
+ (exit-handler
+  (let ([chez (exit-handler)])
+    (lambda args
+      ;; a wait that fails never keeps the process from ending
+      (guard (c [#t #f]) (gpu-idle!))
+      (apply chez args)))))
 
 ;; Frames in flight, as many images in the swapchain: three, the most SDL
 ;; allows, by default (the world's 'frames-in-flight, with each frame).

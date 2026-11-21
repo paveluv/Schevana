@@ -34,13 +34,14 @@
           (mutable error)       ; (handler-kind . condition) once crashed
           (mutable min-w) (mutable min-h)))
 
-(record-writer (record-type-descriptor window)
-  (lambda (w p wr)
-    (fprintf p "#<window ~a ~s ~ax~a+~a+~a~a>" (window-id w) (window-title w)
-             (window-w w) (window-h w) (window-x w) (window-y w)
-             (if (eq? (window-state w) 'normal)
-                 ""
-                 (format " ~a" (window-state w))))))
+(at-load
+ (record-writer (record-type-descriptor window)
+   (lambda (w p wr)
+     (fprintf p "#<window ~a ~s ~ax~a+~a+~a~a>" (window-id w) (window-title w)
+              (window-w w) (window-h w) (window-x w) (window-y w)
+              (if (eq? (window-state w) 'normal)
+                  ""
+                  (format " ~a" (window-state w)))))))
 
 (define handler-kinds
   '(open draw frame key text mouse-down mouse-up mouse-move wheel resize focus
@@ -84,8 +85,9 @@
 ;; the window whose handler is running
 (defvar current-window (make-thread-parameter #f))
 ;; Told of each window that closes or crashes, to stop what works for it:
-;; a hook a later layer sets (its background jobs, services/vat.ss).
-(defvar *window-gone* void)
+;; a hook a later layer sets (its background jobs, services/vat.ss); till
+;; then values, which takes the window and does nothing (void takes none).
+(defvar *window-gone* values)
 
 (define request-frame!
   (case-lambda
@@ -157,8 +159,9 @@
   (let ([v (theme key)])
     (if (or (eqv? v 0) (memq key (theme 'fixed))) v (max v (theme min)))))
 
-(theme-default! 'title-height-min
-                (theme-rule (exact (round (+ (font-line-height 'title) 7)))))
+(at-load
+ (theme-default! 'title-height-min
+                 (theme-rule (exact (round (+ (font-line-height 'title) 7))))))
 (define (title-height) (chrome-height 'title-height 'title-height-min))
 
 (define (point-in? px py x y w h)
@@ -186,7 +189,7 @@
           doc))   ; (what) -> ((L . "Apps") ...)  its mouse documentation
 
 (defvar *surfaces* '())   ; by depth
-(set! *surfaces* (filter surface? *surfaces*))
+(at-load (set! *surfaces* (filter surface? *surfaces*)))
 
 (define (register-surface! name depth . opts)
   (set! *surfaces*
@@ -271,7 +274,7 @@
     [(_ (name . args) title body ...)
      (begin
        (define (name . args) (parameterize ([current-app 'name]) body ...))
-       (register-app! 'name title (lambda () (name))))]))
+       (at-load (register-app! 'name title (lambda () (name)))))]))
 
 (define (apps) (map app-name *apps*))
 
