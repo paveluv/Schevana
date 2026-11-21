@@ -2,11 +2,11 @@
 ;;; imports, into out/lib: the libraries each to its own file, and the
 ;;; program with them all as one.
 ;;;
-;;;   scheme --script lib/build.ss lib/demo.ss
-;;;   scheme --program out/lib/demo.so
+;;;   scheme --script lib/build.ss demo/game.ss
+;;;   scheme --program out/lib/game.so
 ;;;
 ;;; From the tree's root. A program runs from source too, compiled as it
-;;; loads: scheme --libdirs lib --program lib/demo.ss
+;;; loads: scheme --libdirs lib --program demo/game.ss
 
 (let* ([program (car (command-line-arguments))]
        [name (path-root (path-last program))]

@@ -15,7 +15,7 @@
     platform-process-bytes platform-machine-load now-ns now-ms thread-cpu-ns
     ;; src/core1/theme-table.ss: the settings in effect, which drawing reads
     theme-rule? theme-rule call-with-theme theme theme-keys theme-part
-    *pacer-trial*
+    *pacer-trial* plist-has? plist-remove
     ;; src/core1/proc.ss: processes, errors, toasts, worklets, and what is
     ;; asked of the loop
     proc-wait in-engine? current-proc make-timeout-condition safe-call safely
@@ -53,23 +53,33 @@
     gradient-row-x1 gradient-row-y0 gradient-row-y1 clip-row-parent
     clip-row-radius clip-row-rx0 clip-row-rx1 clip-row-ry0 clip-row-ry1
     clip-row-words clip-row-x0 clip-row-x1 clip-row-y0 clip-row-y1
+    ;; src/core1/pacer.ss: the pacer, the last frames' numbers, and a frame's
+    ;; way to the screen
+    *frame-ms* *frames-drawn* frame-ring-rows frame-ring-words *frame-ring*
+    *frame-ring-n* *pacer-due* *pacer-frame-ns* *pacer-shown?* *pacer-latch*
+    *pacer-lead* *pacer-counts* *pacer-aimed* *pacer-floor* *pacer-latch-phase*
+    *pacer-depth* *pacer-made* *pacer-late-run* *pacer-late-chain*
+    *pacer-gpu-taught* *pacer-between?* pacer-busy-ms pacer-peak-ms! pacer-rate
+    pacer-ticks pacer-period pacer-start pacer-trial! pacer-margin screen-bytes
+    screen-bytes-then
+    ;; src/core1/screen.ss: the screen core0 shows
+    system-scale-percent fullscreen? set-fullscreen! toggle-fullscreen!
+    screen-set-icon!
+    ;; src/core1/system.ss: the step, boot, sources and reload
+    *input-step?* post-core1! schevana-run! quit! schevana-end! uptime-ms
+    load-user-init! user-directory schevana-boot! collector-declining?
+    source-path source-files *source-texts* keep-source-text! load-file!
+    load-user-folders! reload!
     ;; src/core1/theme.ss: the theme, styles, palettes and parts
     *theme-version* *style-name* *style-changes* *theme-overrides*
     *scale-setting* default-theme color-keys common-options theme-default
     *palettes* define-palette palettes palette-title palette-colors style
     style-name style-title style-settings *styles* define-style find-style
     styles current-style define-part color-default! theme-default! with-style
-    with-place style-changes-of plist-has? plist-remove style-chain chain-ref
-    honored? resolve-theme frame-over* change-layers! theme-layers-set!
-    set-style! set-theme! reset-style! override! theme-overrides set-scale!
-    set-palette! reset-theme! theme-font-rule chrome-height title-height
-    ;; src/core1/pacer.ss: the pacer, and the last frames' numbers
-    *frame-ms* *frames-drawn* frame-ring-rows frame-ring-words *frame-ring*
-    *frame-ring-n* *pacer-due* *pacer-frame-ns* *pacer-shown?* *pacer-latch*
-    *pacer-lead* *pacer-counts* *pacer-aimed* *pacer-floor* *pacer-latch-phase*
-    *pacer-depth* *pacer-made* *pacer-late-run* *pacer-late-chain*
-    *pacer-gpu-taught* *pacer-between?* pacer-busy-ms pacer-peak-ms! pacer-rate
-    pacer-ticks pacer-period pacer-start pacer-trial! pacer-margin
+    with-place style-changes-of style-chain chain-ref honored? resolve-theme
+    frame-over* change-layers! theme-layers-set! set-style! set-theme!
+    reset-style! override! theme-overrides set-scale! set-palette! reset-theme!
+    theme-font-rule chrome-height title-height
     ;; src/core1/wm.ss: windows, focus, surfaces and strips
     window window? window-id window-app window-title window-title-set! window-x
     window-x-set! window-y window-y-set! window-w window-w-set! window-h
@@ -88,15 +98,7 @@
     set-geometry! move-window! resize-window! restore-window! toggle-maximize!
     window-action! shaded? unshade-window! toggle-shade! window-at resize-kinds
     window-region *global-keys* bind-key! window-frame-soon! window-hover
-    draw-window* screen-bytes screen-bytes-then
-    ;; src/core1/screen.ss: the screen core0 shows
-    system-scale-percent fullscreen? set-fullscreen! toggle-fullscreen!
-    screen-set-icon!
-    ;; src/core1/system.ss: the step, sources and reload
-    *input-step?* post-core1! schevana-run! quit! schevana-end! uptime-ms
-    load-user-init! user-directory schevana-boot! collector-declining?
-    source-path source-files *source-texts* keep-source-text! load-file!
-    load-user-folders! reload!
+    draw-window*
     ;; (schevana shader): the shader language
     *shader-constants* *shader-helpers* *shader-fields* define-shader-layout
     shader-type shader-tree define-compute-shader

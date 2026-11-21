@@ -97,6 +97,15 @@
     [() (set! *dirty* #t)]
     [(x y w h) (when (and (> w 0) (> h 0)) (set! *dirty* #t))]))
 
+;; A frame with everything in it drawn again: each call is a new
+;; generation, which what keeps a drawing compares its own with (a
+;; window's lists, src/core1/wm.ss).
+(defvar *frame-generation* 0)
+
+(define (request-redraw!)
+  (set! *frame-generation* (+ *frame-generation* 1))
+  (request-frame!))
+
 (defvar *timers* '())     ; (#(due-ms thunk fueled?) ...) by due time
 
 ;; (after 1000 (lambda () (notify "a second later"))). Linked in place,
@@ -209,17 +218,13 @@
 (define (find-proc p)
   (if (proc? p) p (find (lambda (q) (eqv? (proc-id q) p)) *procs*)))
 
-;; Told when a process ends: what shows the processes draws again
-;; (src/core1/wm.ss sets this); till then nobody.
-(defvar *proc-ended* void)
-
 (define (proc-finish! p state value)
   (when (memq p *procs*)
     (set! *procs* (remq p *procs*))
     (proc-state-set! p state)
     (safe-call 'on-done (lambda () ((proc-on-done p) state value))
                (lambda (c) (report-error! 'proc c)))
-    (*proc-ended*)))
+    (request-redraw!)))
 
 (define (kill! p)
   (let ([p (find-proc p)])

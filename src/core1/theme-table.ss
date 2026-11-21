@@ -51,6 +51,27 @@
   (let ([v (theme key)])
     (if (symbol? v) (world-value v) v)))
 
+(define (plist-has? p key)
+  (and (pair? p) (pair? (cdr p))
+       (or (eq? (car p) key) (plist-has? (cddr p) key))))
+
+(define (plist-remove p key)
+  (cond [(or (null? p) (null? (cdr p))) '()]
+        [(eq? (car p) key) (plist-remove (cddr p) key)]
+        [else (cons* (car p) (cadr p) (plist-remove (cddr p) key))]))
+
+;; A setting that a piece below the look reads, and what it is till a look
+;; says: given as the piece loads, so that the table has it with no look
+;; at all. The look's built-in defaults start from these
+;; (src/core1/theme.ss).
+(defvar *theme-table-defaults* '())   ; key value ...
+
+(define (theme-table-default! key value)
+  (set! *theme-table-defaults*
+    (cons* key value (plist-remove *theme-table-defaults* key)))
+  (unless (hashtable-contains? *theme* key)
+    (hashtable-set! *theme* key value)))
+
 ;; The pacer's choices, settings a person may change live (src/core1/theme.ss),
 ;; unless a trial holds them: ((key . value) ...), the pacer lab's
 ;; (services/pacer-lab.ss), which is never saved with the look.

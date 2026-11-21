@@ -78,9 +78,9 @@
 (define *schevana-core1-sources*
   '("src/base.ss" "src/core1/boot.ss" "src/core1/platform.ss"
     "src/core1/theme-table.ss" "src/core1/proc.ss" "src/core1/gpu.ss"
-    "src/core1/font.ss" "src/core1/gfx.ss" "src/core1/theme.ss"
-    "src/core1/pacer.ss" "src/core1/wm.ss" "src/core1/screen.ss"
-    "src/core1/system.ss" "src/core1/export.ss"))
+    "src/core1/font.ss" "src/core1/gfx.ss" "src/core1/pacer.ss"
+    "src/core1/screen.ss" "src/core1/system.ss" "src/core1/theme.ss"
+    "src/core1/wm.ss" "src/core1/export.ss"))
 
 ;;; ---------------------------------------------------------- the command line
 

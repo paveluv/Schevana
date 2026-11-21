@@ -6,7 +6,7 @@
   (export)
   (import (chezscheme) (schevana layer) (schevana base) (schevana core0)
           (schevana recorder) (schevana platform) (schevana theme-table)
-          (schevana processes) (schevana fonts) (schevana draw))
+          (schevana processes) (schevana gpu) (schevana fonts) (schevana draw))
 
   (include-sources "src/core1/pacer.ss")
 
@@ -16,13 +16,12 @@
       *pacer-latch* *pacer-lead* *pacer-counts* *pacer-aimed* *pacer-floor*
       *pacer-latch-phase* *pacer-depth* *pacer-made* *pacer-gpu-taught*
       *pacer-late-run* *pacer-late-chain* (settable *pacer-between?*)
-      (settable *frame-ms*) (settable *frames-drawn*) (settable *frame-back*)
-      frame-ring-rows frame-ring-words *frame-ring* *frame-ring-n*
-      *frame-number* (settable *frame-draw-ns*) (settable *frame-publish-ns*)
-      frame-number-set! frame-ticked! frame-input-came! frame-input-drop!
-      frame-ring-add! frame-ring-set! pacer-waited! pacer-step-done!
+      *frame-ms* *frames-drawn* *frame-back* frame-ring-rows frame-ring-words
+      *frame-ring* *frame-ring-n* *frame-number* frame-ticked!
+      frame-input-came! frame-input-drop! pacer-waited! pacer-step-done!
       pacer-busy-ms pacer-peak-ms! pacer-rate pacer-ticks frame-turn-soon!
       pacer-wanted? pacer-frame-ns pacer-period pacer-start pacer-on-latch?
-      pacer-latch! pacer-trial! pacer-margin pacer-drew!
-      (settable *pacer-turn*) pacer-tick! pacer-frame-back! pacer-procs-ms
-      pacer-wait-ms)))
+      pacer-trial! pacer-margin (settable *pacer-turn*) pacer-tick!
+      pacer-procs-ms pacer-wait-ms (settable *frame-drawing*) record-safely
+      render-frame! render-frames-back! render-answers! screen-bytes
+      screen-bytes-then)))

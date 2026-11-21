@@ -11,5 +11,6 @@
   (define-exports theme-table-exports
     (export (world)
       (settable *theme*) (settable *main-theme*) theme-rule? theme-rule
-      theme-unset call-with-theme theme theme-keys theme-part
+      theme-unset call-with-theme theme theme-keys theme-part plist-has?
+      plist-remove *theme-table-defaults* theme-table-default!
       (settable *pacer-trial*) pacer-knob)))

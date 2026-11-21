@@ -77,19 +77,10 @@
 
 (define default-theme
   (append base-colors derived-colors
-          `(title-height 30
-            corner-radius 9
+          '(title-height 30
             topbar-height 28
             taskbar-height 38
             shadow 14
-            present-mode vsync
-            frames-in-flight 3
-            ;; the pacer's choices: refreshes, or seconds for the fades
-            pacer-margin-start 0
-            pacer-margin-step 1/8
-            pacer-miss-own 1/8
-            pacer-lead-fade 1/2
-            pacer-margin-fade ,platform-pacer-margin-fade
             ui-font "sans-serif"
             ui-font-size 13
             mono-font "monospace"
@@ -107,6 +98,8 @@
             raise-on-click #t
             ;; a dialog stays above the window that waits on it
             modal-above #t)
+          ;; what drawing, the pacer and the screen read, as they gave it
+          *theme-table-defaults*
           *added-defaults*))
 
 (define color-keys
@@ -277,15 +270,6 @@
 (define (style-changes-of name)
   (let ([p (assq name *style-changes*)]) (if p (cdr p) '())))
 
-(define (plist-has? p key)
-  (and (pair? p) (pair? (cdr p))
-       (or (eq? (car p) key) (plist-has? (cddr p) key))))
-
-(define (plist-remove p key)
-  (cond [(or (null? p) (null? (cdr p))) '()]
-        [(eq? (car p) key) (plist-remove (cddr p) key)]
-        [else (cons* (car p) (cadr p) (plist-remove (cddr p) key))]))
-
 ;; The style and its parents, nearest first; a loop or a missing parent
 ;; ends the chain (the built-in defaults are under every chain).
 (define (style-chain name)
@@ -405,10 +389,6 @@
    (unless (null? roles)
      (theme-default! (car roles) (cadr roles))
      (loop (cddr roles)))))
-
-;; Faint text's font is its own (#f), or what a style's procedure makes
-;; of it, a part: drawing asks (faint-font, src/core1/gfx.ss).
-(at-load (theme-default! 'faint-text-font #f))
 
 ;; A title's or a bar's height, key: the setting, grown to the room its
 ;; text needs (the setting min, named key-min) unless the style fixes

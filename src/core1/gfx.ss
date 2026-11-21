@@ -116,6 +116,7 @@
 
 ;; Faint text's font: its own (#f), or what a style's procedure makes of
 ;; it, a part (Genera, with no gray, sets its hints in italic).
+(at-load (theme-table-default! 'faint-text-font #f))
 (define (faint-font color f)
   (let ([make (and (eq? color 'text-faint) (theme-part 'faint-text-font))])
     (if make (make f) f)))
@@ -495,6 +496,7 @@
            (fx<= x1 *rec-cx0*) (fx<= y1 *rec-cy0*))))
 
 ;; corner radius 0 makes a style square: all it draws, an app's too
+(at-load (theme-table-default! 'corner-radius 9))
 (define (rec-radius r w h)
   (if (eqv? r 0)
       0
@@ -1374,6 +1376,11 @@
     (gpu-publish! f)
     (unless (core0-forked?) (core0-step!))
     (gpu-frame-number f)))
+
+;; How a frame goes to the screen, and how many may be on their way.
+(at-load
+ (theme-table-default! 'present-mode 'vsync)
+ (theme-table-default! 'frames-in-flight 3))
 
 ;; The list written since rec-begin!, as the frame core1 hands core0,
 ;; with the lists kept from earlier: the past one, and the preview's, which

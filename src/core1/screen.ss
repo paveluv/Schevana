@@ -28,6 +28,8 @@
 ;;; times bigger. The scale follows the desktop unless the theme key 'scale
 ;;; (a percentage; 0 for automatic) overrides it.
 
+(at-load (theme-table-default! 'scale 0))
+
 (define (wanted-scale)
   (let ([p (theme 'scale)])
     (if (and (fixnum? p) (> p 0)) (/ (clamp p 50 400) 100) (system-scale))))
@@ -47,10 +49,14 @@
 (define (screen-units->world v)
   (floor (/ (* (exact v) *pixel-ratio*) *screen-chosen-scale*)))
 
+;; Told when the screen has another size or scale: what lays out what is
+;; on it (src/core1/wm.ss sets this); till then nobody.
+(defvar *screen-resized* void)
+
 ;; After the 'scale setting changed: lay the world out again at the new scale.
 (define (screen-rescale!)
   (when (screen-sync-size!)
-    (wm-screen-resized!)))
+    (*screen-resized*)))
 
 ;; Core0's window's size in window units for a w × h logical world drawn
 ;; at scale, with ratio physical pixels per window unit.
@@ -102,7 +108,7 @@
 (define (set-fullscreen! on?)
   (when (eq? *core0-mode* 'sdl) (core0-window-fullscreen! on?))
   (set! *screen-fullscreen* (and on? #t))
-  (invalidate!))
+  (request-redraw!))
 
 (define (toggle-fullscreen!) (set-fullscreen! (not (fullscreen?))))
 

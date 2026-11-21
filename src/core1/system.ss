@@ -38,23 +38,18 @@
 (define (inject! . events)
   (set! *injected* (append *injected* events)))
 
+;; What an event goes to: the windows and the surfaces
+;; (src/core1/wm.ss sets this); till then nothing takes it. Quitting is
+;; the loop's own.
+(defvar *loop-event* (lambda (ev) (void)))
+
 (define (handle-event! ev)
-  (case (car ev)
-    [(mouse-move) (apply wm-mouse-move (cdr ev))]
-    [(mouse-down) (apply wm-mouse-down (cdr ev))]
-    [(mouse-up) (apply wm-mouse-up (cdr ev))]
-    [(wheel) (apply wm-wheel (cdr ev))]
-    [(key-down) (apply wm-key-down (cdr ev))]
-    [(text) (wm-text (cadr ev))]
-    [(resize) (wm-screen-resized!)]
-    [(expose) (request-frame!)]
-    [(mouse-leave) (set! *hover* #f) (request-frame!)]
-    [(quit) (quit!)]))
+  (if (eq? (car ev) 'quit) (quit!) (*loop-event* ev)))
 
 ;; A reload that failed or was killed: the world goes on as far as it got.
 (define (reload-ended! msg)
   (set! *reloading* #f)
-  (safely 'reload (lambda () (invalidate!) (notify msg 'red))))
+  (safely 'reload (lambda () (request-redraw!) (notify msg 'red))))
 
 ;; While a process loads the sources (*reloading*, set by load-sources!),
 ;; the world holds still: no event, timer, tick, frame or other process
@@ -187,15 +182,6 @@
 
 (define (uptime-ms) (- (now-ms) *boot-ms*))
 
-;; A theme's change, seen (*theme-change-seen*): the screen at its new
-;; scale, the windows in their new chrome, and a frame.
-(at-load
- (set! *theme-change-seen*
-   (lambda (scale? chrome?)
-     (when scale? (screen-rescale!))
-     (when chrome? (wm-chrome-changed!))
-     (invalidate!))))
-
 ;;; ------------------------------------------------------------------ boot
 
 (define user-init-file
@@ -227,7 +213,7 @@
 ;; (schevana-boot! 'sdl 1280 800 #t) starts full screen.
 (define (schevana-boot! mode w h . fullscreen?)
   (apply screen-init! mode w h fullscreen?)
-  (invalidate!)
+  (request-redraw!)
   (collector-settle!))
 
 ;;; ------------------------------------------------------------------ collector
@@ -484,7 +470,7 @@
                            core1-exports)
                       *core1-env* 'world *world-env*))
   (load-world!)
-  (invalidate!)
+  (request-redraw!)
   (collector-settle!)
   (notify "Sources reloaded" 'green))
 

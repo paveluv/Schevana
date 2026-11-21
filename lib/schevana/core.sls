@@ -13,24 +13,13 @@
           (schevana socket) (schevana core0) (schevana recorder)
           (except (schevana boot) core1-exports) (schevana platform)
           (schevana theme-table) (schevana processes) (schevana gpu)
-          (schevana fonts) (schevana draw) (schevana theme) (schevana pacer)
-          (schevana windows) (schevana screen) (schevana loop))
+          (schevana fonts) (schevana draw) (schevana pacer) (schevana screen)
+          (schevana loop) (schevana theme) (schevana windows))
 
-  ;; Boots the screen, mode sdl (a window w × h logical pixels, or full
-  ;; screen) or headless, runs world, a thunk that opens what the program
-  ;; shows, then the world till it quits, and ends the process. With a
-  ;; window, core0 keeps this thread, the process's first, for the screen,
-  ;; and the world runs on its own; headless, one thread plays both,
-  ;; unless fork? asks for the two with no window (a test's).
+  ;; A program on the whole core: the loop's main (loop-main), defined
+  ;; here so that a program compiled as one carries this library, which
+  ;; a REPL's environment is made of.
   (define (schevana-main mode w h full? world . fork?)
-    (define (run)
-      (core1-thread!)
-      (schevana-boot! mode w h full?)
-      (world)
-      (schevana-run!)
-      (schevana-end!))
-    (if (or (eq? mode 'sdl) (and (pair? fork?) (car fork?)))
-        (core0-run! mode w h full? run)
-        (run)))
+    (apply loop-main mode w h full? world fork?))
 
   (include-sources "src/core1/export.ss"))

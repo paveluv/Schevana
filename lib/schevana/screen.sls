@@ -6,12 +6,13 @@
   (export)
   (import (chezscheme) (schevana layer) (schevana base) (schevana core0)
           (schevana theme-table) (schevana processes) (schevana draw)
-          (schevana pacer) (schevana windows))
+          (schevana pacer))
 
   (include-sources "src/core1/screen.ss")
 
   (define-exports screen-exports
     (export (world)
-      (settable *screen-event-seen*) system-scale-percent screen-rescale!
-      screen-init! screen-shutdown! fullscreen? set-fullscreen!
-      toggle-fullscreen! screen-set-icon! screen-events)))
+      (settable *screen-event-seen*) system-scale-percent
+      (settable *screen-resized*) screen-rescale! screen-init!
+      screen-shutdown! fullscreen? set-fullscreen! toggle-fullscreen!
+      screen-set-icon! screen-events)))

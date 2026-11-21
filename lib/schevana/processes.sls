@@ -12,10 +12,10 @@
     (export (world)
       in-engine? current-proc (settable *profile-span*) with-profile-span
       make-timeout-condition safe-call safely (settable *dirty*)
-      request-frame! *timers* after run-timers! *toasts* notify *last-error*
-      report-error! proc proc? proc-id proc-name proc-state proc-ticks
-      proc-started proc-wake *procs* (settable *reloading*) spawn procs
-      find-proc (settable *proc-ended*) kill! procs-ready? run-procs! sleep-ms
-      proc-wait worklet-base-environment *worklet-environment* worklet?
-      worklet-compile worklet (settable *worklet-spread*) worklet-spread
-      define-worklet)))
+      request-frame! *frame-generation* request-redraw! *timers* after
+      run-timers! *toasts* notify *last-error* report-error! proc proc?
+      proc-id proc-name proc-state proc-ticks proc-started proc-wake *procs*
+      (settable *reloading*) spawn procs find-proc kill! procs-ready?
+      run-procs! sleep-ms proc-wait worklet-base-environment
+      *worklet-environment* worklet? worklet-compile worklet
+      (settable *worklet-spread*) worklet-spread define-worklet)))

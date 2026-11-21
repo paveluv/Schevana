@@ -87,26 +87,22 @@
 ;; then values, which takes the window and does nothing (void takes none).
 (defvar *window-gone* values)
 
-;; Each (invalidate!) is a new generation, and each (invalidate! win) a new
-;; ask of win's: a list of win's drawn before either is drawn again. Asked
+;; Each (invalidate!) is a new generation (request-redraw!), and each
+;; (invalidate! win) a new ask of win's: a list of win's drawn before
+;; either is drawn again. Asked
 ;; while it draws, it draws again the next frame. A window not open (closed,
 ;; or one a preview draws) or not seen (minimized) asks for no frame: a
 ;; timer it left behind, or one an app steps on unseen, draws nothing; one
 ;; brought back is drawn as it comes.
-(defvar *wm-generation* 0)
-
 (define invalidate!
   (case-lambda
-    [() (set! *wm-generation* (+ *wm-generation* 1)) (request-frame!)]
+    [() (request-redraw!)]
     [(win) (when win
              (hashtable-update! (window-props win) 'wm-asked
                                 (lambda (n) (+ n 1)) 0))
            (when (or (not win) (and (memq win *windows*) (visible? win)))
              (request-frame!))]
     [(win x y w h) (invalidate! win)]))
-
-;; A process ended: what shows the processes is drawn again.
-(at-load (set! *proc-ended* (lambda () (invalidate!))))
 
 ;; A window's shadow, for its style: the theme key 'shadow, half unfocused;
 ;; a maximized window has none.
@@ -1052,7 +1048,7 @@
 (define (window-content-list win x y w h cx cy cw ch)
   (let ([l (window-own win 'wm-content-list gpu-list-new)])
     (when (window-key-changed! win 'wm-content-key
-            *wm-generation* (hashtable-ref (window-props win) 'wm-asked 0)
+            *frame-generation* (hashtable-ref (window-props win) 'wm-asked 0)
             *rec-num* *rec-den* (- x cx) (- y cy) w h cw ch (window-error win))
       (record-list! l
         (lambda ()
@@ -1076,7 +1072,7 @@
 (define (window-whole-list win)
   (let ([l (window-own win 'wm-list gpu-list-new)])
     (when (window-key-changed! win 'wm-list-key
-            *wm-generation* (hashtable-ref (window-props win) 'wm-asked 0)
+            *frame-generation* (hashtable-ref (window-props win) 'wm-asked 0)
             *rec-num* *rec-den* (eq? win *focus*) (window-hover win)
             (window-pressed win) (window-w win) (window-h win)
             (window-title win) (window-state win) (window-error win))
@@ -1101,6 +1097,9 @@
   (record-surfaces! *surfaces* #f)
   (record-windows! *windows*)
   (record-surfaces! *surfaces* #t))
+
+;; A frame draws this (*frame-drawing*, src/core1/pacer.ss).
+(at-load (set! *frame-drawing* (lambda () (record-world!))))
 
 ;; The surfaces under the windows, or over them.
 (define (record-surfaces! ss over?)
@@ -1128,76 +1127,32 @@
                    (with-clip (x y ew eh)
                      (show-list l (window-x w) (window-y w)))))))))))))
 
-;; thunk's drawing, which may crash: what it left of the recorder's state
-;; goes, the state as it was kept in variables.
-(define (record-safely name thunk)
-  (let ([num *rec-num*] [den *rec-den*] [ox *rec-ox*] [oy *rec-oy*]
-        [turn *rec-turn*] [clip *rec-clip*] [cx0 *rec-cx0*] [cy0 *rec-cy0*]
-        [cx1 *rec-cx1*] [cy1 *rec-cy1*])
-    (safely name thunk)
-    (rec-state-restore! num den ox oy turn clip cx0 cy0 cx1 cy1)))
+;;; ------------------------------------------------------------------
+;;; what the layers below are told through
 
-;; One step's frame: recorded and sent to the screen. A screen with no room
-;; for it yet asks again. A process may be switched out at any call while
-;; core1's loop draws on, so typed in a REPL (a process) or called by a
-;; handler, (render-frame!) only asks for a frame.
-(define render-frame!
-  (case-lambda
-    [() (render-frame! #t)]
-    [(asked?)
-     (cond
-       [(or (not asked?) (eq? *core0-mode* 'none) (eqv? *canvas-pw* 0)) (void)]
-       [(in-engine?) (request-frame!)]
-       [(or (core0-hidden?) (gpu-frame-waiting?)) (request-frame!)]
-       [else
-        (let ([t0 (now-ns)] [waits *pacer-waits*])
-          (core0-trace! 23 0)
-          (set! *frame-draw-ns* t0)
-          (rec-begin! *canvas-ratio*)
-          (record-world!)
-          (frame-number-set! (rec-present!))
-          (pacer-drew!)
-          (set! *frame-publish-ns* (now-ns))
-          (core0-trace! 24 *frame-number*)
-          ;; its row first, for core0 may give it back at once
-          (frame-ring-add!)
-          (render-frames-back!)
-          (set! *frame-ms* (fl/ (fixnum->flonum
-                                 (- (now-ns) t0 (- *pacer-waits* waits)))
-                                1e6))
-          (frame-ring-set! *frame-number* 0
-                           (flonum->fixnum
-                            (flround (fl* 1000.0 *frame-ms*)))))])]))
+;; An event of the screen's (*loop-event*, src/core1/system.ss).
+(define (wm-event! ev)
+  (case (car ev)
+    [(mouse-move) (apply wm-mouse-move (cdr ev))]
+    [(mouse-down) (apply wm-mouse-down (cdr ev))]
+    [(mouse-up) (apply wm-mouse-up (cdr ev))]
+    [(wheel) (apply wm-wheel (cdr ev))]
+    [(key-down) (apply wm-key-down (cdr ev))]
+    [(text) (wm-text (cadr ev))]
+    [(resize) (wm-screen-resized!)]
+    [(expose) (request-frame!)]
+    [(mouse-leave) (set! *hover* #f) (request-frame!)]))
+(at-load (set! *loop-event* (lambda (ev) (wm-event! ev))))
 
-;; The frames core0 gave back: each told to the pacer, and marked in its row
-;; as having reached the screen or not; counted if it did, else one asked
-;; again. Then what core0 read back, handed to its then.
-(define (render-frames-back!)
-  (for-each (lambda (f)
-              (let ([shown? (gpu-frame-shown? f)])
-                (set! *frame-back* (gpu-frame-number f))
-                (pacer-frame-back! shown?)
-                (pacer-latch! (gpu-frame-number f))
-                (frame-ring-set! (gpu-frame-number f) 5 (if shown? 1 2))
-                (if shown?
-                    (set! *frames-drawn* (+ *frames-drawn* 1))
-                    (request-frame!))
-                (gpu-frame-free! f)))
-            (gpu-frames-back!))
-  (render-answers!))
+;; The screen at another size or scale (*screen-resized*,
+;; src/core1/screen.ss).
+(at-load (set! *screen-resized* (lambda () (wm-screen-resized!))))
 
-;; What core0 read back, each handed to its then.
-(define (render-answers!)
-  (for-each (lambda (answer)
-              (safely 'readback (lambda () ((car answer) (cdr answer)))))
-            (gpu-take-answers!)))
-
-;; The screen as it would be drawn now: its pixels, row after row,
-;; premultiplied BGRA. What tests and screenshots see; screen-bytes-then
-;; hands them to then on core1, nothing waiting.
-(define (screen-bytes)
-  (drawing->bytes *canvas-pw* *canvas-ph* *canvas-ratio* record-world! #f))
-
-(define (screen-bytes-then then)
-  (drawing->bytes-then *canvas-pw* *canvas-ph* *canvas-ratio* record-world! #f
-                       then))
+;; A theme's change, seen (*theme-change-seen*): the screen at its new
+;; scale, the windows in their new chrome, and a frame.
+(at-load
+ (set! *theme-change-seen*
+   (lambda (scale? chrome?)
+     (when scale? (screen-rescale!))
+     (when chrome? (wm-chrome-changed!))
+     (invalidate!))))

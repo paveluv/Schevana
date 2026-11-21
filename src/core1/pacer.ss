@@ -164,6 +164,14 @@
 
 ;;; ------------------------------------------------------------------ pacing
 
+;; The pacer's choices: refreshes, or seconds for the fades.
+(at-load
+ (theme-table-default! 'pacer-margin-start 0)
+ (theme-table-default! 'pacer-margin-step 1/8)
+ (theme-table-default! 'pacer-miss-own 1/8)
+ (theme-table-default! 'pacer-lead-fade 1/2)
+ (theme-table-default! 'pacer-margin-fade platform-pacer-margin-fade))
+
 ;; What since now was a wait, for input or for the screen.
 (define (pacer-waited! since) (pacer-held! (- (now-ns) since)))
 
@@ -583,3 +591,83 @@
                      (min ms (- (vector-ref (car *timers*) 0) (now-ms)))
                      ms)])
         (max 0 (exact (ceiling ms))))))
+
+;;; ------------------------------------------------------------------ frames
+
+;; What a frame draws, the whole screen: the windows and the surfaces
+;; (src/core1/wm.ss sets this); till then nothing.
+(defvar *frame-drawing* void)
+
+;; thunk's drawing, which may crash: what it left of the recorder's state
+;; goes, the state as it was kept in variables.
+(define (record-safely name thunk)
+  (let ([num *rec-num*] [den *rec-den*] [ox *rec-ox*] [oy *rec-oy*]
+        [turn *rec-turn*] [clip *rec-clip*] [cx0 *rec-cx0*] [cy0 *rec-cy0*]
+        [cx1 *rec-cx1*] [cy1 *rec-cy1*])
+    (safely name thunk)
+    (rec-state-restore! num den ox oy turn clip cx0 cy0 cx1 cy1)))
+
+;; One step's frame: recorded and sent to the screen. A screen with no room
+;; for it yet asks again. A process may be switched out at any call while
+;; core1's loop draws on, so typed in a REPL (a process) or called by a
+;; handler, (render-frame!) only asks for a frame.
+(define render-frame!
+  (case-lambda
+    [() (render-frame! #t)]
+    [(asked?)
+     (cond
+       [(or (not asked?) (eq? *core0-mode* 'none) (eqv? *canvas-pw* 0)) (void)]
+       [(in-engine?) (request-frame!)]
+       [(or (core0-hidden?) (gpu-frame-waiting?)) (request-frame!)]
+       [else
+        (let ([t0 (now-ns)] [waits *pacer-waits*])
+          (core0-trace! 23 0)
+          (set! *frame-draw-ns* t0)
+          (rec-begin! *canvas-ratio*)
+          (*frame-drawing*)
+          (frame-number-set! (rec-present!))
+          (pacer-drew!)
+          (set! *frame-publish-ns* (now-ns))
+          (core0-trace! 24 *frame-number*)
+          ;; its row first, for core0 may give it back at once
+          (frame-ring-add!)
+          (render-frames-back!)
+          (set! *frame-ms* (fl/ (fixnum->flonum
+                                 (- (now-ns) t0 (- *pacer-waits* waits)))
+                                1e6))
+          (frame-ring-set! *frame-number* 0
+                           (flonum->fixnum
+                            (flround (fl* 1000.0 *frame-ms*)))))])]))
+
+;; The frames core0 gave back: each told to the pacer, and marked in its row
+;; as having reached the screen or not; counted if it did, else one asked
+;; again. Then what core0 read back, handed to its then.
+(define (render-frames-back!)
+  (for-each (lambda (f)
+              (let ([shown? (gpu-frame-shown? f)])
+                (set! *frame-back* (gpu-frame-number f))
+                (pacer-frame-back! shown?)
+                (pacer-latch! (gpu-frame-number f))
+                (frame-ring-set! (gpu-frame-number f) 5 (if shown? 1 2))
+                (if shown?
+                    (set! *frames-drawn* (+ *frames-drawn* 1))
+                    (request-frame!))
+                (gpu-frame-free! f)))
+            (gpu-frames-back!))
+  (render-answers!))
+
+;; What core0 read back, each handed to its then.
+(define (render-answers!)
+  (for-each (lambda (answer)
+              (safely 'readback (lambda () ((car answer) (cdr answer)))))
+            (gpu-take-answers!)))
+
+;; The screen as it would be drawn now: its pixels, row after row,
+;; premultiplied BGRA. What tests and screenshots see; screen-bytes-then
+;; hands them to then on core1, nothing waiting.
+(define (screen-bytes)
+  (drawing->bytes *canvas-pw* *canvas-ph* *canvas-ratio* *frame-drawing* #f))
+
+(define (screen-bytes-then then)
+  (drawing->bytes-then *canvas-pw* *canvas-ph* *canvas-ratio* *frame-drawing* #f
+                       then))

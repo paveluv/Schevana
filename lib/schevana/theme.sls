@@ -4,8 +4,8 @@
 
 (library (schevana theme)
   (export)
-  (import (chezscheme) (schevana layer) (schevana base) (schevana platform)
-          (schevana theme-table) (schevana fonts) (schevana draw))
+  (import (chezscheme) (schevana layer) (schevana base) (schevana theme-table)
+          (schevana fonts) (schevana draw))
 
   (include-sources "src/core1/theme.ss")
 
@@ -20,8 +20,8 @@
       palette-title palette-colors style style-name style-title style-settings
       *styles* define-style find-style styles current-style define-part
       color-default! theme-default! style-theme with-style with-place
-      style-changes-of plist-has? plist-remove style-chain chain-ref honored?
-      resolve-theme (settable *theme-change-seen*) theme-font-rule
-      chrome-height title-height frame-over* change-layers! theme-layers-set!
-      set-style! set-theme! reset-style! override! theme-overrides set-scale!
+      style-changes-of style-chain chain-ref honored? resolve-theme
+      (settable *theme-change-seen*) theme-font-rule chrome-height
+      title-height frame-over* change-layers! theme-layers-set! set-style!
+      set-theme! reset-style! override! theme-overrides set-scale!
       set-palette! reset-theme!)))

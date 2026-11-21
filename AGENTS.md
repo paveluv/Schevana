@@ -52,6 +52,7 @@ before it:
 | `desktop/` | The screen's own surfaces and the desktop's behavior: wallpaper, bars, menu, toasts, keys, arranging windows. |
 | `styles/`, `palettes/`, `wallpapers/` | One definition per file, registered by its definer. |
 | `apps/` | One app per file, defined with `define-app`; one whose first form is `app-requests` runs in a sandbox of its own (`services/grant.ss`). |
+| `demo/` | Programs on the core's libraries (`lib/schevana/`), one per file: each imports what it needs and runs (`scheme --libdirs lib --program demo/game.ss`). |
 
 - **The boot is a chain**: `main.ss` boots core0, core0 boots core1, core1
   boots the world. Each link makes the next one's environment and gives it
@@ -89,7 +90,7 @@ before it:
   updates `docs/PLATFORMS.md`: where it ran, where it should work, what
   happens without it. Monitor's Platform tab shows it all, and copies a
   run as a row of it.
-- **The core has a budget**, 37,586 tokens (atoms as read; comments,
+- **The core has a budget**, 37,669 tokens (atoms as read; comments,
   whitespace and names' lengths are free; the `export.ss` files, which
   declare, are left out), in `tests/sources.ss`. Don't join lines or
   shorten names to fit it. Code the core doesn't need moves out to the

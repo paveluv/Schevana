@@ -1,12 +1,12 @@
-;;; lib/demo.ss — a program on the stack: the core's libraries and nothing
+;;; demo/window.ss — a program on the core: its libraries and nothing
 ;;; else. No desktop, no styles, none of the world's files: a surface
 ;;; fills the screen with a paint, a shader of its own, and a window
 ;;; draws text over it.
 ;;;
-;;;   scheme --libdirs lib --program lib/demo.ss              a window
-;;;   scheme --libdirs lib --program lib/demo.ss --headless   a frame, read
-;;;                                                           back and told
-;;;   ... --headless --fork                                   on two threads
+;;;   scheme --libdirs lib --program demo/window.ss             a window
+;;;   scheme --libdirs lib --program demo/window.ss --headless  a frame,
+;;;                                                read back and told
+;;;   ... --headless --fork                        on two threads
 
 (import (chezscheme) (schevana core))
 
