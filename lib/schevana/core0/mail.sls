@@ -95,8 +95,8 @@
 
   ;; When the oldest input not yet taken came (now-ns; 0, none), three ways:
   ;; by SDL's stamp; when core0's pump first saw it; by the compositor's own
-  ;; time where core0 reads it (src/core0/platform.ss). Core0's pump sets them,
-  ;; the world takes them with the events, both by box-cas!.
+  ;; time where core0 reads it ((schevana core0 platform)). Core0's pump sets
+  ;; them, the world takes them with the events, both by box-cas!.
   (define-state *core0-input-ns* (box 0))
   (define-state *core0-input-pumped* (box 0))
   (define-state *core0-input-wl* (box 0))

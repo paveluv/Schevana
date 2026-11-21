@@ -1,4 +1,4 @@
-;;; trace-file.ss — the trace (src/core0/trace.ss), written: to a file of
+;;; trace-file.ss — the trace ((schevana core0 trace)), written: to a file of
 ;;; its own when the window closes or on (core0-trace-dump!), and when
 ;;; core1 stops stepping or Ctrl-C ends the run, with the screen's reports
 ;;; on the frames still kept.

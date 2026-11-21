@@ -1,9 +1,9 @@
 ;;; tests/units/platform.ss — which platform this is (src/base.ss,
-;;; src/core1/platform.ss, src/core0/platform.ss), as predicates, facts,
-;;; Monitor's Platform tab and a row for docs/PLATFORMS.md; the screen's
-;;; times read on the clock that fits them; and the trace
-;;; (src/core0/trace.ss). Whatever the platform: each check holds on any
-;;; of them.
+;;; src/core1/platform.ss, lib/schevana/core0/platform.sls), as predicates,
+;;; facts, Monitor's Platform tab and a row for docs/PLATFORMS.md; the
+;;; screen's times read on the clock that fits them; and the trace
+;;; (lib/schevana/core0/trace.sls). Whatever the platform: each check holds
+;;; on any of them.
 
 (define (platform-test-one-of preds)
   (<= (length (filter (lambda (p) (p)) preds)) 1))

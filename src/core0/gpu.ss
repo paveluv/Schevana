@@ -1261,7 +1261,7 @@
 ;;; 9.12): an alist the world never changes, made again at the end
 ;;; of a frame only when what it's made of changed, so that a frame like the
 ;;; last allocates nothing. What became of each frame is in its report
-;;; (src/core0/present.ss).
+;;; ((schevana core0 present)).
 
 (defvar *gpu-facts* '())
 

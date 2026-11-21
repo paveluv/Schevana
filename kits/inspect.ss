@@ -144,7 +144,7 @@
 (define (inspect-frame-latency i) (inspect-frame-latency-from i 'sdl))
 
 ;;; ---- the screen's clock's drift
-;; How far core0's clock (src/core0/present.ss) moved at each refresh from
+;; How far core0's clock ((schevana core0 present)) moved at each refresh from
 ;; oldest on that a frame showed at, ns: the refresh's time past that of
 ;; the frame shown before and the periods between them, negative when
 ;; earlier. ((refresh . ns) ...), oldest first; none for the first frame
@@ -222,7 +222,7 @@
 
 ;;; ---- refreshes
 ;;; The screen's rhythm, a refresh a number: core0's count from the
-;;; reports' times (src/core0/present.ss), anchored at the newest frame
+;;; reports' times ((schevana core0 present)), anchored at the newest frame
 ;;; the screen reported showing; where it reports none, counted from
 ;;; now-ns's 0 a period apart, an estimate. A refresh's time is its
 ;;; vblank's (now-ns).

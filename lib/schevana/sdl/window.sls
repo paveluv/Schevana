@@ -63,7 +63,7 @@
   ;; Collect-safe, as is what may size, show or let go of the window's Metal
   ;; layer once it has run: Core Animation may hold the layer's lock running
   ;; a presented handler of core0's, which may wait for a collection
-  ;; (src/core0/platform.ss).
+  ;; ((schevana core0 platform)).
   (define-foreign/collect-safe sdl-destroy-window "SDL_DestroyWindow" (uptr)
     void)
   (define-foreign/collect-safe sdl-set-window-minimum-size

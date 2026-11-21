@@ -6,9 +6,9 @@
 (library (schevana core0 window)
   (export)
   (import (chezscheme) (schevana layer) (schevana base) (schevana ffi)
-          (schevana sdl) (schevana core0 mail) (schevana core0 trace)
-          (schevana core0 renderer) (schevana core0 present)
-          (schevana core0 platform) (schevana core0 gpu)
+          (schevana sdl) (schevana core0 mail) (schevana core0 platform)
+          (schevana core0 present) (schevana core0 renderer)
+          (schevana core0 trace) (schevana core0 gpu)
           (schevana core0 trace-file))
 
   (include-sources "src/core0/window.ss")

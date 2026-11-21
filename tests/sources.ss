@@ -343,10 +343,11 @@
                       "lib/schevana/sdl/window.sls"
                       "lib/schevana/sdl/gpu.sls"
                       "lib/schevana/core0/mail.sls"
-                      "src/core0/renderer.ss" "src/core0/platform.ss"
-                      "src/core0/gpu.ss" "src/core0/present.ss"
-                      "src/core0/window.ss" "src/core1/font.ss"
-                      "src/core1/platform.ss")))
+                      "lib/schevana/core0/renderer.sls"
+                      "lib/schevana/core0/present.sls"
+                      "lib/schevana/core0/platform.sls"
+                      "src/core0/gpu.ss" "src/core0/window.ss"
+                      "src/core1/font.ss" "src/core1/platform.ss")))
         (append world-files '("world.ss"))))
 
 (define (names-a-back-end? s)
@@ -390,7 +391,7 @@
 (define platform-files
   '("lib/schevana/base.sls" "src/core1/platform.ss"
     "lib/schevana/sdl/window.sls"
-    "src/core0/platform.ss" "kits/inspect.ss"))
+    "lib/schevana/core0/platform.sls" "kits/inspect.ss"))
 
 ;; The strings in x.
 (define (strings-in x)

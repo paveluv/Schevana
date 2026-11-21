@@ -4,7 +4,7 @@
 ;;; reads of the system that each system says its own way. Each is #f where
 ;;; the system doesn't say. docs/PLATFORMS.md says where each has run.
 
-;; One of core0's facts of the platform (src/core0/platform.ss), or #f:
+;; One of core0's facts of the platform ((schevana core0 platform)), or #f:
 ;; windowing, gpu-api, gpu-device, sdl, system, kernel, desktop, reports.
 (define (platform-fact key)
   (let ([f (assq key *core0-platform*)]) (and f (cdr f))))

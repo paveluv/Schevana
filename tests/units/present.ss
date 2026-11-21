@@ -1,7 +1,7 @@
 ;;; tests/units/present.ss — what the screen says of each frame: its reports
-;;; (src/core0/present.ss), joined to the frames drawn and the input they
-;;; show (kits/inspect.ss). Headless, nothing reports, so the reports here
-;;; are written as the screen's callbacks would write them.
+;;; ((schevana core0 present)), joined to the frames drawn and the input
+;;; they show (kits/inspect.ss). Headless, nothing reports, so the reports
+;;; here are written as the screen's callbacks would write them.
 
 ;; Frame n's row begun, as core0 sends it at sent: none of the screen's
 ;; word yet.
@@ -94,8 +94,8 @@
          (not (core0-frame-report (+ n present-rows) 1))))
 
 ;;; The screen's clock, inferred from the reports' stamps alone
-;;; (src/core0/present.ss): frames by numbers no frame drawn has, each sent
-;;; and reported as the screen's callbacks would.
+;;; ((schevana core0 present)): frames by numbers no frame drawn has, each
+;;; sent and reported as the screen's callbacks would.
 
 ;; Frames from first on: each (sent stamp), or (sent stamp refresh), sent
 ;; and reported shown in turn, a refresh p ns long by the screen's word.

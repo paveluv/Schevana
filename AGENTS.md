@@ -75,8 +75,9 @@ before it:
   environment's copy is as good as another (`tests/sources.ss`). What
   isn't pure is core0's or core1's, and exported.
 - **What differs by platform lives in the platform files**:
-  `src/core0/platform.ss` for core0's (a folder, `src/core0/platform/`,
-  once it outgrows a file), `src/core1/platform.ss` for the core's. A stack
+  `lib/schevana/core0/platform.sls` for core0's (a folder,
+  `lib/schevana/core0/platform/`, once it outgrows a file),
+  `src/core1/platform.ss` for the core's. A stack
   differs by OS, windowing system, compositor, SDL, GPU API, driver and
   monitor. Which one this is comes from their predicates and facts alone
   (`platform-mac?`, `platform-wayland?`, `platform-vulkan?`,
