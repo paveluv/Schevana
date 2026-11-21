@@ -6,7 +6,7 @@
 (library (schevana boot)
   (export core1-thread? core1-thread! world-value core1-exported
           core1-exports *schevana-root*)
-  (import (chezscheme) (schevana layer))
+  (import (chezscheme) (schevana layer) (schevana tree))
 
   ;; Whether this is core1, the world's thread: the one that said so
   ;; (core1-thread!, as schevana-main runs the world); till then, the one
@@ -31,9 +31,9 @@
   (define core1-exports '())
   (define (core1-exported) '())
 
-  ;; What the top level's main.ss says: where the tree is, the core's
-  ;; sources (none to load again), what the command line asked.
-  (define *schevana-root* (tree-root))
+  ;; What the top level's main.ss says: where the tree is ((schevana
+  ;; tree)'s word, given on), the core's sources (none to load again), what
+  ;; the command line asked.
   (defvar *schevana-core1-sources* '())
   (defvar *schevana-options* '())
 

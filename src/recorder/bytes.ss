@@ -7,7 +7,7 @@
 ;;; Core1 keeps the rest of the recorder (src/core1/gfx.ss): colors,
 ;;; shapes, text, runs and labels.
 ;;;
-;;; What's recorded goes into a recording (gpu-recording, src/core0/gpu.ss):
+;;; What's recorded goes into a recording (gpu-recording, (schevana core0 gpu)):
 ;;; a list's, or the root's, the frame's. Recorded, it's frozen with its
 ;;; runs and version and swapped into its holder by one store, so core0
 ;;; reads a whole one, never written again while a frame may read it. Each
@@ -16,7 +16,7 @@
 ;;; replaced, it's free once core0 gave frame N back.
 ;;;
 ;;; What the world writes into buffers and images goes the same way, in
-;;; the frame's writes (src/core0/gpu.ss's gpu-send-writes!), and so do the
+;;; the frame's writes ((schevana core0 gpu)'s gpu-send-writes!), and so do the
 ;;; rows an app paints, in loans of the image's own.
 
 ;; Written to between a publish and the next list: a write there raises.

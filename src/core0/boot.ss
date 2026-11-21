@@ -5,8 +5,7 @@
 ;;; core0's own, nothing else is there to name.
 
 ;; Core0's own environment, where its files loaded: "/core0" holds it
-;; (services/env.ss), for the person to evaluate in, and core0's loop calls
-;; its procedures by name, so a redefinition there takes at the next call.
+;; (services/env.ss), for the person to evaluate in.
 (define core0-environment
   (let ([e (interaction-environment)]) (lambda () e)))
 
@@ -15,7 +14,7 @@
 ;; state from core1. then gets, on core1, (ok text ...), what they
 ;; printed and their values but (void) written width wide, or (error text).
 (define (core0-eval! forms width then)
-  (core0-post! (list 'core0-eval-now! forms width then)))
+  (core0-post! (list core0-eval-now! forms width then)))
 
 (define (core0-eval-now! forms width then)
   (core0-put! *gpu-answers*

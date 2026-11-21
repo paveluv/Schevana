@@ -120,31 +120,28 @@
             (not (eq? *world-env* core0-env))
             (not (eq? core1-env core0-env))))
 
-;;; Core0's step: jobs the world posts run at its next step, in order, by
-;;; name; the events it pumps wait in the world's inbox until taken; what it
-;;; says of the window it read at the step.
+;;; Core0's step: jobs posted (each a procedure and its arguments) run at
+;;; its next step, in order; the events it pumps wait in the world's inbox
+;;; until taken; what it says of the window it read at the step.
 
-(let ([ran '()])
+(let* ([ran '()]
+       [job! (lambda (x) (set! ran (cons x ran)))]
+       [raising (list car '())])
   (fluid-let ([*core0-jobs* (box '())]
               [*core0-job-failed* #f])
-    (define-top-level-value 'boot-test-job!
-      (lambda (x) (set! ran (cons x ran))) core0-env)
-    (core0-post! '(boot-test-job! 1))
-    (core0-post! '(boot-test-job! 2))
+    (core0-post! (list job! 1))
+    (core0-post! (list job! 2))
     (let ([before ran])
       (core0-step!)
       (check "a job posted runs at core0's next step, not before, in order"
              (and (null? before) (equal? ran '(2 1)))))
-    (define-top-level-value 'boot-test-job!
-      (lambda (x) (set! ran (cons (list 'again x) ran))) core0-env)
-    (core0-post! '(boot-test-job! 3))
-    (core0-post! '(car ()))
-    (core0-post! '(boot-test-job! 4))
+    (core0-post! (list job! 3))
+    (core0-post! raising)
+    (core0-post! (list job! 4))
     (core0-step!)
-    (check "by name, so a redefinition takes; one that raises is kept, and \
-            the rest run"
-           (and (equal? (list-head ran 2) '((again 4) (again 3)))
-                (equal? (car *core0-job-failed*) '(car ()))))))
+    (check "a job that raises is kept, and the rest run"
+           (and (equal? (list-head ran 2) '(4 3))
+                (eq? (car *core0-job-failed*) raising)))))
 
 (fluid-let ([*core0-inbox* (box '())])
   (core0-put! *core0-inbox* '(((key-down #\a ())) . (#x300)))

@@ -3,8 +3,8 @@
 ;;; and the jobs that make them; the calls a paint or a compute run makes,
 ;;; the compute runs to go with the next frame, and the frame filled for
 ;;; core0. What's written into buffers and images "/recorder" keeps
-;;; (src/recorder/bytes.ss). The device's side is core0's (src/core0/gpu.ss),
-;;; and no SDL is named here (tests/sources.ss).
+;;; (src/recorder/bytes.ss). The device's side is core0's ((schevana core0
+;;; gpu)), and no SDL is named here (tests/sources.ss).
 
 ;;; ------------------------------------------------------------------ handles
 ;;; An image or a buffer core1 holds is a handle, with an integer id; the

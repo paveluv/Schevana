@@ -23,8 +23,8 @@
   (define (core0-clock-ns) (sdl-get-ticks-ns))
   (define-hook (now-ns) (sdl-get-ticks-ns))
 
-  ;; The jobs the world posted, newest first, each (name arg ...): core0's
-  ;; procedure by name, so a redefinition in "/core0" takes.
+  ;; The jobs posted, newest first, each (procedure arg ...): core0's own
+  ;; code posts them, and its step applies each.
   (define-state *core0-jobs* (box '()))
 
   ;; x onto box b's list, what came before it handed over with it.

@@ -159,7 +159,10 @@
                            the top level's, where any procedure may be \
                            replaced, is a definition like another")
     ((name . define-state) "a library's keeps the value in a global of \
-                            Chez's; the top level's is a definition")))
+                            Chez's; the top level's is a definition")
+    ((name . *schevana-root*) "main.ss finds the tree, and so its \
+                               libraries, before any of them loads; a \
+                               library asks (schevana tree)")))
 
 (define world-files
   (append library-files core0-files recorder-files (source-files)
@@ -208,7 +211,7 @@
 ;; the libraries they import (lib/schevana/). What declares is left out,
 ;; sized by what's given, each a reviewed change: the export.ss files, a
 ;; library's exports and imports (file-forms), a file's imports.
-(define src-budget 37802)
+(define src-budget 37832)
 
 ;; The tokens of a datum as read; a list's end is none.
 (define (tokens x)
@@ -346,7 +349,7 @@
                       "lib/schevana/core0/renderer.sls"
                       "lib/schevana/core0/present.sls"
                       "lib/schevana/core0/platform.sls"
-                      "src/core0/gpu.ss" "src/core0/window.ss"
+                      "lib/schevana/core0/gpu.sls" "src/core0/window.ss"
                       "src/core1/font.ss" "src/core1/platform.ss")))
         (append world-files '("world.ss"))))
 

@@ -6,31 +6,17 @@
 (library (schevana core0 window)
   (export)
   (import (chezscheme) (schevana layer) (schevana base) (schevana ffi)
-          (schevana sdl) (schevana core0 mail) (schevana core0 platform)
+          (schevana sdl) (schevana core0 mail) (schevana core0 gpu)
+          (schevana core0 trace-file) (schevana core0 platform)
           (schevana core0 present) (schevana core0 renderer)
-          (schevana core0 trace) (schevana core0 gpu)
-          (schevana core0 trace-file))
+          (schevana core0 trace))
 
   (include-sources "src/core0/window.ss")
 
-  ;; Core0's loop finds a job's procedure by its name in core0's
-  ;; environment (core0-run-job!). A library is no environment: this one
-  ;; is made for the jobs, and has nothing else of core0's.
-  (define core0-environment
-    (let ([e (copy-environment (scheme-environment) #t)])
-      (for-each (lambda (job) (define-top-level-value (car job) (cdr job) e))
-                `((core0-resize-now! . ,core0-resize-now!)
-                  (core0-minimum-now! . ,core0-minimum-now!)
-                  (core0-fullscreen-now! . ,core0-fullscreen-now!)
-                  (core0-icon-now! . ,core0-icon-now!)
-                  (core0-cursor-now! . ,core0-cursor-now!)
-                  (core0-clipboard-now! . ,core0-clipboard-now!)
-                  (core0-quit-now! . ,core0-quit-now!)
-                  (core0-trace-write! . ,core0-trace-write!)
-                  (present-refresh-say! . ,present-refresh-say!)
-                  (gpu-submit-computes! . ,gpu-submit-computes!)
-                  (gpu-reads-now! . ,gpu-reads-now!)))
-      (lambda () e)))
+  ;; A library is no environment: the top level's names for core0's and
+  ;; the recorder's (src/core0/boot.ss) are here for what still asks.
+  (define (core0-environment)
+    (errorf 'core0-environment "core0 is a library, and has no environment"))
 
   (define core0-recorder-environment
     (let ([e #f])

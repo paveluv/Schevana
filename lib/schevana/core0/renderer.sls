@@ -1,5 +1,5 @@
 ;;; (schevana core0 renderer) — the record everything that touches a device
-;;; hangs off (src/core0/gpu.ss fills it), and the one in use: below what
+;;; hangs off ((schevana core0 gpu) fills it), and the one in use: below what
 ;;; times its frames ((schevana core0 present)) and what asks which driver
 ;;; it is ((schevana core0 platform)).
 

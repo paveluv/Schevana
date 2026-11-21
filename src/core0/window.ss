@@ -100,7 +100,7 @@
 ;; job of core0's.
 (define (core0-window-resize! w h)
   (if *core0-forked*
-      (core0-post! (list 'core0-resize-now! w h))
+      (core0-post! (list core0-resize-now! w h))
       (core0-resize-now! w h)))
 (define (core0-resize-now! w h)
   (sdl-set-window-size *sdl-window* w h)
@@ -108,7 +108,7 @@
 
 ;; The least it may be dragged to, in window units: a job of core0's.
 (define (core0-window-minimum! w h)
-  (core0-post! (list 'core0-minimum-now! w h)))
+  (core0-post! (list core0-minimum-now! w h)))
 (define (core0-minimum-now! w h)
   (sdl-set-window-minimum-size *sdl-window* w h))
 
@@ -122,14 +122,14 @@
   (logtest (core0-flags) SDL_WINDOW_FULLSCREEN))
 
 (define (core0-window-fullscreen! on?)
-  (core0-post! (list 'core0-fullscreen-now! on?)))
+  (core0-post! (list core0-fullscreen-now! on?)))
 (define (core0-fullscreen-now! on?)
   (sdl-set-window-fullscreen *sdl-window* on?))
 
 ;; The window's icon, from size × size straight ARGB pixels: a job, in which
 ;; SDL copies them.
 (define (core0-window-icon! size bytes)
-  (core0-post! (list 'core0-icon-now! size bytes)))
+  (core0-post! (list core0-icon-now! size bytes)))
 (define (core0-icon-now! size bytes)
   (let ([icon (sdl-create-surface-from size size SDL_PIXELFORMAT_ARGB8888
                                        (object->reference-address bytes)
@@ -403,7 +403,7 @@
 (define (core0-set-cursor! kind)
   (when (and (eq? *core0-mode* 'sdl) (not (eq? kind *core0-cursor-asked*)))
     (set! *core0-cursor-asked* kind)
-    (core0-post! (list 'core0-cursor-now! kind))))
+    (core0-post! (list core0-cursor-now! kind))))
 
 (define (core0-cursor-now! kind)
   (when (and (eq? *core0-mode* 'sdl) (not (eq? kind *current-cursor*)))
@@ -427,7 +427,7 @@
 ;; With a window, a job of core0's.
 (define (clipboard-set! s)
   (if (eq? *core0-mode* 'sdl)
-      (core0-post! (list 'core0-clipboard-now! s))
+      (core0-post! (list core0-clipboard-now! s))
       (set! *core0-clipboard* s)))
 
 (define (core0-clipboard-now! s)
@@ -454,14 +454,14 @@
 
 ;; Compute runs and writes no frame took, sent by a job, "/recorder"'s.
 (define (core0-post-submit! runs jobs writes)
-  (core0-post! (list 'gpu-submit-computes! runs jobs writes)))
+  (core0-post! (list gpu-submit-computes! runs jobs writes)))
 
 ;; The same, and buffers read back after them (gpu-reads-now!).
 (define (core0-post-reads! runs jobs writes reads)
-  (core0-post! (list 'gpu-reads-now! runs jobs writes reads)))
+  (core0-post! (list gpu-reads-now! runs jobs writes reads)))
 
 ;; Core1 is done: core0 closes the window and ends the process.
-(define (core0-quit!) (core0-post! '(core0-quit-now!)))
+(define (core0-quit!) (core0-post! (list core0-quit-now!)))
 (defvar *core0-quit* #f)
 (define (core0-quit-now!) (set! *core0-quit* #t))
 
@@ -524,7 +524,7 @@
 
 (define (core0-run-job! job)
   (guard (c [#t (set! *core0-job-failed* (cons job c))])
-    (apply (top-level-value (car job) (core0-environment)) (cdr job))))
+    (apply (car job) (cdr job))))
 
 ;; One step of core0's: the jobs posted, in order; the frame published, if
 ;; one is; with none, on a thread of its own, a sleep of up to

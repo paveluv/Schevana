@@ -1,5 +1,5 @@
 ;;; (schevana sdl gpu) — SDL3's bindings for the GPU, and for the plain
-;;; memory handed to it. Only src/core0/gpu.ss uses these: above it no SDL
+;;; memory handed to it. Only (schevana core0 gpu) uses these: above it no SDL
 ;;; name for the GPU appears.
 
 (library (schevana sdl gpu)
@@ -134,8 +134,10 @@
     "SDL_WindowSupportsGPUPresentMode" (uptr uptr int) bool)
   (define-foreign/collect-safe sdl-set-frames-in-flight
     "SDL_SetGPUAllowedFramesInFlight" (uptr unsigned-32) bool)
-  (define-foreign/collect-safe sdl-set-swapchain-parameters
+  ;; A hook: a test answers for the swapchain (tests/units/drawing.ss).
+  (define-foreign/collect-safe sdl-swapchain-parameters-set
     "SDL_SetGPUSwapchainParameters" (uptr uptr int int) bool)
+  (define-hook sdl-set-swapchain-parameters sdl-swapchain-parameters-set)
   (define-foreign/collect-safe sdl-wait-gpu-idle "SDL_WaitForGPUIdle"
     (uptr) bool)
   (define-made gpu-copy-in

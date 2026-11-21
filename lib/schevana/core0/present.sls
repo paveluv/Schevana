@@ -136,7 +136,7 @@
   ;; or by the screen's own word again (0). => #f for a length refused
   (define (core0-refresh-ns! ns)
     (and (present-refresh-ok? ns)
-         (begin (core0-post! (list 'present-refresh-say! ns)) #t)))
+         (begin (core0-post! (list present-refresh-say! ns)) #t)))
   (define (present-refresh-say! ns)
     (when (present-refresh-ok? ns) (set! *present-refresh-said* ns)))
 
