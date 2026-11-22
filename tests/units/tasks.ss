@@ -343,6 +343,22 @@
            (tasks-reset!)
            ok)))
 
+(check "the seed's tasks were created over the last three weeks, in the \
+        order of their ids, and none was updated before it was created"
+       (begin
+         (tasks-reset!)
+         (let ([now (tasks-now)] [ts (list-sort (lambda (a b)
+                                                  (< (task-id a) (task-id b)))
+                                                *tasks*)])
+           (and (for-all (lambda (t)
+                           (<= (- now (* 21 86400)) (task-created t)
+                               (task-updated t) now))
+                         ts)
+                (let loop ([ts ts])
+                  (or (null? (cdr ts))
+                      (and (< (task-created (car ts)) (task-created (cadr ts)))
+                           (loop (cdr ts)))))))))
+
 (check "Add's menu: the choices whose id or title holds what was typed, \
         the one it names by id first, as many as there is room for, the \
         last saying how many more"

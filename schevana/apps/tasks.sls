@@ -1051,14 +1051,15 @@
                     '(0 1 2 3))))))
 
   ;; Restores the seed backlog: its tasks created over the last three
-  ;; weeks, most of the done ones first.
+  ;; weeks, in the order of their ids, most of the done ones first.
   (define (tasks-reset!)
-    (let ([now (tasks-now)] [today (ui-date->day (ui-today))] [day 86400])
+    (let* ([now (tasks-now)] [today (ui-date->day (ui-today))] [day 86400]
+           [apart (quotient (* 21 day) (+ 1 (length tasks-seed)))])
       (set! *tasks*
         (map (lambda (s)
                (apply (lambda (id status kind priority who tags due checklist
                                   title description)
-                        (let ([created (+ (- now (* 21 day)) (* id 66000))])
+                        (let ([created (+ (- now (* 21 day)) (* id apart))])
                           (make-task id title
                                      (if (symbol? description)
                                          (tasks-seed-text description)
