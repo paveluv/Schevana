@@ -2,6 +2,9 @@
 
 ;;; the profiler ((schevana services profile))
 
+;; Life, whose window it opens.
+(test-demos! 'life)
+
 (for-each close-window! (windows))
 (steps 2)
 

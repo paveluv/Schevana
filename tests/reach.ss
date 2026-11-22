@@ -80,12 +80,13 @@
 ;;; edition, its body evaluated again at the top level of an environment
 ;;; of its own, after its imports and the top level's forms as the hacker
 ;;; edition has them (src/base.ss, src/strip.ss); in the hacker edition,
-;;; as it is, its names in "/" already. Its names come to "/" under a
-;;; prefix, so that none of them is one of the world's.
+;;; as the world loads it (it loads it, if it hasn't), its names in "/".
+;;; Its names come to "/" under a prefix, so that none of them is one of
+;;; the world's.
 ;;;
-;;;   (test-library '(schevana-demo springies) 'sp:)
-;;;   (sp:pt+ (sp:make-pt 1.0 2.0) sp:pt-zero)
-;;;   (fluid-let ([sp:springies-controls-size (lambda () (values 100 100))])
+;;;   (test-library '(schevana-demo boids) 'bo:)
+;;;   (bo:boids-step (bo:boids-scatter 3 100 100) bo:boids-default-rules)
+;;;   (fluid-let ([bo:boids-scatter (lambda (n w h) (make-flvector 0))])
 ;;;     ...)
 ;;;
 ;;; Each is settable, and a set (fluid-let's stand-in) is the library's
@@ -112,7 +113,8 @@
   (let* ([form (call-with-input-file (test-library-file name) read)]
          [body (cddddr form)]          ; past its name, exports and imports
          [env (if test-hacker?
-                  world-env
+                  ;; in the world, which loads it if it hasn't
+                  (begin (load-sources! (list name)) world-env)
                   (let* ([e (copy-environment (scheme-environment) #t)]
                          [in-e (lambda (x) (eval x e))])
                     (eval `(import ,@(cdr (cadddr form))) e)

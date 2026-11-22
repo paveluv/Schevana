@@ -80,6 +80,8 @@
              `(mouse-up ,x1 ,y left))
     (steps 2)))
 
+;; The demos it drives.
+(test-demos! 'life 'sketch)
 (schevana-boot! 'headless 1280 800)
 ;; From here, a form that raises fails and the next goes on.
 (current-eval test-form-eval)

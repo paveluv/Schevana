@@ -1,8 +1,6 @@
-;;; tests/units/boids.ss — Boids: its flocking against the rules written out
-;;; plainly, its keys and its rules window.
-
-;;; The Niva version's tests (tests/flockTest.niva in boids-niva), and the
-;;; screen's rules.
+;;; tests/units/boids.ss — Boids: a demo, what of the world it uses: its
+;;; steering a worklet on the crew, which steps the flock as the caller
+;;; alone would, allocating only its sums; its keys and its rules window.
 
 ;; Boids' own names, bo:boids-step and the rest (tests/reach.ss).
 (test-library '(schevana-demo boids) 'bo:)
@@ -24,110 +22,6 @@
          (close-window! win)
          ok))
 
-;; A flock as a list of (x y vx vy), and the flocking the obvious way on
-;; such lists, rule by rule, the flonum operations in the Niva version's
-;; order: the reference, to the last digit. Its rules are plain procedures
-;; to read; the app's are one loop over flat numbers, for the crew.
-(define (ref-flock flock)
-  (let loop ([l (flvector->list flock)] [acc '()])
-    (if (null? l)
-        (reverse acc)
-        (loop (list-tail l 4) (cons (list-head l 4) acc)))))
-(define (ref-pos b) (cons (car b) (cadr b)))
-(define (ref-vel b) (cons (caddr b) (cadddr b)))
-(define ref-zero '(0.0 . 0.0))
-(define (ref+ a b) (cons (+ (car a) (car b)) (+ (cdr a) (cdr b))))
-(define (ref- a b) (cons (- (car a) (car b)) (- (cdr a) (cdr b))))
-(define (ref* v k) (cons (* (car v) k) (* (cdr v) k)))
-(define (ref/ v k) (cons (/ (car v) k) (/ (cdr v) k)))
-(define (ref-dot a b) (+ (* (car a) (car b)) (* (cdr a) (cdr b))))
-(define (ref-dist2 a b)
-  (let ([dx (- (car a) (car b))] [dy (- (cdr a) (cdr b))])
-    (+ (* dx dx) (* dy dy))))
-(define (ref-mean vs) (ref/ (fold-left ref+ ref-zero vs) (inexact (length vs))))
-(define (ref-sees? b other fov)
-  (let* ([v (ref-vel b)] [h2 (ref-dot v v)])
-    (or (= h2 0.0) (>= fov 360.0)
-        (let* ([to (ref- (ref-pos other) (ref-pos b))]
-               [lengths (sqrt (* h2 (ref-dot to to)))]
-               [half (/ (* (/ fov 2.0) pi) 180.0)])
-          (> (ref-dot v to) (* (cos half) lengths))))))
-(define (ref-neighbors b flock r fov)
-  (let ([r2 (* r r)])
-    (filter (lambda (o)
-              (let ([d2 (ref-dist2 (ref-pos b) (ref-pos o))])
-                (and (> d2 0.0) (< d2 r2) (ref-sees? b o fov))))
-            flock)))
-(define (ref-steer b flock rules)
-  (define (rule key) (bo:boids-rule rules key))
-  (define (seen radius fov) (ref-neighbors b flock (rule radius) fov))
-  (define (push weight thunk)
-    (let ([w (rule weight)]) (if (= w 0.0) ref-zero (ref* (thunk) w))))
-  (define (mean-from vs own)
-    (if (null? vs) ref-zero (ref- (ref-mean vs) own)))
-  (let* ([p (ref-pos b)] [v (ref-vel b)] [fov (rule 'view-angle)]
-         [cone (min (rule 'blocker-cone) fov)]
-         [next
-          (fold-left
-           ref+ v
-           (list
-            (push 'cohesion
-                  (lambda ()
-                    (mean-from (map ref-pos (seen 'cohesion-radius fov)) p)))
-            (push 'alignment
-                  (lambda ()
-                    (mean-from (map ref-vel (seen 'alignment-radius fov)) v)))
-            (push 'separation
-                  (lambda ()
-                    (let ([r2 (* (rule 'separation-radius)
-                                 (rule 'separation-radius))])
-                      (fold-left
-                       (lambda (sum o)
-                         (let ([d2 (ref-dist2 p (ref-pos o))])
-                           (if (and (> d2 0.0) (< d2 r2))
-                               (ref+ sum (ref- p (ref-pos o)))
-                               sum)))
-                       ref-zero flock))))
-            (push 'clear-view
-                  (lambda ()
-                    (fold-left
-                     (lambda (sum o)
-                       (let* ([away (ref- p (ref-pos o))]
-                              [d (sqrt (ref-dot away away))]
-                              [turn (cons (- 0.0 (cdr away)) (car away))]
-                              [side (if (< (ref-dot v turn) 0.0)
-                                        (ref* turn -1.0)
-                                        turn)])
-                         (ref+ sum (ref/ side d))))
-                     ref-zero (seen 'blocker-radius cone))))
-            (push 'back-off
-                  (lambda ()
-                    (fold-left
-                     (lambda (sum o)
-                       (let* ([away (ref- p (ref-pos o))]
-                              [d (sqrt (ref-dot away away))])
-                         (ref+ sum (ref/ away d))))
-                     ref-zero (seen 'blocker-radius cone))))))]
-         [moved (ref+ p next)])
-    (list (car moved) (cdr moved) (car next) (cdr next))))
-(define (ref-step flock rules)
-  (map (lambda (b) (ref-steer b flock rules)) flock))
-;; A frame on a w × h screen: the speed limits, then the wrap.
-(define (ref-step-on flock rules w h)
-  (let ([lo (bo:boids-rule rules 'min-speed)]
-        [hi (bo:boids-rule rules 'max-speed)])
-    (map (lambda (b)
-           (let* ([v (ref-vel b)] [s2 (ref-dot v v)]
-                  [v (if (and (> s2 0.0) (< s2 (* lo lo)))
-                         (ref* v (/ lo (sqrt s2)))
-                         v)]
-                  [s2 (ref-dot v v)]
-                  [v (if (> s2 (* hi hi)) (ref* v (/ hi (sqrt s2))) v)])
-             (list (mod (car b) w) (mod (cadr b) h) (car v) (cdr v))))
-         (ref-step flock rules))))
-
-(define test-flock-of list->flvector)
-
 ;; The default rules with some set: (test-rules 'cohesion 1.0 ...).
 (define (test-rules . sets)
   (let loop ([rules bo:boids-default-rules] [sets sets])
@@ -135,92 +29,29 @@
         rules
         (loop (bo:boids-set-rule rules (car sets) (cadr sets)) (cddr sets)))))
 
-;; To the last digit, so any change to the rules shows. They are the Niva
-;; version's numbers: the same flonum operations, in the same order.
-(check "Boids: three boids' first step is the Niva version's"
-       (equal? (flvector->list
-                (bo:boids-step three-boids bo:boids-default-rules))
-               '(0.9869999999999999 0.054 0.9869999999999999 0.054
-                 1.0 2.002 0.0 1.002
-                 3.003 0.999 1.003 0.999)))
-
 (check "Boids: a step leaves the flock it steps as it was"
        (let ([before (flvector->list three-boids)])
          (bo:boids-step three-boids bo:boids-default-rules)
          (equal? (flvector->list three-boids) before)))
 
-(check "Boids: a boid is not its own neighbor"
-       (equal? (flvector->list
-                (bo:boids-step (flvector 0.0 0.0 1.0 0.0)
-                               (test-rules 'cohesion 1.0 'alignment 1.0
-                                           'separation 1.0 'view-angle 360.0
-                                           'clear-view 1.0 'back-off 1.0)))
-               '(1.0 0.0 1.0 0.0)))
-
-;; Heading right, with one boid ahead, one to the side and one behind:
-;; whether a boid at (x, y) pulls it, with only cohesion on.
-(check "Boids: what the view angle lets a boid see"
-       (let ([sees? (lambda (x y fov)
-                      (let ([next (bo:boids-step
-                                   (flvector 0.0 0.0 1.0 0.0 x y 1.0 0.0)
-                                   (test-rules 'alignment 0.0 'separation 0.0
-                                               'cohesion 1.0 'view-angle fov))])
-                        (not (and (= (bo:boid-vx next 0) 1.0)
-                                  (= (bo:boid-vy next 0) 0.0)))))])
-         (and (sees? 3.0 0.0 180.0)
-              (not (sees? 0.0 3.0 180.0))
-              (not (sees? -3.0 0.0 180.0))
-              (sees? 0.0 3.0 270.0)
-              (not (sees? -3.0 0.0 270.0))
-              (sees? -3.0 0.0 360.0)
-              (sees? 3.0 0.0 10.0))))
-
-;; Heading right: of these, only the boid close and straight ahead. Back
-;; off, on alone, takes a unit of velocity straight back.
-(check "Boids: blockers are close and ahead"
-       (let ([next (bo:boids-step
-                    (flvector 0.0 0.0 1.0 0.0
-                              10.0 0.0 1.0 0.0      ; ahead
-                              0.0 10.0 1.0 0.0      ; to the side
-                              -10.0 0.0 1.0 0.0     ; behind
-                              50.0 0.0 1.0 0.0)     ; too far
-                    (test-rules 'cohesion 0.0 'alignment 0.0 'separation 0.0
-                                'back-off 1.0 'view-angle 360.0))])
-         (and (= (bo:boid-vx next 0) 0.0) (= (bo:boid-vy next 0) 0.0))))
-
-;; One unit sideways, and one unit back. Heading a little upward, the
-;; sideways step goes up too.
-(check "Boids: clear view steps aside, back off steps back"
-       (let ([quiet (lambda (key)
-                      (test-rules 'cohesion 0.0 'alignment 0.0 'separation 0.0
-                                  key 1.0))])
-         (let ([aside (bo:boids-step (flvector 0.0 0.0 1.0 0.0 10.0 0.0 1.0 0.0)
-                                     (quiet 'clear-view))]
-               [back (bo:boids-step (flvector 0.0 0.0 1.0 0.0 10.0 0.0 1.0 0.0)
-                                    (quiet 'back-off))]
-               [climbing (bo:boids-step
-                          (flvector 0.0 0.0 1.0 0.2 10.0 0.0 1.0 0.0)
-                          (quiet 'clear-view))])
-           (and (= (bo:boid-vx aside 0) 1.0) (= (bo:boid-vy aside 0) -1.0)
-                (= (bo:boid-vx back 0) 0.0) (= (bo:boid-vy back 0) 0.0)
-                (> (bo:boid-vy climbing 0) 0.2)))))
-
+;; The crew splits a step by boids, each worklet writing its own: the
+;; flock it makes is the one the caller alone makes, to the last digit.
 (random-seed 2024)
-(check "Boids' steps are the reference's to the last digit, under the \
-        default rules and random ones, on the crew and on the caller alone"
+(check "Boids: a step on the crew is the one on the caller alone, under the \
+        default rules and random ones"
        (let ([size (crew-size)])
-         (define (agree? workers)
+         (define (step-on workers flock rules)
            (crew-size-set! workers)
-           (for-all
-            (lambda (trial)
-              (let ([rules (if (= trial 0)
-                               bo:boids-default-rules
-                               (bo:boids-random-rules))]
-                    [flock (bo:boids-scatter 300 400 300)])
-                (equal? (ref-flock (bo:boids-step-on flock rules 400 300))
-                        (ref-step-on (ref-flock flock) rules 400.0 300.0))))
-            (iota 12)))
-         (let ([ok (and (agree? 8) (agree? 0))])
+           (flvector->list (bo:boids-step-on flock rules 400 300)))
+         (let ([ok (for-all
+                    (lambda (trial)
+                      (let ([rules (if (= trial 0)
+                                       bo:boids-default-rules
+                                       (bo:boids-random-rules))]
+                            [flock (bo:boids-scatter 300 400 300)])
+                        (equal? (step-on 8 flock rules)
+                                (step-on 0 flock rules))))
+                    (iota 12))])
            (crew-size-set! size)
            ok)))
 

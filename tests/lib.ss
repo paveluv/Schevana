@@ -12,6 +12,12 @@
 ;; The world, loaded but not booted, and the tests' reach.
 (load (string-append *schevana-root* "/tests/boot.ss"))
 
+;; The demos named, loaded into the world now, as the desktop loads the
+;; folder it is given (./schevana-desktop schevana-demo): the tests' world
+;; has none but those a test uses. (test-demos! 'life 'sketch)
+(define (test-demos! . names)
+  (load-sources! (map (lambda (name) (list 'schevana-demo name)) names)))
+
 ;; A library evaluated again, and what imports it, as a reload does when
 ;; its file changed, in either edition: => the libraries evaluated again.
 (define (test-reload-library! name)

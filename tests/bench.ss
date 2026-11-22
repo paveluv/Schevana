@@ -54,6 +54,8 @@
 (define fake-ms 1000000)
 (set! now-ms (lambda () fake-ms))
 (random-seed 4242)
+;; Life, whose windows it times.
+(test-demos! 'life)
 (schevana-boot! 'headless 1280 800)
 
 (define (ms-of t) (+ (* 1000.0 (time-second t)) (/ (time-nanosecond t) 1e6)))

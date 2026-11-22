@@ -150,19 +150,22 @@ it, the test framework finds itself:
   definition itself is compiled as the library has it. A test that
   stands in for another adds it to the list. In the hacker edition
   every name is at the top level already, to set as any other.
+- A demo, which the suites' world doesn't load: `(test-demos! 'life)`
+  loads it into the world, as the desktop given the demos' folder does,
+  for a test that opens its window.
 - A library the world doesn't boot, a demo's own names: `(test-library
-  '(schevana-demo springies) 'sp:)` (`tests/reach.ss`) strips the
+  '(schevana-demo boids) 'bo:)` (`tests/reach.ss`) strips the
   library, as the hacker edition
   strips every library, its body evaluated again at the top level of an
   environment of its own (in the hacker edition, as it is), and gives
-  the test each name it defines under the prefix: `sp:pt+`,
-  `sp:make-particle`, `sp:springies`. The prefix keeps them apart from the
+  the test each name it defines under the prefix: `bo:boids-step`,
+  `bo:boids-scatter`, `bo:boids`. The prefix keeps them apart from the
   world's.
 - A stand-in for one of its procedures: a `fluid-let` of the prefixed
   name. Stripped, the library calls its own procedures through the top
   level, so it calls the stand-in.
 - Its app: the stripped library registers it again, so the launcher, and
-  the prefixed launcher (`sp:springies`), open the one the test reaches.
+  the prefixed launcher (`bo:boids`), open the one the test reaches.
 
 ## What a test may touch
 

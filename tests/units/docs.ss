@@ -94,6 +94,10 @@
 
 (define docs-page (getenv "SCHEVANA_DOCS_PAGE"))
 
+;; A page's world is the desktop's with the demos' folder given it
+;; (./schevana-desktop schevana-demo), as its examples read.
+(when docs-page (auto-load! (string-append *schevana-root* "/schevana-demo")))
+
 (if docs-page
     (for-each (lambda (b)
                 (check (format "~a, line ~a: its example runs as it reads"

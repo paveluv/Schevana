@@ -2,6 +2,9 @@
 ;;; launcher by F1, the desktop's right-click menu, F11, the app's icon,
 ;;; a taskbar button's window menu, and the desktop entry.
 
+;; Life, whose window it opens.
+(test-demos! 'life)
+
 (check "F1 opens the launcher; typing narrows it, and Return starts the \
         app it leaves"
        (begin

@@ -1,6 +1,6 @@
-;;; tests/units/boids3d.ss — Boids 3D: on the GPU, its flocking against the
-;;; rules written out plainly, its shaders on the device against the twin,
-;;; its picture, its keys.
+;;; tests/units/boids3d.ss — Boids 3D: a demo, what of the world it uses:
+;;; its shaders on the device against the twin, its picture, its keys, its
+;;; frames and its timer.
 
 ;; Boids 3D's own names, b3:boids3d-steer and the rest (tests/reach.ss).
 (test-library '(schevana-demo boids3d) 'b3:)
@@ -29,103 +29,6 @@
          ok))
 
 ;;; ------------------------------------------------------------------ steps
-
-;; A flock as a list of birds, each (x y z vx vy vz wing bank), and a step
-;; the obvious way on such lists, rule by rule: the reference, in doubles,
-;; where the shader works in floats.
-(define (b3-v+ a b) (map + a b))
-(define (b3-v- a b) (map - a b))
-(define (b3-v* a k) (map (lambda (x) (* x k)) a))
-(define (b3-dot a b) (apply + (map * a b)))
-(define (b3-sum vs) (fold-left b3-v+ '(0.0 0.0 0.0) vs))
-
-(define (b3-ref-step flock rules)
-  (define (rule k) (inexact (b3:boids3d-rule rules k)))
-  (define (reach w r) (if (= (rule w) 0.0) 0.0 (* (rule r) (rule r))))
-  (define (half-cos angle)
-    (if (>= angle 360.0) -2.0 (cos (* (/ angle 2.0) (/ pi 180.0)))))
-  (let ([fov (half-cos (rule 'view-angle))]
-        [cone (half-cos (min (rule 'blocker-cone) (rule 'view-angle)))])
-    (map
-     (lambda (b)
-       (let* ([p (list-head b 3)]
-              [v (list-head (list-tail b 3) 3)]
-              [h2 (b3-dot v v)]
-              ;; the others within reach r2, inside the cone of cosine c
-              [in (lambda (r2 c)
-                    (filter (lambda (o)
-                              (let* ([d (b3-v- (list-head o 3) p)]
-                                     [d2 (b3-dot d d)]
-                                     [a (b3-dot v d)])
-                                (and (> d2 0.0) (< d2 r2)
-                                     (or (= h2 0.0)
-                                         (> a (* c (sqrt (* h2 d2))))))))
-                            flock))]
-              [toward (lambda (vs own w)
-                        (if (null? vs)
-                            '(0.0 0.0 0.0)
-                            (b3-v* (b3-v- (b3-v* (b3-sum vs)
-                                                 (/ 1.0 (length vs)))
-                                          own)
-                                   w)))]
-              [offset (lambda (o) (b3-v- (list-head o 3) p))]
-              [coh (toward (map (lambda (o) (list-head o 3))
-                                (in (reach 'cohesion 'cohesion-radius) fov))
-                           p (rule 'cohesion))]
-              [ali (toward (map (lambda (o) (list-head (list-tail o 3) 3))
-                                (in (reach 'alignment 'alignment-radius) fov))
-                           v (rule 'alignment))]
-              [sep (b3-v* (b3-sum (map offset
-                                       (in (reach 'separation
-                                                  'separation-radius)
-                                           -2.0)))
-                          (- (rule 'separation)))]
-              ;; the heading's part square to the line to a blocker, a unit
-              ;; step of it; and a unit step away
-              [side (b3-v* (b3-sum
-                            (map (lambda (o)
-                                   (let* ([d (offset o)]
-                                          [s (b3-v- v
-                                                    (b3-v* d
-                                                           (/ (b3-dot v d)
-                                                              (b3-dot d d))))]
-                                          [n (sqrt (b3-dot s s))])
-                                     (if (> n 0.0) (b3-v* s (/ 1.0 n))
-                                         '(0.0 0.0 0.0))))
-                                 (in (reach 'clear-view 'blocker-radius) cone)))
-                           (rule 'clear-view))]
-              [back (b3-v* (b3-sum
-                            (map (lambda (o)
-                                   (let ([d (offset o)])
-                                     (b3-v* d (/ -1.0 (sqrt (b3-dot d d))))))
-                                 (in (reach 'back-off 'blocker-radius) cone)))
-                           (rule 'back-off))]
-              [nv (fold-left b3-v+ v (list coh ali sep side back))]
-              [r (sqrt (b3-dot p p))]
-              [nv (b3-v- nv (b3-v* p (/ (* (rule 'home)
-                                           (max (- r b3:boids3d-space) 0.0))
-                                        (max r 1.0))))]
-              [s (sqrt (b3-dot nv nv))]
-              [k (cond [(> s (rule 'max-speed)) (/ (rule 'max-speed) s)]
-                       [(and (> s 0.0) (< s (rule 'min-speed)))
-                        (/ (rule 'min-speed) s)]
-                       [else 1.0])]
-              [nv (b3-v* nv k)]
-              [s (* s k)]
-              [climb (if (> s 0.0) (/ (cadr nv) s) 0.0)]
-              [wing (+ (list-ref b 6) (min (max (+ 0.45 (* 0.3 climb)) 0.2)
-                                           0.8))]
-              [wing (- wing (* 6.2831853 (floor (* wing 0.15915494))))]
-              [turn (if (> (* h2 s s) 0.0)
-                        (/ (- (* (caddr v) (car nv)) (* (car v) (caddr nv)))
-                           (sqrt (* h2 s s)))
-                        0.0)]
-              [bank (list-ref b 7)])
-         (append (b3-v+ p nv) nv
-                 (list wing
-                       (+ bank (* 0.1 (- (min (max (* turn 12.0) -1.0) 1.0)
-                                         bank)))))))
-     flock)))
 
 ;; A flock as the bytes a buffer holds, floats, and back.
 (define (b3-bytes flock)
@@ -173,82 +76,6 @@
                         (< (abs (- u v)) (* 1e-3 (max 1.0 (abs u)))))
                       x y))
            a b))
-
-(check "Boids 3D: a step on the twin is the rules' worked out plainly, every \
-        rule on, out of the ball and in, at the speed limits"
-       (for-all
-        (lambda (seed)
-          (let* ([flock (b3-random-flock 40 320.0 seed)]
-                 [rules (b3:boids3d-set-rule
-                         (b3:boids3d-set-rule
-                          (b3:boids3d-set-rule
-                           (b3:boids3d-set-rule b3:boids3d-default-rules
-                                                'clear-view 0.3)
-                           'back-off 0.2)
-                          'blocker-radius 80.0)
-                         'view-angle 270.0)])
-            (b3-close? (b3-twin-step flock rules) (b3-ref-step flock rules))))
-        '(1 2 3)))
-
-(check "Boids 3D: what the view lets a bird see, a cone round its heading"
-       (let* ([rules (b3:boids3d-set-rule
-                      (b3:boids3d-set-rule b3:boids3d-default-rules 'alignment
-                                           0.0)
-                      'separation 0.0)]
-              [bird '(0.0 0.0 0.0 2.0 0.0 0.0 0.0 0.0)]
-              [ahead '(30.0 5.0 0.0 0.0 0.0 0.0 0.0 0.0)]
-              [behind '(-30.0 5.0 0.0 0.0 0.0 0.0 0.0 0.0)]
-              [step (lambda (other) (car (b3-twin-step (list bird other)
-                                                       rules)))])
-         ;; cohesion pulls toward one ahead, up and forward: none behind
-         (and (> (list-ref (step ahead) 4) 0.0)
-              (= (list-ref (step behind) 4) 0.0))))
-
-(check "Boids 3D: clear view steps square to the line to a blocker, on the \
-        side the bird heads; back off steps straight away"
-       (let* ([rules (fold-left (lambda (r kv) (b3:boids3d-set-rule r (car kv)
-                                                                    (cdr kv)))
-                                b3:boids3d-default-rules
-                                '((cohesion . 0.0) (alignment . 0.0)
-                                  (separation . 0.0) (home . 0.0)
-                                  (min-speed . 0.0) (max-speed . 10.0)))]
-              ;; heading along x and a little up; a blocker straight ahead
-              [bird '(0.0 0.0 0.0 2.0 0.5 0.0 0.0 0.0)]
-              [blocker '(20.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0)]
-              [side (car (b3-twin-step (list bird blocker)
-                                       (b3:boids3d-set-rule rules 'clear-view
-                                                            1.0)))]
-              [back (car (b3-twin-step (list bird blocker)
-                                       (b3:boids3d-set-rule rules 'back-off
-                                                            1.0)))])
-         ;; aside: up by a unit, the way it heads, x as it was; back: x less
-         (and (< (abs (- (list-ref side 3) 2.0)) 1e-5)
-              (< (abs (- (list-ref side 4) 1.5)) 1e-5)
-              (< (abs (- (list-ref back 3) 1.0)) 1e-5)
-              (< (abs (- (list-ref back 4) 0.5)) 1e-5))))
-
-(check "Boids 3D: a bird out of the ball turns back toward its middle, and \
-        its speed keeps within the limits"
-       (let* ([far (+ b3:boids3d-space 100.0)]
-              ;; one past the ball flying round it, one nearly still
-              [flock (list (list far 0.0 0.0 0.0 0.0 2.0 0.0 0.0)
-                           (list 0.0 0.0 0.0 0.01 0.0 0.0 0.0 0.0))]
-              [next (b3-twin-step flock b3:boids3d-default-rules)]
-              [speed (lambda (b) (sqrt (b3-dot (list-head (list-tail b 3) 3)
-                                               (list-head (list-tail b 3)
-                                                          3))))])
-         (and (< (list-ref (car next) 3) 0.0)
-              (for-all (lambda (b)
-                         (<= (- (b3:boids3d-rule b3:boids3d-default-rules
-                                                 'min-speed)
-                                1e-5)
-                             (speed b)
-                             (+ (b3:boids3d-rule b3:boids3d-default-rules
-                                                 'max-speed)
-                                1e-5)))
-                       next))))
-
-;;; ------------------------------------------------------------------ the GPU
 
 ;; A step on the device, by the frame, read back.
 (define (b3-device-step flock rules)

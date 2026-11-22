@@ -131,6 +131,8 @@
 ;; says. Checks that need time to pass go back to the machine's.
 (test-clock-hold! 1000000)
 (random-seed 4242)
+;; Life, whose windows the scenes are of.
+(test-demos! 'life)
 (schevana-boot! 'headless 1280 800)
 ;; From here, a form that raises fails and the next goes on, and a form of
 ;; a section this part doesn't run is left.

@@ -3,6 +3,10 @@
 ;;; loads a step that is quiet, or after a second of steps that weren't;
 ;;; one asked for loads at once, and only once.
 
+;; The desktop given the demos' folder, as ./schevana-desktop
+;; schevana-demo has it: its apps wait as the desktop's do.
+(auto-load! (string-append *schevana-root* "/schevana-demo"))
+
 (check "the desktop's apps wait, libraries and files; the rest loads first"
        (and (desktop-later? '(schevana apps tasks))
             (desktop-later? '(schevana-demo boids))
