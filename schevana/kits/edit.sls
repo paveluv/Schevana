@@ -36,8 +36,7 @@
     edit-layout-total edit-row* edit-row edit-row-last edit-row-at edit-caret-x
     edit-index-at edit-vertical edit-key edit-wrap)
   (import (chezscheme)
-          (only (schevana base) clamp define-hook library-layer)
-          (only (schevana core) after))
+          (only (schevana base) clamp library-layer))
 
   (library-layer kits)
 
