@@ -561,7 +561,7 @@
          (inject! '(mouse-move 900 600))
          (steps 2)
          (let* ([lh (genera-line)] [top (- (screen-h) (* 2 lh))]
-                [areas (with-place 'bar taskbar-areas)]
+                [areas (placed-taskbar-areas)]
                 [cw (font-char-width 'mono)]
                 [row (lambda () (map (lambda (x) (canvas-pixel x (+ top 8)))
                                      (iota 300)))]
@@ -1157,6 +1157,17 @@
           (reset-style!)
           (set-style! 'mac))))
 
+(let ([ps (adwaita-test-pixels 120 40
+            (lambda ()
+              (ui-draw-panel 10 5 100 30 '(toast))
+              (ui-draw-panel 0 0 8 8 '(tooltip)))
+            '((60 . 20) (4 . 4)))])
+  ;; the tooltip over the light window's #fafafb
+  (check (format "Adwaita's popups: a toast is libadwaita's #505053 pill, a \
+                  tooltip black at 80 % ~s" ps)
+         (and (adwaita-test-near? (car ps) #x505053)
+              (adwaita-test-near? (cadr ps) #x323237))))
+
 (check "GNOME's desktop is GNOME Shell's, around Adwaita's windows: the top \
         bar 2.2 em of GNOME's text, its 11 pt our 15, so 32; the Activities \
         button and the dash's Show Apps open the apps"
@@ -1166,6 +1177,6 @@
           (steps 1)
           (and (= (topbar-height)
                   (max 32 (round (* 2.2 44/45 (theme 'ui-font-size)))))
-               (eq? (car (car (topbar-areas))) 'launcher)
-               (eq? (car (car (taskbar-areas))) 'launcher)))
+               (eq? (car (car (placed-topbar-areas))) 'launcher)
+               (eq? (car (car (placed-taskbar-areas))) 'launcher)))
         (lambda () (set-style! 'mac))))

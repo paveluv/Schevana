@@ -10,7 +10,7 @@
           (only (schevana base) define-state library-layer)
           (only (schevana core) *schevana-options* *schevana-root* find-window
                 load-user-folders! load-user-init! move-window! schevana-boot!
-                schevana-end! schevana-run! screen-w)
+                schevana-end! schevana-run! screen-w world-load-now!)
           (only (schevana kits app) app-launch!)
           (only (schevana services grant) grant-file-load!)
           (only (schevana services pacer-lab) pacer-lab-log-load!)
@@ -31,9 +31,9 @@
 
   (define (desktop-start!)
     (define (option key) (cdr (assq key *schevana-options*)))
-    ;; ~/.schevana.d's kits, desktop, styles, palettes, wallpapers and apps,
-    ;; before the saved theme is loaded: it may name a style or palette of
-    ;; the user's.
+    ;; ~/.schevana.d's kits, services, styles, palettes, wallpapers, desktop
+    ;; and apps, before the saved theme is loaded: it may name a style or
+    ;; palette of the user's.
     (load-user-folders!)
     ;; What you allowed apps in sandboxes ((schevana services grant)).
     (grant-file-load!)
@@ -63,7 +63,10 @@
     ;; The pacer lab goes on if it was on ((schevana services pacer-lab)).
     (pacer-lab-log-load!)
     ;; The first apps, by the registry: their launchers' names come later
-    ;; than this file, with the apps.
+    ;; than this file, with the apps, which load after the screen shows but
+    ;; for these two, loaded first.
+    (world-load-now! "apps/clock.ss")
+    (world-load-now! '(schevana apps repl))
     (let ([w (screen-w)])
       (app-launch! 'clock)
       (move-window! (find-window 'clock) (- w 270) 60)

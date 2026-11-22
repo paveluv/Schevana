@@ -4,12 +4,12 @@
 
 (library (schevana desktop toasts)
   (export
-    toast-boxes toast-boxes* draw-toasts draw-toasts* toasts-box )
+    toast-boxes toast-boxes* toasts-draw draw-toasts draw-toasts* toasts-box)
   (import (chezscheme)
           (only (schevana base) at-load define-hook library-layer)
           (only (schevana core) *toasts* define-part define-surface
                 desktop-rect draw-text fill-box font-line-height screen-h
-                screen-w text-width with-place)
+                screen-w text-width with-place world-value)
           (only (schevana kits text) text-fit)
           (only (schevana kits ui) ui-draw-panel))
 
@@ -31,22 +31,27 @@
                                     (vector-ref t 2))
                             acc))))))))
 
-  (define-part (draw-toasts)
+  ;; The toasts, drawn in their place by the style's draw-toasts, called by
+  ;; name, which is handed their boxes.
+  (define (toasts-draw)
     (with-place 'toast
-      (lambda ()
-        (let ([lh (font-line-height 'ui)])
-          (for-each (lambda (b)
-                      (let ([x (vector-ref b 0)] [y (vector-ref b 1)]
-                            [tw (vector-ref b 2)] [h (vector-ref b 3)])
-                        (ui-draw-panel x y tw h '(toast))
-                        (fill-box (+ x 8) (+ y 9) 4 (- h 18) (vector-ref b 5) 2)
-                        (draw-text (+ x 22) (+ y (/ (- h lh) 2))
-                                   (vector-ref b 4) 'text 'ui)))
-                    (toast-boxes))))))
+      (lambda () ((world-value 'draw-toasts) (toast-boxes)))))
+
+  ;; The toasts in their boxes (toast-boxes).
+  (define-part (draw-toasts boxes)
+    (let ([lh (font-line-height 'ui)])
+      (for-each (lambda (b)
+                  (let ([x (vector-ref b 0)] [y (vector-ref b 1)]
+                        [tw (vector-ref b 2)] [h (vector-ref b 3)])
+                    (ui-draw-panel x y tw h '(toast))
+                    (fill-box (+ x 8) (+ y 9) 4 (- h 18) (vector-ref b 5) 2)
+                    (draw-text (+ x 22) (+ y (/ (- h lh) 2))
+                               (vector-ref b 4) 'text 'ui)))
+                boxes)))
 
   ;; The whole screen while any shows: their frames are whole.
   (define (toasts-box)
     (if (pair? *toasts*) (values 0 0 (screen-w) (screen-h)) (values 0 0 0 0)))
 
   (at-load
-   (define-surface toasts 40 'draw 'draw-toasts 'box 'toasts-box)))
+   (define-surface toasts 40 'draw 'toasts-draw 'box 'toasts-box)))

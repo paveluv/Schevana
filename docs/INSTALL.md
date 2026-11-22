@@ -93,7 +93,7 @@ Chez compiling each library into the launchers' cache as it's imported.
 | Launcher | What it runs |
 | --- | --- |
 | `./schevana-game-demo` | Fireflies, a game, the screen its own |
-| `./schevana-window-demo.sh` | a checklist made of the widget kit, an app of the host's desktop: its title bar and look the host's (Adwaita on GNOME) |
+| `./schevana-window-demo.sh` | a checklist made of the widget kit, an app of the host's desktop: its look the host's (Adwaita on GNOME), or any of Schevana's with `--style NAME` |
 | `./schevana-rings-demo` | drawing alone, below the windows: a shader and a box that follows the mouse |
 
 A demo builds into one file that runs with no tree:

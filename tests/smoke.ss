@@ -2688,8 +2688,8 @@
                     (~a windows), the one put back the frame after" n)
            (and (= n 1) (= calls 1))))
   (let ([orig draw-taskbar] [calls 0])
-    (set! draw-taskbar (lambda ()
-                         (orig)
+    (set! draw-taskbar (lambda args
+                         (apply orig args)
                          (set! calls (+ calls 1))
                          (draw-text 700 (- (screen-h) 28) (number->string calls)
                                     'panel-text 'ui)))

@@ -644,22 +644,25 @@
   ;; button's): maximize, shade, minimize, close; any other nothing. A
   ;; window's 'on-action, (lambda (win action) ...) true when it acted, may
   ;; do it in its place (a host app's: the OS window's), and the window
-  ;; menu ('menu) too.
+  ;; menu ('menu) and a drag of its title ('move) too.
   (define (window-action! win action)
-    (let ([own (window-ref win 'on-action #f)])
-      (unless (and own (own win action))
-        (case action
-          [(maximize) (toggle-maximize! win)]
-          [(shade) (toggle-shade! win)]
-          [(minimize) (minimize-window! win)]
-          [(close) (close-window! win)]
-          [(depth) (depth-window! win)]))))
+    (unless (window-own-action? win action)
+      (case action
+        [(maximize) (toggle-maximize! win)]
+        [(shade) (toggle-shade! win)]
+        [(minimize) (minimize-window! win)]
+        [(close) (close-window! win)]
+        [(depth) (depth-window! win)])))
 
   ;; The window's menu at (x, y): its 'on-action's, or the style's.
   (define (window-menu! win x y)
+    (unless (window-own-action? win 'menu)
+      ((theme-part 'open-window-menu) win x y)))
+
+  ;; Whether win's 'on-action did action itself.
+  (define (window-own-action? win action)
     (let ([own (window-ref win 'on-action #f)])
-      (unless (and own (own win 'menu))
-        ((theme-part 'open-window-menu) win x y))))
+      (and own (own win action))))
 
   ;; A shaded window shows only its frame's top and bottom (the insets its
   ;; frame gives while shaded); its content is not drawn and its app hears
@@ -920,7 +923,7 @@
            [(eq? button 'right) (window-menu! win x y)]
            [(and (eq? button 'left) (>= clicks 2))
             (window-action! win (window-setting win 'title-double-click))]
-           [(eq? button 'left)
+           [(and (eq? button 'left) (not (window-own-action? win 'move)))
             (set! *drag* (make-drag 'move win button x y
                                     (window-x win) (window-y win) 0 0))
             (core0-set-cursor! 'move)])]

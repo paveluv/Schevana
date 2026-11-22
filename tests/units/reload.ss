@@ -20,13 +20,15 @@
 ;; Reloading as a process (the launcher's "Reload sources", a REPL) holds
 ;; the world still until it ends, but stays a process. These reload a copy
 ;; of the tree with a file of its own last in apps/, apps/zz-last.ss, which
-;; holds form.
+;; holds form. The copy holds what the world loads as files, src/ (the
+;; basics) and apps/ (the apps in sandboxes); its libraries are found by
+;; their names.
 (define (tree-copy-with name form)
   (let ([dir (string-append out-dir "/" name)])
     (system (format "rm -rf '~a' && mkdir -p '~a' && cp -r~{ '~a'~} '~a'"
                     dir dir
                     (map (lambda (f) (string-append *schevana-root* "/" f))
-                         (cons "src" source-folders))
+                         '("src" "apps"))
                     dir))
     ;; the last file to load into the world: an app in a sandbox would run
     ;; the form there

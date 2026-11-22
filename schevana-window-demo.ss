@@ -13,17 +13,13 @@
 ;;;   CHEZSCHEMELIBDIRS=. scheme-script schevana-window-demo.ss
 ;;;   ... --headless     a frame, read back and told
 ;;;   ... --fork         the screen on a thread of its own
+;;;   ... --style NAME   one of Schevana's styles in place of the host's look
+;;;                      (genera, cons, open-look, ...), host-main's option
 
 (import (chezscheme)
         (schevana core)
         (schevana kits ui)
-        (schevana kits host)
-        ;; the hosts' looks, each registered as its library runs
-        (only (schevana styles adwaita))
-        (only (schevana palettes adwaita))
-        (only (schevana palettes adwaita-dark))
-        (only (schevana styles mac))
-        (only (schevana styles windows)))
+        (schevana kits host))
 
 (define args (cdr (command-line)))
 

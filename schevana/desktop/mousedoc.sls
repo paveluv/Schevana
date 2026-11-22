@@ -4,12 +4,13 @@
 ;;; (a region's sixth element) or its kind's, which read the style's actions;
 ;;; in the content the window's 'mouse-doc (the widget kit's for the widget
 ;;; there, or the app's); a surface's from its doc. A style turns mouse-doc on
-;;; to show it: the built-in top bar does in its status area.
+;;; to show it: the top bar does (the built-in one in its status area), or,
+;;; where a style has none, the taskbar (Genera's who line).
 
 (library (schevana desktop mousedoc)
   (export
     mouse-doc window-doc action-words mouse-doc-text mouse-doc-text*
-    *mouse-doc-shown* mouse-doc-frame)
+    mouse-doc-line *mouse-doc-shown* mouse-doc-frame)
   (import (chezscheme)
           (only (schevana base) at-load define-hook define-state library-layer
                 string-join)
@@ -66,6 +67,13 @@
   (define-part (mouse-doc-text doc)
     (string-join (map (lambda (b) (format "~a: ~a" (car b) (cdr b))) doc)
                  " · "))
+
+  ;; What a bar that shows the documentation is handed to draw: its words
+  ;; (mouse-doc-text), or #f where the style shows none ('mouse-doc) or
+  ;; nothing is documented under the pointer.
+  (define (mouse-doc-line)
+    (and (theme 'mouse-doc)
+         (let ([doc (mouse-doc)]) (and (pair? doc) (mouse-doc-text doc)))))
 
   (define-state *mouse-doc-shown* '())
 

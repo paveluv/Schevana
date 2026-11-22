@@ -45,22 +45,15 @@
           (only (schevana core) *focus* *hover* *toasts* *windows* alpha
                 color-default! common-options define-style desktop-rect
                 draw-line draw-scale draw-text fill-box fill-circle
-                fill-polygon font font-ascent font-line-height screen-h
-                screen-w text-width theme theme-part theme-rule title-height
-                visible? window-bg window-id window-shadow window-title
-                window-w window? with-clip with-place world-value)
-          (only (schevana desktop menu) launcher-open? menu-filter
-                menu-label-text menu-label-key menu-entry-flags menu-sel
-                menu-phase *menu-blink* menu-areas *menu* menu-y menu-x
-                menu-label-width menu-filter? menu-entries)
-          (only (schevana desktop mousedoc) mouse-doc-text mouse-doc)
-          (only (schevana desktop status) shown-status-strings)
-          (only (schevana desktop taskbar) taskbar-areas taskbar-hint
-                taskbar-height)
-          (only (schevana desktop toasts) toast-boxes)
-          (only (schevana desktop topbar) topbar-areas topbar-height)
-          (only (schevana desktop wallpaper) fill-wallpaper)
+                fill-polygon fill-wallpaper font font-ascent font-line-height
+                screen-h screen-w text-width theme theme-part theme-rule
+                title-height visible? window-bg window-id window-shadow
+                window-title window-w window? with-clip with-place
+                world-value)
           (only (schevana kits app) app-color)
+          (only (schevana kits menu) menu-entries menu-filter menu-filter?
+                menu-label-key menu-label-text menu-label-width menu-x
+                menu-y)
           (only (schevana kits text) text-widest text-draw-centered text-fit
                 text-ink)
           (only (schevana kits ui) ui-draw-field ui-draw-surface
@@ -919,7 +912,8 @@
     (cons-dashes! x y w h 'accent)
     (cons-dashes! (+ x w -1) y (+ (cons-cell) 1) h 'accent))
 
-  ;;; The desktop layer: menus, the bars, toasts, the wallpaper.
+  ;;; The desktop layer: menus, the bars, toasts, the wallpaper, each part
+  ;;; handed what it draws.
 
   ;; A menu is a list drawn vertically: each entry a pair, its car the
   ;; entry and its cdr a cell at the right whose pointer goes down to the
@@ -957,58 +951,48 @@
                                   (loop (cdr es) (+ i 1) (+ ey eh))))))))))
 
   ;; The entry under the mouse, or the keys', fills with ink; while a
-  ;; button is held on it, at 0.6; blinking, in its on phases.
-  (define (cons-draw-menu)
-    (when *menu*
-      (with-place 'menu
-        (lambda ()
-          (let* ([m *menu*] [areas (menu-areas m)]
-                 [es (list->vector (menu-entries m))] [font (theme 'menu-font)]
-                 [lh (font-line-height font)] [c (cons-cell)]
-                 [pad (theme 'menu-pad)] [tx (theme 'menu-text-x)]
-                 [f (assq 'filter areas)] [b *menu-blink*])
-            (apply ui-draw-panel (append (cdar areas) '((menu))))
-            (when f
-              (apply (lambda (fx fy fw fh) (cons-menu-filter! m fx fy fw fh))
-                     (cdr f)))
-            (let loop ([as (cdr areas)])
-              (unless (null? as)
-                (let ([a (car as)])
-                  (when (fixnum? (car a))
-                    (apply
-                     (lambda (i x y w h)
-                       (let* ([next (find (lambda (a) (fixnum? (car a)))
-                                          (cdr as))]
-                              [sel? (if b   ; blinking: on in odd phases
-                                        (and (= i (cadr b))
-                                             (odd? (menu-phase b)))
-                                        (= i (menu-sel m)))]
-                              [tint (and sel?
-                                         (if (memq 'pressed
-                                                   (menu-entry-flags i))
-                                             (alpha 'cons-ink 0.6)
-                                             'cons-ink))]
-                              [px (+ x pad)] [pw (- w pad pad c)])
-                         (cons-pair-h! px y pw c c 'cons-ink 1 tint #f)
-                         (let* ([label (car (vector-ref es i))]
-                                [key (menu-label-key label)]
-                                [kw (if key (+ (text-width key font) 12) 0)]
-                                [ink (if tint 'window-bg (theme 'menu-ink))])
-                           (draw-text (+ px tx) (+ y (/ (- c lh) 2))
-                                      (text-fit (menu-label-text label)
-                                                (- pw tx 4 kw) font)
-                                      ink font)
-                           (when key
-                             (draw-text (- (+ px pw) tx (- kw 12))
-                                        (+ y (/ (- c lh) 2)) key
-                                        (if tint ink 'text-faint) font)))
-                         (if next
-                             (cons-down! (cons-dot-x (+ px pw) c 1)
-                                         (cons-dot-y y c 1) (caddr next) c
-                                         'cons-ink 1)
-                             (cons-nil! (+ px pw) y c 'cons-ink 1 #f))))
-                     a))
-                  (loop (cdr as))))))))))
+  ;; button is held on it, at 0.6; blinking, in its on phases (on).
+  (define (cons-draw-menu m areas on flags)
+    (let* ([es (list->vector (menu-entries m))] [font (theme 'menu-font)]
+           [lh (font-line-height font)] [c (cons-cell)]
+           [pad (theme 'menu-pad)] [tx (theme 'menu-text-x)]
+           [f (assq 'filter areas)])
+      (apply ui-draw-panel (append (cdar areas) '((menu))))
+      (when f
+        (apply (lambda (fx fy fw fh) (cons-menu-filter! m fx fy fw fh))
+               (cdr f)))
+      (let loop ([as (cdr areas)])
+        (unless (null? as)
+          (let ([a (car as)])
+            (when (fixnum? (car a))
+              (apply
+               (lambda (i x y w h)
+                 (let* ([next (find (lambda (a) (fixnum? (car a))) (cdr as))]
+                        [tint (and (eqv? i on)
+                                   (if (memq 'pressed flags)
+                                       (alpha 'cons-ink 0.6)
+                                       'cons-ink))]
+                        [px (+ x pad)] [pw (- w pad pad c)])
+                   (cons-pair-h! px y pw c c 'cons-ink 1 tint #f)
+                   (let* ([label (car (vector-ref es i))]
+                          [key (menu-label-key label)]
+                          [kw (if key (+ (text-width key font) 12) 0)]
+                          [ink (if tint 'window-bg (theme 'menu-ink))])
+                     (draw-text (+ px tx) (+ y (/ (- c lh) 2))
+                                (text-fit (menu-label-text label)
+                                          (- pw tx 4 kw) font)
+                                ink font)
+                     (when key
+                       (draw-text (- (+ px pw) tx (- kw 12))
+                                  (+ y (/ (- c lh) 2)) key
+                                  (if tint ink 'text-faint) font)))
+                   (if next
+                       (cons-down! (cons-dot-x (+ px pw) c 1)
+                                   (cons-dot-y y c 1) (caddr next) c
+                                   'cons-ink 1)
+                       (cons-nil! (+ px pw) y c 'cons-ink 1 #f))))
+               a))
+            (loop (cdr as)))))))
 
   ;; The launcher's filter: a string being typed, in the focused box.
   (define (cons-menu-filter! m x y w h)
@@ -1031,66 +1015,58 @@
 
   ;; The top bar as the built-in one, and after the title the mouse
   ;; documentation, faint, in what room the status leaves.
-  (define (cons-draw-topbar)
-    (with-place 'bar
-      (lambda ()
-        (let* ([w (screen-w)] [h (topbar-height)] [areas (topbar-areas)]
-               [ty (/ (- h (font-line-height 'ui)) 2)]
-               [gap (max 11 (round (* 0.6 (font-line-height 'ui))))]
-               [dot-w (text-width "·" 'ui)]
-               [l (assq 'launcher areas)] [t (assq 'title areas)])
-          (fill-box 0 0 w h (alpha 'panel 0.92))
-          (draw-line 0 (- h 0.5) w (- h 0.5) (alpha 'panel-text 0.12))
-          (when l
-            (apply (lambda (x y lw lh)
-                     (when (or (equal? *hover* '(surface topbar launcher))
-                               (launcher-open?))
-                       (fill-box (+ x 6) (+ y 4) (- lw 6) (- lh 8)
-                                 'panel-hover))
-                     (draw-text (+ x 18) (+ y ty) "λ  Schevana" 'panel-accent
-                                'ui-bold))
-                   (cdr l)))
-          (let* ([title-end
-                  (if t
-                      (draw-text (+ (cadr t) 14) (+ (caddr t) ty)
-                                 (if *focus* (window-title *focus*) "Desktop")
-                                 'panel-text 'ui-bold)
-                      0)]
-                 ;; the status from the right, while it fits beside the title
-                 [left (let loop ([segs (reverse (shown-status-strings))]
-                                  [x (- w 14)]
-                                  [first? #t])
-                         (if (null? segs)
-                             x
-                             (let* ([s (car segs)]
-                                    [right (if first? x (- x gap dot-w gap))]
-                                    [x0 (- right (text-width s 'ui))])
-                               (if (> x0 (+ title-end gap gap))
-                                   (begin
-                                     (unless first?
-                                       (draw-text (- x gap dot-w) ty "·"
-                                                  'panel-dim 'ui))
-                                     (draw-text x0 ty s 'panel-text 'ui)
-                                     (loop (cdr segs) x0 #f))
-                                   x))))]
-                 [doc (mouse-doc)])
-            (unless (or (null? doc) (< (- left title-end) 120))
-              (draw-text (+ title-end 24)
-                         (/ (- h (font-line-height 'mono-small)) 2)
-                         (text-fit (mouse-doc-text doc) (- left title-end 48)
-                                   'mono-small)
-                         'panel-dim 'mono-small)))))))
+  (define (cons-draw-topbar h areas open? doc status)
+    (let* ([w (screen-w)] [ty (/ (- h (font-line-height 'ui)) 2)]
+           [gap (max 11 (round (* 0.6 (font-line-height 'ui))))]
+           [dot-w (text-width "·" 'ui)]
+           [l (assq 'launcher areas)] [t (assq 'title areas)])
+      (fill-box 0 0 w h (alpha 'panel 0.92))
+      (draw-line 0 (- h 0.5) w (- h 0.5) (alpha 'panel-text 0.12))
+      (when l
+        (let ([x (cadr l)] [y (caddr l)] [lw (cadddr l)] [lh (car (cddddr l))])
+          (when (or (equal? *hover* '(surface topbar launcher)) open?)
+            (fill-box (+ x 6) (+ y 4) (- lw 6) (- lh 8) 'panel-hover))
+          (draw-text (+ x 18) (+ y ty) "λ  Schevana" 'panel-accent 'ui-bold)))
+      (let* ([title-end
+              (if t
+                  (draw-text (+ (cadr t) 14) (+ (caddr t) ty)
+                             (if *focus* (window-title *focus*) "Desktop")
+                             'panel-text 'ui-bold)
+                  0)]
+             ;; the status from the right, while it fits beside the title
+             [left (let loop ([segs (reverse
+                                     (filter string? (map cdr status)))]
+                              [x (- w 14)]
+                              [first? #t])
+                     (if (null? segs)
+                         x
+                         (let* ([s (car segs)]
+                                [right (if first? x (- x gap dot-w gap))]
+                                [x0 (- right (text-width s 'ui))])
+                           (if (> x0 (+ title-end gap gap))
+                               (begin
+                                 (unless first?
+                                   (draw-text (- x gap dot-w) ty "·"
+                                              'panel-dim 'ui))
+                                 (draw-text x0 ty s 'panel-text 'ui)
+                                 (loop (cdr segs) x0 #f))
+                               x))))])
+        (unless (or (not doc) (< (- left title-end) 120))
+          (draw-text (+ title-end 24)
+                     (/ (- h (font-line-height 'mono-small)) 2)
+                     (text-fit doc (- left title-end 48) 'mono-small)
+                     'panel-dim 'mono-small)))))
 
   ;; The taskbar's windows are a list, [Tasks|•]→[REPL|•]→[Clock|/]: each
   ;; window's area its pair and its pointer; a car as wide as its title and
   ;; a little, at most 160, narrower when the chain would not fit. The hint,
   ;; a comment, at the right while the chain leaves it room.
-  (define (cons-taskbar-areas)
-    (let* ([w (screen-w)] [h (taskbar-height)] [y0 (- (screen-h) h)]
+  (define (cons-taskbar-areas h hint)
+    (let* ([w (screen-w)] [y0 (- (screen-h) h)]
            [ws (sort (lambda (a b) (< (window-id a) (window-id b))) *windows*)]
            [n (length ws)] [c (cons-cell)] [a (cons-arrow)]
            [g (cons-space)]
-           [hint-w (+ g g g g (text-width (string-append "; " taskbar-hint)
+           [hint-w (+ g g g g (text-width (string-append "; " hint)
                                      'mono-small))]
            [cars (map (lambda (win)
                         (min 160 (+ g g (ceiling (text-width (window-title win)
@@ -1112,43 +1088,39 @@
 
   ;; The focused window's car filled with the panel's accent, a minimized
   ;; one faint, the mouse's filled with the plain ink.
-  (define (cons-draw-taskbar)
-    (with-place 'bar
-      (lambda ()
-        (let* ([w (screen-w)] [h (taskbar-height)] [y0 (- (screen-h) h)]
-               [c (cons-cell)] [a (cons-arrow)] [cy (+ y0 (quotient (- h c) 2))]
-               [lh (font-line-height 'ui)] [areas (taskbar-areas)]
-               [hint (assq 'hint areas)])
-          (fill-box 0 y0 w h (alpha 'panel 0.94))
-          (draw-line 0 (+ y0 0.5) w (+ y0 0.5) (alpha 'panel-text 0.12))
-          (when hint
-            (draw-text (+ (cadr hint) (* 2 (cons-space)))
-                       (+ y0 (/ (- h (font-line-height 'mono-small)) 2))
-                       (string-append "; " taskbar-hint) 'panel-dim
-                       'mono-small))
-          (let loop ([as (filter (lambda (a) (window? (car a))) areas)])
-            (unless (null? as)
-              (apply
-               (lambda (win x y bw bh)
-                 (let* ([cw (- bw c a)] [focused? (eq? win *focus*)]
-                        [hover? (equal? *hover* (list 'surface 'taskbar win))]
-                        [min? (not (visible? win))]
-                        [ink (cond [focused? 'panel-accent]
-                                   [min? 'panel-dim]
-                                   [else 'cons-ink])]
-                        [tint (and (or focused? hover?) ink)]
-                        [s (text-fit (window-title win) (- cw 8) 'ui)])
-                   (cons-pair! x cy cw c ink 1 tint #f)
-                   (draw-text (+ x (floor (/ (- cw (text-width s 'ui)) 2)))
-                              (+ cy (/ (- c lh) 2)) s
-                              (cond [tint 'panel] [min? 'panel-dim]
-                                    [else 'panel-text])
-                              'ui)
-                   (if (null? (cdr as))
-                       (cons-nil! (+ x cw) cy c ink 1 #f)
-                       (cons-pointer! (+ x cw) (cadr (cadr as)) cy c ink 1))))
-               (car as))
-              (loop (cdr as))))))))
+  (define (cons-draw-taskbar h areas open? doc status hint)
+    (let* ([w (screen-w)] [y0 (- (screen-h) h)]
+           [c (cons-cell)] [a (cons-arrow)] [cy (+ y0 (quotient (- h c) 2))]
+           [lh (font-line-height 'ui)] [ha (assq 'hint areas)])
+      (fill-box 0 y0 w h (alpha 'panel 0.94))
+      (draw-line 0 (+ y0 0.5) w (+ y0 0.5) (alpha 'panel-text 0.12))
+      (when ha
+        (draw-text (+ (cadr ha) (* 2 (cons-space)))
+                   (+ y0 (/ (- h (font-line-height 'mono-small)) 2))
+                   (string-append "; " hint) 'panel-dim 'mono-small))
+      (let loop ([as (filter (lambda (a) (window? (car a))) areas)])
+        (unless (null? as)
+          (apply
+           (lambda (win x y bw bh)
+             (let* ([cw (- bw c a)] [focused? (eq? win *focus*)]
+                    [hover? (equal? *hover* (list 'surface 'taskbar win))]
+                    [min? (not (visible? win))]
+                    [ink (cond [focused? 'panel-accent]
+                               [min? 'panel-dim]
+                               [else 'cons-ink])]
+                    [tint (and (or focused? hover?) ink)]
+                    [s (text-fit (window-title win) (- cw 8) 'ui)])
+               (cons-pair! x cy cw c ink 1 tint #f)
+               (draw-text (+ x (floor (/ (- cw (text-width s 'ui)) 2)))
+                          (+ cy (/ (- c lh) 2)) s
+                          (cond [tint 'panel] [min? 'panel-dim]
+                                [else 'panel-text])
+                          'ui)
+               (if (null? (cdr as))
+                   (cons-nil! (+ x cw) cy c ink 1 #f)
+                   (cons-pointer! (+ x cw) (cadr (cadr as)) cy c ink 1))))
+           (car as))
+          (loop (cdr as))))))
 
   ;; Toasts are a list at the top right: each a pair, its car the text, the
   ;; dot in its cdr the notification's color, its pointer down to the next.
@@ -1169,26 +1141,22 @@
                                     (vector-ref t 2))
                             acc))))))))
 
-  (define (cons-draw-toasts)
-    (with-place 'toast
-      (lambda ()
-        (let ([c (cons-cell)] [lh (font-line-height 'ui)])
-          (let loop ([bs (toast-boxes)])
-            (unless (null? bs)
-              (let* ([b (car bs)] [x (vector-ref b 0)] [y (vector-ref b 1)]
-                     [tw (vector-ref b 2)] [h (vector-ref b 3)] [cw (- tw c)])
-                (fill-box x y tw h 'window-bg)
-                (cons-pair-h! x y cw h c 'cons-ink 1 #f #f)
-                (draw-text (+ x (* 2 (cons-space))) (+ y (/ (- h lh) 2))
-                           (vector-ref b 4) 'text
-                           'ui)
-                (if (null? (cdr bs))
-                    (cons-nil-h! (+ x cw) y c h 'cons-ink 1 #f)
-                    (let ([dx (cons-dot-x (+ x cw) c 1)] [my (cons-dot-y y h
-                                                                         1)])
-                      (cons-down! dx my (vector-ref (cadr bs) 1) c 'cons-ink 1)
-                      (fill-circle dx my (+ (/ c 10) 1/2) (vector-ref b 5))))
-                (loop (cdr bs)))))))))
+  (define (cons-draw-toasts boxes)
+    (let ([c (cons-cell)] [lh (font-line-height 'ui)])
+      (let loop ([bs boxes])
+        (unless (null? bs)
+          (let* ([b (car bs)] [x (vector-ref b 0)] [y (vector-ref b 1)]
+                 [tw (vector-ref b 2)] [h (vector-ref b 3)] [cw (- tw c)])
+            (fill-box x y tw h 'window-bg)
+            (cons-pair-h! x y cw h c 'cons-ink 1 #f #f)
+            (draw-text (+ x (* 2 (cons-space))) (+ y (/ (- h lh) 2))
+                       (vector-ref b 4) 'text 'ui)
+            (if (null? (cdr bs))
+                (cons-nil-h! (+ x cw) y c h 'cons-ink 1 #f)
+                (let ([dx (cons-dot-x (+ x cw) c 1)] [my (cons-dot-y y h 1)])
+                  (cons-down! dx my (vector-ref (cadr bs) 1) c 'cons-ink 1)
+                  (fill-circle dx my (+ (/ c 10) 1/2) (vector-ref b 5))))
+            (loop (cdr bs)))))))
 
   ;; The desktop: the wallpaper, and on it, faint, the world as data:
   ;; (λ "S C H E V A N A"), a chain of two cells ending in nil.

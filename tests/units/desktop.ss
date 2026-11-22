@@ -61,7 +61,7 @@
        (let* ([a (open-window "Aaa" 'size '(260 . 120) 'pos '(100 . 100))]
               [b (open-window "Bbb" 'size '(260 . 120) 'pos '(500 . 100))])
          (steps 2)
-         (let* ([it (cdr (assq a (taskbar-areas)))]
+         (let* ([it (cdr (assq a (placed-taskbar-areas)))]
                 [x (exact (round (+ (car it) (/ (caddr it) 2))))]
                 [y (- (screen-h) (quotient (taskbar-height) 2))])
            (inject! `(mouse-move ,x ,y) `(mouse-down ,x ,y right 1)

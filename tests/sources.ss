@@ -237,7 +237,7 @@
 ;; below the world (schevana/). What declares is left out, sized by
 ;; what's given, each a reviewed change: a library's exports and imports
 ;; (file-forms).
-(define src-budget 39599)
+(define src-budget 39763)
 
 ;; The tokens of a datum as read; a list's end is none.
 (define (tokens x)

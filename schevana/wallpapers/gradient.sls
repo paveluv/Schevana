@@ -5,7 +5,7 @@
   (export)
   (import (chezscheme)
           (only (schevana base) at-load library-layer)
-          (only (schevana desktop wallpaper) define-wallpaper)
+          (only (schevana core) define-wallpaper)
           (only (schevana kits fill) fill-gradient))
 
   (library-layer looks)

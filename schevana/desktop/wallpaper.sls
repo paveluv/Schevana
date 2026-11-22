@@ -1,21 +1,17 @@
-;;; (schevana desktop wallpaper) — the desktop under the windows. A wallpaper
-;;; fills it from the theme's two desktop colors. Each is a file in
-;;; wallpapers/, and the theme key 'wallpaper names the one in use:
-;;;
-;;;   (define-wallpaper flat "Flat"
-;;;     (lambda (x y w h top bottom) (fill-box x y w h top)))
+;;; (schevana desktop wallpaper) — the desktop under the windows: the
+;;; wallpaper the theme key 'wallpaper names, filled from the theme's two
+;;; desktop colors. The wallpapers themselves are the core's registry, a
+;;; layer of the look (define-wallpaper, (schevana core theme)); each is a
+;;; file in wallpapers/.
 
 (library (schevana desktop wallpaper)
   (export
-    *wallpapers* register-wallpaper! define-wallpaper wallpapers draw-desktop
-    wallpaper-shown fill-wallpaper draw-wallpaper draw-wallpaper* desktop-mouse
-    desktop-frame )
+    draw-desktop draw-wallpaper draw-wallpaper* desktop-mouse desktop-frame)
   (import (chezscheme)
-          (only (schevana base) at-load define-hook define-state library-layer
-                registry-add)
+          (only (schevana base) at-load define-hook library-layer)
           (only (schevana core) *canvas-h* *canvas-w* alpha define-part
-                define-surface fill-box focus-window! report-error!
-                request-frame! theme theme-default)
+                define-surface fill-wallpaper focus-window! report-error!
+                theme wallpaper-shown)
           (only (schevana kits fill) fill-glow)
           (only (schevana kits text) text-draw-centered)
           (only (schevana desktop icon) icon-follow-theme!)
@@ -23,42 +19,11 @@
 
   (library-layer desktop)
 
-  ;; ((name title fill) ...) in registration order
-  (define-state *wallpapers* '())
-
-  (define (register-wallpaper! name title fill)
-    (set! *wallpapers* (registry-add *wallpapers* (list name title fill) car))
-    (request-frame!))
-
-  ;; (define-wallpaper name "Title" fill) adds a wallpaper, or replaces the
-  ;; one of that name. (fill x y w h top bottom) fills the rectangle.
-  (define-syntax define-wallpaper
-    (syntax-rules ()
-      [(_ name title fill) (register-wallpaper! 'name title fill)]))
-
-  (define (wallpapers) (map car *wallpapers*))
-
   ;; An error in draw-wallpaper is reported, and the rest of the desktop goes
   ;; on.
   (define (draw-desktop)
     (guard (c [#t (report-error! 'desktop c)])
       (draw-wallpaper *canvas-w* *canvas-h*)))
-
-  ;; The name of the wallpaper drawn for name: the default for one that is
-  ;; gone, #f when that is gone too.
-  (define (wallpaper-shown name)
-    (let ([wp (or (assq name *wallpapers*)
-                  (assq (theme-default 'wallpaper) *wallpapers*))])
-      (and wp (car wp))))
-
-  ;; The desktop's background in a rectangle: the wallpaper named pattern (a
-  ;; value of the theme key 'wallpaper) from the colors top and bottom, or a
-  ;; plain fill when none is there.
-  (define (fill-wallpaper x y w h pattern top bottom)
-    (let ([wp (assq (wallpaper-shown pattern) *wallpapers*)])
-      (if wp
-          ((caddr wp) x y w h top bottom)
-          (fill-box x y w h top))))
 
   (define-part (draw-wallpaper w h)
     (fill-wallpaper 0 0 w h (theme 'wallpaper) 'desktop-top 'desktop-bottom)

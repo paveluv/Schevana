@@ -3,7 +3,8 @@
 
 (library (schevana core loop)
   (export
-    *input-step?* post-core1! run-core1-mail! inject! wm-event! reload-ended!
+    *input-step?* post-core1! run-core1-mail! inject! wm-event! loop-stepped!
+    reload-ended!
     reload-holding? schevana-step! schevana-run! *running* quit! schevana-end!
     uptime-ms
     user-directory user-library-directory add-library-directory! schevana-boot!
@@ -69,6 +70,11 @@
   ;; ((schevana core windows) sets it); till then nothing takes it. Quitting is
   ;; the loop's own.
   (define-hook (wm-event! ev) (void))
+
+  ;; Told at each step's end whether it was quiet: it drew no frame and none
+  ;; is wanted ((schevana core sources) loads what of the world waits
+  ;; there); till then nothing.
+  (define-hook (loop-stepped! quiet?) (void))
 
   (define (handle-event! ev)
     (if (eq? (car ev) 'quit) (quit!) (wm-event! ev)))
@@ -170,6 +176,7 @@
               (and (pair? paced) (not ticked?) (pacer-wanted?)))
         (unless (or ticked? (pacer-wanted?) *collector-after*)
           (collector-tick!))
+        (loop-stepped! (not (or ticked? (pacer-wanted?))))
         (safely 'procs
                 (lambda () (run-procs! (if (null? paced) 10 (pacer-procs-ms)))))
         ;; a frame a tick at most
@@ -215,8 +222,9 @@
 
   ;;; ---------------------------------------------------------------- boot
 
-  ;; The user's own folder: lib for libraries, and kits, desktop, styles,
-  ;; palettes, wallpapers and apps like the tree's (see source-folders).
+  ;; The user's own folder: lib for libraries, and kits, services, styles,
+  ;; palettes, wallpapers, desktop and apps like the tree's (see
+  ;; source-folders).
   (define-made user-directory
     (format "~a/.schevana.d" (or (getenv "HOME") ".")))
 

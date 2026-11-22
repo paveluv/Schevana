@@ -331,7 +331,7 @@
                   (= (cadr mac) (ui-glyph-size)) (null? (caddr mac))
                   windows (< (car windows) (+ (window-x w) 40))
                   (equal? state "Run") (equal? idle "")
-                  (assq 'windows (genera-who-line-areas))
+                  (assq 'windows (genera-who-line-areas 30 ""))
                   (equal? size cell)
                   (equal? (call-with-values ui-busy-size list)
                           (list (ui-glyph-size) (ui-glyph-size))))))))

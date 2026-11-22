@@ -268,30 +268,6 @@
                          before alone during)
                  (and (< before 100) (>= alone 15) (< 25 during 500))))))))
 
-;; The boot screen, which draws only with a window, by its blits onto a
-;; texture: the λ scaled up four times, sharp, on the ground; under it the
-;; bar's track, its first half filled.
-(let* ([r *renderer*]
-       [d (renderer-device r)]
-       [t (gpu-make-texture d gpu-format-bgra8
-                            (fxior gpu-usage-sampler gpu-usage-target) 36 52)]
-       [cb (sdl-acquire-gpu-commands d)])
-  (gpu-boot-blit! cb t 0 0 9 12 0 0 36 48 #t)
-  (gpu-boot-blit! cb t 0 12 1 1 0 50 36 2 #f)
-  (gpu-boot-blit! cb t 1 12 1 1 0 50 18 2 #f)
-  (let* ([bytes (gpu-read-texture! r cb t 36 52)]
-         [px (lambda (x y)
-               (bytevector-u32-native-ref bytes (* 4 (+ x (* y 36)))))]
-         [color (lambda (c) (cdr (assv c gpu-boot-colors)))])
-    (sdl-release-gpu-texture d t)
-    (check "the boot screen's blits: the λ scaled up sharp on the ground, \
-            the bar's track under it, filled as far as asked"
-           (and (= (px 0 0) (px 7 3) (color #\#))
-                (= (px 8 0) (px 35 0) (px 0 49) (color #\.))
-                (= (px 0 50) (px 17 51) (color #\f))
-                (= (px 18 50) (px 35 51) (color #\t))
-                (= (px 32 47) (color #\#))))))
-
 ;; The process's end: whoever exits, core0 waits for the GPU first, as a
 ;; driver's threads may still be at work (lavapipe compiling a frame's
 ;; shaders) when exit() tears down what they use. Here the wait, once
@@ -310,8 +286,8 @@
 ;;; In the library edition a library is held to its layer as it compiles
 ;;; (library-layer, in (schevana base)): one that imports a layer above its
 ;;; own, or a piece of a sealed layer not its own, is refused; one that
-;;; imports its own layer or below loads. Libraries of the test's own, in a
-;;; folder of out/.
+;;; imports its own layer or below loads. The looks are below the desktop.
+;;; Libraries of the test's own, in a folder of out/.
 (unless test-hacker?
 (let* ([dir (string-append out-dir "/library-layers")]
        [write! (lambda (name layer imports)
@@ -342,12 +318,20 @@
   (write! 'inside '(kits) '(piece))
   (write! 'through '(kits) '(door))
   (write! 'beside '(apps) '(high))
+  (write! 'shell '(desktop) '())
+  (write! 'look '(looks) '(shell))
+  (write! 'paint '(looks) '())
+  (write! 'bars '(desktop) '(paint))
   (parameterize ([library-directories (cons (cons dir dir)
                                             (library-directories))])
     (check "a library importing a layer above its own, or a piece of a \
             sealed layer not through its facade, is refused as it compiles; \
-            one importing its own layer, or a sealed one's facade, loads"
+            one importing its own layer, or a sealed one's facade, loads; a \
+            look importing the desktop is refused, the desktop importing a \
+            look loads"
            (and (not (loads? 'above))
                 (not (loads? 'inside))
                 (loads? 'through)
-                (loads? 'beside))))))
+                (loads? 'beside)
+                (not (loads? 'look))
+                (loads? 'bars))))))

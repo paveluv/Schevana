@@ -110,6 +110,25 @@ the REPL's completion list share. So a style can replace any of them, and
 a window naming a style, `'window-style`, is drawn in that style's theme,
 content included; `(with-style name thunk)` draws in one.
 
+The looks load before the desktop and use none of it, so a program can
+take one without the desktop (a host app, [APPS.md](APPS.md)). The
+desktop hands its parts what they draw, in the place they draw in (`bar`,
+`menu`, `toast`), as the kit hands a widget's:
+
+- `(topbar-areas h)` and `(draw-topbar h areas open? doc status)`: the bar
+  `h` high, its areas, whether the launcher is open, the mouse
+  documentation's line where the style shows it (`'mouse-doc`, worded by
+  `mouse-doc-text`) or `#f`, and the status, `((name . string) ...)`;
+- `(taskbar-areas h hint)` and `(draw-taskbar h areas open? doc status
+  hint)`, the same and the hint, the documentation where there's no top
+  bar (Genera's who line);
+- `(menu-areas m)` and `(draw-menu m areas on flags)`: the menu, the menu
+  kit's data (`(schevana kits menu)`: `menu-entries`, `menu-label-text`,
+  `menu-filter`, ...), its areas, the entry shown chosen or `#f`, and its
+  highlight's flags (`outline`, `pressed`);
+- `(toast-boxes)` and `(draw-toasts boxes)`; `(draw-wallpaper w h)`, which
+  fills with `fill-wallpaper`.
+
 A container draws its inside in its place (`with-place`: a text box's
 `field`, a table's `list`, `dialog`, `tooltip`, `menu`, the bars' `bar`,
 `toast`), so a style can color what sits there by its `'places`, an app's
@@ -169,8 +188,8 @@ has none, what its designers would have made:
   scroll bars overlay ones under the pointer. Its palette is `adwaita`, and
   `adwaita-dark` where the desktop prefers dark (`palette-dark`, which
   Settings shows as Dark palette); its text Cantarell, GNOME's 11 pt as 15
-  pixels. It is the look of a host app on GNOME ([APPS.md](APPS.md)), and
-  brings no desktop with it.
+  pixels. It is the look of a host app on GNOME ([APPS.md](APPS.md)), its
+  windows' alone.
 - **GNOME**, Adwaita's windows on GNOME Shell 48.7's desktop (from its
   stylesheet, facts only), dark as the Shell stays unless one prefers
   light: a black top bar with the

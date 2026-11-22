@@ -51,8 +51,8 @@ before it:
 | `schevana/core/` | The core, sealed in its libraries, `(schevana core <piece>)`: the world (windows, focus, the theme's layers, processes, timers, its side of core0's window and events), core1's side of the GPU layer, drawing and fonts, the pacer, the loop, its registries, the hooks later layers fill, and the caches its own procedures need; making the world's environment, "/", where everything below loads, loading the world's files and reloading (`sources.sls`). The world has of it only its facade, `(schevana core)`, which lists what the world is given. |
 | `schevana/kits/` | Libraries, pure or almost, `(schevana kits <name>)`. |
 | `schevana/services/` | Long-lived state with an API and no surface: the crew of worker threads, the tree of environments, the apps' sandboxes and what they are allowed, vats and their jobs, the profiler, the saved look. |
+| `schevana/styles/`, `schevana/palettes/`, `schevana/wallpapers/` | The looks: one definition per library, registered by its definer as the library runs (the registries are the core's: `define-style`, `define-palette`, `define-wallpaper`). |
 | `schevana/desktop/` | The screen's own surfaces and the desktop's behavior: wallpaper, bars, menu, toasts, keys, arranging windows; and its start (`main.sls`, from the command line; `start.sls`, once the world is loaded). |
-| `schevana/styles/`, `schevana/palettes/`, `schevana/wallpapers/` | The looks: one definition per library, registered by its definer as the library runs. |
 | `schevana/apps/` | The apps that tune the world (the REPL, Settings, Tasks, Monitor, ...), one per library, defined with `define-app`. |
 | `apps/` | The apps in sandboxes, one per file, its first form `app-requests`: each runs in a sandbox of its own (`schevana/services/grant.sls`). |
 | `schevana-demo/` | The demos, one library each, `(schevana-demo <name>)`, on the core's facade: a program with a launcher at the root (`./schevana-game-demo`), and an app the desktop's `--demo` adds. |
@@ -76,6 +76,14 @@ before it:
   through registries, parts and settings they fill, and hooks they set:
   what its facade gives settable (`*profile-span*`, `theme-save!`,
   `window-gone!`, `app-load!`, ...).
+- **The looks sit below the desktop.** A look imports the core's facade,
+  kits and services, never the desktop or an app, so that a program takes
+  a look without the desktop's surfaces, keys and timers (a host app,
+  `(schevana kits host)`). The desktop hands its parts what they draw, as
+  arguments, as the widget kit hands its own: a bar its height, its areas
+  and the status, the menu itself (the menu kit's data), its areas and
+  the entry chosen, the toasts their boxes; a style reads none of the
+  desktop's state.
 - **Core0 sits below the core.** Core0's libraries name nothing of the
   core above it, and only core0 names SDL: the clock and
   the CPU count are core0's, which it gives core1. What still crosses is
@@ -101,7 +109,7 @@ before it:
   updates `docs/PLATFORMS.md`: where it ran, where it should work, what
   happens without it. Monitor's Platform tab shows it all, and copies a
   run as a row of it.
-- **The core has a budget**, 39,599 tokens (atoms as read; comments,
+- **The core has a budget**, 39,763 tokens (atoms as read; comments,
   whitespace and names' lengths are free; a library's exports and
   imports, which declare, are left out), in `tests/sources.ss`. Don't join lines or
   shorten names to fit it. Code the core doesn't need moves out to the

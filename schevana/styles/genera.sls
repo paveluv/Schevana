@@ -23,7 +23,7 @@
     genera-label-height genera-label-y genera-insets genera-regions
     genera-draw-under genera-draw-over genera-line genera-who-line-areas
     genera-draw-who-line genera-who-state genera-busy-size genera-busy
-    genera-who-line-frame genera-mouse-doc-text genera-same genera-hover
+    genera-mouse-doc-text genera-same genera-hover
     genera-box genera-text-y genera-focus genera-button genera-button-size
     genera-choice-side genera-choice-box genera-checkbox genera-checkbox-size
     genera-toggle genera-toggle-size genera-tab genera-tabs-size genera-field
@@ -47,11 +47,6 @@
                 screen-h screen-w stipple stroke-box stroke-circle text-width
                 theme theme-font-rule theme-rule window-bg window-h window-ref
                 window-title window-w with-clip with-place world-value)
-          (only (schevana desktop mousedoc) mouse-doc-frame mouse-doc
-                mouse-doc-text)
-          (only (schevana desktop status) shown-status-strings)
-          (only (schevana desktop taskbar) taskbar-box taskbar-areas
-                taskbar-height)
           (only (schevana kits px) px-bitmap-text px-bits px-invert px-bevel)
           (only (schevana kits text) text-widest text-draw-centered text-fit)
           (only (schevana kits ui) ui-initials ui-calendar-areas
@@ -111,12 +106,12 @@
   ;; Each of its two lines: the code font's line and 2.
   (define (genera-line) (exact (round (+ (font-line-height 'mono) 2))))
 
-  ;; Its fields, at character columns as the CADR's (lispm.md 2.1): what
-  ;; the mouse buttons do across the top line; below, the selected window,
-  ;; a field that counts the windows, the run state (as the CADR's, after
-  ;; the package) and the status.
-  (define (genera-who-line-areas)
-    (let ([lh (genera-line)] [y (- (screen-h) (taskbar-height))]
+  ;; Its fields, at character columns as the CADR's (lispm.md 2.1), in the
+  ;; taskbar's strip, h high: what the mouse buttons do across the top
+  ;; line; below, the selected window, a field that counts the windows, the
+  ;; run state (as the CADR's, after the package) and the status.
+  (define (genera-who-line-areas h hint)
+    (let ([lh (genera-line)] [y (- (screen-h) h)]
           [cw (font-char-width 'mono)])
       (list (list 'mouse-doc 0 y (screen-w) lh)
             (list 'title cw (+ y lh) (* 24 cw) lh)
@@ -125,9 +120,11 @@
             (list 'status (* 51 cw) (+ y lh) (max 0 (- (screen-w) (* 52 cw)))
                   lh))))
 
-  (define (genera-draw-who-line)
-    (let* ([as (taskbar-areas)] [lh (genera-line)] [w (screen-w)]
-           [y (- (screen-h) (taskbar-height))] [cw (font-char-width 'mono)]
+  ;; The who line in its fields (genera-who-line-areas), the mouse
+  ;; documentation, doc, across its top and the status's strings below.
+  (define (genera-draw-who-line h as open? doc status hint)
+    (let* ([lh (genera-line)] [w (screen-w)]
+           [y (- (screen-h) h)] [cw (font-char-width 'mono)]
            [ty (lambda (y) (+ y (floor (/ (- lh (font-line-height 'mono)) 2))))]
            [field (lambda (what s)
                     (apply (lambda (fx fy fw fh)
@@ -135,15 +132,14 @@
                                         'mono))
                            (cdr (assq what as))))])
       (fill-box 0 y w lh 'text)
-      (draw-text cw (ty y) (text-fit (mouse-doc-text (mouse-doc)) (- w cw cw)
-                                     'mono)
-                 'bg-1 'mono)
+      (when doc
+        (draw-text cw (ty y) (text-fit doc (- w cw cw) 'mono) 'bg-1 'mono))
       (fill-box 0 (+ y lh) w lh 'bg-1)
       (field 'title (if *focus* (window-title *focus*) "No selected window"))
       (field 'windows (let ([n (length *windows*)])
                         (format "~a window~a" n (if (= n 1) "" "s"))))
       (field 'state (genera-who-state))
-      (field 'status (string-join (shown-status-strings) "  "))))
+      (field 'status (string-join (filter string? (map cdr status)) "  "))))
 
   ;; The run state: Run while the selected window is at work (its 'busy), as
   ;; the who line tells a process's; else nothing.
@@ -162,11 +158,6 @@
                                             4)))
                'text 'mono)
     (when (memq 'hover flags) (genera-hover x y w h)))
-
-  ;; It shows the mouse documentation and the status (the clock, which asks
-  ;; for its own frames).
-  (define (genera-who-line-frame t)
-    (mouse-doc-frame taskbar-box))
 
   ;; "Mouse-L: Move; Mouse-R: Window menu."
   (define (genera-mouse-doc-text doc)
@@ -836,7 +827,6 @@
      'taskbar-height (theme-rule (* 2 (genera-line)))
      'draw-taskbar 'genera-draw-who-line
      'taskbar-areas 'genera-who-line-areas
-     'taskbar-frame 'genera-who-line-frame
      'ui-busy-size 'genera-busy-size
      'ui-draw-busy 'genera-busy
      'mouse-doc-text 'genera-mouse-doc-text

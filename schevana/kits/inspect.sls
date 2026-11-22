@@ -38,6 +38,7 @@
     inspect-packed-ref inspect-chez-version inspect-display-pixels
     inspect-display-hz inspect-platform-row inspect-device inspect-glyphs
     inspect-gpu-objects inspect-gpu-held inspect-present-mode inspect-reload
+    inspect-world-later
     inspect-core0 inspect-pacer inspect-shader-constants inspect-shader-helpers
     inspect-shader-fields inspect-preview-image inspect-preview-w
     inspect-preview-h inspect-preview-free! inspect-preview-bytes
@@ -50,8 +51,9 @@
           (only (schevana base) define-hook define-made library-layer
                 platform-cpu platform-os string-join string-prefix?
                 string-suffix?)
-          (only (schevana core) *atlas-row* *atlas-y* *canvas-ph* *canvas-pw*
-                *canvas-ratio* *font-specs* *frame-ring* *frame-ring-n*
+          (only (schevana core) *world-later* *atlas-row* *atlas-y* *canvas-ph*
+                *canvas-pw* *canvas-ratio* *font-specs* *frame-ring*
+                *frame-ring-n*
                 *glyph-count* *gpu-bytes-made* *gpu-computes* *gpu-facts*
                 *gpu-held-gone* *pacer-aimed* *pacer-counts* *pacer-depth*
                 *pacer-due* *pacer-floor* *pacer-frame-ns* *pacer-gpu-taught*
@@ -1299,6 +1301,10 @@
   ;; text of, the environments it imports them into again, and what the
   ;; last reload evaluated again, in order.
   (define (inspect-reload) (reload-facts))
+
+  ;; What of the world still waits to load, after the screen showed
+  ;; ((schevana core sources)): its entries, in order.
+  (define (inspect-world-later) *world-later*)
 
   ;;; -- the pacer
 

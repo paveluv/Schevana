@@ -16,9 +16,13 @@ each `(reload!)`.
 | `lib/` | R6RS libraries ([REPL.md](REPL.md)) |
 
 They load after Schevana's own, in that order: `kits`, `services`,
-`desktop`, `styles`, `palettes`, `wallpapers`, `apps`, each in file-name
-order. Settings lists your styles and palettes with the others, and the
-saved look may name them. `~/.schevana.ss` loads too, like `.emacs`.
+`styles`, `palettes`, `wallpapers`, `desktop`, `apps`, each in file-name
+order; the apps, yours and Schevana's, once the screen shows, one at a
+time while it is quiet, so that a heavy one never holds the desktop's
+start. A look comes before the desktop and uses none of it: the desktop
+hands its bars, menus and toasts what they draw ([LOOKS.md](LOOKS.md)).
+Settings lists your styles and palettes with the others, and the saved
+look may name them. `~/.schevana.ss` loads too, like `.emacs`.
 
 ```scheme
 (apps)
@@ -104,8 +108,7 @@ GNOME's window menu) act on the window. Closing it, Ctrl+Q or Ctrl+W
 quits. `(schevana kits host)` does it:
 
 ```scheme no-run
-(import (chezscheme) (schevana core) (schevana kits host)
-        (schevana styles adwaita) (schevana palettes adwaita))
+(import (chezscheme) (schevana core) (schevana kits host))
 
 (host-main "org.example.Notes" 360 480 (command-line-arguments)
   (lambda ()
@@ -118,9 +121,16 @@ match to a desktop entry), the screen's size in logical pixels, the
 command line (`--headless` draws with no window, `--fork` runs the screen
 on a thread of its own) and a thunk that opens the window. The window's
 `'min-size` is the least the host lets the window be dragged to. The
-looks register as their libraries run, so the program imports those it
-may take. The same window opened on the Schevana desktop is a window like
-any other there.
+same window opened on the Schevana desktop is a window like any other
+there.
+
+Only the look in use loads: `host-main` loads the host's style by its
+name, and the palettes it names, with `look-load!` (the core's), and
+`--style NAME` takes any of Schevana's styles in its place:
+
+```bash
+./schevana-window-demo.sh --style genera
+```
 
 A host app needs no library of its own: `schevana-window-demo.ss`, a
 checklist, is a plain script, run with the tree as Chez's library folder.

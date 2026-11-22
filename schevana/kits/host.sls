@@ -3,7 +3,9 @@
 ;;; whole, its title the one the desktop shows, its least size the screen's,
 ;;; it has an app id of its own, and the look is the host's (Adwaita on
 ;;; Linux, Mac on a Mac, Windows on Windows), light or dark as the desktop
-;;; prefers when the look has a dark palette. Its title bar is the host's,
+;;; prefers when the look has a dark palette; or, as the command line asks
+;;; (--style NAME), any of Schevana's styles. Only that look's libraries
+;;; load (look-load!). Its title bar is the host's,
 ;;; the window having no frame of Schevana's; or, where the desktop draws
 ;;; none (GNOME under Wayland), its style's, as GNOME's own apps draw their
 ;;; header bars: the desktop moves and resizes it by the regions the core
@@ -14,8 +16,7 @@
 ;;;     (lambda () (open-window "Notes" ...)))
 ;;;
 ;;; On the Schevana desktop the same window opens as any other: only
-;;; host-main makes it the host's. The program imports the looks it may take
-;;; ((schevana styles adwaita), ...), which register as they run.
+;;; host-main makes it the host's.
 
 (library (schevana kits host)
   (export
@@ -25,7 +26,7 @@
           (only (schevana base) filter-map library-layer platform-mac?
                 platform-windows?)
           (only (schevana core) *mouse-x* *mouse-y* bind-key! close-window!
-                find-style frame-insets frame-regions maximized? quit!
+                frame-insets frame-regions look-load! maximized? quit!
                 resize-kinds schevana-main screen-hit-regions! screen-maximized?
                 screen-own-frame! screen-own-frame? screen-set-app-id!
                 screen-set-least! screen-set-title! screen-window-action!
@@ -72,6 +73,8 @@
 
   ;; A frame's actions on the OS window: maximize (or restore), minimize, the
   ;; desktop's own window menu where the pointer is; close as any window's.
+  ;; A drag of its title never moves the window inside the screen: the
+  ;; desktop moves the OS window by it.
   (define (host-act! win action)
     (case action
       [(maximize)
@@ -79,7 +82,7 @@
        #t]
       [(minimize) (screen-window-action! 'minimize) #t]
       [(menu) (screen-window-action! 'menu *mouse-x* *mouse-y*) #t]
-      [(shade depth) #t]
+      [(shade depth move) #t]
       [else #f]))
 
   ;; How far in from the window's edge a press resizes it, and from a
@@ -90,8 +93,9 @@
 
   ;; The regions of win, a host app's own frame, as the desktop is to take
   ;; them (screen-hit-regions!): its edges and corners resize it unless
-  ;; maximized?; its frame's buttons are its own; the rest of its title bar
-  ;; moves it.
+  ;; maximized?; its frame's title areas, wherever the style puts them
+  ;; (Genera's label at the bottom), move it, its buttons are its own; and
+  ;; so does the rest of its top, as in any window.
   (define (host-hit-regions win maximized?)
     (let-values ([(l t r b) (frame-insets win)])
       (let ([x (window-x win)] [y (window-y win)]
@@ -109,8 +113,9 @@
                    (list 'resize-l x y e h)
                    (list 'resize-r (+ x w (- e)) y e h)))
          (filter-map (lambda (reg)
-                       (and (not (memq (car reg) (cons 'title resize-kinds)))
-                            (list 'normal (+ x (cadr reg)) (+ y (caddr reg))
+                       (and (not (memq (car reg) resize-kinds))
+                            (list (if (eq? (car reg) 'title) 'move 'normal)
+                                  (+ x (cadr reg)) (+ y (caddr reg))
                                   (cadddr reg) (car (cddddr reg)))))
                      (frame-regions win))
          (list (list 'move x y w t))))))
@@ -119,9 +124,16 @@
   ;; reverse-DNS by custom), a screen w × h logical pixels, and (open), which
   ;; opens the app's window and returns it. args are the command line's:
   ;; --headless, no window (for tests); --fork, the screen's thread apart
-  ;; from the world's.
+  ;; from the world's; --style NAME, a style of Schevana's in place of the
+  ;; host's look.
   (define (host-main app-id w h args open)
-    (let ([headless? (member "--headless" args)])
+    (let* ([headless? (member "--headless" args)]
+           [style (let ([s (member "--style" args)])
+                    (and s (pair? (cdr s)) (string->symbol (cadr s))))]
+           [look (look-load! (or style (host-look)))])
+      (when (and style (not look))
+        (errorf 'host-main "the tree has no style ~s (schevana/styles/)"
+                style))
       (unless headless?
         (screen-set-app-id! app-id)
         (screen-own-frame! #t))
@@ -129,6 +141,6 @@
       (screen-set-least! 0 0)
       (schevana-main (if headless? 'headless 'sdl) w h #f
         (lambda ()
-          (when (find-style (host-look)) (set-style! (host-look)))
+          (when look (set-style! look))
           (host-window! (open)))
         (and (member "--fork" args) #t)))))

@@ -75,9 +75,8 @@
                    (equal? (assq 'label seen) (cons 'label (theme 'text)))
                    (not (= (theme 'text) #xff0000))))))))
 
-(define (test-topbar-areas)
-  (let ([h (topbar-height)])
-    (list (list 'launcher 300 0 120 h) (list 'title 0 0 300 h))))
+(define (test-topbar-areas h)
+  (list (list 'launcher 300 0 120 h) (list 'title 0 0 300 h)))
 
 (check "a style that moves the launcher in the top bar's areas moves its \
         click"
@@ -97,6 +96,74 @@
             (set-style! 'test-launcher)
             (equal? (list plain (list (opened-at 40) (opened-at 340)))
                     '((#t #f) (#f #t)))))))
+
+;; What each of the desktop's parts was last handed, by its key: a style's
+;; part that notes it and draws as the built-in does.
+(define test-handed '())
+(define (test-hand key built-in)
+  (lambda args
+    (set! test-handed (cons (cons key args)
+                            (remp (lambda (e) (eq? (car e) key)) test-handed)))
+    (apply built-in args)))
+(define (handed key) (let ([e (assq key test-handed)]) (and e (cdr e))))
+
+(check "the desktop's parts are handed what they draw: the bars their \
+        height, their areas, whether the launcher is open, the mouse \
+        documentation's line and the status, the taskbar its hint too; the \
+        toasts their boxes; the menu itself, its areas, the entry chosen \
+        and its flags"
+       (with-test-styles
+        (lambda ()
+          (set! test-handed '())
+          (define-style test-hand-style "Test"
+            'draw-topbar (test-hand 'draw-topbar draw-topbar*)
+            'draw-taskbar (test-hand 'draw-taskbar draw-taskbar*)
+            'draw-toasts (test-hand 'draw-toasts draw-toasts*)
+            'draw-menu (test-hand 'draw-menu draw-menu*))
+          (set-style! 'test-hand-style)
+          (let ([w (open-window "Handed" 'size '(200 . 100)
+                                'pos '(200 . 200))])
+            (notify "Handed")
+            (toggle-launcher!)
+            (steps 1)
+            (let ([ok (and (equal? (handed 'draw-topbar)
+                                   (list (topbar-height) (placed-topbar-areas)
+                                         #t #f *status-shown*))
+                           (equal? (handed 'draw-taskbar)
+                                   (list (taskbar-height)
+                                         (placed-taskbar-areas) #t #f
+                                         *status-shown* taskbar-hint))
+                           (equal? (handed 'draw-toasts)
+                                   (list (with-place 'toast toast-boxes)))
+                           (equal? (handed 'draw-menu)
+                                   (list *menu* (placed-menu-areas *menu*)
+                                         (menu-sel *menu*) '())))])
+              (close-menu!)
+              (set! *toasts* '())
+              (close-window! w)
+              ok)))))
+
+(check "where a style has no top bar the taskbar is handed the mouse \
+        documentation's line, where it shows it"
+       (with-test-styles
+        (lambda ()
+          (set! test-handed '())
+          (define-style test-hand-bare "Test"
+            'topbar-height 0
+            'mouse-doc #t
+            'draw-topbar (test-hand 'draw-topbar draw-topbar*)
+            'draw-taskbar (test-hand 'draw-taskbar draw-taskbar*))
+          (set-style! 'test-hand-bare)
+          (let ([w (open-window "Handed" 'size '(200 . 100)
+                                'pos '(200 . 200))])
+            (set! *hover* (list 'window w 'title))
+            (steps 1)
+            (let ([line (mouse-doc-text (mouse-doc))]
+                  [doc (cadddr (handed 'draw-taskbar))])
+              (set! *hover* #f)
+              (close-window! w)
+              (and (not (handed 'draw-topbar))
+                   (string? line) (equal? doc line)))))))
 
 (check "the menu's entries are where menu-areas puts them: a taller entry \
         moves the click"

@@ -150,11 +150,11 @@
                              (filter (lambda (f)
                                        (equal? (path-extension f) "sls"))
                                      (directory-list path))))))
-              '("schevana/kits" "schevana/services" "schevana/desktop"
-                "schevana/styles" "schevana/palettes" "schevana/wallpapers"
+              '("schevana/kits" "schevana/services" "schevana/styles"
+                "schevana/palettes" "schevana/wallpapers" "schevana/desktop"
                 "schevana/apps" "schevana-demo")
-              '((schevana kits) (schevana services) (schevana desktop)
-                (schevana styles) (schevana palettes) (schevana wallpapers)
+              '((schevana kits) (schevana services) (schevana styles)
+                (schevana palettes) (schevana wallpapers) (schevana desktop)
                 (schevana apps) (schevana-demo)))))
 
 (unless (= (length units-asked) 1)

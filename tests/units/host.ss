@@ -89,3 +89,32 @@
          (eq? (window-state win) 'normal))
   (close-window! win))
 (set-style! 'mac)
+
+;; Genera's title is its label at the bottom: there the desktop moves the
+;; window. And a drag of a host window's title never moves the window inside
+;; the screen, maximized as it is: the desktop moves the OS window.
+(set-style! 'genera)
+(let* ([win (open-window "Label" 'size '(300 . 200) 'pos '(0 . 0))]
+       [label (assq 'title (frame-regions win))]
+       [moves (filter (lambda (r) (eq? (car r) 'move))
+                      (host-hit-regions win #t))])
+  (check (format "Genera's label at the bottom moves a host window ~s" moves)
+         (member (cons 'move (cdr label)) moves))
+  (window-set! win 'on-action host-act!)
+  (toggle-maximize! win)
+  (steps 1)
+  (let* ([x (+ (window-x win) (cadr label) 20)]
+         [y (+ (window-y win) (caddr label) 2)]
+         [before (list (window-x win) (window-y win) (window-w win)
+                       (window-h win))])
+    (wm-mouse-move x y)
+    (wm-mouse-down x y 'left 1)
+    (wm-mouse-move (+ x 80) (- y 60))
+    (wm-mouse-up (+ x 80) (- y 60) 'left)
+    (steps 1)
+    (check "a drag of a host window's title leaves it maximized where it was"
+           (and (maximized? win)
+                (equal? before (list (window-x win) (window-y win)
+                                     (window-w win) (window-h win))))))
+  (close-window! win))
+(set-style! 'mac)

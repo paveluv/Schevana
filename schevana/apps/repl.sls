@@ -72,11 +72,10 @@
                 kill! mix now-ms open-window override! palettes point-in? proc
                 request-frame! reset-style! set-palette! set-style! set-theme!
                 spawn stroke-box style styles theme theme-default theme-keys
-                theme-part theme-rule window-frame-soon! window-handlers
-                window-ref window-set! window-title window-title-set! windows
-                with-place)
+                theme-part theme-rule wallpapers window-frame-soon!
+                window-handlers window-ref window-set! window-title
+                window-title-set! windows with-place)
           (only (schevana desktop bell) bell)
-          (only (schevana desktop wallpaper) wallpapers)
           (only (schevana kits app) app-launch!)
           (only (schevana kits complete) complete-wheel! complete-show
                 complete-text! complete-mouse-down! complete-pointer-at

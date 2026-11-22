@@ -80,12 +80,15 @@
     *input-step?* post-core1! schevana-run! quit! schevana-end! uptime-ms
     load-user-init! user-directory schevana-boot! collector-declining?
     source-path source-files *source-texts* keep-source-text! load-file!
-    load-user-folders! reload! core1-run core1-boot!
-    ;; (schevana core theme): the theme, styles, palettes and parts
+    load-user-folders! reload! core1-run core1-boot! look-load!
+    world-load-now! *world-later*
+    ;; (schevana core theme): the theme, styles, palettes, wallpapers and
+    ;; parts
     *theme-version* *style-name* *style-changes* *theme-overrides*
     *scale-setting* default-theme color-keys common-options theme-default
-    *palettes* define-palette palettes palette-title palette-colors style
-    style-name style-title style-settings *styles* define-style find-style
+    *palettes* define-palette palettes palette-title palette-colors
+    *wallpapers* define-wallpaper wallpapers wallpaper-shown fill-wallpaper
+    style style-name style-title style-settings *styles* define-style find-style
     styles current-style define-part color-default! theme-default! with-style
     with-place style-changes-of style-chain chain-ref honored? resolve-theme
     frame-over* change-layers! theme-layers-set! set-style! set-theme!
@@ -223,7 +226,8 @@
                 schevana-end! uptime-ms user-directory schevana-boot!
                 collector-declining? core1-run loop-main)
           (only (schevana core theme) common-options theme-default
-                define-palette palettes palette-title palette-colors style
+                define-palette palettes palette-title palette-colors
+                define-wallpaper wallpapers wallpaper-shown fill-wallpaper style
                 style-name style-title style-settings define-style find-style
                 styles current-style define-part color-default! theme-default!
                 with-style with-place style-changes-of style-chain chain-ref
@@ -253,7 +257,8 @@
                 window-frame-soon! window-hover draw-window*)
           (only (schevana core sources) core1-exported load-user-init!
                 source-path source-files keep-source-text! load-file!
-                load-user-folders! reload! core1-boot! program-world!)
+                load-user-folders! reload! core1-boot! program-world!
+                look-load! world-load-now!)
           (prefix (only (schevana tree) *schevana-root*) core:)
           (prefix (only (schevana core platform) platform-process-bytes now-ns
                         now-ms) core:)
@@ -281,14 +286,14 @@
           (prefix (only (schevana core loop) *input-step?* wm-event!) core:)
           (prefix (only (schevana core theme) *theme-version* *style-name*
                         *style-changes* *theme-overrides* *scale-setting*
-                        default-theme color-keys *palettes* *styles*
-                        theme-save!) core:)
+                        default-theme color-keys *palettes* *wallpapers*
+                        *styles* theme-save!) core:)
           (prefix (only (schevana core windows) *windows* *focus* *drag-outline*
                         *hover* *mouse-x* *mouse-y* *mouse-button*
                         current-window invalidate! *apps* new-window-position
                         *global-keys* window-gone!) core:)
           (prefix (only (schevana core sources) *world-env* *schevana-options*
-                        *source-texts* app-load!) core:))
+                        *world-later* *source-texts* app-load!) core:))
 
   (library-layer core facade)
 
@@ -302,6 +307,7 @@
   ;; What the core sets, and the world reads or calls: views.
   (define-view *schevana-root* core:*schevana-root*)
   (define-view *screen-least* core:*screen-least*)
+  (define-view *world-later* core:*world-later*)
   (define-view platform-process-bytes core:platform-process-bytes)
   (define-view now-ns core:now-ns)
   (define-view now-ms core:now-ms)
@@ -363,6 +369,7 @@
   (define-view default-theme core:default-theme)
   (define-view color-keys core:color-keys)
   (define-view *palettes* core:*palettes*)
+  (define-view *wallpapers* core:*wallpapers*)
   (define-view *styles* core:*styles*)
   (define-view *windows* core:*windows*)
   (define-view *focus* core:*focus*)

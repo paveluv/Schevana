@@ -50,11 +50,12 @@
           (only (schevana base) at-load clamp define-made define-state
                 library-layer list-index plist-keys plist-ref string-join
                 string-split)
-          (only (schevana core) *gpu-facts* *styles* *world-env* alpha app
-                chain-ref close-window! color-default! color-keys color-rgba
-                common-options current-style current-window define-app
-                detached-window draw-text draw-window* fill-box fill-circle
-                find-style find-window focus-window! font-char-width
+          (only (schevana core) *gpu-facts* *styles* *wallpapers*
+                *world-env* alpha app chain-ref close-window! color-default!
+                color-keys color-rgba common-options current-style
+                current-window define-app detached-window draw-text
+                draw-window* fill-box fill-circle fill-wallpaper find-style
+                find-window focus-window! font-char-width
                 font-line-height fullscreen? invalidate! load-file! open-window
                 override! palette-title palettes plist-has? reset-style!
                 reset-theme! rgb set-fullscreen! set-scale! set-style!
@@ -65,7 +66,6 @@
                 window-h-set! window-hover window-ref window-w-set!
                 window-x-set! window-y-set! with-clip with-scale with-style
                 with-translation)
-          (only (schevana desktop wallpaper) fill-wallpaper *wallpapers*)
           (only (schevana kits color) color-from-hsl color->hsl color->fixnum)
           (only (schevana kits text) text-fit text-widest)
           (only (schevana kits theme) theme-palette-preview theme-source)

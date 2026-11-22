@@ -10,9 +10,11 @@
 
 (library (schevana desktop main)
   (export desktop-defaults desktop-size desktop-usage desktop-options
-          desktop-fork? desktop-demos desktop-demos-load! desktop-main)
+          desktop-fork? desktop-demos desktop-demos-load! desktop-later?
+          desktop-main)
   (import (chezscheme)
-          (only (schevana base) library-layer define-hook string-suffix?)
+          (only (schevana base) library-layer define-hook string-prefix?
+                string-suffix?)
           (only (schevana core) core1-run core1-boot! world-value
                 *schevana-root*))
 
@@ -107,6 +109,14 @@
 
   ;; The desktop, from the command line's args. Installing its entry
   ;; opens no window.
+  ;; What of the world loads after the screen shows: the apps, libraries
+  ;; and files, the heaviest of it; the desktop opens its first apps itself
+  ;; (desktop-start!), loading them first.
+  (define (desktop-later? entry)
+    (if (pair? entry)
+        (eq? (cadr entry) 'apps)
+        (string-prefix? "apps/" entry)))
+
   (define (desktop-main args)
     (let* ([options (desktop-options args)]
            [option (lambda (key) (cdr (assq key options)))]
@@ -115,6 +125,6 @@
                  (car size) (cdr size) (option 'full-screen?)
                  (desktop-fork? options)
                  (lambda ()
-                   (core1-boot! options)
+                   (core1-boot! options desktop-later?)
                    (when (option 'demo) (desktop-demos-load!))
                    ((world-value 'desktop-start!)))))))

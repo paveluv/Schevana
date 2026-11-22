@@ -10,9 +10,10 @@
 ;;; each cited as file:line under data/theme/gnome-shell-sass/ and marked
 ;;; shell; no SCSS, icon or image is copied.
 ;;;
-;;; Adwaita is apart from it so that a program taking Adwaita's look (a host
-;;; app, (schevana kits host)) has no desktop of Schevana's: this library
-;;; imports the desktop's, which bring their surfaces.
+;;; Adwaita is apart from it: a program taking Adwaita's look (a host app,
+;;; (schevana kits host)) has GNOME's own Shell around its window, and this
+;;; is the Shell's. Like every look it imports nothing of the desktop's:
+;;; the desktop's parts are handed what they draw.
 
 (library (schevana styles gnome)
   (export
@@ -27,22 +28,14 @@
           (only (schevana core) *focus* *hover* *toasts* *windows* alpha
                 color-default! color-rgba define-style desktop-rect
                 draw-polyline draw-shadow draw-text fill-box fill-circle
-                font-line-height linear-gradient maximized? mix pi rgb
-                screen-h screen-w stroke-box stroke-circle text-width theme
-                theme-default! theme-font-rule theme-rule visible? window-app
-                window-bg window-id window-shadow window-title window-w
-                window? with-clip with-place draw-line)
-          (only (schevana desktop menu) *menu* *menu-blink* launcher-open?
-                menu-areas menu-entries menu-entry-flags menu-filter
-                menu-filter? menu-label-key menu-label-text menu-phase
-                menu-sel menu-tag menu-x menu-y)
-          (only (schevana desktop mousedoc) mouse-doc mouse-doc-text)
-          (only (schevana desktop status) *status-shown*)
-          (only (schevana desktop taskbar) taskbar-areas taskbar-height)
-          (only (schevana desktop toasts) toast-boxes)
-          (only (schevana desktop topbar) topbar-areas topbar-height)
-          (only (schevana desktop wallpaper) fill-wallpaper)
+                fill-wallpaper font-line-height linear-gradient maximized?
+                mix pi rgb screen-h screen-w stroke-box stroke-circle
+                text-width theme theme-default! theme-font-rule theme-rule
+                visible? window-app window-bg window-id window-shadow
+                window-title window-w window? with-clip with-place draw-line)
           (only (schevana kits app) app-color)
+          (only (schevana kits menu) menu-entries menu-filter menu-filter?
+                menu-label-key menu-label-text menu-tag menu-x menu-y)
           (only (schevana kits text) text-draw-centered text-fit text-widest)
           (only (schevana kits ui) ui-control-height ui-draw-glyph
                 ui-draw-panel ui-glyph-size ui-small-glyph-size ui-title-icon)
@@ -60,8 +53,8 @@
   ;; one's a dot.
   (define (gnome-activities-width) (+ 3 12 3 29 5 8 3 12 3))
 
-  (define (gnome-topbar-areas)
-    (list (list 'launcher 0 0 (gnome-activities-width) (topbar-height))))
+  (define (gnome-topbar-areas h)
+    (list (list 'launcher 0 0 (gnome-activities-width) h)))
 
   ;; The clock as GNOME shows it by default, the month, the day and the
   ;; time (org.gnome.desktop.interface clock-show-date, clock-format).
@@ -74,13 +67,13 @@
               (date-day d) (date-hour d) (date-minute d))))
 
   ;; The status the right of the bar shows, the system's place: every
-  ;; segment but the clock, which the middle has; or, where the style shows
-  ;; it, what the mouse buttons do.
-  (define (gnome-status-strings)
+  ;; segment of status but the clock, which the middle has; or, where the
+  ;; style shows it, what the mouse buttons do, doc.
+  (define (gnome-status-strings doc status)
     (if (theme 'mouse-doc)
-        (list (mouse-doc-text (mouse-doc)))
+        (if doc (list doc) '())
         (filter-map (lambda (s) (and (not (eq? (car s) 'clock)) (cdr s)))
-                    *status-shown*)))
+                    status)))
 
   ;; GNOME Shell's panel (shell widgets/_panel.scss:13-17): 2.2 em high,
   ;; black (_colors.scss:24), its text bold and white; Activities at its
@@ -89,30 +82,27 @@
   ;; white, the next one's at three quarters its size and half its strength
   ;; (js/ui/panel.js:50, 297-302); the clock in its middle; the status at
   ;; its right, 12 from the end.
-  (define (gnome-draw-topbar)
-    (with-place 'bar
-      (lambda ()
-        (let* ([w (screen-w)] [h (topbar-height)] [f 'ui-bold]
-               [ty (/ (- h (font-line-height f)) 2)] [cy (/ h 2)]
-               [l (cdr (assq 'launcher (topbar-areas)))]
-               [lx (car l)] [lw (caddr l)]
-               [open? (launcher-open?)]
-               [clock (gnome-clock-text)]
-               [cw (text-width clock f)] [cx (/ (- w cw) 2)])
-          (fill-box 0 0 w h 'panel)
-          (when (or open? (equal? *hover* '(surface topbar launcher)))
-            (fill-box (+ lx 3) 3 (- lw 6) (- h 6)
-                      (alpha 'panel-text (if open? 0.28 0.17)) (/ (- h 6) 2)))
-          (let ([dx (+ lx 3 12 3)])
-            (fill-box dx (- cy 4) 29 8 'panel-text 4)
-            (fill-circle (+ dx 29 5 4) cy 3 (alpha 'panel-text 0.5)))
-          (draw-text cx ty clock 'panel-text f)
-          (let loop ([ss (reverse (gnome-status-strings))] [x (- w 12)])
-            (unless (null? ss)
-              (let ([x0 (- x (text-width (car ss) f))])
-                (when (> x0 (+ cx cw 24))
-                  (draw-text x0 ty (car ss) 'panel-text f)
-                  (loop (cdr ss) (- x0 18))))))))))
+  (define (gnome-draw-topbar h areas open? doc status)
+    (let* ([w (screen-w)] [f 'ui-bold]
+           [ty (/ (- h (font-line-height f)) 2)] [cy (/ h 2)]
+           [l (cdr (assq 'launcher areas))]
+           [lx (car l)] [lw (caddr l)]
+           [clock (gnome-clock-text)]
+           [cw (text-width clock f)] [cx (/ (- w cw) 2)])
+      (fill-box 0 0 w h 'panel)
+      (when (or open? (equal? *hover* '(surface topbar launcher)))
+        (fill-box (+ lx 3) 3 (- lw 6) (- h 6)
+                  (alpha 'panel-text (if open? 0.28 0.17)) (/ (- h 6) 2)))
+      (let ([dx (+ lx 3 12 3)])
+        (fill-box dx (- cy 4) 29 8 'panel-text 4)
+        (fill-circle (+ dx 29 5 4) cy 3 (alpha 'panel-text 0.5)))
+      (draw-text cx ty clock 'panel-text f)
+      (let loop ([ss (reverse (gnome-status-strings doc status))] [x (- w 12)])
+        (unless (null? ss)
+          (let ([x0 (- x (text-width (car ss) f))])
+            (when (> x0 (+ cx cw 24))
+              (draw-text x0 ty (car ss) 'panel-text f)
+              (loop (cdr ss) (- x0 18))))))))
 
   ;;; ------------------------------------------------------------------
   ;;; the dash
@@ -123,15 +113,15 @@
   ;; edge (12 at the overview's size, 8), its color the system's overlay
   ;; (4, _colors.scss:49), 6 inside it a tile a window, 2 apart (19-25,
   ;; 49-55), 12 round, a tile's 6 round its icon; its corners the tiles'
-  ;; and its padding (9); after a line, Show Apps (83-93). => (values the
-  ;; dash's height, a tile's side, an icon's)
-  (define (gnome-dash-sizes)
-    (let* ([bh (- (taskbar-height) 12)] [t (- bh 12)])
+  ;; and its padding (9); after a line, Show Apps (83-93). In a strip h
+  ;; high => (values the dash's height, a tile's side, an icon's)
+  (define (gnome-dash-sizes h)
+    (let* ([bh (- h 12)] [t (- bh 12)])
       (values bh t (- t 12))))
 
   ;; ((launcher x y w h) (window x y w h) ...): the tiles, centered.
-  (define (gnome-taskbar-areas)
-    (let*-values ([(bh t icon) (gnome-dash-sizes)]
+  (define (gnome-taskbar-areas h hint)
+    (let*-values ([(bh t icon) (gnome-dash-sizes h)]
                   [(ws) (sort (lambda (a b) (< (window-id a) (window-id b)))
                               *windows*)]
                   [(n) (length ws)]
@@ -139,7 +129,7 @@
                   [(pitch) (if (zero? n) (+ t 4) (min (+ t 4) (/ room n)))]
                   [(dw) (+ 4 (* n pitch) (if (zero? n) 0 9) (+ t 4) 4)]
                   [(x0) (floor (/ (- (screen-w) dw) 2))]
-                  [(ty) (+ (- (screen-h) (taskbar-height)) 6 6)])
+                  [(ty) (+ (- (screen-h) h) 6 6)])
       (cons (list 'launcher (- (+ x0 dw) 6 t) ty t t)
             (map (lambda (win i) (list win (+ x0 4 2 (* i pitch)) ty
                                        (- pitch 4) t))
@@ -164,45 +154,40 @@
   ;; window's (shell widgets/_dash.scss:57-68), a dot 5 across under each
   ;; (_app-grid.scss:45-51); the line of white at 10 % (83-87), and Show
   ;; Apps, its grid of nine.
-  (define (gnome-draw-taskbar)
-    (with-place 'bar
-      (lambda ()
-        (let*-values ([(bh t icon) (gnome-dash-sizes)]
-                      [(areas) (taskbar-areas)]
-                      [(l) (cdr (assq 'launcher areas))]
-                      [(wins) (filter (lambda (a) (window? (car a))) areas)]
-                      [(y0) (+ (- (screen-h) (taskbar-height)) 6)]
-                      [(x0) (- (if (null? wins) (car l) (cadr (car wins)))
-                               6)]
-                      [(x1) (+ (car l) t 6)])
-          (fill-box x0 y0 (- x1 x0) bh 'adwaita-dash (+ 12 6))
-          (for-each
-           (lambda (a)
-             (let* ([win (car a)] [x (cadr a)] [y (caddr a)] [tw (cadddr a)]
-                    [hover? (equal? *hover* (list 'surface 'taskbar win))]
-                    [focused? (eq? win *focus*)]
-                    [ix (+ x (/ (- tw icon) 2))])
-               (when (or hover? focused?)
-                 (fill-box x y tw t
-                           (if hover? 'adwaita-dash-hover 'adwaita-dash-checked)
-                           12))
-               (gnome-dash-icon win ix (+ y 6) icon (visible? win))
-               (fill-circle (+ x (/ tw 2)) (+ y t 3) 2.5
-                            (if (visible? win)
-                                'adwaita-dash-text
-                                (alpha 'adwaita-dash-text 0.5)))))
-           wins)
-          (unless (null? wins)
-            (fill-box (- (car l) 6 1) (+ y0 12) 1 (- bh 24)
-                      (alpha 'adwaita-dash-text 0.1)))
-          (when (or (launcher-open?)
-                    (equal? *hover* '(surface taskbar launcher)))
-            (fill-box (car l) (cadr l) t t 'adwaita-dash-hover 12))
-          (let ([gx (+ (car l) (/ (- t 16) 2))]
-                [gy (+ (cadr l) (/ (- t 16) 2))])
-            (do ([i 0 (+ i 1)]) ((= i 9))
-              (fill-box (+ gx (* 6 (mod i 3))) (+ gy (* 6 (quotient i 3))) 4 4
-                        'adwaita-dash-text 1)))))))
+  (define (gnome-draw-taskbar h areas open? doc status hint)
+    (let*-values ([(bh t icon) (gnome-dash-sizes h)]
+                  [(l) (cdr (assq 'launcher areas))]
+                  [(wins) (filter (lambda (a) (window? (car a))) areas)]
+                  [(y0) (+ (- (screen-h) h) 6)]
+                  [(x0) (- (if (null? wins) (car l) (cadr (car wins))) 6)]
+                  [(x1) (+ (car l) t 6)])
+      (fill-box x0 y0 (- x1 x0) bh 'adwaita-dash (+ 12 6))
+      (for-each
+       (lambda (a)
+         (let* ([win (car a)] [x (cadr a)] [y (caddr a)] [tw (cadddr a)]
+                [hover? (equal? *hover* (list 'surface 'taskbar win))]
+                [focused? (eq? win *focus*)]
+                [ix (+ x (/ (- tw icon) 2))])
+           (when (or hover? focused?)
+             (fill-box x y tw t
+                       (if hover? 'adwaita-dash-hover 'adwaita-dash-checked)
+                       12))
+           (gnome-dash-icon win ix (+ y 6) icon (visible? win))
+           (fill-circle (+ x (/ tw 2)) (+ y t 3) 2.5
+                        (if (visible? win)
+                            'adwaita-dash-text
+                            (alpha 'adwaita-dash-text 0.5)))))
+       wins)
+      (unless (null? wins)
+        (fill-box (- (car l) 6 1) (+ y0 12) 1 (- bh 24)
+                  (alpha 'adwaita-dash-text 0.1)))
+      (when (or open? (equal? *hover* '(surface taskbar launcher)))
+        (fill-box (car l) (cadr l) t t 'adwaita-dash-hover 12))
+      (let ([gx (+ (car l) (/ (- t 16) 2))]
+            [gy (+ (cadr l) (/ (- t 16) 2))])
+        (do ([i 0 (+ i 1)]) ((= i 9))
+          (fill-box (+ gx (* 6 (mod i 3))) (+ gy (* 6 (quotient i 3))) 4 4
+                    'adwaita-dash-text 1)))))
 
   ;;; ------------------------------------------------------------------
   ;;; notifications: GNOME Shell's banners
@@ -231,22 +216,20 @@
   ;; 88-94), 6 inside it; its header, 24 high, the source dimmed, its icon
   ;; 16 across, a dot of the notice's color, and Schevana bold (108-133);
   ;; under it the notice.
-  (define (gnome-draw-toasts)
-    (with-place 'toast
-      (lambda ()
-        (let ([lh (font-line-height 'ui)])
-          (for-each
-           (lambda (b)
-             (let ([x (vector-ref b 0)] [y (vector-ref b 1)]
-                   [w (vector-ref b 2)] [h (vector-ref b 3)])
-               (draw-shadow x y w h 16 8)
-               (fill-box x y w h 'adwaita-shell-card 16)
-               (fill-circle (+ x 12 8) (+ y 6 12) 7 (vector-ref b 5))
-               (draw-text (+ x 12 16 6) (+ y 6 (/ (- 24 lh) 2)) "Schevana"
-                          'adwaita-shell-dim 'ui-bold)
-               (draw-text (+ x 12) (+ y 6 24 6) (vector-ref b 4)
-                          'adwaita-shell-text 'ui)))
-           (toast-boxes))))))
+  (define (gnome-draw-toasts boxes)
+    (let ([lh (font-line-height 'ui)])
+      (for-each
+       (lambda (b)
+         (let ([x (vector-ref b 0)] [y (vector-ref b 1)]
+               [w (vector-ref b 2)] [h (vector-ref b 3)])
+           (draw-shadow x y w h 16 8)
+           (fill-box x y w h 'adwaita-shell-card 16)
+           (fill-circle (+ x 12 8) (+ y 6 12) 7 (vector-ref b 5))
+           (draw-text (+ x 12 16 6) (+ y 6 (/ (- 24 lh) 2)) "Schevana"
+                      'adwaita-shell-dim 'ui-bold)
+           (draw-text (+ x 12) (+ y 6 24 6) (vector-ref b 4)
+                      'adwaita-shell-text 'ui)))
+       boxes)))
 
   ;;; ------------------------------------------------------------------
   ;;; menus
@@ -337,74 +320,63 @@
   ;; the Shell's 12 round (shell widgets/_popovers.scss:36-39), the
   ;; popover's the text at 10 %, 9 round, 19 % held; a key that does the
   ;; same dimmed at the right (widgets/_menus.scss:76-81).
-  (define (gnome-draw-menu)
-    (when *menu*
-      (with-place 'menu
-        (lambda ()
-          (let* ([m *menu*] [shell? (gnome-shell-menu? m)]
-                 [areas (menu-areas m)] [es (list->vector (menu-entries m))]
-                 [lh (font-line-height 'ui)] [b *menu-blink*]
-                 [ink (if shell? 'adwaita-shell-text 'text)]
-                 [dim (if shell? 'adwaita-shell-dim 'text-dim)]
-                 [f (assq 'filter areas)])
-            (apply (lambda (x y w h)
-                     (if shell?
-                         (gnome-shell-panel x y w h)
-                         (ui-draw-panel x y w h '(menu))))
-                   (cdar areas))
-            (when f
-              (apply (lambda (fx fy fw fh)
-                       (gnome-menu-filter m fx fy fw fh shell?))
-                     (cdr f)))
-            (for-each
-             (lambda (a)
-               (apply
-                (lambda (what x y w h)
-                  (cond
-                    [(eq? what 'separator)
-                     (fill-box (+ x 6) (+ y (quotient h 2)) (- w 12) 1
-                               (alpha ink (if shell? 0.1 0.15)))]
-                    [(fixnum? what)
-                     (let* ([sel? (if b
-                                      (and (= what (cadr b))
-                                           (odd? (menu-phase b)))
-                                      (= what (menu-sel m)))]
-                            [held? (and sel? (memq 'pressed
-                                                   (menu-entry-flags what)))]
-                            [label (car (vector-ref es what))]
-                            [key (menu-label-key label)]
-                            [g (ui-glyph-size)]
-                            [ty (+ y (/ (- h lh) 2))])
-                       (when sel?
-                         (if shell?
-                             (fill-box (+ x 6) y (- w 12) h
-                                       (if held? 'adwaita-shell-pressed
-                                           'adwaita-shell-hover)
-                                       12)
-                             (fill-box (+ x 6) y (- w 12) h
-                                       (alpha 'text (if held? 0.19 0.1)) 9)))
-                       (let-values ([(text chosen?)
-                                     (gnome-menu-choice
-                                      (menu-label-text label))])
-                         (draw-text (+ x 18) ty
-                                    (text-fit text
-                                              (max 0
-                                                   (- w 36
-                                                      (if key
-                                                          (+ 12 (text-width
-                                                                 key 'ui))
-                                                          0)
-                                                      (if chosen? (+ 12 g) 0)))
-                                              'ui)
-                                    ink 'ui)
-                         (when chosen?
-                           (ui-draw-glyph (- (+ x w) 18 g) (+ y (/ (- h g) 2))
-                                          g g (list (cons 'ink ink)) 'check)))
-                       (when key
-                         (draw-text (- (+ x w) 18 (text-width key 'ui)) ty key
-                                    dim 'ui)))]))
-                a))
-             (cdr areas)))))))
+  (define (gnome-draw-menu m areas on flags)
+    (let* ([shell? (gnome-shell-menu? m)]
+           [es (list->vector (menu-entries m))] [lh (font-line-height 'ui)]
+           [ink (if shell? 'adwaita-shell-text 'text)]
+           [dim (if shell? 'adwaita-shell-dim 'text-dim)]
+           [f (assq 'filter areas)])
+      (apply (lambda (x y w h)
+               (if shell?
+                   (gnome-shell-panel x y w h)
+                   (ui-draw-panel x y w h '(menu))))
+             (cdar areas))
+      (when f
+        (apply (lambda (fx fy fw fh) (gnome-menu-filter m fx fy fw fh shell?))
+               (cdr f)))
+      (for-each
+       (lambda (a)
+         (apply
+          (lambda (what x y w h)
+            (cond
+              [(eq? what 'separator)
+               (fill-box (+ x 6) (+ y (quotient h 2)) (- w 12) 1
+                         (alpha ink (if shell? 0.1 0.15)))]
+              [(fixnum? what)
+               (let* ([sel? (eqv? what on)]
+                      [held? (and sel? (memq 'pressed flags))]
+                      [label (car (vector-ref es what))]
+                      [key (menu-label-key label)]
+                      [g (ui-glyph-size)]
+                      [ty (+ y (/ (- h lh) 2))])
+                 (when sel?
+                   (if shell?
+                       (fill-box (+ x 6) y (- w 12) h
+                                 (if held? 'adwaita-shell-pressed
+                                     'adwaita-shell-hover)
+                                 12)
+                       (fill-box (+ x 6) y (- w 12) h
+                                 (alpha 'text (if held? 0.19 0.1)) 9)))
+                 (let-values ([(text chosen?)
+                               (gnome-menu-choice (menu-label-text label))])
+                   (draw-text (+ x 18) ty
+                              (text-fit text
+                                        (max 0
+                                             (- w 36
+                                                (if key
+                                                    (+ 12 (text-width key 'ui))
+                                                    0)
+                                                (if chosen? (+ 12 g) 0)))
+                                        'ui)
+                              ink 'ui)
+                   (when chosen?
+                     (ui-draw-glyph (- (+ x w) 18 g) (+ y (/ (- h g) 2))
+                                    g g (list (cons 'ink ink)) 'check)))
+                 (when key
+                   (draw-text (- (+ x w) 18 (text-width key 'ui)) ty key
+                              dim 'ui)))]))
+          a))
+       (cdr areas))))
 
   ;;; ------------------------------------------------------------------
   ;;; the desktop

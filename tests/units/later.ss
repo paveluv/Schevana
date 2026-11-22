@@ -1,0 +1,46 @@
+;;; tests/units/later.ss — what of the world loads after the screen shows
+;;; ((schevana core sources)): the desktop's apps wait (desktop-later?); one
+;;; loads a step that is quiet, or after a second of steps that weren't;
+;;; one asked for loads at once, and only once.
+
+(check "the desktop's apps wait, libraries and files; the rest loads first"
+       (and (desktop-later? '(schevana apps tasks))
+            (desktop-later? "apps/boids.ss")
+            (not (desktop-later? '(schevana kits ui)))
+            (not (desktop-later? '(schevana desktop topbar)))
+            (not (desktop-later? "src/base.ss"))))
+
+;; Two files of the test's own, each counting its loads in "/".
+(define later-dir (string-append out-dir "/later"))
+(unless (file-directory? later-dir) (mkdir later-dir))
+(define (later-file name)
+  (let ([path (string-append later-dir "/" name ".ss")])
+    (call-with-output-file path
+      (lambda (p)
+        (write `(set! later-counted
+                  (cons ',(string->symbol name) later-counted))
+               p))
+      'replace)
+    path))
+(eval '(define later-counted '()) *world-env*)
+(define (later-loads) (eval 'later-counted *world-env*))
+
+(let ([a (later-file "a")] [b (later-file "b")])
+  (fluid-let ([*world-later* (list a b)] [*world-later-ms* (now-ms)])
+    (steps 2)
+    (let ([early (later-loads)])
+      ;; steps that draw are never quiet: a second after the last, one loads
+      (set! *world-later-ms* (- (now-ms) 2000))
+      (steps 1)
+      (let ([after-second (later-loads)] [waiting *world-later*])
+        (world-load-now! b)
+        (let ([now (later-loads)] [again (world-load-now! b)])
+          (check (format "a waiting entry loads a second after the last while \
+                          frames flow, one asked for at once, once ~s"
+                         (list early after-second waiting now again))
+                 (and (null? early)
+                      (equal? after-second '(a))
+                      (equal? waiting (list b))
+                      (equal? now '(b a))
+                      (not again)
+                      (null? *world-later*))))))))

@@ -43,10 +43,14 @@
 
 ;; Compiles a library to a file of a name of its own, then renames that
 ;; to the object's: another run loading the tree's libraries at the same
-;; time finds the old file or the new one, never half of one. Quietly:
-;; what runs prints nothing of its compiling.
+;; time finds the old file or the new one, never half of one. Each says it
+;; is compiling as Chez does, naming the object, as it begins: a first boot
+;; shows its progress and how long each library takes; the rest of what
+;; compiling prints stays quiet.
 (define (schevana-compile-library source object)
   (schevana-folder! (path-parent object))
+  (printf "compiling ~a with output to ~a~%" source object)
+  (flush-output-port (current-output-port))
   (let ([part (let ([t (current-time)])
                 (format "~a.~a-~a" object (time-second t)
                         (time-nanosecond t)))])

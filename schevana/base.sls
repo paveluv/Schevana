@@ -31,10 +31,11 @@
   ;;; import anything.
 
   ;; The layers, lowest first; a sealed one is reached from outside it
-  ;; only through its facade.
+  ;; only through its facade. The looks are below the desktop: a program
+  ;; may take a look without the desktop's surfaces and keys.
   (meta define library-layers
     '((foundation) (core0 sealed) (recorder sealed) (core sealed) (kits)
-      (services) (desktop) (looks) (apps)))
+      (services) (looks) (desktop) (apps)))
 
   (meta define (library-layer-rank layer)
     (let loop ([ls library-layers] [i 0])

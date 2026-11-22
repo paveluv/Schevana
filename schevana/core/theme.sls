@@ -1,7 +1,8 @@
 ;;; (schevana core theme) — how everything looks, as live data: each setting
 ;;; from the first layer that has it (your Overrides, your changes to the
 ;;; chosen style, the style, its palette, the built-in defaults), resolved into
-;;; one table that (theme key) reads.
+;;; one table that (theme key) reads; and the looks' registries, styles,
+;;; palettes and wallpapers.
 ;;;
 ;;; (theme 'accent)                 => #x7aa2f7
 ;;; (set-style! 'genera)            the one switch: frames, palette, ...
@@ -21,7 +22,9 @@
     *theme-version* theme-save! *style-name* *style-changes* *theme-overrides*
     *scale-setting* base-colors derived-colors default-theme color-keys
     common-options theme-default *palettes* define-palette palettes
-    palette-title palette-colors style style-name style-title style-settings
+    palette-title palette-colors *wallpapers* register-wallpaper!
+    define-wallpaper wallpapers wallpaper-shown fill-wallpaper style
+    style-name style-title style-settings
     *styles* register-style! define-style find-style styles current-style
     define-part color-default! theme-default! style-theme with-style with-place
     style-changes-of style-chain chain-ref meta-keys honored? resolve-theme
@@ -179,6 +182,46 @@
   ;; files register again)
   (define (palette-colors name)
     (let ([p (assq name *palettes*)]) (or (and p (caddr p)) '())))
+
+  ;;; ------------------------------------------------------------------
+  ;;; wallpapers
+  ;;; A wallpaper fills the desktop from the theme's two desktop colors, a
+  ;;; layer of the look as a palette is. Each is a file in wallpapers/; the
+  ;;; setting 'wallpaper names the one in use:
+  ;;;
+  ;;;   (define-wallpaper flat "Flat"
+  ;;;     (lambda (x y w h top bottom) (fill-box x y w h top)))
+
+  ;; ((name title fill) ...) in registration order
+  (define-state *wallpapers* '())
+
+  (define (register-wallpaper! name title fill)
+    (set! *wallpapers* (registry-add *wallpapers* (list name title fill) car))
+    (request-frame!))
+
+  ;; (define-wallpaper name "Title" fill) adds a wallpaper, or replaces the
+  ;; one of that name. (fill x y w h top bottom) fills the rectangle.
+  (define-syntax define-wallpaper
+    (syntax-rules ()
+      [(_ name title fill) (register-wallpaper! 'name title fill)]))
+
+  (define (wallpapers) (map car *wallpapers*))
+
+  ;; The name of the wallpaper drawn for name: the default for one that is
+  ;; gone, #f when that is gone too.
+  (define (wallpaper-shown name)
+    (let ([wp (or (assq name *wallpapers*)
+                  (assq (theme-default 'wallpaper) *wallpapers*))])
+      (and wp (car wp))))
+
+  ;; The desktop's background in a rectangle: the wallpaper named pattern (a
+  ;; value of the theme key 'wallpaper) from the colors top and bottom, or a
+  ;; plain fill when none is there.
+  (define (fill-wallpaper x y w h pattern top bottom)
+    (let ([wp (assq (wallpaper-shown pattern) *wallpapers*)])
+      (if wp
+          ((caddr wp) x y w h top bottom)
+          (fill-box x y w h top))))
 
   ;;; ------------------------------------------------------------------
   ;;; styles

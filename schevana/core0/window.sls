@@ -607,8 +607,6 @@
   (define (core0-loop!)
     (let loop ()
       (core0-step!)
-      ;; while it boots, the boot screen at each refresh
-      (when *gpu-booting* (gpu-boot-screen!))
       (if *core0-quit*
           (begin
             (when (eq? *core0-mode* 'sdl)
@@ -620,8 +618,9 @@
 
   ;; Core0 on this thread, the process's first, and the world on one of its
   ;; own, in two steps. The first: with a window (mode sdl), core0 opens it,
-  ;; w × h logical pixels at the desktop's scale, or full screen, and clears
-  ;; it; with none (headless, for the tests), its GPU draws to a target.
+  ;; w × h logical pixels at the desktop's scale, or full screen, and shows
+  ;; it, which the desktop maps with the world's first frame; with none
+  ;; (headless, for the tests), its GPU draws to a target.
   (define (core0-window-start! mode w h full?)
     (if (eq? mode 'headless)
         (core0-window-headless!)
@@ -633,9 +632,7 @@
                           (/ pw (max uw 1)))])
                 (core0-resize-now! (exact (round (* w s)))
                                    (exact (round (* h s)))))))
-          (core0-window-show!)
-          (set! *gpu-booting* #t)
-          (gpu-boot-screen!))))
+          (core0-window-show!))))
 
   ;; The second: the world's thread forked, which runs world, a thunk, and
   ;; asks core0 to quit when it returns, or raises; and core0's loop, on
@@ -694,7 +691,6 @@
         (let loop () (unless (box-cas! *gpu-published* f #f) (loop)))
         (core0-trace! 2 (gpu-frame-number f))
         (present-taken!)
-        (set! *gpu-booting* #f)
         ;; taken: core1 may make the next (.work/gpu-design.md 9.12), with the
         ;; input that came till now, not only till the last step's pump
         (core0-events-pumped!)

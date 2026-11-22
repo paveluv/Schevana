@@ -44,18 +44,20 @@ schevana/      the libraries below the world, each declaring its layer:
     screen       core0's window as the world sees it: scale, full screen,
                  icon, SDL's events as Scheme lists
     loop         core1's loop and step, the boot, the collector
-    theme        settings in layers, rules, palettes, styles, parts
+    theme        settings in layers, rules, parts; the looks' registries:
+                 styles, palettes, wallpapers
     windows      windows, z-order, focus, hit testing, dragging,
                  dispatch; the registries of surfaces and strips
     sources      "/", the world's libraries and files, loading them and
                  reload!
-  kits/        libraries, pure or almost: ui, edit, text, color, px, ...
+  kits/        libraries, pure or almost: ui, edit, text, color, px,
+               menu, ...
   services/    long-lived state behind procedures: crew, env, grant,
                profile, theme-file, vat
+  styles/  palettes/  wallpapers/    the looks, one definition a library
   desktop/     the screen's own surfaces: wallpaper, bars, menu, toasts;
                keys, arranging, the file dialog, the permissions dialog;
                the desktop's start (main, start)
-  styles/  palettes/  wallpapers/    the looks, one definition a library
   apps/        the apps that tune the world: the REPL, Settings, Tasks, ...
 apps/          the apps in sandboxes, one a file
 schevana-demo/ the demos, a library each, with launchers at the root
@@ -83,16 +85,22 @@ the core never names a later layer.
 Core0 is the bottom: SDL, the GPU's device side, the window and its
 events, and the only code that names SDL. With a window it opens it
 first and runs its loop on the process's first thread, and core1 boots
-on a thread of its own, the world's, the core loading as the boot screen
-shows. Headless, one thread plays both. Core1 makes "/", which imports
+on a thread of its own, the world's; the window shows with the world's
+first frame. Headless, one thread plays both. Core1 makes "/", which imports
 the core's facade, core0's and the recorder's that the world uses among
-it, and loads a copy of `src/base.ss` and the folders, each in file-name
-order:
+it, and loads a copy of `src/base.ss` and the folders in the layers'
+order, the looks before the desktop, each in file-name order:
 
 ```scheme
 (map env-path (env-children (env-root)))   ; "/worklets", "/apps", ...
 (length (source-files))                    ; every file the world loaded
 ```
+
+The desktop's apps wait: they load after the screen shows, one at each
+quiet step of the loop (a step that drew no frame and wants none), or one
+a second while frames flow (`*world-later*`); the desktop loads the two it
+opens first (`world-load-now!`). A launcher prints each library it
+compiles into its cache as it begins, so a first boot shows its progress.
 
 Only the core calls C. No binding reaches "/", and `tests/sources.ss`
 checks that no folder names one, nor anything of the core's it isn't given.
@@ -161,9 +169,12 @@ windows go, leaves out:
 (memq 'dock (surfaces))
 ```
 
-A field may name a procedure instead (`'draw 'draw-taskbar`), looked up at
-each call, so redefining it shows on the next frame. The crash panel and
-the window menu are parts whose built-ins the desktop gives.
+A field may name a procedure instead (`'draw 'taskbar-draw`), looked up at
+each call, so redefining it shows on the next frame. The desktop's own
+surfaces draw through parts a style gives (`draw-taskbar`, `draw-menu`,
+...), called by name too and handed what they draw: a look comes before
+the desktop and reads nothing of it. The crash panel and the window menu
+are parts whose built-ins the desktop gives.
 
 ## Engines
 

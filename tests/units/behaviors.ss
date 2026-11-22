@@ -530,7 +530,7 @@
                        [(button) (doc-at (+ cx 50) (+ cy 35))]
                        [(text) (doc-at (+ cx 50) (+ cy 85))]
                        [(taskbar)
-                        (let ([a (assq w (with-place 'bar taskbar-areas))])
+                        (let ([a (assq w (placed-taskbar-areas))])
                           (doc-at (+ (cadr a) 20) (+ (caddr a) 10)))]
                        [(desktop) (doc-at 100 600)])
            (close-window! w)
@@ -964,7 +964,7 @@
        (let ([w (open-window "Under" 'size '(300 . 200) 'pos '(250 . 200))])
          (set-theme! 'menu-choose 'release)
          (steps 1)
-         (let* ([a (assq w (with-place 'bar taskbar-areas))]
+         (let* ([a (assq w (placed-taskbar-areas))]
                 [x (+ (cadr a) 20)] [y (+ (caddr a) 10)])
            (inject! `(mouse-move ,x ,y) `(mouse-down ,x ,y right 1))
            (steps 1)
@@ -1079,7 +1079,7 @@
        (let ([w (open-window "Wobble" 'size '(300 . 200) 'pos '(250 . 200))])
          (set-theme! 'menu-choose 'release)
          (steps 1)
-         (let* ([a (assq w (with-place 'bar taskbar-areas))]
+         (let* ([a (assq w (placed-taskbar-areas))]
                 [x (+ (cadr a) 20)] [y (+ (caddr a) 10)])
            (inject! `(mouse-move ,x ,y) `(mouse-down ,x ,y right 1))
            (steps 1)

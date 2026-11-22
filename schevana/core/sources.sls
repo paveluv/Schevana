@@ -13,7 +13,8 @@
     *source-texts* keep-source-text! file-text load-file! app-load!
     load-source load-sources!
     load-user-folders! source-held-libraries reload! world-libraries
-    world-entries load-world! program-world!
+    world-entries load-world! program-world! look-load! *world-later*
+    *world-later-ms* world-load-now!
     source-libraries-keep!)
   (import (chezscheme)
           (schevana base)
@@ -22,7 +23,9 @@
           (schevana core0)
           (schevana core theme-table)
           (schevana core processes)
-          (schevana core loop))
+          (schevana core loop)
+          (only (schevana core theme) style-chain chain-ref theme-default)
+          (only (schevana core platform) now-ms))
 
   (library-layer core)
 
@@ -72,9 +75,10 @@
     (when (file-exists? user-init-file)
       (safely 'init (lambda () (load-file! user-init-file)))))
 
-  ;; The folders after the core, in load order.
+  ;; The folders after the core, in load order: the layers' (library-layer,
+  ;; (schevana base)), the looks before the desktop.
   (define source-folders
-    '("kits" "services" "desktop" "styles" "palettes" "wallpapers" "apps"))
+    '("kits" "services" "styles" "palettes" "wallpapers" "desktop" "apps"))
 
   ;; The desktop turns this on: a real session loads the user's folders
   ;; too, at boot and at every (reload!). The tests never do.
@@ -173,12 +177,10 @@
                            (format "Reload failed in ~a: ~a"
                                    (cdr *reloading*) (condition->string c)))
                           (raise c)])
-          (for-each (lambda (f i)
+          (for-each (lambda (f)
                       (when p (set! *reloading* (cons p f)))
-                      (load-source f)
-                      ;; the boot screen's bar
-                      (core0-world-loaded! (+ i 1) (length files)))
-                    files (iota (length files)))
+                      (load-source f))
+                    files)
           (when outer? (set! *reloading* #f))))))
 
   ;; The user's folders, after the built-in ones (desktop-start!, before
@@ -188,8 +190,44 @@
   (define (load-user-folders!)
     (set! *user-folders?* #t)
     (add-library-directory! user-library-directory)
-    (for-each (lambda (f) (safely f (lambda () (load-sources! (list f)))))
+    (for-each (lambda (f)
+                (if (and *world-later?* (world-app-file? f))
+                    (set! *world-later* (append *world-later* (list f)))
+                    (safely f (lambda () (load-sources! (list f))))))
               (user-folder-files)))
+
+  ;;; What of the world loads after the screen shows (core1-boot!'s later?:
+  ;;; the desktop's apps): one entry a quiet step, a step that drew no frame
+  ;;; and wants none, so that the first frame waits for none of them and no
+  ;;; frame for one; while frames flow, one a second anyway. One asked for
+  ;;; before its turn loads at once (world-load-now!).
+
+  ;; The entries waiting, in load order; whether the world was booted with
+  ;; some to wait (the user's apps wait too, then); when one last loaded.
+  (define-state *world-later* '())
+  (define-state *world-later?* #f)
+  (define-state *world-later-ms* 0)
+
+  ;; Whether f, a file, is an app's: in an apps folder, the tree's or the
+  ;; user's.
+  (define (world-app-file? f)
+    (and (string? f)
+         (equal? (path-last (path-parent (source-path f))) "apps")))
+
+  ;; entry (a library's name or a file's path) loaded now if it waits:
+  ;; => whether it did.
+  (define (world-load-now! entry)
+    (and (member entry *world-later*)
+         (begin
+           (set! *world-later* (remove entry *world-later*))
+           (set! *world-later-ms* (now-ms))
+           (safely entry (lambda () (load-sources! (list entry))))
+           #t)))
+
+  (set-hook! (loop-stepped! quiet?)
+    (when (and (pair? *world-later*)
+               (or quiet? (>= (- (now-ms) *world-later-ms*) 1000)))
+      (world-load-now! (car *world-later*))))
 
   ;; Core0's libraries stay as core0 booted them, with all they import: its
   ;; thread runs them, and they change with a restart.
@@ -256,13 +294,19 @@
   ;; edition the basics first, a copy of "/"'s own. The folders may import
   ;; the libraries shipped in the tree; each loaded by then is seen as it
   ;; reads, for the next reload to tell a change (reload-mark!), and its
-  ;; text kept, as a file's is, for what describes a name.
-  (define (load-world!)
+  ;; text kept, as a file's is, for what describes a name. The entries
+  ;; later? holds wait (*world-later*); none do at a reload.
+  (define (load-world! . later?)
     (hashtable-clear! *world-readers*)
     (add-library-directory! *schevana-root*)
-    (load-sources! (if (schevana-hacker?)
-                       (world-entries)
-                       (cons "src/base.ss" (world-entries))))
+    (let* ([entries (if (schevana-hacker?)
+                        (world-entries)
+                        (cons "src/base.ss" (world-entries)))]
+           [wait? (if (pair? later?) (car later?) (lambda (e) #f))])
+      (set! *world-later* (filter wait? entries))
+      (set! *world-later?* (pair? later?))
+      (set! *world-later-ms* (now-ms))
+      (load-sources! (remp wait? entries)))
     (reload-mark!)
     (source-libraries-keep! (library-list)))
 
@@ -303,13 +347,42 @@
                             (memq (cadr name) '(styles palettes wallpapers)))
                           names)))))
 
+  ;; A look of the tree's by its name, as a program asks for one (a host
+  ;; app): the style's library loaded and run, then the palettes it names
+  ;; (its palette, its dark one, or the default), and nothing else of the
+  ;; looks. Into "/" when there is one, as the world's libraries go; before,
+  ;; the program's "/" takes them as it is made (program-world!). => name,
+  ;; or #f when the tree has no such style.
+  (define (look-load! name)
+    (and (look-file? "styles" name)
+         (begin
+           (look-run! (list 'schevana 'styles name))
+           (for-each
+            (lambda (p)
+              (when (and p (look-file? "palettes" p))
+                (look-run! (list 'schevana 'palettes p))))
+            (let ([chain (style-chain name)])
+              (list (chain-ref chain 'palette (theme-default 'palette))
+                    (chain-ref chain 'palette-dark #f))))
+           name)))
+
+  (define (look-file? folder name)
+    (file-exists? (format "~a/schevana/~a/~a.sls" *schevana-root* folder
+                          name)))
+
+  (define (look-run! name)
+    (if *world-env*
+        (load-source name)
+        (begin (environment name) (invoke-library name))))
+
   ;; Makes "/", which imports what the core gives the world (its facade,
   ;; again at each reload of a library it stands on), and loads the
   ;; world's files into it (load-world!); in the hacker edition, "/" is
   ;; where every library was spliced, this thread's environment. "/" is
   ;; then this thread's, where what evaluates by name, a load among it,
-  ;; evaluates. On core1's thread, which it says is core1's. => "/".
-  (define (core1-boot! options)
+  ;; evaluates. On core1's thread, which it says is core1's. The entries
+  ;; later? holds, if given, load after the screen shows. => "/".
+  (define (core1-boot! options . later?)
     (core1-thread!)
     (set! *schevana-options* options)
     (let ([world (if (schevana-hacker?)
@@ -318,5 +391,5 @@
       (set! *world-env* world)
       (unless (schevana-hacker?) (reload-import! world '(schevana core)))
       (interaction-environment world)
-      (load-world!)
+      (apply load-world! later?)
       world)))

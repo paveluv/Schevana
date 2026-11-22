@@ -35,7 +35,6 @@
     core0-wake! gpu-publish! gpu-frame-waiting? gpu-frames-back!
     gpu-take-answers!
     core0-forked? core0-world-wait! core0-world-wake! core0-quit!
-    core0-world-loaded!
     core0-step! core0-window-headless! core0-window-open! core0-window-show!
     core0-window-close! core0-window-resize!
     ;; the recorder's alone
@@ -75,7 +74,7 @@
                 gpu-frame-computes-set! gpu-frame-mode-set!
                 gpu-frame-in-flight-set! gpu-frame-number gpu-frame-shown?
                 gpu-publish! gpu-frames-back! gpu-take-answers!
-                core0-world-loaded! make-gpu-recording gpu-recording-recs
+                make-gpu-recording gpu-recording-recs
                 gpu-recording-recs-set! gpu-recording-recs-n
                 gpu-recording-recs-n-set! gpu-recording-extras
                 gpu-recording-extras-set! gpu-recording-extras-n

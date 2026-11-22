@@ -4,8 +4,7 @@
   (export)
   (import (chezscheme)
           (only (schevana base) at-load library-layer)
-          (only (schevana core) fill-box)
-          (only (schevana desktop wallpaper) define-wallpaper))
+          (only (schevana core) define-wallpaper fill-box))
 
   (library-layer looks)
 

@@ -280,7 +280,7 @@
           (+ (window-y win) (caddr b) (quotient (list-ref b 4) 2)))))
 
 (define (taskbar-point win)
-  (list (+ (cadr (assq win (taskbar-areas))) 20) (- (screen-h) 10)))
+  (list (+ (cadr (assq win (placed-taskbar-areas))) 20) (- (screen-h) 10)))
 
 (define (damage-paths pct)
   (set-theme! 'scale pct)
@@ -1051,8 +1051,8 @@
   (set! draw-window (lambda (win)
                       (draw-window* win #t)
                       (fill-box (window-x win) (window-y win) 40 6 #xff0000)))
-  (set! draw-taskbar (lambda ()
-                       (plain-taskbar)
+  (set! draw-taskbar (lambda args
+                       (apply plain-taskbar args)
                        (fill-box 0 (- (screen-h) 6) 60 6 #x0000ff)))
   (register-style! 'mac "Mac, striped"
     (cons* 'frame-over (lambda (win x y w h focused? hover pressed)
@@ -1083,7 +1083,7 @@
 ;; redefines shows on that frame.
 (let ([r (repl)] [plain draw-taskbar])
   (steps 2)
-  (inject! '(text "(define (draw-taskbar) (fill-box 0 30 50 50 #xff00ff))")
+  (inject! '(text "(define (draw-taskbar . _) (fill-box 0 30 50 50 #xff00ff))")
            '(key-down return ()))
   (steps 1)
   (let ([shown (pixel-of (screen-picture) 10 40)]

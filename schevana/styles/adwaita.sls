@@ -2,8 +2,8 @@
 ;;; widgets and windows, as GNOME 48 draws them with the blue accent, in its
 ;;; light style (the palette adwaita) or its dark one (adwaita-dark, which a
 ;;; desktop that prefers dark gets). GNOME Shell's desktop around them is
-;;; the GNOME style's ((schevana styles gnome)), apart so that a program
-;;; taking this look (a host app) has no desktop of Schevana's with it.
+;;; the GNOME style's ((schevana styles gnome)), apart: a program taking
+;;; this look (a host app) has GNOME's own Shell around its window.
 ;;; Facts only, from libadwaita's stylesheet (LGPL-2.1+) and GNOME Shell's
 ;;; (GPL-2.0+): sizes, radii, colors and alphas, each cited as file:line at
 ;;; those tags, libadwaita's under src/stylesheet/ (adw-…c files under
@@ -193,6 +193,9 @@
   ;; A tooltip's (widgets/_tooltip.scss:5), the same in both styles.
   (at-load
    (color-default! 'adwaita-tooltip (alpha #x000006 0.8)))
+  ;; A toast's, the same in both styles (_colors.scss:106).
+  (at-load
+   (color-default! 'adwaita-toast #x505053))
   ;; GNOME Shell's dark style: its menus' color, text, dimmed text (the fg
   ;; mixed half into the bg) and border (shell _colors.scss:12-13, 39,
   ;; 52), a menu item under the pointer and pressed (widgets/

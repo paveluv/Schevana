@@ -59,8 +59,6 @@
     ;; whether core0 has a thread of its own; core1's wait, and its wake from
     ;; any thread; and quitting, a job
     core0-forked? core0-world-wait! core0-world-wake! core0-quit!
-    ;; and how far the world has loaded, for the boot screen
-    core0-world-loaded!
     ;; Calls into SDL or core0's own state: safe only on core0's thread.
     ;; Until core0 has a thread of its own the world steps it (core0-step!),
     ;; and boots it (who the window is, opening, sizing, showing it).
@@ -98,8 +96,7 @@
                 gpu-frame-pieces-set! gpu-frame-jobs-set!
                 gpu-frame-computes-set! gpu-frame-mode-set!
                 gpu-frame-in-flight-set! gpu-frame-number gpu-frame-shown?
-                gpu-publish! gpu-frames-back! gpu-take-answers!
-                core0-world-loaded!)
+                gpu-publish! gpu-frames-back! gpu-take-answers!)
           (only (schevana core0 window) core0-flag-names core0-event-name
                 core0-flags core0-error-text core0-step-state
                 core0-system-theme core0-own-frame? core0-window-maximized?
