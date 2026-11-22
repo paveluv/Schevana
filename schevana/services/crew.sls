@@ -407,8 +407,10 @@
                  (wait)))
              (begin (crew-take-part! r) (crew-wait! r)))
          (crew-remove! r)
+         ;; A region whose calls all ran is done, whatever the clock says
+         ;; by now: only one canceled while it ran raises the timeout.
          (cond [(unbox (crew-region-error r)) => raise]
-               [(crew-cancelled? r)
+               [(unbox (crew-region-cancelled r))
                 (raise (make-timeout-condition 'crew-for))]))]))
 
   ;; The crew shares out what the core spreads over threads.

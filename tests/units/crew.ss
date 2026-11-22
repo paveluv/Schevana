@@ -128,6 +128,21 @@
 
 (define-worklet (crew-test-calls lo hi out) (set-box! out (list lo hi)))
 
+;; The clock jumps past the region's deadline once the crew has let go of
+;; it, between the region's last call and the caller's look at it.
+(check "on core1 a region whose calls all finished raises no timeout, even \
+        when its deadline has passed by the time the caller looks"
+       (let ([plain-remove crew-remove!] [plain-now now-ms] [late? #f])
+         (set! crew-remove! (lambda (r) (plain-remove r) (set! late? #t)))
+         (set! now-ms
+               (lambda () (if late? (+ (plain-now) 1000000) (plain-now))))
+         (let ([c (guard (c [#t c])
+                    (crew-for* 1 0 8 crew-test-calls (box #f))
+                    #f)])
+           (set! now-ms plain-now)
+           (set! crew-remove! plain-remove)
+           (and late? (not c)))))
+
 (check "with no workers, crew-for is the worklet over the whole range"
        (let ([out (box #f)] [size (crew-size)])
          (crew-size-set! 0)
