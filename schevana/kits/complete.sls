@@ -192,10 +192,11 @@
            [else #f])])))
 
   ;; Typed text never goes to the list (the field narrows it); it only
-  ;; closes a popup.
+  ;; closes a popup. Returns #f.
   (define (complete-text! owner)
     (let ([c (complete-of owner)])
-      (when (and c (complete-message c)) (complete-close! owner))))
+      (when (and c (complete-message c)) (complete-close! owner))
+      #f))
 
   ;; The wheel moves the selection.
   (define (complete-wheel! owner dy)

@@ -119,7 +119,7 @@
                  (not (go! owner))
                  (not (complete-of owner)))))
         (list (lambda (o) (complete-key! o 'down '() void))
-              (lambda (o) (complete-text! o) #f)
+              complete-text!
               (lambda (o) (complete-wheel! o 1))
               (lambda (o) (complete-mouse-down! o 5 5 'left void)))))
 
