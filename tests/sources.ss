@@ -6,7 +6,7 @@
 ;;;
 ;;; Every line of every source file fits in 80 columns; no top-level name
 ;;; is defined in two files; the core stays within its budget of tokens;
-;;; outside src/ and the core nothing calls C; each layer names only what
+;;; above the core nothing calls C; each layer names only what
 ;;; the layer below gives it; only a world namespace shares the whole world
 ;;; with an environment; every file in a folder registers what it defines
 ;;; (a kit's or a service's names start with its prefix; desktop/ defines
@@ -347,8 +347,9 @@
 
 ;;; ------------------------------------------------------------------
 ;;; only the core calls C
-;;; One of the core's roles is to keep C away from the rest: outside src/
-;;; and the core's libraries, no file names a binding from (schevana ffi),
+;;; One of the core's roles is to keep C away from the rest: above the core
+;;; (the kits, services, looks, desktop and apps, the demos and the games,
+;;; and the world's files), no file names a binding from (schevana ffi),
 ;;; from the three SDL libraries ((schevana sdl system), (schevana sdl
 ;;; window), (schevana sdl gpu)), from (schevana freetype) or from
 ;;; (schevana fontconfig), nor a foreign-… procedure, an ftype form or
@@ -380,9 +381,20 @@
                                   (vector->list x))]
           [else acc])))
 
-(define outside-src
-  (remp (lambda (f) (member (file-folder f) '("src" "schevana")))
-        world-files))
+;; Returns the layer that library file f declares first, or #f.
+(define (file-layer f)
+  (let ([body (file-forms f)])
+    (and (pair? body) (pair? (car body)) (eq? (caar body) 'library-layer)
+         (pair? (cdar body)) (cadar body))))
+
+;; The files above the core: the libraries under schevana/ whose layer is
+;; above it, the demos' and the games', and the world's files but src/'s.
+(define above-core-files
+  (filter (lambda (f)
+            (if (string-prefix? "schevana/" f)
+                (memq (file-layer f) '(kits services looks desktop apps))
+                (not (equal? (file-folder f) "src"))))
+          world-files))
 
 ;; The GPU layer speaks the world's terms: above it, in the core too,
 ;; nothing names SDL, Vulkan, SPIR-V, Metal or MSL, so that another back
@@ -424,16 +436,16 @@
                                                    (file-forms f))))))
                           above-gpu-files))))
 
-(check (format "outside src/ (~a files) nothing reaches C: no binding of \
+(check (format "above the core (~a files) nothing reaches C: no binding of \
                 core0's or core1's (~a), no foreign-… or ftype form"
-               (length outside-src) (length ffi-names))
+               (length above-core-files) (length ffi-names))
        (none? (apply append
                      (map (lambda (f)
                             (map (lambda (s) (format "~a names ~a" f s))
                                  (reverse (filter reaches-c?
                                                   (symbols-in
                                                    (file-forms f))))))
-                          outside-src))))
+                          above-core-files))))
 
 ;;; ------------------------------------------------------------------
 ;;; which platform this is, said in one place
