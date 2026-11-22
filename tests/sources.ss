@@ -1088,8 +1088,9 @@
                                          (apply append
                                                 (map calls-in
                                                      (file-forms f))))))
-                          (remp (lambda (f) (equal? (file-folder f) "styles"))
-                                (source-files))))))
+                          (remp (lambda (f)
+                                  (string-prefix? "schevana/styles/" f))
+                                world-files)))))
 
 (check "the REPL's docs read the folders too, parts and their built-ins"
        (for-all (lambda (name) (hashtable-contains? (name-docs) name))
