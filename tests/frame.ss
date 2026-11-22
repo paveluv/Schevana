@@ -43,15 +43,98 @@
   (let ([dir (path-parent (path-parent (car (command-line))))])
     (if (string=? dir "") "." dir)))
 
+(load (string-append *schevana-root* "/tests/chez.ss"))
+
+;;; ------------------------------------------------------------------ parts
+;;; The suite runs in parts at once, each in a process and a world of its
+;;; own, as many as the machine allows (test-jobs): a part is sections and,
+;;; of those drawn at several scales, the scales it draws. It runs the
+;;; suite's definitions and its own sections' forms, in order (frame-eval).
+;;; What each part says is printed in the parts' order.
+
+(define frame-parts
+  '(((identity) 100 125 150) ((identity) 200) ((identity) 300)
+    ((asking bleed) 100) ((asking bleed) 150) ((asking) 200)
+    ((kit tasks)) ((tree))
+    ((processes raising text redefinition wallpaper life window))))
+
+;; What a part takes at its peak, MB (measured: 1.3 GB at most).
+(define frame-part-mb 2000)
+
+;; This run's part, from SCHEVANA_FRAME_PART; #f for the suite's own run.
+(define frame-part
+  (let ([s (getenv "SCHEVANA_FRAME_PART")])
+    (and s (not (string=? s "")) (read (open-input-string s)))))
+
+(unless frame-part
+  (let* ([out (if (pair? (command-line-arguments))
+                  (car (command-line-arguments))
+                  ".")]
+         [dirs (map (lambda (i) (format "~a/frame-~a" out (+ i 1)))
+                    (iota (length frame-parts)))]
+         [failed '()])
+    (for-each (lambda (d) (unless (file-directory? d) (mkdir d))) dirs)
+    (test-warm!)
+    (test-system-all
+     (test-jobs frame-part-mb) 1800
+     (map (lambda (part dir)
+            (format "~a > ~a 2>&1"
+                    (test-chez (list (cons "SCHEVANA_FRAME_PART"
+                                           (format "~s" part)))
+                               (string-append *schevana-root*
+                                              "/tests/frame.ss")
+                               dir)
+                    (test-sh-word (string-append dir "/said.txt"))))
+          frame-parts dirs)
+     (lambda (i status)
+       (let ([said (call-with-input-file
+                    (string-append (list-ref dirs i) "/said.txt")
+                    get-string-all)])
+         (printf "--- ~{~a~^ ~}\n" (list-ref frame-parts i))
+         (unless (eof-object? said) (put-string (current-output-port) said))
+         (flush-output-port (current-output-port))
+         (unless (eqv? status 0)
+           (set! failed (cons (list-ref frame-parts i) failed))))))
+    (if (null? failed)
+        (printf "all checks passed\n")
+        (printf "~a part(s) FAILED: ~s\n" (length failed) (reverse failed)))
+    (exit (if (null? failed) 0 1))))
+
 (load (string-append *schevana-root* "/tests/lib.ss"))
+
+;; The sections whose forms run, as each begins: those of this part.
+(define frame-section-on? #t)
+(define (frame-section name)
+  (set! frame-section-on? (and (memq name (car frame-part)) #t)))
+
+;; Of scales, those this part draws: all, if it names none.
+(define (frame-scales scales)
+  (if (null? (cdr frame-part))
+      scales
+      (filter (lambda (s) (memv s (cdr frame-part))) scales)))
+
+;; eval*, but for the forms of the sections this part doesn't run, which
+;; are left: a form the file has, named by a symbol, but a definition.
+;; What else comes this way is the expander's, a macro's transformer to
+;; make ("noexpand" ...), and goes through.
+(define (frame-eval eval*)
+  (lambda (x . env)
+    (let ([d (if (annotation? x) (annotation-stripped x) x)])
+      (unless (and (not frame-section-on?)
+                   (pair? d)
+                   (symbol? (car d))
+                   (not (memq (car d) '(define define-syntax
+                                        define-record-type frame-section))))
+        (apply eval* x env)))))
 
 ;; The test's clock held (tests/lib.ss), so that Life steps when a check
 ;; says. Checks that need time to pass go back to the machine's.
 (test-clock-hold! 1000000)
 (random-seed 4242)
 (schevana-boot! 'headless 1280 800)
-;; From here, a form that raises fails and the next goes on.
-(current-eval test-form-eval)
+;; From here, a form that raises fails and the next goes on, and a form of
+;; a section this part doesn't run is left.
+(current-eval (frame-eval test-form-eval))
 
 ;; Steps while a frame is asked for (at most 20): then the canvas shows
 ;; the world as it is.
@@ -187,6 +270,7 @@
             (windows)))
 
 ;;; ------------------------------------------------------------------ identity
+(frame-section 'identity)
 
 (define four-styles '(mac windows interlisp genera))
 
@@ -228,7 +312,7 @@
                         "S30T, S30, S5, translucent, every style, menu, toast"
                         (reverse bad)))
             (null? bad))))
- '(100 125 150 200 300))
+ (frame-scales '(100 125 150 200 300)))
 
 (set-theme! 'scale 100)
 (scene! 'S5)
@@ -250,6 +334,7 @@
 ;;; Every way the screen changes, at 100, 150 and 200%, odd logical
 ;;; coordinates giving fractional device ones: after each step the screen
 ;;; is the reference.
+(frame-section 'asking)
 
 ;; Styles that glow 5 pixels past their frame: glow-5 says so with 'bleed,
 ;; glow does not, as one typed at the REPL might not.
@@ -416,7 +501,7 @@
                    pct (if (null? bad) "" (format " (not: ~s)" (reverse bad))))
            (null? bad))))
 
-(for-each damage-paths '(100 150 200))
+(for-each damage-paths (frame-scales '(100 150 200)))
 
 ;;; ------------------------------------------------------------------ bleed
 ;;; A window is drawn clipped to its extent. Every style, glow-5 and glow
@@ -424,6 +509,7 @@
 ;;; and hovered, at 100 and 150%, and glow-5's glow shows. Drawn alone and
 ;;; unclipped, every registered style but glow keeps to its extent, focused
 ;;; or not, as set up here and with the theme's defaults.
+(frame-section 'bleed)
 
 ;; How many pixels win, drawn alone and unclipped, puts outside its extent.
 (define (bleeding win focused?)
@@ -502,12 +588,13 @@
                 (and (null? bad) (= glow-5 #xffff00ff) (not (= glow #xffff00ff))
                      (equal? none '(glow))
                      (null? (remq 'glow default))))))))
- '(100 150))
+ (frame-scales '(100 150)))
 (set! *styles* styles-before-glow)
 (set-theme! 'scale 100)
 (steps 1)
 
 ;;; ------------------------------------------------------------------ processes
+(frame-section 'processes)
 
 ;; A process (a REPL evaluation is one) is an engine, switched out at any
 ;; call where interrupts are on, while core1's loop draws on, here on the
@@ -561,6 +648,7 @@
                 (matches-reference? 'process-calls)))))
 
 ;;; ------------------------------------------------------------------ raising
+(frame-section 'raising)
 
 ;; Draws that raise: a window's (it crashes) and the whole frame's (nothing
 ;; is drawn or uploaded, and the next frame is whole).
@@ -617,6 +705,7 @@
 ;;; the screen is the reference, at 100, 150 and 200%; unfocused, or with
 ;;; the dialog over a field that had the keyboard (no caret blinks under
 ;;; it), the window asks for none.
+(frame-section 'kit)
 
 (define (kit-scene pct)
   (set-theme! 'scale pct)
@@ -742,7 +831,7 @@
 (for-each (lambda (pct)
             (test-scene (format "~a at ~a%" 'kit pct)
                         (lambda () (kit-scene pct))))
-          '(100 150 200))
+          (frame-scales '(100 150 200)))
 (set-theme! 'scale 100)
 
 ;;; ------------------------------------------------------------------ Tasks
@@ -750,6 +839,7 @@
 ;;; the wheel on a column, a change from the REPL, the narrow page. After
 ;;; each step the screen is the reference, at 100, 150 and 200%. (What
 ;;; its widgets show is the kit's scene.)
+(frame-section 'tasks)
 
 ;; Tasks sized by its own measures, at the screen's left: wide, from where
 ;; its details sit beside its view; narrow, its least width.
@@ -836,7 +926,7 @@
 (for-each (lambda (pct)
             (test-scene (format "~a at ~a%" 'tasks pct)
                         (lambda () (tasks-scene pct))))
-          '(100 150 200))
+          (frame-scales '(100 150 200)))
 (set-theme! 'scale 100)
 (tasks-reset!)
 
@@ -846,6 +936,7 @@
 ;;; its task's own row, a search dimming rows, a chip in the details, the
 ;;; Add menu, the narrow page. After each step the screen is the
 ;;; reference, at 100, 150 and 200%.
+(frame-section 'tree)
 
 (define (tree-scene pct)
   (set-theme! 'scale pct)
@@ -935,7 +1026,7 @@
 (for-each (lambda (pct)
             (test-scene (format "~a at ~a%" 'tree pct)
                         (lambda () (tree-scene pct))))
-          '(100 150 200))
+          (frame-scales '(100 150 200)))
 (set-theme! 'scale 100)
 (tasks-reset!)
 
@@ -947,6 +1038,7 @@
 ;;; the one that finishes draws the window again: the screen is then the
 ;;; reference, its bar where the whole count puts it. Were that frame not
 ;;; asked for, the estimate would stay on the screen.
+(frame-section 'text)
 
 (define (scan-scene pct)
   (set-theme! 'scale pct)
@@ -983,7 +1075,7 @@
 (for-each (lambda (pct)
             (test-scene (format "~a at ~a%" 'scan pct)
                         (lambda () (scan-scene pct))))
-          '(100 200))
+          (frame-scales '(100 200)))
 (set-theme! 'scale 100)
 (tasks-reset!)
 
@@ -1029,12 +1121,13 @@
 (for-each (lambda (pct)
             (test-scene (format "~a at ~a%" 'caret pct)
                         (lambda () (caret-scene pct))))
-          '(100 200))
+          (frame-scales '(100 200)))
 (set-theme! 'scale 100)
 (tasks-reset!)
 
 ;;; ------------------------------------------------------------------
 ;;; redefinition
+(frame-section 'redefinition)
 
 (define (frame-ms n)   ; median time of n forced frames
   (let loop ([i 0] [ms '()])
@@ -1097,6 +1190,7 @@
                 (matches-reference? 'repl-restored)))))
 
 ;;; ------------------------------------------------------------------ wallpaper
+(frame-section 'wallpaper)
 
 ;; no window there
 (define (desktop-pixel) (pixel-of (screen-picture) 20 (quotient (screen-h) 2)))
@@ -1159,6 +1253,7 @@
                   (matches-reference? 'wallpaper-restored))))))
 
 ;;; ------------------------------------------------------------------ Life
+(frame-section 'life)
 
 ;; Each Life window steps a generation (its pixmap's rows painted), twice:
 ;; each next frame shows it.
@@ -1180,6 +1275,7 @@
            (and first second))))
 
 ;;; ---------------------------------------------------------------- the window
+(frame-section 'window)
 
 ;; The swapchain's path: SDL's offscreen video driver has a surface lavapipe
 ;; can show. A Mac's has none for Metal, whose window stays hidden, so that

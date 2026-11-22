@@ -35,7 +35,10 @@ scheme --script tests/sources.ss
   but one offscreen. It compares the screen bit for bit with the world
   drawn into an image, in every style and at several scales, and checks
   that every change shows on its frame and that nothing asked for draws
-  no frame.
+  no frame. It runs in parts at once, each a world of its own, as many as
+  the machine allows: a part is some of its sections and, of those drawn
+  at several scales, some scales (`frame-parts`); a section begins with
+  `(frame-section 'name)`, and a loop over scales takes `frame-scales`.
 - **sources** checks the sources themselves: 80 columns, names, the
   layers and what crosses them, the core's budget, who may name a color.
   It runs in seconds.
