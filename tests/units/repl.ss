@@ -161,3 +161,22 @@
            (and keys? root-new? (not (string-contains-ci? alone "waiting"))
                 (string-contains-ci? waiting "drops the 2 waiting")
                 (string-contains-ci? waiting "Backspace")))))
+
+;; The root REPL's greeting shows how to load an app by its name, and the
+;; line it shows does it: the game under games/ opens its window.
+(let* ([win (repl 'root)] [r (window-ref win 'state)]
+       [line "(import (games fireflies)) (fireflies)"])
+  (repl-run! r win line)
+  (let loop ([n 0])
+    (when (and (repl-proc r) (< n 500)) (steps 1) (loop (+ n 1))))
+  (steps 2)
+  (let ([game (find-window 'fireflies)])
+    (check "the root REPL's greeting shows a line that loads an app by its \
+            name, and it does: (import (games fireflies)) (fireflies) opens \
+            the game"
+           (and (exists (lambda (l) (string-contains-ci? (cdr l) line))
+                        (transcript-lines (repl-transcript r)))
+                game
+                #t))
+    (when game (close-window! game)))
+  (close-window! win))

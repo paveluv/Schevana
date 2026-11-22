@@ -1569,20 +1569,15 @@
         [(root)
          (repl-add! r 'banner (format "Schevana — a world made of Scheme.   ~a"
                                       (scheme-version)))
-         (repl-add! r 'info "Every window, color and key binding here is a \
-                             live Scheme value. Try:")
+         (repl-add! r 'info "Every window, color and key here is a live \
+                             Scheme value. Try:")
          (repl-examples!
           r
-          '("(clock)                          ; apps are just procedures"
-            "(windows)                        ; the window list, as data"
-            "(set-theme! 'accent #xff9e64)    ; recolor the world"
-            "(spawn \"spin\" (lambda () (let loop () (loop))))"))
-         (repl-add! r 'info "F1 apps · Ctrl+Tab switch · Ctrl+Shift+R a new \
-                             REPL")
-         (repl-add! r 'info "To experiment without changing anything, \
-                             (repl 'private) opens a Private REPL;")
-         (repl-add! r 'info "(envs) shows the tree of environments, and opens \
-                             a REPL in any of them.")]
+          '("(clock)                                 ; an app is a procedure"
+            "(set-theme! 'accent #xff9e64)           ; recolor the world"
+            "(import (games fireflies)) (fireflies)  ; an app by its name"))
+         (repl-add! r 'info "F1 apps · Ctrl+Shift+R a new REPL · (repl \
+                             'private) to try things apart")]
         [(private)
          (repl-add! r 'banner (format "Private REPL in ~a — like a private \
                                        browsing window." path))
@@ -1620,8 +1615,8 @@
          (repl-add! r 'info "Its sandbox is the vat's alone: what you define \
                              lives there. Ctrl+C stops a form there.")])
       ;; the keys, in every kind
-      (repl-add! r 'info "Enter runs a complete form · Shift+Enter newline · \
-                          ↑↓ history · Ctrl+C stops")
+      (repl-add! r 'info "Enter runs a form · Shift+Enter newline · ↑↓ \
+                          history · Ctrl+C stops")
       (repl-add! r 'info "Tab completes by parts (tdc: text-draw-centered) · \
                           Ctrl+L clears")
       (when (and (env-parent (repl-env r)) (eq? (env-base (repl-env r)) 'chez))
