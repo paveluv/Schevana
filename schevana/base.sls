@@ -4,7 +4,8 @@
 
 (library (schevana base)
   (export
-    library-layer at-load define-state define-view define-settable define-made
+    library-layer library-layer-names at-load define-state define-view
+    define-settable define-made
     define-hook
     set-hook!
     clamp string-split string-join string-prefix? string-suffix? filter-map
@@ -42,6 +43,13 @@
       (cond [(null? ls) #f]
             [(eq? (caar ls) layer) i]
             [else (loop (cdr ls) (+ i 1))])))
+
+  ;; (library-layer-names): the layers' names, lowest first, for what
+  ;; shows a library's (its rank, from 1).
+  (define-syntax library-layer-names
+    (lambda (x)
+      (syntax-case x ()
+        [(k) #`'#,(datum->syntax #'k (map car library-layers))])))
 
   (meta define (library-layer-sealed? layer)
     (let ([l (assq layer library-layers)]) (and l (memq 'sealed l) #t)))

@@ -163,5 +163,26 @@
                   added
                   (member (path-full dir) (auto-loads))
                   (member (path-full dir) *auto-loads*))))
+    (let* ([full (map (lambda (d) (path-full (if (pair? d) (car d) d)))
+                      (library-directories))]
+           [libs (cadr (settings-path-facts (window-ref win 'ui)))]
+           [ranks (map (lambda (l)
+                         (if (caddr l) (settings-layer-rank (caddr l)) 1000))
+                       libs)])
+      (check (format "the library search holds each folder once, Chez's \
+                      \".\" not again where it is the tree; the libraries \
+                      loaded go by the rank of the layer each declares ~s"
+                     (list full (list-head ranks (min 5 (length ranks)))))
+             (and (let loop ([fs full])
+                    (or (null? fs)
+                        (and (not (member (car fs) (cdr fs)))
+                             (loop (cdr fs)))))
+                  (equal? (list-head (library-layer-names) 4)
+                          '(foundation core0 recorder core))
+                  (eq? (caddr (assoc '(schevana core) libs)) 'core)
+                  (= (settings-layer-rank 'core) 4)
+                  (let loop ([rs ranks])
+                    (or (null? rs) (null? (cdr rs))
+                        (and (<= (car rs) (cadr rs)) (loop (cdr rs))))))))
     (auto-load-forget! dir)
     (close-window! win)))

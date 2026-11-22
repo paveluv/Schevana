@@ -44,23 +44,25 @@
     settings-draw-steps settings-draw-color-row settings-draw-big-swatch
     settings-colors settings-parse-hex settings-color-editor
     settings-draw-font-sample settings-fonts settings-display
-    settings-permissions settings-paths settings-path-facts
+    settings-permissions settings-paths settings-layer-rank
+    settings-path-facts
     settings-library-file settings-search-row settings-path-choose
     settings-path-added! settings-sidebar
     settings-pane-scrollbar
     settings-reveal! settings-draw settings-key settings-wheel settings)
   (import (chezscheme)
           (only (schevana base) at-load clamp define-made define-state
-                filter-map library-layer list-index plist-keys plist-ref
+                filter-map library-layer library-layer-names list-index
+                plist-keys plist-ref
                 string-join string-prefix? string-split)
           (only (schevana core) *gpu-facts* *styles* *wallpapers*
                 *world-env* *auto-loads* *schevana-root* add-library-directory!
                 auto-load! auto-load-entries auto-load-forget! auto-loads
-                path-full alpha app chain-ref close-window! color-default!
-                color-keys color-rgba common-options current-style
-                current-window define-app detached-window draw-text
-                draw-window* fill-box fill-circle fill-wallpaper find-style
-                find-window focus-window! font-char-width
+                library-file-layer path-full alpha app chain-ref close-window!
+                color-default! color-keys color-rgba common-options
+                current-style current-window define-app detached-window
+                draw-text draw-window* fill-box fill-circle fill-wallpaper
+                find-style find-window focus-window! font-char-width
                 font-line-height fullscreen? invalidate! load-file! open-window
                 override! palette-title palettes plist-has? reset-style!
                 reset-theme! rgb set-fullscreen! set-scale! set-style!
@@ -1190,23 +1192,24 @@
   ;;; paths
 
   ;; Where libraries are found, and what loads with the world: the library
-  ;; search, each folder by its rank (the first that holds a library is the
-  ;; one it loads from), with a switch for whether it auto-loads, and a row
-  ;; that adds one; the libraries loaded from a file, each with the rank of
-  ;; the folder it came from and whether it auto-loads. => the y below
+  ;; search, its folders in order (the first that holds a library is the
+  ;; one it loads from), each with a switch for whether it auto-loads, and
+  ;; a row that adds one; the libraries loaded from a file, by the rank of
+  ;; the layer each declares, and whether it auto-loads. => the y below
   (define (settings-paths ui x y w)
     (let* ([facts (settings-path-facts ui)]
            [dirs (car facts)] [libs (cadr facts)]
            [y (+ 12 (ui-draw-label x y w 0 '(hint wrap)
                                    "Libraries are found in these folders, \
-                                    the first that holds one by rank. One \
-                                    that auto-loads loads what it holds \
-                                    with the world, at boot and at each \
-                                    reload, read again each time. \
-                                    Schevana's own always loads: the \
-                                    tree's kits, services, looks, desktop \
-                                    and apps, and folders of those names \
-                                    in ~/.schevana.d."))]
+                                    in this order: a library loads from \
+                                    the first that holds it. One that \
+                                    auto-loads loads what it holds with \
+                                    the world, at boot and at each reload, \
+                                    read again each time. Schevana's own \
+                                    always loads: the tree's kits, \
+                                    services, looks, desktop and apps, and \
+                                    folders of those names in \
+                                    ~/.schevana.d."))]
            [y (ui-rows ui 'search x y w
                        (map (lambda (d i) (settings-search-row ui d i))
                             dirs (iota (length dirs)))
@@ -1214,21 +1217,36 @@
                        'add (list "Add Library Path" settings-path-choose))])
       (ui-rows ui 'libs x (+ y 18) w
                (map (lambda (l)
-                      (list (format "~s" (car l))
-                            (format "Rank ~a~a · ~a" (cadr l)
-                                    (if (cadddr l) ", auto-loads" "")
-                                    (caddr l))
-                            0 #f
-                            'key (car l)))
+                      (let ([layer (caddr l)])
+                        (list (format "~s" (car l))
+                              (format "~a~a · ~a"
+                                      (if layer
+                                          (format "Rank ~a, ~a"
+                                                  (settings-layer-rank layer)
+                                                  layer)
+                                          "No layer")
+                                      (if (cadddr l) ", auto-loads" "")
+                                      (cadr l))
+                              0 #f
+                              'key (car l))))
                     libs)
                'title "Loaded libraries"
-               'description (format "~a more of Chez's own, with no file"
+               'description (format "By the rank of the layer each declares \
+                                     (library-layer); ~a more of Chez's \
+                                     own, with no file"
                                     (- (length (library-list))
                                        (length libs))))))
 
+  ;; A layer's rank, the lowest 1; past them all for one that isn't.
+  (define (settings-layer-rank layer)
+    (let ([names (library-layer-names)])
+      (+ 1 (or (list-index (lambda (l) (eq? l layer)) names)
+               (length names)))))
+
   ;; What the tab shows, worked out once while the library search, the
   ;; libraries loaded and what auto-loads stay the same: (search-folders
-  ;; ((name rank file auto?) ...)).
+  ;; ((name file layer auto?) ...)), the libraries by their layers' rank,
+  ;; then by name.
   (define (settings-path-facts ui)
     (let ([key (list (library-directories) (length (library-list))
                      (auto-loads))]
@@ -1239,21 +1257,24 @@
                  [entries (apply append (map auto-load-entries (auto-loads)))]
                  [libs (filter-map
                         (lambda (name)
-                          (let loop ([ds dirs] [i 1])
-                            (and (pair? ds)
-                                 (let ([f (settings-library-file
-                                           (if (pair? (car ds)) (caar ds)
-                                               (car ds))
-                                           name)])
-                                   (if f
-                                       (list name i f
-                                             (and (member name entries) #t))
-                                       (loop (cdr ds) (+ i 1)))))))
-                        (list-sort (lambda (a b)
-                                     (string<? (format "~s" a)
-                                               (format "~s" b)))
-                                   (library-list)))]
-                 [facts (list dirs libs)])
+                          (let ([f (exists (lambda (d)
+                                             (settings-library-file
+                                              (if (pair? d) (car d) d) name))
+                                           dirs)])
+                            (and f
+                                 (list name f (library-file-layer f)
+                                       (and (member name entries) #t)))))
+                        (library-list))]
+                 [rank (lambda (l)
+                         (if (caddr l) (settings-layer-rank (caddr l)) 1000))]
+                 [facts (list dirs
+                              (list-sort
+                               (lambda (a b)
+                                 (or (< (rank a) (rank b))
+                                     (and (= (rank a) (rank b))
+                                          (string<? (format "~s" (car a))
+                                                    (format "~s" (car b))))))
+                               libs))])
             (ui-memo! ui 'path-facts (cons key facts))
             facts))))
 
@@ -1264,8 +1285,8 @@
       (find file-exists?
             (map (lambda (ext) (string-append base ext)) '(".sls" ".ss")))))
 
-  ;; A folder of the library search, d (source . objects), its rank i + 1:
-  ;; how it is written where that isn't in full (Chez's ".", the current
+  ;; A folder of the library search, d (source . objects), the i-th: how
+  ;; it is written where that isn't in full (Chez's ".", the current
   ;; folder), where its libraries compile to, and whether it auto-loads.
   ;; The tree's own world loads from the tree; a folder that holds the tree
   ;; never auto-loads (its tests and its own sources would load), nor can
@@ -1285,11 +1306,10 @@
                        (if on (auto-load! path) (auto-load-forget! path)))
                      'subtitle
                      (string-append
-                      (format "Rank ~a" (+ i 1))
-                      (if (equal? source path) "" (format ", as ~s" source))
                       (if (equal? (path-full objects) path)
-                          ", from its sources"
-                          (format ", compiled into ~a" (path-full objects)))
+                          "From its sources"
+                          (format "Compiled into ~a" (path-full objects)))
+                      (if (equal? source path) "" (format ", as ~s" source))
                       (cond [(equal? path root) ", Schevana's own"]
                             [tree? ", holds the tree"]
                             [own? ", Schevana's own"]

@@ -298,7 +298,10 @@
     (check "the tree is searched by import, the user's lib folder not"
            (let ([on-path? (lambda (dir)
                              (exists (lambda (e)
-                                       (equal? (if (pair? e) (car e) e) dir))
+                                       (equal? (path-full (if (pair? e)
+                                                              (car e)
+                                                              e))
+                                               (path-full dir)))
                                      (library-directories)))])
              (and (on-path? *schevana-root*)
                   (not (on-path? user-library-directory)))))

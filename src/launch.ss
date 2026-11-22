@@ -59,20 +59,35 @@
       (compile-library source part))
     (rename-file part object)))
 
+;; The library search as it was, but for root's own folder: Chez's ".",
+;; run from the tree's root, is the tree, which root's entry, put first,
+;; shadows.
+(define (schevana-search-without root)
+  (remp (lambda (e)
+          (let ([source (if (pair? e) (car e) e)])
+            (equal? (cond [(member source '("" ".")) (current-directory)]
+                          [(path-absolute? source) source]
+                          [else (string-append (current-directory) "/"
+                                               source)])
+                    root)))
+        (library-directories)))
+
 ;; The library search and the compiler's parameters for root's libraries:
 ;; compiled into the cache, or, for the hacker edition, read from source
 ;; into this environment through src/hacker.ss's library form.
 (define (schevana-libraries! root hacker?)
   (if hacker?
       (begin
-        (library-directories (cons (cons root root) (library-directories)))
+        (library-directories (cons (cons root root)
+                                   (schevana-search-without root)))
         (compile-imported-libraries #f)
         (putenv "SCHEVANA_HACKER" "1")
         (load (string-append root "/src/base.ss"))
         (load (string-append root "/src/hacker.ss")))
       (begin
         (library-directories
-         (cons (cons root (schevana-cache-folder root)) (library-directories)))
+         (cons (cons root (schevana-cache-folder root))
+               (schevana-search-without root)))
         (compile-imported-libraries #t)
         (compile-library-handler schevana-compile-library))))
 

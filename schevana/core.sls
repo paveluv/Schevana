@@ -84,7 +84,7 @@
     load-user-folders! reload! core1-run core1-boot! look-load!
     world-load-now! *world-later* auto-load! auto-load-forget! auto-loads
     *auto-loads* auto-load-layer world-app-file? world-after-load!
-    auto-load-entries path-full add-library-directory!
+    auto-load-entries library-file-layer path-full add-library-directory!
     ;; (schevana core theme): the theme, styles, palettes, wallpapers and
     ;; parts
     *theme-version* *style-name* *style-changes* *theme-overrides*
@@ -265,7 +265,7 @@
                 load-user-folders! reload! core1-boot! program-world!
                 look-load! world-load-now! auto-load! auto-load-forget!
                 auto-loads auto-load-entries auto-load-layer world-app-file?
-                world-after-load!)
+                world-after-load! library-file-layer)
           (prefix (only (schevana tree) *schevana-root*) core:)
           (prefix (only (schevana core platform) platform-process-bytes now-ns
                         now-ms) core:)

@@ -11,6 +11,7 @@
     user-init-file load-user-init! source-folders *user-folders?*
     source-path folder-files world-sources source-files *auto-loads*
     auto-loads auto-load! auto-load-forget! auto-load-entries auto-load-layer
+    library-file-layer
     world-app-file? world-after-load!
     *source-texts* keep-source-text! file-text load-file! app-load!
     load-source load-sources!
@@ -179,6 +180,19 @@
          (let up ([dir (path-parent file)] [n (- (length name) 1)])
            (if (= n 0) dir (up (path-parent dir) (- n 1))))))
       name))
+
+  ;; The layer the library in file declares, or #f: its library-layer
+  ;; form, first in its body, or later ((schevana base)'s follows what
+  ;; makes the form).
+  (define (library-file-layer file)
+    (let ([head (library-head-in file)])
+      (and head
+           (or (cdr head)
+               (guard (c [#t #f])
+                 (exists (lambda (form)
+                           (and (pair? form) (eq? (car form) 'library-layer)
+                                (pair? (cdr form)) (cadr form)))
+                         (cddddr (call-with-input-file file read))))))))
 
   ;; A library's name and the layer it declares, (name . layer), its layer
   ;; #f where its body begins with none; read no further than that: the
