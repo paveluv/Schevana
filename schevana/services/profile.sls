@@ -384,19 +384,7 @@
   ;; Opens a span on the stack. A span outside a step, or past the stack's
   ;; depth, goes untimed. A step starts the stack afresh, closing the spans
   ;; a raise left open.
-  (define profile-begin!
-    (case-lambda
-      [(key part) (profile-open! key part)]
-      ;; a span already over, from start to end on now-ns's clock, counted
-      ;; as if it had been open inside the innermost open span
-      [(key part start end)
-       (let ([d *profile-depth*] [past *profile-past*])
-         (profile-open! key part)
-         (if (fx> *profile-depth* d)
-             (begin
-               (fxvector-set! *profile-start* d start)
-               (profile-close-at! d end))
-             (set! *profile-past* past)))]))
+  (define (profile-begin! key part) (profile-open! key part))
 
   (define (profile-open! key part)
     (unless (profile-untimed?)

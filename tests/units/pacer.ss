@@ -3,11 +3,12 @@
 
 ;;; The pacer: exactly one tick per period while the work fits.
 
-;; Records that the screen held core1 from start to end: a wait, the
-;; profiler's vsync-wait, and no work.
-(define (pacer-test-screen-waited! start end)
-  (profile-span-past! 'vsync-wait 'submit start end)
-  (pacer-held! (- end start)))
+;; Records that the screen held core1 while advance! moved the clock: a
+;; wait, the profiler's vsync-wait, and no work.
+(define (pacer-test-screen-wait! advance!)
+  (let ([t0 (now-ns)])
+    (with-profile-span 'vsync-wait 'submit (advance!))
+    (pacer-held! (- (now-ns) t0))))
 
 ;; Runs core1's loop for ms of a fake clock (in ns), with a wait for
 ;; core0's events that only moves the clock, and a frame that, with vsync?,
@@ -42,9 +43,8 @@
           (lambda ()
             (let ([shown? (real-present)])
               (when vsync?   ; to the next refresh
-                (let ([t0 t])
-                  (set! t (* period (+ 1 (quotient t period))))
-                  (pacer-test-screen-waited! t0 t)))
+                (pacer-test-screen-wait!
+                 (lambda () (set! t (* period (+ 1 (quotient t period)))))))
               shown?)))
     (pacer-rate! 'screen)
     (let* ([keeper (open-window "Keeper" 'size '(80 . 60)
@@ -552,9 +552,8 @@
                (let ([present rec-present!])
                  (lambda ()
                    (let ([shown? (present)])
-                     (let ([t0 pacer-test-t])
-                       (pacer-test-advance! 7)
-                       (pacer-test-screen-waited! t0 pacer-test-t))
+                     (pacer-test-screen-wait!
+                      (lambda () (pacer-test-advance! 7)))
                      shown?)))])
     (thunk)))
 

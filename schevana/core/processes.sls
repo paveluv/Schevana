@@ -62,13 +62,6 @@
   ;; frame).
   (define-state *profile-span* #f)
 
-  ;; Tells the profiler of a span already over, from start to end on
-  ;; now-ns's clock, as if it had been open inside the span open now: for
-  ;; core0's waits, which core0 times itself.
-  (define (profile-span-past! key part start end)
-    (let ([span *profile-span*])
-      (when span ((car span) key part start end))))
-
   (define-syntax with-profile-span
     (lambda (x)
       (syntax-case x ()
