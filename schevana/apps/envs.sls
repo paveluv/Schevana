@@ -249,9 +249,7 @@
     (envs-view-shares-set! v '())
     (envs-view-draft-set! v "")
     (envs-view-error-set! v #f)
-    (ui-focus! (envs-view-ui v)
-               (case what
-                 [else #f])))
+    (ui-focus! (envs-view-ui v) #f))
 
   (define (envs-open-fork! v kind)
     (envs-open-sheet! v 'fork)
