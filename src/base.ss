@@ -30,13 +30,6 @@
 (define-syntax define-state
   (syntax-rules () [(_ name init) (define name init)]))
 
-;; (live-name name) hands a procedure over by its name, so that a
-;; redefinition takes effect at the next call (world-value looks the name
-;; up). A library, where nothing is redefined and a name can't reach the
-;; procedure, hands over the procedure itself.
-(define-syntax live-name
-  (syntax-rules () [(_ name) 'name]))
-
 ;; Returns an identifier at environment's top level: a forwarder made from
 ;; it names that environment's binding. It is found by a macro defined there
 ;; under a name no code can type, which hands back the identifier it is used
