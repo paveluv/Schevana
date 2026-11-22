@@ -681,12 +681,12 @@
 ;;; Code shares a list of names with an environment it makes; every name
 ;;; of the world's, followed, is a world namespace's, which a person asks
 ;;; for on purpose (a REPL's, the Environments app's fork). So only the
-;;; kind does (services/env.ss).
+;;; kind does ((schevana services env)).
 
 (check "only a world namespace shares the whole world with an environment"
        (none? (filter-map
                (lambda (f)
-                 (and (not (member f '("services/env.ss")))
+                 (and (not (member f '("schevana/services/env.sls")))
                       (memq 'env-share-world! (symbols-in (file-forms f)))
                       (format "~a calls env-share-world!" f)))
                world-files)))
