@@ -96,3 +96,19 @@
                        (file-exists? (cadr files)))])
          (uninstall-desktop-entry!)
          (and ok (not (exists file-exists? files)))))
+
+;; The desktop draws its wallpaper by name at "/": a define there, as a
+;; REPL makes it, shows on the next frame.
+(check "a draw-wallpaper defined at \"/\" is what the desktop draws"
+       (let ([plain (eval 'draw-wallpaper world-env)])
+         (for-each close-window! (windows))
+         (eval '(define (draw-wallpaper w h) (fill-box 0 0 w h #x336699))
+               world-env)
+         (invalidate!)
+         (steps 1)
+         (let ([shown (pixel-at (screen-picture) (quotient *canvas-pw* 2)
+                                (quotient *canvas-ph* 2))])
+           (eval `(define draw-wallpaper ',plain) world-env)
+           (invalidate!)
+           (steps 1)
+           (= shown (color->pixel #x336699)))))

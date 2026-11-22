@@ -22,21 +22,21 @@ it returns is the live thing, not a copy:
 ## Redefining the world
 
 A `define` at "/" replaces what the world calls by name, from its next
-call on: the procedure a part names (the built-in wallpaper is
-`draw-wallpaper*`, the Mac style's frame `mac-draw-under`), the bars',
-menus' and toasts' drawing (`draw-topbar`, `draw-menu`, `draw-toasts`), a
-surface's procedures (`draw-desktop`), and the procedures of your own
+call on: the desktop's drawing (`draw-wallpaper`, `draw-topbar`,
+`draw-menu`, `draw-toasts`), the procedure a part names (the built-in
+wallpaper is `draw-wallpaper*`, the Mac style's frame `mac-draw-under`),
+a surface's procedures (`draw-desktop`), and the procedures of your own
 that your handlers call by name:
 
 ```scheme
-(define (draw-wallpaper* w h)
+(define (draw-wallpaper w h)
   (fill-gradient 0 0 w h #x102030 #x301020))
 ```
 
-A library calls its own procedures directly, its hooks too (the
-desktop's `draw-wallpaper`, the core's `draw-window`): a `define` at "/"
-of one of them makes a name of the world's own, which the library doesn't
-call, and the library's code changes with its file, at `(reload!)`.
+A library calls its own procedures directly, its hooks too (the core's
+`draw-window`): a `define` at "/" of one of them makes a name of the
+world's own, which the library doesn't call, and the library's code
+changes with its file, at `(reload!)`.
 Started with `--hacker`, the hacker edition, every library's names are
 "/"'s, internals too, and a `define` replaces any of them at every call:
 the bars, the menus, the styles, the window manager. There, `(define

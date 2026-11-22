@@ -11,7 +11,7 @@
           (only (schevana base) at-load define-hook library-layer)
           (only (schevana core) *canvas-h* *canvas-w* alpha define-part
                 define-surface fill-wallpaper focus-window! report-error!
-                theme wallpaper-shown)
+                theme wallpaper-shown world-value)
           (only (schevana kits fill) fill-glow)
           (only (schevana kits text) text-draw-centered)
           (only (schevana desktop icon) icon-follow-theme!)
@@ -19,11 +19,12 @@
 
   (library-layer desktop)
 
-  ;; An error in draw-wallpaper is reported, and the rest of the desktop
-  ;; keeps working.
+  ;; Draws the wallpaper by its name at "/", as the bars draw their parts,
+  ;; so that a define there replaces it. An error in it is reported, and
+  ;; the rest of the desktop keeps working.
   (define (draw-desktop)
     (guard (c [#t (report-error! 'desktop c)])
-      (draw-wallpaper *canvas-w* *canvas-h*)))
+      ((world-value 'draw-wallpaper) *canvas-w* *canvas-h*)))
 
   (define-part (draw-wallpaper w h)
     (fill-wallpaper 0 0 w h (theme 'wallpaper) 'desktop-top 'desktop-bottom)
