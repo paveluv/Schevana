@@ -126,9 +126,32 @@
 ;; keep busy misses refreshes, so these run after them, by themselves.
 (define units-alone '("fork"))
 
+;; The hacker edition's topics, run there when none is named: those that
+;; tell the editions apart (their file names test-hacker?), and the
+;; demos', whose launchers then run as the hacker edition's programs. The
+;; rest is the library edition's: what the hacker edition changes is where
+;; the libraries' names are, which those check, and smoke uses them all.
+(define (units-hacker-topics)
+  (filter (lambda (topic)
+            (or (string=? topic "demos")
+                (let ([text (call-with-input-file
+                                (format "~a/tests/units/~a.ss"
+                                        *schevana-root* topic)
+                              get-string-all)])
+                  (let ([n (string-length text)]
+                        [k (string-length "test-hacker?")])
+                    (let loop ([i 0])
+                      (and (<= (+ i k) n)
+                           (or (string=? (substring text i (+ i k))
+                                         "test-hacker?")
+                               (loop (+ i 1)))))))))
+          (units-topics)))
+
 (unless (= (length units-asked) 1)
   (test-warm!)
-  (let* ([topics (if (null? units-asked) (units-topics) units-asked)]
+  (let* ([topics (cond [(pair? units-asked) units-asked]
+                       [(getenv "SCHEVANA_HACKER") (units-hacker-topics)]
+                       [else (units-topics)])]
          [jobs (test-jobs units-topic-mb)]
          [_ (printf "~a at once (~a CPUs, ~a MB free)\n" jobs (test-cpus)
                     (test-free-mb))]
@@ -147,6 +170,31 @@
     (exit (if (null? failed) 0 1))))
 
 ;;; ------------------------------------------------------------------ a topic
+
+;; The topic's file.
+(define units-topic-file
+  (format "~a/tests/units/~a.ss" *schevana-root* (car units-asked)))
+
+;; A topic of a library by itself, which needs no world, says so first:
+;; (test-focus (schevana kits complete) ...). In the library edition it
+;; runs with those libraries imported, from the tests' build, and the
+;; checks (tests/check.ss): the world is neither loaded nor booted. In the
+;; hacker edition, whose libraries are all the world's top level, it runs
+;; in the world, as any topic does.
+(define-syntax test-focus (syntax-rules () [(_ . libraries) (void)]))
+(let ([form (call-with-input-file units-topic-file read)])
+  (when (and (pair? form) (eq? (car form) 'test-focus)
+             (not (getenv "SCHEVANA_HACKER")))
+    (load (string-append *schevana-root* "/src/launch.ss"))
+    (load (string-append *schevana-root* "/tests/build.ss"))
+    (let ([root (schevana-launch-root *schevana-root*)])
+      (schevana-libraries! root #f)
+      (test-build! root))
+    (load (string-append *schevana-root* "/src/base.ss"))
+    (eval `(import ,@(cdr form)))
+    (load (string-append *schevana-root* "/tests/check.ss"))
+    (load units-topic-file test-form-eval)
+    (test-verdict!)))
 
 (load (string-append *schevana-root* "/tests/lib.ss"))
 
@@ -365,8 +413,7 @@
 
 (schevana-boot! 'headless 1280 800)
 
-(load (format "~a/tests/units/~a.ss" *schevana-root* (car units-asked))
-      test-form-eval)
+(load units-topic-file test-form-eval)
 
 (steps 2)
 (check "the world still renders after all this" (begin (render-frame!) #t))

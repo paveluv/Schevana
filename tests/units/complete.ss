@@ -3,6 +3,8 @@
 ;;; list narrowed, keys, the wheel and presses, and the matching. What the
 ;;; REPL completes, describes and draws is smoke's.
 
+(test-focus (schevana kits complete))
+
 (define complete-test-names
   '("set-theme!" "set-theme-plist!" "set-style!" "setting-of" "sum"
     "head:split-window" "head:window-split" "*scratch*"))

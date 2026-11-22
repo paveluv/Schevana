@@ -54,10 +54,10 @@ ffi)`), with no loader variable set.
 
 ## Running less while working
 
-The whole suites take a minute or two; one check takes seconds. While a
-check is being written or fixed, run what it needs, and the whole suites
-in both editions before the commit, under both Chez versions before the
-push (`AGENTS.md`).
+The whole suites take under a minute on a large machine, a few on a small
+one; one check takes seconds. While a check is being written or fixed,
+run what it needs, and the whole suites before the commit, under both
+Chez versions before the push (`AGENTS.md`).
 
 - `tests/sources.ss` alone takes seconds, and a units topic runs alone:
   `scheme --script tests/units.ss out tasks`.
@@ -73,11 +73,21 @@ SCHEVANA_CHECK="Shift+Tab up onto a title" scheme --script tests/smoke.ss out
 
 - `SCHEVANA_HACKER=1` runs any suite in the hacker edition (`--hacker`):
   every library spliced into the world, from its source. A check that
-  holds of one edition alone says so (`test-hacker?`).
+  holds of one edition alone says so (`test-hacker?`). With no topic
+  named, the units' runner runs there the topics that tell the editions
+  apart (those that name `test-hacker?`) and the demos', whose launchers
+  then run as the hacker edition's programs; a topic named runs there as
+  asked.
 
 ```bash
 SCHEVANA_HACKER=1 scheme --script tests/units.ss out
+SCHEVANA_HACKER=1 scheme --script tests/units.ss out life
 ```
+
+- A topic of one library by itself, which needs no world, says so first,
+  `(test-focus (schevana kits complete))`: in the library edition it runs
+  with that library alone from the cache and the checks
+  (`tests/check.ss`), the world neither loaded nor booted.
 
 ## A check
 

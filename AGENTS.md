@@ -7,8 +7,9 @@ test, the test is named.
 ## Before every commit
 
 All four suites pass under Chez Scheme 10.4.1, and before every push
-under 10.0.0 too, run from the repository's root, in the library edition
-and in the hacker edition (`SCHEVANA_HACKER=1` before each):
+under 10.0.0 too, run from the repository's root, in the library
+edition; and in the hacker edition (`SCHEVANA_HACKER=1`), smoke and the
+units' topics that tell the editions apart, which the runner picks there:
 
 ```bash
 mkdir -p out
@@ -16,7 +17,13 @@ scheme --script tests/smoke.ss out
 scheme --script tests/units.ss out
 scheme --script tests/frame.ss out
 scheme --script tests/sources.ss
+SCHEVANA_HACKER=1 scheme --script tests/smoke.ss out
+SCHEVANA_HACKER=1 scheme --script tests/units.ss out
 ```
+
+The suites size themselves to the machine: as many runs at once as its
+CPUs and free memory allow (`tests/GUIDE.md`); they pass on a machine of
+8 GB.
 
 - A test asks nothing of a library: no export, hook, state or name of
   its own for the test. The test framework reaches what it needs itself:

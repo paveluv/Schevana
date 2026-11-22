@@ -1,5 +1,7 @@
 ;;; tests/units/transcript.ss — lines that only grow, as a REPL shows them.
 
+(test-focus (schevana kits transcript))
+
 (check "a transcript adds complete lines, carries pieces on the open line, \
         and a clear forgets them; a line takes the rows it wraps to"
        (let ([t (transcript-new)])
