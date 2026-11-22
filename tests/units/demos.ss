@@ -15,7 +15,7 @@
         [file (string-append *schevana-root* "/" launcher)])
     (unless (file-directory? home) (mkdir home))
     (let ([status
-           (units-system-within 120
+           (test-system-within 120
              (string-append
               (if (equal? (path-extension launcher) "sh")
                   (format "exec env HOME=~a sh ~a --headless~{ ~a~}"
@@ -76,7 +76,7 @@
                    (newline))
                  (quit!))))))))
     'replace)
-  (let* ([status (units-system-within 120
+  (let* ([status (test-system-within 120
                    (string-append (test-chez (list (cons "HOME" home)) prog)
                                   " > " (test-sh-word said) " 2>&1"))]
          [out (call-with-input-file said get-string-all)])

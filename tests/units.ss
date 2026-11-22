@@ -40,78 +40,80 @@
                       (string-append *schevana-root* "/tests/units"))))))
 
 ;; A run of Chez through /bin/sh, a Mac's loader path with it: test-chez
-;; and test-sh-word, which the sources' suite runs itself again by too.
+;; and test-sh-word, which the sources' suite runs itself again by too; and
+;; runs at once, as many as the machine allows (test-system-all).
 (load (string-append *schevana-root* "/tests/chez.ss"))
 
-;; command's exit status, or 137 if it still ran after seconds and was
-;; killed, lest a hang hold up the suite. GNU's timeout isn't everywhere (a
-;; Mac has none), so this is plain sh; command execs, so the process killed
-;; is its own.
-(define (units-system-within seconds command)
-  (system
-    (format "(~a) & p=$!; i=0; while kill -0 $p 2> /dev/null; do \
-             if [ $i -ge ~a ]; then kill -9 $p; break; fi; \
-             sleep 1; i=$((i + 1)); done; wait $p 2> /dev/null"
-            command seconds)))
+;; What a topic's run takes at its peak, MB, for how many go at once
+;; (test-jobs): a few hundred MB in the library edition, the heaviest near
+;; 800 (measured); some 1.1 to 1.3 GB in the hacker edition, each
+;; compiling the world from source.
+(define units-topic-mb (if (getenv "SCHEVANA_HACKER") 1500 600))
 
-;; How many topics run at once: SCHEVANA_TEST_JOBS, else the CPUs less
-;; two; one where Chez has no threads.
-(define units-jobs
-  (let ([given (string->number (or (getenv "SCHEVANA_TEST_JOBS") ""))]
-        [cpus (let* ([p (process "getconf _NPROCESSORS_ONLN")]
-                     [n (read (car p))])
-                (close-port (car p))
-                (close-port (cadr p))
-                (if (fixnum? n) n 1))])
-    (cond
-      [(not (threaded?)) 1]
-      [(and (fixnum? given) (> given 0)) given]
-      [else (max 1 (- cpus 2))])))
+;; The docs' pages with examples to run (tests/units/docs.ss), each a path
+;; from the tree's root: README.md, CREDITS.md and docs/*.md that hold a
+;; ```scheme block.
+(define (units-docs-pages)
+  (filter (lambda (page)
+            (call-with-input-file (string-append *schevana-root* "/" page)
+              (lambda (p)
+                (let loop ()
+                  (let ([l (get-line p)])
+                    (and (not (eof-object? l))
+                         (or (string=? l "```scheme") (loop))))))))
+          (append '("README.md" "CREDITS.md")
+                  (map (lambda (f) (string-append "docs/" f))
+                       (sort string<?
+                             (filter (lambda (f)
+                                       (let ([n (string-length f)])
+                                         (and (> n 3)
+                                              (string=? (substring f (- n 3) n)
+                                                        ".md"))))
+                                     (directory-list
+                                      (string-append *schevana-root*
+                                                     "/docs"))))))))
 
-;; topic run by this file in a process of its own, with a folder of its own
-;; under output-dir for what it writes, there too what it says: its status.
-(define (units-run-quiet topic)
-  (let ([dir (string-append out-dir "/" topic)])
-    (unless (file-directory? dir) (mkdir dir))
-    (system (string-append
-             (test-chez '() (string-append *schevana-root* "/tests/units.ss")
-                        dir topic)
-             " > " (test-sh-word (string-append dir "/said.txt")) " 2>&1"))))
+;; A run of the runner's: (name topic dir env), the topic's file run by
+;; this one in a process of its own, with a folder of its own under
+;; output-dir for what it writes, what it says there too, with env's
+;; variables. Each docs page is a run of its own, as heavy as a topic.
+(define (units-runs topic)
+  (if (string=? topic "docs")
+      (map (lambda (page)
+             (list (string-append "docs " page) "docs"
+                   (format "~a/docs-~a" out-dir (path-root (path-last page)))
+                   (list (cons "SCHEVANA_DOCS_PAGE" page))))
+           (units-docs-pages))
+      (list (list topic topic (string-append out-dir "/" topic) '()))))
 
-;; The topics that fail, each run as units-jobs allow at once, what each
-;; said printed in the topics' order as each is done.
-(define (units-run-all topics)
-  (let* ([v (list->vector topics)] [n (vector-length v)]
-         [status (make-vector n #f)] [next 0]
-         [m (make-mutex)] [done (make-condition)])
-    (define (work!)
-      (let ([i (with-mutex m (let ([i next]) (set! next (+ i 1)) i))])
-        (when (< i n)
-          (let ([s (units-run-quiet (vector-ref v i))])
-            (with-mutex m
-              (vector-set! status i s)
-              (condition-broadcast done)))
-          (work!))))
-    (if (= units-jobs 1)
-        (work!)
-        (do ([k 0 (+ k 1)]) ((= k (min units-jobs n)))
-          (fork-thread work!)))
-    (let loop ([i 0] [failed '()])
-      (if (= i n)
-          (reverse failed)
-          (let ([s (with-mutex m
-                     (let wait ()
-                       (or (vector-ref status i)
-                           (begin (condition-wait done m) (wait)))))]
-                [topic (vector-ref v i)])
-            (printf "--- ~a\n" topic)
-            (let ([said (call-with-input-file
-                         (string-append out-dir "/" topic "/said.txt")
-                         get-string-all)])
-              (unless (eof-object? said)
-                (put-string (current-output-port) said)))
-            (flush-output-port (current-output-port))
-            (loop (+ i 1) (if (eqv? s 0) failed (cons topic failed))))))))
+;; The runs that fail, as many at once as jobs, what each said printed in
+;; the runs' order as each is done.
+(define (units-run-all jobs runs)
+  (let ([v (list->vector runs)] [failed '()])
+    (for-each (lambda (r) (unless (file-directory? (caddr r))
+                            (mkdir (caddr r))))
+              runs)
+    (test-system-all
+     jobs 1800
+     (map (lambda (r)
+            (string-append
+             (test-chez (cadddr r)
+                        (string-append *schevana-root* "/tests/units.ss")
+                        (caddr r) (cadr r))
+             " > " (test-sh-word (string-append (caddr r) "/said.txt"))
+             " 2>&1"))
+          runs)
+     (lambda (i s)
+       (let ([r (vector-ref v i)])
+         (printf "--- ~a\n" (car r))
+         (let ([said (call-with-input-file
+                      (string-append (caddr r) "/said.txt")
+                      get-string-all)])
+           (unless (eof-object? said)
+             (put-string (current-output-port) said)))
+         (flush-output-port (current-output-port))
+         (unless (eqv? s 0) (set! failed (cons (car r) failed))))))
+    (reverse failed)))
 
 ;; All of them, or those asked for: here only the topics' verdicts.
 ;; SCHEVANA_CHECK finds a check in the topics asked for: a run names one.
@@ -124,50 +126,24 @@
 ;; keep busy misses refreshes, so these run after them, by themselves.
 (define units-alone '("fork"))
 
-;; The tree's libraries compiled into the cache here, once, before the
-;; topics start at once, each of which would compile them itself
-;; (src/launch.ss). The hacker edition compiles none to a file.
-(define (units-cache-warm!)
-  (load (string-append *schevana-root* "/src/launch.ss"))
-  (unless (schevana-hacker? '())
-    (schevana-libraries! (schevana-launch-root *schevana-root*) #f)
-    (for-each (lambda (lib)
-                (eval `(import ,lib) (copy-environment (scheme-environment))))
-              (append '((schevana core) (schevana core sources)
-                        (schevana desktop main) (schevana core0 for-recorder)
-                        (schevana recorder bytes) (schevana socket))
-                      (units-world-libraries)))))
-
-;; The world's libraries and the demos', by their files: compiled here
-;; once, so that topics booting at once never compile one together.
-(define (units-world-libraries)
-  (apply append
-         (map (lambda (dir name)
-                (let ([path (string-append *schevana-root* "/" dir)])
-                  (map (lambda (f)
-                         (append name (list (string->symbol (path-root f)))))
-                       (sort string<?
-                             (filter (lambda (f)
-                                       (equal? (path-extension f) "sls"))
-                                     (directory-list path))))))
-              '("schevana/kits" "schevana/services" "schevana/styles"
-                "schevana/palettes" "schevana/wallpapers" "schevana/desktop"
-                "schevana/apps" "schevana-demo")
-              '((schevana kits) (schevana services) (schevana styles)
-                (schevana palettes) (schevana wallpapers) (schevana desktop)
-                (schevana apps) (schevana-demo)))))
-
 (unless (= (length units-asked) 1)
-  (units-cache-warm!)
+  (test-warm!)
   (let* ([topics (if (null? units-asked) (units-topics) units-asked)]
-         [alone (filter (lambda (t) (member t units-alone)) topics)]
+         [jobs (test-jobs units-topic-mb)]
+         [_ (printf "~a at once (~a CPUs, ~a MB free)\n" jobs (test-cpus)
+                    (test-free-mb))]
+         [runs (lambda (ts) (apply append (map units-runs ts)))]
          [failed (append (units-run-all
-                          (remp (lambda (t) (member t units-alone)) topics))
-                         (fluid-let ([units-jobs 1])
-                           (units-run-all alone)))])
+                          jobs
+                          (runs (remp (lambda (t) (member t units-alone))
+                                      topics)))
+                         (units-run-all
+                          1
+                          (runs (filter (lambda (t) (member t units-alone))
+                                        topics))))])
     (if (null? failed)
         (printf "all topics passed\n")
-        (printf "~a topic(s) FAILED: ~a\n" (length failed) failed))
+        (printf "~a run(s) FAILED: ~a\n" (length failed) failed))
     (exit (if (null? failed) 0 1))))
 
 ;;; ------------------------------------------------------------------ a topic

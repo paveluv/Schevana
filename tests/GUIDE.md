@@ -24,10 +24,13 @@ scheme --script tests/sources.ss
 - **units** runs every file of `tests/units/`, a topic each (an app's, a
   kit's, a service's, a part of the core's), in a process of its own, so
   that none leans on what another left behind, many at once: as many as
-  `SCHEVANA_TEST_JOBS` says, else the CPUs less two. Each writes in a
-  folder of its own, `out/topic`, and says what it says there; the suite
-  prints it in the topics' order. `scheme --script tests/units.ss out
-  life boids` runs those two alone.
+  the machine allows, its CPUs less two and its free memory (within a
+  container's limit too) less 1 GB, at what a topic takes at its peak
+  (`test-jobs`, `tests/chez.ss`), or as many as `SCHEVANA_TEST_JOBS`
+  says. Each docs page is a run of its own. Each writes in a folder of
+  its own, `out/topic`, and says what it says there; the suite prints it
+  in the topics' order. `scheme --script tests/units.ss out life boids`
+  runs those two alone.
 - **frame** draws frames on lavapipe, or on Metal on a Mac, with no window
   but one offscreen. It compares the screen bit for bit with the world
   drawn into an image, in every style and at several scales, and checks

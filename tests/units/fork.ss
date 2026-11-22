@@ -10,7 +10,7 @@
         (begin
           (unless (file-directory? home) (mkdir home))
           (when (file-exists? out) (delete-file out))
-          (units-system-within 120
+          (test-system-within 120
             (string-append
               (test-chez (list (cons "HOME" home))
                          (string-append *schevana-root* "/schevana-desktop")
@@ -51,7 +51,7 @@
 ;; a word holds reaches sh whole.
 (let ([began (real-time)])
   (check "a run still going after its time is killed, not waited for"
-         (and (eqv? (units-system-within 1 "exec sleep 30") 137)
+         (and (eqv? (test-system-within 1 "exec sleep 30") 137)
               (< (- (real-time) began) 5000))))
 (let ([word "it's \"$HOME\" `x` \\ ~"]
       [file (string-append out-dir "/fork-word.txt")])

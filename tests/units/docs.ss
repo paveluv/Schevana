@@ -7,15 +7,6 @@
 ;;; fenced "```scheme no-run" is shown, not run: one that never ends, or
 ;;; waits for a person.
 
-;; The pages, from the tree's root.
-(define (docs-pages)
-  (append '("README.md" "CREDITS.md")
-          (map (lambda (f) (string-append "docs/" f))
-               (sort string<?
-                     (filter (lambda (f) (string-suffix? ".md" f))
-                             (directory-list
-                              (string-append *schevana-root* "/docs")))))))
-
 ;; page's blocks to run, each (line . text), line where its code starts.
 (define (docs-blocks page)
   (let loop ([lines (call-with-input-file
@@ -109,14 +100,31 @@
                                docs-page (car b))
                        (docs-run! (cdr b))))
               (docs-blocks docs-page))
-    (for-each
-     (lambda (page)
-       (when (pair? (docs-blocks page))
-         (check (format "~a: its examples run, in a world of their own" page)
-                (zero? (units-system-within
-                        600
-                        (test-chez (list (cons "SCHEVANA_DOCS_PAGE" page))
-                                   (string-append *schevana-root*
-                                                  "/tests/units.ss")
-                                   out-dir "docs"))))))
-     (docs-pages)))
+;; Run by itself, the pages at once, as many as the machine allows, each
+    ;; in a folder of its own, what each said shown after it, in order. (The
+    ;; units' runner runs each page as a run of its own instead.)
+    (let* ([pages (units-docs-pages)]
+           [dirs (map (lambda (page)
+                        (let ([d (format "~a/~a" out-dir
+                                         (path-root (path-last page)))])
+                          (unless (file-directory? d) (mkdir d))
+                          d))
+                      pages)])
+      (test-system-all
+       (test-jobs units-topic-mb) 600
+       (map (lambda (page dir)
+              (format "~a > ~a 2>&1"
+                      (test-chez (list (cons "SCHEVANA_DOCS_PAGE" page))
+                                 (string-append *schevana-root*
+                                                "/tests/units.ss")
+                                 dir "docs")
+                      (test-sh-word (string-append dir "/said.txt"))))
+            pages dirs)
+       (lambda (i status)
+         (let* ([page (list-ref pages i)] [dir (list-ref dirs i)]
+                [said (call-with-input-file (string-append dir "/said.txt")
+                        get-string-all)])
+           (unless (eof-object? said) (put-string (current-output-port) said))
+           (check (format "~a: its examples run, in a world of their own"
+                          page)
+                  (zero? status)))))))
