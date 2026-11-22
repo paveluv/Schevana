@@ -4945,6 +4945,10 @@
                         (and (eq? key 'return) (null? mods)
                              (not (memq 'disabled (cddr default)))
                              (begin ((cadr default)) #t)))))
+              ;; The dialog's own panel takes a press that misses its
+              ;; widgets, so that only a press outside it dismisses it.
+              (ui-region! ui (list id 'inside) dx dy dw dh 'focus 'keep
+                'on (lambda (ev) #t))
               (when dismiss
                 (apply ui-pressable! ui (list id 'dismiss)
                        (append (cdr dismiss)

@@ -1,6 +1,7 @@
 ;;; tests/units/ui-dialog.ss — the kit's dialog ((schevana kits ui)), tested
 ;;; by itself: how it takes the keyboard, Return for its default button,
-;;; Escape and a press outside it, and clicks on its buttons.
+;;; Escape and a press outside it (but not one on it), and clicks on its
+;;; buttons.
 
 (define ui-dialog-test-title "Delete it?")
 (define ui-dialog-test-message "It can't be undone.")
@@ -67,6 +68,29 @@
          (ui-dialog-test-press! 'return)
          (close-window! win)
          (null? (unbox said))))
+
+(check "a press on the dialog itself, away from its buttons, calls nothing \
+        and leaves it open"
+       (let-values ([(win open field said) (ui-dialog-test-window)])
+         (steps 2)
+         (ui-dialog-test-open! win open)
+         (let-values ([(cx cy cw ch) (content-rect win)]
+                      [(dw dh) (ui-dialog-size ui-dialog-test-title
+                                               ui-dialog-test-message
+                                               '("Cancel" "Delete"))])
+           (let* ([dx (max 0 (round (/ (- cw dw) 2)))]
+                  [dy (max 0 (round (/ (- ch dh) 2)))]
+                  [m (cdr (assq 'message
+                                (ui-dialog-areas dx dy dw dh
+                                                 '("Cancel" "Delete"))))]
+                  [x (+ cx (car m) (quotient (caddr m) 2))]
+                  [y (+ cy (cadr m) (quotient (cadddr m) 2))])
+             (inject! `(mouse-move ,x ,y) `(mouse-down ,x ,y left 1)
+                      `(mouse-up ,x ,y left))))
+         (steps 2)
+         (ui-dialog-test-press! 'escape)
+         (close-window! win)
+         (equal? (reverse (unbox said)) '(dismiss))))
 
 (check "a click on a button calls its own; a press outside the dialog \
         dismisses it"
