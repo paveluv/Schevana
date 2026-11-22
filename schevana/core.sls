@@ -1,14 +1,14 @@
-;;; (schevana core) — the core, as the world and a program have it: what
-;;; it gives them, each name read-only but the hooks a later layer fills,
-;;; and schevana-main, which runs a program on it:
+;;; (schevana core) — the core, as the world and a program see it: what it
+;;; gives them, each name read-only except the hooks that a later layer
+;;; fills, and schevana-main, which runs a program on the core:
 ;;;
 ;;;   (import (chezscheme) (schevana core))
 ;;;   (schevana-main 'sdl 640 400 #f
 ;;;     (lambda () (open-window ...)))
 ;;;
-;;; Nothing else of the core's is there to name, and none of its C. A new
-;;; name here is a reviewed change; tests/sources.ss names those no file
-;;; of the world's uses.
+;;; Nothing else of the core's can be named, and none of its C. A new name
+;;; here is a reviewed change; tests/sources.ss reports any name here that
+;;; no file of the world's and no doc uses.
 
 (library (schevana core)
   (export
@@ -30,8 +30,8 @@
     proc-state proc-ticks proc-started proc-wake *procs* spawn procs find-proc
     kill! sleep-ms worklet-base-environment *worklet-environment* worklet?
     worklet define-worklet request-frame! *timers* after
-    ;; (schevana core gpu): the GPU's world side: images, buffers, lists,
-    ;; computes
+    ;; (schevana core gpu): the world's side of the GPU: images, buffers,
+    ;; lists, compute runs
     *gpu-bytes-made* *gpu-held-gone* gpu-image-make gpu-image-make-target
     gpu-image-release! gpu-atlas-image gpu-list-new make-gpu-buffer
     gpu-buffer-set! gpu-buffer-release! gpu-buffer-read! *gpu-computes*
@@ -129,8 +129,8 @@
     socket-listen socket-accept socket-read socket-write socket-close
     ;; (schevana reload): what a reload of the libraries keeps
     reload-facts
-    ;; Given again: core0's ((schevana core0)), which Monitor, the
-    ;; Pipeline and inspect read
+    ;; Passed on from core0 ((schevana core0)): what Monitor, the Pipeline
+    ;; and the inspect kit read, the clipboard and the cursor
     core0-app-id gpu-atlas-side core0-flag-names core0-event-name gpu-show-run?
     gpu-run-gone? shader shader-name shader-stage shader-coords shader-params
     shader-source shader-words gpu-list-id gpu-list-labels gpu-list-recorded
@@ -139,21 +139,21 @@
     core0-hidden? core0-flags core0-error-text core0-step-state
     core0-frame-report core0-window-sizes core0-window-scale clipboard-get
     core0-set-cursor! clipboard-set! core0-refresh-ns! platform-cpu-count
-    ;; Given again: the recorder's ((schevana recorder)), which the
-    ;; Pipeline reads of a list
+    ;; Passed on from the recorder ((schevana recorder)): what the Pipeline
+    ;; reads of a list, and what the pixmap kit writes into an image with
     rec-count rec-last-sizes rec-last-copy! rec-last-runs rec-list-copy
     gpu-list-recs-n gpu-list-extras-n gpu-list-runs gpu-list-version
     gpu-list-recs gpu-list-extras rec-recordings rec-pixel-set! rec-image-rows!
-    ;; The hooks later layers fill (AGENTS.md, S1): each set by the one
-    ;; file that fills it, with what the core calls.
+    ;; The hooks that later layers fill (AGENTS.md, S1): each is set by the
+    ;; one file that fills it, with what the core calls.
     *profile-span*
     theme-save!
     window-gone!
     screen-event-seen!
     worklet-spread
-    ;; And those the windows layer fills, which a program without it fills
-    ;; itself (demo rings): what a frame draws, where an event
-    ;; goes, what a tick does.
+    ;; And those that (schevana core windows) fills, which a program that
+    ;; draws without windows fills itself (demo rings): what a frame
+    ;; draws, where an event goes, what a tick does.
     record-world!
     wm-event!
     wm-tick!)
@@ -310,14 +310,14 @@
 
   (library-layer core facade)
 
-  ;; A program on the whole core: the loop's main (loop-main), defined
-  ;; here so that a program compiled as one carries this library.
-  ;; Its "/" is made first (program-world!), from the libraries it loaded.
+  ;; Runs a program on the whole core: the loop's main (loop-main), defined
+  ;; here so that a program compiled as a whole carries this library. Its
+  ;; "/" is made first (program-world!), from the libraries it loaded.
   (define (schevana-main mode w h full? world . fork?)
     (program-world!)
     (apply loop-main mode w h full? world fork?))
 
-  ;; What the core sets, and the world reads or calls: views.
+  ;; What the core sets and the world reads or calls, as views.
   (define-view *schevana-root* core:*schevana-root*)
   (define-view *screen-least* core:*screen-least*)
   (define-view *world-later* core:*world-later*)
@@ -401,8 +401,9 @@
   (define-view *schevana-options* core:*schevana-options*)
   (define-view *source-texts* core:*source-texts*)
 
-  ;; The hooks later layers fill (AGENTS.md, S1): each set by the one file
-  ;; that fills it, with what the core calls, and checked as it is set.
+  ;; The hooks that later layers fill (AGENTS.md, S1): each is set by the
+  ;; one file that fills it, with what the core calls, and checked as it is
+  ;; set.
   (define-settable *profile-span* core:*profile-span*
     (lambda (v) (or (not v) (pair? v))))
   (define-settable worklet-spread core:worklet-spread
@@ -414,7 +415,8 @@
   (define-settable window-gone! core:window-gone!
     procedure?)
 
-  ;; And those the windows layer fills, for a program that has none.
+  ;; And those that (schevana core windows) fills, for a program that
+  ;; draws without windows.
   (define-settable record-world! core:record-world!
     procedure?)
   (define-settable wm-event! core:wm-event!

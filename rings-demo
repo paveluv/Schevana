@@ -1,7 +1,7 @@
 #!/usr/bin/env scheme-script
-;;; rings-demo — a program on drawing alone: a shader over the
-;;; whole screen and a box that follows the mouse, below the windows layer
-;;; ((demo rings)).
+;;; rings-demo — starts a program that uses only drawing, below the
+;;; windows layer: six paints of the shader language, each in a tile of
+;;; the screen ((demo rings)).
 ;;;
 ;;;   ./rings-demo [--headless]
 

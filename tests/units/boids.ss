@@ -1,6 +1,6 @@
-;;; tests/units/boids.ss — Boids: a demo, what of the world it uses: its
-;;; steering a worklet on the crew, which steps the flock as the caller
-;;; alone would, allocating only its sums; its keys and its rules window.
+;;; tests/units/boids.ss — Boids, a demo, and what of the world it uses:
+;;; its steering, a worklet on the crew, which steps the flock as the caller
+;;; alone would and allocates only its sums; its keys; and its rules window.
 
 ;; Boids' own names, bo:boids-step and the rest (tests/reach.ss).
 (test-library '(demo boids) 'bo:)
@@ -34,8 +34,8 @@
          (bo:boids-step three-boids bo:boids-default-rules)
          (equal? (flvector->list three-boids) before)))
 
-;; The crew splits a step by boids, each worklet writing its own: the
-;; flock it makes is the one the caller alone makes, to the last digit.
+;; The crew splits a step by boids, each worklet writing its own boids:
+;; the flock it makes is the one the caller alone makes, to the last digit.
 (random-seed 2024)
 (check "Boids: a step on the crew is the one on the caller alone, under the \
         default rules and random ones"
@@ -111,8 +111,8 @@
                         (bo:boids-rule rules 'max-speed))
                     (loop (+ i 1)))))))
 
-;; The keys, through the window's own handler. A clock moved a second on
-;; lets a tick step whether or not the last one was long ago.
+;; The keys, through the window's own handler. A clock moved on by a
+;; second lets a tick step, however long ago the last one was.
 (let ([win (bo:boids)])
   (define (key! k) (window-call win 'key k '()))
   (define (flock) (window-ref win 'flock))
@@ -165,7 +165,7 @@
               (= (bo:boids-slider-value radius 0.5) 100.0)
               (= (bo:boids-slider-t radius 100.0) 0.5))))
 
-;; The rules window, opened with the flock, where both fit.
+;; The rules window, opened with the flock, at a place where both fit.
 (let* ([win (parameterize ([new-window-position '(40 . 60)]) (bo:boids))]
        [rules-win (lambda () (find-window "Boids — Rules"))]
        [press! (lambda (rw id)   ; the middle of the widget id
@@ -261,8 +261,8 @@
   (check "Boids: closing the flock closes its rules window"
          (begin (close-window! win) (not (rules-win)))))
 
-;; Opened far to the right, the rules window is moved to fit, and the
-;; flock moves left to clear it.
+;; Opened far to the right, the flock moves left so that the rules window
+;; fits beside it.
 (let ([win (parameterize ([new-window-position '(400 . 60)]) (bo:boids))])
   (check "Boids: opened where the rules can't fit beside, the flock moves"
          (let ([rw (find-window "Boids — Rules")])

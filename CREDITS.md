@@ -1,29 +1,30 @@
 # Credits
 
-What Schevana takes from others, and under which terms.
+This file lists what Schevana takes from others, and under which terms.
 
 ## Boids and Boids 3D
 
 Boids (`demo/boids.sls`) is ported from Eduardo Cavazos's
 [Boids in Niva](https://github.com/dharmatech/boids-niva) (MIT). Its two
 blocker rules, clear view and back off, follow Gary William Flake's *The
-Computational Beauty of Nature* (MIT Press, 1998), written from his
-description. Boids 3D (`demo/boids3d.sls`) takes the same rules
-into three dimensions, as Craig Reynolds' "Flocks, Herds, and Schools: A
-Distributed Behavioral Model" (SIGGRAPH 1987) first had them.
+Computational Beauty of Nature* (MIT Press, 1998), and are written from
+his description. Boids 3D (`demo/boids3d.sls`) takes the same rules into
+three dimensions, as in Craig Reynolds' original model, "Flocks, Herds,
+and Schools: A Distributed Behavioral Model" (SIGGRAPH 1987).
 
 ## Springies
 
 Springies (`demo/springies.sls`) is ported from Eduardo Cavazos's
 Springies in [Agave](https://github.com/dharmatech/agave) (Apache 2.0),
-which followed Douglas DeCarlo's XSpringies. Its physics is written
-from XSpringies' behavior, not its (GPL) source, and its models are
-made in code, not read from XSpringies' example files.
+which followed Douglas DeCarlo's XSpringies. Its physics is written from
+how XSpringies behaves, not from its (GPL) source, and its models are made
+in code, not read from XSpringies' example files.
 
 ## The CADR's 5X5 font
 
-The CADR's 5X5 font in `schevana/styles/genera.sls` (the glyphs of `genera-5x5`) is
-MIT's, decoded from System 99's `fonts/5x5.qfasl`, under this license:
+The CADR's 5X5 font in `schevana/styles/genera.sls` (the glyphs of
+`genera-5x5`) is MIT's, decoded from System 99's `fonts/5x5.qfasl`, and
+is used under this license:
 
 Copyright (c) 1980, Massachusetts Institute of Technology. All rights
 reserved. Redistribution and use in source and binary forms, with or
@@ -36,6 +37,7 @@ documentation and/or other materials provided with the distribution.
 Neither the names of the Massachusetts Institute of Technology nor the
 names of its contributors may be used to endorse or promote products
 derived from this software without specific prior written permission.
+
 THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS
 IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO,
 THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
@@ -50,9 +52,9 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 ## OPEN LOOK
 
-The OPEN LOOK style's glyphs in `schevana/styles/open-look.sls` are Sun's glyph
-fonts, `olgl10/12/14/19.bdf` from the X11R6 contrib tape, under their
-notice:
+The OPEN LOOK style's glyphs in `schevana/styles/open-look.sls` are Sun's
+glyph fonts, `olgl10/12/14/19.bdf` from the X11R6 contrib tape, used under
+their notice:
 
 Copyright 1989 by Sun Microsystems, Inc. Mountain View, CA. Permission
 to use, copy, modify, and distribute this software and its documentation
@@ -63,8 +65,9 @@ documentation, and that the name of Sun Microsystems not be used in
 advertising or publicity pertaining to distribution of the software
 without specific, written prior permission. Sun Microsystems make no
 representations about the suitability of this software for any purpose.
-It is provided "as is" without express or implied warranty. SUN
-MICROSYSTEMS DISCLAIM ALL WARRANTIES WITH REGARD TO THIS SOFTWARE,
+It is provided "as is" without express or implied warranty. 
+
+SUN MICROSYSTEMS DISCLAIM ALL WARRANTIES WITH REGARD TO THIS SOFTWARE,
 INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS, IN NO
 EVENT SHALL SUN MICROSYSTEMS BE LIABLE FOR ANY SPECIAL, INDIRECT OR
 CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM LOSS OF
@@ -72,8 +75,9 @@ USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR
 OTHER TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR
 PERFORMANCE OF THIS SOFTWARE.
 
-Its shades and frame in `schevana/styles/open-look.sls` are translated from OLGX
-and olwm (XView 3.2), whose notice asks for these words:
+The style's shades and frame in `schevana/styles/open-look.sls` are
+translated from OLGX and olwm (XView 3.2), whose notice asks for these
+words:
 
 (c) Copyright 1989, 1990, 1991 Sun Microsystems, Inc. Sun design patents
 pending in the U.S. and foreign countries. OPEN LOOK is a trademark of
@@ -88,15 +92,15 @@ in this file.
 
 The Adwaita style (`schevana/styles/adwaita.sls`), its palettes
 (`schevana/palettes/adwaita.sls`, `adwaita-dark.sls`) and the GNOME style
-around it (`schevana/styles/gnome.sls`) take facts alone from GNOME's
+around it (`schevana/styles/gnome.sls`) take only facts from GNOME's
 stylesheets: libadwaita 1.7.6's `src/stylesheet/` (LGPL-2.1+) and GNOME
-Shell 48.7's `data/theme/gnome-shell-sass/` (GPL-2.0+). What was
-taken: sizes, paddings, radii, colors and the alphas of the tints, the
+Shell 48.7's `data/theme/gnome-shell-sass/` (GPL-2.0+). The facts taken
+are sizes, paddings, radii, colors and the alphas of the tints, the
 fourteen avatar colors, the OKLab rule for the standalone colors, the
 spinner's widths and speed, and how the Shell's panel, menus, dash and
-banners are laid out, each cited in the code as file:line at those tags.
+banners are laid out; the code cites each as file:line at those tags.
 No SCSS, code, icon, image or font was copied: the glyphs (the check, the
 window buttons' crosses, the dropdown's arrow, the spinner) are drawn from
 their geometry, and the wallpaper is circles over GNOME's fallback blues,
-not GNOME's image. Its text is Cantarell, which Debian sets for GNOME 48;
-the OKLab conversion is Björn Ottosson's published one.
+not GNOME's image. The style's text is Cantarell, which Debian sets for
+GNOME 48; the OKLab conversion is Björn Ottosson's published one.

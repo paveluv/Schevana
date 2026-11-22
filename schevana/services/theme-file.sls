@@ -1,9 +1,10 @@
-;;; (schevana services theme-file) — the saved look ((schevana core theme)'s
-;;; layers): the file holds the chosen style, the scale, the Overrides and your
-;;; changes per style. It is plain data: loading it never evaluates code. A
-;;; rule or a procedure typed at the REPL lasts the session. Every change to
-;;; the layers saves it soon after, through the core's theme-save!; world.ss
-;;; loads it before boot (theme-file-load!).
+;;; (schevana services theme-file) — the saved look, the layers of (schevana
+;;; core theme): the file holds the chosen style, the scale, the Overrides
+;;; and your changes to each style. It is plain data, so loading it never
+;;; evaluates code; a rule or a procedure typed at the REPL lasts only for
+;;; the session. Every change to the layers saves the file soon after,
+;;; through the core's hook theme-save!; (schevana desktop start) loads it
+;;; before the boot (theme-file-load!).
 
 (library (schevana services theme-file)
   (export
@@ -36,7 +37,7 @@
 
   (define (theme-file-save!)
     (let ([tmp (string-append *theme-file-path* ".tmp")])
-      (define (pairs p plist)   ; (key . value) a line, colors in hex
+      (define (pairs p plist)   ; one (key . value) per line, colors in hex
         (for-each (lambda (k)
                     (let ([v (plist-ref plist k #f)])
                       (when (theme-file-plain? v)
@@ -63,8 +64,9 @@
 
   (define-state *theme-file-save-pending* #f)
 
-  ;; Saves 600 ms after a change, with the changes made meanwhile.
-  ;; => void, which set-theme! and the others give at a REPL too.
+  ;; Saves the file 600 ms after the first unsaved change, with every
+  ;; change made in the meantime. Returns void, which set-theme! and the
+  ;; other setters return too, so a REPL prints nothing for them.
   (define (theme-file-save-soon!)
     (unless *theme-file-save-pending*
       (set! *theme-file-save-pending* #t)
@@ -73,9 +75,11 @@
                    (theme-file-save!))))
     (void))
 
-  ;; A palette or style that is gone falls back, a wallpaper that is gone
-  ;; draws as the default; a value of no kind its defaults have is dropped
-  ;; (the built-in one, or a style's for its own options).
+  ;; Whether v is a value the file may keep for key. A palette that is gone
+  ;; is dropped, so the style's own applies; a style that is gone falls back
+  ;; to mac (theme-file-style), and a wallpaper that is gone draws as the
+  ;; default. A value of a kind that none of key's defaults has is dropped
+  ;; (the built-in default, or a style's for its own options).
   (define (theme-file-valid-value? key v)
     (let ([ds (map (lambda (p) (plist-ref p key #f))
                    (filter (lambda (p) (plist-has? p key))
@@ -92,7 +96,8 @@
 
   (define (theme-file-style s) (if (find-style s) s 'mac))
 
-  ;; The settings of ((key . value) ...) that fit their keys, as a plist.
+  ;; Returns the pairs of alist, ((key . value) ...), whose values are valid
+  ;; for their keys, as a plist.
   (define (theme-file-valid-plist alist)
     (if (list? alist)
         (apply append
@@ -103,12 +108,15 @@
                            alist))
         '()))
 
-  ;; An old file, one flat table: its style chosen (mac for one that is
-  ;; gone), its preset that style's palette, and its keys that differ from
-  ;; what the layers under them give, your changes to it; a color a rule
-  ;; derives is one only where it differs from what the rule gives from
-  ;; them. Its wallpaper counts even when left out (it saved no default),
-  ;; or a palette's own would replace it. => (style key value ...)
+  ;; Reads an old file, one flat table, as your changes to one style. Its
+  ;; window-style is the style (mac if that style is gone), and its preset
+  ;; is that style's palette (tokyo-night if the preset is gone). Its other
+  ;; keys are changes where they differ from what the style and the palette
+  ;; give; a key whose default is a rule (a derived color) is a change only
+  ;; where it differs from what the rule gives from those changes. The
+  ;; wallpaper counts even when the file leaves it out (old files did not
+  ;; save the default), or the palette's own would replace it.
+  ;; Returns (style key value ...).
   (define (theme-file-old->changes alist)
     (let* ([ref (lambda (k d) (let ([p (assq k alist)]) (if p (cdr p) d)))]
            [style (theme-file-style (ref 'window-style 'mac))]
@@ -120,8 +128,8 @@
                        (remp (lambda (kv) (eq? (car kv) 'desktop-pattern))
                              alist)))]
            [derived? (lambda (k) (theme-rule? (theme-default k)))]
-           ;; the keys of kvs that keep? takes and that differ from the
-           ;; theme these changes give
+           ;; the keys of kvs that keep? accepts and whose values differ
+           ;; from the theme that changes gives
            [differing
             (lambda (changes keep?)
               (call-with-theme (resolve-theme style '() changes)
@@ -137,8 +145,8 @@
                                      (lambda (k) (not (derived? k)))))])
       (cons style (append chosen (differing chosen derived?)))))
 
-  ;; data: the file's, a list of pairs. Nothing changes until all of it is
-  ;; read.
+  ;; Sets the layers from data, the file's list of pairs (an old file's
+  ;; too). Nothing changes until all of it has been read.
   (define (theme-file-load-data! data)
     (let* ([ref (lambda (k d) (let ([p (assq k data)]) (if p (cdr p) d)))]
            [scale (let ([s (ref 'scale 0)]) (if (fixnum? s) s 0))])
@@ -149,7 +157,8 @@
             (set-layers!
              (theme-file-style (ref 'style 'mac))
              (theme-file-valid-plist (ref 'overrides '()))
-             ;; a style that is gone keeps your changes for when it returns
+             ;; the changes to a style that is gone are kept for when it
+             ;; returns
              (if (list? cs)
                  (filter-map (lambda (c)
                                (and (pair? c) (symbol? (car c))

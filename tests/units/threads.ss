@@ -1,10 +1,11 @@
 ;;; tests/units/threads.ss — threads as the core sees them: thread parameters,
-;;; core1's C, its mail.
+;;; worklets, and core1's mail.
 
-;;; Threads, as the core sees them: thread parameters, core1's C, and
+;;; Threads, as the core sees them: thread parameters, worklets, and
 ;;; core1's mail.
 
-;; thunk run on a thread of its own; => its value, once the thread is done
+;; Runs thunk on a thread of its own, and returns its value once the thread
+;; is done.
 (define (on-thread thunk)
   (let* ([out (box #f)] [t (fork-thread (lambda () (set-box! out (thunk))))])
     (thread-join t)

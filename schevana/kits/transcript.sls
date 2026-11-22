@@ -1,6 +1,6 @@
 ;;; (schevana kits transcript) — lines of text that only grow, as a REPL shows
 ;;; them: wrapped to the width, the newest at the bottom, each in a style,
-;;; Scheme in its colors. What's derived from it holds one (per window) and
+;;; with Scheme in its colors. An app built on it holds one per window and
 ;;; adds to it: the REPL, with an input under it; the Debug REPL, with none.
 ;;;
 ;;;   (define t (transcript-new))
@@ -8,9 +8,9 @@
 ;;;   (transcript-append! t 'output "so f")   text in pieces, on the open line
 ;;;   (transcript-draw-view t w h)            all of it, in a draw handler
 ;;;
-;;; A line's style says how it's drawn: input and request are Scheme after a
-;;; prompt of three characters, in plain or in accent; the others a color each
-;;; (transcript-draw-style-color).
+;;; A line's style says how it is drawn: input and request lines are Scheme
+;;; after a prompt of three characters, faint for input and in accent for a
+;;; request; the other styles have a color each (transcript-draw-style-color).
 
 (library (schevana kits transcript)
   (export
@@ -57,7 +57,8 @@
                                           transcript-max-lines))
       (transcript-count-set! t transcript-max-lines)))
 
-  ;; Append text that may contain newlines; output can arrive in pieces.
+  ;; Appends text that may contain newlines. Output can arrive in pieces, so
+  ;; the first piece goes on the open line when its style is the same.
   (define (transcript-append! t style str)
     (let loop ([pieces (string-split str #\newline)] [first? #t])
       (unless (null? pieces)
@@ -72,13 +73,14 @@
           (when last? (transcript-open?-set! t (not (string=? p ""))))
           (loop (cdr pieces) #f)))))
 
-  ;; Add complete lines, starting on a fresh line, and show them.
+  ;; Adds complete lines, starting on a fresh line, and scrolls to show them.
   (define (transcript-add! t style str)
     (transcript-open?-set! t #f)
     (transcript-append! t style (string-append str "\n"))
     (transcript-scroll-set! t 0))
 
-  ;; How many visual rows a logical line of len characters takes.
+  ;; Returns how many visual rows, of cols characters each, a logical line
+  ;; of len characters takes.
   (define (transcript-rows len cols)
     (max 1 (quotient (+ len cols -1) cols)))
 
@@ -102,7 +104,8 @@
       [(info) 'text-faint]
       [else 'text]))
 
-  ;; A color key per character, for the Scheme text in s (from index `from`).
+  ;; Returns a vector of a color key per character, for the Scheme text in s
+  ;; from index `from` on.
   (define (transcript-draw-scheme s from)
     (let* ([n (string-length s)] [v (make-vector n 'text)])
       (define (fill! a b color)
@@ -152,6 +155,10 @@
                        (loop j #f))))]))))
       v))
 
+  ;; Parentheses have a color of their own, repl-paren: as quiet as faint
+  ;; text, but a color of code rather than of a hint, so that a style's
+  ;; font for faint text (Genera's italic) leaves them looking like the
+  ;; rest of the code.
   (at-load
    (color-default! 'repl-paren (theme-rule (theme 'text-faint))))
 
@@ -173,7 +180,8 @@
                                        (substring text i j) c 'mono)
                             (run j))))))))))))
 
-  ;; A line's colors, as a draw of it takes them.
+  ;; Returns a line's colors as transcript-draw-line takes them: one color
+  ;; key, or a vector of one per character.
   (define (transcript-draw-entry-colors e)
     (case (car e)
       [(input request)
@@ -185,8 +193,9 @@
          colors)]
       [else (transcript-draw-style-color (car e))]))
 
-  ;; The kit's scroll bar when scrolled back, on the style's side, no wider than
-  ;; the text's inset (Interlisp's bars are 24): rows of total shown.
+  ;; Draws the kit's scroll bar while t is scrolled back, on the style's side
+  ;; and no wider than the text's inset (Interlisp's bars are 24), showing
+  ;; rows of total.
   (define (transcript-draw-scrollbar t w h rows total)
     (when (> (transcript-scroll t) 0)
       (let ([size (/ rows (max rows total))]
@@ -198,8 +207,8 @@
                                       (max 1 (- total rows)))))
                            size))))
 
-  ;; All of it in the box w × h: laid out bottom-up, but hung from the top while
-  ;; everything fits.
+  ;; Draws all of t in the box w × h, laid out from the bottom up, but hung
+  ;; from the top while everything fits.
   (define (transcript-draw-view t w h)
     (let* ([cw (font-char-width 'mono)]
            [lh (transcript-line-height)]

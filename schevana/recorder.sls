@@ -1,7 +1,7 @@
-;;; (schevana recorder) — the recorder (schevana/recorder/), between
-;;; core0 and the core, as the core has it: how the core writes what it
-;;; records and hands it over, and nothing else of it, so that the core
-;;; names no byte core0 reads.
+;;; (schevana recorder) — the facade of the recorder (schevana/recorder/),
+;;; the layer between core0 and the core, as the core sees it: how the core
+;;; writes what it records and hands it over, and nothing else, so that
+;;; the core names no byte that core0 reads.
 
 (library (schevana recorder)
   (export

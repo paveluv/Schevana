@@ -1,5 +1,5 @@
-;;; tests/units/styles.ss — styles and parts: derived styles, parts by name, a
-;;; window's own.
+;;; tests/units/styles.ss — styles and parts: derived styles, parts given by
+;;; name, and a window with a style of its own.
 
 ;;; styles and parts
 
@@ -32,8 +32,8 @@
                                   '(style test-base test-insets))
                             (list 0 (title-height) 0 0))))))))
 
-;; A part a style names is looked up at each call: redefined at the REPL,
-;; the next frame draws the new definition.
+;; A part that a style gives by name is looked up at each call, so once it
+;; is redefined at the REPL, the next frame draws the new definition.
 (define test-drawn #f)
 (define (test-under win x y w h focused? hover pressed)
   (set! test-drawn 'first))
@@ -86,7 +86,7 @@
                                                        (theme 'wallpaper)))))])
          (invalidate!)
          (steps 1)
-         ;; Genera's label, at the bottom, is its title
+         ;; In Genera, the label at the bottom is the title
          (let ([insets (insets-of w)]
                [hit (window-region w 400 (+ 200 (window-h w) -10))])
            (close-window! w)

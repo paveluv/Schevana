@@ -2,23 +2,24 @@
 
 ;;; the profiler ((schevana services profile))
 
-;; Life, whose window it opens.
+;; Life, whose window this file opens.
 (test-demos! 'life)
 
 (for-each close-window! (windows))
 (steps 2)
 
-;; Busy for ms of the profiler's clock.
+;; Keeps busy for ms milliseconds of the profiler's clock.
 (define (profile-test-busy ms)
   (let ([t0 (now-ns)])
     (let loop ()
       (when (< (- (now-ns) t0) (* ms 1000000)) (loop)))))
 
-;; thunk's result, on a clock that moves ns a read: what a span holds is what it
-;; reads, whatever else the machine is doing. The real one catches up after it,
-;; so that ticks stay in order. Set and put back, not fluid-let: an engine keeps
-;; the dynamic context of its first run, so a process first run inside would
-;; wind this clock back in at each of its turns after.
+;; Returns thunk's result, run on a clock that moves ns at each read, so
+;; that what a span holds is what it reads, whatever else the machine is
+;; doing. The real clock catches up afterwards, so that ticks stay in
+;; order. The clock is set and put back, not fluid-let: an engine keeps the
+;; dynamic context of its first run, so a process first run inside would
+;; wind this clock back in at each of its later turns.
 (define (profile-test-on-clock ns thunk)
   (let* ([real now-ns] [real-ms now-ms] [t (real)]
          [put-back! (lambda () (set! now-ns real) (set! now-ms real-ms))])
@@ -29,19 +30,21 @@
       (let catch-up () (when (< (real) t) (catch-up)))
       result)))
 
-;; A tick's uses of x: a window's or a process's subject, or a key.
+;; Returns a tick's uses of x: a window or a process (by its subject), or a
+;; key.
 (define (profile-test-uses tick x)
   (filter (lambda (u) (equal? (profile-use-subject u) (profile-subject-of x)))
           (profile-tick-uses tick)))
 
 (define (profile-test-near? a b) (< (abs (- a b)) 1e-6))
 
-;; A tick's phases' ms, all of them.
+;; Returns the ms of every one of a tick's phases.
 (define (profile-test-phases tick)
   (map (lambda (p) (profile-tick-phase-ms tick p))
        (vector->list profile-phase-names)))
 
-;; Bytes allocated by thunk, (statistics) aside.
+;; Returns the bytes allocated while thunk runs, as (statistics) counts
+;; them (its own included).
 (define (profile-test-bytes thunk)
   (let ([b0 (sstats-bytes (statistics))])
     (thunk)
@@ -62,18 +65,19 @@
          (profile-on! #f)
          (set! now-ns
            (lambda () (set! reads (+ reads 1)) (clock)))
-         ;; a frame, always, so that its reads are counted each run, not
-         ;; only when the top bar's clock asks for one
+         ;; a frame every time, so that its reads are counted on each run,
+         ;; not only when the top bar's clock asks for one
          (invalidate!)
          (steps 5)
          (set! now-ns clock)
          (let ([off (and (not (profile-on?)) (not *profile-span*)
                          (equal? before (profile-ticks))
                          (> *frames-drawn* frames)
-                         ;; a step's, only the pacer's, five: its start
-                         ;; and end, the wait's two, and when it ticked;
-                         ;; and a frame drawn times itself for the frame
-                         ;; ring: its start, its publish, what it took
+                         ;; a step's reads are only the pacer's five: its
+                         ;; start and end, the wait's two, and when it
+                         ;; ticked; and a frame drawn times itself three
+                         ;; times for the frame ring: its start, its
+                         ;; publish and what it took
                          (<= reads (+ (* 5 5)
                                       (* 3 (- *frames-drawn* frames))))
                          (eq? (collect-request-handler)
@@ -92,20 +96,20 @@
                                (with-profile-span 'profile-test-x #f
                                  i))))))]
               ;; each measured right after a collection, so that none of
-              ;; the world's falls in it
+              ;; the world's allocation falls in it
               [settled (lambda (thunk)
                          (collector-pass! 0 1)
                          (profile-test-bytes thunk))]
               ;; on the test's clock, and after as many steps of its own as
-              ;; the flags reach back: a late tick in reach, the world's on
-              ;; a busy machine, would be kept as a flag, which allocates,
-              ;; as the step measured ends
+              ;; the flags reach back: a late tick within reach (the
+              ;; world's, on a busy machine) would be kept as a flag as the
+              ;; measured step ends, and that allocates
               [measure (lambda ()
                          (profile-test-on-clock 1
                            (lambda ()
                              (do ([i 0 (+ i 1)]) ((> i profile-flag-reach))
                                (spans))
-                             ;; less (statistics)'s own
+                             ;; less what (statistics) allocates itself
                              (- (settled spans) (settled void)))))]
               [on (measure)]
               [off (begin (profile-on! #f) (measure))])
@@ -210,10 +214,10 @@
               'draw (lambda (win w h) (profile-test-busy 3)))]
       [life-win (life)]
       [size (crew-size)])
-  ;; On a clock of its own, a µs a read, and Life with no crew: what a
-  ;; window took is then what it read of the clock, the same on any
-  ;; machine. On the machine's, Life waited for its workers, and on a busy
-  ;; one for longer than the slow window's 3 ms.
+  ;; On a clock of its own, a µs per read, and with Life running with no
+  ;; crew, what a window took is what it read of the clock, the same on any
+  ;; machine. On the machine's clock Life would wait for its workers, and
+  ;; on a busy machine for longer than the slow window's 3 ms.
   (crew-size-set! 0)
   (check "a window whose draw is made slow comes first among Monitor's \
           consumers, its draw the most of its parts"
@@ -238,12 +242,12 @@
 (let ([p (spawn "profile-test-busy" (lambda () (let loop () (loop))))])
   (check "a busy process shows its share: most of the processes' phase, in \
           one turn a step, wherever in its ms the step begins"
-         ;; the shares on a clock of their own, as a machine's other work would
-         ;; shift them, 100 µs a read, each step a read further into its ms
-         ;; than the last: in one of them the ms turns between any two reads.
-         ;; 20 ms a step, of which run-procs!'s and the collector's own reads
-         ;; are a small part, as on a real clock. The real steps only have to
-         ;; run it.
+         ;; the shares, on a clock of their own that moves 100 µs a read,
+         ;; shifted as a machine's other work would shift them: each step
+         ;; begins a read further into its ms than the last, so in one of
+         ;; them the ms turns between any two reads. A step is 20 ms, of
+         ;; which run-procs!'s and the collector's own reads are a small
+         ;; part, as on a real clock. The real steps only have to run it.
          (let* ([ss (profile-test-on-clock
                      100000
                      (lambda ()
@@ -446,7 +450,7 @@
            (do ([i 0 (+ i 1)]) ((= i (* 10 seconds)))
              (set! fake (+ fake (expt 10 8)))
              (test-step!)))
-         (define (within? seconds)   ; the ticks kept span that, a second more
+         (define (within? seconds)   ; the ticks kept span that, ± a second
            (let ([ss (profile-ticks)])
              (and (pair? ss)
                   (> (profile-tick-end (car (last-pair ss)))
@@ -464,8 +468,8 @@
              (let ([later (and (within? 5)
                                (= (length (profile-seconds)) 120))])
                (set! now-ns clock)
-               ;; back to back, thousands a second: at most 100 a second
-               ;; of it
+               ;; steps back to back, thousands a second: at most 100 of
+               ;; each second are kept
                (profile-history! 2 10)
                (steps 2000)
                (let ([most (= (length (profile-ticks)) 200)])
@@ -477,7 +481,7 @@
         (the minute's lines) ends clear of a scroll bar always shown"
        (let* ([m (monitor)] [ui (window-ref m 'ui)])
          (steps 3)
-         (let-values ([(cx cy cw ch) (content-rect m)])   ; its Ticks
+         (let-values ([(cx cy cw ch) (content-rect m)])   ; to its Ticks
            (let* ([r (ui-find ui '(tab ticks))]
                   [x (exact (round (+ cx (ui-region-x r)
                                       (/ (ui-region-w r) 2))))]
@@ -522,7 +526,7 @@
                      [now-ms (lambda () (quotient fake 1000000))])
            (profile-clear!)
            (steps 3)
-           (let-values ([(cx cy cw ch) (content-rect m)])   ; its Ticks
+           (let-values ([(cx cy cw ch) (content-rect m)])   ; to its Ticks
              (let* ([r (ui-find ui '(tab ticks))]
                     [x (exact (round (+ cx (ui-region-x r)
                                         (/ (ui-region-w r) 2))))]
@@ -564,8 +568,9 @@
 
 ;;; Flags: a late tick kept with what explains it.
 
-;; Ticks by hand on a clock only pass! moves (ms), a period 16 ms; thunk's
-;; value, the flags kept from a clean history.
+;; Ticks by hand, on a clock that only profile-test-pass! moves (by ms),
+;; with a period of 16 ms. profile-test-flags runs thunk from a clean
+;; history and returns the flags kept.
 (define profile-test-t (* 5000 1000000000))
 (define (profile-test-pass! ms)
   (set! profile-test-t (+ profile-test-t (* ms 1000000))))

@@ -1,9 +1,9 @@
 # The REPL
 
 Everything in Schevana is a live value in a running Chez Scheme, and the
-REPL is how you reach it. A REPL is a window: Ctrl+Shift+R opens
-one, and so does `(repl)`. This page is about what happens to what you
-type; the REPL's own keys and completion are in its tooltips.
+REPL is how you reach it. A REPL is a window: Ctrl+Shift+R opens one, and
+so does `(repl)`. This page is about what happens to what you type; the
+REPL's own keys and completion are explained in its tooltips.
 
 ## The world is data
 
@@ -21,37 +21,46 @@ it returns is the live thing, not a copy:
 
 ## Redefining the world
 
-A `define` at "/" replaces what the world calls by name (a part, a
-handler, `draw-window`), from its next call on:
+A `define` at "/" replaces what the world calls by name, from its next
+call on: the procedure a part names (the built-in wallpaper is
+`draw-wallpaper*`, the Mac style's frame `mac-draw-under`), the bars',
+menus' and toasts' drawing (`draw-topbar`, `draw-menu`, `draw-toasts`), a
+surface's procedures (`draw-desktop`), and the procedures of your own
+that your handlers call by name:
 
 ```scheme
-(define (draw-wallpaper w h)
+(define (draw-wallpaper* w h)
   (fill-gradient 0 0 w h #x102030 #x301020))
-(define (draw-window win) (draw-window* win #t))   ; every window focused
 ```
 
-What a library calls of its own it calls directly: a `define` at "/" of
-one of those makes the world's own, and the library's changes with its
-file, at `(reload!)`. Started with `--hacker`, the hacker edition, every
-library's names are "/"'s, internals too, and a `define` replaces any of
-them at every call: the bars, the menus, the styles, the window manager.
-`(reload!)` loads the sources again and undoes what you redefined:
+A library calls its own procedures directly, its hooks too (the
+desktop's `draw-wallpaper`, the core's `draw-window`): a `define` at "/"
+of one of them makes a name of the world's own, which the library doesn't
+call, and the library's code changes with its file, at `(reload!)`.
+Started with `--hacker`, the hacker edition, every library's names are
+"/"'s, internals too, and a `define` replaces any of them at every call:
+the bars, the menus, the styles, the window manager. There, `(define
+(draw-window win) (draw-window* win #t))` draws every window as focused.
+`(reload!)` reads the sources again: it evaluates again each library
+whose file changed, with the libraries that import it, and loads the
+world's files again:
 
 ```scheme no-run
 (reload!)
 ```
 
-The core's own names (`open-window`, `fill-box`, the window manager) are
-its libraries', below the world, which call their own definitions: the
-world imports them. A `define` at "/" of one of those makes the world's
-own, which the core never calls; the REPL says so when it happens. The
-core's code changes with its library's file, at `(reload!)`.
+The core's own names (`open-window`, `fill-box`, the window manager)
+belong to its libraries, below the world, and those libraries call their
+own definitions: the world imports the names. A `define` at "/" of one of
+them makes a name of the world's own, which the core never calls; the
+REPL says so when it happens. The core's code changes with its library's
+file, at `(reload!)`.
 
 ## What you type runs as a process
 
-A REPL runs each input as a process: the world keeps drawing while it
-runs, and Ctrl+C stops it. A process may wait, which the world's own
-handlers may not:
+A REPL runs each input as a process: the world keeps drawing while the
+input runs, and Ctrl+C stops it. A process may wait, which the world's
+own handlers may not:
 
 ```scheme
 (sleep-ms 200)                             ; the REPL waits, the world doesn't
@@ -62,13 +71,13 @@ handlers may not:
 
 The same holds for a shader run on the GPU and read back
 ([SHADERS.md](SHADERS.md)): `gpu-compute!` and `gpu-buffer-read!` wait
-inside a process, and `proc-wait` turns any call that hands its result to
-a procedure later into one that waits for it.
+inside a process. `proc-wait` turns any call that later hands its result
+to a procedure into one that waits for the result.
 
 ## REPLs of other kinds
 
-A REPL evaluates in one environment, named in its title. `(repl kind)`
-opens one in a new environment of that kind:
+A REPL evaluates in one environment, which its title names. `(repl
+kind)` opens a REPL in a new environment of that kind:
 
 | | Opens with | What a `define` does |
 | --- | --- | --- |
@@ -83,22 +92,23 @@ opens one in a new environment of that kind:
 (repl 'pure)
 ```
 
-A private REPL has all of Chez and, of the world, what reads it
-(`(windows)`, `(theme 'accent)` and the like), live: a `set!` of one is
-refused, and redefining one makes the REPL's own. A world REPL has every
-name of the world's, so `(set-theme! ...)` there still acts on the world.
-Neither is a security sandbox. A thread's REPL sends its forms to a thread
-of its own, which runs and prints them.
+A private REPL has all of Chez and, of the world's names, those that
+read the world (`(windows)`, `(theme 'accent)` and the like), live: a
+`set!` of one of them is refused, and redefining one makes a name of the
+REPL's own. A world REPL has every name of the world's, so `(set-theme!
+...)` there still acts on the world. Neither is a security sandbox. A
+thread's REPL sends its forms to a thread of its own, which evaluates
+them and prints the values.
 
-`(repl "/lab")` opens a REPL in an environment that exists, such as a
-sandbox you made, where its own names are. How
+`(repl "/lab")` opens a REPL in an environment that already exists, such
+as a sandbox you made, with that environment's own names. How
 environments are made and what they hold is in
 [ENVIRONMENTS.md](ENVIRONMENTS.md).
 
 ## Libraries
 
-R6RS libraries work as in Chez. A library typed at a REPL is there at
-once:
+R6RS libraries work as they do in Chez. A library typed at a REPL can be
+imported at once:
 
 ```scheme
 (library (acme math)
@@ -110,14 +120,16 @@ once:
 ```
 
 `import` also looks in `~/.schevana.d/lib` (so `(acme math)` is
-`~/.schevana.d/lib/acme/math.sls`) and in the tree's `lib/`, and
-`(add-library-directory! dir)` adds more. A library is compiled in memory
-when imported; nothing is written next to its source.
+`~/.schevana.d/lib/acme/math.sls`) and at the tree's root (where
+`(schevana kits ui)` is `schevana/kits/ui.sls`), and
+`(add-library-directory! dir)` adds more folders. A library is compiled in
+memory when imported; nothing is written next to its source.
 
 Two things differ from Schevana's own code. A library is loaded once per
-session: after editing one, `load` its file again and import it again;
-`(reload!)` doesn't. And an import adds its names to the environment it
-runs in, so a library exporting a name Schevana also defines changes what
-that name means in what you type afterwards; `(only …)` or `(prefix …
-acme:)` keep them apart. A sandbox has no `import`: a library may name
-anything, and a sandbox holds only what it is given.
+session: after editing one, `load` its file again and import it again,
+since `(reload!)` doesn't. And an import adds the library's names to the
+environment it runs in, so a library that exports a name Schevana also
+defines changes what that name means in what you type afterwards; `(only
+…)` or `(prefix … acme:)` keep the two apart. A sandbox has no `import`,
+since a library may name anything, and a sandbox holds only what it is
+given.

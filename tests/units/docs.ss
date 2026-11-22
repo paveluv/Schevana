@@ -1,15 +1,16 @@
-;;; tests/units/docs.ss — the docs' examples run as they read: each page's
-;;; scheme blocks (README.md, CREDITS.md, docs/*.md), in order, as typed at
-;;; a REPL at "/", each form in a process, a page in a world of its own. A
-;;; comment `; => value` after a form, on its line or the next, is checked
-;;; as what it returns; an error, in a form, in what it left to run later
-;;; (a timer, a then) or in a window's handler, fails its block. A block
-;;; fenced "```scheme no-run" is shown, not run: one that never ends, or
-;;; waits for a person. A page's run keeps the tests' names and reach out
-;;; of "/" (tests/reach.ss), so that an example finds only what a REPL
-;;; there finds: what the world gives.
+;;; tests/units/docs.ss — the docs' examples run as they read. Each page's
+;;; scheme blocks (README.md, CREDITS.md, docs/*.md) run in order, as typed
+;;; at a REPL at "/": each form in a process, each page in a world of its
+;;; own. A comment `; => value` after a form, on its line or the next, is
+;;; checked against what the form returns; an error in a form, in what it
+;;; left to run later (a timer, a then) or in a window's handler fails its
+;;; block. A block fenced "```scheme no-run" is shown, not run: one that
+;;; never ends, or that waits for a person. A page's run keeps the tests'
+;;; names and reach out of "/" (tests/reach.ss), so that an example finds
+;;; only what a REPL there finds: what the world gives.
 
-;; page's blocks to run, each (line . text), line where its code starts.
+;; Returns page's blocks to run, each (line . text), where line is the
+;; line its code starts on.
 (define (docs-blocks page)
   (let loop ([lines (call-with-input-file
                         (string-append *schevana-root* "/" page)
@@ -36,8 +37,9 @@
                  acc)]
           [else (loop (cdr lines) (+ n 1) #f acc)])))
 
-;; The value a `; => value` comment right after text's index i gives, as
-;; (value), or #f for none: blanks, at most one newline, then the comment.
+;; Returns the value that a `; => value` comment right after text's index
+;; i gives, as (value), or #f for none. Only blanks and at most one
+;; newline may come between i and the comment.
 (define (docs-expected text i)
   (let* ([n (string-length text)]
          [skip (lambda (i nl?)
@@ -52,9 +54,9 @@
     (and (<= (+ j 4) n) (string=? (substring text j (+ j 4)) "; =>")
          (list (read (open-string-input-port (substring text (+ j 4) n)))))))
 
-;; What form gives, run as a REPL runs its input: in a process, at "/",
-;; the world stepping until it ends (at most 10 s). What it printed
-;; is dropped; what it raised is raised again here.
+;; Returns what form gives, run as a REPL runs its input: in a process, at
+;; "/", with the world stepping until it ends (at most 10 s). What it
+;; printed is dropped; what it raised is raised again here.
 (define (docs-eval form)
   (let ([done #f])
     (parameterize ([current-output-port (open-output-string)])
@@ -69,8 +71,8 @@
           [(eq? (car done) 'error) (raise (cdr done))]
           [else (errorf 'docs "~s was killed" form)])))
 
-;; Runs text's forms in the world, each checked against its `; =>`; then
-;; a few steps, for what they left to run later.
+;; Runs text's forms in the world, each checked against its `; =>`, then
+;; takes a few steps, for what they left to run later.
 (define (docs-run! text)
   (let ([p (open-string-input-port text)]
         [error-before (car *last-error*)])
@@ -96,8 +98,8 @@
 
 (define docs-page (getenv "SCHEVANA_DOCS_PAGE"))
 
-;; A page's world is the desktop's with the demos' folder given it
-;; (./desktop demo), as its examples read.
+;; A page's world is the desktop's, with the demos' folder given to it
+;; (./desktop demo), as its examples expect.
 (when docs-page (auto-load! (string-append *schevana-root* "/demo")))
 
 (if docs-page
@@ -106,9 +108,10 @@
                                docs-page (car b))
                        (docs-run! (cdr b))))
               (docs-blocks docs-page))
-;; Run by itself, the pages at once, as many as the machine allows, each
-    ;; in a folder of its own, what each said shown after it, in order. (The
-    ;; units' runner runs each page as a run of its own instead.)
+    ;; Run by itself, this topic runs the pages at once, as many as the
+    ;; machine allows, each in a folder of its own, and shows what each
+    ;; printed after it, in order. (The units' runner runs each page as a
+    ;; run of its own instead.)
     (let* ([pages (units-docs-pages)]
            [dirs (map (lambda (page)
                         (let ([d (format "~a/~a" out-dir

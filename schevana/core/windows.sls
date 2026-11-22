@@ -11,15 +11,15 @@
 ;;; Options other than handlers (and size, min-size, pos, app) become
 ;;; window properties: (window-ref win 'bg), (window-ref win 'cursor).
 ;;; 'above owner makes a window its owner's: it stays above the owner, which
-;;; still takes the keyboard when it's given it, and the two are raised,
+;;; still takes the keyboard when it is given it, and the two are raised,
 ;;; minimized, brought back, sent behind and closed together.
 ;;;
-;;; Handlers: open draw tick key text mouse-down mouse-up mouse-move wheel
+;;; Handlers: open draw frame key text mouse-down mouse-up mouse-move wheel
 ;;;           resize focus blur close.
 ;;;
 ;;; The frame around the content (title bar, borders, buttons) belongs to
-;;; the style, see theme.ss. Geometry here is the outer frame;
-;;; 'size and the w h passed to handlers are always the content size.
+;;; the style ((schevana core theme)). Geometry here is the outer frame's;
+;;; 'size and the w h passed to handlers are always the content's size.
 ;;; Every handler runs under safe-call: errors and runaway loops crash only
 ;;; that window, which then shows the error and can be retried.
 
@@ -85,7 +85,7 @@
   (define-state *windows* '())        ; z-order, topmost first
   (define-state *focus* #f)
   (define-state *next-window-id* 1)
-  ;; the current mouse interaction, see drag record
+  ;; the current mouse interaction, a drag record, or #f
   (define-state *drag* #f)
   ;; (x y w h): where an outline drag would put it
   (define-state *drag-outline* #f)
@@ -101,47 +101,49 @@
 
   ;;; ------------------------------------------------------------------
   ;;; invalidation
-  ;;; A change says that the screen may now look different, in *dirty*: the
-  ;;; next frame records the screen's surfaces again and draws it all. A
-  ;;; window keeps what it drew, as a list, and draws again only when it
+  ;;; A change records in *dirty* that the screen may now look different:
+  ;;; the next frame records the screen's surfaces again and draws it all. A
+  ;;; window keeps what it drew as a list, and draws again only when it
   ;;; opens or resizes, when what its frame is drawn with changes (its
   ;;; focus, the part under the mouse or held, its title, state or error),
-  ;;; after it handles input, and when it's asked to:
+  ;;; after it handles input, and when it is asked to:
   ;;;
   ;;;   (invalidate!)       anything may have changed: every window draws
   ;;;   (invalidate! win)   win may have (input to a window says so by itself)
   ;;;   (invalidate! win x y w h)   a part of it
-  ;;;   (request-frame!), (request-frame! x y w h)   only where things are
+  ;;;   (request-frame!), (request-frame! x y w h)   a frame of what is there
   ;;;
   ;;; A window that changes by itself over time (a clock, an animation) says
-  ;;; so with invalidate!. A window moved or raised isn't drawn again: the
-  ;;; screen shows its list somewhere else.
+  ;;; so with invalidate!. A window that is moved or raised isn't drawn
+  ;;; again: the screen shows its list somewhere else.
 
   ;; the window whose handler is running
   (define-state current-window (make-thread-parameter #f))
   ;; Told of each window that closes or crashes, to stop what works for it
-  ;; (its background jobs: (schevana services vat) sets it); till then nothing.
+  ;; (its background jobs; (schevana services vat) sets it); until then it
+  ;; does nothing.
   (define-hook (window-gone! win) (void))
 
-  ;; A window's shadow, for its style: the theme key 'shadow, half unfocused;
-  ;; a maximized window has none.
+  ;; Draws a window's shadow, for its style: its size is the theme key
+  ;; 'shadow, half that when unfocused; a maximized window has none.
   (define (window-shadow win x y w h r focused?)
     (unless (maximized? win)
       (draw-shadow x y w h r
                    (if focused? (theme 'shadow) (quotient (theme 'shadow) 2)))))
 
-  ;; How far past its frame a window's shadow may reach, in whole logical
-  ;; pixels: the focused size, and the third of it the shadow lies lower.
+  ;; Returns how far past its frame a window's shadow may reach, in whole
+  ;; logical pixels: the focused size, plus the third of it by which the
+  ;; shadow lies lower.
   (define (window-shadow-reach win)
     (let ([size (theme 'shadow)])
       (if (maximized? win) 0 (+ size (quotient (+ size 2) 3)))))
 
-  ;; What win may cover on screen, (values x y w h): its frame and bleed;
-  ;; the whole screen if the bleed raises (a mistake typed at the REPL), so
-  ;; that frames and input go on and it can be fixed.
+  ;; Returns what win may cover on screen, as (values x y w h): its frame and
+  ;; bleed, or the whole screen if the bleed raises (a mistake typed at the
+  ;; REPL), so that frames and input go on and the mistake can be fixed.
   (define (window-extent win)
-    ;; the style's bleed alone guarded: one value, which a guard keeps
-    ;; cheaper than four
+    ;; only the style's bleed is guarded: a guard around one value is
+    ;; cheaper than around four
     (let ([b (guard (c [#t (report-error! 'bleed c) #f]) (window-bleed win))])
       (if b
           (values (- (window-x win) b) (- (window-y win) b)
@@ -157,11 +159,12 @@
 
   ;;; ------------------------------------------------------------------
   ;;; surfaces
-  ;;; What the window manager draws and routes besides windows: the desktop
-  ;;; under them (depth below 0), bars, menus and toasts over them, in depth
-  ;;; order. They are the desktop layer's (desktop/); the core names none of
-  ;;; its procedures. Each field is a procedure, or the name of one looked
-  ;;; up at each call, so the desktop layer's procedures stay redefinable.
+  ;;; Surfaces are what the window manager draws and routes input to besides
+  ;;; windows: the desktop under them (depth below 0), and bars, menus and
+  ;;; toasts over them, in depth order. They belong to the desktop layer
+  ;;; (desktop/); the core names none of its procedures. Each field is a
+  ;;; procedure, or the name of one that is looked up at each call, so the
+  ;;; desktop layer's procedures stay redefinable.
 
   (define-record-type surface
     (nongenerative schevana-surface-3)
@@ -172,8 +175,8 @@
                     ;                              the point through
             mouse   ; (kind what x y button clicks)    kind: down up move
             key     ; (kind value mods) -> #t if taken; kind: key or text
-            frame   ; (t)                          each frame, before it's
-                    ;                              drawn: what changed
+            frame   ; (t)                          each frame, before it is
+                    ;                              drawn: to see what changed
             doc))   ; (what) -> ((L . "Apps") ...)  its mouse documentation
 
   (define-state *surfaces* '())   ; by depth
@@ -213,7 +216,6 @@
 
   (define (over-windows? s) (>= (surface-depth s) 0))
 
-  ;; What s covers this frame, in device pixels (x0 y0 x1 y1).
   ;;; strips
   ;; (define-strip topbar 'top 'topbar-height): the area windows go in loses
   ;; (topbar-height) pixels at the top; strips on one edge add up.
@@ -228,8 +230,8 @@
     (syntax-rules ()
       [(_ name edge size) (register-strip! 'name edge size)]))
 
-  ;; Where windows go (maximized, tiled, kept on screen): the screen less
-  ;; every strip.
+  ;; Returns where windows go (maximized, tiled, kept on screen), as (values
+  ;; x y w h): the screen less every strip.
   (define (desktop-rect)
     (define (edge e)
       (apply + (map (lambda (s)
@@ -277,8 +279,8 @@
       (focus-window! win)
       win))
 
-  ;; A window as open-window makes it, at 0, 0, but not on screen: a
-  ;; style's miniature (Settings' previews) draws one with draw-window*.
+  ;; Makes a window as open-window does, at 0, 0, but not on screen: a
+  ;; style's miniature (in Settings' previews) draws one with draw-window*.
   (define (detached-window title . opts)
     (let* ([whole (lambda (p)
                     (cons (exact (round (car p))) (exact (round (cdr p)))))]
@@ -338,7 +340,9 @@
   (define (visible? win) (not (eq? (window-state win) 'minimized)))
   (define (maximized? win) (eq? (window-state win) 'maximized))
 
-  ;; An app's window, by its name, is its own before one opened above another.
+  ;; Returns the window that x names: an id, a part of the title (in any
+  ;; case), an app's name, or the window itself. For an app's name, a window
+  ;; of the app's own comes before one opened above another window.
   (define (find-window x)
     (let ([match? (lambda (w)
                     (cond [(number? x) (= (window-id w) x)]
@@ -354,7 +358,8 @@
     (hashtable-ref (window-props win) key
                    (if (null? default) #f (car default))))
 
-  ;; The window is drawn again, as invalidate! asks: a frame if it's seen.
+  ;; Sets a property of win, which is then drawn again as invalidate! asks
+  ;; (in a frame, if it is seen).
   (define (window-set! win key val)
     (hashtable-set! (window-props win) key val)
     (invalidate! win))
@@ -366,9 +371,10 @@
 
   (define (window-bg win) (window-ref win 'bg 'window-bg))
 
-  ;; The theme win is drawn and hit-tested in, content included: its own
-  ;; style's (its 'window-style property, a style's name; the one in effect
-  ;; if it is that style, a preview's), else the chosen style's.
+  ;; Returns the theme win is drawn and hit-tested in, content included: its
+  ;; own style's (its 'window-style property, a style's name; the theme in
+  ;; effect when it is that style, such as a preview's), or else the chosen
+  ;; style's.
   (define (window-theme win)
     (let ([s (window-ref win 'window-style)])
       (cond [(and s (eq? s (theme 'window-style))) *theme*]
@@ -386,14 +392,14 @@
                         (lambda ()
                           (when (eq? *theme* t) (set! *theme* main)))))))
 
-  ;; Calls win's frame part key (theme.ss) in win's theme: as it is, when
-  ;; it's the one on, with no closure.
+  ;; Calls win's frame part key ((schevana core theme)) in win's theme; when
+  ;; that theme is the one on, it calls the part directly, with no closure.
   (define (frame-call win key . args)
     (if (eq? (window-theme win) *theme*)
         (apply (theme-part key) win args)
         (in-window-theme win (lambda () (apply (theme-part key) win args)))))
 
-  ;; A setting in win's theme: its own style's, or the chosen one's.
+  ;; Returns a setting in win's theme: its own style's, or the chosen one's.
   (define (window-setting win key)
     (in-window-theme win (lambda () (theme key))))
 
@@ -402,7 +408,8 @@
   ;; desktop).
   (define (frameless? win) (window-ref win 'frameless))
 
-  ;; Frame thickness around the content: (values left top right bottom).
+  ;; Returns the frame's thickness around the content, as (values left top
+  ;; right bottom).
   (define (frame-insets win)
     (if (frameless? win) (values 0 0 0 0) (frame-call win 'frame-insets)))
   (define (frame-regions win)
@@ -412,16 +419,17 @@
   (define (frame-bleed win)
     (if (frameless? win) 0 (frame-call win 'frame-bleed)))
 
-  ;; The hooks below are made as the library loads: defined after what they
-  ;; reach, which Chez would otherwise check at each call.
+  ;; The hooks below are made as the library loads, after the definitions
+  ;; they reach; made before them, they would have Chez check at each call
+  ;; that those are defined.
 
-  ;; Each (invalidate!) is a new generation (request-redraw!), and each
-  ;; (invalidate! win) a new ask of win's: a list of win's drawn before
-  ;; either is drawn again. Asked
-  ;; while it draws, it draws again the next frame. A window not open (closed,
-  ;; or one a preview draws) or not seen (minimized) asks for no frame: a
-  ;; timer it left behind, or one an app steps on unseen, draws nothing; one
-  ;; brought back is drawn as it comes.
+  ;; (invalidate!) starts a new generation (request-redraw!), so every
+  ;; window draws again; (invalidate! win) asks for win alone. A list a
+  ;; window drew before the call is not reused after it. A call made while
+  ;; the window is drawing takes effect on the next frame. A window that is
+  ;; closed, shown only in a preview, or minimized asks for no frame: a
+  ;; timer it left running draws nothing, and the window draws as usual
+  ;; once it is shown again.
   (define invalidate!
     (case-lambda
       [() (request-redraw!)]
@@ -432,9 +440,10 @@
                (request-frame!))]
       [(win x y w h) (invalidate! win)]))
 
-  ;; How far past its frame a window may draw, never less than 0: its
-  ;; style's frame-bleed. A style that strokes inside its frame needs none:
-  ;; anti-aliasing stays in the device pixels the frame touches.
+  ;; Returns how far past its frame a window may draw, never less than 0:
+  ;; its shadow's reach, or its style's frame-bleed when that is more. A
+  ;; style that strokes inside its frame needs no bleed: anti-aliasing stays
+  ;; in the device pixels the frame touches.
   (define (window-bleed-here win)
     (max 0 (window-shadow-reach win) (frame-bleed win)))
 
@@ -443,7 +452,7 @@
         (window-bleed-here win)
         (in-window-theme win (lambda () (window-bleed-here win)))))
 
-  ;; Content area in screen coordinates.
+  ;; Returns the content area in screen coordinates, as (values x y w h).
   (define (content-rect win)
     (let-values ([(l t r b) (frame-insets win)])
       (values (+ (window-x win) l) (+ (window-y win) t)
@@ -474,37 +483,41 @@
                          (lambda (c) (window-crash! win kind c) #f))))
           #f)))
 
-  ;; The whole screen: a handler stopped partway may have left shared state
-  ;; (focus, order, titles) half changed.
+  ;; Marks win as crashed and draws the whole screen again: a handler
+  ;; stopped partway may have left shared state (focus, order, titles) half
+  ;; changed.
   (define (window-crash! win kind c)
     (window-error-set! win (cons kind c))
     (window-gone! win)
     (invalidate!))
 
-  ;; The window win waits on, its 'modal-child while that is open (a
-  ;; dialog: ui-open-modal), or #f. Where win's style keeps it above
-  ;; (modal-above), it takes win's keyboard: focusing win focuses it, and
-  ;; raising win raises it above.
+  ;; Returns the window that win waits on, its 'modal-child while that is
+  ;; open (a dialog: ui-open-modal), or #f. Where win's style keeps the
+  ;; child above (modal-above), the child takes win's keyboard: focusing win
+  ;; focuses it, and raising win raises it above win.
   (define (window-modal-child win)
     (let ([c (window-ref win 'modal-child)]) (and c (memq c *windows*) c)))
 
   (define (window-modal-above win)
     (and (window-setting win 'modal-above) (window-modal-child win)))
 
-  ;; The window win was opened above ('above), while it's open, or #f; the
-  ;; windows opened above win, the lowest first.
+  ;; window-owner returns the window that win was opened above ('above),
+  ;; while that one is open, or #f; window-owned returns the windows opened
+  ;; above win, the lowest first.
   (define (window-owner win)
     (let ([o (window-ref win 'above)]) (and o (memq o *windows*) o)))
 
   (define (window-owned win)
     (reverse (filter (lambda (w) (eq? (window-owner w) win)) *windows*)))
 
-  ;; The owner its owners lead up to: what moves win.
+  ;; Returns the owner that win's owners lead up to, which stands for the
+  ;; whole group (depth-window!).
   (define (window-root win)
     (let ([o (window-owner win)]) (if o (window-root o) win)))
 
-  ;; Gives win the keyboard and brings it to the front (raise? #f: not); a
-  ;; window that waits on another above it gives it the keyboard.
+  ;; Gives win the keyboard and brings it to the front (not when raise? is
+  ;; #f); a window that waits on another one above it gives that one the
+  ;; keyboard.
   (define (focus-window! win . raise?)
     (let ([c (and win (window-modal-above win))])
       (if c
@@ -524,7 +537,7 @@
       (unless (and (pair? raise?) (not (car raise?))) (raise-window! win)))
     (request-frame!))
 
-  ;; Back from minimized, and the windows it owns with it.
+  ;; Brings win back from minimized, and the windows it owns with it.
   (define (window-unminimize! win)
     (when (eq? (window-state win) 'minimized)
       (window-state-set! win (if (window-restore win) 'maximized 'normal))
@@ -545,7 +558,8 @@
               (window-call *focus* 'blur))
             (set! *focus* #f)))))
 
-  ;; The windows it owns, and the one waiting on it, go with it.
+  ;; Closes win; the windows it owns, and the one waiting on it, close with
+  ;; it.
   (define (close-window! win)
     (when (memq win *windows*)
       (for-each close-window! (window-owned win))
@@ -568,9 +582,10 @@
     (request-frame!))
 
   ;; Sets the outer geometry, enforcing minimum sizes, and tells the app;
-  ;; then asks for the old extent and the new one. Asked for before the
-  ;; change, the old one could go to a frame drawn while a process is
-  ;; switched out, the window still there, and stay on screen.
+  ;; then asks for a frame over the old extent and the new one. Asked for
+  ;; before the change, the old extent could go to a frame drawn while a
+  ;; process is switched out, with the window still there, and the old
+  ;; picture would stay on screen.
   (define (set-geometry! win x y w h)
     (let*-values ([(l t r b) (frame-insets win)]
                   [(w) (max (+ l r (window-min-w win)) (exact (round w)))]
@@ -585,7 +600,8 @@
       (window-h-set! win h)
       (when resized? (window-call win 'resize (- w l r) (- h t b)))
       (request-frame! ox oy ow oh)
-      ;; moved, it isn't drawn again: the screen shows its list elsewhere
+      ;; a moved window isn't drawn again: the screen shows its list
+      ;; elsewhere
       (if resized? (invalidate! win) (request-frame!))))
 
   (define (move-window! win x y)
@@ -596,9 +612,9 @@
     (let-values ([(l t r b) (frame-insets win)])
       (set-geometry! win (window-x win) (window-y win) (+ w l r) (+ h t b))))
 
-  ;; What a 'depth button does (the Amiga's depth gadget): send the front
-  ;; window to the back, or bring a window that is behind others to the front;
-  ;; an owner and the windows above it as one.
+  ;; Does what a 'depth button does (the Amiga's depth gadget): sends the
+  ;; front window to the back, or brings a window that is behind others to
+  ;; the front, treating an owner and the windows above it as one.
   (define (depth-window! win)
     (let* ([root (window-root win)]
            [group? (lambda (w) (eq? (window-root w) root))])
@@ -635,11 +651,12 @@
         (restore-window! win)
         (maximize-window! win)))
 
-  ;; What an action a style's setting names does to win (a double click's, a
-  ;; button's): maximize, shade, minimize, close; any other nothing. A
-  ;; window's 'on-action, (lambda (win action) ...) true when it acted, may
-  ;; do it in its place (a host app's: the OS window's), and the window
-  ;; menu ('menu) and a drag of its title ('move) too.
+  ;; Does to win the action that a style's setting names (for a double
+  ;; click, or a button): maximize, shade, minimize, close or depth; any
+  ;; other does nothing. A window's 'on-action, (lambda (win action) ...),
+  ;; true when it acted, may do the action in its place (a host app's acts
+  ;; on the OS window), and also the window menu ('menu) and a drag of the
+  ;; title ('move).
   (define (window-action! win action)
     (unless (window-own-action? win action)
       (case action
@@ -649,7 +666,8 @@
         [(close) (close-window! win)]
         [(depth) (depth-window! win)])))
 
-  ;; The window's menu at (x, y): its 'on-action's, or the style's.
+  ;; Opens the window's menu at (x, y): its 'on-action's, or else the
+  ;; style's.
   (define (window-menu! win x y)
     (unless (window-own-action? win 'menu)
       ((theme-part 'open-window-menu) win x y)))
@@ -660,8 +678,9 @@
       (and own (own win action))))
 
   ;; A shaded window shows only its frame's top and bottom (the insets its
-  ;; frame gives while shaded); its content is not drawn and its app hears
-  ;; no resize. Its height waits in a property, as the record keeps.
+  ;; frame gives while shaded); its content is not drawn, and its app hears
+  ;; no resize. Its full height waits in the property 'unshaded-h, while the
+  ;; record holds the shaded one.
   (define (shaded? win) (and (window-ref win 'unshaded-h) #t))
 
   (define (shade-window! win)
@@ -680,9 +699,9 @@
   (define (toggle-shade! win)
     ((if (shaded? win) unshade-window! shade-window!) win))
 
-  ;; Core0's window was resized.
-  ;; The screen changed size (or scale): refit maximized windows, and pull
-  ;; others back until their title bar can be reached.
+  ;; Core0's window was resized, or the screen changed size (or scale):
+  ;; refits maximized windows, and pulls the others back until their title
+  ;; bars can be reached.
   (set-hook! (wm-screen-resized!)
     ;; (also called while loading, before there is a canvas to measure)
     (unless (null? *windows*)
@@ -699,8 +718,9 @@
                   *windows*)))
     (invalidate!))
 
-  ;; The style or title height changed: frames keep their outer size, so
-  ;; every app hears its new content size, a shaded one what it unshades to.
+  ;; The style or the title height changed. Frames keep their outer size, so
+  ;; every app hears its new content size; a shaded window's app hears what
+  ;; it unshades to.
   (set-hook! (wm-chrome-changed!)
     (wm-screen-resized!)
     (for-each (lambda (w)
@@ -726,9 +746,10 @@
     '(resize-l resize-r resize-t resize-b resize-tl resize-tr resize-bl
       resize-br))
 
-  ;; Which part of the window is at screen point (x, y)? Its style's
-  ;; regions, then the window manager's resize edges, 'frame-edge wide
-  ;; (0: none) with corners 'frame-corner long, the title, the content.
+  ;; Returns which part of the window is at screen point (x, y): its style's
+  ;; regions first, then the window manager's resize edges, 'frame-edge wide
+  ;; (0 for none) with corners 'frame-corner long, then the title, then the
+  ;; content.
   (define (window-region win x y)
     (let*-values ([(lx) (- x (window-x win))] [(ly) (- y (window-y win))]
                   [(w) (window-w win)] [(h) (window-h win)]
@@ -764,9 +785,10 @@
 
   ;;; ---------------------------------------------------------------- mouse
 
-  ;; What is at screen point (x, y): (surface name what) from the topmost
-  ;; surface over windows that answers, else (window win region), else
-  ;; (surface name what) from one under them; #f where nothing is.
+  ;; Returns what is at screen point (x, y): (surface name what) from the
+  ;; topmost surface over the windows that answers, else (window win
+  ;; region), else (surface name what) from a surface under them; #f where
+  ;; nothing is.
   (define (screen-at x y)
     (define (answer ss)
       (exists (lambda (s)
@@ -790,8 +812,9 @@
            (region-cursor (cadr h) (caddr h))
            'arrow))))
 
-  ;; Asks for what shows the hover h: a window's extent, a surface's box;
-  ;; nothing for a surface under the windows (the desktop draws no hover).
+  ;; Asks to draw again what shows the hover h: its window, or its surface's
+  ;; box; nothing for a surface under the windows (the desktop draws no
+  ;; hover).
   (define (request-hover-frame! h)
     (case (and (pair? h) (car h))
       [(window) (invalidate! (cadr h))]
@@ -801,7 +824,7 @@
            (call-with-values (lambda () (surface-call s surface-box))
              request-frame!)))]))
 
-  ;; The surface of the hover h (surface name what) acts on the mouse.
+  ;; Has the surface of the hover h, (surface name what), act on the mouse.
   (define (surface-mouse! h kind x y button clicks)
     (let ([s (find-surface (cadr h))])
       (when s (surface-call s surface-mouse kind (caddr h) x y button clicks))))
@@ -851,8 +874,9 @@
                              dy (- (+ dy dh) 20))
                       (window-w win) (window-h win))))))
 
-  ;; Where a drag puts its window: there at once, or (drag-feedback outline)
-  ;; in the outline the desktop draws within it, until the release does.
+  ;; Puts a dragged window where the drag takes it: there at once, or, with
+  ;; drag-feedback outline, into the outline the desktop draws, until the
+  ;; release puts the window there.
   (define (drag-to! win x y w h)
     (if (eq? (window-setting win 'drag-feedback) 'outline)
         (let ([old *drag-outline*])
@@ -861,8 +885,8 @@
           (request-frame! x y w h))
         (set-geometry! win x y w h)))
 
-  ;; The sides the drag's kind names follow the pointer, the top kept on the
-  ;; desktop as a move keeps it; the others stay.
+  ;; The sides that the drag's kind names follow the pointer, with the top
+  ;; kept on the desktop as a move keeps it; the other sides stay.
   (define (drag-resize! d x y)
     (let*-values ([(win) (drag-win d)] [(left top dw dh) (desktop-rect)]
                   [(side?) (let ([k (string->list
@@ -901,8 +925,8 @@
         (focus-window! win (or (not (eq? region 'content))
                                (window-setting win 'raise-on-click))))
       (case region
-        ;; buttons act on release, the window menu's on press; a double
-        ;; click on one may name an action of its own
+        ;; buttons act on release, and the window menu's on press; a
+        ;; double click on a button may name an action of its own
         [(close minimize maximize depth shade menu)
          (cond
            [(and (>= clicks 2)
@@ -929,7 +953,8 @@
               (window-error-set! win #f)
               (invalidate! win))]
            [else
-            ;; another button leaves a drag alone: the left's release ends it
+            ;; another button leaves a drag alone: the left one's release
+            ;; ends it
             (unless (and *drag* (not (eq? button 'left)))
               (set! *drag* (make-drag 'capture win button x y 0 0 0 0)))
             (let-values ([(lx ly) (window-local win x y)])
@@ -955,7 +980,7 @@
              (when (eq? button (drag-button d)) (set! *drag* #f))
              (let-values ([(lx ly) (window-local win x y)])
                (window-call win 'mouse-up lx ly button))]
-            [else (set! *drag* #f)   ; a move or resize: an outline lands
+            [else (set! *drag* #f)   ; a move or resize: its outline lands
                   (let ([o *drag-outline*])
                     (set! *drag-outline* #f)
                     (when o (apply set-geometry! win o)))])))
@@ -966,9 +991,9 @@
       (update-hover! x y)
       (request-frame!)))
 
-  ;; The window under the pointer scrolls, unless a surface over it (a bar,
-  ;; an open menu) is there; on a title whose style's title-wheel is shade,
-  ;; the wheel up shades and down unshades.
+  ;; The wheel scrolls the window under the pointer, unless a surface over
+  ;; it (a bar, an open menu) is there. On a title whose style's title-wheel
+  ;; is shade, the wheel up shades the window and down unshades it.
   (define (wm-wheel dx dy)
     (let ([h (screen-at *mouse-x* *mouse-y*)])
       (when (and h (eq? (car h) 'window))
@@ -999,7 +1024,7 @@
              (and (= (length want) (length mods))
                   (for-all (lambda (m) (memq m mods)) want))))))
 
-  ;; Does a surface take the key or text (an open menu), topmost first?
+  ;; Whether a surface takes the key or text (an open menu), topmost first.
   (define (surface-key! kind value mods)
     (exists (lambda (s) (surface-call s surface-key kind value mods))
             (reverse *surfaces*)))
@@ -1021,18 +1046,20 @@
 
   ;;; ---------------------------------------------------------------- tick
 
-  ;; Asks for win's 'frame, (lambda (win t) ...), once, before the next frame
-  ;; it's seen in: t is when that frame shows (pacer-frame-ns). A window that
-  ;; goes on animating asks again from its 'frame. Asking draws nothing, so
-  ;; the flag isn't set by window-set!, which would draw the window again.
+  ;; Asks for win's 'frame handler, (lambda (win t) ...), to be called once,
+  ;; before the next frame the window is seen in; t is when that frame shows
+  ;; (pacer-frame-ns). A window that goes on animating asks again from its
+  ;; 'frame. Asking draws nothing, so the flag isn't set with window-set!,
+  ;; which would draw the window again.
   (define (window-frame-soon! win)
     (hashtable-set! (window-props win) 'wm-frame-soon #t)
     (frame-turn-soon!))
 
-  ;; The frames asked for, each window's once; a minimized window's wait
-  ;; until it's seen again, and a crashed one's until its error is cleared
-  ;; (its handlers don't run meanwhile), so one that rides frames pauses and
-  ;; goes on after. A tick no window asked in allocates nothing.
+  ;; Calls the 'frame handlers that were asked for, each window's once. A
+  ;; minimized window's waits until the window is seen again, and a crashed
+  ;; one's until its error is cleared (its handlers don't run meanwhile), so
+  ;; a window that rides frames pauses and then goes on. A tick in which no
+  ;; window asked allocates nothing.
   (define (wm-frames! t)
     (let loop ([ws *windows*])
       (when (pair? ws)
@@ -1043,9 +1070,9 @@
             (window-call (car ws) 'frame t)))
         (loop (cdr ws)))))
 
-  ;; The frames windows asked for, then each surface's, in depth order,
-  ;; before the frame is drawn: what it finds changed (the mouse's
-  ;; documentation) shows in it.
+  ;; Runs the frames that windows asked for, then each surface's frame, in
+  ;; depth order, before the frame is drawn, so that what a surface finds
+  ;; changed (the mouse's documentation) shows in that frame.
   (set-hook! (wm-tick!)
     (let ([t (pacer-frame-ns)])
       (wm-frames! t)
@@ -1056,8 +1083,9 @@
 
   ;;; ---------------------------------------------------------------- drawing
 
-  ;; The part of win under the mouse, and the drag kind holding it, as the
-  ;; style sees them (#f when none).
+  ;; window-hover returns the part of win under the mouse, and
+  ;; window-pressed the kind of the drag that holds it, as the style sees
+  ;; them (#f when none).
   (define (window-hover win)
     (and *hover* (eq? (car *hover*) 'window) (eq? (cadr *hover*) win)
          (caddr *hover*)))
@@ -1083,9 +1111,9 @@
           (unless (frameless? win)
             ((theme-part 'frame-over) win x y w h focused? hover pressed))))))
 
-  ;; Whether what a list of win's is drawn with, the values e ..., changed
-  ;; since it was drawn, kept by name in place: => #t, and the new values
-  ;; kept.
+  ;; Returns #t when the values e ... that one of win's lists is drawn with
+  ;; changed since it was drawn, and keeps the new values. They are kept in
+  ;; place, in a vector win keeps under name.
   (define-syntax window-key-changed!
     (syntax-rules ()
       [(_ win name e ...)
@@ -1103,9 +1131,9 @@
                      (begin (vector-set! k i v) #t))])
          (window-key-check k (+ i 1) c rest ...))]))
 
-  ;; What a crashed window shows in place of its content, till the desktop
-  ;; gives its panel ((schevana desktop crash)): the handler and the
-  ;; condition, a line of text, for a program with no desktop.
+  ;; What a crashed window shows in place of its content until the desktop
+  ;; gives its own panel ((schevana desktop crash)): the handler and the
+  ;; condition, in a line of text, for a program with no desktop.
   (define (window-crash-line win w h)
     (let ([err (window-error win)])
       (draw-text 8 8 (format "The '~a handler raised: ~a" (car err)
@@ -1113,9 +1141,10 @@
                  'red 'ui)))
   (at-load (theme-default! 'draw-crash-panel window-crash-line))
 
-  ;; win's content, as a list from the content's corner, drawn again when win
-  ;; is asked to draw, or when its size, the scale or its error changes; inside
-  ;; the window's rounded box, which a style may cut its corners with.
+  ;; Returns win's content as a list drawn from the content's corner. It is
+  ;; drawn again when win is asked to draw, or when its size, the scale or
+  ;; its error changes, and it is clipped to the window's rounded box, which
+  ;; a style may cut its corners with.
   (define (window-content-list win x y w h cx cy cw ch)
     (let ([l (window-own win 'wm-content-list gpu-list-new)])
       (when (window-key-changed! win 'wm-content-key
@@ -1132,7 +1161,7 @@
                     (window-call win 'draw cw ch)))))))
       l))
 
-  ;; What win keeps under name, made by (make) the first time.
+  ;; Returns what win keeps under name, made by (make) the first time.
   (define (window-own win name make)
     (or (hashtable-ref (window-props win) name #f)
         (let ([v (make)])
@@ -1140,12 +1169,14 @@
           v)))
 
   ;; The style draws the frame in two passes around the content, all in the
-  ;; window's theme. A hook, made as the library loads: defined after what
-  ;; it reaches, which Chez would otherwise check at each call.
+  ;; window's theme. draw-window is a hook made as the library loads, after
+  ;; the definitions it reaches; made before them, it would have Chez check
+  ;; at each call that those are defined.
   (define-hook (draw-window win) (draw-window* win (eq? win *focus*)))
 
-  ;; win as a list from its corner: draw-window's, drawn again when win is
-  ;; asked to draw or what its frame is drawn with changes; moved, it isn't.
+  ;; Returns win as a list, drawn from its corner by draw-window. It is drawn
+  ;; again when win is asked to draw, or when what its frame is drawn with
+  ;; changes, but not when it moves.
   (define (window-whole-list win)
     (let ([l (window-own win 'wm-list gpu-list-new)])
       (when (window-key-changed! win 'wm-list-key
@@ -1159,7 +1190,7 @@
               (draw-window win)))))
       l))
 
-  ;; Its lists let go of, on the GPU too.
+  ;; Lets go of win's lists, on the GPU too.
   (define (window-lists-release! win)
     (for-each (lambda (name)
                 (let ([l (window-ref win name)])
@@ -1168,7 +1199,7 @@
                     (hashtable-delete! (window-props win) name))))
               '(wm-list wm-content-list)))
 
-  ;; The surfaces under the windows, or over them.
+  ;; Records the surfaces under the windows, or over them (over?).
   (define (record-surfaces! ss over?)
     (unless (null? ss)
       (let ([s (car ss)])
@@ -1178,7 +1209,8 @@
                            (lambda () (surface-call s surface-draw))))))
       (record-surfaces! (cdr ss) over?)))
 
-  ;; The windows from the bottom up: each one's list, shown at its corner.
+  ;; Records the windows from the bottom up: each one's list, shown at its
+  ;; corner.
   (define (record-windows! ws)
     (unless (null? ws)
       (record-windows! (cdr ws))
@@ -1194,8 +1226,8 @@
                      (with-clip (x y ew eh)
                        (show-list l (window-x w) (window-y w)))))))))))))
 
-  ;; The whole screen, as a list. A crashed draw leaves nothing to unwind: the
-  ;; state it left goes when the next one starts.
+  ;; Records the whole screen as a list. A crashed draw leaves nothing to
+  ;; unwind: the state it left goes when the next draw starts.
   (set-hook! (record-world!)
     (record-surfaces! *surfaces* #f)
     (record-windows! *windows*)
@@ -1204,8 +1236,8 @@
   ;;; ------------------------------------------------------------------
   ;;; the screen's events
 
-  ;; An event of the screen's, to the windows and the surfaces: the loop
-  ;; hands each here ((schevana core loop)).
+  ;; Passes an event of the screen's to the windows and the surfaces; the
+  ;; loop hands each event here ((schevana core loop)).
   (set-hook! (wm-event! ev)
     (case (car ev)
       [(mouse-move) (apply wm-mouse-move (cdr ev))]

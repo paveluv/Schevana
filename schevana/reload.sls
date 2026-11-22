@@ -1,14 +1,16 @@
-;;; (schevana reload) — libraries reloaded in place: a library whose file
+;;; (schevana reload) — reloads libraries in place. A library whose file
 ;;; changed is evaluated again from its source, and so is every library
-;;; that imports it, after it, as Chez links each to the instance it was
-;;; evaluated against; then each environment that imported one of them
-;;; through reload-import! imports it again, where the old one would
-;;; raise. Its states stay (define-state), its made values and hooks are
-;;; made again, and what sets a hook sets it again, since it imports it.
-;;; A closure made before keeps the code it was made with.
+;;; that imports it, after it, since Chez links each library to the
+;;; instance it was evaluated against. Then each environment that imported
+;;; one of them through reload-import! imports it again, since the old
+;;; instance would raise an error there. A library's states stay
+;;; (define-state), its made values and hooks are made again, and the
+;;; library that sets a hook sets it again, since it imports the hook. A
+;;; closure made before the reload keeps the code it was made with.
 ;;;
-;;; The libraries a thread of its own runs (core0's) stay as they were
-;;; booted, with all they import: what reload-libraries! is given as held.
+;;; The libraries that run on a thread of their own (core0's) stay as they
+;;; were booted, with everything they import: they are what
+;;; reload-libraries! is given as held.
 
 (library (schevana reload)
   (export reload-import! reload-mark! reload-libraries! reload-facts
@@ -18,26 +20,26 @@
 
   (library-layer foundation)
 
-  ;; Each library's file text as it was evaluated last, by name: a
-  ;; library whose file differs has changed.
+  ;; Each library's file text as it was when first seen or last evaluated,
+  ;; by name: a library whose file now differs has changed.
   (define-state *reload-texts* (make-hashtable equal-hash equal?))
 
-  ;; The environments reload-import! imported libraries into, each an
-  ;; ephemeron pair of the environment and its libraries: an environment
-  ;; dropped is let go.
+  ;; The environments that reload-import! imported libraries into, each as
+  ;; an ephemeron pair of the environment and its libraries, so that an
+  ;; environment nobody holds is let go.
   (define-state *reload-imports* '())
 
   ;; What the last reload evaluated again, in order.
   (define-state *reload-last* '())
 
-  ;; Where a library's file is evaluated again: Chez's names, and a
-  ;; library form defines a library from any environment that can hold a
-  ;; definition, whatever the caller's.
+  ;; Where a library's file is evaluated again: an environment with Chez's
+  ;; names. A library form defines a library from any environment that can
+  ;; hold a definition, so this one serves whatever the caller's is.
   (define-made reload-environment (copy-environment (scheme-environment)))
 
-  ;; The file a library is evaluated from, as Chez's library manager
-  ;; finds it (library-directories, library-extensions), or #f for one
-  ;; that has none (Chez's own).
+  ;; Returns the file a library is evaluated from, as Chez's library
+  ;; manager finds it (library-directories, library-extensions), or #f for
+  ;; a library that has none (Chez's own).
   (define (reload-source name)
     (let ([path (fold-left (lambda (acc part)
                              (string-append acc "/" (symbol->string part)))
@@ -55,17 +57,18 @@
   (define (reload-text file)
     (call-with-input-file file get-string-all))
 
-  ;; The library names, Chez's form of each (versions dropped).
+  ;; Returns the library name in a reference, in Chez's form (without its
+  ;; version).
   (define (reload-name ref) (filter symbol? ref))
 
-  ;; What name imports: asked of what Chez keeps to expand with, which a
-  ;; library loaded compiled has before it runs (or one that never runs,
-  ;; giving others' names as its own).
+  ;; Returns the libraries that name imports. It asks what Chez keeps for
+  ;; expansion, which a library loaded compiled has before it runs (as does
+  ;; one that never runs, which gives other libraries' names as its own).
   (define (reload-requires name)
     (map reload-name
          (library-requirements name (library-requirements-options import))))
 
-  ;; names, and all they import.
+  ;; Returns names and everything they import.
   (define (reload-closure names)
     (let loop ([todo names] [seen '()])
       (cond [(null? todo) seen]
@@ -73,16 +76,17 @@
             [else (loop (append (reload-requires (car todo)) (cdr todo))
                         (cons (car todo) seen))])))
 
-  ;; The libraries loaded from a file, but those held and what they
-  ;; import.
+  ;; Returns the loaded libraries that come from a file, except those held
+  ;; and everything they import.
   (define (reload-candidates held)
     (let ([held (reload-closure held)])
       (filter (lambda (name)
                 (and (not (member name held)) (reload-source name)))
               (map reload-name (library-list)))))
 
-  ;; The texts of the libraries named (by default all loaded from a file),
-  ;; for those not seen yet: how they read when first seen.
+  ;; Keeps the text of each library named (by default every loaded library
+  ;; that comes from a file) that hasn't been seen yet, as it reads when
+  ;; first seen.
   (define (reload-mark! . names)
     (for-each (lambda (name)
                 (let ([file (reload-source name)])
@@ -103,8 +107,8 @@
                 (filter (lambda (e) (not (bwp-object? (car e))))
                         *reload-imports*))))
 
-  ;; changed, and the libraries among candidates that import one of them,
-  ;; each after what it imports of them.
+  ;; Returns changed and the candidates that import one of them, directly
+  ;; or not, each after the libraries of that set it imports.
   (define (reload-order changed candidates)
     (let grow ([set changed])
       (let ([more (filter (lambda (name)
@@ -129,12 +133,13 @@
                     (sort (remp (lambda (name) (member name ready)) left)
                           (append (reverse ready) done)))))))))
 
-  ;; The libraries whose files changed since they were evaluated (and
-  ;; those of forced, as if theirs had), and the libraries that import them,
-  ;; evaluated again in order and run; then the environments' imports
-  ;; again. held: libraries that stay as they are, with all they import.
-  ;; Their texts are kept only once all went in, so a reload stopped on an
-  ;; error tries the whole set again. => the libraries evaluated again
+  ;; Evaluates again and runs, in order, the libraries whose files changed
+  ;; since they were evaluated (and those in forced, as if their files had
+  ;; changed) and the libraries that import them; then imports them again
+  ;; into the environments that had them. held names libraries that stay as
+  ;; they are, with everything they import. The new texts are kept only
+  ;; once every library has gone in, so a reload stopped by an error tries
+  ;; the whole set again. Returns the libraries evaluated again.
   (define (reload-libraries! held . forced)
     (let* ([candidates (reload-candidates held)]
            [changed (begin
@@ -167,8 +172,8 @@
       (set! *reload-last* order)
       order))
 
-  ;; What it keeps, for whoever looks (inspect-reload): the libraries
-  ;; whose texts it holds, how many environments it imports into, and
+  ;; What this library keeps, for whoever looks (inspect-reload): how many
+  ;; libraries' texts it holds, how many environments it imports into, and
   ;; what the last reload evaluated again.
   (define (reload-facts)
     `((libraries . ,(length (vector->list

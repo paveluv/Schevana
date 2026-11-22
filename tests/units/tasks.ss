@@ -1,5 +1,5 @@
-;;; tests/units/tasks.ss — Tasks' own procedures with no window, and its
-;;; window.
+;;; tests/units/tasks.ss — Tasks' own procedures, tested with no window, and
+;;; its window.
 
 (define (mk id title status kind priority who tags due . description)
   (make-task id title (if (pair? description) (car description) "") status
@@ -93,7 +93,7 @@
               [chip (lambda (tag)
                       (let-values ([(w h) (ui-chip-size tag #f)]) w))]
               [more (lambda (k) (+ 4 (text-width (format "+~a" k) 'ui-small)))]
-              ;; a card with room inside, measured for what's said
+              ;; the width of a card with room inside it
               [card (lambda (room) (+ room (* 2 pad)))]
               [long "abcdefghijklmnopqrstuvwx"]
               [fits?
@@ -273,7 +273,8 @@
            (for-each delete-task! (list a c))
            ok)))
 
-;; Made-up tasks: id, then the ids it waits for.
+;; Makes up tasks, each from a spec of its id followed by the ids it waits
+;; for.
 (define (linked . specs)
   (map (lambda (s)
          (let ([t (mk (car s) (format "T~a" (car s)) 'todo 'bug 'low #f '()
@@ -368,7 +369,7 @@
                 (pick)
                 (eq? picked (list-ref cs 6))))))
 
-;; What a draw by thunk shows as text: ((x . string) ...), in order.
+;; Returns what thunk draws as text, as ((x . string) ...), in order.
 (define (texts-drawn thunk)
   (let ([drawn '()] [plain draw-text])
     (dynamic-wind
@@ -405,7 +406,7 @@
               [w (lambda (room)   ; the cell's width for that room
                    (+ room (* 2 (ui-table-cell-inset)) 8
                       (text-width "TASK-100" 'mono-small)))]   ; the seed's
-              [shown (lambda (room)   ; => (title-shown note ...)
+              [shown (lambda (room)   ; returns (title-shown note ...)
                        (cdr (strings-drawn
                              (lambda ()
                                (tasks-draw-node 0 0 (w room) 30 '(reference)
@@ -415,7 +416,7 @@
          (and (equal? (map cdr all)
                       '(("↑ under TASK-13") ("↑ TASK-13") ()))
               (> (text-width title 'ui) (/ (+ long short 16) 2))
-              (for-all (lambda (s room)   ; less at most what a cut takes
+              (for-all (lambda (s room)   ; short by at most what a cut takes
                          (>= (+ (text-width (car s) 'ui) (text-width "W…" 'ui))
                              (min (text-width title 'ui) (/ room 2))))
                        all rooms))))
@@ -435,7 +436,7 @@
                 (null? (task-blocked-by t)) (= 99 (task-created t))
                 (eq? 'todo (task-status t)) (eq? t (tasks-carried t))))))
 
-;; A tree of symbols: what each has under it.
+;; The calendar and the view's layout, at 13 and 24 px fonts.
 
 (let ([at (lambda (key)
             (cdr (assq key (ui-calendar-areas 0 0 230 0))))])
@@ -451,7 +452,7 @@
 (let ([v (tasks-view-new (make-ui))])
   (define (mode w) (call-with-values (lambda () (tasks-layout v w 700 44))
                      (lambda (m view details) m)))
-  ;; (wide-width wide-at-it? narrow-below?)
+  ;; returns (wide-width wide-at-it? narrow-below?)
   (define (layout)
     (let ([w (tasks-wide-width v)])
       (list w (eq? (mode w) 'wide) (eq? (mode (- w 1)) 'narrow))))
@@ -469,9 +470,10 @@
                 (< (car list-view) (car board))
                 (> (car at-24) (car board))))))
 
-;; A keystroke in 13's description, Tasks maximized, with a long title on
-;; TASK-10, which 13 and others wait for (cards, rows and tooltips fit its
-;; title): the characters it measures do not grow with that title.
+;; A keystroke in TASK-13's description, with Tasks maximized and a long
+;; title on TASK-10, which 13 and others wait for (cards, rows and tooltips
+;; fit its title): the number of characters it measures does not grow with
+;; that title.
 (let* ([w (tasks)] [v (window-ref w 'state)] [ui (window-ref w 'ui)])
   (define (measured mode title)
     (set-task! 10 'title title)
@@ -501,8 +503,8 @@
                                      (= (cadr c) (cadddr c))))
                     counts))))
 
-;;; The view's keys and commands, with no window: a view of its own over
-;;; the seed.
+;;; The view's keys and commands, with no window: a view of the test's own
+;;; over the seed.
 
 (tasks-reset!)
 (let ([v (tasks-view-new (make-ui))])
@@ -621,7 +623,8 @@
 ;;; What the view shows of a task, with no window: its tips, its cut
 ;;; titles, the toolbar's widths, a filter's label, the empty states.
 
-;; thunk drawn as a window's draw is, into an image w × h: v's ui laid out.
+;; Draws thunk into a w × h image as a window's draw would, laying out v's
+;; ui.
 (define (tasks-test-draw v w h thunk)
   (let ([ui (tasks-view-ui v)])
     (picture-free!
@@ -731,7 +734,7 @@
              (let ([opened (list (task-id (tasks-view-selected v))
                                  (tasks-tree-node v))])
                (tasks-pick! v '(17 . 31))
-               ;; 17 first in board order: 31's own row is under it
+               ;; with 17 first in board order, 31's own row is under it
                (move-task! 13 'doing)
                (let ([fell (tasks-tree-node v)])
                  (tasks-select! v #f)

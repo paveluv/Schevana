@@ -1,8 +1,10 @@
 ;;; (schevana desktop topbar) — the bar at the top: the launcher, the focused
-;;; window's title and the status segments (status.ss), redrawn once a second;
-;;; or, in their place, the mouse documentation where the style shows it. A
-;;; style that sets its height to 0 has none (Genera): it neither draws nor
-;;; ticks. Its parts are handed what they draw, the style's as the built-in.
+;;; window's title and the status segments ((schevana desktop status)), which
+;;; are redrawn once a second; or, in the status's place, the mouse
+;;; documentation when the style shows it. A style that sets the bar's height
+;;; to 0 has no top bar (Genera): it then draws nothing and does no work each
+;;; frame. Its parts are handed what they draw, a style's parts just as the
+;;; built-in ones.
 
 (library (schevana desktop topbar)
   (export
@@ -26,16 +28,16 @@
   (at-load
    (theme-default! 'topbar-height-min
                    (theme-rule (exact (round (+ (font-line-height 'ui) 7))))))
-  ;; (in the bars' place, as the bar is drawn: its strip and its drawing
-  ;; agree)
+  ;; (computed in the bars' place, as the bar is drawn, so that its strip
+  ;; and its drawing agree)
   (define (topbar-height)
     (with-place 'bar
       (lambda () (chrome-height 'topbar-height 'topbar-height-min))))
 
   (define (topbar-box) (values 0 0 (screen-w) (topbar-height)))
 
-  ;; The accent on the panels, or the panels' text color where the accent
-  ;; would vanish (Genera's black accent on its black panels).
+  ;; The accent on the panels, or the panels' text color when the accent
+  ;; would vanish against them (Genera's black accent on its black panels).
   (at-load
    (color-default! 'panel-accent
      (theme-rule (let-values ([(ar ag ab aa) (color-rgba 'accent)]
@@ -45,20 +47,21 @@
                         'panel-text
                         'accent))))))
 
-  ;; In a bar h high, the launcher, then the focused window's title; the
-  ;; status segments take the rest from the right.
+  ;; Returns the areas of a bar h high: the launcher, then the focused
+  ;; window's title, whose area runs to the right edge; the status segments
+  ;; are drawn in the rest of it, from the right.
   (define-part (topbar-areas h)
     (let ([lw (+ 30 (text-width "λ  Schevana" 'ui-bold))])
       (list (list 'launcher 0 0 lw h)
             (list 'title lw 0 (- (screen-w) lw) h))))
 
-  ;; Its areas as it draws them, in the bars' place: where the pointer finds
-  ;; what.
+  ;; The bar's areas as it draws them, computed in the bars' place: what the
+  ;; pointer finds where.
   (define (placed-topbar-areas)
     (with-place 'bar (lambda () (topbar-areas (topbar-height)))))
 
-  ;; The bar, drawn in the bars' place by the style's draw-topbar, called by
-  ;; name, which is handed what it shows.
+  ;; Draws the bar in the bars' place with the style's draw-topbar, which is
+  ;; called by name and handed what it shows.
   (define (topbar-draw)
     (unless (zero? (topbar-height))
       (with-place 'bar
@@ -67,11 +70,11 @@
             ((world-value 'draw-topbar) h (topbar-areas h) (launcher-open?)
                                         (mouse-doc-line) *status-shown*))))))
 
-  ;; The bar h high, at the screen's top, in its areas (topbar-areas).
-  ;; open?: whether the launcher is open. doc: the mouse documentation's
-  ;; line (mouse-doc-line), or #f; where the style shows it ('mouse-doc),
-  ;; it takes the status's place. status: the status segments, ((name .
-  ;; string or #f) ...), as last taken.
+  ;; Draws the bar, h high, at the screen's top, in its areas
+  ;; (topbar-areas). open? says whether the launcher is open. doc is the
+  ;; mouse documentation's line (mouse-doc-line), or #f; when the style shows
+  ;; it ('mouse-doc), it takes the place of the status. status is the status
+  ;; segments, ((name . string or #f) ...), as last read.
   (define-part (draw-topbar h areas open? doc status)
     (let* ([w (screen-w)] [ty (/ (- h (font-line-height 'ui)) 2)]
            [gap (max 11 (round (* 0.6 (font-line-height 'ui))))]
@@ -90,7 +93,8 @@
                             (if *focus* (window-title *focus*) "Desktop")
                             'panel-text 'ui-bold)
                  0)])
-        ;; status segments from the right, while they fit beside the title
+        ;; the status segments from the right, as long as they fit beside the
+        ;; title
         (let loop ([segs (if (theme 'mouse-doc)
                              (if doc (list doc) '())
                              (reverse (filter string? (map cdr status))))]

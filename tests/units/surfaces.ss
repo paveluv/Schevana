@@ -2,9 +2,9 @@
 
 ;;; surfaces and strips
 
-;; With no surface registered (no desktop layer) the world draws its
-;; windows on black, maximizes them to the whole screen, and a press,
-;; a key or the wheel where nothing is goes nowhere.
+;; With no surface registered (no desktop layer), the world draws its
+;; windows on black and maximizes them to the whole screen; a press or the
+;; wheel where there is nothing goes nowhere, and a key goes to the window.
 (let* ([ss *surfaces*] [strips *strips*] [keys 0]
        [w (open-window "Alone" 'size '(200 . 100) 'pos '(300 . 200)
                        'draw (lambda (win cw ch)
@@ -38,9 +38,9 @@
                     (equal? whole (list 0 0 (screen-w) (screen-h)))
                     (not hover) (= keys 1)))))))
 
-;; A surface of one's own with a strip on the left: it is drawn over the
-;; windows, takes the presses and releases on it, and maximized windows
-;; go beside it.
+;; A surface of the test's own, with a strip on the left: it is drawn over
+;; the windows and takes the presses and releases on it, and maximized
+;; windows go beside it.
 (let* ([pressed '()]
        [w (open-window "Beside" 'size '(200 . 100) 'pos '(300 . 200))])
   (define-surface dock 15
@@ -100,9 +100,9 @@
 
 (check "the top bar takes its numbers once a second, however many frames \
         are drawn between, and a segment added at once"
-       ;; the test's clock held: the bar's timer, the second's, waits, so
-       ;; the frames drawn ask nothing (but a second already due); then
-       ;; the bar shown asks once
+       ;; with the test's clock held, the bar's once-a-second timer waits,
+       ;; so the frames drawn ask for nothing (except for a second already
+       ;; due); then showing the bar asks once
        (let ([asked 0])
          (add-status-segment! 'asked
                               (lambda ()
@@ -128,8 +128,9 @@
 
 ;;; frames
 
-;; A surface's frame comes at each frame, before it's drawn, so what it
-;; finds changed shows in it; with t, when that frame shows.
+;; A surface's frame is called at each frame, before the surface is drawn,
+;; so what it finds changed shows in that frame. It is given t, the time
+;; that frame shows.
 (let ([seen '()])
   (define-surface frame-probe 90
     'draw (lambda () (set! seen (cons 'draw seen)))
@@ -153,9 +154,9 @@
                                 *surfaces*))
          (= errors 0)))
 
-;; The bell's flash and the menu's blink end by timers, and the status
-;; clock keeps one of its own.
-(set-theme! 'bell 'screen)   ; which sets a timer of its own, to save
+;; The bell's flash ends by a timer, and the status clock keeps a timer of
+;; its own.
+(set-theme! 'bell 'screen)   ; this sets a timer of its own, to save
 (let ([before (length *timers*)])
   (bell)
   (check "a ring sets a timer that ends its flash"

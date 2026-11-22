@@ -1,12 +1,14 @@
-;;; src/build.ss — a library's main as a program of its own, compiled with
-;;; the libraries it imports into out/lib: the libraries each to its own
-;;; file, and the program with them all as one, which runs with no tree.
+;;; src/build.ss — builds a library's main as a program of its own. The
+;;; libraries it imports are compiled into out/lib, each to its own file,
+;;; and the program is compiled with them all into one file, which runs
+;;; without the tree.
 ;;;
 ;;;   scheme --script src/build.ss games fireflies fireflies-main
 ;;;   scheme --program out/lib/fireflies.so --headless
 ;;;
-;;; From the tree's root: the library's name, its parts, then its main,
-;;; which is handed the program's command line's arguments.
+;;; Run it from the tree's root. The arguments are the parts of the
+;;; library's name, then its main, which is handed the program's
+;;; command-line arguments.
 
 (let* ([args (command-line-arguments)]
        [library (map string->symbol (reverse (cdr (reverse args))))]
@@ -26,8 +28,8 @@
       (newline p))
     'replace)
   (compile-program (out "ss") (out "program.so"))
-  ;; The libraries stay visible to (environment ...), which a REPL's
-  ;; environment is made with.
+  ;; The libraries stay visible to (environment ...), with which a REPL's
+  ;; environment is made.
   (let ([missing (compile-whole-program (out "program.wpo") (out "so") #t)])
     (unless (null? missing)
       (printf "not in ~a, and loaded as it runs: ~s~n" (out "so") missing))))

@@ -1,5 +1,5 @@
-;;; (schevana wallpapers gradient) — the top color fading to the bottom one,
-;;; the default. draw-wallpaper adds its glow.
+;;; (schevana wallpapers gradient) — the top color fading into the bottom
+;;; one; this is the default wallpaper. draw-wallpaper adds a glow over it.
 
 (library (schevana wallpapers gradient)
   (export)

@@ -1,5 +1,6 @@
-;;; (schevana kits png) — PNG files, written with no library: nothing reads
-;;; them, so this needs only stored blocks and two checksums.
+;;; (schevana kits png) — PNG files, written without a library. Schevana
+;;; never reads them back, so this needs only stored (uncompressed) blocks
+;;; and two checksums.
 
 (library (schevana kits png)
   (export
@@ -56,7 +57,7 @@
       (put-bytevector port all)
       (put-bytevector port (png-u32 (png-crc all 0 (+ 4 n))))))
 
-  ;; The zlib stream of raw, in stored blocks.
+  ;; Returns raw as a zlib stream of stored blocks.
   (define (png-zlib raw)
     (let* ([n (bytevector-length raw)]
            [blocks (max 1 (ceiling (/ n 65535)))]
@@ -77,7 +78,7 @@
               (loop (+ from size) (+ to 5 size)))))
       out))
 
-  ;; Writes pixels, row after row of premultiplied BGRA, to path.
+  ;; Writes bytes, w × h pixels row after row in premultiplied BGRA, to path.
   (define (png-write path bytes w h)
     (let ([raw (make-bytevector (* h (+ 1 (* 4 w))) 0)])
       (do ([y 0 (+ y 1)]) ((= y h))
@@ -112,17 +113,17 @@
          (png-chunk port "IDAT" (png-zlib raw))
          (png-chunk port "IEND" (make-bytevector 0))))))
 
-  ;; Draws thunk on a clear image w × h pixels big, and writes it to path.
+  ;; Draws thunk on a clear image of w × h pixels and writes it to path.
   (define (png-write-drawing path w h thunk)
     (png-write path (drawing->bytes w h 1 thunk) w h))
 
-  ;; The screen as it is now, to path. => path
+  ;; Writes the screen as it is now to path, and returns path.
   (define (png-write-screen path)
     (png-write path (screen-bytes) (canvas-pixel-width) (canvas-pixel-height))
     path)
 
-  ;; The same, written once core0 has drawn it, then called with path on
-  ;; core1: nothing waits for it.
+  ;; Like png-write-screen, but writes the file once core0 has drawn the
+  ;; screen, then calls then with path on core1, so nothing waits for it.
   (define (png-write-screen-then path then)
     (let ([w (canvas-pixel-width)] [h (canvas-pixel-height)])
       (screen-bytes-then (lambda (bytes)

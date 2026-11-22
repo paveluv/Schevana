@@ -1,6 +1,6 @@
-;;; (schevana palettes forest) — the Forest palette. Under the canopy: moss and
-;;; bark, a stream, berries and foxglove, and sunlight through the leaves as
-;;; the second accent.
+;;; (schevana palettes forest) — the Forest palette: the colors under a
+;;; forest's canopy. Moss and bark, a stream, berries and foxglove, with
+;;; sunlight through the leaves as the second accent.
 
 (library (schevana palettes forest)
   (export)

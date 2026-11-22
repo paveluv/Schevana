@@ -1,20 +1,23 @@
 # Drawing
 
-A window shows what its draw procedure draws, each time it's drawn
-([WINDOWS.md](WINDOWS.md)). The procedures here write records, which the
-GPU draws ([INTERNALS.md](INTERNALS.md)); they draw nothing outside a draw
-procedure. Each example opens a window to draw in.
+A window shows what its draw procedure draws each time the window is
+drawn ([WINDOWS.md](WINDOWS.md)). The procedures on this page write
+records, which the GPU then draws ([INTERNALS.md](INTERNALS.md)); outside
+a draw procedure they draw nothing. Each example opens a window to draw
+in.
 
 ## Coordinates and colors
 
-A draw procedure gets the content's width and height, and draws from its
-top-left corner, in logical pixels: what's drawn is that times the
-screen's scale, `(draw-scale)`, and text and shapes are drawn from
-outlines at full resolution.
+A draw procedure is given the content's width and height, and its
+coordinates start at the content's top-left corner. They are in logical
+pixels: what is drawn is that size times the screen's scale,
+`(draw-scale)`, and text and shapes are drawn from outlines at full
+resolution.
 
-A color is a theme key (`'accent`, `'text`, `'bg-2`), so it follows the
-look, or a fixnum `#xRRGGBB`. `(mix a b t)` mixes two, `(alpha c a)` makes
-one translucent, and `(rgb r g b)` makes one from its channels.
+A color is either a theme key (`'accent`, `'text`, `'bg-2`), which
+follows the look, or a fixnum `#xRRGGBB`. `(mix a b t)` mixes two colors,
+`(alpha c a)` makes a color translucent, and `(rgb r g b)` makes one from
+its red, green and blue channels.
 
 ## Shapes
 
@@ -34,10 +37,13 @@ one translucent, and `(rgb r g b)` makes one from its channels.
 (define shapes (open-window "Shapes" 'size '(540 . 280) 'draw draw-shapes))
 ```
 
-`draw-shapes` is called by name each time the window draws, so it can be
-redefined at the REPL and the window shows the new one; `(invalidate!
-shapes)` asks for that at once. `invert-box` turns what's under a box into
-reverse video, in any palette, and `add-box` adds a color to it.
+The window keeps the procedure it was given, so redefining `draw-shapes`
+at the REPL doesn't change it. To make a redefinition show, give the
+window `(lambda (win w h) (draw-shapes win w h))`, which calls
+`draw-shapes` by name each time the window draws; `(invalidate! shapes)`
+then draws the window again at once. `invert-box` turns what is under a
+box into reverse video, in any palette, and `add-box` adds a color to
+it.
 
 ## Text
 
@@ -56,17 +62,18 @@ reverse video, in any palette, and `add-box` adds a color to it.
 (text-wrap "Broken into lines no wider than asked" 120 'ui)
 ```
 
-A font is a role: `'ui`, `'mono`, `'title`, `'big`, and their bold,
-small and italic ones, which the theme makes from its font settings
-([LOOKS.md](LOOKS.md)). Text is measured from the fonts' tables, with no
-device, so `text-width` is the same at any scale. `text-ink` gives what a
-string inks, from the pen on the baseline, and `text-widest` the widest of
-some strings.
+A font is named by its role: `'ui`, `'mono`, `'title`, `'big`, and
+variants such as `'ui-bold`, `'ui-small` and `'ui-italic`, which the
+theme makes from its font settings ([LOOKS.md](LOOKS.md)). Text is
+measured from the fonts' tables, with no device, so `text-width` is the
+same at any scale. `text-ink` returns the box that a string's ink covers,
+measured from the pen on the baseline, and `text-widest` the width of the
+widest of some strings.
 
 ## Clips, moves and turns
 
-These are forms around the drawing they change, not procedures: they
-allocate nothing.
+These are forms written around the drawing they change, not procedures
+that take a thunk, so they allocate nothing.
 
 ```scheme
 (define (draw-framed win w h)
@@ -86,15 +93,15 @@ allocate nothing.
 (open-window "Framed" 'size '(320 . 160) 'draw draw-framed)
 ```
 
-A clip's edges, like a box's, lie on whole device pixels, so what it cuts
-ends crisp at any scale. A turn is in radians, clockwise on the screen:
-lines and polygons turn any way, boxes become polygons, and text turns
-only by a quarter.
+A clip's edges, like a box's, lie on whole device pixels, so the edge it
+cuts is crisp at any scale. A turn is in radians, clockwise on the
+screen: lines and polygons turn by any angle, boxes become polygons, and
+text turns only by a quarter turn counterclockwise.
 
 ## Gradients and patterns
 
-A gradient or a stipple goes wherever a color does: a fill, a line, text,
-a theme key's value.
+A gradient or a stipple can go wherever a color can: in a fill, a line or
+text, or as a theme key's value.
 
 ```scheme
 (define (draw-fills win w h)
@@ -109,13 +116,13 @@ A gradient spreads its colors evenly from one point to another,
 `(linear-gradient x0 y0 x1 y1 color ...)`, or out from a center,
 `(radial-gradient cx cy r color ...)`. A stipple, `(stipple ink paper row
 ...)`, tiles rows of `#` (ink) and `.` (paper, or nothing where paper is
-`#f`) over the screen's pixels, so it lines up across windows at any
-scale: it's how Genera and the CADR draw gray.
+`#f`) from the screen's origin, so the tiles line up across windows at
+any scale: this is how Genera and the CADR draw gray.
 
 ## Pixels and images
 
-A pixmap is an image an app fills pixel by pixel, one pixel a Life cell,
-say, and draws scaled up in one call, each pixel a sharp block:
+A pixmap is an image that an app fills pixel by pixel (one pixel per Life
+cell, say) and draws scaled up in one call, each pixel as a sharp block:
 
 ```scheme
 (define dots (make-pixmap 8 8 'bg-1))
@@ -126,16 +133,17 @@ say, and draws scaled up in one call, each pixel a sharp block:
   'draw (lambda (win w h) (pixmap-draw dots 0 0 w h)))
 ```
 
-Its pixels are on the GPU, and what's set goes up with the next frame.
-`(pixmap-rows! pm from to worklet arg ...)` has the crew paint rows of it
-at once ([THREADS.md](THREADS.md)), and `draw-image` draws any image, a
-pixmap's among them: at its size or bigger each pixel is a sharp block,
-smaller they blend.
+Its pixels are on the GPU, and a pixel that is set goes up with the next
+frame. `(pixmap-rows! pm from to worklet arg ...)` has the crew paint
+rows of it, each thread a share of them ([THREADS.md](THREADS.md)), and
+`draw-image` draws any image, a pixmap's among them: at its own size or
+bigger each pixel is a sharp block, and smaller the pixels blend.
 
-`schevana/kits/px.sls` draws pixel art on whole device pixels: `px-bevel` (Motif's
-corners or the Mac's), `px-bits` for small pictures from rows of
-characters, `px-invert` and `px-bitmap-text`, a bitmap font's text (the
-Genera style has one, the CADR's 5X5, `genera-5x5`).
+`schevana/kits/px.sls` draws pixel art on whole device pixels:
+`px-bevel` (with Motif's corners or the Mac's), `px-bits` for small
+pictures from rows of characters, `px-invert`, and `px-bitmap-text` for
+text in a bitmap font (the Genera style has one, the CADR's 5X5,
+`genera-5x5`).
 
 ```scheme
 (open-window "Pixel art" 'size '(300 . 140)
@@ -150,9 +158,9 @@ Genera style has one, the CADR's 5X5, `genera-5x5`).
 
 ## Paints
 
-A paint is a shader you write in Scheme: its body runs for each pixel of a
-box and gives a color, and `fill-shader` fills a box with it. Everything
-about shaders is in [SHADERS.md](SHADERS.md).
+A paint is a shader you write in Scheme: its body runs for each pixel of
+a box and returns a color, and `fill-shader` fills a box with it.
+Everything about shaders is in [SHADERS.md](SHADERS.md).
 
 ```scheme
 (define-paint (checks x y)

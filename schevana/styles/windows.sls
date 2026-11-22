@@ -1,6 +1,6 @@
-;;; (schevana styles windows) — the Windows window style. App icon and title on
-;;; the left; minimize, maximize and close on the right as full-height buttons,
-;;; close turning red on hover.
+;;; (schevana styles windows) — the Windows window style: the app icon and the
+;;; title on the left, and minimize, maximize and close on the right as
+;;; full-height buttons; close turns red on hover.
 
 (library (schevana styles windows)
   (export
@@ -86,7 +86,7 @@
 
   (at-load
    (define-style windows "Windows"
-     ;; a divider's drag widens its column and moves the rest along, as
+     ;; a divider's drag widens its column and moves the rest along, as in
      ;; Explorer's details view
      'table-resize 'shift
      'frame-radius 'windows-radius

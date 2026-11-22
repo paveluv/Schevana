@@ -1,24 +1,25 @@
-;;; tests/units/pacer.ss — the pacer: exactly one tick a period while the work
-;;; fits.
+;;; tests/units/pacer.ss — the pacer: exactly one tick per period while the
+;;; work fits.
 
-;;; The pacer: exactly one tick a period while the work fits.
+;;; The pacer: exactly one tick per period while the work fits.
 
-;; The screen held core1 from start to end: a wait, the profiler's
-;; vsync-wait, and no work.
+;; Records that the screen held core1 from start to end: a wait, the
+;; profiler's vsync-wait, and no work.
 (define (pacer-test-screen-waited! start end)
   (profile-span-past! 'vsync-wait 'submit start end)
   (pacer-held! (- end start)))
 
-;; Core1's loop for ms of a fake clock (ns), with a wait for core0's events
-;; that only moves the clock, and a frame that, with vsync?, waits for the
-;; screen's next refresh. In it: a window whose
-;; tick keeps books (3 ms) and never draws, one that moves at every tick
-;; (2 ms of its tick, draw-ms of drawing), a busy process (0.5 ms a
-;; slice) if opts has 'busy, a timer at 205 ms, a key at 503 ms, and with
-;; 'flood a key every 2 ms besides, each ending the wait. => an alist of
-;; what happened: the bookkeeper's ticks' times, the frames drawn, the
-;; steps, the process's slices, when the timer ran, and whether the key
-;; came. At most 50 steps a ms of the clock: past that the loop spins.
+;; Runs core1's loop for ms of a fake clock (in ns), with a wait for
+;; core0's events that only moves the clock, and a frame that, with vsync?,
+;; waits for the screen's next refresh. The world holds: a window whose tick
+;; keeps books (3 ms) and never draws; one that moves at every tick (2 ms
+;; of its tick, draw-ms of drawing); a busy process (0.5 ms a slice) if
+;; opts has 'busy; a timer at 205 ms; a key at 503 ms; and, with 'flood, a
+;; key every 2 ms besides, each ending the wait. Returns an alist of what
+;; happened: the bookkeeper's tick times, the frames drawn, the steps, the
+;; process's slices, when the timer ran, whether the key came, and the
+;; period. The loop stops after 50 steps per ms of the clock, since past
+;; that it spins.
 (define (pacer-test-run vsync? draw-ms ms . opts)
   (let* ([real-ns now-ns] [real-ms now-ms] [real-events screen-events]
          [real-present rec-present!] [rate (pacer-rate)]
@@ -120,25 +121,29 @@
                      timer at ~a\n"
                     vsync? (length ticks) (get 'frames) (get 'slices)
                     (apply min gaps) (apply max gaps) (get 'fired))
-            ;; 1,000 ms of 16.7: 60 periods, 61 ticks at their ends
+            ;; 1,000 ms at 16.7 ms a period: 60 periods, 61 ticks at their
+            ;; ends
             (and (<= 60 (length ticks) 61)
                  ;; a period apart on average, to the ms
                  (< (abs (- (quotient (- (car (last-pair ticks)) (car ticks))
                                       (length gaps))
                             period))
                     1000000)
-                 ;; and each: with vsync, give or take the 2 ms a tick may
-                 ;; start early and the clock's ms; without, also a frame
-                 ;; that input asked for (5 ms) drawn just before a tick
+                 ;; and each gap: with vsync, give or take the 2 ms a tick
+                 ;; may start early and the clock's ms; without, also a
+                 ;; frame that input asked for (5 ms) drawn just before a
+                 ;; tick
                  (for-all (lambda (g)
                             (< (abs (- g period)) (if vsync? 3000000 8000000)))
                           gaps)
                  (<= (abs (- (get 'frames) (length ticks))) 2)
-                 ;; the time left, a wait for the screen no part of the
-                 ;; frame's: far more than the 1 ms a tick they always get
+                 ;; the time left, where a wait for the screen is no part
+                 ;; of the frame's: far more than the 1 ms a tick that
+                 ;; processes always get
                  (> (get 'slices) (* 4 (length ticks)))
                  (get 'keyed)
-                 ;; at the step after its time: within a period
+                 ;; the timer runs at the step after its time: within a
+                 ;; period
                  (<= 205 (get 'fired) (+ 205 17)))))
         '(#t #f)))
 
@@ -172,8 +177,8 @@
               [ticks (length (cdr (assq 'ticks r)))]
               [steps (cdr (assq 'steps r))]
               [period (cdr (assq 'period r))]
-              ;; the run's, newest first: not the step after it, nor the
-              ;; ticks of its 100 ms of settling
+              ;; the run's ticks, newest first: not the step after it, nor
+              ;; the ticks of its 100 ms of settling
               [run (list-head (cdr made) (- ticks 1))]
               [lengths (map (lambda (seq) (profile-tick-ns seq 'ns)) run)])
          (printf "  ~a ticks, ~a steps, ~a kept, ~a..~a ns\n" ticks steps
@@ -192,25 +197,25 @@
          (and (< 20 (length ticks) 45)
               (for-all (lambda (g) (>= g (- period 3000000))) gaps))))
 
-;; Core1's loop on a fake clock, for ms, against a screen as core0 on a
-;; thread of its own has one: the frame it presents is held till the next
-;; refresh, one a period, then its successor, waiting in the box, is taken
-;; and held till the one after; core0 wakes core1 as it takes one, and core1
-;; wakes up to 9 ms later, and gives each back as it shows. The screen is
-;; away (holds) from away-from to away-to, and refreshes fast ns sooner
-;; than the period it reports. Core1 runs as with core0 on a thread of its
-;; own. A mover asks a frame each tick, working 1 to 3 ms, and draws at
-;; every one; a timer counts every 10 ms. Options, a plist: 'rate, the
-;; pacer's rate for the run; 'draw-every n, the mover drawing at every nth
-;; tick only; 'mailbox #t, a screen that holds nothing, taking each frame
-;; at once; 'full #t, a screen with no room, each frame given back at once,
-;; not shown; 'slow r, a screen that refreshes r times the period it
-;; reports. => (refreshes frozen ts
-;; frames-away timers-away shows leads ticks): the refreshes that showed a
-;; frame, those that showed none while the mover moved and the screen was
-;; there, each 'frame's t, the 'frame calls while the screen was away, the
-;; timers then, when each frame showed, each 'frame's t less the clock
-;; then, and the ticks.
+;; Runs core1's loop on a fake clock, for ms, against a screen like the one
+;; core0 has on a thread of its own: the frame core1 presents is held until
+;; the next refresh (one per period), then its successor, waiting in the
+;; box, is taken and held until the refresh after. Core0 wakes core1 as it
+;; takes a frame, core1 wakes up to 9 ms later, and core0 gives each frame
+;; back as it shows. The screen is away (holds) from away-from to away-to,
+;; and refreshes fast ns sooner than the period it reports. Core1 runs as
+;; it does with core0 on a thread of its own. A mover asks for a frame each
+;; tick, working 1 to 3 ms, and draws at every one; a timer counts every
+;; 10 ms. Options, a plist: 'rate, the pacer's rate for the run;
+;; 'draw-every n, the mover drawing only at every nth tick; 'mailbox #t, a
+;; screen that holds nothing and takes each frame at once; 'full #t, a
+;; screen with no room, which gives each frame back at once, not shown;
+;; 'slow r, a screen that refreshes r times the period it reports. Returns
+;; (refreshes frozen ts frames-away timers-away shows leads ticks): the
+;; refreshes that showed a frame; those that showed none while the mover
+;; moved and the screen was there; each 'frame's t; the 'frame calls while
+;; the screen was away; the timers then; when each frame showed; each
+;; 'frame's t less the clock at the time; and the ticks.
 (define (pacer-test-lock ms away-from away-to fast . opts)
   (let* ([real-ns now-ns] [real-ms now-ms] [real-events screen-events]
          [real-present rec-present!] [real-waiting gpu-frame-waiting?]
@@ -222,9 +227,9 @@
          [shows '()] [ts '()] [leads '()] [away-frames 0] [away-timers 0]
          [n 0] [end (* ms 1000000)] [ticks (pacer-ticks)])
     (define (away? at) (< (* away-from 1000000) at (* away-to 1000000)))
-    ;; the first refresh from at on, the screen there
+    ;; the first refresh from at on with the screen there
     (define (refresh-from at) (if (away? at) (refresh-from (+ at p)) at))
-    ;; core0 and the screen, up to the clock
+    ;; runs core0 and the screen up to the clock
     (define (screen!)
       (let loop ()
         (when (and held-to (<= held-to t))
@@ -256,7 +261,7 @@
                   [held-to (set! boxed? #t)]
                   [else
                    (set! held-to (refresh-from (* p (+ 1 (quotient t p)))))])
-            0))   ; its number: none the screen reports on
+            0))   ; its number: one the screen reports nothing on
     (pacer-rate! (plist-ref opts 'rate 'screen))
     (let ([mover (open-window "Mover" 'size '(80 . 60)
                               'open window-frame-soon!
@@ -277,8 +282,8 @@
         (after 10 (lambda ()
                     (when (away? t) (set! away-timers (+ away-timers 1)))
                     (when (< t end) (tick)))))
-      ;; t starts on the fake clock: the real clock's is seconds ahead of
-      ;; it, and t comes back to the screen only when it falls behind
+      ;; t starts on the fake clock, while the real clock is seconds ahead
+      ;; of it, and t comes back to the screen only when it falls behind
       (fluid-let ([*core0-forked* #t]
                   [*pacer-frame-ns* 0]
                   [*gpu-facts* (cons (cons 'present-mode
@@ -297,8 +302,8 @@
     (steps 1)
     (let ([shows (reverse shows)])
       (list (length shows)
-            ;; a gap of more than a refresh between shows, but the screen's
-            ;; time away and the first few
+            ;; the gaps of more than one and a half refreshes between
+            ;; shows, except over the screen's time away and the first few
             (if (< (length shows) 4)
                 0
                 (let count ([s (list-tail shows 3)] [k 0])
@@ -318,8 +323,8 @@
        [steps (list-tail (pacer-test-gaps ts) 3)]
        [shows (list-ref r 5)]
        [p (core0-frame-ns)]
-       ;; t less when its frame showed, but for frames made before the
-       ;; screen went away and shown after
+       ;; each t less when its frame showed, except for frames made before
+       ;; the screen went away and shown after it came back
        [leads (let lead ([ts ts] [shows shows])
                 (cond [(or (null? ts) (null? shows)) '()]
                       [(< (car ts) (* 1300 1000000) (car shows))
@@ -405,17 +410,19 @@
              (and (= p30 33333333)
                   (= screen (- p (quotient p 500))))))))
 
-;; Core1's loop on a fake clock, for ms, against core0 and a compositor
-;; that queues frames, as FIFO does, with three images: it latches 4 ms
-;; before each refresh (the first at phase), takes the oldest queued frame
-;; whose GPU work is done (1 ms after its submit) and frees the image that
-;; one replaces; with none, the refresh shows the last frame again. Core0
-;; takes a boxed frame 50 us after it's free and the frame is there, starts
-;; the acquire 150 us later, which waits for a free image, and submits 200
-;; us after it returns; it wakes core1 as it takes a frame and as it gives
-;; one back. A mover starts from stillness, asks a frame each tick and
+;; Runs core1's loop on a fake clock, for ms, against core0 and a
+;; compositor that queues frames, as FIFO does, with three images. The
+;; compositor latches 4 ms before each refresh (the refreshes fall at phase
+;; plus whole periods), takes the oldest queued frame whose GPU work is
+;; done (1 ms after its submit), and frees the image that frame replaces;
+;; with none, the refresh shows the last frame again. Core0 takes a boxed
+;; frame 50 us after it is free and the frame is there, starts the acquire
+;; 150 us later (it waits for a free image), and submits 200 us after the
+;; acquire returns; it wakes core1 as it takes a frame and as it gives one
+;; back. A mover starts from stillness, asks for a frame each tick and
 ;; draws at every one, working 1 to 3 ms, and once, at long-at ms, long-ms
-;; more. => the refreshes that showed no new frame once frames had shown.
+;; more. Returns how many refreshes showed no new frame once frames had
+;; shown.
 (define (pacer-test-fifo ms phase long-at long-ms)
   (let* ([real-ns now-ns] [real-ms now-ms] [real-events screen-events]
          [real-present rec-present!] [real-waiting gpu-frame-waiting?]
@@ -439,7 +446,7 @@
       (set! state 'idle)
       (set! at (+ now 200000))
       (set! woken? #t))
-    ;; one event; => #t if it woke core1
+    ;; runs one event, and returns #t if it woke core1
     (define (event! ev)
       (let ([now (car ev)])
         (case (cdr ev)
@@ -526,11 +533,12 @@
                   (~a)" frozen)
          (for-all zero? frozen)))
 
-;;; What a tick takes, but its waits: kept whether the profiler is on or not.
+;;; What a tick takes, apart from its waits: kept whether the profiler is on
+;;; or not.
 
-;; thunk on a fake clock, far past any tick due, with a wait for events of
-;; pacer-test-wait ms and a frame that waits 7 ms for the screen, as the
-;; swapchain's may.
+;; Runs thunk on a fake clock, far past any tick due, with a wait for
+;; events of pacer-test-wait ms and a frame that waits 7 ms for the screen,
+;; as the swapchain's may.
 (define pacer-test-t 1000000000000)
 (define pacer-test-wait 5)
 (define (pacer-test-advance! ms)
@@ -617,8 +625,9 @@
                      (= (pacer-peak-ms!) 0.0)))))))
   (close-window! win))
 
-;;; Ticks only when one is wanted: a redraw, a window's frame, or a look
-;;; that input or a frame drawn asks for. On a fake clock, with no timers.
+;;; Ticks only when one is wanted: for a redraw, a window's frame, or a
+;;; look that input or a frame drawn asks for. On a fake clock, with no
+;;; timers.
 (for-each close-window! (windows))
 (let* ([t (* 3000 1000000000)] [events '()]
        [ticks-in (lambda (n)   ; the ticks of n steps of core1's loop
@@ -698,10 +707,11 @@
        (and (not *pacer-margin*)
             (= (pacer-margin (core0-frame-ns)) 0)))
 
-;; Frame n as the pacer reads it: its row in the frame ring, the newest,
-;; its tick (as begun and as planned, and published as it began) and aimed
-;; latch; its report sent, and shown at shown or not reported (#f). Then
-;; thunk; the row as it was after.
+;; Makes frame n as the pacer reads it: the newest row of the frame ring,
+;; with its tick (as begun and as planned, and published as it began) and
+;; its aimed latch; its report says it was sent at sent and shown at shown,
+;; or not reported (shown #f). Then runs thunk, puts the row back as it
+;; was, and returns thunk's value.
 (define (pacer-test-frame n tick aimed sent shown thunk)
   (let* ([row (* frame-ring-words
                  (modulo (- *frame-ring-n* 1) frame-ring-rows))]
@@ -746,6 +756,7 @@
            (let ([paced? (and *pacer-shown?* (pacer-on-latch?)
                               (= *pacer-aimed* (+ latch r))
                               ;; its frame's planned start, the lead before
+                              ;; the latch
                               (= *pacer-planned* (- (+ latch r) 4000000))
                               (= (pacer-start)
                                  (- (+ latch (* 2 r)) 4000000)))])
@@ -767,8 +778,8 @@
                   (<= *pacer-due*
                       (+ t (* 299 (quotient r 3)) (* 2 r))))))))
 
-;; A frame held back is drawn by no one: the window hidden, render-frame!
-;; asks again and sends nothing.
+;; A frame held back is drawn by no one: with the window hidden,
+;; render-frame! asks again and sends nothing.
 (check "a tick whose frame was held back, the window hidden, gives the \
         screen nothing to pace by; one sent does"
        (let ([drew? (lambda (hidden?)
@@ -926,7 +937,7 @@
                               (fxvector-set! ring (+ a w) 0))))
                         (list (- n 1) n (+ n 1)))
               (pacer-latch! n)
-              (set! *pacer-margin* 0)      ; were it judged again, it'd show
+              (set! *pacer-margin* 0)      ; judged again, it would show
               (pacer-latch! (+ n 1))))
            (and (= *pacer-margin* 0) (= *pacer-judged* m)))))
 
@@ -1143,15 +1154,15 @@
                   (= brief 4900000))))))
 
 ;; Frames as the pacer plans them while the screen's queue is full: each
-;; tick its lead before the latch, the frame published 0.1 ms later and at
-;; its acquire at 0.2 ms, the latch ending the acquire, the frame sent
-;; 0.15 ms after.
+;; tick begins its lead before the latch, the frame is published 0.1 ms
+;; later and reaches its acquire at 0.2 ms, the latch ends the acquire, and
+;; the frame is sent 0.15 ms after the latch.
 (check "frames that reach their acquire early, the latch ending it, leave \
         the lead within a millisecond of the frame's own time and the \
         margin: were the wait the frame's, each would send the next a \
         little earlier, to the two refreshes"
        (let* ([r (core0-frame-ns)] [n 1000151] [at (present-at n)]
-              [frame (lambda (aim)       ; => the lead after it
+              [frame (lambda (aim)       ; returns the lead after it
                        (let ([tick (- aim *pacer-lead*)])
                          (pacer-test-frame
                           n tick aim (+ aim 150000) #f
@@ -1169,9 +1180,10 @@
                  (and (<= most 4000000)
                       (< *pacer-lead* (+ 250000 500000 1200000))))))))
 
-;; Frame k after n judged: late if late? (sent a refresh before its latch,
-;; shown two refreshes past the depth's), else in time; its GPU work still
-;; going at going, ns after its send (0, never seen going).
+;; Judges frame k after n: late if late? (sent a refresh before its latch
+;; and shown two refreshes past the depth's), else in time (sent 1 ms
+;; before it). Its GPU work is seen still going at going ns after its send
+;; (0: never seen going).
 (define (pacer-test-gpu-frame n k late? going)
   (let* ([r (core0-frame-ns)] [m (+ n k)] [aim (+ (now-ns) (* 3 r))]
          [sent (- aim (if late? r 1000000))])
@@ -1191,8 +1203,8 @@
                      [*pacer-late-seen* 0] [*pacer-late-run* 0]
                      [*pacer-late-chain* 0] [*pacer-gpu-taught* #f]
                      [*pacer-floor* 0] [*pacer-lead* 0])
-           ;; a late run's first, seen; one sent since, a refresh early,
-           ;; teaches a refresh of depth
+           ;; a late run's first frame, seen; one sent since, a refresh
+           ;; early, teaches a refresh of depth
            (pacer-test-gpu-frame n 0 #t slow)
            (pacer-test-gpu-frame n 1 #t slow)
            (let ([taught *pacer-depth*])
@@ -1207,7 +1219,7 @@
         starts the count again; and a late frame the GPU kept up with \
         teaches for good"
        (let* ([r (core0-frame-ns)] [n 1000501] [slow (+ r (quotient r 8) 1)]
-              [run (lambda (going)       ; => the depth after 600 frames
+              [run (lambda (going)       ; returns the depth after 600 frames
                      (set! *pacer-depth* 0)
                      (set! *pacer-margin* #f)
                      (set! *pacer-late-seen* 0)

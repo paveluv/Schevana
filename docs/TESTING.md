@@ -11,8 +11,10 @@ scheme --script tests/frame.ss out
 scheme --script tests/sources.ss
 ```
 
-And the same in the hacker edition, every library spliced into the world
-(`--hacker`): `SCHEVANA_HACKER=1` before each.
+For the hacker edition (`--hacker`, every library spliced into the
+world), run smoke and units again with `SCHEVANA_HACKER=1` before each;
+there the units' runner picks by itself the topics that tell the two
+editions apart. Any other suite runs in the hacker edition the same way.
 
 They run headless, on lavapipe (`mesa-vulkan-drivers`) on Linux and on
 Metal on a Mac, and need `spirv-tools` on both for the shaders' checks.

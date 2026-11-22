@@ -1,7 +1,7 @@
-;;; (schevana core0 trace-file) — the trace ((schevana core0 trace)), written:
-;;; to a file of its own when the window closes or on (core0-trace-dump!), and
-;;; when core1 stops stepping or Ctrl-C ends the run, with the screen's reports
-;;; on the frames still kept.
+;;; (schevana core0 trace-file) — writes the trace ((schevana core0
+;;; trace)), with the screen's reports on the frames still kept, to a file
+;;; of its own: when the window closes, on (core0-trace-dump!), when core1
+;;; stops stepping, and when Ctrl-C ends the run.
 
 (library (schevana core0 trace-file)
   (export
@@ -22,8 +22,8 @@
        dropped gpu-done slow-pump event #f #f #f #f #f
        wait waited tick draw publish collect collected events gc gced))
 
-  ;; From now on, if the checkout has a .work folder: on core0's thread, as
-  ;; the window opens.
+  ;; Turns the trace on from now on, if the checkout has a .work folder. It
+  ;; is called on core0's thread, as the window opens.
   (define (core0-trace-start!)
     (let ([dir (string-append *schevana-root* "/.work")])
       (set! *core0-trace-thread* (get-thread-id))
@@ -31,12 +31,12 @@
         (set! *core0-trace-dir* (string-append dir "/traces"))
         (core0-trace-on-interrupt!))))
 
-  ;; The handler Ctrl-C had before the trace's, once it's set.
+  ;; The handler Ctrl-C had before the trace set its own, once it has.
   (define-state *core0-trace-interrupt* #f)
 
-  ;; Ctrl-C ends the run as it did, the trace written first. Chez hands the
-  ;; signal to the process's first thread, core0's with a window, which goes
-  ;; on while core1 is stuck.
+  ;; Makes Ctrl-C write the trace first, then end the run as before. Chez
+  ;; hands the signal to the process's first thread, which with a window is
+  ;; core0's, and that thread keeps running while core1 is stuck.
   (define (core0-trace-on-interrupt!)
     (unless *core0-trace-interrupt*
       (set! *core0-trace-interrupt* (keyboard-interrupt-handler))
@@ -46,14 +46,17 @@
          (*core0-trace-interrupt*)))))
 
   ;; How long core1 may go without a step before core0 writes the trace: far
-  ;; longer than any wait of core1's, which is a refresh or a timer's at most.
+  ;; longer than any wait of core1's, which lasts a refresh or a timer's
+  ;; delay at most.
   (define-state core0-trace-stall-ns 5000000000)
 
-  ;; Core1's count of steps when a stall's trace was written: one a stall.
+  ;; Core1's count of steps when a stall's trace was last written, so that
+  ;; each stall writes one trace.
   (define-state *core0-trace-stalled* -1)
 
-  ;; On core0's step, core1 on a thread of its own: core1's newest step older
-  ;; than core0-trace-stall-ns, the trace written, saying which it was.
+  ;; Called on each of core0's steps when core1 runs on a thread of its own.
+  ;; If core1's newest step is older than core0-trace-stall-ns, it writes the
+  ;; trace, saying which step that was.
   (define (core0-trace-watch!)
     (when *core0-trace-dir*
       (let ([v (vector-ref *core0-trace-rings* 2)]
@@ -71,7 +74,7 @@
                            (vector-ref core0-trace-names
                                        (fxvector-ref v (fx+ at 1)))))))))))))
 
-  ;; The file written, from any thread: a job of core0's.
+  ;; Writes the trace file from any thread, as a job posted to core0.
   (define (core0-trace-dump!) (core0-post! (list core0-trace-write!)))
 
   (define (core0-trace-write-why! why)
@@ -81,8 +84,8 @@
                               *core0-trace-dir* (date-year d) (date-month d)
                               (date-day d) (date-hour d) (date-minute d)
                               (date-second d))]
-                ;; a second's second trace (a stall's, then Ctrl-C's) beside
-                ;; the first
+                ;; a second trace in the same second (a stall's, then
+                ;; Ctrl-C's) goes beside the first
                 [path (let next ([k 1])
                         (let ([path (if (= k 1)
                                         (string-append stem ".txt")
@@ -113,16 +116,16 @@
                (core0-trace-frames p t0)))
            path)))
 
-  ;; The steps of both rings by time, then the frames' reports, to
-  ;; .work/traces/trace-<date>-<time>.txt (-2 on, another in the same
-  ;; second), after why it was written, if that's said. => its path, or #f
-  ;; when off.
+  ;; Writes the steps of both rings, sorted by time, then the frames'
+  ;; reports, to .work/traces/trace-<date>-<time>.txt (with -2, -3, ... for
+  ;; another trace in the same second), after the reason it was written, if
+  ;; one is given. Returns the file's path, or #f when the trace is off.
   (define core0-trace-write!
     (case-lambda
       [() (core0-trace-write! #f)]
       [(why) (core0-trace-write-why! why)]))
 
-  ;; Ring k's whole rows, oldest first: (thread ns name a).
+  ;; Returns ring k's whole rows, oldest first, each as (thread ns name a).
   (define (core0-trace-rows-of k who)
     (let* ([v (vector-ref *core0-trace-rings* k)]
            [n (unbox (vector-ref *core0-trace-rings* (fx+ k 1)))])
@@ -141,7 +144,7 @@
                               acc)
                         acc)))))))
 
-  ;; The frames the screen's ring still holds, oldest first.
+  ;; Writes to p the frames the screen's ring still holds, oldest first.
   (define (core0-trace-frames p t0)
     (let ([newest (fold-left max -1
                              (map (lambda (i)

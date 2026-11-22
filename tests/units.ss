@@ -1,17 +1,19 @@
-;;; tests/units.ss — the world piece by piece, headless: a file a topic in
-;;; tests/units/, an app's, a kit's, a service's or the core's, each in a
-;;; process of its own, so that none leans on what another left behind,
-;;; as many at once as SCHEVANA_TEST_JOBS says (else the CPUs less two),
+;;; tests/units.ss — the world piece by piece, headless. Each file in
+;;; tests/units/ is a topic (an app's, a kit's, a service's or the core's),
+;;; run in a process of its own so that none depends on what another left
+;;; behind, as many at once as the machine allows (test-jobs:
+;;; SCHEVANA_TEST_JOBS, or else the CPUs less two, within the memory free),
 ;;; each writing in a folder of its own, output-dir/topic:
 ;;;
 ;;;   scheme --script tests/units.ss [output-dir [topic ...]]
-;;;   scheme --script tests/units.ss out              every file there
-;;;   scheme --script tests/units.ss out life boids   those
+;;;   scheme --script tests/units.ss out              every topic
+;;;   scheme --script tests/units.ss out life boids   those two topics
 ;;;   SCHEVANA_CHECK=text scheme --script tests/units.ss out life
-;;;                                         life up to its check named so
+;;;                                         life, to the check text names
 ;;;
-;;; This file is what they share: the checks, the images, the helpers more
-;;; than one of them uses. output-dir only receives scratch files.
+;;; This file is also what the topics share: the checks, the images, and
+;;; the helpers that more than one of them uses. output-dir only receives
+;;; scratch files.
 
 (define *schevana-root*
   (let ([dir (path-parent (path-parent (car (command-line))))])
@@ -23,13 +25,13 @@
 (define units-asked
   (if (pair? (command-line-arguments)) (cdr (command-line-arguments)) '()))
 
-;; SCHEVANA_CHECK's text, as tests/lib.ss reads it, for the runner here.
+;; SCHEVANA_CHECK's text, as tests/check.ss reads it, for the runner here.
 (define test-only
   (let ([text (getenv "SCHEVANA_CHECK")])
     (and text (not (string=? text "")) text)))
 
-;; Every topic in tests/units: its .ss files, by name, but those an editor
-;; or a Mac's Finder leaves (a name starting with a dot).
+;; Every topic in tests/units: its .ss files, by name, except those that
+;; an editor or a Mac's Finder leaves behind (names starting with a dot).
 (define (units-topics)
   (map path-root
        (sort string<?
@@ -39,20 +41,21 @@
                      (directory-list
                       (string-append *schevana-root* "/tests/units"))))))
 
-;; A run of Chez through /bin/sh, a Mac's loader path with it: test-chez
-;; and test-sh-word, which the sources' suite runs itself again by too; and
-;; runs at once, as many as the machine allows (test-system-all).
+;; Runs of Chez through /bin/sh, with a Mac's loader path: test-chez and
+;; test-sh-word (which the sources' suite also uses to run itself again),
+;; and runs at the same time, as many as the machine allows
+;; (test-system-all).
 (load (string-append *schevana-root* "/tests/chez.ss"))
 
-;; What a topic's run takes at its peak, MB, for how many go at once
-;; (test-jobs): a few hundred MB in the library edition, the heaviest near
-;; 800 (measured); some 1.1 to 1.3 GB in the hacker edition, each
-;; compiling the world from source.
+;; The memory a topic's run takes at its peak, in MB, which decides how
+;; many go at once (test-jobs): a few hundred MB in the library edition,
+;; the heaviest near 800 (measured); some 1.1 to 1.3 GB in the hacker
+;; edition, where each run compiles the world from source.
 (define units-topic-mb (if (getenv "SCHEVANA_HACKER") 1500 600))
 
-;; The docs' pages with examples to run (tests/units/docs.ss), each a path
-;; from the tree's root: README.md, CREDITS.md and docs/*.md that hold a
-;; ```scheme block.
+;; The docs' pages with examples to run (tests/units/docs.ss), each as a
+;; path from the tree's root: those of README.md, CREDITS.md and
+;; docs/*.md that hold a ```scheme block.
 (define (units-docs-pages)
   (filter (lambda (page)
             (call-with-input-file (string-append *schevana-root* "/" page)
@@ -73,10 +76,10 @@
                                       (string-append *schevana-root*
                                                      "/docs"))))))))
 
-;; A run of the runner's: (name topic dir env), the topic's file run by
-;; this one in a process of its own, with a folder of its own under
-;; output-dir for what it writes, what it says there too, with env's
-;; variables. Each docs page is a run of its own, as heavy as a topic.
+;; Returns the runner's runs for topic, each (name topic dir env): this
+;; file run on the topic in a process of its own, with env's variables set
+;; and a folder of its own under output-dir for what it writes, including
+;; what it prints. Each docs page is a run of its own, as heavy as a topic.
 (define (units-runs topic)
   (if (string=? topic "docs")
       (map (lambda (page)
@@ -86,8 +89,8 @@
            (units-docs-pages))
       (list (list topic topic (string-append out-dir "/" topic) '()))))
 
-;; The runs that fail, as many at once as jobs, what each said printed in
-;; the runs' order as each is done.
+;; Runs runs, jobs of them at once, printing what each one printed, in the
+;; runs' order, as each is done. Returns the names of those that failed.
 (define (units-run-all jobs runs)
   (let ([v (list->vector runs)] [failed '()])
     (for-each (lambda (r) (unless (file-directory? (caddr r))
@@ -115,22 +118,25 @@
          (unless (eqv? s 0) (set! failed (cons (car r) failed))))))
     (reverse failed)))
 
-;; All of them, or those asked for: here only the topics' verdicts.
-;; SCHEVANA_CHECK finds a check in the topics asked for: a run names one.
+;; All the topics, or those asked for, each in a run of its own; this
+;; process only gathers their verdicts. SCHEVANA_CHECK looks for a check
+;; in the topics asked for, so a run with it must name a topic.
 (when (and test-only (null? units-asked))
   (printf "SCHEVANA_CHECK needs its topic: tests/units.ss out topic\n")
   (exit 1))
 
 ;; The topics that time the world against core0's screen on the machine's
-;; clock (a forked world's frame a refresh): a machine the other topics
-;; keep busy misses refreshes, so these run after them, by themselves.
+;; clock (a forked world's frame on each refresh): a machine that the
+;; other topics keep busy misses refreshes, so these run after them, by
+;; themselves.
 (define units-alone '("fork"))
 
 ;; The hacker edition's topics, run there when none is named: those that
-;; tell the editions apart (their file names test-hacker?), and the
-;; demos', whose launchers then run as the hacker edition's programs. The
-;; rest is the library edition's: what the hacker edition changes is where
-;; the libraries' names are, which those check, and smoke uses them all.
+;; tell the editions apart (their file names test-hacker?), and the demos'
+;; topic, whose launchers then run as the hacker edition's programs. The
+;; rest run in the library edition only: what the hacker edition changes
+;; is where the libraries' names are, which those topics check, and smoke
+;; uses them all.
 (define (units-hacker-topics)
   (filter (lambda (topic)
             (or (string=? topic "demos")
@@ -175,12 +181,12 @@
 (define units-topic-file
   (format "~a/tests/units/~a.ss" *schevana-root* (car units-asked)))
 
-;; A topic of a library by itself, which needs no world, says so first:
-;; (test-focus (schevana kits complete) ...). In the library edition it
-;; runs with those libraries imported, from the tests' build, and the
-;; checks (tests/check.ss): the world is neither loaded nor booted. In the
-;; hacker edition, whose libraries are all the world's top level, it runs
-;; in the world, as any topic does.
+;; A topic of a library by itself, which needs no world, says so in its
+;; first form: (test-focus (schevana kits complete) ...). In the library
+;; edition it runs with those libraries imported from the tests' build,
+;; and with the checks (tests/check.ss): the world is neither loaded nor
+;; booted. In the hacker edition, where every library is at the world's
+;; top level, it runs in the world, as any topic does.
 (define-syntax test-focus (syntax-rules () [(_ . libraries) (void)]))
 (let ([form (call-with-input-file units-topic-file read)])
   (when (and (pair? form) (eq? (car form) 'test-focus)
@@ -198,18 +204,20 @@
 
 (load (string-append *schevana-root* "/tests/lib.ss"))
 
-;; The insets Genera's rule gives with today's fonts: its 2-pixel border
-;; and 4-pixel margin on each side, and at the bottom its label strip, the
-;; label font's line and 2, at least 14 ((schevana styles genera)).
+;; The insets that Genera's rule gives with today's fonts: its 2-pixel
+;; border and 4-pixel margin on each side, and at the bottom its label
+;; strip, the label font's line height plus 2, at least 14 ((schevana
+;; styles genera)).
 (define (test-genera-insets)
   (with-style 'genera
     (lambda ()
       (let ([label (font-line-height (theme 'genera-label-font))])
         (list 6 6 6 (+ 6 (max 14 (exact (round (+ label 2))))))))))
 
-;; Medley's: a border of 4, and above it the title strip, at least
-;; Medley's 15 pixels, the title font's line under the ink, or the title
-;; bar's setting less 15 ((schevana styles interlisp)).
+;; Medley's insets: a border of 4, and at the top the title strip plus the
+;; border's 2 pixels of ink. The strip is the largest of Medley's 15
+;; pixels, the title font's line under the ink, and the title bar's
+;; setting less 15 ((schevana styles interlisp)).
 (define (test-interlisp-insets)
   (with-style 'interlisp
     (lambda ()
@@ -218,8 +226,8 @@
 
 ;;; ------------------------------------------------------------------ images
 
-;; An image's pixels, read back from the GPU: premultiplied, a native word of
-;; B, G, R and A bytes each.
+;; An image's pixels, read back from the GPU: premultiplied, each a native
+;; word of B, G, R and A bytes.
 (define-record-type picture
   (fields bytes w h))
 
@@ -227,7 +235,7 @@
 (define (image pw ph s thunk)
   (make-picture (drawing->bytes pw ph s thunk) pw ph))
 
-;; What the last frame left on the screen.
+;; Returns what the last frame left on the screen.
 (define (shown-picture)
   (let* ([r *renderer*]
          [w (renderer-target-w r)]
@@ -235,8 +243,9 @@
          [cb (sdl-acquire-gpu-commands (renderer-device r))])
     (make-picture (gpu-read-texture! r cb (renderer-target r) w h) w h)))
 
-;; The screen as it would be drawn now: the same picture until a frame is
-;; asked for or drawn, so that reading pixel after pixel costs one drawing.
+;; Returns the screen as it would be drawn now. The picture is kept until
+;; a frame is asked for or drawn, so that reading pixel after pixel costs
+;; only one drawing.
 (define screen-picture-kept #f)
 (define screen-picture-frames -1)
 (define (screen-picture)
@@ -254,7 +263,8 @@
   (bytevector-u32-native-ref (picture-bytes p)
                              (* 4 (+ x (* y (picture-w p))))))
 
-;; What the GPU holds of a pixmap's pixels, drawn at its size: a picture.
+;; Returns a picture of what the GPU holds of a pixmap's pixels, drawn at
+;; the pixmap's size.
 (define (pixmap-picture pm)
   (image (pixmap-w pm) (pixmap-h pm) 1 (lambda () (pixmap-draw pm 0 0))))
 
@@ -313,8 +323,8 @@
 
 (define (bytes-total) (+ (bytes-allocated) (bytes-deallocated)))
 
-;; The last frame published, its bytes as the recorder holds them (tests
-;; reach inside the seal): (values recs recs-n extras extras-n).
+;; Returns the last frame published, as the bytes the recorder holds (the
+;; tests reach inside the seal): (values recs recs-n extras extras-n).
 (define (rec-last)
   (let ([r *rec-root*])
     (values (gpu-recording-recs r) (gpu-recording-recs-n r)
@@ -325,7 +335,8 @@
   (pixel-at (screen-picture) (exact (floor (* x *scale*)))
             (exact (floor (* y *scale*)))))
 
-;; thunk's result, with the styles registered meanwhile gone after it.
+;; Returns thunk's result, and afterward removes the styles registered
+;; meanwhile (and sets the style back to mac).
 (define (with-test-styles thunk)
   (let ([plain *styles*])
     (dynamic-wind void thunk
@@ -335,11 +346,11 @@
 (define (within-fuel? thunk)
   ((make-engine thunk) handler-fuel (lambda (left . r) #t) (lambda (e) #f)))
 
-;; The characters text-width is given while thunk runs.
+;; Returns how many characters text-width is given while thunk runs.
 (define (characters-measured thunk)
   (let ([n 0] [plain text-width])
-    ;; none of the top bar's status: its ms/tick and its memory change length
-    ;; as they please, and would count
+    ;; leave out the top bar's status: its ms/tick and its memory change
+    ;; length as they please, and would be counted
     (fluid-let ([*status-segments* '()] [*status-shown* '()])
       (dynamic-wind
         (lambda ()
@@ -351,13 +362,13 @@
         (lambda () (set! text-width plain))))
     n))
 
-;; words, then spaces, to n characters: "words words wo".
+;; Returns n characters of repeated "words ": "words words wo".
 (define (words-of n)
   (substring (apply string-append (make-list (+ 1 (quotient n 6)) "words "))
              0 n))
 
-;; An image's pixels as rows of characters, by colors ((pixel . char)
-;; ...); # for any other.
+;; Returns an image's pixels as rows of characters, mapped by key
+;; ((pixel . char) ...); # for any other pixel.
 (define (pixel-rows surface key)
   (let ([w (picture-w surface)]
         [h (picture-h surface)])

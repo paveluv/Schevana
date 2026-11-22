@@ -1,6 +1,6 @@
-;;; tests/units/primitives.ss — the shared drawing primitives: stipples, ink,
-;;; crisp fonts, pixel art, glyphs; and the core's that keep C away from the
-;;; folders.
+;;; tests/units/primitives.ss — the shared drawing primitives (stipples,
+;;; ink, crisp fonts, pixel art, glyphs), and the core's primitives, which
+;;; keep C out of the world's folders.
 
 ;;; shared drawing primitives: stipples, ink, crisp fonts, pixel art,
 ;;; glyphs
@@ -11,7 +11,7 @@
 (define gray-light-dark
   '((#xff808080 . #\.) (#xffffffff . #\L) (#xff000000 . #\D)))
 
-;; A bevel on gray in an 8 × 8 image at 100 %.
+;; The rows of a bevel drawn on gray in an 8 × 8 image at 100 %.
 (define (bevel-rows h n . rule)
   (pixel-rows (image 8 8 1 (lambda ()
                              (fill-box 0 0 8 8 #x808080)
@@ -20,10 +20,10 @@
               gray-light-dark))
 
 ;; Written from the sources' facts: Motif's segments (Xm/Draw.c:98-116:
-;; the top rows to the right less their depth, the left sides from the
-;; depth down, the dark sides a pixel in, drawn last) and Platinum's
-;; window edge (platinum.md 5.1: the highlight to W-3 and H-3, the shade
-;; from 2, its two off corners the face's).
+;; the top rows run to the right less their depth, the left sides run from
+;; the depth down, and the dark sides sit a pixel in and are drawn last)
+;; and Platinum's window edge (platinum.md 5.1: the highlight runs to W-3
+;; and H-3, the shade from 2, and its two off corners are the face's).
 (check "px-bevel at 1 and 2 pixels, Motif's corners: light owns them, then \
         stairs"
        (and (equal? (bevel-rows 5 1)
@@ -41,7 +41,7 @@
                       ".L.DDDD." "..DDDDD." "........"))))
 
 ;; At a fractional scale and translation (a miniature), every pixel of
-;; bevels, rings and pictures is one of their colors: none antialiased.
+;; bevels, rings and pictures is one of their colors: none is antialiased.
 (define pixel-art-roles
   (list (cons #\a #xffffff) (cons #\b #x000000) (cons #\c #xcc3333)))
 (check "at 125, 150 and 175 % every pixel of a bevel or a map is its color"
@@ -73,10 +73,10 @@
                            gray-light-dark)
                '(".LDDDD.." "......D.")))
 
-;; A stipple in two windows at odd places, at scales Settings offers and
-;; others (Xft.dpi 128 is 133 %): every device pixel their content covers
-;; whole is as px's rule places the pattern: device pixel d is logical
-;; pixel ceiling((d + 1/2)/s) - 1 (half up, a tie the lower).
+;; A stipple in two windows at odd places, at the scales Settings offers
+;; and others (Xft.dpi 128 is 133 %): every device pixel that their content
+;; covers whole is as px's rule places the pattern, where device pixel d is
+;; logical pixel ceiling((d + 1/2)/s) - 1 (half up, a tie to the lower).
 (define-style test-plain "Plain")
 (check "a stipple lines up across two windows at 100, 125, 133, 150, 165, \
         175, 200 and 270 %, every pixel of their content as px places it"
@@ -203,11 +203,12 @@
                           (iota 24)))))
         '(close minimize maximize restore shade up down left right)))
 
-;;; The core's primitives that keep C away from the folders: operators,
-;;; the device's transform and pixels, rotation, gradients as colors,
-;;; several boxes stroked at once, raw pixels, a PNG file.
+;;; The core's primitives that keep C out of the world's folders:
+;;; operators, the device's transform and pixels, rotation, gradients as
+;;; colors, several boxes stroked at once, raw pixels and a PNG file.
 
-;; thunk's pixels at (x, y) ..., drawn on a fresh w × h image at scale s.
+;; Returns the pixels at points, each (x y), of what thunk draws on a fresh
+;; w × h image at scale s.
 (define (pixels-of w h s thunk . points)
   (let* ([img (image w h s thunk)]
          [ps (map (lambda (p) (pixel-at img (car p) (cadr p))) points)])
@@ -347,7 +348,7 @@
                       '(#xffff0000 #xffff0000 #xff0000ff #xff0000ff 0))
               (begin (gpu-image-release! image) #t))))
 
-;; Stripes a pixel wide on an image that's drawn on: white, black, white...
+;; Stripes one pixel wide, drawn on a target image: white, black, white, ...
 (define (primitives-stripes n)
   (let ([target (gpu-image-make-target n n)] [plain record-world!])
     (set! record-world!
@@ -372,7 +373,7 @@
                 (apply pixels-of n n 1
                        (lambda () (draw-image stripes 0 0 n n))
                        (map (lambda (x) (list x (quotient n 2))) xs)))]
-       ;; every pixel across, all channels within a level or so of half
+       ;; every pixel across, all channels within a few levels of half
        [even? (lambda (n)
                 (for-all
                  (lambda (p)
@@ -400,9 +401,9 @@
          (for-all even? '(32 20 13 8 5)))
   (gpu-image-release! stripes))
 
-;; A list recorded once and shown: where show-list puts it, inside the
-;; clip around it, shown again elsewhere without being recorded again, and
-;; inside another list, at the sum of their places.
+;; A list recorded once and shown: it shows where show-list puts it, inside
+;; the clip around it; it shows again elsewhere without being recorded
+;; again; and inside another list it shows at the sum of their places.
 (let* ([inner (gpu-list-new)] [outer (gpu-list-new)]
        [red #xffff0000] [black #xff000000]
        [shown (lambda (thunk . points)
@@ -438,8 +439,8 @@
   (gpu-list-release! inner)
   (gpu-list-release! outer))
 
-;; Given 'gray an image's first channel shows in all three, as the glyphs'
-;; atlas of one channel does in the Pipeline.
+;; Given 'gray, an image's first channel shows in all three channels, as
+;; the glyphs' one-channel atlas does in the Pipeline.
 (let ([target (gpu-image-make-target 4 4)] [plain record-world!])
   (set! record-world!
     (lambda ()
@@ -466,9 +467,10 @@
                       '(#xffff0000 #xff0000ff))))
   (gpu-image-release! target))
 
-;; Core1 publishes a frame, core0 presents it: what core1 asked of the
-;; GPU goes with the frame, the preview's list is made on core1 as it's
-;; published, and the one frame record comes back to be filled again.
+;; Core1 publishes a frame and core0 presents it. What core1 asked of the
+;; GPU goes with the frame, the preview's list is made on core1 as the
+;; frame is published, and the one frame record comes back to be filled
+;; again.
 (let ([b (make-gpu-buffer 1)] [target (gpu-image-make-target 4 4)]
       [made #f])
   (gpu-buffer-set! b 0 7)
@@ -508,7 +510,7 @@
 
 ;; An image or a buffer is a handle with an integer id; core0 makes the SDL
 ;; object behind it from a job the next frame carries, and lets it go by
-;; another.
+;; another job.
 (let* ([b (make-gpu-buffer 1)]
        [i (gpu-image-make 2 2)]
        [has? (lambda (id) (hashtable-contains? *gpu-objects* id))]
@@ -528,8 +530,9 @@
                 (not (has? (gpu-buffer-id b)))
                 (not (has? (gpu-image-id i)))))))
 
-;; A handle nothing holds is let go of, once a collection finds it and the
-;; step's end sweeps; a list that draws an image holds it till it goes too.
+;; A handle that nothing holds is let go once a collection finds it and the
+;; step's end sweeps it; a list that draws an image holds the image until
+;; the list goes too.
 (let* ([has? (lambda (id) (hashtable-contains? *gpu-objects* id))]
        [shown? (lambda (id) (hashtable-contains? *gpu-lists* id))]
        [lst (gpu-list-new)]
@@ -537,7 +540,7 @@
                (record-list! lst (lambda () (draw-image image 0 0 2 2)))
                (gpu-image-id image))]
        [plain record-world!]
-       ;; held till they're seen made: a collection that came first would
+       ;; held until they are seen made: a collection that came first would
        ;; let go of what nothing holds before the frame that makes it
        [things (let ([b (make-gpu-buffer 4)] [i (gpu-image-make 2 2)]
                      [l (gpu-list-new)])
@@ -591,8 +594,9 @@
                      target)
              (and same changed (equal? target (cons 'texture (* 4 64 48))))))))
 
-;; A list goes up when it has a newer version than went up; core0 keeps its
-;; GPU buffers by its id, and lets them go by core1's release job.
+;; A list is uploaded when it has a newer version than the last one
+;; uploaded; core0 keeps its GPU buffers by its id, and lets them go by
+;; core1's release job.
 (let ([lst (gpu-list-new)] [plain record-world!]
       [state (lambda (l) (hashtable-ref *gpu-lists* (gpu-list-id l) #f))])
   (record-list! lst (lambda () (fill-box 0 0 4 4 #xff0000)))
@@ -618,8 +622,9 @@
                (and (= first-up 1) (not after) recorded (= second-up 2)
                     (not (state lst))))))))
 
-;; A drawing read back with a then: nothing waits for it, and its pixels come
-;; on core1 with a frame, those a drawing read back at once has.
+;; A drawing read back with a then: nothing waits for it, and its pixels
+;; come on core1 with a frame, the same pixels a drawing read back at once
+;; has.
 (let* ([draw (lambda ()
                (fill-box 0 0 2 2 #x112233)
                (fill-box 2 0 2 2 #x445566))]
@@ -641,7 +646,8 @@
          (and (<= 126 (logand (ash p -16) 255) 129)
               (<= 126 (logand p 255) 129))))
 
-;; A PNG file of stored blocks read back: (w h . the first row's bytes).
+;; Reads back a PNG file of stored blocks: (w h . the rows' bytes), each
+;; row's filter byte first.
 (define (png-file-rows path)
   (let* ([bv (call-with-port (open-file-input-port path) get-bytevector-all)]
          [w (bytevector-u32-ref bv 16 (endianness big))]

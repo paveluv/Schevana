@@ -1,12 +1,12 @@
-;;; (schevana styles slab) — the Slab window style. Neo-brutalist and toy-like.
-;;; Every window is a flat card in a thick ink outline, standing on a slab: a
-;;; solid, hard-edged copy of its outline, set off down and to the right. The
-;;; focused window is lifted high off its slab, which is the accent color, and
-;;; higher still while it is carried by its title; the others sit low on a
-;;; faint one. The title bar is flat with a bold title, and the buttons are
-;;; chunky square keys on slabs of their own: a pressed key goes down onto its
-;;; slab, like a key on a toy keyboard, and comes up again if the mouse slides
-;;; off it.
+;;; (schevana styles slab) — the Slab window style, neo-brutalist and
+;;; toy-like. Every window is a flat card in a thick ink outline, standing on
+;;; a slab: a solid, hard-edged copy of its outline, set off down and to the
+;;; right. The focused window is lifted high off its slab, which is the accent
+;;; color, and higher still while it is carried by its title; the others sit
+;;; low on a faint slab. The title bar is flat with a bold title, and the
+;;; buttons are chunky square keys on slabs of their own: a pressed key goes
+;;; down onto its slab, like a key on a toy keyboard, and comes up again if
+;;; the mouse slides off it.
 
 (library (schevana styles slab)
   (export
@@ -24,10 +24,11 @@
 
   (library-layer looks)
 
-  ;; Lines are 2 pixels at any font, as thicker ones clog the keys. Keys
-  ;; follow the title's font (18 square at the defaults, 2 above their
-  ;; slabs, 3 apart), are even so that glyphs center, and keep 3 pixels
-  ;; above and below in the bar, less in one too low for 14-pixel keys.
+  ;; Lines are 2 pixels at any font size, since thicker ones clog the keys.
+  ;; Keys follow the title's font (18 pixels square at the defaults, 2 above
+  ;; their slabs, 3 apart), have even sizes so that glyphs center, and keep
+  ;; 3 pixels above and below them in the bar, or less in a bar too low for
+  ;; that with 14-pixel keys.
   (define slab-line 2)
   (define slab-lift 8)
   (define slab-gap 3)
@@ -38,21 +39,21 @@
       (* 2 (quotient (max (min (+ (slab-font) 4) (- r 6)) (min 14 (- r 2)))
                      2))))
 
-  ;; Above and below a key with its slab, in the bar.
+  ;; The room above and below a key with its slab, in the bar.
   (define (slab-margin) (quotient (- (slab-bar) (slab-key) slab-line) 2))
 
   ;; The card leaves room on the right and below for the slab at its
-  ;; highest, so that nothing is drawn outside the window. Maximized, there
-  ;; is no slab and no outline at the screen's edges.
+  ;; highest, so that nothing is drawn outside the window. When maximized,
+  ;; there is no slab and no outline at the screen's edges.
   (define (slab-room win) (if (maximized? win) 0 slab-lift))
 
   (define (slab-insets win)
     (let ([t (if (maximized? win) 0 slab-line)] [r (slab-room win)])
       (values t (title-height) (+ t r) (+ t r))))
 
-  ;; Each button is a key, its slab and the gap after it. The last key's
-  ;; slab is as far from the outline as the keys are from the bar's top,
-  ;; and at least a gap.
+  ;; Each button's region is a key, its slab and the gap after it. The last
+  ;; key's slab is as far from the outline as the keys are from the bar's
+  ;; top, and at least a gap away.
   (define (slab-regions win)
     (let* ([p (+ (slab-key) slab-line slab-gap)]
            [x0 (- (+ (window-w win) slab-gap) (slab-room win) slab-line
@@ -60,20 +61,21 @@
       (map (lambda (kind i) (list kind (+ x0 (* i p)) 0 p (title-height)))
            '(minimize maximize close) '(0 1 2))))
 
-  ;; What shows of a slab o below and right of the box x y w h. Slab's
-  ;; boxes are fill-box's, every edge on a device pixel, so that every line
-  ;; is crisp at any scale, in the picker's half-size miniature too.
+  ;; Draws what shows of a slab set o pixels below and right of the box x y
+  ;; w h. Slab draws its boxes with fill-box, every edge on a device pixel,
+  ;; so that every line is crisp at any scale, even in the picker's
+  ;; half-size miniature.
   (define (slab-under x y w h o color)
     (fill-box (+ x w) (+ y o) o h color)
     (fill-box (+ x o) (+ y h) (- w o) o color))
 
-  ;; The title's y, its capitals centered on cy.
+  ;; Returns the title's y, with its capitals centered on cy.
   (define (slab-title-y cy)
     (let-values ([(l top w h) (text-ink "H" 'title)])
       (- (- cy (/ top 2)) (font-ascent 'title))))
 
-  ;; ×, −, a square, or (to restore) a square on its slab, 2a wide around
-  ;; the middle (cx, cy) of a key, on the key's face. The × reaches a
+  ;; Draws ×, −, a square, or (to restore) a square on its slab, 2a wide
+  ;; around the middle (cx, cy) of a key, on the key's face. The × reaches a
   ;; little past the square, so that it looks as big.
   (define (slab-glyph win kind cx cy a ink face)
     (let ([t slab-line])
@@ -135,8 +137,8 @@
 
   (at-load
    (define-style slab "Slab"
-     ;; square, and so is everything drawn in it (rrect-path!); every common
-     ;; option but the radius
+     ;; square, and so is everything drawn in it (rec-radius); it honors
+     ;; every common option but the radius
      'corner-radius 0
      'options (remq 'corner-radius (map car common-options))
      'frame-insets 'slab-insets

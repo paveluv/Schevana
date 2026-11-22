@@ -1,15 +1,16 @@
-;;; (schevana desktop main) — the desktop's start, which ./desktop
-;;; launches: it reads the command line, then core1 (on a thread of its own with
-;;; a window, core0 keeping the process's first for the screen) loads the world
-;;; and starts it (desktop-start!, (schevana desktop start)): the user's
-;;; settings, the screen, the first windows, the run till it quits.
+;;; (schevana desktop main) — the desktop's start, which ./desktop launches.
+;;; It reads the command line; then core1 (on a thread of its own when there
+;;; is a window, since core0 keeps the process's first thread for the screen)
+;;; loads the world and starts it (desktop-start!, (schevana desktop start)):
+;;; the user's settings, the screen, the first windows, and the run until it
+;;; quits.
 ;;;
 ;;;   ./desktop [--size WxH] [--fullscreen] [--headless] [--fork]
 ;;;                      [--hacker] [--eval EXPR]... [FOLDER]...
 ;;;   ./desktop --install-desktop | --uninstall-desktop
 ;;;
-;;; Each FOLDER joins the library search and loads with the world
-;;; (./desktop demo: the demos).
+;;; Each FOLDER is added to the library search and loads with the world
+;;; (./desktop demo loads the demos).
 
 (library (schevana desktop main)
   (export desktop-defaults desktop-size desktop-usage desktop-options
@@ -22,7 +23,7 @@
 
   (library-layer desktop)
 
-  ;; What a command line may ask, and what it gets when it doesn't.
+  ;; What a command line may ask for, and what it gets when it doesn't ask.
   (define desktop-defaults
     '((mode . sdl)
       (size 1280 . 800)
@@ -33,7 +34,7 @@
       (evals)
       (auto-loads)))
 
-  ;; "1280x800" => (1280 . 800); #f if it isn't a size.
+  ;; Returns (1280 . 800) for "1280x800", or #f if s isn't a size.
   (define (desktop-size s)
     (let loop ([i 0])
       (cond [(= i (string-length s)) #f]
@@ -44,7 +45,7 @@
                (and (fixnum? w) (fixnum? h) (> w 0) (> h 0) (cons w h)))]
             [else (loop (+ i 1))])))
 
-  ;; How to run it, on stderr; and the run stops.
+  ;; Prints how to run the desktop on stderr, and exits.
   (define (desktop-usage)
     (fprintf (current-error-port)
              "usage: ./desktop [--size WxH] [--fullscreen] \
@@ -53,13 +54,12 @@
               ./desktop --install-desktop | --uninstall-desktop\n")
     (exit 1))
 
-  ;; What args ask, as desktop-defaults has it: a word that isn't an
-  ;; option is a folder for the library search that loads with the world
-  ;; (auto-load!); an option it doesn't know, or a file, prints the usage
-  ;; and stops. Core1's boot is
-  ;; handed it, which the world reads as *schevana-options*. The hacker
-  ;; edition is asked by --hacker or SCHEVANA_HACKER, as src/launch.ss asks
-  ;; it.
+  ;; Returns what args ask for, in the shape of desktop-defaults. A word
+  ;; that isn't an option is a folder for the library search, which loads
+  ;; with the world (auto-load!); an unknown option, or a file, prints the
+  ;; usage and exits. Core1's boot is handed the result, which the world
+  ;; reads as *schevana-options*. The hacker edition is asked for by
+  ;; --hacker or SCHEVANA_HACKER, as src/launch.ss asks for it.
   (define (desktop-options args)
     (let loop ([args args]
                [opts (let ([v (getenv "SCHEVANA_HACKER")])
@@ -91,25 +91,25 @@
                (append (cdr (assq 'auto-loads opts)) (list (car args))))]
         [else (desktop-usage)])))
 
-  ;; A window wants the two threads, core0's for the screen and core1 for
-  ;; the world; so does --fork, with none. Installing the desktop entry
-  ;; opens no window.
+  ;; A window needs two threads, core0's for the screen and core1 for the
+  ;; world; --fork asks for both too, without a window. Installing the
+  ;; desktop entry opens no window.
   (define (desktop-fork? opts)
     (and (not (cdr (assq 'desktop opts)))
          (or (eq? (cdr (assq 'mode opts)) 'sdl) (cdr (assq 'fork? opts)))))
 
-  ;; The desktop, from the command line's args. Installing its entry
-  ;; opens no window.
-  ;; What of the world loads after the screen shows: the apps, the heaviest
-  ;; of it, Schevana's and those of a folder added, a library by the layer
-  ;; it declares, a file in an apps folder; a kit or a look, of any
-  ;; folder, loads first. The desktop opens its first apps itself
-  ;; (desktop-start!), loading them first.
+  ;; Whether a world entry loads after the screen shows. The apps, the
+  ;; heaviest part of the world, do: Schevana's and those of an added
+  ;; folder, whether a library (by the layer it declares) or a file in an
+  ;; apps folder. A kit or a look, from any folder, loads first. The desktop
+  ;; opens its first apps itself (desktop-start!), and loads those first.
   (define (desktop-later? entry)
     (if (pair? entry)
         (eq? (auto-load-layer entry) 'apps)
         (world-app-file? entry)))
 
+  ;; Starts the desktop from the command line's args. Installing its entry
+  ;; opens no window.
   (define (desktop-main args)
     (let* ([options (desktop-options args)]
            [option (lambda (key) (cdr (assq key options)))]

@@ -4,22 +4,22 @@
 ;;; message (github.com/dharmatech/2026-09-02-aloe-racket).
 ;;;
 ;;; Besides Reynolds' three rules (cohesion, alignment, separation), two
-;;; react to blockers, boids close and straight ahead: clear view steps
-;;; aside, back off steps away. They come from Gary William Flake's "The
-;;; Computational Beauty of Nature" (MIT Press, 1998), written from his
-;;; description, not copied from his (GPL) source.
+;;; more react to blockers, boids that are close and straight ahead: clear
+;;; view steps aside, and back off steps away. They come from Gary William
+;;; Flake's "The Computational Beauty of Nature" (MIT Press, 1998), written
+;;; from his description, not copied from his (GPL) source.
 ;;;
-;;; The simulation is pure: a flock is an flvector, four numbers a boid
-;;; (where it is, where it's heading), and a step makes a new one, on the
-;;; crew when the flock is big enough. The window keeps the flock and its
-;;; rules, as plain data:
+;;; The simulation is pure: a flock is an flvector with four numbers per
+;;; boid (its position and its velocity), and a step makes a new flock, on
+;;; the crew when the flock is big enough. The window keeps the flock and
+;;; its rules as plain data:
 ;;; (boid-x (window-ref win 'flock) 0)
 ;;; (window-set! win 'rules (boids-random-rules))
 ;;; R: random rules · D: the defaults · S: scatter · Space: pause
 ;;; H: the rules window, beside the flock (it closes with the flock)
 ;;;
-;;; Those names are its own, not exported: a REPL of the hacker edition
-;;; (--hacker) has them.
+;;; These names are the library's own and not exported; a REPL in the
+;;; hacker edition (--hacker) has them.
 
 (library (demo boids)
   (export boids)
@@ -46,14 +46,15 @@
   ;; ahead, 360 all around. Blockers are boids closer than blocker-radius
   ;; inside a cone straight ahead, blocker-cone degrees wide.
   ;;
-  ;; The speed limits belong to the screen, not the sim (boids-step leaves
-  ;; them out). With view-angle 180, cohesion pulls stragglers forward and
-  ;; nothing pulls the leaders back, so speed grows without bound: classic
-  ;; boids cap it. Back off, unchecked, brakes boids almost to a standstill:
-  ;; Flake's boids keep a minimum speed.
+  ;; The speed limits belong to the screen, not to the simulation
+  ;; (boids-step leaves them out). With view-angle 180, cohesion pulls
+  ;; stragglers forward and nothing pulls the leaders back, so the speed
+  ;; grows without bound; classic boids cap it. Back off, left unchecked,
+  ;; brakes boids almost to a standstill; Flake's boids keep a minimum
+  ;; speed.
   ;;
-  ;; These are the original settings: see only ahead, barely any
-  ;; separation, and the blocker rules off (their radius and cone are
+  ;; These are the original settings: boids see only ahead, separation is
+  ;; barely there, and the blocker rules are off (their radius and cone are
   ;; Flake's).
   (define boids-default-rules
     '(cohesion 0.01
@@ -91,10 +92,10 @@
       (min-speed 0.0 5.0)
       (max-speed 0.5 10.0)))
 
-  ;; Rules picked at random within their ranges. A weight is picked on a
-  ;; cube, so that small ones come up about as often as they would on a
-  ;; log scale. Max speed comes after min speed and is picked from it up,
-  ;; so the two never cross.
+  ;; Returns rules picked at random within their ranges. A weight is the
+  ;; cube of a uniform pick, so that small weights come up about as often
+  ;; as they would on a log scale. Max speed comes after min speed and is
+  ;; picked from min speed up, so the two never cross.
   (define (boids-random-rules)
     (fold-left
      (lambda (rules range)
@@ -108,8 +109,9 @@
               range))
      '() boids-ranges))
 
-  ;; Rules with key's value v, the others as they were. Min and max speed
-  ;; can't cross: setting one past the other pushes the other along.
+  ;; Returns rules with key set to v and the others as they were. Min and
+  ;; max speed can't cross: setting one past the other pushes the other
+  ;; along.
   (define (boids-set-rule rules key v)
     (define (with rules key v)
       (cond [(null? rules) (errorf 'boids-set-rule "no rule ~s" key)]
@@ -127,12 +129,12 @@
 
   ;;; ------------------------------------------------------------------ flocks
 
-  ;; The rules as a step reads them, worked out once: each rule's weight and
-  ;; reach, the squared radius, 0 for a rule without weight, so that nothing
-  ;; is in reach; the cosines of half a field of view and of half the
-  ;; blockers' cone, which is in view too: a boid can't react to what it
-  ;; can't see (all around, -inf: any heading beats it); and the longest
-  ;; reach.
+  ;; Returns the rules as a step reads them, worked out once: each rule's
+  ;; weight; the cosines of half the field of view and of half the
+  ;; blockers' cone, which is kept inside the field of view, since a boid
+  ;; can't react to what it can't see (-inf for all around, which any
+  ;; heading beats); the longest reach; and each rule's reach, its squared
+  ;; radius, or 0 for a rule without weight, so that nothing is in reach.
   (define (boids-steering rules)
     (define (rule key) (inexact (boids-rule rules key)))
     (define (reach weight radius)
@@ -156,12 +158,13 @@
              (apply max reaches)
              reaches)))
 
-  ;; Boids [lo, hi) of flock steered into next, each by everyone's current
-  ;; state: its velocity plus each rule's push times its weight, and its
-  ;; position moved by that. Every pair of boids is looked at, so the loop
-  ;; over them keeps its flonums unboxed: nothing crosses a call or sits in
-  ;; a variable a loop closes over, and what adds up lives in sums, the one
-  ;; thing a call allocates.
+  ;; Steers boids [lo, hi) of flock into next, each by the current state
+  ;; of all of them: a boid's new velocity is its velocity plus each rule's
+  ;; push times the rule's weight, and its position moves by that. Every
+  ;; pair of boids is looked at, so the loop over them keeps its flonums
+  ;; unboxed: no flonum crosses a call or sits in a variable that a loop
+  ;; closes over, and the totals live in sums, the one thing a call
+  ;; allocates.
   (define-worklet (boids-steer! lo hi flock next rules)
     (define n (fxquotient (flvector-length flock) 4))
     (define sums (make-flvector 12 0.0))
@@ -170,7 +173,8 @@
         [(_ k v) (flvector-set! sums k (fl+ (flvector-ref sums k) v))]))
     (define-syntax sum (syntax-rules () [(_ k) (flvector-ref sums k)]))
     (define-syntax rule (syntax-rules () [(_ k) (flvector-ref rules k)]))
-    ;; toward the mean of what is summed at k and k+1, over the count at c
+    ;; the push from own toward the mean of the sum at k (over the count
+    ;; at c), times the weight
     (define-syntax toward
       (syntax-rules ()
         [(_ k c own weight)
@@ -186,7 +190,7 @@
                  [dy (fl- (flvector-ref flock (fx+ o 1))
                           (flvector-ref flock (fx+ at 1)))]
                  [d2 (fl+ (fl* dx dx) (fl* dy dy))])
-            ;; not itself, and in somebody's reach: most pairs stop here
+            ;; not itself, and in some rule's reach: most pairs stop here
             (when (and (fl> d2 0.0) (fl< d2 (rule 7)))
               (let* ([vx (flvector-ref flock (fx+ at 2))]
                      [vy (flvector-ref flock (fx+ at 3))]
@@ -195,8 +199,8 @@
                      [lengths (flsqrt (fl* h2 d2))]
                      [away-x (fl- 0.0 dx)]
                      [away-y (fl- 0.0 dy)])
-                ;; in the field of view whose half-cosine is rule k: a boid
-                ;; standing still sees everything
+                ;; whether j is in the field of view whose half-cosine is
+                ;; rule k; a boid standing still sees everything
                 (let-syntax ([sees? (syntax-rules ()
                                       [(_ k)
                                        (or (fl= h2 0.0)
@@ -217,8 +221,9 @@
                   (when (fl< d2 (rule 10))
                     (add! 6 away-x)
                     (add! 7 away-y))
-                  ;; a unit step sideways out from behind each blocker:
-                  ;; square to the line between them, on the side it heads
+                  ;; a unit step sideways, out from behind each blocker: at
+                  ;; a right angle to the line between them, on the side
+                  ;; the boid heads to
                   (when (and (fl< d2 (rule 11)) (sees? 6))
                     (let* ([turn-x (fl- 0.0 away-y)]
                            [side (if (fl< (fl+ (fl* vx turn-x) (fl* vy away-x))
@@ -252,14 +257,15 @@
           (flvector-set! next (fx+ at 2) nvx)
           (flvector-set! next (fx+ at 3) nvy)))))
 
-  ;; Boids a call of the crew: at least this many pairs, about 80 µs. So a
-  ;; small flock runs on the caller alone, where waking the crew would cost
-  ;; more than it gives.
+  ;; Each call of the crew steers enough boids for at least this many
+  ;; pairs, about 80 µs. So a small flock runs on the caller alone, where
+  ;; waking the crew would cost more than it saves.
   (define boids-chunk-pairs 24000)
 
   (define (boids-chunk n) (max 1 (quotient boids-chunk-pairs (max n 1))))
 
-  ;; The next flock: every boid steered by the same current state.
+  ;; Returns the next flock: every boid is steered by the same current
+  ;; state.
   (define (boids-step flock rules)
     (let ([next (make-flvector (flvector-length flock))]
           [n (boids-size flock)])
@@ -269,9 +275,9 @@
 
   ;;; ------------------------------------------------------------------ screen
 
-  ;; Leaving one edge of a w × h screen brings a boid back on the opposite
-  ;; edge, and its speed stays within the limits; standing still, it has no
-  ;; heading, so it stays put.
+  ;; Brings each boid that leaves one edge of a w × h screen back on the
+  ;; opposite edge, and keeps each boid's speed between lo and hi; a boid
+  ;; standing still has no heading, so it stays put.
   (define (boids-keep-on-screen! flock lo hi w h)
     (do ([at 0 (fx+ at 4)]) ((fx= at (flvector-length flock)))
       (flvector-set! flock at (flmod (flvector-ref flock at) w))
@@ -291,8 +297,8 @@
             (flvector-set! flock (fx+ at 2) (fl* vx k))
             (flvector-set! flock (fx+ at 3) (fl* vy k)))))))
 
-  ;; One frame on a w × h screen: a sim step, then the speed limits and
-  ;; the wrap.
+  ;; Returns the flock one step on, on a w × h screen: a simulation step,
+  ;; then the speed limits and the wrap.
   (define (boids-step-on flock rules w h)
     (let ([next (boids-step flock rules)])
       (boids-keep-on-screen! next
@@ -302,7 +308,8 @@
                              (inexact h))
       next))
 
-  ;; n boids scattered over a w × h screen, moving in random directions.
+  ;; Returns n boids scattered over a w × h screen, moving in random
+  ;; directions.
   (define (boids-scatter n w h)
     (let ([flock (make-flvector (* 4 n))] [w (inexact w)] [h (inexact h)])
       (do ([at 0 (+ at 4)]) ((= at (* 4 n)) flock)
@@ -311,7 +318,8 @@
         (flvector-set! flock (+ at 2) (- (random 4.0) 2.0))
         (flvector-set! flock (+ at 3) (- (random 4.0) 2.0)))))
 
-  ;; n boids: the first n of flock, or all of it and random newcomers.
+  ;; Returns a flock of n boids: the first n of flock, or all of it plus
+  ;; random newcomers.
   (define (boids-resize flock n w h)
     (if (= n (boids-size flock))
         flock
@@ -323,7 +331,7 @@
   ;;; ------------------------------------------------------------------ the app
 
   ;; How often the flock steps, in ms: about 60 times a second, however
-  ;; often the window ticks.
+  ;; often the window gets a frame.
   (define boids-step-ms 15)
 
   (define boids-count 150)   ; how many a new window starts with
@@ -331,13 +339,14 @@
   (define (boids-bar-height)
     (max 26 (round (+ (font-line-height 'ui-small) 13))))
 
-  ;; The status line under the flock.
+  ;; Returns the text of the status line under the flock.
   (define (boids-status-text n step-ms running?)
     (format "~a boids   ~a   r random · d defaults · s scatter · h rules · \
              space pause"
             n (if running? (format "~,1f ms a step" step-ms) "paused")))
 
-  ;; The flock's field in win: its content above the status line.
+  ;; Returns the size of the flock's field in win: the content above the
+  ;; status line.
   (define (boids-field-size win)
     (let-values ([(w h) (window-content-size win)])
       (values w (max 1 (- h (boids-bar-height))))))
@@ -355,7 +364,7 @@
     (let-values ([(w h) (boids-field-size win)])
       (window-set! win 'flock (boids-resize (window-ref win 'flock) n w h))))
 
-  ;; A dot, with a line toward where it's heading.
+  ;; Draws boid i as a dot, with a line toward where it is heading.
   (define (draw-boid flock i)
     (let ([x (boid-x flock i)] [y (boid-y flock i)])
       (draw-line x y
@@ -375,7 +384,8 @@
             (window-set! win 'flock
               (boids-step-on (window-ref win 'flock) (window-ref win 'rules)
                              w h))
-            ;; one step's time jumps around (collections): over about 20
+            ;; one step's time jumps around (collections), so it is
+            ;; averaged over about 20 steps
             (set! step-ms (+ (* step-ms 0.95)
                              (* (/ (- (now-ns) t0) 1e6) 0.05))))))
       (define (toggle-rules! win)
@@ -416,7 +426,8 @@
                         [(#\space) (set! running? (not running?))])
                       (invalidate! win)))])
         ;; the rules show at first, as Niva's panel does. Moved to fit on
-        ;; the desktop, they'd cover the flock: it moves left to clear them.
+        ;; the desktop, the rules window would cover the flock, so the flock
+        ;; window moves left to clear it.
         (toggle-rules! win)
         (let-values ([(dx dy dw dh) (desktop-rect)])
           (let ([short (- (+ (window-x win) (window-w win) 12)
@@ -429,29 +440,31 @@
 
   ;;; ------------------------------------------------------------------
   ;;; the rules window
-  ;;; A slider for the count, for the crew's threads and for each rule, and
-  ;;; the keys' buttons. It reads and sets the flock window's properties, so
-  ;;; it shows them as they are, whoever changed them: a key, a button or the
-  ;;; REPL.
+  ;;; It has a slider for the count, one for the crew's threads and one for
+  ;;; each rule, and buttons for what the keys do. It reads and sets the
+  ;;; flock window's properties, so it shows them as they are, whoever
+  ;;; changed them: a key, a button or the REPL.
 
-  ;; A step's cost grows as the count squared, a frame's as the count. At
-  ;; 5,000, measured here, a step takes 9 ms on the crew of 8 with the default
-  ;; rules and 16 with the heaviest (both blocker rules, 360°, radii of 200);
-  ;; on a thread alone, 72 and 127. What fills the frame then is the drawing,
-  ;; one line and one circle a boid on core1: 23 ms at 100%, about
-  ;; 50 at 200%.
+  ;; A step's cost grows with the square of the count, a frame's with the
+  ;; count. At 5,000, as measured on one machine, a step takes 9 ms on a
+  ;; crew of 8 with the default rules and 16 ms with the heaviest (both
+  ;; blocker rules, 360°, radii of 200), and 72 and 127 ms on one thread
+  ;; alone. What fills the frame then is the drawing, one line and one
+  ;; circle per boid on core1: 23 ms at 100% scale, about 50 at 200%.
   (define boids-max-count 5000)
 
-  ;; A rule's name as its row shows it: cohesion-radius as cohesion radius.
+  ;; A rule's name as its row shows it: cohesion-radius becomes cohesion
+  ;; radius.
   (define (boids-setting-label key)
     (list->string (map (lambda (c) (if (char=? c #\-) #\space c))
                        (string->list (symbol->string key)))))
 
   (define (boids-weight? range) (pair? (cdddr range)))
 
-  ;; Where v sits on range's slider, from 0 to 1, and back. A weight's
-  ;; slider is a cube: its middle is an eighth of its top, so the small
-  ;; weights that matter get most of it, as on Niva's log slider.
+  ;; Where v sits on range's slider, from 0 to 1 (boids-slider-t), and
+  ;; back (boids-slider-value). A weight's slider follows a cube: its
+  ;; middle is an eighth of its top, so the small weights that matter get
+  ;; most of it, as on Niva's log slider.
   (define (boids-slider-t range v)
     (let ([t (/ (- v (cadr range)) (- (caddr range) (cadr range)))])
       (if (boids-weight? range) (expt (max t 0.0) 1/3) t)))
@@ -479,8 +492,8 @@
   (define (boids-readout-width)
     (+ 12 (text-widest '("0.0000" "1 of 48") 'ui)))
 
-  ;; The threads a step of n boids uses, as its row shows them: one while a
-  ;; step is one call of the crew.
+  ;; The threads a step of n boids uses, as its row shows them: just one
+  ;; while a step is a single call of the crew.
   (define (boids-threads-readout n)
     (let ([threads (+ 1 (crew-size))])
       (if (or (<= n (boids-chunk n)) (= threads 1))
@@ -492,15 +505,15 @@
       "Defaults (D)"
       "Scatter (S)"))
 
-  ;; As wide as the widest label's button, in the style's own.
+  ;; The width of the widest label's button, as the style sizes buttons.
   (define (boids-button-width)
     (apply max (map (lambda (label)
                       (let-values ([(w h) (ui-button-size label #f)]) w))
                     boids-buttons)))
 
-  ;; The rules window's content size: room for its rows (as
+  ;; Returns the rules window's content size: room for its rows (as
   ;; boids-draw-rules lays them out), with sliders 140 wide, and for three
-  ;; buttons as wide as the widest label.
+  ;; buttons, each as wide as the widest one.
   (define (boids-rules-size)
     (let ([pad (ui-pad)] [gap (ui-gap)] [sh (ui-slider-height)])
       (values (+ pad pad
@@ -510,8 +523,8 @@
                  (* (length boids-ranges) (+ sh gap))
                  gap (font-line-height 'ui-small) pad))))
 
-  ;; The rows, top to bottom: the count, the threads, the buttons, a slider
-  ;; for each rule, and a hint. Returns the y below them.
+  ;; Draws the rows, top to bottom: the count, the threads, the buttons, a
+  ;; slider for each rule, and a hint. Returns the y below them.
   (define (boids-draw-rules ui flock-win w)
     (let* ([pad (ui-pad)] [gap (ui-gap)] [sh (ui-slider-height)]
            [lw (boids-label-width)] [rw (boids-readout-width)]
@@ -529,7 +542,8 @@
                      (lambda (t)
                        (boids-resize! flock-win
                          (exact (round (+ 10 (* t (- boids-max-count 10))))))))]
-             ;; the crew's, for every app; the caller makes one more
+             ;; the crew's threads, shared by every app; the caller is one
+             ;; more
              [y (let ([most (- (max 2 (platform-cpu-count)) 1)])
                   (row y 'threads "threads"
                        (/ (crew-size) (inexact most))
@@ -550,7 +564,8 @@
                    (let* ([key (car range)] [v (boids-rule rules key)])
                      (row y key (boids-setting-label key)
                           (boids-slider-t range v) (boids-readout range v)
-                          ;; the rules as they are then, not as drawn
+                          ;; the rules as they are when the slider moves,
+                          ;; not as drawn
                           (lambda (t)
                             (window-set! flock-win 'rules
                               (boids-set-rule (window-ref flock-win 'rules) key
@@ -561,8 +576,9 @@
         (+ y gap (font-line-height 'ui-small) pad))))
 
   ;; Opens the rules window for the flock in flock-win, beside it and above
-  ;; it, the flock's own: raised, minimized and closed with it. Returns it;
-  ;; on-close is called when it closes. Its keys are the flock's.
+  ;; it. The rules window belongs to the flock window: it is raised,
+  ;; minimized and closed with it. Returns the rules window; on-close is
+  ;; called when it closes. Its keys go to the flock window.
   (define (boids-open-rules flock-win on-close)
     (let ([ui (make-ui)]
           [shown #f])   ; the rules, the count and the threads it last drew
@@ -591,8 +607,8 @@
                                               (window-call flock-win 'key key
                                                            mods)
                                               #t))
-                       ;; a change from elsewhere shows, and fonts grown in
-                       ;; Settings get room for the rows
+                       ;; a change made elsewhere shows, and when fonts
+                       ;; grow in Settings the rows get room
                        (list 'open (lambda (win) (window-frame-soon! win))
                              'frame (lambda (win t)
                                      (window-frame-soon! win)
@@ -604,9 +620,9 @@
           (boids-keep-on-desktop! win)
           win))))
 
-  ;; Grows win's content to at least w × h, moved left or up as far as it
-  ;; takes to stay on the desktop. It never shrinks: a size set by hand
-  ;; holds.
+  ;; Grows win's content to at least w × h, moving win left or up as far
+  ;; as it takes to stay on the desktop. It never shrinks win, so a size
+  ;; set by hand holds.
   (define (boids-grow-to! win w h)
     (let-values ([(cw ch) (window-content-size win)])
       (when (and (or (> w cw) (> h ch)) (not (shaded? win)))

@@ -1,9 +1,11 @@
 ;;; tests/units/ui-text-box.ss — the kit's text field and text area
-;;; ((schevana kits ui), ui-text-box), by themselves: typing, selecting, the
-;;; clipboard, a double click, Return, and the keyboard taken away.
+;;; ((schevana kits ui), ui-text-box), tested by themselves: typing,
+;;; selecting, the clipboard, a double click, Return, and the keyboard taken
+;;; away.
 
-;; A field and an area, each text kept where its on-change puts it, and
-;; how many times the field's Return called its on-enter.
+;; A window with a field and an area. Returns the window, a box for each
+;; one's text as its on-change last gave it, and a box that counts how many
+;; times the field's Return called its on-enter.
 (define (ui-text-box-test-window)
   (let ([field (box "")] [area (box "")] [entered (box 0)])
     (values
@@ -77,7 +79,7 @@
                 [a (car (ui-text-box-areas (ui-region-x r) (ui-region-y r)
                                            (ui-region-w r) (ui-region-h r)
                                            '(field)))]
-                ;; inside "menu", by the field's own font
+                ;; a point inside "menu", measured in the field's own font
                 [x (+ (- (list-ref a 1) (ui-region-x r))
                       (text-width "Fix the me" (list-ref a 5)))])
            (test-click! win 'f 2 'at (exact (round x)))

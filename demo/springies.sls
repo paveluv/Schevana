@@ -6,17 +6,17 @@
 ;;; are made here, in code, not read from its example files.
 ;;;
 ;;; The simulation is pure: the particles are a vector, and a step makes a
-;;; new one. The world is y-up, as XSpringies' is; only drawing flips it.
-;;; The window keeps the model, its particles, springs and settings, as
-;;; plain data:
-;;; (particle-position (vector-ref (window-ref win 'particles) 0)) => a pt
+;;; new one. The world's y axis points up, as XSpringies' does; only the
+;;; drawing flips it. The window keeps the model, its particles, springs
+;;; and settings as plain data:
+;;; (particle-position (vector-ref (window-ref win 'particles) 0)) returns a pt
 ;;; (springies-set! win 'time-step 0.002)
 ;;; 1 2 3: ball, tire, snake · R: start over · K: kick · G: gravity
 ;;; Space: pause · drag: pull a mass
 ;;; H: the controls window, beside the box (it closes with the box)
 ;;;
-;;; Those names are its own, not exported: a REPL of the hacker edition
-;;; (--hacker) has them.
+;;; These names are the library's own and not exported; a REPL in the
+;;; hacker edition (--hacker) has them.
 
 (library (demo springies)
   (export springies)
@@ -44,26 +44,30 @@
 
   ;;; ---------------------------------------------------------------- particles
 
-  ;; A point mass: where it is, how it moves, its mass, and how much of its
-  ;; speed it keeps when it bounces off a wall (1.0 all of it, 0.0 none).
+  ;; A point mass: its position, its velocity, its mass, and how much of
+  ;; its speed it keeps when it bounces off a wall (1.0 all of it, 0.0
+  ;; none).
   (define-record-type particle
     (nongenerative schevana-springies-particle)
     (fields position velocity mass elasticity))
 
-  ;; Its size on the screen and against the walls: the heavier, the bigger.
+  ;; A particle's radius, on the screen and against the walls: the
+  ;; heavier, the bigger.
   (define (particle-radius p) (* 3.0 (sqrt (particle-mass p))))
 
-  ;; Past a wall of the w × h box, a particle is put back on it, and if it
-  ;; was moving out it turns back. Either way it keeps its elasticity of
-  ;; its speed, across the wall and along it (the loss along is friction).
+  ;; Returns p put back on the wall when it is past a wall of the w × h
+  ;; box, and turned back if it was moving out. Either way it keeps the
+  ;; part of its speed its elasticity says, across the wall and along it
+  ;; (the loss along the wall is friction).
   (define (particle-bounce p w h)
     (let* ([r (particle-radius p)] [e (particle-elasticity p)]
            [x (pt-x (particle-position p))] [y (pt-y (particle-position p))]
            [vx (pt-x (particle-velocity p))] [vy (pt-y (particle-velocity p))]
            [side? (or (< x r) (> x (- w r)))]
            [floor? (or (< y r) (> y (- h r)))])
-      ;; a coordinate c moving at v, put back between lo and hi, and v
-      ;; turned back if it was taking c farther out
+      ;; inside puts a coordinate c back between lo and hi; back scales
+      ;; c's velocity v by the elasticity, turned back if v was taking c
+      ;; farther out
       (define (inside c lo hi) (max lo (min hi c)))
       (define (back c v lo hi)
         (if (or (and (< c lo) (< v 0.0)) (and (> c hi) (> v 0.0)))
@@ -79,15 +83,17 @@
 
   ;;; ------------------------------------------------------------------ springs
 
-  ;; A spring between two particles, by their place in the vector: how stiff
-  ;; it is (Hooke's k), how much it damps, and its length at rest.
+  ;; A spring between two particles, given by their indexes in the vector:
+  ;; how stiff it is (Hooke's k), how much it damps, and its length at
+  ;; rest.
   (define-record-type spring
     (nongenerative schevana-springies-spring)
     (fields a b stiffness damping rest-length))
 
-  ;; The force spring s pulls its particle a with (b feels the opposite):
-  ;; Hooke's, along the spring, and damping, against how fast its ends move
-  ;; apart along it. A spring of no length has no direction: no force.
+  ;; Returns the force with which spring s pulls its particle a (b feels
+  ;; the opposite): Hooke's force along the spring, plus damping against
+  ;; how fast its ends move apart along it. A spring of no length has no
+  ;; direction, so it gives no force.
   (define (spring-force s particles)
     (let* ([a (vector-ref particles (spring-a s))]
            [b (vector-ref particles (spring-b s))]
@@ -104,15 +110,15 @@
                             (* (spring-damping s) apart)))
                       len))))))
 
-  ;; A spring from a point that holds still to a particle, by its place in
-  ;; the vector, of no length at rest: how the pointer holds a particle. It
-  ;; goes among the springs.
+  ;; A spring of no length at rest, from a point that holds still to a
+  ;; particle (given by its index in the vector): it is how the pointer
+  ;; holds a particle. It goes in the list of springs.
   (define-record-type tether
     (nongenerative schevana-springies-tether)
     (fields particle point stiffness damping))
 
-  ;; The force tether t pulls its particle with: toward its point, damped
-  ;; against the particle's velocity.
+  ;; Returns the force with which tether t pulls its particle: toward its
+  ;; point, damped against the particle's velocity.
   (define (tether-force t particles)
     (let ([p (vector-ref particles (tether-particle t))])
       (pt- (pt* (pt- (tether-point t) (particle-position p))
@@ -121,12 +127,13 @@
 
   ;;; ------------------------------------------------------------------ motion
   ;;; A state is the particles, a vector of them. Runge-Kutta needs states
-  ;;; to add and scale, as vectors do, and a state's rate of change to be a
-  ;;; state too: so it is, each particle's position changing at its
-  ;;; velocity, its velocity at its acceleration.
+  ;;; that add and scale as vectors do, and a state's rate of change must
+  ;;; be a state too. So it is: in a rate, each particle's position is its
+  ;;; velocity, and its velocity is its acceleration.
 
-  ;; The springs' forces on each particle, summed: a vector like particles.
-  ;; A tether among the springs pulls its one particle.
+  ;; Returns the springs' forces on each particle, summed, as a vector
+  ;; like particles. A tether among the springs pulls only its one
+  ;; particle.
   (define (springies-forces particles springs)
     (let ([forces (make-vector (vector-length particles) pt-zero)])
       (define (push! i f) (vector-set! forces i (pt+ (vector-ref forces i) f)))
@@ -139,8 +146,9 @@
                 springs)
       forces))
 
-  ;; How the particles change. Gravity is an acceleration, so it pulls
-  ;; light and heavy alike; a spring's force moves a light particle more.
+  ;; Returns the particles' rate of change. Gravity is an acceleration, so
+  ;; it pulls light and heavy particles alike; a spring's force moves a
+  ;; light particle more.
   (define (springies-rate particles springs gravity)
     (vector-map (lambda (p f)
                   (make-particle (particle-velocity p)
@@ -149,7 +157,7 @@
                 particles (springies-forces particles springs)))
 
   ;; States add and scale through their positions and velocities; mass and
-  ;; elasticity ride along.
+  ;; elasticity are carried along unchanged.
   (define (particle+ p q)
     (make-particle (pt+ (particle-position p) (particle-position q))
                    (pt+ (particle-velocity p) (particle-velocity q))
@@ -164,8 +172,8 @@
 
   (define (state* s k) (vector-map (lambda (p) (particle* p k)) s))
 
-  ;; The state h seconds on from s, by the classic fourth-order Runge-Kutta:
-  ;; rate gives a state's rate of change.
+  ;; Returns the state h seconds after s, by the classic fourth-order
+  ;; Runge-Kutta method; rate gives a state's rate of change.
   (define (springies-rk4 rate s h)
     (let* ([k1 (rate s)]
            [k2 (rate (state+ s (state* k1 (/ h 2.0))))]
@@ -174,7 +182,8 @@
       (state+ s (state* (state+ k1 (state* k2 2.0) (state* k3 2.0) k4)
                         (/ h 6.0)))))
 
-  ;; The particles dt seconds on, in a w × h box: Runge-Kutta, then the walls.
+  ;; Returns the particles dt seconds on, in a w × h box: a Runge-Kutta
+  ;; step, then the walls.
   (define (springies-step particles springs gravity dt w h)
     (vector-map (lambda (p) (particle-bounce p w h))
                 (springies-rk4 (lambda (s) (springies-rate s springs gravity))
@@ -182,17 +191,19 @@
 
   ;;; ----------------------------------------------------------------- settings
 
-  ;; How a model runs, as a plist: gravity's pull, down, in pixels a second
-  ;; squared (980: a pixel a centimeter), whether it is on, the time a step
-  ;; takes, in seconds, and how many steps a frame makes. A frame comes
-  ;; about 60 times a second, so 4 steps of 1/240 s keep the time real:
+  ;; How a model runs, as a plist: gravity's pull downward, in pixels per
+  ;; second squared (980 makes a pixel a centimeter), whether gravity is
+  ;; on, the time a step covers, in seconds, and how many steps a frame
+  ;; makes. A frame comes about 60 times a second, so 4 steps of about
+  ;; 1/240 s each keep the time real:
   ;; (gravity 980.0 gravity? #t time-step 0.004 steps 4)
 
   (define (springies-setting settings key)
     (let ([at (memq key settings)])
       (if at (cadr at) (errorf 'springies-setting "no setting ~s" key))))
 
-  ;; Settings with key's value v, the others as they were, in their order.
+  ;; Returns settings with key set to v and the others as they were, in
+  ;; their order.
   (define (springies-set-setting settings key v)
     (cond [(null? settings) (errorf 'springies-set-setting "no setting ~s" key)]
           [(eq? (car settings) key) (cons* key v (cddr settings))]
@@ -204,7 +215,8 @@
         (make-pt 0.0 (- (springies-setting settings 'gravity)))
         pt-zero))
 
-  ;; One frame in a w × h box: the settings' steps.
+  ;; Returns the particles one frame on, in a w × h box: as many steps as
+  ;; the settings ask for.
   (define (springies-frame particles springs settings w h)
     (let ([g (springies-gravity settings)]
           [dt (springies-setting settings 'time-step)])
@@ -214,8 +226,9 @@
             (loop (springies-step ps springs g dt w h) (- n 1))))))
 
   ;;; ------------------------------------------------------------------ models
-  ;;; Each made in code to fit a w × h box: particles placed by geometry, and
-  ;;; springs between them, each at rest at the length it starts at.
+  ;;; Each model is made in code to fit a w × h box: particles placed by
+  ;;; geometry, and springs between them, each at rest at the length it
+  ;;; starts with.
 
   ;; A model as it starts: its particles, its springs, and the settings it
   ;; runs best with.
@@ -223,16 +236,16 @@
     (nongenerative schevana-springies-model)
     (fields particles springs settings))
 
-  ;; n points evenly around a circle of radius r about c.
+  ;; Returns n points spaced evenly around a circle of radius r about c.
   (define (springies-ring c r n)
     (map (lambda (i)
            (let ([a (/ (* 2.0 pi i) n)])
              (pt+ c (make-pt (* r (cos a)) (* r (sin a))))))
          (iota n)))
 
-  ;; Particles of mass m and elasticity e at points, moving as one body
-  ;; would: at velocity v, and turning about c at spin radians a second,
-  ;; counterclockwise.
+  ;; Returns particles of mass m and elasticity e at points, moving as one
+  ;; body would: at velocity v, and turning about c at spin radians a
+  ;; second, counterclockwise.
   (define (springies-body points c v spin m e)
     (map (lambda (q)
            (let ([r (pt- q c)])
@@ -242,8 +255,9 @@
                             m e)))
          points))
 
-  ;; Springs of stiffness k and damping d between particles, one for each
-  ;; pair of indexes (a b), at rest at the length they start at.
+  ;; Returns springs of stiffness k and damping d between particles, one
+  ;; for each pair of indexes (a b), each at rest at the length it starts
+  ;; with.
   (define (springies-springs particles pairs k d)
     (map (lambda (pair)
            (let ([a (car pair)] [b (cadr pair)])
@@ -254,11 +268,12 @@
                                          (vector-ref particles b)))))))
          pairs))
 
-  ;; The pairs that brace a ladder of k rungs, its rails the particles from
-  ;; index a and from index b: each joined to the next along its rail and
-  ;; to the one across its rung, and two braces crossing each square
-  ;; between rungs, so it holds its shape. Closed, the last rung's square
-  ;; reaches back to the first: two rings make a band.
+  ;; Returns the pairs that brace a ladder of k rungs, whose rails are the
+  ;; particles from index a and from index b: each particle is joined to
+  ;; the next along its rail and to the one across its rung, and two braces
+  ;; cross each square between rungs, so the ladder holds its shape. When
+  ;; closed?, the last rung's square reaches back to the first, so two
+  ;; rings make a band.
   (define (springies-ladder a b k closed?)
     (define (next i) (mod (+ i 1) k))
     (apply append
@@ -272,12 +287,12 @@
                             '())))
                 (iota k))))
 
-  ;; A velocity of up to speed along each axis, either way.
+  ;; Returns a random velocity of up to speed along each axis, either way.
   (define (springies-random-velocity speed)
     (make-pt (- (random (* 2.0 speed)) speed) (- (random (* 2.0 speed)) speed)))
 
-  ;; The particles kicked: all pushed one random way, and each a little its
-  ;; own way too, so the body flies off wobbling.
+  ;; Returns the particles kicked: all pushed one random way, and each a
+  ;; little its own way too, so the body flies off wobbling.
   (define (springies-kick particles)
     (let ([push (springies-random-velocity 400.0)])
       (vector-map (lambda (p)
@@ -288,8 +303,9 @@
                                    (particle-mass p) (particle-elasticity p)))
                   particles)))
 
-  ;; A ball: a band between two rings of 12, the inner half the outer's
-  ;; size. Stiff and bouncy, thrown up and to the right, spinning.
+  ;; A ball: a band between two rings of 12, the inner one half the
+  ;; outer's size. It is stiff and bouncy, thrown up and to the right, and
+  ;; spinning.
   (define (springies-ball w h)
     (let* ([n 12] [r (/ (min w h) 7.0)] [c (make-pt (* w 0.3) (* h 0.5))]
            [particles
@@ -305,11 +321,12 @@
          time-step 0.004
          steps 4))))
 
-  ;; A tire: its tread a band between two rings of 16, and a heavy hub at
-  ;; the center on a spoke to each particle of the inner ring. The tread is
-  ;; softer than the spokes and grips (a bounce keeps half the speed); it is
-  ;; thick, the inner ring 0.6 the outer's size: at 0.75 the hub's landing
-  ;; folds it. Dropped rolling to the right: spinning as fast as it moves.
+  ;; A tire: its tread is a band between two rings of 16, with a heavy hub
+  ;; at the center on a spoke to each particle of the inner ring. The tread
+  ;; is softer than the spokes and grips (a bounce keeps half the speed).
+  ;; It is thick, the inner ring 0.6 of the outer's size: at 0.75 the hub's
+  ;; landing folds it. It is dropped rolling to the right, spinning as fast
+  ;; as it moves.
   (define (springies-tire w h)
     (let* ([n 16] [r (/ (min w h) 6.0)] [c (make-pt (* w 0.2) (* h 0.6))]
            [v (make-pt 200.0 0.0)] [spin (/ -200.0 r)]
@@ -333,13 +350,14 @@
          steps 5))))
 
   ;; A snake: a ladder of 12 rungs, each half again as long as the gap
-  ;; between them. No gravity, and a kick to set it going, so it floats and
-  ;; writhes; a bounce keeps all its speed.
+  ;; between them. It has no gravity and gets a kick to set it going, so it
+  ;; floats and writhes; a bounce keeps all its speed.
   ;;
   ;; A body of springs can fold: a square's rails cross, and it stays
-  ;; inside out. Whipped against a wall, a soft snake (600) folded in half
-  ;; the runs; this one, stiffer, wider and shorter, in none left alone,
-  ;; though a hard yank by the pointer can still fold it (R starts over).
+  ;; inside out. Whipped against a wall, a soft snake (stiffness 600)
+  ;; folded in half of the runs; this one, stiffer, wider and shorter,
+  ;; folded in none when left alone, though a hard yank by the pointer can
+  ;; still fold it (R starts over).
   (define (springies-snake w h)
     (let* ([k 12] [gap (/ (min w h) 20.0)] [half-rung (* gap 0.75)]
            [x0 (- (/ w 2.0) (* gap (- k 1) 0.5))] [y (/ h 2.0)]
@@ -365,7 +383,7 @@
       tire
       snake))
 
-  ;; The model named name, made to fit a w × h box.
+  ;; Returns the model named name, made to fit a w × h box.
   (define (springies-build name w h)
     (case name
       [(ball) (springies-ball w h)]
@@ -375,13 +393,13 @@
 
   ;;; ------------------------------------------------------------------ the app
 
-  ;; How often a frame steps, in ms: about 60 times a second, however often
-  ;; the window's frames come.
+  ;; How often the model moves on by a frame (springies-frame), in ms:
+  ;; about 60 times a second, however often the window gets a frame.
   (define springies-step-ms 15)
 
-  ;; The springs as lines, then the particles over them as dots, and the
-  ;; pointer's tether, if it holds one. The box is h high: the world is
-  ;; y-up, the screen y-down.
+  ;; Draws the springs as lines, then the particles over them as dots, and
+  ;; the pointer's tether if it holds one. The box is h high: the world's
+  ;; y axis points up, the screen's down.
   (define (draw-springies particles springs tether h)
     (define (at q) (values (pt-x q) (- h (pt-y q))))
     (define (particle-at i) (at (particle-position (vector-ref particles i))))
@@ -400,8 +418,8 @@
         (draw-line x1 y1 x2 y2 'accent 1.5)
         (fill-circle x2 y2 3 'accent))))
 
-  ;; The particle in particles nearest q, by its place, if one is within
-  ;; reach of it.
+  ;; Returns the index of the particle nearest to q, if one is within
+  ;; reach of it, or else #f.
   (define (springies-nearest particles q reach)
     (let loop ([i 0] [best #f] [best-d reach])
       (if (= i (vector-length particles))
@@ -413,16 +431,17 @@
                 (loop (+ i 1) best best-d))))))
 
   ;; How the pointer holds particle i at q: stiff enough to lift the ball a
-  ;; hand's breadth under it (its weight stretches the tether 94 pixels),
-  ;; and damped well past swinging. Stiffer, or less damped, a quick drag
-  ;; sends the model flying into the walls, where the snake folds: at 2000
-  ;; and 20 it folded in 8 drags of 9, at 500 and 100 in 2.
+  ;; hand's breadth under it (the ball's weight stretches the tether 47
+  ;; pixels), and damped well past swinging. With a stiffer or less damped
+  ;; tether, a quick drag sends the model flying into the walls, where the
+  ;; snake folds: at stiffness 2000 and damping 20 it folded in 8 drags of
+  ;; 9, and at 500 and 100 (the values here) in 2.
   (define (springies-pointer-tether i q) (make-tether i q 500.0 100.0))
 
   (define (springies-bar-height)
     (max 26 (round (+ (font-line-height 'ui-small) 13))))
 
-  ;; The status line under the box.
+  ;; Returns the text of the status line under the box.
   (define (springies-status-text model particles springs gravity? frame-ms
                                  running?)
     (format "~a: ~a masses, ~a springs~a   ~a   1 2 3 model · r reset · \
@@ -432,19 +451,21 @@
             (if gravity? "" ", no gravity")
             (if running? (format "~,1f ms a frame" frame-ms) "paused")))
 
-  ;; The box in win: its content above the status line.
+  ;; Returns the size of the box in win: the content above the status
+  ;; line.
   (define (springies-box-size win)
     (let-values ([(w h) (window-content-size win)])
       (values w (max 1 (- h (springies-bar-height))))))
 
-  ;; The point in the world at x, y in win's content: y flipped.
+  ;; Returns the point in the world at x, y in win's content, with y
+  ;; flipped.
   (define (springies-world-point win x y)
     (let-values ([(w h) (springies-box-size win)])
       (make-pt (inexact x) (inexact (- h y)))))
 
-  ;; What the keys do to the model in win. Choosing a model brings its
-  ;; settings; Reset starts the model over and keeps them. Either lets go
-  ;; of what the pointer held.
+  ;; What the keys do to the model in win. Choosing a model brings in its
+  ;; settings; resetting starts the model over and keeps the settings.
+  ;; Either one lets go of what the pointer held.
   (define (springies-choose! win name)
     (let-values ([(w h) (springies-box-size win)])
       (let ([model (springies-build name w h)])
@@ -462,8 +483,8 @@
         (window-set! win 'tether #f))))
 
   ;; What the mouse does: a press within 50 pixels of a particle holds the
-  ;; nearest on the pointer's tether, which follows the pointer until the
-  ;; button comes up.
+  ;; nearest one on the pointer's tether, which follows the pointer until
+  ;; the button comes up.
   (define (springies-grab! win x y)
     (let* ([q (springies-world-point win x y)]
            [i (springies-nearest (window-ref win 'particles) q 50.0)])
@@ -562,8 +583,9 @@
                'mouse-up (lambda (win x y button)
                            (when (eq? button 'left) (springies-let-go! win))))])
         (springies-choose! win 'ball)
-        ;; the controls show at first. Moved to fit on the desktop, they'd
-        ;; cover the box: it moves left to clear them.
+        ;; the controls show at first. Moved to fit on the desktop, the
+        ;; controls window would cover the box, so the box window moves left
+        ;; to clear it.
         (toggle-controls! win)
         (let-values ([(dx dy dw dh) (desktop-rect)])
           (let ([short (- (+ (window-x win) (window-w win) 12)
@@ -576,10 +598,11 @@
 
   ;;; ------------------------------------------------------------------
   ;;; the controls window
-  ;;; Beside the box, as Boids' rules are beside the flock: a model to
-  ;;; choose, the keys' buttons and switches, and sliders for the time. It
-  ;;; reads and sets the box window's properties, so it shows them as they
-  ;;; are, whoever changed them: a key, a button or the REPL.
+  ;;; It sits beside the box, as Boids' rules sit beside the flock, with
+  ;;; buttons to choose a model, buttons and switches for what the keys do,
+  ;;; and sliders for the time. It reads and sets the box window's
+  ;;; properties, so it shows them as they are, whoever changed them: a
+  ;;; key, a button or the REPL.
 
   ;; The sliders' settings, their ranges and the labels of their rows. The
   ;; time step stops at 10 ms: at 15 the ball and the tire blow up.
@@ -592,7 +615,8 @@
       [(time-step) (format "~,1f ms" (* v 1000.0))]
       [else (format "~a" v)]))
 
-  ;; A slider's value v as its setting key holds it: steps are whole.
+  ;; Returns a slider's value v as setting key holds it: steps are whole
+  ;; numbers.
   (define (springies-slider-value key v)
     (if (eq? key 'steps) (exact (round v)) v))
 
@@ -614,10 +638,10 @@
 
   (define (springies-readout-width) (+ 12 (text-width "00.0 ms" 'ui)))
 
-  ;; The controls window's content size: room for its rows, as
-  ;; springies-draw-controls lays them out, with sliders 140 wide, and its
-  ;; buttons and switches as wide as the widest of their row, in the
-  ;; style's own sizes.
+  ;; Returns the controls window's content size: room for its rows, as
+  ;; springies-draw-controls lays them out, with sliders 140 wide, and for
+  ;; its buttons and switches, each as wide as the widest in its row, in
+  ;; the style's own sizes.
   (define (springies-controls-size)
     (let ([pad (ui-pad)] [gap (ui-gap)] [sh (ui-slider-height)]
           [ch (ui-control-height)])
@@ -637,15 +661,15 @@
                  (* (length springies-ranges) (+ sh gap))
                  gap (font-line-height 'ui-small) pad))))
 
-  ;; The rows, top to bottom: the models, the buttons, the switches, a
-  ;; slider for each range, and a hint. Returns the y below them.
+  ;; Draws the rows, top to bottom: the models, the buttons, the switches,
+  ;; a slider for each range, and a hint. Returns the y below them.
   (define (springies-draw-controls ui box-win w)
     (let* ([pad (ui-pad)] [gap (ui-gap)] [sh (ui-slider-height)]
            [ch (ui-control-height)]
            [lw (springies-label-width)] [rw (springies-readout-width)]
            [settings (window-ref box-win 'settings)])
-      ;; widgets side by side across the row at y, as wide as each other:
-      ;; (draw x y w) each
+      ;; draws widgets side by side across the row at y, all of one
+      ;; width, calling each as (draw x y w)
       (define (in-a-row y draws)
         (let* ([n (length draws)]
                [cw (/ (- w pad pad (* gap (- n 1))) n)])
@@ -692,9 +716,10 @@
                        '(hint) "h hides this window · drag a mass to pull it")
         (+ y gap (font-line-height 'ui-small) pad))))
 
-  ;; Opens the controls window for the model in box-win, beside it and above
-  ;; it, the box's own: raised, minimized and closed with it. Returns it;
-  ;; on-close is called when it closes. Its keys are the box's.
+  ;; Opens the controls window for the model in box-win, beside it and
+  ;; above it. The controls window belongs to the box window: it is raised,
+  ;; minimized and closed with it. Returns the controls window; on-close is
+  ;; called when it closes. Its keys go to the box window.
   (define (springies-open-controls box-win on-close)
     (let ([ui (make-ui)]
           [shown #f])   ; what it last drew
@@ -721,8 +746,8 @@
                                               (window-call box-win 'key key
                                                            mods)
                                               #t))
-                       ;; a change from elsewhere shows, and fonts grown in
-                       ;; Settings get room for the rows
+                       ;; a change made elsewhere shows, and when fonts
+                       ;; grow in Settings the rows get room
                        (list 'open (lambda (win) (window-frame-soon! win))
                              'frame (lambda (win t)
                                       (window-frame-soon! win)
@@ -735,9 +760,10 @@
           (springies-keep-on-desktop! win)
           win))))
 
-  ;; Grows win's content to at least w × h, moved left or up as far as it
-  ;; takes to stay on the desktop. It never shrinks: a size set by hand
-  ;; holds. Boids' rules window grows the same way (boids-grow-to!).
+  ;; Grows win's content to at least w × h, moving win left or up as far
+  ;; as it takes to stay on the desktop. It never shrinks win, so a size
+  ;; set by hand holds. Boids' rules window grows the same way
+  ;; (boids-grow-to!).
   (define (springies-grow-to! win w h)
     (let-values ([(cw ch) (window-content-size win)])
       (when (and (or (> w cw) (> h ch)) (not (shaded? win)))

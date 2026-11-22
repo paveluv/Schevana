@@ -1,5 +1,5 @@
-;;; (demo sketch) — freehand drawing. Strokes are plain Scheme data:
-;;; (window-ref win 'strokes) => ((color width (x . y) ...) ...)
+;;; (demo sketch) — freehand drawing. The strokes are plain Scheme data:
+;;; (window-ref win 'strokes) returns ((color width (x . y) ...) ...).
 
 (library (demo sketch)
   (export sketch)

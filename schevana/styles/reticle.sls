@@ -1,12 +1,12 @@
-;;; (schevana styles reticle) — the Reticle window style. A viewfinder locking
-;;; onto its target: four L-shaped brackets in the accent color stand off a few
+;;; (schevana styles reticle) — the Reticle window style: a viewfinder locking
+;;; onto its target. Four L-shaped brackets in the accent color stand off a few
 ;;; pixels from the focused window's corners, the way a camera or a heads-up
 ;;; display frames what it has acquired. Every window is a plain card with a
 ;;; hairline edge, and the unfocused ones keep only that and recede. The title
 ;;; is a label in small letter-spaced capitals at the top left, like the
-;;; wallpaper's name; the buttons are glyphs at the top right, maximize drawn
-;;; as the brackets themselves, and the mouse locks onto a button with brackets
-;;; of its own.
+;;; wallpaper's name; the buttons are glyphs at the top right, with maximize
+;;; drawn as the brackets themselves, and the mouse locks onto a button with
+;;; brackets of its own.
 
 (library (schevana styles reticle)
   (export
@@ -24,8 +24,8 @@
 
   (library-layer looks)
 
-  (define reticle-margin 5)   ; around the card: the brackets, then air
-  (define reticle-pad 10)     ; from the card's edge to the title, the glyphs
+  (define reticle-margin 5)   ; the room around the card: the brackets, then air
+  (define reticle-pad 10)     ; from the card's edge to the title or the glyphs
   (define reticle-font 'ui-small)
 
   (define (reticle-insets win)   ; the card's hairline is chrome too
@@ -35,22 +35,23 @@
   ;; is drawn scaled down.
   (define (reticle-k) (draw-scale))
 
-  ;; Whole device pixels, so that lines are crisp at any scale: v to the
-  ;; nearest one (or by floor or ceiling, to stay inside a box), and a
-  ;; weight of n pixels, at least n device pixels.
+  ;; Whole device pixels, so that lines are crisp at any scale: reticle-snap
+  ;; moves v to the nearest one (or by floor or ceiling, to stay inside a
+  ;; box), and reticle-px makes a weight of n pixels at least n device
+  ;; pixels.
   (define (reticle-snap v . how)
     (let ([k (reticle-k)]) (/ ((if (pair? how) (car how) round) (* v k)) k)))
   (define (reticle-px n) (let ([k (reticle-k)]) (/ (max n (floor (* n k))) k)))
 
-  ;; A glyph's box at k device pixels per pixel: about the capitals' height,
-  ;; in whole device pixels, odd under 1-pixel lines and even under 2-pixel
-  ;; ones, so that the lines run through its middle.
+  ;; Returns a glyph's box size at k device pixels per pixel: about the
+  ;; capitals' height, in whole device pixels, odd for 1-pixel lines and
+  ;; even for 2-pixel ones, so that the lines run through its middle.
   (define (reticle-glyph k)
     (let ([s (font-size (get-font reticle-font))])
       (/ (+ (max 1 (floor k)) (* 2 (floor (* 2/5 s k)))) k)))
 
-  ;; Cells around the glyphs. The last glyph ends as far from the card's
-  ;; right edge as the title starts from its left.
+  ;; The buttons' cells, around the glyphs. The last glyph ends as far from
+  ;; the card's right edge as the title starts from its left.
   (define (reticle-regions win)
     (let* ([g (reticle-glyph 1)] [c (max 18 (+ g 10))]
            [x (- (window-w win) reticle-margin 1 reticle-pad
@@ -58,7 +59,7 @@
       (map (lambda (kind i) (list kind (- x (* i c)) 0 c (title-height)))
            '(minimize maximize close) '(2 1 0))))
 
-  ;; (values baseline middle): the baseline that centers the label's
+  ;; Returns (values baseline middle): the baseline that centers the label's
   ;; capitals on cy, and the capitals' middle.
   (define (reticle-caps cy)
     (let*-values ([(l top w h) (text-ink "H" reticle-font)]
@@ -69,8 +70,8 @@
   (define (reticle-track)   ; between capitals: a sixth of the font's size
     (reticle-snap (/ (font-size (get-font reticle-font)) 6)))
 
-  ;; The title in capitals, cut with an ellipsis to fit in room when spaced;
-  ;; no title stays none, even where no room is left.
+  ;; Returns the title in capitals, cut with an ellipsis to fit in room once
+  ;; letter-spaced; an empty title stays empty, even where no room is left.
   (define (reticle-label title room)
     (let ([t (reticle-track)])
       (if (string=? title "")
@@ -85,10 +86,10 @@
                    (+ (draw-text x y (string c) color reticle-font) t))
                  (reticle-snap x) (string->list s))))
 
-  ;; Brackets on the corners of the box (x y w h), arms a long (at most
-  ;; half the box) and lw thick, on whole device pixels inside it. Each
-  ;; lies along two sides of its corner's a-square: the outer sides, or the
-  ;; inner ones when turned in.
+  ;; Draws brackets on the corners of the box (x y w h), with arms a long (at
+  ;; most half the box) and lw thick, on whole device pixels inside the box.
+  ;; Each bracket lies along two sides of its corner's a-square: the outer
+  ;; sides, or the inner ones when turned in (in?).
   (define (reticle-corners x y w h a lw color in?)
     (let* ([lw (reticle-px lw)] [a (reticle-snap (min a (/ w 2) (/ h 2)))]
            [x0 (reticle-snap x ceiling)] [y0 (reticle-snap y ceiling)]
@@ -101,9 +102,10 @@
                 (list x0 x1 x0 x1) (list y0 y0 y1 y1)
                 '(#t #f #t #f) '(#t #t #f #f))))
 
-  ;; −, ×, or the brackets (turned in to restore) in the g box at (x, y).
-  ;; Under the mouse, brackets d out lock onto the glyph, closing in while
-  ;; it is pressed; maximize's own brackets grow out to where they would be.
+  ;; Draws −, ×, or the brackets (turned in, to restore) in the g box at (x,
+  ;; y). Under the mouse, brackets d pixels out lock onto the glyph, closing
+  ;; in while it is pressed; maximize's own brackets grow out to where those
+  ;; would be.
   (define (reticle-draw-button win kind x y g d focused? hover pressed)
     (let* ([down? (eq? pressed kind)] [hot? (or down? (eq? hover kind))]
            [d (cond [down? (max 1 (- d 2))] [hot? d] [else 0])]
@@ -129,7 +131,7 @@
 
   (define (reticle-draw-under win x y w h focused? hover pressed)
     ;; The title row runs from under the card's hairline (from the frame's
-    ;; top, maximized) down to the content.
+    ;; top, when maximized) down to the content.
     (let*-values ([(m) reticle-margin] [(th) (title-height)]
                   [(top) (if (maximized? win) 0 (+ m 1))]
                   [(g) (reticle-glyph (reticle-k))] [(bs) (reticle-regions win)]
@@ -168,8 +170,8 @@
   ;; Scroll bars show while the pointer is over what they scroll.
   (at-load
    (define-style reticle "Reticle"
-     ;; square, and so is everything drawn in it (rrect-path!); every common
-     ;; option but the radius
+     ;; square, and so is everything drawn in it (rec-radius); it honors
+     ;; every common option but the radius
      'corner-radius 0
      'options (remq 'corner-radius (map car common-options))
      'drag-feedback 'outline

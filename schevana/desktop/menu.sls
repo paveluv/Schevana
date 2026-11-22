@@ -1,14 +1,16 @@
-;;; (schevana desktop menu) — the desktop's one menu at a time: the launcher, a
-;;; window's menu, a dropdown's (the widget kit opens it by name, open-menu!).
-;;; A menu is a list of entries: (label . thunk) or 'separator, as the menu
-;;; kit's data ((schevana kits menu)), which a style lays out and draws.
-;;; While one is open it takes every press, key and text (its surface's box
-;;; is the whole screen); a press outside it closes it. How it feels is the
-;;; style's: menu-choose (click: a press chooses; release: the entry the
-;;; button is released over, so a press can open a menu and the release
-;;; choose, and one released elsewhere stays open), menu-blink (how many
-;;; times a chosen entry blinks before its action runs) and menu-hover (fill,
-;;; or outline: a box, inverted while a button is held on it).
+;;; (schevana desktop menu) — the desktop's menu, one open at a time: the
+;;; launcher, a window's menu, or a dropdown's (the widget kit opens it
+;;; through its hook ui-menu-open!, which this file sets to open-menu!). A
+;;; menu is a list of entries, each (label . thunk) or 'separator, as in the
+;;; menu kit's data ((schevana kits menu)); a style lays it out and draws it.
+;;; While a menu is open, it takes every press, key and text (its surface's
+;;; box is the whole screen), and a press outside it closes it. How it feels
+;;; is up to the style: menu-choose (click: a press chooses; release: the
+;;; entry the button is released over is chosen, so a press can open a menu
+;;; and the release choose from it, and a menu released elsewhere stays
+;;; open), menu-blink (how many times a chosen entry blinks before its action
+;;; runs) and menu-hover (fill, or outline: a box, inverted while a button is
+;;; held on it).
 
 (library (schevana desktop menu)
   (export
@@ -50,10 +52,10 @@
 
   (define-state *menu* #f)
 
-  ;; The menu's numbers are settings, a style's to give: an entry's height
-  ;; (a rule from the font), a separator's, the room above the first entry
-  ;; and below the last, the text's inset, the least width, the font and
-  ;; the entries' ink, chosen and not, and where their text goes.
+  ;; The menu's numbers are settings, which a style may give: an entry's
+  ;; height (a rule from the font), a separator's height, the room above the
+  ;; first entry and below the last, the text's inset, the least width, the
+  ;; font, the entries' ink (chosen and not), and where their text goes.
   (at-load
    (theme-default! 'menu-item-height
                    (theme-rule (max 26 (round (+ (font-line-height 'ui) 11))))))
@@ -79,18 +81,20 @@
    (theme-default! 'menu-blink 0))
   (at-load
    (theme-default! 'menu-hover 'fill))
-  ;; the entries' text: left, menu-text-x in, or center (the Lisp machines')
+  ;; where the entries' text goes: left, menu-text-x in, or center (as on
+  ;; the Lisp machines)
   (at-load
    (theme-default! 'menu-align 'left))
 
   (define-state *menu-blink*
-    #f)   ; (start-ms entry thunk) while a chosen one blinks
-  ;; (x y entry): where a press held down opened the menu, and the entry
-  ;; there, until the pointer has left both: a release before only ends the
-  ;; press that opened it (a menu may open under the pointer)
+    #f)   ; (start-ms entry thunk) while a chosen entry blinks
+  ;; (x y entry): where a press that is held down opened the menu, and the
+  ;; entry there, until the pointer has left both. A release before that
+  ;; only ends the press that opened the menu (a menu may open under the
+  ;; pointer).
   (define-state *menu-held-at* #f)
   (define-state *menu-under*
-    #f)   ; the entry under the pointer: a press shows it
+    #f)   ; the entry under the pointer, shown pressed while held
 
   (define (menu-item-height) (theme 'menu-item-height))
 
@@ -113,10 +117,10 @@
     (set! *menu* #f)
     (request-frame!))
 
-  ;; Where menu m and its pieces are, which its drawing, its clicks and the
-  ;; pointer read: (menu x y w h), then (filter x y w h) when it filters,
-  ;; then each entry's (i x y w h) or separator's (separator x y w h), top
-  ;; to bottom.
+  ;; Returns where menu m and its pieces are, which its drawing, its clicks
+  ;; and the pointer all read: (menu x y w h), then (filter x y w h) when it
+  ;; filters, then each entry's (i x y w h) or each separator's (separator x
+  ;; y w h), from top to bottom.
   (define-part (menu-areas m)
     (let* ([es (menu-entries m)] [ih (theme 'menu-item-height)]
            [sh (theme 'menu-separator-height)] [pad (theme 'menu-pad)]
@@ -145,17 +149,17 @@
                                         x ey w eh)
                                   (loop (cdr es) (+ i 1) (+ ey eh))))))))))
 
-  ;; The areas of menu m where it draws them, in its place: what the
-  ;; pointer reads too.
+  ;; The areas of menu m as it draws them, computed in its place, 'menu;
+  ;; the pointer reads these too.
   (define (placed-menu-areas m) (with-place 'menu (lambda () (menu-areas m))))
 
-  ;; The menu's box: (values x y w h).
+  ;; Returns the menu's box as (values x y w h).
   (define (menu-geometry m) (apply values (cdar (placed-menu-areas m))))
 
   (define (point-in-menu? px py)
     (apply point-in? px py (cdar (placed-menu-areas *menu*))))
 
-  ;; Index of the entry under (px, py), or #f.
+  ;; Returns the index of the entry under (px, py), or #f.
   (define (menu-entry-at px py)
     (let ([a (find (lambda (a)
                      (and (fixnum? (car a)) (apply point-in? px py (cdr a))))
@@ -186,11 +190,12 @@
     (close-menu!)
     (safe-call 'menu thunk (lambda (c) (report-error! 'menu c))))
 
-  ;; A blink's phases are 60 ms each: off, on, off, on...; when they are
-  ;; done the menu closes and the chosen entry's action runs.
+  ;; A blink's phases last 60 ms each: off, on, off, on, ...; when they are
+  ;; done, the menu closes and the chosen entry's action runs.
   (define (menu-phase b) (quotient (- (now-ms) (car b)) 60))
 
-  ;; A phase of the blink drawn, and a timer for the next one's start.
+  ;; Asks for the blink's current phase to be drawn, and sets a timer for
+  ;; the start of the next phase.
   (define (menu-blink!)
     (let ([b *menu-blink*])
       (when b
@@ -209,11 +214,11 @@
       (when (and at (> (+ (abs (- x (car at))) (abs (- y (cadr at)))) 4)
                  (not (eqv? i (caddr at))))
         (set! *menu-held-at* #f))
-      (unless (eqv? i *menu-under*)   ; held, the press moves with it
+      (unless (eqv? i *menu-under*)   ; held, the pressed look follows
         (set! *menu-under* i)
         (when *mouse-button* (menu-request!)))))
 
-  ;; Asks for the menu's own box.
+  ;; Asks for a frame of the menu's own box.
   (define (menu-request!)
     (call-with-values (lambda () (menu-geometry *menu*)) request-frame!))
 
@@ -237,10 +242,10 @@
       (menu-filter-set! *menu* (string-append (menu-filter *menu*) str))
       (menu-select-next! 0)))
 
-  ;; The open menu, drawn in its place by the style's draw-menu (called by
+  ;; Draws the open menu in its place with the style's draw-menu (called by
   ;; name), which is handed what it shows: the menu, its areas, the entry
-  ;; shown chosen (in a blink's on phases the one blinking, between them
-  ;; none) and that entry's highlight's flags.
+  ;; shown as chosen (during a blink, the blinking entry in the on phases
+  ;; and none between them) and the flags of that entry's highlight.
   (define (menu-draw) (when *menu* (with-place 'menu menu-draw-placed)))
 
   (define (menu-draw-placed)
@@ -249,8 +254,8 @@
       ((world-value 'draw-menu) m (menu-areas m) on
                                 (if on (menu-entry-flags on) '()))))
 
-  ;; Menu m in its areas (menu-areas), the entry on chosen (#f: none),
-  ;; with flags (menu-entry-flags).
+  ;; Draws menu m in its areas (menu-areas), with entry on shown as chosen
+  ;; (#f for none) and with its highlight's flags (menu-entry-flags).
   (define-part (draw-menu m areas on flags)
     (let* ([es (list->vector (menu-entries m))] [font (theme 'menu-font)]
            [lh (font-line-height font)] [f (assq 'filter areas)])
@@ -291,8 +296,8 @@
           a))
        areas)))
 
-  ;; An entry's highlight's flags: outline as the style's menu-hover says,
-  ;; pressed while a button is held on it.
+  ;; Returns the flags of entry i's highlight: outline when the style's
+  ;; menu-hover says so, and pressed while a button is held on the entry.
   (define (menu-entry-flags i)
     (append (if (eq? (theme 'menu-hover) 'outline) '(outline) '())
             (if (and *mouse-button*
@@ -300,8 +305,8 @@
                 '(pressed)
                 '())))
 
-  ;; The filter's field: what is typed, or a hint; a longer filter scrolls,
-  ;; so its end and the caret stay in view.
+  ;; Draws the filter's field: what has been typed, or a hint. A filter too
+  ;; long for the field scrolls, so its end and the caret stay in view.
   (define (draw-menu-filter m x y w h)
     (let* ([font (theme 'menu-font)] [lh (font-line-height font)]
            [f (menu-filter m)] [ty (+ y (/ (- h lh) 2))])
@@ -317,7 +322,7 @@
                   (fill-box (+ ex 1) (+ y (round (/ (- h lh 1) 2))) 1.5
                             (round (+ lh 1)) 'accent)))))))
 
-  ;;; The surface: over the bars, under the toasts.
+  ;;; The menu's surface, over the bars and under the toasts.
 
   (define (menu-box)
     (if *menu* (values 0 0 (screen-w) (screen-h)) (values 0 0 0 0)))
@@ -335,12 +340,14 @@
         [(up) (cond [(not release?) (void)]
                     [*menu-held-at* (set! *menu-held-at* #f)]   ; just opened
                     [else (menu-mouse-down x y)])]
-        ;; held in a window that opened it, the pointer chooses on release
+        ;; the pointer selects as it moves, but in click mode not while a
+        ;; button is held (the press in the window that opened the menu)
         [(move) (when (or release? (not button)) (menu-mouse-move x y))])))
 
   ;; A second press on the frame button that opened a window's menu is a
-  ;; double click there (CDE's menu button closes the window): a thunk for
-  ;; the action its style names in button-double-click, or #f.
+  ;; double click on that button (CDE's menu button closes the window).
+  ;; Returns a thunk for the action the style names in button-double-click,
+  ;; or #f.
   (define (menu-double-press x y clicks)
     (let ([tag (menu-tag *menu*)])
       (and (>= clicks 2) (pair? tag) (eq? (car tag) 'window)
@@ -360,7 +367,7 @@
      'draw 'menu-draw 'box 'menu-box 'at 'menu-at 'mouse 'menu-mouse
      'key 'menu-takes 'doc (lambda (what) '((L . "Choose")))))
 
-  ;;; The launcher: every registered app, plus a few system actions.
+  ;;; The launcher: every registered app, and a few system actions.
 
   ;; at: where the apps' windows open (see new-window-position), or #f.
   (define (launcher-items at)
@@ -393,9 +400,10 @@
         (let-values ([(l t w h) (desktop-rect)])
           (open-launcher! 6 (+ 2 t)))))
 
-  ;; A window's menu: a right click on its title or a press on a frame's
-  ;; menu button (the window manager calls the part), or a right click on
-  ;; its taskbar button. Shade is there where its style shades.
+  ;; Opens a window's menu, on a right click on its title or a press on a
+  ;; frame's menu button (the window manager calls the part), or on a right
+  ;; click on its taskbar button. It offers Shade when the window's style
+  ;; shades windows.
   (define-part (open-window-menu win x y)
     (open-menu! x y
                 `(("Bind to $w for the REPL"
@@ -416,15 +424,15 @@
                   ("Close\tCtrl+Shift+W" . ,(lambda () (close-window! win))))
                 'tag (cons 'window win)))
 
-  ;; Does win's style shade it: a shade button, or a double click or the
-  ;; wheel on its title?
+  ;; Whether win's style shades it: with a shade button, or with a double
+  ;; click or the wheel on its title.
   (define (shades? win)
     (or (and (assq 'shade (frame-regions win)) #t)
         (eq? (window-setting win 'title-double-click) 'shade)
         (eq? (window-setting win 'title-wheel) 'shade)))
 
-  ;; ui's menus are this one ((schevana kits ui)): what opens them, and the tag
-  ;; of the one open.
+  ;; The widget kit's menus are this menu ((schevana kits ui)): these hooks
+  ;; open them and give the tag of the one that is open.
   (set-hook! (ui-menu-open! x y entries . opts)
     (apply open-menu! x y entries opts))
   (set-hook! (ui-menu-open-tag) (and *menu* (menu-tag *menu*))))

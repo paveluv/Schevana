@@ -1,8 +1,9 @@
-;;; tests/units/behaviors.ss — the behaviors a style chooses, each a setting,
-;;; today's feel by default: edges, title clicks, shading, outlines, menus, the
-;;; mouse's documentation, scroll bars.
+;;; tests/units/behaviors.ss — the behaviors a style chooses, each a
+;;; setting with today's feel as its default: edges, title clicks, shading,
+;;; outlines, menus, the mouse's documentation, scroll bars.
 
-;;; behaviors a style chooses (each a setting, today's feel by default)
+;;; behaviors a style chooses (each a setting, with today's feel as the
+;;; default)
 
 (for-each close-window! (windows))
 (reset-theme!)
@@ -35,8 +36,8 @@
   (reset-theme!)
   (close-window! w))
 
-;; A style resizing from its top edge and corners, the window manager's
-;; edges off.
+;; A style that resizes from its top edge and corners, with the window
+;; manager's edges off.
 (define (test-top-regions win)
   (let ([w (window-w win)])
     (list (list 'resize-tl 0 0 8 8) (list 'resize-tr (- w 8) 0 8 8)
@@ -90,8 +91,8 @@
            (close-window! w)
            (equal? (list a b c) '(maximized normal minimized)))))
 
-;; A style with a window-menu button, a double click on which closes the
-;; window (CDE's).
+;; A style with a window-menu button, on which a double click closes the
+;; window (as CDE's does).
 (define (test-menu-regions win) (list (list 'menu 4 4 20 20)))
 (define-style test-menu "Menu button"
   'frame-regions 'test-menu-regions 'button-double-click '((menu . close)))
@@ -167,7 +168,7 @@
              (set-theme! 'title-wheel 'shade)
              (let* ([c (wheel! 1)] [d (wheel! -1)])
                (reset-theme!)
-               (let ([e (wheel! 1)])   ; title-wheel none again: nothing
+               (let ([e (wheel! 1)])   ; title-wheel is none again: nothing
                  (close-window! w)
                  (let ([s (open-window "Button" 'size '(300 . 200)
                                        'pos '(250 . 200)
@@ -203,7 +204,7 @@
 (define (full-render)
   (make-picture (screen-bytes) *canvas-pw* *canvas-ph*))
 
-;; Is the screen what a full render draws?
+;; Whether the screen is what a full render draws.
 (define (screen-whole?)
   (let ([ref (full-render)])
     (let ([d (max-diff (shown-picture) ref)]) (picture-free! ref) (zero? d))))
@@ -406,7 +407,7 @@
            (inject! `(mouse-move ,x ,y) `(mouse-down ,x ,y left 1)
                     `(mouse-up ,x ,y left))
            (steps 1)
-           (let ([phases   ; in order: map may call in any
+           (let ([phases   ; in order, since map may call in any order
                   (let loop ([ats '(30 60 60 60 30)])
                     (if (null? ats)
                         '()
@@ -478,7 +479,7 @@
                                       (fill-box 0 0 w h #x000000)))])
          (steps 1)
          (let ([ink (color->pixel 'text)])
-           (define (dots win)   ; the inked device pixels of 40 × 40 inside
+           (define (dots win)   ; the inked pixels of a 40 × 40 square inside
              (let-values ([(cx cy cw ch) (content-rect win)])
                (let loop ([i 0] [acc '()])
                  (if (= i 1600)
@@ -545,7 +546,8 @@
                 (equal? desktop '((L . "Unfocus") (R . "Apps")))))))
 
 ;; Two tables and a tree with the same columns, each 50 high, from the
-;; top; cells: (id key x w) of each first row's cells, as drawn.
+;; top; cells collects (id key x w) for each one's first row's cells, as
+;; drawn.
 (check "a column's handle: the pointer resize-ew and \"L: Resize column, \
         L2: Default width\" over it; a drag sets the width, the cells \
         follow, the minimum holds; a double click sets back the default; \
@@ -654,10 +656,9 @@
               (equal? (ui-table-filled columns 120) columns)
               (equal? (ui-table-filled '() 100) '()))))
 
-;; The columns a heading inks, (first . last), drawn 200 wide in style
-;; with flags and dir; its bottom line left out.
-;; The line between two headings is there at rest, under the pointer
-;; in the accent, wider: found before the pointer changes.
+;; The line between two headings is there at rest, and under the pointer
+;; it is in the accent and wider, so it is found before the pointer
+;; changes.
 (check "a divider marks each column's handle at rest, and is the accent \
         under the pointer"
        (let ([draw (lambda (flags)
@@ -717,6 +718,8 @@
                (picture-free! hot)
                r)))))
 
+;; Returns the columns a heading inks, (first . last), drawn 200 wide in
+;; style with flags and dir, leaving out its bottom line.
 (define (heading-ink style flags dir)
   (with-style style
     (lambda ()
@@ -786,7 +789,8 @@
                          (set! ui u)
                          (set! heads '())
                          (set! cells '())
-                         ;; drawn first: its headings are found after s's
+                         ;; q is drawn first, so its headings are found
+                         ;; after s's
                          (ui-tree u 'q 0 90 w 80 columns '(1) (lambda (n) '())
                                   #f void (lambda cell #f))
                          (ui-tree u 's 0 0 w 80 columns '(1) (lambda (n) '())
@@ -814,7 +818,7 @@
                        (ui-find ui '(s header a))
                        (not (ui-find ui '(q header a)))))))))))
 
-;; A style whose shade button words itself.
+;; A style whose shade button gives its own words.
 (define (test-words-regions win)
   (list (list 'shade 30 4 20 20 '((L . "Roll up") (R . "Nothing")))))
 (define-style test-words "Own words" 'frame-regions 'test-words-regions)
@@ -903,7 +907,7 @@
                     (equal? (cadr away) (cadr over))))))))
 
 ;; Medley's scroll bars: a 24-pixel margin at the left of the frame,
-;; clear but for the bar while the pointer is there.
+;; clear except for the bar while the pointer is there.
 (define (test-out-insets win) (values 24 (title-height) 0 0))
 (define (test-out-regions win)
   (list (list 'scrollbar 0 (title-height) 24
@@ -937,7 +941,7 @@
                  (and (= clear desk) (eq? region 'scrollbar)
                       (not (= shown desk)) (= at -24) (> off 0))))))))
 
-;;; the verifier's findings on the behaviors switched on
+;;; what the verifier found with the behaviors switched on
 
 (check "behavior settings survive a save and load, each of its kind; a \
         value of another kind is dropped"
@@ -1103,7 +1107,7 @@
            (close-window! w)
            (= x (- 300 (ui-scrollbar-width))))))
 
-;; A style whose grow box resizes, the window manager's edges off.
+;; A style whose grow box resizes, with the window manager's edges off.
 (define (test-grow-regions win)
   (list (list 'resize-br (- (window-w win) 15) (- (window-h win) 15) 15 15)))
 (define-style test-grow "Grow box"

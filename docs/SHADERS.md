@@ -4,8 +4,8 @@ A shader is a small program the GPU runs many times at once: once for each
 pixel of a box, or once for each cell of a grid. In Schevana you write one
 in a small Scheme, at a REPL or in an app's file, and it is compiled the
 moment it is defined, for whatever GPU this machine has. The same language
-draws everything on the screen: the core's own drawing is shaders written
-in it.
+draws everything on the screen: the core's own drawing is done by shaders
+written in it.
 
 This guide covers what shaders do in Schevana, the language, how a shader
 gets from its definition to the GPU, and two examples to type at a REPL.
@@ -15,32 +15,35 @@ gets from its definition to the GPU, and two examples to type at a REPL.
 - **The core draws everything with them.** A window's drawing is a list of
   records (boxes, glyphs, lines, shadows, gradients, stipples, images). One
   vertex shader, `gfx-vertex`, and a fragment shader in seven variants,
-  `gfx-fragments`, draw those records, all in `schevana/core/draw.sls` and all in this
-  language. Each variant holds only the code its records need, so a pixel
-  pays only for what it draws.
+  `gfx-fragments`, draw those records; all of them are in
+  `schevana/core/draw.sls` and written in this language. Each variant
+  holds only the code its records need, so a pixel pays only for what it
+  draws.
 - **Apps add their own, of two kinds.** A *paint* (`define-paint`) gives a
   color for each pixel of a box, and is drawn with `fill-shader` among the
   window's other drawing, clipped like it. A *compute shader*
   (`define-compute-shader`) runs over a grid of cells and writes into GPU
   buffers, which paints then read. Boids 3D is all shaders: three compute
-  shaders steer the flock, lay it out by the camera and sort it into
+  shaders steer the flock, lay it out for the camera and sort it into
   tiles, and a paint draws the sky, the sea and the birds. The flock never
   comes back to the CPU.
-- **A shader touches only what it is handed.** An app has
+- **A shader touches only what it is handed.** An app gets
   `define-compute-shader`, `define-paint`, `fill-shader`, `draw-scale`,
   `make-gpu-buffer`, `gpu-buffer-set!`, `gpu-buffer-release!` and
   `gpu-compute-soon!` from the core's facade; a shader reads and writes
   only the buffers it is handed, so it reaches nothing else.
 - **The language is a contract.** It asks only for what every GPU API has,
-  and defines its own meaning where targets differ (dividing by zero, say),
-  so that a shader gives the same results everywhere. What one back end
-  can't do doesn't get in. There are three back ends: SPIR-V for Vulkan
-  (Linux), MSL for Metal (the Mac), and the *twin*, which turns a shader
-  into a Scheme procedure; `tests/units/shader.ss` holds the device and the
-  twin to the same answers.
-- **The GPU layer speaks in the world's terms.** Above core0 nothing names
-  Vulkan, SPIR-V, Metal or MSL but the compiler, which writes the back
-  ends' code. Core0 (`schevana/core0/gpu.sls`) makes the pipelines and runs them.
+  and defines its own meaning where targets differ (dividing by zero, for
+  example), so that a shader gives the same results everywhere. What one
+  back end can't do doesn't get into the language. There are three back
+  ends: SPIR-V for Vulkan (Linux), MSL for Metal (the Mac), and the
+  *twin*, which turns a shader into a Scheme procedure;
+  `tests/units/shader.ss` checks that the device and the twin give the
+  same answers.
+- **The GPU layer speaks in the world's terms.** Above core0, nothing names
+  Vulkan, SPIR-V, Metal or MSL except the compiler, which writes the back
+  ends' code. Core0 (`schevana/core0/gpu.sls`) makes the pipelines and
+  runs them.
 
 ## A first shader
 
@@ -50,15 +53,15 @@ gets from its definition to the GPU, and two examples to type at a REPL.
   (fx-set! out x (fx* x x)))
 ```
 
-`squares` runs once for each cell of the grid it is run over, `x` and `y`
-being the cell. Its one parameter, `out`, is a buffer of whole numbers it
-may write. Run over a grid 10 cells wide and 1 high, it fills the first ten
-words of `out` with 0, 1, 4, 9 and so on.
+`squares` runs once for each cell of the grid it is run over, and `x` and
+`y` are the cell. Its one parameter, `out`, is a buffer of whole numbers
+that it may write. Run over a grid 10 cells wide and 1 high, it fills the
+first ten words of `out` with 0, 1, 4, 9 and so on.
 
-Everything about it is checked when it is defined: the types of every
-expression, that `out` may be written, that every name is something the
-shader was handed. A mistake is an error at once, at the REPL or as the
-app loads, never a wrong picture later:
+Everything about it is checked when it is defined: the type of every
+expression, that `out` may be written, and that every name is something
+the shader was handed. A mistake is an error at once, at the REPL or as
+the app loads, never a wrong picture later:
 
 ```
 (fl+ 1 2.0): wants flonum, has fixnum
@@ -73,14 +76,14 @@ vector-ref: not available in a shader
 
 There are three types: `fixnum`, a 32-bit whole number; `flonum`, a 32-bit
 float; and `boolean`. There are no strings, pairs, vectors or procedures as
-values, no recursion and no memory but the buffers a shader is handed.
+values, no recursion, and no memory but the buffers a shader is handed.
 Literals are written as in Scheme: `3`, `-1`, `0.5`, `#t`. A whole number is
 a 32-bit word, so a color with its top bit set can be written as a negative
 number: `-16777216` is `#xff000000`.
 
 ### Parameters
 
-A shader's head names it and its coordinates; then comes a list of
+A shader's head names the shader and its coordinates; then comes a list of
 parameters, each a name and a kind:
 
 | Kind | What the shader gets |
@@ -90,22 +93,23 @@ parameters, each a name and a kind:
 | `fx-buffer`, `fl-buffer` | a GPU buffer of whole numbers or floats, to read |
 | `fx-buffer write`, `fl-buffer write` | the same, to write |
 
-A buffer is read or written in a run, never both. Each buffer's length is
-handed to the shader too, unseen, which is how reads and writes are kept
-inside it.
+In one run a buffer is either read or written, never both. Each buffer's
+length is handed to the shader too, unseen, and that is how reads and
+writes are kept inside it.
 
 ### Forms
 
 - `let`, `let*`, `begin`, `if`, `cond`, `case` (its data are whole
-  numbers or constants' names), `when`, `unless`, `and`, `or`. An `if`
-  without an else, a `when` and the like have no value: what wants one
-  refuses them.
-- `(define (name arg ...) body ...)` makes a local function where a
-  `define` can go. It is inlined where it is called, sees what came before
-  it, and can't call itself.
+  numbers or the names of constants), `when`, `unless`, `and`, `or`. An
+  `if` without an else, a `when` and the like have no value, and a place
+  that needs a value refuses them.
+- `(define (name arg ...) body ...)` makes a local function wherever a
+  `define` can go. It is inlined where it is called, sees what was defined
+  before it, and can't call itself.
 - `(do-bounded most ([var init step] ...) (test result))` is `do` with a
-  bound: at most `most` rounds, `most` a number written in the shader. It
-  gives `result` once `test` is true, or after the last round.
+  bound: it runs at most `most` rounds, and `most` must be a number written
+  in the shader. It gives `result` once `test` is true, or after the last
+  round.
 
 ### Operations
 
@@ -120,53 +124,56 @@ inside it.
 | buffers | `(fx-ref b i)` `(fl-ref b i)` `(fx-set! b i v)` `(fl-set! b i v)` |
 
 `fx+`, `fx*`, `fxand`, `fxior`, `fxxor`, `fl+`, `fl*`, `fl/`, `flmin` and
-`flmax` take any number of arguments; `fx-` and `fl-` of one negate it.
+`flmax` take any number of arguments; `fx-` and `fl-` with one argument
+negate it.
 
 ### What it means
 
-The language defines its own meaning where GPUs differ or leave it
+The language defines its own meaning where GPUs differ or leave a result
 undefined, and every back end keeps to it:
 
 - Whole numbers are 32 bits and wrap.
 - Dividing by 0 gives 0; dividing the smallest number by -1 wraps.
   `fxmod` floors, as Scheme's does.
 - A shift's count is taken mod 32.
-- `flround` takes a half to the even neighbor.
+- `flround` rounds a half to the even neighbor.
 - Operands are worked out left to right.
 - A read outside a buffer reads its last word (a negative index too); a
   write outside is left out.
 
 ## How a shader gets to the GPU
 
-1. **Defining it compiles it.** `define-compute-shader` (and
-   `define-paint`) is a macro: as it expands, the front end in
-   `schevana/shader.sls` checks the forms and lowers them to a small typed tree,
-   with every local function inlined, every `cond`, `case` and `when` turned
-   into `if`, and every constant replaced by its number. A test it can work
-   out leaves only its arm. The back end for this machine then writes the
-   tree as SPIR-V words or MSL text. The result is a `shader` record: its
-   name, stage, coordinates, parameters, source, code and *price*, what one
-   run costs at most, counted from the tree (a loop's bound times its body).
+1. **Defining it compiles it.** `define-compute-shader` (like
+   `define-paint`) is a macro whose definition compiles the shader as it
+   is evaluated. The front end in `schevana/shader.sls` checks the forms
+   and lowers them to a small typed tree, with every local function
+   inlined, every `cond`, `case` and `when` turned into `if`, and every
+   constant replaced by its number. A test whose result the compiler can
+   work out leaves only the arm it takes. The back end for this machine
+   then writes the tree as SPIR-V words or as MSL text. The result is a
+   `shader` record: its name, stage, coordinates, parameters, source,
+   code and *price*, the most that one run can cost, counted from the tree
+   (a loop's cost is its bound times its body's).
 2. **Running it is a call.** `fill-shader` and `gpu-compute-soon!` pack
    numbers into a uniform block: the hidden ones first (a compute run's
-   grid size), then the numbers they're given, then each buffer's length.
-   The buffers they keep by handle.
+   grid size, a paint's list origin), then the numbers they are given,
+   then each buffer's length. They keep the buffers by handle.
 3. **The frame takes it to core0.** A paint's call is recorded among the
    window's drawing; a compute run waits in a list, `(inspect-computes)`,
    for the next frame. Core0 makes a pipeline for a shader the first time
-   it sees it, runs the frame's compute runs ahead of its drawing, so that a
-   paint shows what they wrote, and then draws. A compute run asked for
-   when no frame is coming goes at the step's end on its own.
+   it sees it, runs the frame's compute runs ahead of its drawing, so that
+   a paint shows what they wrote, and then draws. A compute run asked for
+   when no frame is coming goes by itself at the end of the step.
 4. **A compute shader runs in groups** of 64 cells along x; a cell outside
-   the grid it was asked for does nothing.
+   the grid it was asked to run over does nothing.
 
 ## Sharing names with Scheme
 
-What writes a buffer in Scheme and what reads it in a shader must agree on
-numbers and offsets. Three forms keep one definition for both:
+Code that writes a buffer in Scheme and a shader that reads it must agree
+on numbers and offsets. Three forms keep one definition for both:
 
 ```scheme
-(define-shader-constant cell-words 4)      ; a number, in Scheme and shaders
+(define-shader-constant cells-most 1000)   ; a number, in Scheme and shaders
 
 (define-shader-layout cell cells (count color))
 ;; cell-words is 2, cell-count 0 and cell-color 1: offsets, in Scheme and
@@ -179,7 +186,7 @@ numbers and offsets. Three forms keep one definition for both:
 ```
 
 `(inspect-shader-constants)`, `(inspect-shader-helpers)` and
-`(inspect-shader-fields)` list what's defined.
+`(inspect-shader-fields)` list what is defined.
 
 ## Paints
 
@@ -192,18 +199,18 @@ numbers and offsets. Three forms keep one definition for both:
   'draw (lambda (win w h) (fill-shader 0 0 w h stripes 'accent 8)))
 ```
 
-A paint's body gives a color word, `#xAARRGGBB`, alpha not multiplied in;
-0 is transparent. `x` and `y` are the pixel, in device pixels from the
-box's corner: on a display at 2× a box 100 wide is 200 pixels, and
+A paint's body gives a color word, `#xAARRGGBB`, with alpha not multiplied
+in; 0 is transparent. `x` and `y` are the pixel, in device pixels from the
+box's corner: on a display at 2×, a box 100 wide is 200 pixels wide, and
 `(draw-scale)` gives the factor. `fill-shader` takes the box, in the
-window's units, the paint, and the paint's arguments in order. A `color`
-parameter takes a color or a theme key.
+window's units, then the paint, then the paint's arguments in order. A
+`color` parameter takes a color or a theme key.
 
 A paint is drawn like any other drawing: in order, clipped to its window
 and to rounded corners, in a list that is drawn again only when the window
-asks. It starts with the core's helpers in scope, among them `(channel c
-shift)`, a color word's channel from 0 to 1 (`shift` 16 for red),
-`(mixed a b t)` and `(clamp01 v)`.
+asks. It starts with the core's helpers in scope, among them
+`(channel c shift)`, a channel of a color word from 0 to 1 (`shift` is 16
+for red), `(mixed a b t)` and `(clamp01 v)`.
 
 ## Compute shaders and buffers
 
@@ -213,21 +220,21 @@ shift)`, a color word's channel from 0 to 1 (`shift` 16 for red),
 (gpu-compute-soon! squares 1000 1 b) ; the grid, then the arguments
 ```
 
-`gpu-buffer-set!` writes a word; it goes up with the next frame or compute
-run. `gpu-compute-soon!` runs the shader with the next frame, ahead of its
-drawing, and nothing waits for it.
+`gpu-buffer-set!` writes a word, which goes up to the GPU with the next
+frame or compute run. `gpu-compute-soon!` runs the shader with the next
+frame, ahead of its drawing, and nothing waits for it.
 
-A buffer, an image or a list nothing holds any more is let go of once a
+A buffer, an image or a list that nothing holds any more is freed once a
 collection finds it, so an app never has to free one.
-`gpu-buffer-release!` frees at once, and is optional.
+`gpu-buffer-release!` frees a buffer at once, and is optional.
 
 A shader's results show on the screen through a paint, or come back to
 Scheme.
 
 ### At a REPL, on the GPU and back
 
-`squares` from above, run on the GPU over ten cells, and what it wrote read
-back:
+Here `squares` from above runs on the GPU over ten cells, and what it
+wrote is read back:
 
 ```scheme
 (define-compute-shader (squares x y)
@@ -243,37 +250,40 @@ back:
 ```
 
 `gpu-compute!` runs the shader and `gpu-buffer-read!` reads the buffer
-back, each waiting till it's done, while the world goes on: a REPL's input
-runs as a process, and a process can wait without holding core1, the
-world's thread. Core0 reads the buffer between frames and hands the bytes
-back. Ctrl+C stops the wait like any other. A float buffer (`fl-buffer`)
-reads the same way, each word with `bytevector-ieee-single-native-ref`.
+back, each waiting until it is done, while the world goes on: a REPL's
+input runs as a process, and a process can wait without holding up core1,
+the world's thread. Core0 reads the buffer between frames and hands the
+bytes back. Ctrl+C stops the wait, as it stops any other. A float buffer
+(`fl-buffer`) is read the same way, each word with
+`bytevector-ieee-single-native-ref`.
 
-Code that isn't in a process (a window's handler, a timer, an app) can't
-wait, and the two raise there. It asks for the bytes with a procedure to
-hand them to, `gpu-buffer-read-then!`, which nothing waits for:
+Code that isn't running in a process (a window's handler, a timer, an
+app) can't wait, and these two calls raise an error there. Such code asks
+for the bytes with `gpu-buffer-read-then!`, handing it a procedure to
+receive them, and nothing waits:
 
 ```scheme
 (gpu-compute-soon! squares 10 1 b)
 (gpu-buffer-read-then! b (lambda (bytes) (set! squared bytes)))
 ```
 
-The run goes with the next frame; the read goes after it, and the
-procedure runs on core1 a step or two later. A buffer let go of meanwhile
-reads `#f`. The waiting calls are this, inside a process: `(proc-wait who
-start)` waits for what `start` hands its `done`, and wraps any call that
-hands its result to a procedure later.
+The run goes with the next frame, the read goes after it, and the
+procedure runs on core1 a step or two later. If the buffer is freed
+meanwhile, the procedure gets `#f`. The waiting calls are built on this,
+inside a process: `(proc-wait who start)` waits for what `start` hands
+its `done` procedure, and so wraps any call that later hands its result
+to a procedure.
 
 With one thread playing both core0 and core1, as in the tests, the two
-read at once, waiting for the GPU itself. The twin, below, runs a shader
-on the CPU, where waiting is always fine.
+calls read at once, waiting for the GPU itself. The twin, below, runs a
+shader on the CPU, where waiting is always fine.
 
 ## The twin
 
-`(twin-procedure shader)` is the shader as a Scheme procedure: slow, exact,
-and the language's meaning to the letter. A compute shader's twin takes the
-cell, the grid's size, then the shader's arguments, with bytevectors for
-buffers, and runs one cell:
+`(twin-procedure shader)` is the shader as a Scheme procedure: slow,
+exact, and the language's meaning to the letter. A compute shader's twin
+takes the cell, the grid's size, then the shader's arguments, with
+bytevectors for buffers, and runs one cell:
 
 ```scheme
 (define out (make-bytevector 40 0))
@@ -282,32 +292,35 @@ buffers, and runs one cell:
 (bytevector-s32-native-ref out 12)   ; => 9
 ```
 
-It's how to try a shader at a REPL, how the tests check the device, and a
-back end of its own: what it can't do, the language doesn't have.
+The twin is how to try a shader at a REPL, how the tests check the device,
+and a back end of its own: what the twin can't do, the language doesn't
+have.
 
 ## Looking at shaders
 
-- `(shader-tree s)` gives the typed tree the back ends get.
-- `(shader-code s)` is what went to the driver; `(shader-price s)` its price.
+- `(shader-tree s)` gives the typed tree that the back ends get.
+- `(shader-code s)` is what went to the driver; `(shader-price s)` is its
+  price.
 - `(inspect-shader-lines s)` is its source, pretty-printed, with the
   helpers it uses written out.
-- Pipeline shows the source of the shader behind a paint run, and what
-  the GPU holds.
+- The Pipeline shows the source of the shader behind a paint run, and
+  what the GPU holds.
 
 ## Costs
 
-The price counts operations; the GPU's cost is not only that. On Metal,
-safe math makes division and `flsqrt` dear, so the core multiplies by
-`0.00392156862745098` where it means "divided by 255". Code that never runs
-still costs registers, which is why the core's fragment shader comes in
-seven variants instead of one with branches. A test the compiler can work
-out costs nothing: an option handed as a constant leaves only its arm.
+The price counts operations, but the GPU's cost is not only that. On
+Metal, safe math makes division and `flsqrt` expensive, so the core
+multiplies by `0.00392156862745098` where it means "divided by 255". Code
+that never runs still costs registers, which is why the core's fragment
+shader comes in seven variants instead of one with branches. A test the
+compiler can work out costs nothing: an option handed in as a constant
+leaves only the arm it takes.
 
 ## Two examples at the REPL
 
-Both use the same compute shader: the Mandelbrot set's escape count for
-each cell, `cx` and `cy` the top-left corner in the plane and `step` a
-cell's width there.
+Both use the same compute shader: the escape count of the Mandelbrot set
+for each cell, where `cx` and `cy` are the top-left corner in the plane
+and `step` is a cell's width there.
 
 ```scheme
 (define-compute-shader (mandel x y)
@@ -324,8 +337,8 @@ cell's width there.
 ### As text, through the twin
 
 The twin runs `mandel` on the CPU, cell by cell, and the REPL prints the
-counts as characters. It works in any REPL, and shows exactly what the GPU
-would compute.
+counts as characters. This works in any REPL, and shows exactly what the
+GPU would compute.
 
 ```scheme
 (define (mandel-text w h)
@@ -352,7 +365,7 @@ would compute.
 
 Here the GPU does the work: `mandel` fills a buffer with a count for each
 of the window's pixels, and a paint colors them, every frame, zooming in
-twice as close a second for 14 seconds, then again from the start. Nothing
+twice as close each second for 14 seconds, then starting again. Nothing
 comes back to the CPU.
 
 ```scheme
@@ -401,14 +414,14 @@ comes back to the CPU.
 (mandel-window)
 ```
 
-- **A frame** asks for the next one (`'frame`) and draws again. The draw
-  procedure queues the compute run, which goes ahead of that frame's
+- **Each frame** asks for the next one (`'frame`) and draws again. The
+  draw procedure queues the compute run, which goes ahead of that frame's
   drawing, then paints from the same buffer.
-- **The buffer** has a word for each device pixel. When the window grows
-  a bigger one replaces it, and the old one, held by nothing, goes by
-  itself; so does the last one when the window closes.
+- **The buffer** has a word for each device pixel. When the window grows,
+  a bigger buffer replaces it, and the old one, held by nothing, is freed
+  by itself; so is the last one when the window closes.
 - **Precision**: shaders compute in 32-bit floats, so by the end of each
-  zoom the edges turn grainy. That's why it starts over there.
+  zoom the edges turn grainy. That's why the zoom starts over there.
 
 ## Where the code is
 
@@ -422,4 +435,4 @@ comes back to the CPU.
 | `schevana/kits/inspect.sls` | `inspect-shader-…`, `inspect-computes` |
 | `demo/boids3d.sls` | an app that is all shaders |
 | `demo/rings.sls` | six paints: waves, sines, a Julia set's bounded loop, metaballs, Voronoi cells, and noise of hashed whole numbers (fire); helpers they share (`define-shader-helpers`) |
-| `tests/units/shader.ss` | the device and the twin held together |
+| `tests/units/shader.ss` | the device and the twin held to the same answers |

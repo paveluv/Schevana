@@ -1,9 +1,10 @@
-;;; tests/units/ui-focus.ss — the keyboard's focus ((schevana kits ui)), by
-;;; itself: Tab and Shift+Tab through the widgets in the order they're drawn,
-;;; and a scroll view bringing what gets the keyboard into view, a text area
-;;; taller than the view by its caret's row.
+;;; tests/units/ui-focus.ss — the keyboard's focus ((schevana kits ui)),
+;;; tested by itself: Tab and Shift+Tab move through the widgets in the
+;;; order they're drawn, and a scroll view brings the widget that gets the
+;;; keyboard into view (a text area taller than the view, by its caret's
+;;; row).
 
-;; Five fields in a column.
+;; A window with five fields in a column.
 (define (ui-focus-test-fields)
   (test-kit-window "Fields"
     (lambda (ui w h)
@@ -11,8 +12,9 @@
         (ui-text-field ui (list 'f i) 20 (+ 10 (* i 40)) 200 30 "" void)))
     '(400 . 240)))
 
-;; A scroll view three fields high over ten fields, then, below them, a
-;; text area of 30 lines as tall as they need, by the font.
+;; A window with a scroll view three fields high over ten fields and, below
+;; them, a text area of 30 lines, as tall as its lines need in the current
+;; font.
 (define ui-focus-test-text
   (apply string-append
          (map (lambda (i) (format "line ~a\n" i)) (iota 29))))
@@ -37,8 +39,8 @@
   (inject! (list 'key-down key mods))
   (steps 2))
 
-;; Whether region id lies within the scroll view v, wholly: by its frame,
-;; where it is, not its rectangle as the view cuts it.
+;; Whether region id lies wholly within the scroll view v, judged by its
+;; frame (where it is), not by its rectangle as the view clips it.
 (define (ui-focus-test-shown? ui id)
   (let ([f (ui-region-frame (test-region ui id))] [v (test-region ui 'v)])
     (and (>= (cadr f) (ui-region-y v))
@@ -65,7 +67,7 @@
          (steps 2)
          (let ([ui (window-ref win 'ui)])
            (test-click! win '(g 0))
-           (ui-focus-test-press! 'tab 'shift)   ; past the first: the area
+           (ui-focus-test-press! 'tab 'shift)   ; past the first, to the area
            (ui-focus-test-press! 'tab 'shift)   ; then the last field
            (let ([last (and (equal? (ui-focused ui) '(g 9))
                             (ui-focus-test-shown? ui '(g 9)))])
@@ -89,7 +91,7 @@
                   [a (car (apply ui-text-box-areas
                                  (append f '((lines)))))]
                   [lh (font-line-height (list-ref a 5))]
-                  ;; the caret's row: the last, the 30th
+                  ;; the caret's row: the last one, the 30th
                   [row (+ (list-ref a 2) (* 29 lh))])
              (close-window! win)
              (printf "  row at ~a, the view from ~a to ~a\n" row

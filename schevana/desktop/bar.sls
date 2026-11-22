@@ -1,9 +1,10 @@
 ;;; (schevana desktop bar) — what the two bars share. A bar's areas, ((what x y
-;;; w h) ...) from its part (topbar-areas, taskbar-areas), are where it draws
+;;; w h) ...) from its part (topbar-areas, taskbar-areas), say where it draws
 ;;; each thing and where that thing takes the pointer, so a style that moves
-;;; one moves its clicks too. what: launcher, title, hint, windows (a list of
-;;; them), or a window. Both are computed in the bars' place, bar, as the bars
-;;; draw.
+;;; a thing moves its clicks with it. An area's what is launcher, title,
+;;; hint, windows (a list of the windows) or a window. For drawing and for
+;;; the pointer alike, the areas are computed in the bars' place, 'bar
+;;; (with-place).
 
 (library (schevana desktop bar)
   (export
@@ -17,15 +18,15 @@
 
   (library-layer desktop)
 
-  ;; What of areas is at (x, y); the bar takes every other point of its
-  ;; strip.
+  ;; Returns the what of the area at (x, y), or 'bar: the bar takes every
+  ;; other point of its strip.
   (define (bar-at areas x y)
     (let ([a (find (lambda (a) (apply point-in? x y (cdr a))) areas)])
       (if a (car a) 'bar)))
 
-  ;; A press on a bar's area: the launcher opens or closes; windows lists
-  ;; them to choose from; a window is focused or minimized (left), closed
-  ;; (middle) or given its menu at the area's top (right).
+  ;; Handles a press on a bar's area: the launcher opens or closes; windows
+  ;; lists the windows to choose from; a window is focused or minimized (left
+  ;; button), closed (middle) or shown its menu at the area's top (right).
   (define (bar-mouse areas kind what x y button clicks)
     (when (eq? kind 'down)
       (cond

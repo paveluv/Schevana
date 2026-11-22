@@ -1,9 +1,9 @@
-;;; tests/units/settings.ss — Settings' Theme tab: a style's own options,
-;;; saving a style.
+;;; tests/units/settings.ss — Settings: the Theme tab (a style's own
+;;; options, saving a style) and the Paths tab.
 
-;;; Settings' Theme tab (step 8)
+;;; Settings' Theme tab
 
-;; A style with options of its own: a size, a choice.
+;; A style with options of its own: a size and a choice.
 (define-style test-own "Own options"
   'test-own-width 3  'test-own-ink 'dim
   'options '(palette (test-own-width "Width" 1 6)
@@ -120,10 +120,10 @@
             (eq? (settings-style-name "  CDE: Broica II ") 'cde-broica-ii)
             (not (settings-style-name " - "))))
 
-;; Settings' Paths tab: the library search by rank, each folder with a
-;; switch for whether it auto-loads, and a row that adds one: a folder
-;; picked in the file dialog joins the search, not auto-loading until its
-;; switch is turned on.
+;; Settings' Paths tab: the library search in rank order, each folder with
+;; a switch for whether it auto-loads, and a row that adds a folder. A
+;; folder picked in the file dialog joins the search, and it doesn't
+;; auto-load until its switch is turned on.
 (define (settings-test-rank dir)
   (let loop ([ds (library-directories)] [i 0])
     (cond [(null? ds) #f]
@@ -143,7 +143,7 @@
     (steps 2)
     (test-click! win '(search add))
     (steps 2)
-    ;; the dialog, over Settings: the folder named, then Add
+    ;; in the dialog over Settings, name the folder, then press Add
     (let* ([fd (focused-window)] [d (window-ref fd 'state)])
       (file-dialog-name-set! d (path-full dir))
       (invalidate! fd)

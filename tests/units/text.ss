@@ -1,10 +1,11 @@
-;;; tests/units/text.ss — long text: cut, colored and searched in time at any
-;;; length.
+;;; tests/units/text.ss — long text: cutting, coloring and searching it stay
+;;; fast at any length.
 
-;;; long text: cut, colored and searched in time at any length
+;;; long text: cutting, coloring and searching it stay fast at any length
 
-;; text-fit as plainly as it can be said: a character shorter at a time. An
-;; empty string has nothing to cut, so it's never an ellipsis.
+;; text-fit in its plainest form: drop one character at a time, adding an
+;; ellipsis, until the string fits. An empty string has nothing to cut, so
+;; it never becomes an ellipsis.
 (define (fit-plainly str max-w font)
   (if (or (string=? str "") (<= (text-width str font) max-w))
       str
@@ -25,7 +26,7 @@
                      (make-string 40 #\λ) (make-string 60 #\i)
                      (make-string 26 #\W))
                (begin (tasks-reset!) (map task-title *tasks*))
-               (let ([abc "aW i.λ東Ü\x301;😀-"])   ; made up, the same each run
+               (let ([abc "aW i.λ東Ü\x301;😀-"])   ; made up, the same on each run
                  (map (lambda (i)
                         (list->string
                          (map (lambda (j)

@@ -1,9 +1,11 @@
 ;;; tests/units/ui-date-field.ss — the kit's date field and its calendar
-;;; ((schevana kits ui)), by themselves: opened by a press or keys, a day picked
-;;; by a click or by keys, Escape, and the date cleared.
+;;; ((schevana kits ui)), tested by themselves: the calendar opened by a
+;;; press or a key, a day picked by a click or by keys, Escape, and the date
+;;; cleared.
 
-;; A date field, its date kept where its on-select puts it, in a window as
-;; tall as the calendar under it needs, by the font.
+;; A window with a date field, as tall as the calendar under the field needs
+;; in the current font. Returns the window and a box that holds the date its
+;; on-select was last given.
 (define (ui-date-field-test-window)
   (let ([date (box #f)])
     (let-values ([(cw ch) (ui-calendar-size)])

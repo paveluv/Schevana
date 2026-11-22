@@ -1,41 +1,51 @@
 ;;; (schevana apps pipeline) — Pipeline: the way from a window's draw to the
 ;;; screen surface, on one screen, read through (schevana kits inspect).
 ;;;
-;;; Five stages, chosen on the cards at the top:
-;;;   Lists   the frame's list by who drew it, and each's records, decoded
-;;;           in draw order, a run of glyphs as its text; a drawer's checkbox
-;;;           off leaves it out of the small screen and the Tape
-;;;   Who     what each drawer cost: core1's time drawing it, its records,
-;;;           the pixels they may touch, the runs they start, what changed
-;;;   Course  a tick's stages in order, each as wide as its time, render
-;;;           split into each drawer's draw and the rest
-;;;   Inside  the record selected, decoded, and the shader it's drawn with,
-;;;           its source and its helpers'
-;;;   Memory  what draws, what it holds on the GPU, and the glyphs' atlas
-;;; Right, the screen small, the selected record outlined, or shown another
-;;; way: who drew each record, in its drawer's color, the selected one's
-;;; bright; each record's kind; heat, a pixel as bright as how many records
-;;; cover it; or what changed since the frame before. A press there
-;;; lists the records that may touch that pixel. It draws again every tick, or
-;;; as seldom as it's told, and it's on the screen it shows: so it's in itself,
-;;; a tick older each time round. The wheel zooms it at the pointer and a drag
-;;; moves it; a loupe magnifies the pixels at the pointer; and it pops out to a
-;;; window of its own above the Pipeline, coming back when that one closes.
-;;; Under them, the Tape: a mark a record in draw order, as tall as what it may
-;;; cover, and in lanes who drew it and its kind. A press there, or its
-;;; stepper, holds the frame and draws it as far as that record, the record
-;;; selected; Play draws it record by record. What's selected in the list, or
-;;; at a pixel, is marked on it, and named on its heading, with Clear (or
-;;; Esc); a record selected opens its drawer in the tree, and stays with its
-;;; drawer as the frame changes. A drawer keeps its color while it's open.
-;;; Below, the River: a column a refresh of the screen's, each the frame on
-;;; the screen then from the refresh before its tick to its showing, the
-;;; screen's word over them and who was busy under them. A press holds it and
+;;; Six stages, chosen on the cards at the top:
+;;;   Lists    the frame's list by who drew it, and each drawer's records,
+;;;            decoded in draw order (a run of glyphs as its text); turning
+;;;            a drawer's checkbox off leaves it out of the small screen and
+;;;            the Tape
+;;;   Who      what each drawer cost: core1's time drawing it, its records,
+;;;            the pixels they may touch, the runs they start, what changed,
+;;;            and how often it was recorded again
+;;;   Course   a tick's stages in order, each as wide as its time, with
+;;;            render split into each drawer's draw and the rest
+;;;   Inside   the selected record, decoded, and the shader it's drawn with:
+;;;            its source and its helpers'
+;;;   Memory   the screen's facts, what is held on the GPU, and the glyphs'
+;;;            atlas
+;;;   Latency  the refresh clock, the last six refreshes and the newest
+;;;            frame's numbers, over the River and the clock's drift (it has
+;;;            no small screen and no Tape: the River takes their room)
+;;; At the right is the small screen: the screen, with the selected record
+;;; outlined, or shown another way: who drew each record, in its drawer's
+;;; color (the selected drawer's bright, the rest dim); each record's kind;
+;;; heat (a pixel as bright as the number of records that cover it); or
+;;; what changed since the frame before. A press on it lists the records
+;;; that may touch that pixel. It draws again every frame, or as seldom as
+;;; it's told, and since it is on the screen it shows, it holds a picture of
+;;; itself, one frame older each time round. The wheel zooms it at the
+;;; pointer and a drag moves it; a loupe magnifies the pixels at the
+;;; pointer; and it pops out to a window of its own above the Pipeline,
+;;; coming back when that window closes.
+;;; Under them is the Tape: one mark per record in draw order, as tall as
+;;; what it may cover, with lanes for who drew it and its kind. A press on
+;;; it, or its stepper, holds the frame and draws it only as far as that
+;;; record, which is selected; Play draws it record by record. What is
+;;; selected in the list, or at a pixel, is marked on the Tape and named on
+;;; its heading, with Clear (or Esc). Selecting a record opens its drawer in
+;;; the tree, and the selection stays with its drawer as the frame changes.
+;;; A drawer keeps its color while the Pipeline is open.
+;;; At the bottom is the River: one column per refresh of the screen, each
+;;; with the bar of the frame on the screen at that refresh, from its input
+;;; and its tick to its showing; the screen's word on each refresh is over
+;;; the bars, and core1's ticks are over that. A press holds the River and
 ;;; goes back to that frame, the whole app showing it; a drag moves through
-;;; them. Frames
-;;; are kept for a few seconds, what's left of the River's reach, while it's
-;;; open: closed, what's left of it is the core's few numbers a frame.
-;;; While it flows it asks for a frame a tick, so it says what it takes itself.
+;;; the frames. While the Pipeline is open it keeps frames for a few seconds
+;;; (the River's reach); once it is closed, all that is left of a frame is
+;;; the core's few numbers for it. While it flows it asks for a frame every
+;;; tick, so it shows what it takes itself.
 
 (library (schevana apps pipeline)
   (export
@@ -201,46 +211,46 @@
 
   (define-record-type pipeline-view
     (fields ui history river
-            ticks                ; the tick breakdown under the River
+            ticks                ; the River's tick breakdown, over its frames
             (mutable stage)      ; lists, who, course, inside, memory, latency
-            (mutable shown)      ; (inspect-list), the one on view
-            (mutable held?)      ; it stays
+            (mutable shown)      ; the list on view, an (inspect-list)
+            (mutable held?)      ; the view is held on one frame
             (mutable looked)     ; when it was read, or due to be (now-ms)
-            (mutable groups)     ; its spans: (label first count) ...
+            (mutable groups)     ; shown's spans: (label first count) ...
             (mutable selected)   ; a drawer's node or a record's row, or #f
-            (mutable traced)     ; the records at a pixel, or #f: (x y n ...)
-            (mutable upto)       ; the slider's record, or #f: all of them
+            (mutable traced)     ; the records at a pixel, (x y rows), or #f
+            (mutable upto)       ; how many records to draw, or #f: all
             (mutable image)      ; the small screen on view, or #f
             (mutable back)       ; what its next picture is drawn on, or #f
             (mutable flip?)      ; back has a newer picture than image
             (mutable reach)      ; while held, the River's now: a refresh
             (mutable tick)       ; the tick picked, or #f
-            (mutable own)        ; what it takes itself, ms a tick
-            (mutable tip)        ; the last bar's tooltip: ((k . now) . text)
-            (mutable every)      ; the small screen draws every this many frames
-            (mutable tape)       ; the Tape, a stream a record
-            (mutable tape-of)    ; the records it holds: kept, as it was
-            (mutable playing)    ; while it plays, how far it has: a number
-            (mutable play-secs)  ; how long it plays the whole frame
-            ;; device pixels a screen pixel, or #f: all of it
+            (mutable own)        ; what it takes itself, ms per tick
+            (mutable tip)        ; the River's last tooltip: ((k . now) . text)
+            (mutable every)      ; frames between the small screen's draws
+            (mutable tape)       ; the Tape, a stream with a row per record
+            (mutable tape-of)    ; the kept vector the Tape was last sent
+            (mutable playing)    ; while Play runs, how far it has got
+            (mutable play-secs)  ; how long Play takes over the whole frame
+            ;; device pixels per screen pixel, or #f: fit the whole box
             (mutable zoom)
             (mutable center)     ; the screen's pixel at the middle: (x . y)
             (mutable loupe?)
             (mutable popped)     ; its window when it's popped out, or #f
             (mutable off)        ; the spans left out, by node: (label k) ...
-            (mutable kept)       ; the records drawn of the list on view, a
+            (mutable kept)       ; the drawn records of the list on view, a
                                  ; vector in order: what the Tape goes through
-            (mutable kept-of)    ; the list on view it's of
+            (mutable kept-of)    ; the list on view that kept was made for
             (mutable kept-box)   ; the box around them, while a span is left
                                  ; out: (x0 y0 x1 y1) on the screen, or #f
             (mutable look)       ; what the small screen shows: pipeline-looks
-            (mutable painted)    ; a list repainted for it, used again
-            (mutable who)        ; what each drew cost: (list whole? . rows)
+            (mutable painted)    ; a list repainted for the look, reused
+            (mutable who)        ; what each drawer cost: (list whole? . rows)
             (mutable course)     ; a tick's stages: (list . (seq items))
             (mutable course-sort) ; (key . up|down), or #f: in their order
             (mutable who-sort)   ; (key . up|down), or #f: in draw order
             (mutable latency-words) ; (when . words), read twice a second
-            (mutable ticks-by-frame?) ; the tick breakdown by frame, not when
+            (mutable ticks-by-frame?) ; ticks by frame, not by when they ran
             colors))             ; each drawer's color, by node: an index
 
   (define pipeline-period-ms 1000)
@@ -260,8 +270,8 @@
       (when place
         (pipeline-view-selected-set! v (pipeline-place-row v place)))))
 
-  ;; What a profiler's node took, ms a tick, over the half second to tick
-  ;; newest.
+  ;; What a profiler's node took, in ms per tick, over the 30 ticks (half a
+  ;; second at 60 Hz) up to tick newest.
   (define (pipeline-ms-over node newest)
     (let ([seqs (filter profile-tick-kept?
                         (map (lambda (i) (- newest i)) (iota 30)))])
@@ -269,7 +279,8 @@
                     0.0 seqs)
          (max 1 (length seqs)))))
 
-  ;; What the window takes itself, ms a tick, over the last half second.
+  ;; What the Pipeline's window takes itself, in ms per tick, over the last
+  ;; 30 ticks.
   (define (pipeline-own-ms)
     (let ([win (find-window 'pipeline)] [newest (profile-newest-tick)])
       (if (and win newest)
@@ -286,10 +297,10 @@
         (pipeline-view-own-set! v (pipeline-own-ms))))
     (pipeline-view-looked-set! v (now-ms)))
 
-  ;; What's on view, drawn on image, but the spans left out. Live, it's drawn
-  ;; with the next frame, as far as the slider says; held, what's kept of the
-  ;; frame is. Showing who drew, it's a frame kept, repainted: live, the one
-  ;; just drawn.
+  ;; Draws what is on view on image, without the spans left out. Live, it
+  ;; is drawn with the next frame, as far as upto says; held, the kept copy
+  ;; of the frame is drawn. In a look other than the picture (who drew, say),
+  ;; a kept frame is drawn repainted: live, the one just drawn.
   (define (pipeline-preview-on! v image)
     (let ([l (pipeline-view-shown v)] [upto (pipeline-view-upto v)]
           [left-out (pipeline-left-out-of v)])
@@ -309,22 +320,24 @@
         [else
          (inspect-preview! image (or upto (most-positive-fixnum)) left-out)])))
 
-  ;; At once, on the image that frame shows. An image can't show itself as it's
-  ;; drawn on, so its own box stays empty.
+  ;; Draws the small screen at once, on the image the frame shows. An image
+  ;; can't show itself while it is drawn on, so its own box stays empty.
   (define (pipeline-preview! v)
     (let ([image (pipeline-view-image v)])
       (when image (pipeline-preview-on! v image))))
 
-  ;; A tick's, on the other image, so the frame showing the one on view is drawn
-  ;; whole. It comes on view at the next tick: pipeline-flip!.
+  ;; Draws the tick's picture on the other image, so that the small screen
+  ;; shows a whole frame, its own box included. The picture comes on view at
+  ;; the next tick (pipeline-flip!).
   (define (pipeline-preview-back! v)
     (let ([back (pipeline-view-back v)])
       (when back
         (pipeline-preview-on! v back)
         (pipeline-view-flip?-set! v #t))))
 
-  ;; A window out of its own draws again too: one left showing the other image,
-  ;; which is drawn on, would show the picture made without it.
+  ;; Swaps the two images. A popped-out viewer draws again too: left showing
+  ;; the other image, which is now drawn on, it would show a picture made
+  ;; without it.
   (define (pipeline-flip! v)
     (when (pipeline-view-flip? v)
       (let ([image (pipeline-view-image v)] [popped (pipeline-view-popped v)])
@@ -338,7 +351,7 @@
   ;; The frame on the screen when tick seq ended.
   (define (pipeline-tick-frame seq) (- (profile-tick-ns seq 'frames) 1))
 
-  ;; It stops flowing, and the frames stay as they are, the last one among them.
+  ;; Stops the flow: the frames kept stay as they are, the newest included.
   (define (pipeline-hold! v)
     (unless (pipeline-view-held? v)
       (inspect-history-add! (pipeline-view-history v))
@@ -370,19 +383,19 @@
           (pipeline-preview! v)))))
 
   ;;; -- the River
-  ;;; A column a refresh of the screen's, the newest at the right: the one
-  ;;; before now, the refresh the frame drawn will show at
+  ;;; One column per refresh of the screen, the newest at the right: the one
+  ;;; before now, which is the refresh the frame being drawn will show at
   ;;; (pipeline-river-target). The newest frames are on their way, under
-  ;;; the refreshes they're meant for.
-  ;;; A column's bar is the frame on the screen at that refresh, a tail
-  ;;; hanging from zero, its showing: down, its way back to its tick, and
-  ;;; under that its input's, from the compositor to the tick. Shown again
-  ;;; while the next frame was late, the time since is red, at the top; with
-  ;;; nothing due, the column is empty. Over the bars, the screen's word on
-  ;;; each refresh.
+  ;;; the refreshes they are meant for.
+  ;;; A column's bar is the frame on the screen at that refresh: a tail
+  ;;; hanging from zero, its showing. Going down, it is the frame's way back
+  ;;; to its tick, and under that its input's way, from the compositor to
+  ;;; the tick. When a frame is shown again because the next frame was late,
+  ;;; the time since is red, at the top; with nothing due, the column is
+  ;;; empty. Over the bars is the screen's word on each refresh.
 
-  ;; How bright a tick's collecting is: a level by its time, faint however
-  ;; short, and at its brightest from this many ns.
+  ;; How bright a tick's collection is drawn: a level by its time, faint
+  ;; however short, and brightest from pipeline-collector-full-ns on.
   (define pipeline-collector-levels 8)
   (define pipeline-collector-full-ns 2000000)
 
@@ -408,12 +421,12 @@
                (loop (- seq 1))
                seq))))
 
-  ;; Refreshes kept; the bars' room in refreshes, under zero.
+  ;; The most refreshes shown; the bars' room under zero, in refreshes.
   (define pipeline-river-kept 300)
   (define pipeline-river-depth 5)
 
-  ;; A tail's parts bottom up, the oldest first, a word each: (color .
-  ;; label), the first clear, lifting the tail to hang from zero.
+  ;; A tail's parts bottom up, the oldest first, one number each: (color .
+  ;; label). The first is clear, and lifts the tail to hang from zero.
   (define pipeline-draw-river-parts
     '((#f . #f)
       (chart-muted-1 . "input, to SDL's stamp")
@@ -427,8 +440,8 @@
       (chart-8 . "the compositor")
       (chart-flag . "shown again, the next frame late")))
 
-  ;; Over the bars, the screen's word: new, shown again while a newer was
-  ;; due, a frame dropped.
+  ;; Over the bars, the screen's word: a new frame; the one before shown
+  ;; again while a newer one was due; or a frame dropped.
   (define pipeline-draw-river-strips '(("screen" chart-ok chart-flag chart-2)))
 
   (define pipeline-river-screen-tip
@@ -450,9 +463,9 @@
              (eq? (inspect-frame-sent i) 'no-room))))
 
   ;; Where frames began to show, by grid g, from refresh from on: each frame
-  ;; the screen reported at its refresh, the last before from among them;
-  ;; then those on their way at the one each is meant for, or the next free
-  ;; one. => ((k i on-way?) ...) by k
+  ;; the screen reported, at its refresh (the last one before from
+  ;; included); then the frames on their way, each at the refresh it is
+  ;; meant for, or the next free one. Returns ((k i on-way?) ...), by k.
   (define (pipeline-river-starts g from)
     (define (refresh i)
       (and (inspect-frame-ref i 6) (inspect-frame-refresh g i)))
@@ -491,11 +504,12 @@
       (and (< j i)
            (or (eqv? (inspect-frame-report j 1) 2) (loop (+ j 1))))))
 
-  ;; Frame i's tail into row (µs), by grid g, down from zero, refresh at's
-  ;; time and extra ns on (shown again): back from its showing to its tick,
-  ;; then its input's way to it; on its way, as far as it has gone by now,
-  ;; under the refresh it's meant for, the compositor's part from the latch
-  ;; it should make. Cut at the column's depth.
+  ;; Writes frame i's tail into row, in µs, by grid g, down from zero, which
+  ;; is refresh at's time plus extra ns (the time it was shown again for):
+  ;; back from its showing to its tick, then its input's way to the tick. A
+  ;; frame on its way is drawn as far as it has gone by now, under the
+  ;; refresh it is meant for, with the compositor's part starting from the
+  ;; latch it should make. The tail is cut at the column's depth.
   (define (pipeline-river-parts! row g i at extra on-way?)
     (let* ([r (inspect-refresh-period g)]
            [top (+ (inspect-refresh-time g at) extra)]
@@ -529,18 +543,19 @@
                                                [now? (now-ns)]
                                                [else at])))])
                 (fxvector-set! row k (us (- t at)))
-                ;; the tick is point 3: after it, on its way, the first
-                ;; missing is now
+                ;; the tick is point 3: after it, for a frame on its way,
+                ;; the first missing point is now
                 (loop (cdr points) (+ k 1) t
                       (cond [(< k 3) #f]
                             [(= k 3) on-way?]
                             [else (and now? p #t)])))))))
       (fxvector-set! row 10 (us extra))))
 
-  ;; The River's words of refresh k, by grid g, now the refresh now, from
-  ;; starts (pipeline-river-starts): the parts of the bar of the frame on the
-  ;; screen then, and the screen's word. Rows come by k: each is worked out
-  ;; once, its words read in turn.
+  ;; Returns the procedure that gives the River's numbers for refresh k, by
+  ;; grid g, with now the River's now and starts from
+  ;; pipeline-river-starts: the parts of the bar of the frame on the screen
+  ;; at k, then the screen's word. Rows are asked for in order of k, so each
+  ;; is computed once and its numbers are read in turn.
   (define (pipeline-river-word g now starts)
     (let* ([n (length pipeline-draw-river-parts)]
            [row (make-fxvector (+ n 1) 0)]
@@ -581,15 +596,15 @@
                      [else 0])))))
         (fxvector-ref row j))))
 
-  ;; The rules: a refresh at a time under zero, the screen, which is at the
-  ;; top.
+  ;; The River's rules: one at each refresh under zero (the screen, at the
+  ;; top).
   (define (pipeline-river-rules r)
     (map (lambda (m)
            (cons (quotient (* (- pipeline-river-depth m) r) 1000)
                  (format "−~a" m)))
          '(1 2 3 4)))
 
-  ;; Refresh k on the River, in words, worked out once while it's pointed at.
+  ;; Refresh k on the River as text, computed once while it's pointed at.
   (define (pipeline-river-tip v g now k)
     (let ([tip (pipeline-view-tip v)] [key (cons k now)])
       (if (and tip (equal? (car tip) key))
@@ -647,11 +662,12 @@
                                                          (pacer-period)))
                  ""))))))
 
-  ;; Over the frames, core1's ticks, a column a refresh as the frames': the
-  ;; ticks whose work began in it, or each frame's own, over the refresh it
-  ;; showed at. Monitor's phases, rising to the screen's lane, two refreshes
-  ;; tall, a refresh as tall as under it; over them, whether a tick came
-  ;; late and when a collection ran.
+  ;; Over the frames are core1's ticks, one column per refresh as for the
+  ;; frames: either the ticks whose work began in that refresh, or each
+  ;; frame's own tick, over the refresh the frame showed at. They are
+  ;; stacked by Monitor's phases, rising to the screen's lane, two refreshes
+  ;; tall, with a refresh as tall as below it. Strips over them show whether
+  ;; a tick came late and when a collection ran.
   (define pipeline-river-ticks-high 2)
 
   (define-made pipeline-draw-river-tick-strips
@@ -673,14 +689,15 @@
     (ui-stream-new pipeline-river-rows (length monitor-phases)
                    pipeline-draw-river-tick-strips))
 
-  ;; When tick seq's own work began (now-ns): after its wait for the screen.
+  ;; When tick seq's own work began (on now-ns's clock): after its wait for
+  ;; the screen.
   (define (pipeline-tick-began seq)
     (- (profile-tick-ns seq 'end)
        (- (profile-tick-ns seq 'ns) (profile-tick-phase-ns seq 'vsync-wait))))
 
-  ;; The ticks of refresh k, by grid g, from starts (pipeline-river-starts):
-  ;; under frames, the one that drew the frame new there; else those whose
-  ;; work began in it, from ran (pipeline-river-ticks-ran).
+  ;; The ticks of refresh k, by grid g. With by-frame?, the tick that drew
+  ;; the frame that is new there, from starts (pipeline-river-starts); else
+  ;; the ticks whose work began in it, from ran (pipeline-river-ticks-ran).
   (define (pipeline-river-ticks-of g k by-frame? starts ran)
     (if by-frame?
         (let ([start (assv k starts)])
@@ -688,8 +705,8 @@
             (if seq (list seq) '())))
         (hashtable-ref ran k '())))
 
-  ;; The ticks kept whose work began from refresh from on, by grid g: refresh
-  ;; -> (seq ...).
+  ;; The ticks kept whose work began from refresh from on, by grid g, as a
+  ;; table from a refresh to its ticks, (seq ...).
   (define (pipeline-river-ticks-ran g from)
     (let ([t (make-eqv-hashtable)] [since (inspect-refresh-time g from)])
       (let loop ([seq (profile-newest-tick)])
@@ -701,8 +718,9 @@
               (loop (- seq 1))))))
       t))
 
-  ;; The tick breakdown's words of refresh k: its ticks' phases summed (µs),
-  ;; then whether one came late, and the collector's level, by its longest.
+  ;; Returns the procedure that gives the tick breakdown's numbers for
+  ;; refresh k: its ticks' phases summed (in µs), then whether one came
+  ;; late, then the collector's level, by the longest collection.
   (define (pipeline-river-tick-word g by-frame? starts ran)
     (let ([phases (length monitor-phases)] [period (pacer-period)])
       (lambda (k j)
@@ -724,19 +742,19 @@
                               level))
                         0 seqs)])))))
 
-  ;; The tick breakdown's rules: a refresh and two over its foot.
+  ;; The tick breakdown's rules: one and two refreshes over its foot.
   (define (pipeline-river-tick-rules r)
     (map (lambda (i)
            (cons (quotient (* (+ i 1) r) 1000) (format "+~a" (+ i 1))))
          (iota pipeline-river-ticks-high)))
 
-  ;; Labels another chart's gutter has, as rules with no line: the frames'
-  ;; and the ticks' columns then start at the same x.
+  ;; The labels in another chart's gutter, as rules with no line, so that
+  ;; the frames' and the ticks' columns start at the same x.
   (define (pipeline-river-gutter rules strips)
     (map (lambda (label) (cons #f label))
          (append (map cdr rules) (filter values (map car strips)))))
 
-  ;; Refresh k's ticks, in words.
+  ;; Refresh k's ticks as text, for a tooltip.
   (define (pipeline-river-ticks-text g k by-frame? starts)
     (let ([seqs (pipeline-river-ticks-of
                  g k by-frame? starts
@@ -764,8 +782,8 @@
              (list (inspect-refresh-of g (pipeline-tick-began tick)))]
             [else '()])))
 
-  ;; A stamp this late, ns, is marked: past what a stamp read in time
-  ;; strays, tens of microseconds.
+  ;; A stamp this late or later, in ns, is marked: well past how far a
+  ;; stamp read in time strays (tens of microseconds).
   (define pipeline-stamp-late-ns 250000)
 
   ;; Whether the screen stamped frame i late (inspect-frame-stamp-late).
@@ -773,8 +791,8 @@
     (let ([late (inspect-frame-stamp-late i)])
       (and late (>= late pipeline-stamp-late-ns))))
 
-  ;; The refreshes from oldest on whose frame the screen stamped late: none
-  ;; on an estimated grid, which has no word.
+  ;; The refreshes from oldest on whose frame the screen stamped late; none
+  ;; on an estimated grid, which has no word from the screen.
   (define (pipeline-river-late-stamps g oldest)
     (if (inspect-refresh-estimated? g)
         '()
@@ -788,7 +806,7 @@
                        (loop (- i 1) (cons k ks))]
                       [else (loop (- i 1) ks)]))))))
 
-  ;; A pip in the screen's cell of each refresh in ks, over its color.
+  ;; Draws a pip in the screen's lane at each refresh in ks, over its color.
   (define (pipeline-draw-river-pips areas count newest ks)
     (let ([py (cadr (cdr (assq 'plot areas)))]
           [lane (- (cadr (assq 'lane areas)) (caddr (assq 'lane areas)))])
@@ -804,15 +822,16 @@
                            (+ py (quotient (- lane ph) 2)) pw ph 'text))))))
        ks)))
 
-  ;; The River's height for this width's legends, its heading, the ticks
-  ;; and the legends included, with the frames' bars about h tall.
+  ;; The River's height at width w (which sets the legends' height), its
+  ;; heading, ticks and legends included, with the frames' bars about bars
+  ;; pixels tall.
   (define (pipeline-river-height w bars)
     (+ (pipeline-river-fixed w)
        (* (+ pipeline-river-depth pipeline-river-ticks-high)
           (quotient bars pipeline-river-depth))))
 
-  ;; What of the River's height isn't bars: its heading, legends, and each
-  ;; stream's strips and the inset over its plot.
+  ;; The part of the River's height that isn't bars: its heading, its
+  ;; legends, and each stream's strips and the inset over its plot.
   (define (pipeline-river-fixed w)
     (let-values ([(kw kh) (ui-legend-size (pipeline-river-keys))]
                  [(tw th) (ui-legend-size (pipeline-river-tick-keys))])
@@ -821,15 +840,15 @@
          pipeline-river-inset (ui-stream-room pipeline-draw-river-strips)
          4 kh)))
 
-  ;; The River's heading row: its name, whether it's live, the checkbox,
-  ;; the words.
+  ;; The height of the River's heading row: its name, the live badge, the
+  ;; tick choices and the words.
   (define (pipeline-river-heading-h w)
     (let-values ([(gw gh) (ui-label-size '(group) "River" w)]
                  [(cw ch) (pipeline-river-tick-choice-size)]
                  [(lw lh) (ui-live-badge-size #t "")])
       (max gh ch lh)))
 
-  ;; What a held Pipeline holds, on its badge.
+  ;; The badge's label while the Pipeline is held: the frame it holds.
   (define (pipeline-river-held-label v)
     (let* ([tick (pipeline-view-tick v)]
            [l (and tick (profile-tick-kept? tick)
@@ -842,12 +861,12 @@
      it still on one frame; here again, or Esc, lets it go.")
 
   ;; Which ticks stand over a refresh: those whose work began in it, or the
-  ;; one that drew the frame new there.
+  ;; one that drew the frame that is new there.
   (define pipeline-river-tick-choices
     '(("Ticks when they ran" . ran)
       ("Each over its frame" . frame)))
 
-  ;; The choice's room: a button as wide as the widest, each.
+  ;; The room the choices take: for each, a button as wide as the widest.
   (define (pipeline-river-tick-choice-size)
     (let ([sizes (map (lambda (c)
                         (call-with-values (lambda ()
@@ -899,19 +918,20 @@
            [seq (and i (pipeline-frame-tick i))])
       (when seq (pipeline-pick! v seq))))
 
-  ;; The refresh on the River's now: the one the frame drawn now will show
-  ;; at (pipeline-river-target); while held, as it was.
+  ;; The River's now: the refresh the frame drawn now will show at
+  ;; (pipeline-river-target); while held, the one it was when held.
   (define (pipeline-river-now v g)
     (if (pipeline-view-held? v)
         (pipeline-view-reach v)
         (pipeline-river-target g)))
 
-  ;; The refresh the frame being drawn will show at, by grid g, should frames
+  ;; The refresh the frame being drawn will show at, by grid g, if frames
   ;; keep coming a refresh apart: the one after the newest frame placed on a
-  ;; refresh, one more for each since on its way to the screen; never before
-  ;; the next refresh. So the River moves a column a frame while the screen
-  ;; takes them so, the screen's late word no matter, and a frame that comes
-  ;; late moves it with the jump it makes.
+  ;; refresh, plus one for each frame since then on its way to the screen,
+  ;; and never before the next refresh. So the River moves one column per
+  ;; frame while the screen takes them that way, whatever the screen's word
+  ;; on late frames, and a frame that comes late moves it by the jump it
+  ;; makes.
   (define (pipeline-river-target g)
     (let ([next (+ (inspect-refresh-of g (now-ns)) 1)])
       (let loop ([i (- *frame-ring-n* 1)] [ahead 1] [n 0])
@@ -930,15 +950,16 @@
             (pipeline-river-gutter (pipeline-river-tick-rules r)
                                    pipeline-draw-river-tick-strips)))
 
-  ;; The refreshes the River shows across w, the frame being drawn at now:
-  ;; (values newest oldest). Now's own frame is the one being drawn.
+  ;; The refreshes the River shows across w, with now the refresh of the
+  ;; frame being drawn: (values newest oldest). The newest is the one
+  ;; before now, since now's frame is still being drawn.
   (define (pipeline-river-span now w)
     (let ([newest (- now 1)])
       (values newest
               (- newest (min pipeline-river-kept (max 1 (quotient w 2))) -1))))
 
   ;;; -- the screen's clock's drift, under the River on Latency
-  ;;; How far core0's clock moved at each refresh (inspect-clock-moves), a
+  ;;; How far core0's clock moved at each refresh (inspect-clock-moves), each
   ;;; refresh under its column of the River.
 
   ;; The graph's height under its heading.
@@ -948,8 +969,8 @@
     (let-values ([(gw gh) (ui-label-size '(group) "Clock drift" w)])
       (+ gh 4 pipeline-drift-high)))
 
-  ;; The graph's reach either side of 0, ns: the first of 1, 2 and 5 times a
-  ;; power of ten that holds every move, 10 µs at least.
+  ;; The graph's reach on either side of 0, in ns: the first of 1, 2 and 5
+  ;; times a power of ten that holds every move, and 10 µs at least.
   (define (pipeline-drift-reach moves)
     (let ([peak (fold-left (lambda (most m) (max most (abs (cdr m)))) 0 moves)])
       (let loop ([step 10000])
@@ -958,16 +979,16 @@
               [(>= (* 5 step) peak) (* 5 step)]
               [else (loop (* 10 step))]))))
 
-  ;; Where refresh k's column is across, its middle, by the River's layout
-  ;; (ui-stream-layout's count and areas); #f left of the plot.
+  ;; The x of the middle of refresh k's column, by the River's layout
+  ;; (ui-stream-layout's count and areas); #f when it is off the plot.
   (define (pipeline-drift-x areas count newest k)
     (let ([i (- count 1 (- newest k))])
       (and (>= i 0) (<= k newest)
            (let-values ([(bx bw) (ui-bar-chart-bar areas count i)])
              (+ bx (/ bw 2))))))
 
-  ;; The moves in x y w h, a line from each to the next, 0 across the
-  ;; middle and reach ns to either edge.
+  ;; Draws the moves in x y w h, a line from each to the next, with 0
+  ;; across the middle and reach ns at either edge.
   (define (pipeline-draw-drift x y w h areas count newest moves reach)
     (let* ([half (max 1 (- (quotient h 2) 2))]
            [mid (+ y (quotient h 2))]
@@ -1064,7 +1085,8 @@
         (ui-draw-label x ly w gh '(group) "River")
         (ui-draw-label x ly w gh '(dim right) (pipeline-river-words v g)))
       (unless (pipeline-view-held? v)
-        ;; the screen reports a few refreshes on, and what's on its way moves
+        ;; the screen reports a few refreshes late, and frames on their way
+        ;; move, so the last few refreshes are sent again
         (ui-stream-resend! river (- now 8))
         (ui-stream-resend! ticks (- now 8))
         (let* ([from (if (< newest (ui-stream-sent river))
@@ -1142,11 +1164,12 @@
 
   ;;; -- Latency
   ;;; The refresh clock, the last six refreshes as they went, and the
-  ;;; numbers of the newest frame shown, over the River, which is the chart.
+  ;;; numbers of the newest frame shown, all over the River, which is the
+  ;;; chart.
 
-  ;; Input to screen, the last 10 s, ms at the median and the 99th, by each
-  ;; input's point, read twice a second, all in one walk of the frames: it
-  ;; runs in a frame's draw.
+  ;; Input to screen over the last 10 s, in ms at the median and the 99th,
+  ;; for each point an input is stamped at. It is read twice a second, all
+  ;; in one walk of the frames, since it runs in a frame's draw.
   (define (pipeline-latency-words v)
     (let ([was (pipeline-view-latency-words v)])
       (if (and was (< (- (now-ms) (car was)) 500))
@@ -1200,16 +1223,18 @@
               time on the screen, red where a refresh repeated. Lines are \
               the screen's refreshes. Held, it ends with the tick picked.")))
 
-  ;; Latency's height over the River: its heading and the clock or the strip.
+  ;; Latency's height over the River: its heading and the taller of the
+  ;; clock and the strip.
   (define (pipeline-latency-height w)
     (let-values ([(gw gh) (ui-label-size '(group) "Latency" w)])
       (+ gh 4 (max pipeline-clock-size (pipeline-timeline-height)))))
 
-  ;; The live strip beside the clock: the last six refreshes, each frame
-  ;; across its lanes as it went, its oldest input, core1's draw, its wait in
-  ;; the box, core0's wait for an image, and its time on the screen, a
-  ;; refresh repeated red; the refreshes the screen reported, and the latch
-  ;; each tick aimed at. Held, it shows the frame of the tick picked.
+  ;; The live strip beside the clock: the last six refreshes, with each
+  ;; frame across its lanes as it went (its oldest input, core1's draw, its
+  ;; wait in the box, core0's wait for an image, and its time on the screen,
+  ;; red where a refresh repeated), the refreshes the screen reported, and
+  ;; the latch each tick aimed at. Held, it ends with the frame of the tick
+  ;; picked.
   (define pipeline-timeline-lanes '("input" "core1" "box" "core0" "screen"))
   (define pipeline-timeline-refreshes 6)
 
@@ -1220,15 +1245,17 @@
   ;; The refresh clock's width and height.
   (define pipeline-clock-size 150)
 
-  ;; The frame the strip ends with: the picked tick's, held; else the newest.
+  ;; The frame the strip ends with: the picked tick's while held; else the
+  ;; newest.
   (define (pipeline-timeline-last v)
     (let ([tick (and (pipeline-view-held? v) (pipeline-view-tick v))])
       (if (and tick (profile-tick-kept? tick) (pipeline-tick-drew? tick))
           (pipeline-tick-frame-index tick)
           (- *frame-ring-n* 1))))
 
-  ;; When the strip ends (now-ns): a refresh after the newest frame shown
-  ;; among the last few up to frame last; else a refresh after its publish.
+  ;; When the strip ends (on now-ns's clock): a refresh after the newest
+  ;; frame shown among the 8 up to frame last; else a refresh after last's
+  ;; publish.
   (define (pipeline-timeline-end last r)
     (let loop ([i last] [k 0])
       (cond
@@ -1251,7 +1278,7 @@
                                               pw)
                                            span)))]
            [lane-y (lambda (k) (+ y 2 (* k lh)))]
-           ;; a span of lane k, from t0 to t1, its part of the window
+           ;; fills lane k from t0 to t1, as much of it as is in the strip
            [span! (lambda (k t0 t1 color)
                     (when (and t0 t1 (< t0 end) (> t1 start))
                       (let ([a (at t0)] [b (at t1)])
@@ -1261,7 +1288,7 @@
       (for-each (lambda (name k)
                   (draw-text (+ x 6) (lane-y k) name 'text-faint 'ui-small))
                 pipeline-timeline-lanes (iota (length pipeline-timeline-lanes)))
-      ;; the refreshes, a reported one and a period apart from it
+      ;; the refreshes: one the screen reported, and the rest a period apart
       (let ([seen (inspect-frame-at last 'shown)])
         (when seen
           (do ([t (- seen (* r (quotient (- seen start) r))) (+ t r)])
@@ -1292,21 +1319,23 @@
               (when shown
                 (let ([until (or next-shown end)])
                   (span! 4 shown (min until (+ shown r)) color)
-                  ;; the screen showed it longer than a refresh: it froze
+                  ;; the screen showed it for over one and a half
+                  ;; refreshes: it froze
                   (when (> until (+ shown (quotient (* 3 r) 2)))
                     (span! 4 (+ shown r) until 'chart-flag))))
               (loop (- i 1) (or shown next-shown))))))))
 
-  ;; The refresh clock, left of the strip: a lap is a refresh, the screen's
-  ;; at the top. The newest frames each wind out from their oldest input (or
-  ;; their tick) to the screen, a lap a refresh, their parts in the lanes'
-  ;; colors, the newest reported bright and the rest faint: how many laps a
-  ;; frame takes is how many refreshes old it shows. A mark on the rim where
-  ;; the latch falls.
+  ;; The refresh clock, left of the strip: a lap is a refresh, with the
+  ;; screen's at the top. The newest frames each wind out from their oldest
+  ;; input (or their tick) to the screen, one lap per refresh, their parts
+  ;; in the lanes' colors, the newest the screen reported bright and the
+  ;; rest faint: the number of laps a frame takes is how many refreshes old
+  ;; it is when shown. A mark on the rim shows where the latch falls.
   (define pipeline-clock-frames 8)
-  (define pipeline-clock-steps 64)    ; points a lap
+  (define pipeline-clock-steps 64)    ; points per lap
   (define pipeline-clock-laps 3)      ; the most the clock holds
-  ;; The unit circle, a point a step, from the top clockwise, scaled 4096.
+  ;; The unit circle, a point per step, from the top clockwise, scaled by
+  ;; 4096: x then y of each.
   (define-made pipeline-clock-unit
     (let ([v (make-vector (* 2 pipeline-clock-steps))])
       (do ([k 0 (+ k 1)]) ((= k pipeline-clock-steps) v)
@@ -1330,7 +1359,8 @@
       (stroke-circle cx cy hub 'chart-rule)
       (stroke-circle cx cy rim 'chart-rule)
       (when seen
-        ;; a point t ns after from: k 0 its x, 1 its y; a lap a refresh out
+        ;; the x (k 0) or y (k 1) of time t's point: its angle t's place in
+        ;; the refresh, its radius a lap further out per refresh since from
         (let ([point (lambda (t from k)
                        (let ([unit (vector-ref
                                     pipeline-clock-unit
@@ -1376,8 +1406,9 @@
                                  (if newest? 3 1))
                       (wind u nx ny)))))))))))
 
-  ;; The lane's color frame i is in at t: its input's wait, core1's draw, the
-  ;; box, the wait for an image, then the compositor and the screen.
+  ;; The color of the lane frame i is in at t: its input's wait, core1's
+  ;; draw, the box, the wait for an image, then the compositor and the
+  ;; screen.
   (define (pipeline-draw-clock-color i t)
     (cond [(< t (or (inspect-frame-at i 'tick) 0)) 'chart-7]
           [(< t (or (inspect-frame-at i 'publish) 0)) 'chart-1]
@@ -1385,8 +1416,8 @@
           [(< t (or (inspect-frame-at i 'acquired) 0)) 'chart-3]
           [else 'chart-8]))
 
-  ;; The numbers under the strip, of the newest frame the screen reported
-  ;; on, and the pacer's now: (label . words) each.
+  ;; The numbers under the strip, for the newest frame the screen reported
+  ;; on and for the pacer now: a (label . text) pair each.
   (define (pipeline-latency-readout last)
     (let* ([r (core0-frame-ns)]
            [i (let loop ([i last] [k 0])
@@ -1426,8 +1457,8 @@
 
   ;;; -- the Tape
 
-  ;; A record's mark: as tall as the log of the pixels it may cover, 100 a
-  ;; doubling, to 16M; in lanes, who drew it, and its kind.
+  ;; A record's mark is as tall as the log of the pixels it may cover, 100
+  ;; per doubling, up to 16M; lanes show who drew it and its kind.
   (define pipeline-tape-top 2400)
   (define pipeline-tape-rules '((1000 . "1K px") (2000 . "1M px")))
   (define pipeline-tape-kinds '(box segment polygon glyph shadow))
@@ -1443,14 +1474,15 @@
       "The record's kind: text for a glyph, faint for a box, gray for a \
        shadow, a color for a line or a polygon."))
 
-  ;; A Tape holding n records, its rows a power of two.
+  ;; A Tape that holds n records, its rows a power of two.
   (define (pipeline-tape-new n)
     (ui-stream-new (let loop ([rows 2048])
                      (if (< rows n) (loop (* 2 rows)) rows))
                    1 pipeline-draw-tape-lanes))
 
-  ;; The Tape's rows of list l, a vector a record of those kept: (reach who
-  ;; kind), who and kind each its lane's color, from 1, or 0.
+  ;; The Tape's rows for list l: a vector with a row per record kept, each
+  ;; #(reach who kind), where who and kind are each a color of its lane,
+  ;; from 1, or 0 for none.
   (define (pipeline-tape-rows v l kept)
     (let* ([n (inspect-list-count l)]
            [who (make-vector n 0)]
@@ -1476,8 +1508,8 @@
                                  (if kind (+ 1 (- kinds (length kind)))
                                      0))))))))
 
-  ;; The Tape holds the records kept of the list on view: sent again when
-  ;; they're others.
+  ;; The Tape holds the kept records of the list on view, and is sent them
+  ;; again when they change.
   (define (pipeline-tape-send! v)
     (let ([kept (pipeline-kept v)])
       (unless (eq? kept (pipeline-view-tape-of v))
@@ -1502,8 +1534,8 @@
               (inspect-paint-text (inspect-record-paint l i))
               (if label (format "\ndrawn by ~a" label) ""))))
 
-  ;; The marks on the Tape, where its records are: what's selected, and those at
-  ;; the pixel traced, but those left out.
+  ;; The marks on the Tape, at its records' places: what is selected, and
+  ;; the records at the pixel traced, except those left out.
   (define (pipeline-tape-marked v)
     (let* ([n (inspect-list-count (pipeline-view-shown v))]
            [kept (pipeline-kept v)]
@@ -1524,8 +1556,9 @@
             (map (lambda (node) (pipeline-node-first v node)) (caddr traced))
             '())))))
 
-  ;; The small screen draws as far as k records, the last of them kept
-  ;; selected: never one of a span left out, which it doesn't draw.
+  ;; The small screen draws as far as k records, and the last of them that
+  ;; is kept is selected: never one of a span left out, which it doesn't
+  ;; draw.
   (define (pipeline-draw-upto! v k)
     (let* ([l (pipeline-view-shown v)] [n (inspect-list-count l)]
            [k (max 0 (min k n))]
@@ -1537,15 +1570,15 @@
          v (car (inspect-rows l (vector-ref kept (- below 1)) 1))))
       (pipeline-preview! v)))
 
-  ;; A press on the Tape, or its stepper: the frame stays, drawn as far as
-  ;; there.
+  ;; A press on the Tape, or on its stepper: the frame is held, drawn only
+  ;; as far as there.
   (define (pipeline-tape-go! v k)
     (pipeline-hold! v)
     (pipeline-view-playing-set! v #f)
     (pipeline-draw-upto! v k))
 
-  ;; Play goes through the records kept, from where the drawing stops: how far
-  ;; it has is a place on the Tape.
+  ;; Play goes through the records kept, from where the drawing stops; how
+  ;; far it has got is a place on the Tape.
   (define (pipeline-play-toggle! v)
     (if (pipeline-view-playing v)
         (pipeline-view-playing-set! v #f)
@@ -1556,7 +1589,8 @@
           (pipeline-draw-upto! v (pipeline-kept-upto
                                   v (pipeline-view-playing v))))))
 
-  ;; A tick of Play: on, by the share of the frame a tick of play-secs is.
+  ;; A tick of Play moves it on by the share of the frame that one tick is
+  ;; of play-secs.
   (define (pipeline-play-tick! v)
     (let* ([n (vector-length (pipeline-kept v))]
            [at (+ (pipeline-view-playing v)
@@ -1569,15 +1603,16 @@
                  (pipeline-draw-upto! v (pipeline-kept-upto
                                          v (exact (floor at))))))))
 
-  ;; Where the drawing stops: a line after the last record drawn.
+  ;; Marks where the drawing stops with a line after the last record drawn.
   (define (pipeline-draw-tape-at areas count upto)
     (let-values ([(bx bw) (ui-bar-chart-bar areas count (max 0 (- upto 1)))])
       (let ([plot (cdr (assq 'plot areas))])
         (fill-box (- (if (> upto 0) (+ bx bw) bx) 1) (cadr plot) 2 (cadddr plot)
                   'accent))))
 
-  ;; A drawer's color, kept while the Pipeline is open: the next free one the
-  ;; first time it's seen, not its place, which moves when a window is raised.
+  ;; A drawer's color index, kept while the Pipeline is open: the next free
+  ;; one the first time the drawer is seen, rather than its place, which
+  ;; moves when a window is raised.
   (define (pipeline-color-index v node)
     (let ([colors (pipeline-view-colors v)])
       (or (hashtable-ref colors node #f)
@@ -1585,7 +1620,8 @@
             (hashtable-set! colors node i)
             i))))
 
-  ;; Whose each color is, but the spans left out, which keep their colors.
+  ;; Whose each color is, except for the spans left out (which keep their
+  ;; colors).
   (define (pipeline-tape-keys v)
     (let ([spans (pipeline-view-groups v)] [off (pipeline-view-off v)])
       (fold-right (lambda (span node acc)
@@ -1602,7 +1638,7 @@
       (+ (ui-control-height) 4 (ui-stream-room pipeline-draw-tape-lanes) 40 4
          kh)))
 
-  ;; Its heading and what plays it, the Tape, its legend.
+  ;; The Tape's pane: its heading and controls, the Tape, and its legend.
   (define (pipeline-tape-pane v x y w h)
     (let*-values
         ([(ui) (pipeline-view-ui v)]
@@ -1664,8 +1700,9 @@
 
   ;;; -- left out
 
-  ;; A span whose checkbox is off is left out of the small screen and the Tape.
-  ;; Its records in spans: ((first . count) ...), in order.
+  ;; A span whose checkbox is off is left out of the small screen and the
+  ;; Tape. Returns the records left out in spans: ((first . count) ...), in
+  ;; order.
   (define (pipeline-left-out off spans)
     (fold-right (lambda (span node acc)
                   (if (member node off)
@@ -1673,8 +1710,8 @@
                       acc))
                 '() spans (pipeline-span-nodes spans)))
 
-  ;; For the small screen, or #f when none is, so that a live frame's labels
-  ;; aren't read for nothing.
+  ;; What is left out, as a procedure for the small screen, or #f when
+  ;; nothing is, so that a live frame's labels aren't read for nothing.
   (define (pipeline-left-out-of v)
     (let ([off (pipeline-view-off v)])
       (and (pair? off) (lambda (spans) (pipeline-left-out off spans)))))
@@ -1695,8 +1732,8 @@
                  (exists (lambda (r) (< -1 (- i (car r)) (cdr r)))
                          (pipeline-left-out off (pipeline-view-groups v))))))))
 
-  ;; The records drawn of the list on view, but those left out: a vector, in
-  ;; order, what the Tape and Play go through.
+  ;; The records of the list on view that are drawn, without those left
+  ;; out: a vector, in order, which the Tape and Play go through.
   (define (pipeline-kept v)
     (let ([l (pipeline-view-shown v)])
       (unless (eq? l (pipeline-view-kept-of v))
@@ -1715,14 +1752,15 @@
           (pipeline-view-kept-of-set! v l)))
       (pipeline-view-kept v)))
 
-  ;; The box around the records kept while a span is left out, (x0 y0 x1 y1)
-  ;; on the screen; #f with none left out, or none kept: the whole screen.
+  ;; The box around the records kept while a span is left out, (x0 y0 x1
+  ;; y1) on the screen; #f (the whole screen) with none left out, or none
+  ;; kept.
   (define (pipeline-kept-box v)
     (pipeline-kept v)
     (pipeline-view-kept-box v))
 
   ;; The box around records is of l, each as far as it reaches inside its
-  ;; clip, on the screen; #f when that's nothing.
+  ;; clip, on the screen; #f when that is empty.
   (define (pipeline-records-box l is)
     (let ([box (fold-left
                 (lambda (b i)
@@ -1749,13 +1787,13 @@
             (if (< (vector-ref kept mid) i) (loop (+ mid 1) hi) (loop lo mid)))
           lo)))
 
-  ;; Where record i is on the Tape, or #f when it's left out.
+  ;; Where record i is on the Tape, or #f when it is left out.
   (define (pipeline-kept-at kept i)
     (let ([at (pipeline-kept-below kept i)])
       (and (< at (vector-length kept)) (= (vector-ref kept at) i) at)))
 
-  ;; As far as k of the Tape's records, as far as which of the list's: all of
-  ;; them at its end.
+  ;; How many of the list's records to draw to show k of the Tape's: all of
+  ;; them at the Tape's end.
   (define (pipeline-kept-upto v k)
     (let ([kept (pipeline-kept v)])
       (cond [(<= k 0) 0]
@@ -1776,11 +1814,11 @@
 
   ;;; -- what the tree holds
 
-  ;; A node is a label's span or a row of it (a vector). A span's node is its
-  ;; label and which of that label's spans it is, (label k), not where it is:
-  ;; records before it and in it come and go (a caret blinks, the clock ticks),
-  ;; and a span opened or selected stays so. Its records are looked up in the
-  ;; list on view.
+  ;; A node is a label's span or a row of it (a vector). A span's node is
+  ;; its label and which of that label's spans it is, (label k), not where
+  ;; it is: records before it and in it come and go (a caret blinks, the
+  ;; clock ticks), and a span opened or selected stays so. Its records are
+  ;; looked up in the list on view.
   (define (pipeline-span-nodes spans)
     (let loop ([spans spans] [seen '()] [acc '()])
       (if (null? spans)
@@ -1792,8 +1830,8 @@
                                                     seen)))
                         acc))))))
 
-  ;; The span of node (label k) among spans, (label first count), or #f when
-  ;; it's gone.
+  ;; The span of node (label k) among spans, (label first count), or #f
+  ;; when it is gone.
   (define (pipeline-span-in spans node)
     (let loop ([spans spans] [k (cadr node)])
       (cond [(null? spans) #f]
@@ -1812,7 +1850,8 @@
             [(< -1 (- i (cadar spans)) (caddar spans)) (car nodes)]
             [else (loop (cdr spans) (cdr nodes))])))
 
-  ;; Who drew what's selected: its span's node, a record's being its span's.
+  ;; Who drew what is selected: its span's node (for a record, the node of
+  ;; the span that holds it).
   (define (pipeline-selected-span v)
     (let ([selected (pipeline-view-selected v)])
       (cond [(not selected) #f]
@@ -1825,7 +1864,8 @@
           (inspect-rows (pipeline-view-shown v) (cadr span) (caddr span))
           '())))
 
-  ;; Where a node's records start and how many, or #f for a span that's gone.
+  ;; Where a node's records start, and how many there are; #f for a span
+  ;; that is gone.
   (define (pipeline-node-first v node)
     (if (pair? node)
         (let ([span (pipeline-node-span v node)]) (and span (cadr span)))
@@ -1841,8 +1881,9 @@
              (if (string? label) label (format "~a" label)))]
           [else (format "~a" (vector-ref node 2))]))
 
-  ;; What a node is: a record's decoding; a drawer's lists, each its part and
-  ;; how many records it holds; or the screen's, for a drawer drawn on it.
+  ;; What a node is: a record's decoding; a drawer's lists, each with its
+  ;; part and how many records it holds; or "the screen's list", for a
+  ;; drawer drawn on it.
   (define (pipeline-node-what v node)
     (if (pair? node)
         (let ([span (pipeline-node-span v node)])
@@ -1861,8 +1902,8 @@
                          (cdr (assq 'records (inspect-list-facts lst)))))
                "" lists))
 
-  ;; Whether lst, of the frame on view, wasn't in the frame before: a list
-  ;; unchanged is the same copy in both.
+  ;; Whether lst, of the frame on view, was not in the frame before: an
+  ;; unchanged list is the same copy in both.
   (define (pipeline-list-changed? v lst)
     (let* ([l (pipeline-view-shown v)]
            [before (inspect-history-ref (pipeline-view-history v)
@@ -1876,7 +1917,7 @@
           (format "~a ms ago" (quotient d 1000000))
           (format "~,1f s ago" (/ d 1e9)))))
 
-  ;; The records at a device pixel, as nodes.
+  ;; Lists the records at a device pixel, as nodes, and selects the top one.
   (define (pipeline-trace! v x y)
     (let* ([l (pipeline-view-shown v)]
            [rows (map (lambda (i) (car (inspect-rows l i 1)))
@@ -1886,17 +1927,17 @@
 
   ;;; -- what's selected: a drawer or a record, shown and named everywhere
 
-  ;; Selects node, a drawer's or a record's, or nothing (#f), the small screen
-  ;; and both windows drawn again for it.
+  ;; Selects node, a drawer's or a record's, or nothing (#f), and draws the
+  ;; small screen and both windows again for it.
   (define (pipeline-select! v node)
     (pipeline-view-selected-set! v node)
     (pipeline-preview! v)
     (for-each (lambda (win) (when win (invalidate! win)))
               (list (find-window 'pipeline) (pipeline-view-popped v))))
 
-  ;; Where a selected record is: its drawer's node and how far into its span,
-  ;; so that it stays with its drawer as records before it come and go, or the
-  ;; frame changes. #f for none, or a drawer selected.
+  ;; Where a selected record is: its drawer's node and how far into its
+  ;; span, so that it stays with its drawer as records before it come and
+  ;; go, or the frame changes. #f for none, or when a drawer is selected.
   (define (pipeline-selected-place v)
     (let ([selected (pipeline-view-selected v)])
       (and (vector? selected)
@@ -1906,7 +1947,7 @@
                                 (cadr (pipeline-node-span v node)))))))))
 
   ;; The record at place in the list on view; its drawer when its span is
-  ;; shorter now; #f when the drawer's gone.
+  ;; shorter now; #f when the drawer is gone.
   (define (pipeline-place-row v place)
     (let ([span (pipeline-node-span v (car place))])
       (cond [(not span) #f]
@@ -1915,8 +1956,8 @@
                                 (+ (cadr span) (cdr place)) 1))]
             [else (car place)])))
 
-  ;; What the tree shows selected: a record's row whole, the run of glyphs
-  ;; it's in.
+  ;; What the tree shows as selected: the whole row that holds a selected
+  ;; record (the run of glyphs it is in, say).
   (define (pipeline-tree-selected v)
     (let ([selected (pipeline-view-selected v)])
       (if (vector? selected)
@@ -1931,7 +1972,7 @@
                 selected))
           selected)))
 
-  ;; What's selected, in words, or #f.
+  ;; What is selected, as text, or #f.
   (define (pipeline-selected-text v)
     (let ([selected (pipeline-view-selected v)])
       (cond
@@ -1955,7 +1996,7 @@
                        (format "a ~a" kind))
                    (if who (format " by ~a" (pipeline-node-name who)) "")))])))
 
-  ;; The Tape's heading, at its right: what's selected and a button that
+  ;; The Tape's heading, at its right: what is selected and a button that
   ;; clears it, or, with nothing selected, what the Tape is.
   (define (pipeline-tape-caption v ui x y w h)
     (let ([text (pipeline-selected-text v)])
@@ -1969,9 +2010,9 @@
           (ui-draw-label x y (max 0 w) h '(dim right)
                          "a mark a record, in draw order"))))
 
-  ;; The tree opens the drawer of a record selected, and scrolls it into view,
-  ;; and closes the one it opened for the record before; one opened by hand
-  ;; stays open.
+  ;; The tree opens the drawer of a selected record and scrolls it into
+  ;; view, and closes the one it opened for the record before; a drawer
+  ;; opened by hand stays open.
   (define (pipeline-tree-open! ui node)
     (let ([id '(pipeline tree)] [was (ui-memo ui '(pipeline opened) #f)])
       (unless (equal? was node)
@@ -1983,8 +2024,8 @@
               (begin (ui-tree-expand! ui id node #t)
                      (ui-memo! ui '(pipeline opened) node)))))))
 
-  ;; Esc, in either window, selects nothing.
-  ;; Esc: the selection cleared, or with none, the flow going on again.
+  ;; Esc, in either window, clears the selection, or, with nothing
+  ;; selected, lets a held Pipeline flow again.
   (define (pipeline-key v win key mods)
     (and (eq? key 'escape) (null? mods)
          (cond [(pipeline-view-selected v) (pipeline-select! v #f) #t]
@@ -1993,9 +2034,9 @@
 
   ;;; -- who: what each drew cost
 
-  ;; The profiler's name for who drew a span: a surface by its name, a window by
-  ;; its id, found by its title among the windows drawn, the k-th of that title;
-  ;; #f for a window gone since.
+  ;; The profiler's name for who drew a span: a surface by its name, a
+  ;; window by its id, found by its title among the windows drawn (the k-th
+  ;; with that title); #f for a window gone since.
   (define (pipeline-span-subject node)
     (let ([label (car node)])
       (if (symbol? label)
@@ -2007,11 +2048,11 @@
             (and (< (cadr node) (length same))
                  (profile-subject-of (list-ref same (cadr node))))))))
 
-  ;; What core1 took to draw who subject is, a surface's draw or a window's
-  ;; frame and its app's draw: ms a frame, over the last 30 ticks to tick
-  ;; newest that drew it, of those the profiler keeps; #f when none did. A
-  ;; frame, not a tick, so that a pause, held or idle, doesn't read as
-  ;; nothing.
+  ;; What core1 took to draw subject (a surface's draw, or a window's frame
+  ;; and its app's draw), in ms per frame, over the last 30 ticks up to tick
+  ;; newest that drew it, of those the profiler keeps; #f when none did. It
+  ;; is per frame, not per tick, so that a pause, held or idle, doesn't read
+  ;; as nothing.
   (define (pipeline-drawing-ms subject newest)
     (let loop ([seq newest] [n 0] [ms 0.0])
       (if (or (fx= n 30) (not (profile-tick-kept? seq)))
@@ -2026,14 +2067,15 @@
                 (loop (fx- seq 1) n ms))))))
 
   ;; What each span of the list on view cost, in draw order, a row each:
-  ;; #(node i ms records pixels runs changed redrawn same marks), i its
-  ;; color's index, ms what core1 took to draw it a frame, up to the frame's
-  ;; tick, or #f, changed how many of its records differ from the frame
-  ;; before's, #f when that one isn't kept; redrawn, same and marks as
-  ;; pipeline-redraws says. Made again for each list. (pipeline-who-rows v
-  ;; 'costs), as the cards want them each look, in a frame's draw, leaves
-  ;; changed, redrawn, same and marks #f: the frames kept make them dear, a
-  ;; few ms, and Who makes them when it shows.
+  ;; #(node i ms records pixels runs changed redrawn same marks). Here i is
+  ;; its color's index; ms what core1 took to draw it, per frame, up to the
+  ;; frame's tick, or #f; changed how many of its records differ from the
+  ;; frame before's, #f when that one isn't kept; and redrawn, same and
+  ;; marks are as pipeline-redraws says. The rows are made again for each
+  ;; list. (pipeline-who-rows v 'costs), which the cards call at each look,
+  ;; in a frame's draw, leaves changed, redrawn, same and marks #f: going
+  ;; over the frames kept makes them dear (a few ms), so Who makes them
+  ;; when it shows.
   (define (pipeline-who-rows v . costs)
     (let ([l (pipeline-view-shown v)] [who (pipeline-view-who v)]
           [whole? (null? costs)])
@@ -2085,12 +2127,13 @@
             rows))))
 
   ;; How often a drawer was recorded again in the n frames kept, from its
-  ;; lists' copies, a vector of n each, #f for a list not kept: (values
-  ;; redrawn same marks), redrawn in how many frames one of its lists was
-  ;; another copy than the frame before's, same in how many of those each such
-  ;; copy held the very same records, and marks a frame's: 0, not redrawn, 1,
-  ;; redrawn, 2, redrawn the same. Redrawn is #f with fewer than two frames or
-  ;; no list of its own; same, while it wasn't redrawn.
+  ;; lists' copies (a vector of n for each list, #f for a list not kept).
+  ;; Returns (values redrawn same marks): redrawn is the number of frames in
+  ;; which one of its lists was another copy than in the frame before; same
+  ;; is how many of those had each such copy hold the very same records;
+  ;; and marks has one per frame: 0, not redrawn, 1, redrawn, 2, redrawn the
+  ;; same. Redrawn is #f with fewer than two frames or no list of its own;
+  ;; same is #f while it wasn't redrawn.
   (define (pipeline-redraws n copies)
     (let ([copies (filter values copies)] [marks (make-vector n 0)])
       (if (or (< n 2) (null? copies))
@@ -2116,7 +2159,7 @@
                      (vector-set! marks k 1)
                      (loop (+ k 1) (+ redrawn 1) same)])))))))
 
-  ;; A count of pixels, short.
+  ;; A count of pixels, in short.
   (define (pipeline-pixels-text n)
     (cond [(>= n 1000000) (format "~,1f M" (/ n 1000000.0))]
           [(>= n 10000) (format "~a K" (round (/ n 1000)))]
@@ -2133,7 +2176,8 @@
       [(redrawn) 7]
       [else 8]))
 
-  ;; A row's cell's text, and its share of its column's most, for its bar.
+  ;; A cell's text, and the row's share of its column's most, for its bar:
+  ;; (values text share).
   (define (pipeline-who-cell row key most)
     (let* ([records (vector-ref row 3)]
            [k (pipeline-who-field key)]
@@ -2150,9 +2194,9 @@
              (values "—" #f))]
         [else (values (number->string n) share)])))
 
-  ;; Who's rows sorted ((key . up|down), or #f: in draw order) by what their
-  ;; cells say, changed by its share; a row whose cell has nothing to say
-  ;; last, either way.
+  ;; Who's rows sorted by sort ((key . up|down), or #f for draw order), by
+  ;; what their cells say (Changed by its share); a row whose cell has
+  ;; nothing to say goes last, either way.
   (define (pipeline-who-sorted rows sort)
     (define (value row)
       (let ([key (car sort)])
@@ -2174,9 +2218,9 @@
                                [else (if up? (< x y) (> x y))])))
                      rows))))
 
-  ;; Who: a row a drawer, in draw order or as sorted, what it cost; its
-  ;; checkbox leaves it out as the tree's does, and selecting it selects its
-  ;; span everywhere.
+  ;; Who: a row per drawer, in draw order or as sorted, with what it cost.
+  ;; Its checkbox leaves it out as the tree's does, and selecting it selects
+  ;; its span everywhere.
   (define (pipeline-who-pane v x y w h)
     (let* ([ui (pipeline-view-ui v)]
            [rows (pipeline-who-sorted (pipeline-who-rows v)
@@ -2241,11 +2285,11 @@
                             v (pipeline-sort-next (pipeline-view-who-sort v)
                                                   key))))))
 
-  ;; The small screen showing list l another way than its picture, each record
-  ;; solid in a color of what's asked: who drew it, the others dim while a
-  ;; drawer's selected; its kind; or whether it changed since the frame
-  ;; before. Heat adds a little of one color a record, so that a pixel is as
-  ;; bright as how many records cover it.
+  ;; List l repainted for the small screen's look, other than its picture:
+  ;; each record solid in a color for who drew it (the others dim while a
+  ;; drawer is selected), for its kind, or for whether it changed since the
+  ;; frame before. Heat adds a little of one color per record, so that a
+  ;; pixel is as bright as the number of records that cover it.
   (define (pipeline-painted v l)
     (let ([into (pipeline-view-painted v)] [n (inspect-list-count l)])
       (case (pipeline-view-look v)
@@ -2278,10 +2322,11 @@
                        (inspect-list-labels l) words)
              (inspect-list-paint! into l (lambda (i) (vector-ref by i)) 0)))])))
 
-  ;; Which records of l differ from the frame before's, a vector of booleans:
-  ;; each compared with the record at its place in its drawer's span then, a
-  ;; record past that span's, or of a drawer new since, changed; all of them
-  ;; when the frame before isn't kept.
+  ;; Which records of l differ from the frame before's, as a vector of
+  ;; booleans. Each is compared with the record at its place in its
+  ;; drawer's span then; a record past the end of that span, or of a drawer
+  ;; new since, has changed; and all of them have when the frame before
+  ;; isn't kept.
   (define (pipeline-changed-marks v l)
     (let* ([n (inspect-list-count l)]
            [before (inspect-history-ref (pipeline-view-history v)
@@ -2304,8 +2349,9 @@
 
   ;;; -- course: a tick's stages, in order, as wide as their time
 
-  ;; The tick to lay out: the one picked on the River, or the newest kept that
-  ;; drew a frame; #f when none is kept.
+  ;; The tick to lay out: the one picked on the River, or else the newest
+  ;; kept that drew a frame (looking back 30 ticks at most, then the newest);
+  ;; #f when none is kept.
   (define (pipeline-course-tick v)
     (or (pipeline-view-tick v)
         (let ([newest (profile-newest-tick)])
@@ -2324,7 +2370,7 @@
                      ms))
                0.0 uses))
 
-  ;; What subject took to draw in uses, a tick's, ms.
+  ;; What subject took to draw in uses (a tick's), in ms.
   (define (pipeline-render-ms uses subject)
     (fold-left (lambda (ms u)
                  (if (and (eq? (profile-use-phase u) 'render)
@@ -2333,10 +2379,11 @@
                      ms))
                0.0 uses))
 
-  ;; What a tick spent, in order: (name ms kind detail) each, kind phase (a
-  ;; phase of monitor-phases), drawer (detail its span's node: render, its
-  ;; draw), gpu (the rest of render: the list to the GPU and its wait) or idle
-  ;; (what's left of the period).
+  ;; What a tick spent, in order, as (name ms kind detail) each. Kind is
+  ;; phase (detail a phase of monitor-phases), total (render's whole, its
+  ;; parts after it), drawer (detail its span's node: its draw, within
+  ;; render), gpu (the rest of render: the list to the GPU and its wait) or
+  ;; idle (what's left of the period).
   (define (pipeline-course-items v seq)
     (let* ([uses (profile-tick-uses seq)]
            [spans (inspect-list-labels (pipeline-view-shown v))]
@@ -2379,8 +2426,8 @@
               (list (list "till the next tick" (max 0.0 (- period busy))
                           'idle #f)))))
 
-  ;; Course's items sorted ((key . up|down), or #f: as they come): the
-  ;; stages among themselves, and render's parts, under it, among
+  ;; Course's items sorted by sort ((key . up|down), or #f: as they come):
+  ;; the stages among themselves, and render's parts, under it, among
   ;; themselves.
   (define (pipeline-course-sorted items sort)
     (define (part? it) (memq (caddr it) '(drawer gpu)))
@@ -2404,8 +2451,8 @@
                       (list-sort (lambda (a b) (before? (car a) (car b)))
                                  groups))))))
 
-  ;; The tick laid out and its stages, made again for each list on view: (seq
-  ;; items), or #f.
+  ;; The tick laid out and its stages, made again for each list on view:
+  ;; (seq items), or #f.
   (define (pipeline-course v)
     (let ([l (pipeline-view-shown v)] [c (pipeline-view-course v)])
       (if (and c (eq? (car c) l))
@@ -2415,8 +2462,8 @@
             (pipeline-view-course-set! v (cons l r))
             r))))
 
-  ;; Course: the tick as a bar, each stage as wide as its time of the period,
-  ;; then the stages as a table.
+  ;; Course: the tick as a bar, each stage as wide as its share of the
+  ;; period, then the stages as a table.
   (define (pipeline-course-pane v x y w h)
     (let ([c (pipeline-course v)] [ch (ui-control-height)]
           [ui (pipeline-view-ui v)])
@@ -2472,8 +2519,9 @@
                                   v (pipeline-sort-next
                                      (pipeline-view-course-sort v) key))))))))
 
-  ;; A table's sort after a press on key's heading: a number the most first, a
-  ;; name from A; again, the other way; a third time, in order.
+  ;; A table's sort after a press on key's heading: a number column sorts
+  ;; the most first, a name from A; a second press reverses it; a third
+  ;; goes back to the table's own order.
   (define (pipeline-sort-next s key)
     (let ([first (if (eq? key 'name) 'up 'down)])
       (cond [(not (and s (eq? (car s) key))) (cons key first)]
@@ -2482,14 +2530,14 @@
 
   ;;; -- inside: a record decoded, and the shader it's drawn with
 
-  ;; The record selected, its index in the list on view, or #f.
+  ;; The selected record's index in the list on view, or #f.
   (define (pipeline-inside-record v)
     (let ([selected (pipeline-view-selected v)]
           [n (inspect-list-count (pipeline-view-shown v))])
       (and (vector? selected) (< (vector-ref selected 0) n)
            (vector-ref selected 0))))
 
-  ;; A decoded value, in words.
+  ;; A decoded value, as text.
   (define (pipeline-value-text key value)
     (cond [(and (eq? key 'color) (integer? value)) (format "#~8,'0x" value)]
           [(flonum? value) (format "~,1f" value)]
@@ -2549,7 +2597,7 @@
                                  [else "drawn over"]))))
            '()))))
 
-  ;; Inside: the record selected, decoded, and its shader's source.
+  ;; Inside: the selected record, decoded, and its shader's source.
   (define (pipeline-inside-pane v x y w h)
     (let ([i (pipeline-inside-record v)] [lh (font-line-height 'ui)]
           [ui (pipeline-view-ui v)])
@@ -2578,7 +2626,8 @@
                                       (max 0 (- (+ y h) sy lh 6))
                                       lines)))))))
 
-  ;; A shader's lines, kept for the shader last shown: pretty-printing is dear.
+  ;; A shader's lines, kept for the shader last shown, since pretty-printing
+  ;; is dear.
   (define (pipeline-inside-lines v shader)
     (let* ([ui (pipeline-view-ui v)] [had (ui-memo ui '(pipeline source) #f)])
       (if (and had (eq? (car had) shader))
@@ -2589,11 +2638,11 @@
 
   ;;; -- memory: what the GPU holds, and the atlas
 
-  ;; Memory: the screen's facts, what's held for frames, as bars, and beside
-  ;; them the atlas, the part of it in use.
+  ;; Memory: the screen's facts, what is held for frames, as bars, and
+  ;; beside them the part of the atlas in use.
   (define (pipeline-memory-pane v x y w h)
     (let* ([lh (font-line-height 'ui)]
-           ;; the device's facts: what it holds is the bars'
+           ;; the screen's first facts; what the GPU holds is in the bars
            [facts (list-head (pipeline-screen-facts v) 6)]
            [left-w (min 480 (quotient w 2))]
            [by (+ y (* (length facts) (+ lh 4)) 10)]
@@ -2633,8 +2682,8 @@
                            (max 0 (- h lh 6))
                            (* gpu-atlas-side (cdr (assq 'atlas-used g))))))
 
-  ;; The atlas at x y w h, a pixel of it a device pixel, from where a drag
-  ;; left it: used, the rows of it in use.
+  ;; The atlas at x y w h, a pixel of it per device pixel, from where a
+  ;; drag left it; used is the number of its rows in use.
   (define (pipeline-atlas-view ui x y w h used)
     (let* ([id '(pipeline atlas)]
            [grab (list id 'grab)]   ; (mx my ox oy)
@@ -2674,9 +2723,8 @@
 
   ;;; -- drawing
 
-  ;; A stage's card: its name and what it holds, lines of text; pressed, it
-  ;; opens.
-  ;; Its lines cut to fit, however narrow the window makes it.
+  ;; A stage's card: its name and lines of text on what it holds, cut to fit
+  ;; however narrow the window makes it. Pressed, it opens the stage.
   (define (pipeline-draw-card x y w h selected? name lines)
     (fill-box x y w h (if selected? 'bg-3 'bg-1) 4)
     (when selected? (stroke-box x y w h 'accent 1 4))
@@ -2687,8 +2735,8 @@
                              (text-fit line tw 'ui) 'text-dim 'ui))
                 lines (iota (length lines)))))
 
-  ;; A record's paint in a cell: a solid one as a swatch of its color, alpha
-  ;; and all, and its word; another by its kind.
+  ;; A record's paint in a cell: a solid paint as a swatch of its color,
+  ;; alpha and all, and its text; another paint by its kind.
   (define (pipeline-draw-paint x y w h flags paint)
     (if (fixnum? paint)
         (let ([s 12] [sy (+ y (/ (- h 12) 2))])
@@ -2699,9 +2747,9 @@
                         (inspect-paint-text paint)))
         (ui-draw-cell x y w h flags (inspect-paint-text paint))))
 
-  ;; A row's frames kept as marks across its cell, inside it as a share's bar
-  ;; is, the oldest left: those marked at least least, run together where they
-  ;; touch, a pixel wide at the least.
+  ;; Draws a row's frames kept as marks across its cell, inset as a share's
+  ;; bar is, the oldest at the left: the frames marked least or more, run
+  ;; together where they touch, each at least a pixel wide.
   (define (pipeline-draw-marks x y w h marks least)
     (let ([n (vector-length marks)]
           [x (+ x pipeline-draw-inset)]
@@ -2717,8 +2765,8 @@
              (when (< k n) (loop (+ k 1) #f))]
             [(< k n) (loop (+ k 1) from)])))))
 
-  ;; Who drew span i, a color: the Tape's, so that a drawer's is the same
-  ;; everywhere.
+  ;; The color for the drawer of color index i: the Tape's, so that a
+  ;; drawer's color is the same everywhere.
   (define (pipeline-draw-who-color i)
     (list-ref pipeline-draw-tape-who
               (modulo i (length pipeline-draw-tape-who))))
@@ -2729,9 +2777,9 @@
       (fill-box (+ x 6) (+ y (/ (- h s) 2)) s s (pipeline-draw-who-color i) 2)
       (ui-draw-cell (+ x s 8) y (max 0 (- w s 8)) h flags name)))
 
-  ;; A number's share of its column's most, a bar behind it, inside the cell by
-  ;; pipeline-draw-inset so that full ones side by side stay apart; none for a
-  ;; share too small to tell from a line between columns.
+  ;; A number's share of its column's most, as a bar behind it, inset in
+  ;; the cell by pipeline-draw-inset so that full bars side by side stay
+  ;; apart; none for a share too small to tell from a line between columns.
   (define (pipeline-draw-share x y w h share)
     (when (>= share 0.03)
       (let ([d pipeline-draw-inset])
@@ -2740,9 +2788,9 @@
 
   (define pipeline-draw-inset 3)
 
-  ;; The words the small screen paints spans' records with, who drew them: dim
-  ;; but the one selected, while one is. => (values words other), other for a
-  ;; record under no label
+  ;; The words the small screen paints the spans' records with, by who drew
+  ;; them: all but the selected drawer dim, while one is selected. Returns
+  ;; (values words other), other for a record under no label.
   (define (pipeline-draw-who-words v spans selected)
     (values (map (lambda (node)
                    (let ([c (pipeline-draw-who-color
@@ -2754,24 +2802,26 @@
                  (pipeline-span-nodes spans))
             (color-word 'text-faint)))
 
-  ;; Kinds' words for the small screen, as the Tape's kind lane colors them.
+  ;; The kinds' words for the small screen, in the colors of the Tape's
+  ;; kind lane.
   (define (pipeline-draw-kind-words)
     (map (lambda (kind color) (cons kind (color-word color)))
          pipeline-tape-kinds (cdr (cadr pipeline-draw-tape-lanes))))
 
-  ;; What a record adds where it covers, showing heat: a little of red, half as
-  ;; much green and a quarter blue, so that a pixel goes dark red, orange,
-  ;; yellow and white as more records cover it, red full at 16.
+  ;; What a record adds where it covers, showing heat: a little red, half
+  ;; as much green and a quarter as much blue, so that a pixel goes dark
+  ;; red, orange, yellow and white as more records cover it, red full at 16.
   (define (pipeline-draw-heat-word) (color-word #x100804))
 
-  ;; A record changed since the frame before, and one the same. => (values new
-  ;; same)
+  ;; The words for a record changed since the frame before, and for one the
+  ;; same. Returns (values new same).
   (define (pipeline-draw-changed-words)
     (values (color-word 'chart-1) (color-word (mix 'text-faint 'bg-0 0.6))))
 
-  ;; A tick's stages in a row, each as wide as its time of whole: a phase in
-  ;; its River color, a drawer's draw in its color, the rest of render darker,
-  ;; what's left of the period faint; a stage wide enough names itself.
+  ;; A tick's stages in a row, each as wide as its share of whole: a phase
+  ;; in its River color, a drawer's draw in its color, the rest of render
+  ;; darker, and what's left of the period faint; a stage wide enough shows
+  ;; its name.
   (define (pipeline-draw-course-bar v x y w h items whole)
     (fill-box x y w h 'bg-1 3)
     (let loop ([items (remp (lambda (it) (eq? (caddr it) 'total)) items)]
@@ -2794,7 +2844,7 @@
                        'ui-small))
           (loop (cdr items) (+ at sw))))))
 
-  ;; A shader's source, a line of the mono font each, scrolling.
+  ;; A shader's source, one line of the mono font each, scrolling.
   (define (pipeline-draw-source ui x y w h lines)
     (let ([lh (font-line-height 'mono-small)])
       (fill-box x y w h 'bg-1 3)
@@ -2807,13 +2857,13 @@
                     lines (iota (length lines)))
           (+ top 12 (* lh (length lines)))))))
 
-  ;; A share of the most held, a bar.
+  ;; A share of the most held, as a bar.
   (define (pipeline-draw-memory-bar x y w h share)
     (fill-box x (+ y 2) (* w (max 0.004 (min 1 share))) (- h 4)
               (alpha 'accent 0.3) 2))
 
-  ;; The atlas in w × h from (ox, oy), k of it a pixel; the rows in use,
-  ;; used, as a texture viewer shows its one channel, in gray.
+  ;; The atlas in w × h from (ox, oy), k of it per pixel; the rows in use,
+  ;; used, shown in gray, as a texture viewer shows its one channel.
   (define (pipeline-draw-atlas x y w h ox oy used k)
     (fill-box x y w h 'bg-1 3)
     (with-clip (x y w (max 0 (min h (- used oy))))
@@ -2823,21 +2873,21 @@
 
   ;;; -- the viewer: the screen small, zoomed, moved, magnified, popped out
 
-  (define pipeline-zoom-most 32)    ; device pixels a screen pixel, at most
+  (define pipeline-zoom-most 32)    ; device pixels per screen pixel, at most
   (define pipeline-zoom-step 1.25)  ; a notch of the wheel
   (define pipeline-loupe-size 128)
   (define pipeline-loupe-zoom
-    8)    ; a screen pixel in the loupe, logical pixels
+    8)    ; logical pixels per screen pixel in the loupe
 
   ;; What the viewer shows whole, (x0 y0 x1 y1) on the screen: what the
-  ;; spans kept drew while one is left out, else all of the screen.
+  ;; spans kept drew while one is left out, else the whole screen.
   (define (pipeline-viewer-box v)
     (or (pipeline-kept-box v) (list 0 0 *canvas-pw* *canvas-ph*)))
 
-  ;; How many device pixels of a viewer w × h a pixel of the screen takes: the
-  ;; viewer's box whole, as close as the wheel goes at most, or as much more
-  ;; as asked. Magnified, a whole number of them: an image magnified takes
-  ;; the nearest pixel, and at 105% one in twenty would come twice.
+  ;; How many device pixels of a viewer w × h a pixel of the screen takes
+  ;; to fit the viewer's box whole, at most as close as the wheel goes.
+  ;; Magnified, it is a whole number of them: an image magnified takes the
+  ;; nearest pixel, and at 105% one pixel in twenty would come twice.
   (define (pipeline-viewer-fit v w h)
     (let* ([s (draw-scale)] [b (pipeline-viewer-box v)]
            [z (min pipeline-zoom-most
@@ -2849,8 +2899,8 @@
     (let ([fit (pipeline-viewer-fit v w h)])
       (max fit (or (pipeline-view-zoom v) fit))))
 
-  ;; The screen's pixel at the viewer's middle, on the screen: the box's
-  ;; middle till it's zoomed and moved.
+  ;; The screen's pixel at the viewer's middle: the box's middle until the
+  ;; viewer is zoomed and moved.
   (define (pipeline-viewer-center v)
     (let ([c (and (pipeline-view-zoom v) (pipeline-view-center v))])
       (if c
@@ -2859,9 +2909,9 @@
           (let ([b (pipeline-viewer-box v)])
             (cons (/ (+ (car b) (caddr b)) 2) (/ (+ (cadr b) (cadddr b)) 2))))))
 
-  ;; Where the screen's origin falls in a viewer at x y w h, at a whole zoom on
-  ;; a whole device pixel, so that each pixel lands on whole ones; and the
-  ;; logical pixels a screen pixel takes: (values ox oy k).
+  ;; Where the screen's origin falls in a viewer at x y w h (at a whole
+  ;; zoom, on a whole device pixel, so that each pixel lands on whole
+  ;; ones), and the logical pixels a screen pixel takes: (values ox oy k).
   (define (pipeline-viewer-origin v x y w h)
     (let* ([s (draw-scale)] [z (pipeline-viewer-zoom v w h)] [k (/ z s)]
            [c (pipeline-viewer-center v)]
@@ -2878,7 +2928,8 @@
     (let-values ([(ox oy k) (pipeline-viewer-origin v x y w h)])
       (cons (/ (- mx ox) k) (/ (- my oy) k))))
 
-  ;; A notch of the wheel, or n: zoomed at (mx, my), the pixel there staying.
+  ;; Zooms by n notches of the wheel at (mx, my), keeping the pixel there
+  ;; in place; zoomed out as far as the fit, the zoom and center reset.
   (define (pipeline-zoom-at! v x y w h mx my n)
     (let* ([fit (pipeline-viewer-fit v w h)]
            [p (pipeline-viewer-pixel v x y w h mx my)]
@@ -2895,7 +2946,7 @@
              v (cons (- (car p) (* k (- mx (+ x (/ w 2)))))
                      (- (cdr p) (* k (- my (+ y (/ h 2)))))))))))
 
-  ;; What the loupe says under its pixels: where, and the top record there.
+  ;; The loupe's caption under its pixels: where, and the top record there.
   (define (pipeline-loupe-caption v px py)
     (let* ([l (pipeline-view-shown v)]
            [at (pipeline-records-at v px py)])
@@ -2903,8 +2954,8 @@
           (format "~a, ~a" px py)
           (format "~a, ~a: ~a ~a" px py (inspect-kind l (car at)) (car at)))))
 
-  ;; The viewer: the screen at its zoom, around its center, what's selected
-  ;; outlined (box, screen pixels, or #f).
+  ;; Draws the viewer: the screen at its zoom, around its center, with what
+  ;; is selected outlined (box, in screen pixels, or #f).
   (define (pipeline-draw-viewer v image x y w h box)
     (let*-values ([(ox oy k) (pipeline-viewer-origin v x y w h)]
                   [(at) (lambda (p mid) (+ mid (* k p)))])
@@ -2919,7 +2970,8 @@
                       'accent 1)))
       (stroke-box x y w h 'window-border)))
 
-  ;; The loupe at lx, ly: the screen's pixels around (px, py), its own boxed.
+  ;; The loupe at lx, ly: the screen's pixels around (px, py), with that
+  ;; pixel boxed.
   (define (pipeline-draw-loupe image lx ly px py caption)
     (let* ([size pipeline-loupe-size] [m pipeline-loupe-zoom]
            [lh (font-line-height 'ui-small)] [mid (/ size 2)])
@@ -2933,14 +2985,14 @@
       (draw-text (+ lx 4) (+ ly size 3) (text-fit caption (- size 8) 'ui-small)
                  'text 'ui-small)))
 
-  ;; In the viewer's place while it's popped out.
+  ;; Drawn in the viewer's place while it is popped out.
   (define (pipeline-draw-popped-out x y w h)
     (fill-box x y w h 'bg-1)
     (stroke-box x y w h 'window-border))
 
-  ;; The viewer at x y w h, in ui as id: the wheel zooms it at the pointer, a
-  ;; drag moves it, a press lists the records at its pixel; with the loupe on,
-  ;; the pixels at the pointer magnified beside it.
+  ;; The viewer at x y w h, in ui as id: the wheel zooms it at the pointer,
+  ;; a drag moves it, and a press lists the records at its pixel. With the
+  ;; loupe on, the pixels at the pointer are magnified beside it.
   (define (pipeline-viewer v ui id x y w h)
     (let* ([l (pipeline-view-shown v)]
            [n (inspect-list-count l)]
@@ -3015,8 +3067,8 @@
                  (if (> (+ my 20 tall) wh) (- my 20 tall) (+ my 20))
                  px py caption))))))))
 
-  ;; Fit, 100%, the loupe, how far the viewer vw × vh is zoomed, and Pop out
-  ;; unless it's out.
+  ;; The viewer's bar: Fit, 100%, the loupe, how far the viewer vw × vh is
+  ;; zoomed, and Pop out unless it is out already; under them, the look.
   (define (pipeline-viewer-bar v ui x y w vw vh popped?)
     (let* ([ch (ui-control-height)] [gap 6]
            [fw (+ 24 (text-width "Fit" 'ui))]
@@ -3050,7 +3102,7 @@
                        (lambda () (pipeline-pop-out! v (current-window)))
                        'tip "Show it in a window of its own, above the \
                              Pipeline: closing it brings it back here")))))
-    ;; under them, what it shows
+    ;; under them, what the small screen shows
     (let* ([ch (ui-control-height)] [y (+ y ch 6)]
            [lw (+ 8 (text-width "Show" 'ui))])
       (ui-draw-label x y lw ch '(dim) "Show")
@@ -3063,7 +3115,7 @@
                      (max 0 (- w lw (min 150 (- w lw)) 8)) ch '(dim)
                      (cdr (assq (pipeline-view-look v) pipeline-look-notes)))))
 
-  ;; What the small screen may show, and in a word what each means.
+  ;; What the small screen may show, and in a few words what each means.
   (define pipeline-looks
     '(("Picture" . picture)
       ("Who drew" . who)
@@ -3077,12 +3129,13 @@
       (heat . "more records, brighter")
       (changed . "bright: changed")))
 
-  ;; Its two rows' height.
+  ;; The height of the viewer bar's two rows.
   (define (pipeline-viewer-bar-height)
     (+ (ui-control-height) 6 (ui-control-height)))
 
-  ;; The viewer in a window of its own, kept above the Pipeline's, win: closed,
-  ;; it's back in its place.
+  ;; Opens the viewer in a window of its own, kept above the Pipeline's
+  ;; window, win; once that window is closed, the viewer is back in its
+  ;; place.
   (define (pipeline-pop-out! v win)
     (unless (pipeline-view-popped v)
       (let* ([ui (make-ui)]
@@ -3112,7 +3165,8 @@
         (pipeline-viewer v ui '(pipeline viewer) pad (+ pad bh pad) vw vh))
       (ui-end! ui w h)))
 
-  ;; With the loupe on, a move of the pointer in either window draws again.
+  ;; With the loupe on, a move of the pointer in either window draws the
+  ;; Pipeline again.
   (define (pipeline-loupe-follow! v win)
     (let ([popped (pipeline-view-popped v)])
       (for-each (lambda (ui)
@@ -3187,7 +3241,8 @@
 
   (define (pipeline-mb bytes) (format "~,1f" (/ bytes 1048576.0)))
 
-  ;; Screen's pane: one fact a line.
+  ;; The screen's facts, a (label . text) pair per line; Memory shows the
+  ;; first six.
   (define (pipeline-screen-facts v)
     (let-values ([(d) (inspect-device)] [(g) (inspect-glyphs)]
                  [(image) (pipeline-view-image v)]
@@ -3243,7 +3298,7 @@
                       (what "What" ,(max 80 (- (ui-table-room w) 190 72 64
                                                140))))]
            [box (ui-checkbox-box)]
-           ;; a span's name has its checkbox: off, it's left out
+           ;; a span's name has its checkbox: off, the span is left out
            [cell (lambda (node key cx cy cw ch flags)
                    (if (and (eq? key 'name) (pair? node))
                        (begin
@@ -3297,9 +3352,10 @@
                                                          #f))))
             (ui-memo! ui '(pipeline revealed) shown)))))
 
-  ;; The small screen's images, as big as the screen: the shader draws on real
-  ;; pixels. Made again when the screen's size changes: a draw still waiting
-  ;; names the old ones, so the new one's first picture takes its place.
+  ;; The small screen's images, as big as the screen, so that the shader
+  ;; draws on real pixels. They are made again when the screen's size
+  ;; changes: a draw still waiting names the old ones, so the new images'
+  ;; first picture takes its place.
   (define (pipeline-image! v)
     (let ([image (pipeline-view-image v)] [pw *canvas-pw*] [ph *canvas-ph*])
       (if (and image (= (inspect-preview-w image) pw)
@@ -3325,7 +3381,7 @@
            ;; Latency is the clock over the River, which takes the rest: no
            ;; small screen beside it, no Tape under it
            [latency? (eq? (pipeline-view-stage v) 'latency)]
-           ;; and under the River, the screen's clock's drift
+           ;; and under the River, the drift of the screen's clock
            [drift-h (if latency? (pipeline-drift-height (- w pad pad)) 0)]
            [river-h (if latency?
                         (- h pad top (pipeline-latency-height (- w pad pad)) gap
@@ -3337,8 +3393,9 @@
            [ch (ui-control-height)]
            [screen-w (- side pad)]
            [bh (pipeline-viewer-bar-height)]
-           ;; as tall as the screen's shape says, but for its bar and the two
-           ;; rows under it: the viewer fits the screen in whatever it's given
+           ;; as tall as the screen's shape says, leaving room for its bar
+           ;; and the two rows under it: the viewer fits the screen in
+           ;; whatever it is given
            [screen-h (max ch (min (exact (round (* screen-w (/ *canvas-ph*
                                                                 *canvas-pw*))))
                                   (- bottom top gap bh gap ch gap)))])
@@ -3365,7 +3422,8 @@
             [(latency)
              (pipeline-latency-pane v pad top pane-w (- bottom top))]
             [else (pipeline-memory-pane v pad top pane-w (- bottom top))]))
-        ;; the small screen, or its place while it's out; its bar, how often
+        ;; the small screen, or its place while it is out; its bar, and how
+        ;; often it draws
         (unless latency? (pipeline-image! v))
         (unless latency?
           (let* ([sx (+ pad pane-w gap)]
@@ -3400,7 +3458,7 @@
                                frame once more")])
                 (ui-draw-label (+ sx lw sw 8) ey (max 0 (- screen-w lw sw 8)) ch
                                '(dim) (if (= every 1) "tick" "ticks"))))
-            ;; what a frame kept can't show
+            ;; what a kept frame can't show
             (when (and (pipeline-view-held? v) (> (inspect-list-left-out l) 0))
               (ui-draw-label sx (+ hy ch gap)
                              screen-w 0 '(hint wrap)
@@ -3415,8 +3473,9 @@
         (pipeline-drift-pane v pad (- h pad drift-h) (- w pad pad) drift-h))
       (ui-end! ui w h)))
 
-  ;; Each frame while it's seen and flows: the frame just drawn is kept, a new
-  ;; bar drawn, and the small screen with it as often as it's told.
+  ;; Runs each frame while the Pipeline is seen and flows: the frame just
+  ;; drawn is kept, a new bar is drawn, and so is the small screen, as often
+  ;; as it's told.
   (define (pipeline-frame! v win)
     (when (pipeline-view-playing v)
       (pipeline-play-tick! v)
@@ -3426,7 +3485,7 @@
       (pipeline-flip! v)
       (let ([history (pipeline-view-history v)])
         (inspect-history-add! history)
-        ;; the small screen, while it's shown: Latency has none beside it
+        ;; the small screen, while it is shown: Latency has none beside it
         (when (and (zero? (modulo (inspect-history-newest history)
                                   (pipeline-view-every v)))
                    (or (pipeline-view-popped v)
@@ -3434,9 +3493,9 @@
           (pipeline-preview-back! v)))
       ;; the River moves with every frame
       (invalidate! win)
-      ;; a period after the last read was due, not after it was done, so that
-      ;; reads keep in step with the clock; one a period late or more starts
-      ;; again from then
+      ;; the next read is due a period after the last one was due, not after
+      ;; it was done, so that reads keep in step with the clock; a read a
+      ;; period late or more starts again from then
       (let* ([due (+ (pipeline-view-looked v) pipeline-period-ms)]
              [late (- (now-ms) due)])
         (when (>= late 0)

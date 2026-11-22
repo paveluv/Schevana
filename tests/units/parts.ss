@@ -1,15 +1,15 @@
-;;; tests/units/parts.ss — the kit, the bars and the menus through parts;
-;;; places.
+;;; tests/units/parts.ss — the kit, the bars and the menus as drawn through
+;;; a style's parts and places.
 
-;;; the kit, the bars and the menus through parts; places
+;;; the kit, the bars and the menus as drawn through parts and places
 
 (for-each close-window! (windows))
 (reset-theme!)
 (set-style! 'mac)
 (steps 1)
 
-;; The leftmost column inside the field (content x 30 to 300) where its
-;; text's ink is, in logical pixels.
+;; Returns the leftmost column inside the field (content x 24 to 300) that
+;; has its text's ink, in logical pixels.
 (define (ink-left win)
   (let-values ([(cx cy cw ch) (content-rect win)])
     (let ([bg (canvas-pixel (+ cx 24) (+ cy 35))])
@@ -21,7 +21,7 @@
                x]
               [else (loop (+ x 1))])))))
 
-;; The caret's index after a click at content x 60.
+;; Returns the caret's index after a click at content x 60.
 (define (index-clicked win ui)
   (let-values ([(cx cy cw ch) (content-rect win)])
     (inject! `(mouse-move ,(+ cx 60) ,(+ cy 35))
@@ -97,8 +97,9 @@
             (equal? (list plain (list (opened-at 40) (opened-at 340)))
                     '((#t #f) (#f #t)))))))
 
-;; What each of the desktop's parts was last handed, by its key: a style's
-;; part that notes it and draws as the built-in does.
+;; What each of the desktop's parts was last handed, by its key.
+;; (test-hand key built-in) is a style's part that records its arguments
+;; and then draws as the built-in part does.
 (define test-handed '())
 (define (test-hand key built-in)
   (lambda args

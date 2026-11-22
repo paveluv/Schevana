@@ -1,10 +1,12 @@
-;;; tests/units/ui-tooltip.ss — the kit's tooltip ((schevana kits ui)), by
-;;; itself: when one shows, and what uses it up until the pointer moves. The
-;;; test's clock holds still, so a wait is ui-tip-ms on any machine.
+;;; tests/units/ui-tooltip.ss — the kit's tooltip ((schevana kits ui)),
+;;; tested by itself: when one shows, and what uses it up until the pointer
+;;; moves. The test's clock is held, so a wait lasts ui-tip-ms on any
+;;; machine.
 
 (define ui-tooltip-test-rows 30)
 
-;; A button, a text field and a scroll of rows, each with a tooltip.
+;; A window with a button, a text field and a scroll of rows, each with a
+;; tooltip.
 (define (ui-tooltip-test-window)
   (test-kit-window "Tooltips"
     (lambda (ui w h)
@@ -19,7 +21,8 @@
           (+ top (* ui-tooltip-test-rows 20)))))
     '(400 . 300)))
 
-;; How many tooltips are drawn in the next ms of the held clock.
+;; Returns how many tooltips are drawn in the next ms milliseconds of the
+;; held clock.
 (define (ui-tooltip-test-drawn ms)
   (let ([n 0] [plain ui-draw-tooltip])
     (fluid-let ([ui-draw-tooltip
@@ -64,7 +67,7 @@
            (let ([after (ui-tooltip-test-drawn (* 2 ui-tip-ms))])
              (test-move! win 'b 2)
              (let ([moved (ui-tooltip-test-drawn (* 2 ui-tip-ms))])
-               (test-move! win 'f)   ; off, for the next
+               (test-move! win 'f)   ; move off, for the next use
                (list after moved))))
          (steps 2)
          (let ([pressed (used-then-moved

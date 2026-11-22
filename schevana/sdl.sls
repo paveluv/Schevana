@@ -1,7 +1,7 @@
 ;;; (schevana sdl) — all of SDL3's bindings, from the three libraries that
-;;; make them: (schevana sdl system), SDL itself and what any thread may
-;;; call; (schevana sdl window), the window and its events; (schevana sdl
-;;; gpu), the GPU. Only core0 imports it.
+;;; make them: (schevana sdl system), for SDL itself and the calls any
+;;; thread may make; (schevana sdl window), for the window and its events;
+;;; and (schevana sdl gpu), for the GPU. Only core0 imports it.
 
 (library (schevana sdl)
   (export)
@@ -9,6 +9,6 @@
 
   (library-layer foundation)
 
-  ;; each of the three's exports, as this library's own
+  ;; the three libraries' exports, as this library's own
   (export (import (schevana sdl system) (schevana sdl window)
                   (schevana sdl gpu))))

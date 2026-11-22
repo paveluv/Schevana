@@ -1,9 +1,10 @@
-;;; (schevana core0 platform) — what differs by platform, of core0's: which
-;;; platform this is, as core0 learns it once SDL and the GPU start
+;;; (schevana core0 platform) — core0's part of what differs by platform:
+;;; which platform this is, as core0 learns it once SDL and the GPU start
 ;;; (*core0-platform*), and the screen's reports where a platform gives them
-;;; (Wayland's here). Each thing a platform may lack is found by asking (a
-;;; library that loads, an entry SDL has, a global the compositor lists) and is
-;;; off without it. docs/PLATFORMS.md says where each has run.
+;;; (Wayland's and Metal's). Each thing a platform may lack is found by
+;;; asking (a library that loads, an entry SDL has, a global the compositor
+;;; lists), and is off without it. docs/PLATFORMS.md says where each has
+;;; run.
 
 (library (schevana core0 platform)
   (export
@@ -22,12 +23,12 @@
 
   (library-layer core0)
 
-  ;; An entry of C's, or #f where this platform's libraries lack it.
+  ;; A C entry, or #f where this platform's libraries lack it.
   (define-syntax define-optional-foreign
     (syntax-rules ()
       [(_ name form) (define-made name (guard (c [#t #f]) form))]))
 
-  ;; s in C's memory, kept for good.
+  ;; Copies s into C's memory, kept for good, and returns its address.
   (define (platform-c-string s)
     (let* ([b (string->utf8 s)] [n (bytevector-length b)]
            [p (foreign-alloc (+ n 1))])
@@ -36,7 +37,7 @@
       (foreign-set! 'unsigned-8 p n 0)
       p))
 
-  ;; The string C's memory holds at p, to its first nul.
+  ;; Returns the string C's memory holds at p, up to its first nul.
   (define (platform-c->string p)
     (let loop ([i 0] [acc '()])
       (let ([b (foreign-ref 'unsigned-8 p i)])
@@ -51,7 +52,8 @@
   ;; thread.
   (define (platform-cpu-count) (sdl-get-num-logical-cpu-cores))
 
-  ;; The system's name and version, the kernel's, where the system says them.
+  ;; The system's and the kernel's names and versions, where the system
+  ;; gives them.
   (define-optional-foreign platform-uname
     (foreign-procedure "uname" (uptr) int))
   (define-optional-foreign platform-sysctl
@@ -61,7 +63,7 @@
     (foreign-procedure "SDL_GetGPUDeviceProperties" (uptr) unsigned-32))
 
   ;; The kernel, as "Linux 6.12.1": uname's sysname and release (its first
-  ;; and third fields), 65 bytes long on Linux and 256 on a Mac.
+  ;; and third fields, each 65 bytes long on Linux and 256 on a Mac).
   (define (platform-kernel)
     (and platform-uname
          (let* ([n (if (platform-mac?) 256 65)] [p (foreign-alloc (* 6 n))])
@@ -71,8 +73,8 @@
              (foreign-free p)
              k))))
 
-  ;; The system, as its maker names it: os-release's on Linux, the product's
-  ;; version on a Mac.
+  ;; The system, as its maker names it: os-release's PRETTY_NAME on Linux,
+  ;; the product version on a Mac.
   (define (platform-system)
     (cond
       [(file-exists? "/etc/os-release")
@@ -104,8 +106,8 @@
       (format "~a.~a.~a" (quotient v 1000000) (remainder (quotient v 1000) 1000)
               (remainder v 1000))))
 
-  ;; The GPU device as SDL says it, (name driver version info), or #f before
-  ;; SDL 3.4.
+  ;; The GPU device as SDL describes it, (name driver version info), or #f
+  ;; before SDL 3.4.
   (define (platform-gpu-device)
     (and platform-gpu-properties *renderer*
          (let ([props (platform-gpu-properties (renderer-device *renderer*))]
@@ -116,17 +118,17 @@
                 (map (lambda (key) (get props key))
                      '("name" "driver_name" "driver_version" "driver_info"))))))
 
-  ;; What core0 knows of the platform, an alist it sets whole: the world
-  ;; reads it ((schevana core platform)), never asking SDL itself.
+  ;; What core0 knows about the platform, an alist it sets whole: the world
+  ;; reads it ((schevana core platform)) and never asks SDL itself.
   (define-state *core0-platform* '())
 
   ;;; ------------------------------------------------------------------
   ;;; the screen's reports
-  ;;; When each frame reached the screen, in present.ss's ring
-  ;;; (present-reported!): Wayland's wp_presentation, and Metal's presented
-  ;;; handlers on the Mac.
+  ;;; When each frame reached the screen, written into (schevana core0
+  ;;; present)'s ring (present-reported!): from Wayland's wp_presentation,
+  ;;; and from Metal's presented handlers on a Mac.
 
-  ;; Ask the screen to report on frame, sent next.
+  ;; Asks the screen to report on frame, which is sent next.
   (define (platform-report-ask! frame)
     (cond
       [(not (eqv? *wayland-presentation* 0))
@@ -137,15 +139,16 @@
           (wayland-add-listener proxy wayland-feedback-listener frame)))]
       [(not (eqv? *mac-layer* 0)) (mac-ask! frame)]))
 
-  ;; Reports from now on for the window, where its platform gives them.
+  ;; Starts the reports for the window from now on, where its platform
+  ;; gives them.
   (define (platform-reports-start! sdl-window)
     (wayland-start! sdl-window)
     (mac-start! sdl-window)
     (core0-platform-read!))
 
-  ;; Where the reports come from, as a person reads it: (source clock clock
-  ;; flags), the clock the compositor says and the one its times fit; or #f
-  ;; with none.
+  ;; Where the reports come from, for a person to read: (source clock
+  ;; clock flags), with the clock the compositor names and the one its times
+  ;; fit; or #f with no reports.
   (define (platform-reports)
     (cond
       [(not (eqv? *wayland-presentation* 0))
@@ -174,8 +177,9 @@
           (desktop . ,(getenv "XDG_CURRENT_DESKTOP"))
           (reports . ,(platform-reports))))))
 
-  ;; ns to add to a time on clock (a POSIX clock's number) for core0-clock-ns's,
-  ;; read at each report: two clocks may drift apart by a few ms an hour.
+  ;; Returns the ns to add to a time on clock (a POSIX clock's number) to
+  ;; put it on core0-clock-ns's clock. It is read at each report, since two
+  ;; clocks may drift apart by a few ms an hour.
   (define-state *platform-timespec* (foreign-alloc 16))
   (define (platform-clock-offset clock)
     (let ([ts *platform-timespec*])
@@ -203,9 +207,9 @@
 
   ;;; ---- Wayland's
   ;;; wp_presentation through libwayland-client, on SDL's display and the
-  ;;; window's surface, its events on a queue of core0's own, read after each
-  ;;; pump without waiting. Its callbacks run with interrupts off, so that no
-  ;;; engine's timer leaves through a C frame.
+  ;;; window's surface, with its events on a queue of core0's own, read
+  ;;; after each pump without waiting. Its callbacks run with interrupts
+  ;;; off, so that no engine's timer leaves through a C frame.
 
   (define-made wayland-loaded?
     (guard (c [#t #f]) (load-shared-object "libwayland-client.so.0") #t))
@@ -258,7 +262,7 @@
            (do ([i 0 (+ i 8)]) ((= i 64)) (foreign-set! 'uptr p i 0))
            p)))
 
-  ;; An array of messages, each (name signature types).
+  ;; Makes an array of messages from specs, each (name signature types).
   (define (wayland-messages specs)
     (let* ([size (ftype-sizeof wayland-message)]
            [p (foreign-alloc (max 1 (* size (length specs))))])
@@ -301,8 +305,8 @@
              (list (list "clock_id" "u" wayland-nulls))))))
 
   ;; The display, the surface, our queue and wp_presentation bound on it, or
-  ;; 0; the clock the compositor reports by, as it says (#f till it has), and
-  ;; the one its times fit; the last report's flags.
+  ;; 0; the clock the compositor reports by, as it says (#f until it has),
+  ;; and the one its times fit; and the last report's flags.
   (define-state *wayland-display* 0)
   (define-state *wayland-surface* 0)
   (define-state *wayland-queue* 0)
@@ -314,7 +318,7 @@
   (define-state *wayland-seat-found* #f)   ; the seat's name
   (define-state *wayland-pointer* 0)
   (define-state *wayland-keyboard* 0)
-  (define-state *wayland-input-clock* #f)   ; the clock input's times fit
+  (define-state *wayland-input-clock* #f)   ; the clock that input's times fit
 
   (define-syntax define-wayland-callback
     (syntax-rules ()
@@ -361,11 +365,12 @@
       (set! *wayland-used* clock))
     (uptr uptr unsigned-32))
 
-  ;; Whether time t on clock falls, on core0-clock-ns's, from low to ahead ns
-  ;; after now; the first of said and Linux's clocks on which it does, or #f.
-  ;; Now is read after the clock's offset: a time gone by never reads as one to
-  ;; come, however long core0 waited between the offset's two reads. Numbers
-  ;; alone: no allocation a report or an input.
+  ;; Whether time t on clock falls, on core0-clock-ns's clock, between low
+  ;; and ahead ns after now; and the first of said and Linux's clocks on
+  ;; which it does, or #f. Now is read after the clock's offset, so a time
+  ;; gone by never reads as one to come, however long core0 waited between
+  ;; the offset's two reads. They use numbers alone: no allocation for a
+  ;; report or an input.
   (define (platform-fits? t clock low ahead)
     (and clock
          (let ([at (+ t (platform-clock-offset clock))])
@@ -378,13 +383,14 @@
           [(platform-fits? t 0 low ahead) 0]
           [else #f]))
 
-  ;; A report's time t, on core0-clock-ns's clock, its refresh as the screen
-  ;; says (ns; 0, none). A frame shows after it's sent, and its report comes
-  ;; after it showed, or up to a refresh before where a compositor foretells the
-  ;; time: a compositor whose times break that on the clock it says (GNOME's
-  ;; with NVIDIA's vblank stamps, on CLOCK_MONOTONIC_RAW, which runs behind the
-  ;; monotonic clock on one machine and ahead of it on another) is read on the
-  ;; first of Linux's clocks that fits.
+  ;; Returns a report's time t on core0-clock-ns's clock, given its refresh
+  ;; as the screen says it (ns; 0 for none). A frame shows after it is sent,
+  ;; and its report comes after it showed, or up to a refresh before where a
+  ;; compositor predicts the time. A compositor whose times break that rule
+  ;; on the clock it names (GNOME's with NVIDIA's vblank stamps, on
+  ;; CLOCK_MONOTONIC_RAW, which runs behind the monotonic clock on one
+  ;; machine and ahead of it on another) is read on the first of Linux's
+  ;; clocks that fits.
   (define (wayland-shown-ns frame t refresh)
     (let ([low (- (fxvector-ref *present-ring* (fx+ (present-at frame) 2))
                   1000000)])
@@ -395,10 +401,10 @@
             (core0-platform-read!))))
       (+ t (platform-clock-offset *wayland-used*))))
 
-  ;; An input's time, its event's ms on the compositor's clock (which wraps at
-  ;; 32 bits), as core0 reads the event at core0-clock-ns at: on the clock under
-  ;; which it came within the last second, to the ms. Into the oldest not yet
-  ;; taken (core0-input-set!).
+  ;; Notes an input's time from its event's ms on the compositor's clock
+  ;; (which wraps at 32 bits), as core0 reads the event: on the clock by
+  ;; which it came within the last second, to the ms. It goes in as the
+  ;; oldest input not yet taken (core0-input-set!).
   (define (wayland-input! ms)
     (let* ([at (core0-clock-ns)]
            [t (or (wayland-input-on *wayland-input-clock* ms at)
@@ -407,8 +413,8 @@
                   (wayland-input-on 7 ms at))])
       (when t (core0-input-set! *core0-input-wl* t))))
 
-  ;; ms, read on clock and kept as the clock it fits, on core0-clock-ns's; or
-  ;; #f.
+  ;; Returns ms, read on clock, as a time on core0-clock-ns's clock, and
+  ;; keeps clock as the one input fits; or #f when it doesn't fit.
   (define (wayland-input-on clock ms at)
     (and clock
          (let* ([off (platform-clock-offset clock)]
@@ -426,8 +432,8 @@
                (set! *wayland-seat-found* name)])))
     (uptr uptr unsigned-32 uptr unsigned-32))
 
-  ;; The seat's pointer and keyboard of core0's own, version 1, for their
-  ;; events' times alone: the same events SDL reads, on core0's queue.
+  ;; A pointer and a keyboard of core0's own on the seat, at version 1, for
+  ;; their events' times alone: the same events SDL reads, on core0's queue.
   (define-wayland-callback wayland-seat-code
     (lambda (data seat caps)
       (when (and (logtest caps 1) (eqv? *wayland-pointer* 0))
@@ -475,7 +481,7 @@
     (lambda (data registry name) (void))
     (uptr uptr unsigned-32))
 
-  ;; A listener: its callbacks' entry points, in its events' order.
+  ;; Makes a listener: its callbacks' entry points, in its events' order.
   (define (wayland-listener . entries)
     (and wayland-loaded?
          (let ([p (foreign-alloc (* 8 (length entries)))])
@@ -502,9 +508,9 @@
   (define-made wayland-listing-listener
     (wayland-listener wayland-listed-code wayland-global-gone-code))
 
-  ;; What the compositor can do, asked before SDL starts: the interfaces it
-  ;; lists, by name, on a connection of core0's own (WAYLAND_DISPLAY's),
-  ;; opened and closed again; '() with no compositor.
+  ;; What the compositor can do, asked before SDL starts: returns the
+  ;; interfaces it lists, by name, on a connection of core0's own (to
+  ;; WAYLAND_DISPLAY's), opened and closed again; '() with no compositor.
   (define (platform-wayland-globals)
     (let ([display (if wayland-loaded? (wayland-connect 0) 0)])
       (if (eqv? display 0)
@@ -533,7 +539,7 @@
              (and (pair? globals)
                   (not (member "zxdg_decoration_manager_v1" globals)))))))
 
-  ;; Whether SDL, started, runs on Wayland.
+  ;; Whether SDL, once started, runs on Wayland.
   (define (platform-sdl-wayland?)
     (equal? (sdl-get-current-video-driver) "wayland"))
   (define-made wayland-seat-listener (wayland-listener wayland-seat-code))
@@ -544,9 +550,9 @@
     (wayland-listener wayland-keymap-code wayland-keys-code wayland-leave-code
                       wayland-key-code wayland-modifiers-code))
 
-  ;; wp_presentation bound for the window, when it lives on Wayland and the
-  ;; compositor has it, and the clock it reports by, which it says at once;
-  ;; and the seat, for the input's own times.
+  ;; Binds wp_presentation for the window, when the window lives on
+  ;; Wayland and the compositor has it, and learns the clock it reports by,
+  ;; which it names at once; and binds the seat, for the input's own times.
   (define (wayland-start! sdl-window)
     (when wayland-loaded?
       (let* ([props (sdl-get-window-properties sdl-window)]
@@ -578,16 +584,16 @@
                          (platform-c-string "wp_presentation") 1 0)])
                  (wayland-add-listener p wayland-presentation-listener 0)
                  (wayland-roundtrip display *wayland-queue*)
-                 ;; no report till the clock is known
+                 ;; no report until the clock is known
                  (when *wayland-clock*
                    (set! *wayland-presentation* p))))))))))
 
   ;;; ---- the frame's threads
   ;;; On a Mac the process's first thread, core0's, runs at the
-  ;;; user-interactive class; a thread forked starts at the default one,
-  ;;; which Apple silicon may run on an efficiency core and wake late, and
-  ;;; core1's ticks that woke late sent frames past their latch. So core1
-  ;;; asks for core0's class. Elsewhere, nothing yet.
+  ;;; user-interactive class, while a forked thread starts at the default
+  ;;; class, which Apple silicon may run on an efficiency core and wake
+  ;;; late: core1's turns that woke late sent frames past their latch. So
+  ;;; core1 asks for core0's class. Elsewhere this does nothing.
 
   (define-made mac-system-loaded?
     (and (platform-mac?)
@@ -598,31 +604,33 @@
   ;; QOS_CLASS_USER_INTERACTIVE
   (define mac-class-interactive #x21)
 
-  ;; The calling thread at the class core0's runs at, where the OS has one.
+  ;; Puts the calling thread at the class core0's thread runs at, where the
+  ;; OS has classes.
   (define (platform-thread-interactive!)
     (when mac-system-loaded?
       ((foreign-procedure "pthread_set_qos_class_self_np" (unsigned-int int)
                           int)
        mac-class-interactive 0)))
 
-  ;; The calling thread's class, as the OS says (a Mac's QOS_CLASS_…); or
-  ;; #f where there's none.
+  ;; The calling thread's class, as the OS gives it (a Mac's QOS_CLASS_…),
+  ;; or #f where there's none.
   (define (platform-thread-class)
     (and mac-system-loaded?
          ((foreign-procedure "qos_class_self" () unsigned-int))))
 
   ;;; ---- the Mac's
   ;;; Metal calls a drawable's presented handlers when it was shown, or
-  ;;; never will be: its presentedTime, seconds in Apple's host time
-  ;;; (mach_absolute_time's, CLOCK_UPTIME_RAW), 0 for never. SDL takes each
-  ;;; drawable from its layer in its acquire and presents it at the submit,
-  ;;; and hands us none; so the one layer it draws to becomes a class of
-  ;;; core0's own, made once, whose nextDrawable is CAMetalLayer's and gives
-  ;;; what it returns our handler, there on core0's thread, inside SDL's
-  ;;; acquire. The handler runs on a thread of Apple's: it writes only a ring
-  ;;; of its own, by the drawable's number, which core0 reads at each pump
-  ;;; for the frames it sent. Keeping the drawables to read them later would
-  ;;; keep them from the layer's pool, which holds three.
+  ;;; when it never will be: its presentedTime gives seconds in Apple's host
+  ;;; time (mach_absolute_time's, CLOCK_UPTIME_RAW), or 0 for never. SDL
+  ;;; takes each drawable from its layer in its acquire and presents it at
+  ;;; the submit, and hands none to us; so the one layer it draws to is
+  ;;; given a class of core0's own, made once, whose nextDrawable calls
+  ;;; CAMetalLayer's and gives our handler to the drawable it returns, there
+  ;;; on core0's thread, inside SDL's acquire. The handler runs on a thread
+  ;;; of Apple's: it writes only a ring of its own, indexed by the
+  ;;; drawable's number, which core0 reads at each pump for the frames it
+  ;;; sent. Keeping the drawables to read them later would keep them from
+  ;;; the layer's pool, which holds three.
 
   (define-made mac-objc-loaded?
     (and (platform-mac?)
@@ -648,16 +656,16 @@
     (foreign-procedure "class_addMethod" (uptr uptr uptr uptr) unsigned-8))
   (define-objc objc-method
     (foreign-procedure "class_getMethodImplementation" (uptr uptr) uptr))
-  ;; objc_msgSend, as each message's types call it
+  ;; objc_msgSend, once for each message's types
   (define-objc objc-send (foreign-procedure "objc_msgSend" (uptr uptr) uptr))
   (define-objc objc-send-long
     (foreign-procedure "objc_msgSend" (uptr uptr long) uptr))
   (define-objc objc-send-double
     (foreign-procedure "objc_msgSend" (uptr uptr) double))
-  ;; Collect-safe, for core0 inside nextDrawable: Core Animation's lock that
-  ;; a drawable's messages take is held by its thread while it runs our
-  ;; handler, which may wait for a collection, which can't wait for core0
-  ;; blocked on that lock.
+  ;; Collect-safe, for core0 inside nextDrawable: Core Animation's thread
+  ;; holds the lock that a drawable's messages take while it runs our
+  ;; handler, which may wait for a collection, and the collection can't wait
+  ;; for core0 blocked on that lock.
   (define-objc objc-send-safe
     (foreign-procedure __collect_safe "objc_msgSend" (uptr uptr) uptr))
   (define-objc objc-send-pointer-safe
@@ -668,14 +676,14 @@
   (define-objc mac-time-selector (objc-selector "presentedTime"))
   (define-objc mac-handler-selector (objc-selector "addPresentedHandler:"))
 
-  ;; The handlers' ring: a row a drawable, by its number (drawableID, which
-  ;; counts up from 0 on each layer): that number plus one (0, none yet), and
-  ;; when it was shown (ns in Apple's host time; 0, never). Only the handlers
-  ;; write it, the number last.
+  ;; The handlers' ring: one row for each drawable, by its number
+  ;; (drawableID, which counts up from 0 on each layer), holding that number
+  ;; plus one (0 for none yet) and when the drawable was shown (ns in Apple's
+  ;; host time; 0 for never). Only the handlers write it, the number last.
   (define mac-rows 64)
   (define-state *mac-shown* (make-fxvector (* 2 mac-rows) 0))
 
-  ;; On Apple's thread: the drawable's word, into its row.
+  ;; On Apple's thread: writes the drawable's report into its row.
   (define (mac-presented! drawable)
     (let* ([id (objc-send drawable mac-id-selector)]
            [t (objc-send-double drawable mac-time-selector)]
@@ -685,8 +693,8 @@
       (memory-order-release)
       (fxvector-set! *mac-shown* at (fx+ id 1))))
 
-  ;; Collect-safe: Chez makes the thread of Apple's that calls it one of its
-  ;; own for the call.
+  ;; Collect-safe: for the call, Chez makes the thread of Apple's that
+  ;; calls it one of its own.
   (define-made mac-handler-code
     (and mac-objc-loaded?
          (let ([code (foreign-callable __collect_safe
@@ -696,7 +704,8 @@
            (foreign-callable-entry-point code))))
 
   ;; The handler as a block: a global one (flag 1 << 28), which copying and
-  ;; releasing leave as it is, with its signature (1 << 30). Never freed.
+  ;; releasing leave as it is, with a signature (1 << 30). It is never
+  ;; freed.
   (define-made mac-handler-block
     (and mac-objc-loaded?
          (let ([b (foreign-alloc 32)] [d (foreign-alloc 24)])
@@ -710,15 +719,16 @@
            (foreign-set! 'uptr b 24 d)
            b)))
 
-  ;; SDL's layer, of core0's class now (0, none); CAMetalLayer's own
-  ;; nextDrawable, collect-safe, as the pool may hold it a refresh; and the
-  ;; number of the drawable the acquire running now was given (-1, none).
+  ;; SDL's layer, now of core0's class (0 for none); CAMetalLayer's own
+  ;; nextDrawable, collect-safe, since the pool may hold it for a refresh;
+  ;; and the number of the drawable given to the acquire running now (-1
+  ;; for none).
   (define-state *mac-layer* 0)
   (define-state *mac-next-drawable* #f)
   (define-state *mac-drawable* -1)
 
-  ;; nextDrawable, as core0's class has it: the layer's own, and the drawable
-  ;; it returns given our handler.
+  ;; nextDrawable, as core0's class has it: calls the layer's own, and
+  ;; gives our handler to the drawable it returns.
   (define-made mac-next-code
     (and mac-objc-loaded?
          (let ([code (foreign-callable __collect_safe
@@ -736,7 +746,7 @@
            (lock-object code)
            (foreign-callable-entry-point code))))
 
-  ;; Core0's subclass of CAMetalLayer, made once a process.
+  ;; Core0's subclass of CAMetalLayer, made once per process.
   (define (mac-layer-class metal)
     (let ([own (objc-class "SchevanaMetalLayer")])
       (if (eqv? own 0)
@@ -748,9 +758,10 @@
             c)
           own)))
 
-  ;; The layer SDL draws to, found by its view's tag in the window, of core0's
-  ;; class from now on: only one of CAMetalLayer's own class, not one another
-  ;; has given its own (KVO does).
+  ;; Finds the layer SDL draws to, by its view's tag in the window, and
+  ;; makes it of core0's class from now on: only a layer of CAMetalLayer's
+  ;; own class, not one that something else has given a class of its own
+  ;; (as KVO does).
   (define (mac-start! sdl-window)
     (when (and mac-objc-loaded? (eqv? *mac-layer* 0))
       (let* ([props (sdl-get-window-properties sdl-window)]
@@ -777,12 +788,12 @@
           (objc-class-set! layer (mac-layer-class metal))
           (set! *mac-layer* layer)))))
 
-  ;; The frames sent and not reported on yet, each with its drawable's
-  ;; number, a row a frame by its number (-1, none): core0's alone.
+  ;; The frames sent and not yet reported on, each with its drawable's
+  ;; number, one row per frame by its number (-1 for none): core0's alone.
   (define mac-waiting-rows 8)
   (define-state *mac-waiting* (make-fxvector (* 2 mac-waiting-rows) -1))
 
-  ;; Frame, sent next, waits for its drawable's report.
+  ;; Makes frame, which is sent next, wait for its drawable's report.
   (define (mac-ask! frame)
     (unless (fx= *mac-drawable* -1)
       (let ([at (fx* 2 (fxmodulo frame mac-waiting-rows))])
@@ -790,11 +801,12 @@
         (fxvector-set! *mac-waiting* (fx+ at 1) *mac-drawable*))
       (set! *mac-drawable* -1)))
 
-  ;; Frame's word from Metal: t, when it was shown in Apple's host time, or 0
-  ;; for never. A time is taken on core0-clock-ns's clock when its frame shows
-  ;; after it was sent, and within a second; else the report says nothing. Metal
-  ;; says no refresh, and the display may vary its own: the refreshes are
-  ;; counted at the window's rate, each time as it is (present-shown!).
+  ;; Takes Metal's report on frame: t, when it was shown in Apple's host
+  ;; time, or 0 for never. A time, moved to core0-clock-ns's clock, is taken
+  ;; when its frame shows after it was sent and within a second of it;
+  ;; otherwise the report says nothing. Metal gives no refresh length, and
+  ;; the display may vary its own, so the refreshes are counted at the
+  ;; window's rate, each time taken as it is (present-shown!).
   (define (mac-reported! frame t)
     (if (fx= t 0)
         (begin (present-reported! frame 2 0 0)
@@ -805,7 +817,7 @@
             (present-reported! frame 1 shown 0)
             (core0-trace! 10 frame)))))
 
-  ;; The reports the handlers wrote since the last look.
+  ;; Takes the reports the handlers wrote since the last look.
   (define (mac-pump!)
     (let ([w *mac-waiting*] [s *mac-shown*])
       (do ([i 0 (fx+ i 2)]) ((fx= i (fx* 2 mac-waiting-rows)))
@@ -817,7 +829,7 @@
                 (mac-reported! frame (fxvector-ref s (fx+ at 1)))
                 (fxvector-set! w i -1))))))))
 
-  ;; The reports come since the last look, without waiting.
+  ;; Takes the reports that came since the last look, without waiting.
   (define (platform-reports-pump!)
     (unless (eqv? *wayland-queue* 0)
       (with-interrupts-disabled

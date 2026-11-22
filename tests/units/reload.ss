@@ -1,4 +1,5 @@
-;;; tests/units/reload.ss — what (reload!) reads, and what it leaves.
+;;; tests/units/reload.ss — what (reload!) reads again, and what it leaves as
+;;; it was.
 
 (check "reload leaves core0 as it booted, its procedures the same; a \
         library of the core's whose file didn't change stays as it was, \
@@ -17,12 +18,13 @@
 
 ;;; Reloading as a process.
 
-;; Reloading as a process (the launcher's "Reload sources", a REPL) holds
-;; the world still until it ends, but stays a process. These reload a copy
-;; of the tree with a folder of its own that auto-loads, apps/, its one
-;; file apps/zz-last.ss holding form, the last to load. The copy holds
-;; what the world loads as files, src/ (the basics); its libraries are
-;; found by their names. tree-copy-done! puts the tree back.
+;; Reloading as a process (as the launcher's "Reload sources" and a REPL
+;; do) holds the world still until the reload ends, though it stays a
+;; process. These checks reload a copy of the tree with a folder of its own
+;; that auto-loads, apps/, whose one file, apps/zz-last.ss, holds form and
+;; loads last. The copy holds what the world loads as files, src/ (the
+;; basics); its libraries are found by their names. tree-copy-done! puts
+;; the tree back.
 (define tree-copy-auto-loads '())
 
 (define (tree-copy-with name form)
@@ -41,9 +43,9 @@
   (set! *schevana-root* root)
   (set! *auto-loads* tree-copy-auto-loads))
 
-;; A long load: until it ends no frame, timer, tick, handler or other
+;; A long load: until it ends, no frame, timer, tick, handler or other
 ;; process runs, and events that come meanwhile are handled after it, in
-;; order. The slow form notes what had run before and after its 0.6 s;
+;; order. The slow form notes what had run before and after its 0.6 s, and
 ;; a process that comes after the reload in each round counts its slices
 ;; during it.
 (define probe-counts (lambda () '()))
@@ -107,9 +109,9 @@
   (steps 1))
 
 ;; A source whose top level loops: the world does not freeze (its steps go
-;; on, the reload alive; the longest is printed, not bounded: how long a
-;; step may take is the bench's), Ctrl+C kills the reload, a toast names
-;; the file, and the world goes on.
+;; on while the reload is alive; the longest step is printed, not bounded,
+;; since how long a step may take is for the bench to measure), Ctrl+C
+;; kills the reload, a toast names the file, and the world goes on.
 (define reload-reached #f)
 (let ([root *schevana-root*] [worst 0] [n 0] [ticks 0])
   (set! *schevana-root*
@@ -146,7 +148,7 @@
     (steps 1)))
 
 ;; A source that raises: the reload ends there and a toast names the file,
-;; also when the process catches the error and carries on.
+;; even when the process catches the error and carries on.
 (let ([root *schevana-root*] [caught? #f])
   (set! *schevana-root*
     (tree-copy-with "error-tree" '(error 'smoke "on purpose")))
@@ -204,8 +206,8 @@
     (set! *toasts* '())
     (steps 1)))
 
-;; (reload!) in a world REPL reloads the world, not the REPL: its toast
-;; says it did.
+;; (reload!) in a world REPL reloads the world, not the REPL, and its toast
+;; says so.
 (let ([p (repl 'world)])
   (set! *toasts* '())
   (steps 2)
@@ -217,7 +219,7 @@
              (exists (lambda (t) (equal? (vector-ref t 1) "Sources reloaded"))
                      *toasts*)))])
     (test-wait 10000 (lambda () (not (repl-proc (window-ref p 'state)))))
-    ;; the REPL's own: the world's styles must not see it
+    ;; a definition of the REPL's own, which the world's styles must not see
     (test-type! "(define (title-height) 99)")
     (test-press! 'return)
     (test-wait 10000 (lambda () (not (repl-proc (window-ref p 'state)))))
@@ -231,19 +233,20 @@
   (set! *toasts* '())
   (steps 1))
 
-;; The edition's reload of the libraries: the library edition's, or the
-;; hacker edition's, which splices them again (src/hacker.ss).
+;; Reloads the libraries as this edition does: the library edition's way,
+;; or the hacker edition's, which splices them again (src/hacker.ss).
 (define (test-reload-libraries! held)
   (if test-hacker?
       ((eval 'hacker-reload-libraries!) held)
       (reload-libraries! held)))
 
 ;;; Libraries reloaded in place (reload-libraries!, which reload! runs
-;;; first): one whose file changed is evaluated again, then each that
-;;; imports it, and an environment that imported them imports them again.
-;;; Its states stay; its made values and hooks are made again, and what
-;;; sets a hook sets it again; one held stays as it was. Three libraries of
-;;; the test's own, in a folder of out/.
+;;; first): a library whose file changed is evaluated again, then each
+;;; library that imports it, and an environment that imported them imports
+;;; them again. The library's states stay; its made values and hooks are
+;;; made again, and the library that sets a hook sets it again; a held
+;;; library stays as it was. The test uses three libraries of its own, in a
+;;; folder under out/.
 (let* ([dir (string-append out-dir "/reload-libraries")]
        [file (lambda (name)
                (string-append dir "/units/reload/" name ".sls"))]

@@ -1,39 +1,45 @@
-;;; tests/build.ss — the tree's libraries as the tests build them, in the
-;;; library edition, loaded by tests/boot.ss before the first library
-;;; compiles. A library is written for what it does, never for its tests;
-;;; what a test needs of it beyond that, this build gives it, as each of
-;;; the tree's libraries is expanded (Chez's current-expand), as it
-;;; compiles into the cache and as a reload evaluates it again:
+;;; tests/build.ss — how the tests build the tree's libraries in the
+;;; library edition. tests/boot.ss loads it before the first library
+;;; compiles (as does tests/units.ss, for a topic that needs no world). A
+;;; library is written for what it does, never for its tests. What a test
+;;; needs from it beyond that, this build adds as Chez expands each of the
+;;; tree's libraries (Chez's current-expand): when it compiles into the
+;;; cache, and when a reload evaluates it again.
 ;;;
 ;;; - A library of a sealed layer (core0's, the recorder's, the core's, and
-;;;   the foundation they stand on), but a facade, exports every name it
-;;;   defines, under test: (test:pacer-margin), which tests/reach.ss gives
-;;;   the tests by the name itself. Under the prefix, no library of the
-;;;   tree's finds a name another doesn't export.
-;;; - A definition a test stands in for (test-stand-ins) is a hook, so that
-;;;   a set!, a fluid-let's too, reaches every call to it: the definition
-;;;   as it was, under a name of its own, which the hook holds.
+;;;   the foundation under them), other than a facade, also exports every
+;;;   name it defines, with the prefix test: (test:*pacer-margin*).
+;;;   tests/reach.ss gives these names to the tests without the prefix.
+;;;   Because of the prefix, no library of the tree finds a name under its
+;;;   own spelling that its owner doesn't export.
+;;; - A definition that a test stands in for (test-stand-ins) becomes a
+;;;   hook, so that a set!, or a fluid-let, reaches every call to it. The
+;;;   hook holds the original definition, kept under a name of its own.
 ;;;
-;;; The objects go in a cache of their own, beside the launcher's, one for
-;;; each text of this file. The hacker edition builds nothing: every name
-;;; is at the top level there, to set as any other.
+;;; The compiled objects go in a cache of their own, beside the launcher's,
+;;; one for each version of this file's text. The hacker edition builds
+;;; nothing: there every name is at the top level, and a test sets it as
+;;; any other.
 
-;; A form as it was read: its datum, without the reader's annotations.
+;; Returns a form as a plain datum, without the reader's annotations.
 (define (test-datum x)
   (cond [(annotation? x) (annotation-stripped x)]
         [(pair? x) (cons (test-datum (car x)) (test-datum (cdr x)))]
         [else x]))
 
-;; A form one level down: the list of its parts, each as it was read.
+;; Returns a form one level down: the list of its parts, each still
+;; annotated as it was read.
 (define (test-parts x) (if (annotation? x) (annotation-expression x) x))
 
-;; The body forms of the library in file, a path from the tree's root.
+;; Returns the body forms of the library in file (a path from the tree's
+;; root).
 (define (test-library-body file)
   (cddddr (call-with-input-file (string-append *schevana-root* "/" file)
             read)))
 
-;; The calls a library binds to C, by their names: SDL's, which a test
-;; stands in for when it runs core0 with no window (tests/units/sdl.ss).
+;; Returns the names of the C calls that the library in file binds. Here
+;; they are SDL's, which a test stands in for when it runs core0 with no
+;; window (tests/units/sdl.ss).
 (define (test-foreign-names file)
   (map cadr
        (filter (lambda (form)
@@ -42,7 +48,7 @@
                             '(define-foreign define-foreign/collect-safe))))
                (test-library-body file))))
 
-;; The definitions the tests stand in for, by library.
+;; The definitions that the tests stand in for, by library.
 (define test-stand-ins
   `(((schevana apps pipeline) pipeline-pick-refresh! pipeline-river-target)
     ((schevana apps settings) *settings-style-directory*)
@@ -79,8 +85,8 @@
     ((schevana styles mac) draw-resize-grip)
     ((schevana tree) *schevana-root*)))
 
-;; The names a body form of a library defines (a datum): a record type's
-;; too, by R6RS's rules for the names it makes.
+;; Returns the names that a body form of a library (a datum) defines,
+;; including a record type's, by R6RS's rules for the names it makes.
 (define (test-defined-names form)
   (define (name+ . parts)
     (string->symbol
@@ -106,8 +112,8 @@
       (case (car form)
         [(begin) (apply append (map test-defined-names (cdr form)))]
         [(define-record-type) (record-names (cadr form) (cddr form))]
-        ;; (define-shader-layout name reader (field ...)): name-words, and
-        ;; a name-field for each
+        ;; (define-shader-layout name reader (field ...)) defines
+        ;; name-words, and a name-field for each field
         [(define-shader-layout)
          (cons (name+ (cadr form) "-words")
                (map (lambda (f) (name+ (cadr form) "-" f)) (cadddr form)))]
@@ -124,9 +130,9 @@
                (list n)))]
         [else '()])))
 
-;; The variables a library's body (a datum) defines and sets (set!): Chez
-;; exports no variable that is assigned. A state and a hook are globals,
-;; which it does.
+;; Returns the variables that a library's body (a datum) both defines and
+;; sets (set!): Chez exports no variable that is assigned. A state and a
+;; hook are globals, which Chez does export.
 (define (test-assigned body)
   (let ([plain (let walk ([forms body])
                  (apply append
@@ -144,7 +150,8 @@
              (walk (cddr x) (cons (cadr x) acc))]
             [else (walk (cdr x) (walk (car x) acc))]))))
 
-;; The names an export clause (a datum) gives, as the library has them.
+;; Returns the names that an export clause (a datum) gives, as the library
+;; itself names them (for a rename, the inner name).
 (define (test-exported clause)
   (apply append
          (map (lambda (spec)
@@ -157,14 +164,15 @@
 (define (test-prefixed name)
   (string->symbol (string-append "test:" (symbol->string name))))
 
-;; A name's own definition, under the name of the one a hook holds.
+;; The name that a hook's original definition is kept under: name/bound.
 (define (test-bound name) (string->symbol (format "~a/bound" name)))
 
-;; The hook for name: a global of Chez's own (as define-global, in
-;; schevana/base.sls, makes one), named for it, read where name is, set by
-;; set!; till it's set, at the body's end, the definition itself, as the
-;; library loads. Each read names the definition, so Chez runs the
-;; library for code that reads only the hook.
+;; Returns the hook for name: a global of Chez's own (like the ones that
+;; define-global, in schevana/base.sls, makes), named after it. name
+;; becomes a macro that reads the global, and set! of name sets it. Until
+;; the global is set, at the end of the body, a read gives the definition
+;; itself, while the library loads. Each read names the definition, so
+;; Chez runs the library even for code that reads only the hook.
 (define (test-hook name global)
   (let ([read `(if (($primitive $top-level-bound?) ',global)
                    (($primitive $top-level-value) ',global)
@@ -177,12 +185,13 @@
             [id (identifier? #'id) #',read]
             [(_ . rest) #'(,read . rest)]))))))
 
-;; A body form, each definition of names in it under the name of the one
-;; its hook holds (test-bound), as it was otherwise, where it was: compiled
-;; as the library has it, beside its hook. The hook is set at the body's
-;; end (test-build-form), once every definition is made, as an export is.
-;; found: each name and its global, for the end, and for the check that
-;; each is.
+;; Returns a body form with each definition of a name in names renamed to
+;; the name its hook holds (test-bound), and otherwise unchanged, in the
+;; same place: it compiles as the library has it, with its hook beside it.
+;; The hook is set at the end of the body (test-build-form), once every
+;; definition is made, as an export is. found maps each name to its
+;; global, for setting the hook at the end and for checking that every
+;; name was found.
 (define (test-stand-in form names found)
   (let ([d (test-datum form)])
     (if (not (and (pair? d) (pair? (cdr d))))
@@ -210,8 +219,9 @@
             [else
              (errorf 'test-build "~s: no stand-in for a ~s" n (car d))])))))
 
-;; The library form x as this build has it: one of the tree's, its
-;; definitions stood in for and its names given; anything else as it is.
+;; Returns the library form x as this build has it: for one of the tree's
+;; libraries ((schevana ...)), its stand-ins made hooks and its names
+;; exported; any other form unchanged.
 (define (test-build-form x)
   (let ([parts (test-parts x)])
     (if (not (and (list? parts) (>= (length parts) 4)
@@ -264,9 +274,9 @@
                           ,(test-bound n))))
                     names))))))
 
-;; The build set up for root's libraries, after the launcher's
-;; (schevana-libraries!): their objects in a cache of the build's own, and
-;; each library expanded as the build has it.
+;; Sets up the build for root's libraries, after the launcher has set up
+;; its own (schevana-libraries!): their objects go in a cache of the
+;; build's own, and each library is expanded as test-build-form has it.
 (define (test-build! root)
   (let ([cache (format "~a-tests-~x" (schevana-cache-folder root)
                        (logand (equal-hash

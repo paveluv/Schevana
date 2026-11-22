@@ -1,5 +1,5 @@
-;;; (schevana palettes interlisp) — the Interlisp palette. Interlisp-D: black
-;;; ink on white paper.
+;;; (schevana palettes interlisp) — the Interlisp palette, after Interlisp-D:
+;;; black ink on white paper.
 
 (library (schevana palettes interlisp)
   (export)

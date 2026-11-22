@@ -1,11 +1,11 @@
 ;;; (schevana core0 for-recorder) — what core0 gives the recorder
-;;; ((schevana recorder bytes)): what it gives core1 of its records,
-;;; frames and itself, and what it gives the recorder alone: recordings,
-;;; the lists, images and frame that hold them, how far frames have come
-;;; back, and the calls that hand core0 writes with no frame. Core1 never
-;;; has these, so neither it nor the world can name a byte core0 reads, or
-;;; hand core0 a recording the recorder didn't freeze. A state or a hook
-;;; core0 sets is given as a view, which a set! refuses.
+;;; ((schevana recorder bytes)): what it gives core1 of its records, its
+;;; frames and itself, plus what it gives the recorder alone: recordings,
+;;; the lists, images and frames that hold them, how far frames have come
+;;; back, and the calls that hand core0 writes outside a frame. Core1 never
+;;; has these, so neither core1 nor the world can name a byte that core0
+;;; reads, or hand core0 a recording the recorder didn't freeze. A state or
+;;; a hook that core0 sets is given as a view, which refuses a set!.
 
 (library (schevana core0 for-recorder)
   (export
@@ -107,7 +107,7 @@
 
   (library-layer core0 facade)
 
-  ;; What core0 sets, and the recorder reads or calls: views.
+  ;; What core0 sets and the recorder reads or calls, given as views.
   (define-view *gpu-facts* core0:*gpu-facts*)
   (define-view *core0-mode* core0:*core0-mode*)
   (define-view *core0-platform* core0:*core0-platform*)

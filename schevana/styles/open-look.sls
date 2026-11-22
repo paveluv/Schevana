@@ -1,20 +1,21 @@
-;;; (schevana styles open-look) — the OPEN LOOK window style. Sun's OPEN LOOK
-;;; as OpenWindows drew it: olwm, its window manager, through OLGX, its drawing
-;;; library (XView 3.2 on the X11R6 contrib tape; Sun's Functional
+;;; (schevana styles open-look) — the OPEN LOOK window style: Sun's OPEN LOOK
+;;; as OpenWindows drew it, with olwm, its window manager, through OLGX, its
+;;; drawing library (XView 3.2 on the X11R6 contrib tape; Sun's Functional
 ;;; Specification of 1989 where the code is silent). A window is its window
-;;; color, BG1, in an outline of ink, 2 pixels, 3 while it has the focus. Its
-;;; header holds the window button at the left (a click closes the window to
-;;; the taskbar, as the button's default, Close, does) and the title, bold,
-;;; centered in the rest; a pop-up, a window opened 'above another, has a
-;;; pushpin there instead, pinned in: pull it out and the window goes. An
-;;; L-shaped resize corner sits at each corner, the only place a window resizes
-;;; from. The focus is a band across the header, of ink in 2D and recessed in
-;;; 3D, or, with open-look-focus lines, olwm's two lines. A window's 'footer, a
-;;; string or (left . right), shows under it in the title's font. Everything
-;;; comes in OPEN LOOK's four sizes, 10, 12, 14 and 19 point, the nearest the
-;;; text size: the fixed parts are OLGX's own glyphs (its fonts, at this file's
-;;; end) pixel for pixel, the numbers olwm's (winframe.c), and the shades
-;;; OLGX's arithmetic, translated from Sun's code, whose notice goes with it:
+;;; color, BG1, in an outline of ink 2 pixels wide, or 3 while it has the
+;;; focus. Its header holds the window button at the left (a click closes the
+;;; window to the taskbar, as the button's default, Close, does) and the
+;;; title, in bold, centered in the rest. A pop-up, a window opened 'above
+;;; another, has a pushpin there instead, pinned in: pull it out and the
+;;; window goes. An L-shaped resize corner sits at each corner, the only
+;;; place a window resizes from. The focus is a band across the header, of
+;;; ink in 2D and recessed in 3D, or, with open-look-focus set to lines,
+;;; olwm's two lines. A window's 'footer, a string or (left . right), shows
+;;; under it in the title's font. Everything comes in OPEN LOOK's four sizes,
+;;; 10, 12, 14 and 19 point, whichever is nearest the text size. The fixed
+;;; parts are OLGX's own glyphs (its fonts, at this file's end) pixel for
+;;; pixel, the numbers are olwm's (winframe.c), and the shades follow OLGX's
+;;; arithmetic, translated from Sun's code, whose notice goes with it:
 ;;;
 ;;;   (c) Copyright 1989, 1990, 1991 Sun Microsystems, Inc. Sun design
 ;;;   patents pending in the U.S. and foreign countries. OPEN LOOK is a
@@ -25,7 +26,7 @@
 ;;;   trademark is hereby granted only in association with the images
 ;;;   and fonts described in this file.
 
-;; Chez's reader: the depth's setting is the symbol 3d.
+;; Chez's reader syntax, since the depth's setting is the symbol 3d.
 #!chezscheme
 (library (schevana styles open-look)
   (export
@@ -50,14 +51,15 @@
 
   (library-layer looks)
 
-  ;; The size of the four nearest a text size n: 10, 12, 14 or 19.
+  ;; Returns the one of the four sizes nearest a text size n: 10, 12, 14 or
+  ;; 19.
   (define (open-look-size-near n)
     (cond [(< n 11) 10] [(< n 13.5) 12] [(< n 16.5) 14] [else 19]))
 
-  ;; The size: the nearest the text size.
+  ;; The size in use: the one nearest the text size.
   (define (open-look-size) (open-look-size-near (theme 'ui-font-size)))
 
-  ;; One of four numbers, by the size.
+  ;; Returns one of four numbers, by the size.
   (define (open-look-by-size a b c d)
     (case (open-look-size) [(10) a] [(12) b] [(14) c] [else d]))
 
@@ -66,33 +68,35 @@
   ;;; ------------------------------------------------------------------
   ;;; the frame's numbers, olwm's at each size (winframe.c:94-240)
 
-  ;; The sides and the bottom, the outline in them: a resize corner's arm.
+  ;; The width of the sides and the bottom, the outline included: a resize
+  ;; corner's arm.
   (define (open-look-arm) (open-look-by-size 5 5 6 6))
-  ;; The header: the window button's height, or the title font's and 2.
+  ;; The header's height: the window button's, or the title font's plus 2.
   (define (open-look-header) (open-look-by-size 13 15 17 23))
-  ;; Above the pane: the header, an arm above it and one below.
+  ;; The height above the pane: the header, an arm above it and one below.
   (define (open-look-top) (+ (open-look-header) (* 2 (open-look-arm))))
-  ;; A resize corner's square, its arms' length.
+  ;; A resize corner's square: its arms' length.
   (define (open-look-corner) (open-look-by-size 10 11 12 14))
-  ;; The window button, an abbreviated menu button, and the pushpin.
+  ;; The sizes of the window button (an abbreviated menu button) and the
+  ;; pushpin.
   (define (open-look-button-w) (open-look-by-size 14 16 18 21))
   (define (open-look-button-h) (- (open-look-button-w) 1))
   (define (open-look-pin-w) (open-look-by-size 26 26 28 28))
   (define (open-look-pin-h) (open-look-by-size 13 13 15 15))
   ;; The title's baseline under the header's top: Lucida Sans Bold's ascent.
   (define (open-look-ascent) (open-look-by-size 9 11 13 17))
-  ;; The footer, the title font's height and an arm; its baseline over the
-  ;; bottom edge, the font's descent and an arm.
+  ;; The footer's height, the title font's height and an arm; and its
+  ;; baseline's height over the bottom edge, the font's descent and an arm.
   (define (open-look-footer-h)
     (+ (open-look-by-size 11 13 15 21) (open-look-arm)))
   (define (open-look-footer-base) (open-look-by-size 7 7 8 10))
 
-  ;; OPEN LOOK's pop-ups belong to a base window: here, one opened 'above
-  ;; another.
+  ;; OPEN LOOK's pop-ups belong to a base window: here, a pop-up is a window
+  ;; opened 'above another.
   (define (open-look-pop-up? win) (and (window-ref win 'above #f) #t))
 
-  ;; Where the window button, or a pop-up's pushpin, sits: (x y w h), the
-  ;; header's height centering it.
+  ;; Returns where the window button, or a pop-up's pushpin, sits: (x y w h),
+  ;; centered in the header's height.
   (define (open-look-gadget win)
     (let ([x (+ (open-look-size) 2)] [a (open-look-arm)]
           [hh (open-look-header)])
@@ -107,8 +111,9 @@
       (values a (open-look-top) a
               (if (window-ref win 'footer #f) (+ a (open-look-footer-h)) a))))
 
-  ;; The button closes, the pushpin dismisses; a base window's corners
-  ;; resize it (a pop-up keeps its size, as XView's do).
+  ;; The window button closes the window to the taskbar (minimize), and the
+  ;; pushpin dismisses a pop-up (close); a base window's corners resize it
+  ;; (a pop-up keeps its size, as XView's do).
   (define (open-look-regions win)
     (let ([w (window-w win)] [h (window-h win)] [c (open-look-corner)])
       (if (open-look-pop-up? win)
@@ -122,7 +127,8 @@
   ;;; ------------------------------------------------------------------
   ;;; OLGX's colors (olgx_calculate_3Dcolors, ol_color.c:45-244)
 
-  ;; OLGX's HSV of #xRRGGBB: h 0-359, s and v 0-1000, integer for integer.
+  ;; Returns OLGX's HSV of #xRRGGBB: h from 0 to 359, s and v from 0 to
+  ;; 1000, matching OLGX's integer arithmetic integer for integer.
   (define (open-look-hsv c)
     (let* ([r (fxand (fxsrl c 16) 255)] [g (fxand (fxsrl c 8) 255)]
            [b (fxand c 255)] [mx (max r g b)] [mn (min r g b)]
@@ -152,9 +158,10 @@
         [(0) (rgb v t p)] [(1) (rgb q v p)] [(2) (rgb p v t)]
         [(3) (rgb p q v)] [(4) (rgb t p v)] [else (rgb v p q)])))
 
-  ;; A 3D shade of color c: bg2, its value x 0.9; bg3, x 0.5; highlight,
-  ;; x 1.2, its saturation halved if that passes the top, its value at
-  ;; least 0.4. So #cccccc's are #b7b7b7, #666666 and #f4f4f4.
+  ;; Returns a 3D shade of color c: bg2 has its value x 0.9; bg3, x 0.5; and
+  ;; highlight, x 1.2, with its saturation halved if that passes the top and
+  ;; its value at least 0.4. So #cccccc's shades are #b7b7b7, #666666 and
+  ;; #f4f4f4.
   (define (open-look-shade c which)
     (let-values ([(h s v) (open-look-hsv (color->fixnum c))])
       (case which
@@ -167,10 +174,10 @@
   ;;; ------------------------------------------------------------------
   ;;; OLGX's drawing
 
-  ;; Glyph name of the size's font, its top-left pixel at (x, y), its set
-  ;; pixels in color, a row's run in one box; cut, if given, to the
-  ;; window cw × ch that olwm draws it in (at 19 point some glyphs are a
-  ;; pixel larger than theirs).
+  ;; Draws glyph name of the size's font with its top-left pixel at (x, y):
+  ;; its set pixels in color, each run in a row as one box. If cut is given,
+  ;; the glyph is cut to the cw × ch window that olwm draws it in (at 19
+  ;; point some glyphs are a pixel larger than their windows).
   (define (open-look-glyph x y name color . cut)
     (let ([g (open-look-font-glyph (open-look-size) name)])
       (when g
@@ -194,7 +201,8 @@
               (rows (cdr rs) (+ j 1))))))))
 
   ;; olgx_draw_box (ol_draw.c:42-118): the top and left lines in ul, the
-  ;; bottom and right in lr, which has the top right pixel; inside, fill.
+  ;; bottom and right ones in lr, which gets the top right pixel; and fill
+  ;; inside.
   (define (open-look-box x y w h ul lr fill)
     (fill-box (+ x 1) (+ y 1) (- w 2) (- h 2) fill)
     (fill-box x y w 1 ul)
@@ -202,7 +210,8 @@
     (fill-box (+ x 1) (+ y h -1) (- w 1) 1 lr)
     (fill-box (+ x w -1) y 1 h lr))
 
-  ;; The vertical menu mark in 3D (olgx_draw_menu_mark, ol_button.c:485-549).
+  ;; Draws the vertical menu mark in 3D (olgx_draw_menu_mark,
+  ;; ol_button.c:485-549).
   (define (open-look-menu-mark x y)
     (open-look-glyph x y 'vert-menu-mark-ul 'open-look-bg3)
     (open-look-glyph x y 'vert-menu-mark-lr 'open-look-highlight)
@@ -211,8 +220,8 @@
   ;;; ------------------------------------------------------------------
   ;;; the frame
 
-  ;; The focus band, (x y) the window's corner: ink in 2D, a recessed box
-  ;; in 3D (winframe.c:545-574, 660-698).
+  ;; Draws the focus band, (x y) being the window's corner: ink in 2D, a
+  ;; recessed box in 3D (winframe.c:545-574, 660-698).
   (define (open-look-draw-band x y w)
     (let ([a (open-look-arm)] [hh (open-look-header)])
       (if (open-look-3d?)
@@ -220,8 +229,9 @@
                          'open-look-bg3 'open-look-highlight 'open-look-bg2)
           (fill-box (+ x a) (+ y a -1) (- w a a) (+ hh 1) 'open-look-ink))))
 
-  ;; Or olwm's two lines, 2 pixels, under the outline o between the corners
-  ;; and over the pane: ink, or raised in 3D (winframe.c:577-630, 701-751).
+  ;; Or draws olwm's two lines, 2 pixels each, one under the outline o
+  ;; between the corners and one over the pane: ink, or raised in 3D
+  ;; (winframe.c:577-630, 701-751).
   (define (open-look-draw-lines x y w o)
     (let ([a (open-look-arm)] [c (open-look-corner)])
       (define (line lx ly lw)
@@ -232,9 +242,9 @@
       (line (+ x c 1) (+ y o 1) (- w c c 2))
       (line (+ x a) (+ y (open-look-top) -3) (- w a a))))
 
-  ;; The resize corners (olgx_draw_resize_corner, ol_misc.c:17-68): an L of
-  ;; three layers in 3D, the pressed one's colors turned; an outline of ink
-  ;; and its inside in 2D, of ink when pressed.
+  ;; Draws the resize corners (olgx_draw_resize_corner, ol_misc.c:17-68): in
+  ;; 3D, an L of three layers, with the pressed corner's colors swapped; in
+  ;; 2D, an outline of ink and its inside, which is ink when pressed.
   (define (open-look-draw-corners x y w h pressed)
     (let ([c (open-look-corner)])
       (for-each
@@ -255,9 +265,9 @@
        (list x (+ x w (- c)) (+ x w (- c)) x)
        (list y y (+ y h (- c)) (+ y h (- c))))))
 
-  ;; The window button (olgx_draw_abbrev_button, ol_button.c:553-643) on
-  ;; the window color olwm erases it to (winbutton.c:226-276), on the 2D
-  ;; band in a ring of ink.
+  ;; Draws the window button (olgx_draw_abbrev_button, ol_button.c:553-643)
+  ;; on the window color that olwm erases it to (winbutton.c:226-276), and
+  ;; on the 2D band in a ring of ink.
   (define (open-look-draw-button x y pressed? band?)
     (let ([bw (open-look-button-w)] [bh (open-look-button-h)])
       (define (draw name color) (open-look-glyph x y name color bw bh))
@@ -277,9 +287,9 @@
                   'open-look-ink)
             (when band? (stroke-box x y bw bh 'open-look-ink))))))
 
-  ;; A pop-up's pushpin (olgx_draw_pushpin, ol_misc.c:70-147), pinned in or
-  ;; pulled out, on what olwm erases under it (winpush.c:160-206): in 2D on
-  ;; the band, the window color on ink.
+  ;; Draws a pop-up's pushpin (olgx_draw_pushpin, ol_misc.c:70-147), pinned
+  ;; in or pulled out, on what olwm erases under it (winpush.c:160-206); in
+  ;; 2D on the band, it is the window color on ink.
   (define (open-look-draw-pin x y in? band?)
     (let ([pw (open-look-pin-w)] [ph (open-look-pin-h)])
       (define (draw name color) (open-look-glyph x y name color pw ph))
@@ -297,7 +307,8 @@
             (draw (if in? 'menu-pin-in 'menu-pin-out)
                   (if band? 'open-look-window 'open-look-ink))))))
 
-  ;; str's longest start within w pixels in font, cut with no ellipsis.
+  ;; Returns the longest start of str that fits within w pixels in font, cut
+  ;; with no ellipsis.
   (define (open-look-cut str w font)
     (let ([s (text-within str w)])
       (if (<= (text-width s font) w)
@@ -310,8 +321,8 @@
                       (loop m hi)
                       (loop lo m))))))))
 
-  ;; olwm's title: too wide, it loses all up to its first colon, then what
-  ;; does not fit at the right (winframe.c:1366-1396).
+  ;; olwm's title: when it is too wide, it loses everything up to its first
+  ;; colon, then whatever does not fit at the right (winframe.c:1366-1396).
   (define (open-look-fit-title str w font)
     (let* ([n (string-length str)]
            [wide? (or (> n (+ 1 (max 0 w))) (> (text-width str font) w))]
@@ -322,12 +333,13 @@
       (open-look-cut (if (and wide? colon) (substring str (+ colon 1) n) str)
                      w font)))
 
-  ;; Text with its baseline at y (draw-text puts it on a whole device row).
+  ;; Draws text with its baseline at y (draw-text puts it on a whole device
+  ;; row).
   (define (open-look-text x y str color font)
     (draw-text x (- y (font-ascent font)) str color font))
 
-  ;; The title, centered right of the button or pushpin (winframe.c:
-  ;; 1313-1401), in the window color on the 2D band (inverse?).
+  ;; Draws the title, centered to the right of the button or pushpin
+  ;; (winframe.c:1313-1401), in the window color on the 2D band (inverse?).
   (define (open-look-draw-title win x y w inverse?)
     (let* ([g (open-look-gadget win)]
            [off (+ (car g) (caddr g) (quotient (open-look-size) 4))]
@@ -340,9 +352,9 @@
                           (if inverse? 'open-look-window 'open-look-ink)
                           'title)))))
 
-  ;; The footer: its left text at the left margin, its right text at the
-  ;; right, which keeps at most a quarter when both do not fit (winframe.c:
-  ;; 787-858).
+  ;; Draws the footer: its left text at the left margin and its right text
+  ;; at the right; when both don't fit, the right text keeps at most a
+  ;; quarter of the room (winframe.c:787-858).
   (define (open-look-draw-footer win x y w h)
     (let ([f (window-ref win 'footer #f)])
       (when f
@@ -368,7 +380,8 @@
            [g (open-look-gadget win)] [gx (+ x (car g))] [gy (+ y (cadr g))])
       (fill-box x y w h 'open-look-ink)
       (fill-box (+ x o) (+ y o) (- w o o) (- h o o) 'open-look-window)
-      ;; a base window's corners lie over the outline, the band over them
+      ;; a base window's corners lie over the outline, and the band over
+      ;; them
       (unless (open-look-pop-up? win)
         (fill-box x y c c 'open-look-window)
         (fill-box (+ x w (- c)) y c c 'open-look-window)
@@ -384,7 +397,7 @@
       (open-look-draw-footer win x y w h)))
 
   ;; The window color and the ink, which you may change and save, and the
-  ;; shades OLGX takes from the window color.
+  ;; shades OLGX derives from the window color.
   (at-load
    (color-default! 'open-look-window 'window-bg))
   (at-load
@@ -425,10 +438,10 @@
   ;;; OLGX's glyph fonts, the pictures its parts are drawn from. OLGX draws
   ;;; nearly every fixed-size part (resize corners, pushpins, the window
   ;;; button, menu marks, the ends of buttons) as characters of a glyph
-  ;;; font, one font a scale, each drawn by hand at 10, 12, 14 and 19
-  ;;; pixels (75 dpi, a pixel a point). Here are those the frame draws,
-  ;;; generated from olgl10/12/14/19.bdf (X11R6 contrib, fonts/bdf/misc),
-  ;;; with the fonts' notice, which every copy must carry:
+  ;;; font, one font for each scale, each drawn by hand at 10, 12, 14 and
+  ;;; 19 pixels (75 dpi, one pixel per point). Here are the glyphs the frame
+  ;;; draws, generated from olgl10/12/14/19.bdf (X11R6 contrib,
+  ;;; fonts/bdf/misc), with the fonts' notice, which every copy must carry:
   ;;;
   ;;;  Copyright 1989 by Sun Microsystems, Inc. Mountain View, CA.
   ;;;
@@ -451,10 +464,10 @@
   ;;;  CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF OR IN
   ;;;  CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 
-  ;; (w h row ...) of the glyph OLGX calls name (olgx.h, lower case, OLG_
-  ;; dropped) in the font for size 10, 12, 14 or 19, a row w bits wide, its
-  ;; leftmost pixel the highest bit; #f for one not here. Its top-left
-  ;; pixel is where OLGX draws it.
+  ;; Returns (w h row ...) of the glyph OLGX calls name (olgx.h, in lower
+  ;; case with OLG_ dropped) in the font for size 10, 12, 14 or 19: each row
+  ;; is w bits wide, with its leftmost pixel in the highest bit; #f for a
+  ;; glyph not here. Its top-left pixel is where OLGX draws it.
   (define (open-look-font-glyph size name)
     (let ([font (assv size open-look-fonts)])
       (and font (let ([g (assq name (cdr font))]) (and g (cdr g))))))

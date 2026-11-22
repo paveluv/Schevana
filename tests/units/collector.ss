@@ -1,5 +1,6 @@
-;;; tests/units/collector.ss — the world waits in the oldest generation, and
-;;; a pause is what survived since the last one.
+;;; tests/units/collector.ss — the world waits in the oldest generation,
+;;; and a pause costs what has survived since the last one, not what the
+;;; heap holds.
 
 (define (collector-young)
   (+ (bytes-allocated 0) (bytes-allocated 1)))
@@ -19,7 +20,8 @@
               (< (bytes-allocated 0) (* 1024 1024)))))
 
 (check "what survives a request moves to the next generation, no further"
-       ;; before first: so much allocated may bring a request by itself
+       ;; before is read first: allocating this much may bring a request
+       ;; by itself
        (let* ([before (bytes-allocated 1)]
               [kept (make-bytevector (* 4 1024 1024) 1)])
          (collect-rendezvous)
@@ -74,7 +76,7 @@
 (let* ([counts '()]
        [note! (lambda () (set! counts (cons (collections) counts)))]
        [win (open-window "Hog" 'size '(80 . 60)
-                         ;; some 17 MB, past the trip many times over
+                         ;; some 17 MB, many times past the collect trip
                          'draw (lambda (win w h)
                                  (note!)
                                  (let loop ([i 0] [keep '()])
@@ -100,8 +102,9 @@
                 (apply = seen)
                 (> after (car seen))))))
 
-;; core0 on a thread of its own gives a frame back once it's sent: till
-;; then, the collection its turn held off waits, as it would stop core0
+;; core0 on a thread of its own gives a frame back once it has sent it:
+;; until then, the collection that the frame's turn held off waits, since
+;; it would stop core0
 (let ([win (open-window "Hog" 'size '(80 . 60)
                         'draw (lambda (win w h)
                                 (let loop ([i 0] [keep '()])

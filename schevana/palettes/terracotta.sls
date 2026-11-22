@@ -1,6 +1,6 @@
-;;; (schevana palettes terracotta) — the Terracotta palette. Desert clay: sand
-;;; for paper, fired clay for the accent, an oasis for the second, cactus
-;;; green, and dark clay for the bars.
+;;; (schevana palettes terracotta) — the Terracotta palette: desert clay. Sand
+;;; for the paper, fired clay for the accent, an oasis for the second accent,
+;;; cactus green, and dark clay for the bars.
 
 (library (schevana palettes terracotta)
   (export)

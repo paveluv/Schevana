@@ -1,11 +1,13 @@
-;;; (schevana desktop mousedoc) — the mouse documentation: what each button
-;;; does under the pointer, as data, ((L . "Move") (L2 . "Maximize") (R .
-;;; "Window menu") (W . "Shade")): a window's region in its style's own words
-;;; (a region's sixth element) or its kind's, which read the style's actions;
-;;; in the content the window's 'mouse-doc (the widget kit's for the widget
-;;; there, or the app's); a surface's from its doc. A style turns mouse-doc on
-;;; to show it: the top bar does (the built-in one in its status area), or,
-;;; where a style has none, the taskbar (Genera's who line).
+;;; (schevana desktop mousedoc) — the mouse documentation: what each mouse
+;;; button does under the pointer, as data, such as ((L . "Move") (L2 .
+;;; "Maximize") (R . "Window menu") (W . "Shade")). A region of a window's
+;;; frame is described in its style's own words (the region's sixth element)
+;;; or else by its kind, whose words follow the style's actions. In the
+;;; content, the words are the window's 'mouse-doc (the widget kit's, for the
+;;; widget there, or the app's). A surface's words come from its doc. A style
+;;; turns 'mouse-doc on to show the documentation: the top bar shows it (the
+;;; built-in top bar in its status area), or, when a style has no top bar,
+;;; the taskbar does (Genera's who line).
 
 (library (schevana desktop mousedoc)
   (export
@@ -53,7 +55,7 @@
                    (if a (then 'L2 (cdr a)) '())))]
         [else '()])))
 
-  ;; What an action of win's frame does, in words, or #f.
+  ;; Returns what an action of win's frame does, in words, or #f.
   (define (action-words win action)
     (case action
       [(maximize) (if (maximized? win) "Restore" "Maximize")]
@@ -63,23 +65,26 @@
       [(depth) "Back or front"]
       [else #f]))
 
-  ;; The documentation as the top bar shows it: "L: Move · R: Window menu".
+  ;; Returns the documentation as the top bar shows it:
+  ;; "L: Move · R: Window menu".
   (define-part (mouse-doc-text doc)
     (string-join (map (lambda (b) (format "~a: ~a" (car b) (cdr b))) doc)
                  " · "))
 
-  ;; What a bar that shows the documentation is handed to draw: its words
-  ;; (mouse-doc-text), or #f where the style shows none ('mouse-doc) or
-  ;; nothing is documented under the pointer.
+  ;; Returns what a bar that shows the documentation is handed to draw: its
+  ;; words (mouse-doc-text), or #f when the style shows none ('mouse-doc) or
+  ;; nothing under the pointer is documented.
   (define (mouse-doc-line)
     (and (theme 'mouse-doc)
          (let ([doc (mouse-doc)]) (and (pair? doc) (mouse-doc-text doc)))))
 
   (define-state *mouse-doc-shown* '())
 
-  ;; Before a frame (a bar's): what shows the documentation is asked for,
-  ;; box, when it changed, so a move between two regions of other words
-  ;; redraws one thin strip, and one between the same words nothing.
+  ;; Called before a frame by the bar that shows the documentation, with box,
+  ;; the bar's box procedure. When the documentation has changed, it asks for
+  ;; a frame of that box alone, so moving between two regions with different
+  ;; words redraws one thin strip, and moving between regions with the same
+  ;; words redraws nothing.
   (define (mouse-doc-frame box)
     (when (theme 'mouse-doc)
       (let ([d (mouse-doc)])

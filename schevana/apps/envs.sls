@@ -1,23 +1,25 @@
 ;;; (schevana apps envs) — Environments: the tree of environments
-;;; ((schevana services env)), what each holds, and what can be done with it.
+;;; ((schevana services env)), what each one holds, and what can be done with
+;;; it.
 ;;;
-;;; Left, the tree (the line beside it drags, and a double click puts it
-;;; back): each environment's icon and name, its kind, how many names it
-;;; was shared and holds of its own, and its thread's jobs.
-;;; Right, the one selected: what it is (its kind, base, parent and
-;;; children, what it forks, its thread), then its names: those shared
-;;; with it, each with the parent's name it forwards to, whether its set!
-;;; goes through a setter and where it is bound; or its own. The toolbar
-;;; acts on the one selected, as the menu of a right press on a row does:
-;;;   Fork…    a child of a kind its fork makes, named, shared names
-;;;   REPL     a REPL in it (Return, a double click)
+;;; On the left is the tree (the line beside it can be dragged, and a double
+;;; click puts it back): each environment's icon and name, its kind, how
+;;; many names it was shared and how many it holds of its own, and its
+;;; thread's jobs. On the right is the selected environment: what it is (its
+;;; kind, base, parent and children, what it forks, its thread), then its
+;;; names: either those shared with it, each with the parent's name it
+;;; forwards to, whether its set! goes through a setter, and where it is
+;;; bound; or its own. The toolbar acts on the selected environment, as does
+;;; the menu of a right press on a row:
+;;;   Fork…    a child of a kind its fork makes, with a name and shared names
+;;;   REPL     a REPL in it (Return, or a double click)
 ;;;   Share…   more of its parent's names
 ;;;   Load…    a file evaluated in it (env-load), picked in the desktop's
 ;;;            file dialog, which Environments waits on
 ;;;   Drop…    it, its children and their threads
-;;; The pool's threads, /worklets', are set here too. Keys, with no field
-;;; focused: arrows move in the tree, Return opens a REPL, F forks, /
-;;; filters, Delete drops.
+;;; The number of the pool's threads (those of /worklets) is set here too.
+;;; Keys, when no field is focused: the arrows move in the tree, Return
+;;; opens a REPL, F forks, / filters, and Delete drops.
 
 (library (schevana apps envs)
   (export
@@ -93,19 +95,20 @@
     (fields ui
             (mutable selected)     ; the environment shown
             (mutable query)        ; the tree's filter
-            (mutable names)        ; shared or own: what the names show
-            (mutable names-query)  ; their filter
-            (mutable sheet)        ; #f, or fork, share, load or drop
+            (mutable names)        ; shared or own: which names show
+            (mutable names-query)  ; the names' filter
+            (mutable sheet)        ; #f, or fork or drop
             (mutable kind)         ; the fork's kind
-            (mutable name)         ; its name, as typed
-            (mutable shares)       ; the fork's or share's chips
+            (mutable name)         ; the fork's name, as typed
+            (mutable shares)       ; the fork sheet's share chips
             (mutable draft)        ; the chip being typed
             (mutable folder)       ; where Load… last picked a file, or #f
-            (mutable repl?)        ; a REPL in the child, once forked (off
-                                   ; each time the sheet opens)
+            (mutable repl?)        ; whether to open a REPL in the child
+                                   ; once forked (off each time the sheet
+                                   ; opens)
             (mutable error)        ; what the sheet's last try raised, or #f
             (mutable memo)         ; (key . value): the last suggestions
-            facts))                ; env -> (ms shared own), a second's
+            facts))                ; env -> (ms shared own new), kept 1 s
 
   ;;; ------------------------------------------------------------------
   ;;; what an environment is
@@ -113,7 +116,7 @@
   (define (envs-label e)
     (if (env-parent e) (symbol->string (env-name e)) "/"))
 
-  ;; What the kind means, under its title.
+  ;; Returns what e's kind means, shown under its title.
   (define (envs-kind-doc e)
     (case (env-kind e)
       [(root) "The world itself: the folders' names, Chez's, and what the \
@@ -137,9 +140,9 @@
       [(core) "core: the pure part of Scheme, without files, C or threads"]
       [else "The world's own"]))
 
-  ;; The names e was shared and holds of its own, and those of the world's
-  ;; its next sync brings, kept for a second: (values shared own new), own #f
-  ;; for a vat's sandbox, its thread's to read.
+  ;; Returns the names e was shared, the names it holds of its own, and the
+  ;; world's names its next sync brings, kept for a second: (values shared
+  ;; own new). own is #f for a vat's sandbox, which only its thread reads.
   (define (envs-facts v e)
     (let ([f (hashtable-ref (envs-view-facts v) e #f)])
       (if (and f (< (- (now-ms) (car f)) 1000))
@@ -152,15 +155,16 @@
                             (list (now-ms) shared own new))
             (values shared own new)))))
 
-  ;; Where a name e was shared is bound: the path, as env-holder finds it,
-  ;; but in a vat's sandbox from its parent on.
+  ;; Returns the path of the environment where a name e was shared is bound,
+  ;; as env-holder finds it; for a vat's sandbox, the search starts at its
+  ;; parent.
   (define (envs-holder e name target)
     (let-values ([(h n) (if (vat-of e)
                             (env-holder (env-parent e) target)
                             (env-holder e name))])
       (env-path h)))
 
-  ;; Every environment, depth first.
+  ;; Returns every environment, depth first.
   (define (envs-all)
     (let walk ([e (env-root)])
       (cons e (apply append (map walk (env-children e))))))
@@ -168,8 +172,8 @@
   ;;; ------------------------------------------------------------------
   ;;; what can be done with it
 
-  ;; Why what (fork, repl, share, load, drop) is not for e, or #f when it
-  ;; is.
+  ;; Returns why the action what (fork, repl, share, load or drop) can't be
+  ;; done on e, or #f when it can.
   (define (envs-why-not e what)
     (let ([vat? (and (vat-of e) #t)] [kind (env-kind e)])
       (case what
@@ -194,7 +198,8 @@
                             (format "~a is not dropped: ~a" (env-path e) why))]
                       [else #f])])))
 
-  ;; The actions on e: ((what label glyph tip) ...), in the toolbar's order.
+  ;; The actions on an environment, ((what label glyph tip) ...), in the
+  ;; toolbar's order.
   (define envs-actions
     '((fork "Fork…" plus "A child of a kind this environment forks  F")
       (repl "REPL" prompt "A REPL in this environment  Return")
@@ -212,7 +217,8 @@
           [(share) (envs-open-share! v)]
           [else (envs-open-sheet! v what)]))))
 
-  ;; The share dialog, over Environments, for more of the parent's names.
+  ;; Opens the share dialog over Environments, to share more of the parent's
+  ;; names.
   (define (envs-open-share! v)
     (let* ([e (envs-view-selected v)] [p (env-parent e)])
       (envs-open-picker!
@@ -225,8 +231,8 @@
                      setters)
            (hashtable-delete! (envs-view-facts v) e))))))
 
-  ;; The file dialog, over Environments, for a file to load into the one
-  ;; selected, where the last was picked.
+  ;; Opens the file dialog over Environments, for a file to load into the
+  ;; selected environment, in the folder where the last one was picked.
   (define (envs-open-load! v)
     (let ([e (envs-view-selected v)])
       (open-file-dialog (current-window) (format "Load into ~a" (env-path e))
@@ -254,8 +260,8 @@
     (envs-view-repl?-set! v #f)
     (ui-focus! (envs-view-ui v) '(envs-sheet name)))
 
-  ;; value-of's value, kept while key stays the same: what a field suggests,
-  ;; asked at every draw.
+  ;; Returns value-of's value, kept while key stays the same: a field asks
+  ;; for its suggestions at every draw.
   (define (envs-memo v key value-of)
     (let ([m (envs-view-memo v)])
       (if (equal? (car m) key)
@@ -269,9 +275,10 @@
     (envs-view-names-query-set! v "")
     (ui-forget! (envs-view-ui v) 'inspector))
 
-  ;; A share as typed: "name", "name as alias", either then "via setter".
-  ;; => (values share setter): share a name or (alias . name), setter #f or
-  ;; a name; #f when it reads as none of these.
+  ;; Reads a share as typed: "name" or "name as alias", either followed by
+  ;; "via setter". Returns (values share setter): share is a name or (alias
+  ;; . name), and setter is #f or a name; share is #f when the text reads as
+  ;; none of these.
   (define (envs-share-words text)
     (let ([words (remp (lambda (w) (string=? w ""))
                        (string-split text #\space))])
@@ -288,8 +295,8 @@
                  (sym (list-ref words 4)))]
         [else (values #f #f)])))
 
-  ;; The chips, and the draft being typed, as fork and env-share! take them:
-  ;; (values shares setters).
+  ;; Returns the chips and the draft being typed as fork and env-share! take
+  ;; them: (values shares setters).
   (define (envs-sheet-shares v)
     (envs-shares (append (envs-view-shares v)
                          (let ([d (envs-trim (envs-view-draft v))])
@@ -307,8 +314,8 @@
               [setter (loop (cdr cs) shares (cons (cons share setter) setters))]
               [else (loop (cdr cs) (cons share shares) setters)])))))
 
-  ;; The fork sheet's Fork: a child of the selected environment, through
-  ;; the same rules its own fork keeps.
+  ;; The fork sheet's Fork: forks a child of the selected environment, by
+  ;; the same rules its own fork follows.
   (define (envs-fork! v)
     (let ([e (envs-view-selected v)] [kind (envs-view-kind v)]
           [typed (envs-trim (envs-view-name v))])
@@ -324,7 +331,7 @@
             (when (and (envs-view-repl? v) (not (envs-why-not c 'repl)))
               (repl c)))))))
 
-  ;; The file's forms evaluated in e, in a process; a toast says how it
+  ;; Evaluates the file's forms in e, in a process; a toast says how it
   ;; went.
   (define (envs-load! v e path)
     (spawn "load"
@@ -356,15 +363,16 @@
   (define (envs-draw-icon e x y s flags)
     (ui-draw-env-icon x y s flags (vat-env-kind e)))
 
-  ;; The tree's first cell: the icon under the heading's first letter, then
-  ;; the name.
+  ;; Draws the tree's first cell: the icon, under the heading's first
+  ;; letter, then the name.
   (define (envs-draw-name-cell e x y w h flags)
     (let* ([gs (ui-glyph-size)] [in (ui-table-cell-inset)] [gap 6])
       (envs-draw-icon e (+ x in) (+ y (/ (- h gs) 2)) gs '())
       (ui-draw-label (+ x in gs gap) y (max 0 (- w in gs gap)) h flags
                      (envs-label e))))
 
-  ;; The inspector's head: a big icon, the name, the path and kind.
+  ;; Draws the inspector's head: a big icon, the name, the path and the
+  ;; kind.
   (define (envs-draw-head e x y w)
     (let* ([s (* 2 (ui-glyph-size))] [hh (font-line-height 'heading)]
            [tx (+ x s 12)])
@@ -380,9 +388,10 @@
   ;;; ------------------------------------------------------------------
   ;;; the tree
 
-  ;; The tree's columns in room: the kind as wide as the widest title, the
-  ;; counts as their headings, the environment the rest; as the room runs
-  ;; out, Jobs, Own, Shared and Kind leave, in that order.
+  ;; Returns the tree's columns for room: the kind as wide as the widest
+  ;; kind's title, the counts as wide as their headings, and the environment
+  ;; the rest. As room runs out, Jobs, Own, Shared and Kind are dropped, in
+  ;; that order.
   (define (envs-columns room)
     (let* ([in (* 2 (ui-table-cell-inset))]
            [kw (exact (ceiling (+ in 4 (text-widest
@@ -443,7 +452,8 @@
                 (if vat (number->string (length (vat-jobs-of vat))) ""))]
       [else ""]))
 
-  ;; The menu of a right press: what can be done with the one selected.
+  ;; Opens the menu of a right press: what can be done with the selected
+  ;; environment.
   (define (envs-menu! v x y)
     (let ([e (envs-view-selected v)])
       (ui-open-menu! (envs-view-ui v) x y
@@ -457,7 +467,7 @@
   ;;; ------------------------------------------------------------------
   ;;; the inspector
 
-  ;; The selected environment's facts, as form rows.
+  ;; Returns the selected environment's facts, as form rows.
   (define (envs-fact-rows v e)
     (let* ([ui (envs-view-ui v)] [ch (ui-control-height)]
            [vat (vat-of e)]
@@ -502,8 +512,9 @@
          [vat (envs-vat-rows v vat)]
          [else '()]))))
 
-  ;; A world namespace's: Sync, and whether the world gained names since
-  ;; its last, which come at its next evaluation, or now.
+  ;; The row of a world namespace: Sync, and whether the world has gained
+  ;; names since the last sync; they come at its next evaluation, or now
+  ;; with Sync.
   (define (envs-follows-row v e)
     (let*-values ([(ui) (envs-view-ui v)] [(ch) (ui-control-height)]
                   [(shared own new) (envs-facts v e)] [(n) (length new)]
@@ -526,7 +537,7 @@
             'hint "Every name of the world's, those it gains later too: at \
                    its next evaluation, or now with Sync")))
 
-  ;; /worklets: the pool's threads, and its jobs.
+  ;; The rows of /worklets: the pool's threads, and its jobs.
   (define (envs-pool-rows v)
     (let ([ui (envs-view-ui v)] [ch (ui-control-height)])
       (list (list "Pool" ch
@@ -542,8 +553,8 @@
                                       (length (vat-jobs-of v)))
                               "Not started: it starts with its first job"))))))
 
-  ;; A thread's vat: its threads, and its jobs, each a chip whose × kills
-  ;; it.
+  ;; The rows of a thread's vat: its threads, and its jobs, each a chip
+  ;; whose × kills the job.
   (define (envs-vat-rows v vat)
     (let* ([ui (envs-view-ui v)] [jobs (vat-jobs-of vat)]
            [labels (map (lambda (j)
@@ -606,8 +617,8 @@
                           (substring s 0 (min 120 (string-length s)))))
                       "")]))))
 
-  ;; The names: Shared or Own, a filter, and their table, at least rows
-  ;; high. => the y below
+  ;; Draws the names: Shared or Own, a filter, and their table, at least
+  ;; rows high. Returns the y below them.
   (define (envs-names v e x y w rows)
     (let*-values ([(ui) (envs-view-ui v)] [(gap) (ui-gap)]
                   [(shared own new) (envs-facts v e)]
@@ -678,7 +689,7 @@
                  [y (envs-draw-head e cx (+ top p) cw)]
                  [y (ui-form ui 'envs-facts cx (+ y (ui-gap) 8) cw
                              (envs-fact-rows v e))])
-            ;; the names fill what the view leaves, scrolled or not
+            ;; the names fill the room the view leaves, scrolled or not
             (+ p (envs-names v e cx (+ y 20) cw
                              (max 6 (exact
                                      (floor (/ (- h (- y top) 120)
@@ -689,7 +700,7 @@
 
   (define (envs-sheet-width) (round (* 30 (font-line-height 'ui))))
 
-  ;; A row of the sheet's error, when its last try raised one.
+  ;; A row that shows the sheet's error, when its last try raised one.
   (define (envs-error-rows v)
     (let ([err (envs-view-error v)])
       (if err
@@ -701,8 +712,9 @@
                         (ui-draw-label x y w 0 '(error wrap) err))))
           '())))
 
-  ;; The share field: the chips, and what is typed, suggested from the names
-  ;; holder holds; and Choose…, the share dialog for them.
+  ;; The share field: the chips and what is being typed, with suggestions
+  ;; from the names holder holds; and Choose…, which opens the share dialog
+  ;; for them.
   (define (envs-share-row v holder hint)
     (let*-values ([(ui) (envs-view-ui v)]
                   [(bw bh) (ui-button-size "Choose…" #f)] [(gap) (ui-gap)])
@@ -739,7 +751,7 @@
                                             (list-tail l (+ i 1))))))
                              'placeholder "A name…"
                              'suggest
-                             (lambda (typed)   ; the first word's
+                             (lambda (typed)   ; for the first word only
                                (if (memv #\space (string->list typed))
                                    '()
                                    (envs-memo v (list 'share holder typed)
@@ -755,16 +767,17 @@
 
   (define (envs-close-sheet! v) (envs-view-sheet-set! v #f))
 
-  ;; Fork: the kinds, those its fork does not make off; its name, and the
-  ;; path it will have; what it is shared; a REPL in it.
+  ;; The Fork sheet: the kinds, with those its fork doesn't make turned off;
+  ;; the child's name and the path it will have; what it is shared; and
+  ;; whether to open a REPL in it.
   (define (envs-fork-sheet v)
     (let* ([ui (envs-view-ui v)] [e (envs-view-selected v)]
            [kind (envs-view-kind v)] [forks (env-forks e)]
-           ;; what may be forked by hand at all: those code makes (an app's
-           ;; sandbox, the core's) aren't offered
+           ;; the kinds that may be forked by hand at all: those only code
+           ;; makes (an app's sandbox, the core's) aren't offered
            [kinds (filter (lambda (k) (env-kind-ref k 'fork #t)) (env-kinds))]
            [bw (envs-sheet-width)] [ch (ui-control-height)]
-           [radio-h (lambda (w k)   ; and 2 below
+           [radio-h (lambda (w k)   ; plus 2 below
                       (let-values ([(rw rh) (ui-radio-size
                                              (env-kind-title k)
                                              (env-kind-ref k 'doc #f) #t w)])
@@ -855,34 +868,36 @@
 
   ;;; ------------------------------------------------------------------
   ;;; the share dialog
-  ;;; A window over Environments, which waits on it. Left, the names the
-  ;;; holder holds (the parent of what they are shared with), each with a
-  ;;; box to check, its kind, and, shared there already, its box checked
-  ;;; and off; right, those checked, in the order checked, and under them
-  ;;; the options of the one chosen: As (a rename) and Set! via (a setter
-  ;;; of the holder's). Its action shares them (Share…), or hands them
-  ;;; back (the Fork sheet's Choose…). Keys, with no field focused: Up and
-  ;;; Down choose a name, Space checks it, Return acts, Escape cancels;
-  ;;; typing filters.
+  ;;; A window over Environments, which waits on it. On the left are the
+  ;;; names the holder holds (the holder is the parent of the environment
+  ;;; they are shared with), each with a box to check and its kind; a name
+  ;;; already shared there has its box checked and turned off. On the right
+  ;;; are the names checked, in the order they were checked, and under them
+  ;;; the options of the chosen one: As (a rename) and Set! via (a setter of
+  ;;; the holder's). The dialog's action shares the names (Share…) or hands
+  ;;; them back (the Fork sheet's Choose…). Keys, when no field is focused:
+  ;;; Up and Down choose a name, Space checks it, Return acts, and Escape
+  ;;; cancels; typing filters.
 
   (define-record-type envs-picker
     (nongenerative schevana-envs-picker-1)
     (fields holder target action on-done ui
-            (mutable picked)    ; ((name alias setter) ...), as checked:
-                                ; alias and setter as typed, "" for none
+            (mutable picked)    ; ((name alias setter) ...), in the order
+                                ; checked; alias and setter as typed, ""
+                                ; for none
             (mutable current)   ; the name chosen, or #f
             (mutable filter)
             (mutable scope)     ; own (shared and its own) or all
             (mutable kind)      ; the kind shown, or #f for any
             (mutable error)     ; what the last try raised, or #f
-            (mutable listed)    ; (scope . names), the last listed
+            (mutable listed)    ; (scope . names), as last listed
             kinds))             ; name -> its kind, as found
 
-  ;; Opens the dialog over the window of the handler that calls it: names of
-  ;; holder's, for target (#f: one to be forked), picked already the
-  ;; ((name alias setter) ...) of picked; action its button's word. Its
-  ;; action calls (on-done picked), which may raise, as the dialog's
-  ;; error. => its window
+  ;; Opens the dialog over the window of the handler that calls it, to pick
+  ;; names of holder's for target (#f for an environment yet to be forked).
+  ;; picked is the ((name alias setter) ...) picked already, and action is
+  ;; the word on its button. The action calls (on-done picked); what that
+  ;; raises shows as the dialog's error. Returns the dialog's window.
   (define (envs-open-picker! title holder target action picked on-done)
     (let* ([ui (make-ui)] [lh (font-line-height 'ui)]
            [p (make-envs-picker holder target action on-done ui picked
@@ -899,8 +914,9 @@
                                  (envs-picker-key p key mods))
                           'text (lambda (win str) (envs-picker-text p str))))))
 
-  ;; The holder's names in scope, by name: its own and those it was shared
-  ;; (the world's own, for the world), or every one, its base's too.
+  ;; Returns the holder's names in the scope, sorted by name: its own and
+  ;; those it was shared (for the world, the world's own), or, for all,
+  ;; every name, its base's too.
   (define (envs-picker-names p)
     (let ([l (envs-picker-listed p)] [scope (envs-picker-scope p)])
       (if (and l (eq? (car l) scope))
@@ -918,7 +934,7 @@
             (envs-picker-listed-set! p (cons scope sorted))
             sorted))))
 
-  ;; A name's kind, as its binding is, wherever it is bound.
+  ;; Returns a name's kind, by its binding, wherever it is bound.
   (define (envs-name-kind holder name)
     (let-values ([(h n) (env-holder holder name)])
       (let ([env (env-environment h)])
@@ -927,7 +943,8 @@
               [(procedure? (top-level-value n env)) "procedure"]
               [else "variable"]))))
 
-  ;; A name's kind, found once: the list asks at every draw.
+  ;; Returns a name's kind, found once and kept: the list asks for it at
+  ;; every draw.
   (define (envs-picker-kind-of p n)
     (let ([t (envs-picker-kinds p)])
       (or (hashtable-ref t n #f)
@@ -935,7 +952,8 @@
             (hashtable-set! t n k)
             k))))
 
-  ;; What the list shows: the names the filter and kind leave.
+  ;; Returns what the list shows: the names that pass the filter and the
+  ;; kind.
   (define (envs-picker-shown p)
     (let ([q (envs-trim (envs-picker-filter p))] [k (envs-picker-kind p)])
       (filter (lambda (n)
@@ -944,7 +962,8 @@
                      (or (not k) (string=? k (envs-picker-kind-of p n)))))
               (envs-picker-names p))))
 
-  ;; The holder's names the target forwards to already, under any name.
+  ;; Returns the holder's names that the target already forwards to, under
+  ;; any name.
   (define (envs-picker-shared p)
     (let ([t (envs-picker-target p)])
       (if t (map cadr (env-shared-names t)) '())))
@@ -972,8 +991,9 @@
                     e))
               (envs-picker-picked p)))))
 
-  ;; picked as env-share! and env-share-setter! take them: (values shares
-  ;; setters), what does not read as a name refused.
+  ;; Returns picked as env-share! and env-share-setter! take them, (values
+  ;; shares setters); an alias or setter that doesn't read as a name is
+  ;; refused with an error.
   (define (envs-picked-shares picked)
     (let loop ([es picked] [shares '()] [setters '()])
       (if (null? es)
@@ -995,7 +1015,7 @@
                 (loop (cdr es) shares (cons (cons n setter) setters))
                 (loop (cdr es) (cons n shares) setters))))))
 
-  ;; A picked one as the Fork sheet's chip says it, and back.
+  ;; Turns a picked entry into the Fork sheet's chip text, and back.
   (define (envs-picked-chip e)
     (string-append (symbol->string (car e))
                    (if (string=? (envs-trim (cadr e)) "")
@@ -1056,7 +1076,7 @@
                                     n (env-path (envs-picker-target p)))))
                 'reveal #t)))
 
-  ;; Those checked, and the options of the one chosen.
+  ;; Draws the names checked, and the options of the chosen one.
   (define (envs-picker-side p x y w h)
     (let*-values ([(ui) (envs-picker-ui p)] [(gap) (ui-gap)]
                   [(picked) (envs-picker-picked p)]
@@ -1115,7 +1135,8 @@
           (ui-draw-label x fy w sh '(group) (symbol->string (car e)))
           (ui-form ui '(envs-picker form) x (+ fy sh 6) w rows)))))
 
-  ;; The holder's procedures typed may name, name-set! first.
+  ;; Returns the holder's procedures that typed may name, with name-set!
+  ;; first when nothing is typed.
   (define (envs-picker-setters p name typed)
     (let ([own (string->symbol (format "~a-set!" name))])
       (append (if (and (string=? typed "")
@@ -1228,7 +1249,8 @@
               (and j (begin (envs-picker-current-set! p (list-ref shown j))
                             #t)))])))
 
-  ;; Typing filters; a blank is Space's, which the key took.
+  ;; Typing filters; a blank comes from Space, which the key handler has
+  ;; already taken.
   (define (envs-picker-text p str)
     (unless (string=? (envs-trim str) "")
       (envs-picker-filter-set! p (string-append (envs-picker-filter p) str))
@@ -1278,16 +1300,17 @@
 
   (define (envs-draw v w h)
     (let ([ui (envs-view-ui v)])
-      ;; dropped elsewhere (a REPL closed, say): the one made again where it
-      ;; was (an app's), or its nearest that is not
+      ;; when the selected environment was dropped elsewhere (a REPL
+      ;; closed, say), select the one made again at its path (an app's), or
+      ;; else its nearest ancestor that was not dropped
       (let up ([e (envs-view-selected v)])
         (if (env-dropped? e)
             (up (or (env-find (env-path e)) (env-parent e)))
             (unless (eq? e (envs-view-selected v)) (envs-select! v e))))
       (ui-begin! ui)
       (ui-draw-surface 0 0 w h '(page))
-      ;; the tree and the inspector share what is left, as the line between
-      ;; them is dragged
+      ;; the tree and the inspector share the rest, split where the line
+      ;; between them is dragged
       (let* ([top (envs-toolbar v w)]
              [tw (ui-split ui 'split 0 top w (- h top)
                            (max 300 (min (- w 380) (round (* w 0.55))))
@@ -1300,8 +1323,9 @@
       (ui-due! ui (+ (now-ms) 1000))   ; jobs and names come and go
       (ui-end! ui w h)))
 
-  ;; With no field focused and no sheet open: arrows in the tree, Return a
-  ;; REPL, Delete drops; F forks, / filters.
+  ;; Keys, when no field is focused and no sheet is open: the arrows move in
+  ;; the tree, Return opens a REPL, and Delete drops (envs-text takes F,
+  ;; which forks, and /, which filters).
   (define (envs-key v win key mods)
     (let ([ui (envs-view-ui v)])
       (and (not (envs-view-sheet v)) (not (ui-focused ui))
@@ -1331,8 +1355,8 @@
                  [v (make-envs-view ui (env-root) "" 'shared "" #f 'sandbox ""
                                     '() "" #f #f #f (cons #f #f)
                                     (make-weak-eq-hashtable))])
-            ;; one opened by code from before a (reload!) that changed
-            ;; envs-view can't draw any more: replace it
+            ;; a window opened by code from before a (reload!) that changed
+            ;; envs-view can't draw any more, so it is replaced
             (when existing (close-window! existing))
             (apply open-window "Environments"
                    'size (envs-natural-size)

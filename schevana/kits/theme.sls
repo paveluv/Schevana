@@ -1,6 +1,6 @@
-;;; (schevana kits theme) — questions about the theme ((schevana core theme)):
-;;; which layer gives a setting, and what a palette would show (Settings, the
-;;; REPL).
+;;; (schevana kits theme) — answers to questions about the theme ((schevana
+;;; core theme)), for Settings and the REPL: which layer gives a setting, and
+;;; what a palette would show.
 ;;;
 ;;;   (theme-source 'accent)            which layer gives it
 
@@ -16,8 +16,9 @@
 
   (library-layer kits)
 
-  ;; Which layer gives key: (overrides v), (changes mac v), (style genera
-  ;; v), (palette nord v) or (built-in v); #f if none.
+  ;; Returns the layer that gives key, with its value: (overrides v),
+  ;; (changes mac v), (style genera v), (palette nord v) or (built-in v);
+  ;; #f if no layer gives it.
   (define (theme-source key)
     (let* ([name *style-name*] [chain (style-chain name)]
            [yours? (lambda (p) (and (honored? chain key) (plist-has? p key)))]
@@ -32,7 +33,8 @@
             [(plist-has? default-theme key) (list 'built-in (theme key))]
             [else #f])))
 
-  ;; The colors and wallpaper the chosen style shows in palette name.
+  ;; Returns the colors and the wallpaper that the chosen style would show
+  ;; with the palette named name, as a plist.
   (define (theme-palette-preview name)
     (let ([t (resolve-theme *style-name* '() (list 'palette name))])
       (call-with-theme t

@@ -1,10 +1,11 @@
-;;; tests/units/ui-split.ss — the kit's split ((schevana kits ui)), by itself:
-;;; the line between two panes dragged, kept within their least widths, and a
-;;; double click on it back to the app's width.
+;;; tests/units/ui-split.ss — the kit's split ((schevana kits ui)), tested by
+;;; itself: a drag of the line between two panes, which stays within their
+;;; least widths, and a double click on it, which puts it back at the app's
+;;; width.
 
-;; A split of 360 from x 20, its left pane 150 at first, at least 80 and
-;; its right one at least 100; the left pane's width as the last draw
-;; gave it.
+;; A window with a split 360 wide from x 20: its left pane starts 150 wide
+;; and is at least 80, and its right pane is at least 100. Returns the
+;; window and a box with the left pane's width as the last draw gave it.
 (define (ui-split-test-window)
   (let ([left (box #f)])
     (values
@@ -14,7 +15,7 @@
        '(400 . 260))
      left)))
 
-;; A press on the line, a drag of dx, and the release; a step.
+;; Presses on the line, drags it by dx and releases it, then steps.
 (define (ui-split-test-drag! win dx)
   (let-values ([(x y) (test-point win 'sp)])
     (inject! `(mouse-move ,x ,y) `(mouse-down ,x ,y left 1)
@@ -28,9 +29,9 @@
          (let ([start (unbox left)])
            (ui-split-test-drag! win 40)
            (let ([dragged (unbox left)])
-             (ui-split-test-drag! win 400)    ; the right pane's least
+             (ui-split-test-drag! win 400)    ; to the right pane's least width
              (let ([right-least (unbox left)])
-               (ui-split-test-drag! win -400) ; the left pane's least
+               (ui-split-test-drag! win -400) ; to the left pane's least width
                (let ([left-least (unbox left)])
                  (test-click! win 'sp 2)
                  (steps 1)

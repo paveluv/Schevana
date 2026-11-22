@@ -1,7 +1,7 @@
-;;; (schevana tree) — where the tree is: the folder schevana/ is in, two
-;;; up from this file, as it was read when the library was compiled. What the
-;;; tree keeps beside its code (.work, the files a world loads) is found
-;;; from it.
+;;; (schevana tree) — where the tree is: the folder that holds schevana/,
+;;; two folders up from this file, as its path was when the library was
+;;; compiled. What the tree keeps beside its code (.work, the files a world
+;;; loads) is found from it.
 
 (library (schevana tree)
   (export *schevana-root*)

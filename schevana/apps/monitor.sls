@@ -1,28 +1,35 @@
-;;; (schevana apps monitor) — the world, live: its windows and processes, and
-;;; where its time and memory go, from the profiler ((schevana services
-;;; profile)). Two tabs: Overview, the first, and Ticks.
+;;; (schevana apps monitor) — the world, live: its windows and processes,
+;;; and where its time and memory go, from the profiler ((schevana services
+;;; profile)). It has four tabs: Overview (the first), Ticks, Flags and
+;;; Platform.
 ;;;
-;;; Overview, twice a second: the World's facts in a grid, the windows (a
-;;; click focuses one) and the processes (each with its Kill).
+;;; Overview, updated twice a second, shows the World's facts in a grid,
+;;; the windows (a click focuses one) and the processes (each with a Kill
+;;; button).
 ;;;
-;;; Ticks: a bar a tick, all its time since the last (its waits too: a
-;;; wait delays the next tick as much as work), stacked by phase, the
-;;; work's at the bottom (the one that spent the most over the graph
-;;; lowest) and the waits above, against a line at the pacer's period, a
-;;; tick that came late (profile-tick-late?) flagged at the top; hover a
-;;; bar for where its time went, click it to pause there. The profiler's
-;;; API tells the same (profile-slow-ticks, profile-tick-phases), for a
-;;; reader without eyes. Consumers: each window, surface and process, and
-;;; the collector, by ms a second over the last 5 seconds, with the
-;;; average and longest a tick, calls a second and the last minute; a
-;;; window's row opens to its handlers and frame; a row selected shows
-;;; its share of every bar, until a second press lets it go; a window's
-;;; name focuses it, a process's Kill kills it. Memory: the heap, the bytes
-;;; allocated and the collector's time a second, over the seconds kept. At
-;;; the top: Profiling (on or off for the whole world), Pause (this view
-;;; only), Clear, and how long the history is; with profiling off, how to
-;;; turn it on. All of it is drawn by the widget kit: its tabs, charts, tree,
-;;; tables and labels.
+;;; The Ticks tab has three sections: Ticks, Consumers and Memory. Ticks draws
+;;; one bar per tick, holding all the time since the tick before (its waits too,
+;;; since a wait delays the next tick as much as work does), stacked by phase:
+;;; the work at the bottom (the phase that spent the most over the graph lowest)
+;;; and the waits above. A line marks the pacer's period, and a tick that came
+;;; late (profile-tick-late?) is flagged at the top. Hover over a bar to see
+;;; where its time went; click it to pause there. The profiler's API tells the
+;;; same to a reader that can't see the screen (profile-slow-ticks,
+;;; profile-tick-phases). Consumers lists each window, surface and process, and
+;;; the collector, by ms per second over the last 5 seconds, with the average
+;;; and longest time in a tick, the calls per second and the last minute. A
+;;; window's row opens to its handlers and its frame. A selected row shows its
+;;; share of every bar, until a second press deselects it. A window's name
+;;; focuses it, and a process's Kill kills it. Memory charts the heap, and the
+;;; bytes allocated and the collector's time per second, over the seconds kept.
+;;; At the top are Profiling (on or off for the whole world), Pause (this view
+;;; only), Clear, and how long the history is; with profiling off, the tab says
+;;; how to turn it on.
+;;;
+;;; Flags lists the late ticks the profiler kept. Platform says which
+;;; platform this is, with a button that copies the run as a row of
+;;; docs/PLATFORMS.md. All of it is drawn by the widget kit: its tabs,
+;;; charts, tree, tables and labels.
 
 (library (schevana apps monitor)
   (export
@@ -80,9 +87,9 @@
 
   (library-layer apps)
 
-  ;; A bar's phases, all the profiler's (profile-phase-names), so that they
-  ;; add up to the tick: (phase color . label), each a series of the kit's
-  ;; charts, the two waits in its muted colors.
+  ;; A bar's phases: all of the profiler's (profile-phase-names), so that
+  ;; they add up to the whole tick. Each is (phase color . label), its color
+  ;; one of the kit's chart series, the two waits in its muted colors.
   (define monitor-phases
     '((event chart-1 . "events")
       (timers chart-2 . "timers")
@@ -94,18 +101,19 @@
       (input-wait chart-muted-1 . "waiting for input")
       (vsync-wait chart-muted-2 . "waiting for the screen")))
 
-  ;; How long the Consumers sum, in seconds.
+  ;; How many seconds the Consumers sum over.
   (define monitor-consumer-seconds 5)
 
-  ;; How long a consumer or a part stays listed since it last ran, in seconds:
-  ;; the last minute its line shows.
+  ;; How long, in seconds, a consumer or a part stays listed after it last
+  ;; ran; also the span of its row's "last minute".
   (define monitor-listed-seconds 60)
 
-  ;; A bar's width in the Ticks, pixels.
+  ;; A bar's width in the Ticks, in pixels.
   (define monitor-bar-px 3)
 
-  ;; The history's lengths Monitor offers: (label . seconds of ticks), and
-  ;; (label . minutes of seconds).
+  ;; The history lengths Monitor offers: (label . seconds) for how long
+  ;; ticks are kept, and (label . minutes) for how long the per-second sums
+  ;; are kept.
   (define monitor-tick-choices
     '(("10 s" . 10) ("30 s" . 30) ("1 min" . 60) ("2 min" . 120)))
   (define monitor-minute-choices
@@ -116,8 +124,8 @@
 
 
   ;;; ---------------------------------------------------------------- bars
-  ;;; The Ticks' bars are a stream: a new tick is a row of numbers, and nothing
-  ;;; is recorded for the rest, however many bars flow past.
+  ;;; The Ticks' bars are a stream (the kit's ui-stream): a new tick costs a
+  ;;; row of numbers, and the chart one record, however many bars flow past.
 
   (define monitor-ring-rows 2048)
 
@@ -125,8 +133,8 @@
     (ui-stream-new monitor-ring-rows (length monitor-phases)
                    '(("late" chart-flag))))
 
-  ;; What the Ticks show, said where they show it; made once, as a tooltip
-  ;; is asked for at every draw.
+  ;; Tooltips that explain the Ticks where they are shown. Each is made
+  ;; once, since a tooltip's text is asked for at every draw.
   (define monitor-ticks-tip
     "A bar a tick: all its time since the last, stacked by phase, the work at \
      the bottom and the waits above it. A wait counts, as it delays the next \
@@ -141,8 +149,9 @@
     (format "How long every tick is kept, at most ~a a second"
             profile-tick-rate))
 
-  ;; A tick's row: each phase's µs, as monitor-phases has them, then whether it
-  ;; came late.
+  ;; A tick's row of the stream: each phase's µs, in the order of
+  ;; monitor-phases, then 1 if it came late, else 0. Returns the procedure
+  ;; ui-stream-send! calls for each number of a row.
   (define (monitor-tick-word period)
     (lambda (seq j)
       (if (< j (length monitor-phases))
@@ -151,8 +160,8 @@
 
   ;;; ---------------------------------------------------------------- data
 
-  ;; ns as words: "250 ms", "1.6 ms", "3.2 s", rounded to a tenth, in
-  ;; integers.
+  ;; ns as text ("250 ms", "1.6 ms", "3.2 s"), rounded to a tenth with
+  ;; integer arithmetic.
   (define (monitor-ns-text ns)
     (let* ([s? (>= ns 1000000000)]
            [t (quotient (+ ns (if s? 50000000 50000))
@@ -161,10 +170,10 @@
               (if (zero? (remainder t 10)) "" (format ".~a" (remainder t 10)))
               (if s? "s" "ms"))))
 
-  ;;; The Ticks: a bar a tick kept, by its seq, read in place from the
-  ;;; profiler's ring, in whole ns.
+  ;;; The Ticks: one bar for each tick kept, named by its seq and read in
+  ;;; place from the profiler's ring, in whole ns.
 
-  ;; Tick seq's ns in phase j (of monitor-phases).
+  ;; The ns that tick seq spent in phase j (an index into monitor-phases).
   (define (monitor-tick-phase-ns seq j)
     (profile-tick-phase-ns seq (car (list-ref monitor-phases j))))
 
@@ -173,12 +182,13 @@
     (let loop ([z z] [acc '()])
       (if (fx< z a) acc (loop (fx- z 1) (cons z acc)))))
 
-  ;; The phases in the order the bars stack them, seqs the ticks shown: the
-  ;; work's, the one that spent the most over them all first (at the
-  ;; bottom), so that the bands run on from bar to bar; then the waits, as
-  ;; monitor-phases has them, so that a bar past the graph's top loses a
-  ;; wait, never work. One that spent nothing, none (nor in the legend).
-  ;; => indexes into monitor-phases
+  ;; The phases in the order the bars stack them, for the ticks seqs. The
+  ;; work phases come first, the one that spent the most over all the ticks
+  ;; first (at the bottom), so that the bands run on from bar to bar; then
+  ;; the waits, in the order of monitor-phases, so that a bar past the
+  ;; graph's top loses a wait, never work. A phase that spent nothing is
+  ;; left out (and so is left out of the legend). Returns indexes into
+  ;; monitor-phases.
   (define (monitor-bars-order seqs)
     (let* ([totals (filter (lambda (t) (fx> (cdr t) 0))
                            (map (lambda (j)
@@ -207,21 +217,22 @@
                       [(< m 100) (format "0~a" m)]
                       [else (format "~a" m)])))))
 
-  ;; The ms of the day at the profiler's clock's 0, by the clock now.
+  ;; The time of day, in ms since midnight, at which the profiler's clock
+  ;; (now-ns) read 0, as the wall clock tells it now.
   (define (monitor-clock-zero)
     (let ([d (current-date)] [ns (now-ns)])
       (- (+ (* 3600000 (date-hour d)) (* 60000 (date-minute d))
             (* 1000 (date-second d)) (quotient (date-nanosecond d) 1000000))
          (quotient ns 1000000))))
 
-  ;; A subject is (window . id), (process . id), a surface's name or gc:
-  ;; the subjects Monitor lists.
+  ;; Whether s is one of the subjects Monitor lists: (window . id),
+  ;; (process . id), a surface's name, or gc.
   (define (monitor-subject? s)
     (or (pair? s) (eq? s 'gc) (and (symbol? s) (find-surface s) #t)))
 
   (define (monitor-window? s) (and (pair? s) (eq? (car s) 'window)))
 
-  ;; A row's node: a subject, or one of its parts, (subject part phase).
+  ;; A row's node is a subject or one of its parts, (subject part phase).
   (define (monitor-part? node) (and (pair? node) (pair? (cdr node))))
 
   ;; A subject's window or process while it lives, found by its id; #f once
@@ -230,7 +241,7 @@
     (and (pair? s)
          (if (monitor-window? s) (find-window (cdr s)) (find-proc (cdr s)))))
 
-  ;; A window's title, or the one it had; a process's name.
+  ;; A window's title (or the one it had, once closed), or a process's name.
   (define (monitor-title s)
     (let ([live (monitor-live s)])
       (cond [(and live (monitor-window? s)) (window-title live)]
@@ -247,9 +258,9 @@
             [else (format "~a (process ~a~a)" (monitor-title s) (cdr s)
                           (if live "" ", ended"))])))
 
-  ;; Labels of subjects, ((subject . label) ...): a window's title (the one
-  ;; it had, once closed), with its id where another window among them has
-  ;; the same; a process's name and id; a surface's name.
+  ;; The labels of subjects, as ((subject . label) ...): a window's title
+  ;; (the one it had, once closed), with its id where another window among
+  ;; them has the same title; a process's name and id; a surface's name.
   (define (monitor-labels subjects)
     (let ([titles (map (lambda (s) (and (monitor-window? s) (monitor-title s)))
                        subjects)])
@@ -263,8 +274,9 @@
                        (monitor-subject-label s))))
            subjects titles)))
 
-  ;; A part: a handler's kind, or a window's frame, or a surface's or the
-  ;; collector's phase (the collector's own, gc: outside them).
+  ;; A part's label: a handler's kind, a window's frame, or a phase of a
+  ;; surface or of the collector (the collector's own phase, gc, is outside
+  ;; the others).
   (define (monitor-part-label subject part phase)
     (cond [part (symbol->string part)]
           [(monitor-window? subject) "frame"]
@@ -273,8 +285,8 @@
           [(eq? phase 'render) "draw"]
           [else (symbol->string phase)]))
 
-  ;; What a row's node is: a window, a process, a surface or the collector; a
-  ;; part: a handler, a window's frame, or a phase.
+  ;; What a row's node is: a window, a process, a surface or the collector;
+  ;; or, for a part, a handler, a window's frame or a phase.
   (define (monitor-node-type node)
     (cond [(monitor-part? node)
            (cond [(cadr node) "handler"]
@@ -285,13 +297,14 @@
           [(eq? node 'gc) "collector"]
           [else "surface"]))
 
-  ;; Where tick seq's time went, a bar's tooltip, a line each: when it
-  ;; ended (zero, the ms of the day at the clock's 0), how long it took
-  ;; and whether it came late (period, ns), its phases
-  ;; (profile-tick-phases) and its three largest consumers, the most first.
+  ;; A bar's tooltip, saying where tick seq's time went, one line for each
+  ;; fact: when it ended (zero is the time of day at the clock's 0), how
+  ;; long it took and whether it came late (period is in ns), why if it did,
+  ;; its phases (profile-tick-phases) and its three largest consumers, the
+  ;; largest first.
   (define (monitor-tick-tip seq zero period)
     (let* ([ns (profile-tick-ns seq 'ns)]
-           [phases (filter (lambda (p) (>= (cdr p) 50000))   ; 0.1 ms shown
+           [phases (filter (lambda (p) (>= (cdr p) 50000))   ; 0.1 ms as shown
                            (profile-tick-phases seq))]
            [top (filter (lambda (t)
                           (and (monitor-subject? (profile-total-what t))
@@ -299,7 +312,7 @@
                         (profile-totals (list seq) #t))]
            [top (list-head top (min 3 (length top)))]
            [labels (monitor-labels (map profile-total-what top))])
-      (define (list-of items)   ; (name . words) a line each
+      (define (list-of items)   ; a line for each (name . text)
         (apply string-append
                (map (lambda (x) (format "\n~a ~a" (car x) (cdr x))) items)))
       (string-append
@@ -328,7 +341,7 @@
 
   ;;; ---------------------------------------------------------------- overview
 
-  ;; A count with its thousands apart: "30,312".
+  ;; A count with commas between its thousands: "30,312".
   (define (monitor-count n)
     (let loop ([n n] [acc ""])
       (if (< n 1000)
@@ -347,10 +360,11 @@
             [(< h 1) (format "~a min ~a s" m (remainder s 60))]
             [else (format "~a h ~a min" h (remainder m 60))])))
 
-  ;; Input to the screen, by the screen's reports, the last 10 s: the median
-  ;; and the 99th percentile, and the refreshes missed. With no input in
-  ;; them the screen's word is the refreshes missed alone; it has none only
-  ;; where it reports on no frame.
+  ;; The time from input to screen over the last 10 s, from the screen's
+  ;; reports: the median, the 99th percentile and the refreshes missed.
+  ;; With no input in that time, only the refreshes missed are shown; where
+  ;; the screen reports on no frame (its refresh grid is estimated), there
+  ;; is nothing to show.
   (define (monitor-input-text)
     (let-values ([(p50 p99 missed) (inspect-frames-truth 10000)])
       (let ([missed (format "~a refresh~a missed, the last 10 s" missed
@@ -362,7 +376,7 @@
            "no word from the screen"]
           [else (format "no input; ~a" missed)]))))
 
-  ;; The World's facts, (label . words) a pair each, in reading order.
+  ;; The World group's facts, as (label . text) pairs in reading order.
   (define (monitor-world-facts)
     (let ([hz (exact (round (/ 1e9 (core0-frame-ns))))]
           [err *last-error*])
@@ -398,9 +412,10 @@
                                (car err))))
            '()))))
 
-  ;; A group's facts from y in a column x w wide, under its title and words:
-  ;; a label and its words a row, in two columns where they fit (the first,
-  ;; its words the longer, wider), a last error across both. => the y below
+  ;; Draws a group's facts from y down, in a column at x, w wide, under the
+  ;; group's title and words. Each fact is a row of a label and its text,
+  ;; in two columns where they fit (the first is wider, as its texts are
+  ;; longer); a last error goes across both. Returns the y below.
   (define (monitor-draw-facts x y w title words facts)
     (let* ([lh (font-line-height 'ui)]
            [err (and (pair? facts)
@@ -431,9 +446,10 @@
         (when err (fact! err x y w))
         (+ y (if err row-h 0)))))
 
-  ;; The Platform's groups, each (title words facts), the facts (label .
-  ;; words) as the World's: which platform this is (inspect-platform), so
-  ;; that a run on another machine is told apart, and its predicates.
+  ;; The Platform tab's groups, each (title words facts), the facts (label
+  ;; . text) pairs like the World's. They say which platform this is
+  ;; (inspect-platform), so that a run on another machine can be told
+  ;; apart, and which of its predicates hold.
   (define (monitor-platform-groups)
     (let* ([p (inspect-platform)]
            [of (lambda (k) (cdr (assq k p)))]
@@ -509,8 +525,9 @@
                          (string-join (map symbol->string (of 'predicates))
                                       " ")))))))
 
-  ;; The Platform, from y in a column x w wide: its groups, then a button that
-  ;; copies the run as a row of docs/PLATFORMS.md.
+  ;; Draws the Platform tab from y down, in a column at x, w wide: its
+  ;; groups, then a button that copies the run as a row of
+  ;; docs/PLATFORMS.md.
   (define (monitor-draw-platform ui x y w)
     (let loop ([gs (monitor-platform-groups)] [y y])
       (if (pair? gs)
@@ -521,20 +538,21 @@
                        (lambda () (clipboard-set! (inspect-platform-row)))
                        'tip "This run as a row of docs/PLATFORMS.md's Runs")))))
 
-  ;; The Overview, from y in a column x w wide: the World's facts in a grid,
-  ;; then the windows (a click focuses one) and the processes (each with
-  ;; its Kill) in the kit's tables, each under a group's heading.
+  ;; Draws the Overview from y down, in a column at x, w wide: the World's
+  ;; facts in a grid, then the windows (a click focuses one) and the
+  ;; processes (each with a Kill button) in the kit's tables, each under a
+  ;; group's heading.
   (define (monitor-draw-overview ui x y w)
     (let* ([lh (font-line-height 'ui)]
            [rh (ui-table-row-height)]
-           [heading (lambda (y title words)   ; => the y below
+           [heading (lambda (y title words)   ; returns the y below
                       (let-values ([(gw gh) (ui-label-size '(group) title w)])
                         (ui-draw-label x y w gh '(group) title)
                         (ui-draw-label x y w gh '(dim right) words)
                         (+ y gh 8)))]
            [table-h (lambda (n most)
                       (+ (ui-table-header-height) (* rh (max 1 (min n most)))))]
-           [cell (lambda (text-of)   ; a cell: its row's text for its key
+           [cell (lambda (text-of)   ; draws text-of's text for row, key
                    (lambda (row key cx cy cw ch flags)
                      (ui-draw-cell cx cy cw ch '() (text-of row key))))]
            [wins (sort (lambda (a b) (< (window-id a) (window-id b)))
@@ -615,19 +633,19 @@
     (let ([ui (make-ui)]
           [tab 'overview]    ; the tab shown: overview, ticks, flags, platform
           [view #f]          ; the history shown: (newest tick . seconds)
-          [last 0]           ; when it moved on (now-ms): twice a second
+          [last 0]           ; when the view last moved on (now-ms)
           [paused? #f]
-          [held #f]          ; paused: the newest tick shown (its seq)
+          [held #f]          ; while paused, the newest tick shown (seq)
           [pinned #f]        ; the bar clicked (its tick's seq)
-          [selected #f]      ; the row selected: a subject, or (subject part
-                             ; phase)
+          [selected #f]      ; the selected row: a subject, or (subject
+                             ; part phase)
           [order '(rate . down)]   ; the Consumers' sort: (key . up|down)
           [parts (make-hashtable equal-hash
-                                 equal?)]   ; subject: (part . phase)s
-          [shares (make-hashtable equal-hash equal?)]   ; (seq . selected): ns
-          [tips (make-eqv-hashtable)]                   ; seq: text
+                                 equal?)]   ; subject -> (part . phase)s
+          [shares (make-hashtable equal-hash equal?)]   ; (seq . selected) -> ns
+          [tips (make-eqv-hashtable)]                   ; seq -> text
           [drawn #f]         ; the Ticks as last drawn: (newest hover)
-          [memos (make-hashtable equal-hash equal?)]   ; the view's figures
+          [memos (make-hashtable equal-hash equal?)]   ; figures for the view
           [memo-view #f]
           [ring (monitor-ticks-stream)])   ; the Ticks' bars
       (define (move-on!)
@@ -635,8 +653,8 @@
         (set! last (now-ms)))
       ;; the newest tick kept, or the one held
       (define (newest-tick) (or held (profile-newest-tick)))
-      ;; thunk's value, worked out once a view: Monitor is drawn again with
-      ;; whatever frame holds it, far more often than its view moves on.
+      ;; thunk's value, computed once for each view: Monitor is drawn far
+      ;; more often than its view moves on.
       (define (remember key thunk)
         (unless (eq? memo-view view)
           (hashtable-clear! memos)
@@ -723,8 +741,8 @@
                         [(flags) (list (car items) (cadddr items))]
                         [else items])])
           (ui-toolbar 0 0 w items)))
-      ;; A group's heading at y, and words at its right; given an id and a
-      ;; tip, the heading's tooltip. => the y below
+      ;; Draws a group's heading at y with words at its right, and, given an
+      ;; id and a tip, a tooltip on the heading. Returns the y below.
       (define (section x y w title words . tip)
         (let-values ([(gw gh) (ui-label-size '(group) title w)])
           (ui-draw-label x y w gh '(group) title)
@@ -732,11 +750,12 @@
           (when (pair? tip)
             (ui-region! ui (car tip) x y gw gh 'tip (cadr tip)))
           (+ y gh 6)))
-      ;; The Consumers' rows: the totals over the last complete seconds (at
-      ;; most 5 of them), the subjects listed (those that ran in the last
-      ;; minute, then the live windows and processes) and their labels, and
-      ;; the seconds' span. A subject keeps the parts it last had several of,
-      ;; so that its row can't fold by itself.
+      ;; The Consumers' rows, as a list: the totals over the last complete
+      ;; seconds (at most 5 of them); the subjects listed (those that ran in
+      ;; the last minute, then the live windows and processes); their
+      ;; labels; and how many seconds the totals span. A subject keeps the
+      ;; parts it last had more than one of, so that its row doesn't fold
+      ;; up by itself.
       (define (consumers seconds)
         (define (latest n)
           (filter (lambda (t) (monitor-subject? (profile-total-what t)))
@@ -763,22 +782,23 @@
       (define (label-of s seconds)
         (let ([l (assoc s (caddr (consumers seconds)))])
           (if l (cdr l) (monitor-subject-label s))))
-      ;; A bar for each tick that fits, the newest at the right, in the
-      ;; phases' order by what they spent, up to two of the pacer's periods
-      ;; (a longer tick reaches the top), the period's line at half, a tick
-      ;; that came late flagged at the top; the legend under them in the
-      ;; same order; a bar's tooltip says where its time went.
+      ;; Draws a bar for each tick that fits, the newest at the right, with
+      ;; the phases stacked in the order of what they spent. The scale goes
+      ;; up to two of the pacer's periods (a longer tick reaches the top),
+      ;; with the period's line halfway up, and a tick that came late is
+      ;; flagged at the top. The legend goes under the bars, in the same
+      ;; order; a bar's tooltip says where its time went.
       (define (draw-ticks x y w h seconds)
         (let*-values
             ([(period) (pacer-period)]
              [(top) (* 2 period)]
-             ;; in the rows' numbers, µs
+             ;; in the rows' units, µs
              [(rules) (list (cons (quotient period 1000)
                                   (monitor-ns-text period))
                             (cons (quotient top 1000) (monitor-ns-text top)))]
              [(newest) (newest-tick)]
              [(oldest) (profile-oldest-tick)]
-             ;; as many bars as fit right of the scale
+             ;; as many bars as fit to the right of the scale
              [(count) (ui-stream-count ring x y w h newest oldest rules
                                        monitor-bar-px)]
              [(order) (remember
@@ -816,7 +836,7 @@
                   'doc '((L . "Pause here"))
                   'strip-tips (list monitor-late-tip)
                   'marked (if pinned (list pinned) '())
-                  ;; the row selected's share, over the bars
+                  ;; the selected row's share, drawn over the bars
                   'over
                   (lambda (areas count)
                     (when (and selected newest)
@@ -833,14 +853,14 @@
                                           'chart-share)))))))))])
             (set! drawn (list newest hover)))
           (ui-draw-legend x (+ y gh 4) w kh '() keys)))
-      ;; Tick seq's tooltip, worked out once.
+      ;; Tick seq's tooltip, computed once.
       (define (tip-of seq zero period)
         (or (hashtable-ref tips seq #f)
             (let ([text (monitor-tick-tip seq zero period)])
               (when (> (hashtable-size tips) 64) (hashtable-clear! tips))
               (hashtable-set! tips seq text)
               text)))
-      ;; What the row selected spent in tick seq, ns, worked out once.
+      ;; What the selected row spent in tick seq, in ns, computed once.
       (define (share-of seq)
         (let ([key (cons seq selected)])
           (or (hashtable-ref shares key #f)
@@ -849,8 +869,8 @@
                   (hashtable-clear! shares))
                 (hashtable-set! shares key ns)
                 ns))))
-      ;; Whether the Ticks would look different now: a new tick, or a bar
-      ;; under the pointer (its tip).
+      ;; Whether the Ticks would look different now: there is a new tick,
+      ;; or a bar is under the pointer (for its tooltip).
       (define (ticks-moved?)
         (or (not drawn)
             (not (eqv? (car drawn) (newest-tick)))
@@ -915,8 +935,8 @@
                       (lambda ()
                         (map (lambda (s) (profile-second-node-ms s node))
                              minute))))
-          ;; what node sorts by in the column key: its label, or a number (0
-          ;; for none; the last minute's sum)
+          ;; what node sorts by in column key: its label or type, or a
+          ;; number (0 for none; for the last minute, its sum)
           (define (sort-value node key)
             (let ([t (total-of node)])
               (case key
@@ -931,7 +951,7 @@
                 [(max) (if t (profile-total-longest t) 0)]
                 [(calls) (if t (/ (profile-total-calls t) span) 0)]
                 [else (apply + (minute-of node))])))
-          ;; siblings in the order order names, ties as they come
+          ;; siblings in the order that order names, ties as they come
           (define (sorted nodes)
             (let ([key (car order)] [down? (eq? (cdr order) 'down)]
                   [less? (if (memq (car order) '(name type)) string-ci<? <)])
@@ -940,7 +960,8 @@
                                                                          key)])
                              (if down? (less? vb va) (less? va vb))))
                          nodes)))
-          ;; a subject's parts, (subject part phase), once it has had several
+          ;; a subject's parts, as (subject part phase), once it has had
+          ;; more than one
           (define (children node)
             (if (monitor-part? node)
                 '()
@@ -970,7 +991,7 @@
                                       '(dim)
                                       '())
                                   label)
-                   ;; the live window or process, looked up by its id
+                   ;; a press focuses the live window, looked up by its id
                    (when (and live (not (monitor-part? node)) (window? live))
                      (ui-pressable! ui (list 'monitor-focus id)
                                     nx cy (min room (text-width label 'ui)) ch
@@ -1008,12 +1029,13 @@
                                     (minute-of node))])))
           (ui-tree ui 'consumers x y w h columns (sorted roots) children
                    selected
-                   ;; a press on the row selected lets it go
+                   ;; a press on the selected row deselects it
                    (lambda (node)
                      (set! selected (if (equal? node selected) #f node)))
                    cell
                    'sort order
-                   ;; by a number, the most first; again, the other way
+                   ;; a number column sorts the most first, a text column
+                   ;; A to Z; a second press reverses the order
                    'on-sort (lambda (key)
                               (set! order
                                     (cond [(not (eq? key (car order)))
@@ -1056,8 +1078,9 @@
                        (cons 'chart-7
                              (map (lambda (s) (at s 'gc-ms)) shown)))))))
           (ui-draw-legend x (+ y gh 6) w kh '() keys)))
-      ;; Every flag kept, the newest first: when, what it took, what made it
-      ;; late and the ticks about it; a row's tooltip says all that's known.
+      ;; Every flag kept, the newest first: when it was, how long the tick
+      ;; took, what made it late and the ticks around it; a row's tooltip
+      ;; says all that is known.
       (define (draw-flags x y w h flags)
         (if (null? flags)
             (ui-draw-label x y w 0 '(hint wrap)
@@ -1159,8 +1182,8 @@
                       (ui-stream-release! ring))
              (append
               (ui-handlers ui)
-              ;; the Ticks at every new tick, the rest twice a second, while
-              ;; it's seen
+              ;; while the window is seen, the Ticks redraw at every new
+              ;; tick and the rest twice a second
               (list 'open (lambda (win) (window-frame-soon! win))
                     'frame (lambda (win t)
                             (window-frame-soon! win)

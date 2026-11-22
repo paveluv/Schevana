@@ -3,8 +3,8 @@
 
 ;;; settings in layers
 
-;; thunk run with mac given these settings too (its own options, say);
-;; your changes and Overrides cleared before and after.
+;; Runs thunk with the mac style given these settings too (its own options,
+;; say), with your changes and the Overrides cleared before and after.
 (define (with-mac-settings settings thunk)
   (let ([plain *styles*])
     (dynamic-wind
@@ -47,9 +47,9 @@
              (#x445566 (changes mac #x445566))
              (#x112233 (style mac #x112233)))))))
 
-;; A style that lists its options honors only those of the common ones:
-;; the others keep its value under your changes and Overrides; keys that
-;; are not common options are always yours.
+;; A style that lists its options honors only those common options: for
+;; the others, the style's value holds under your changes and the
+;; Overrides. Keys that are not common options are always yours.
 (check "a style honors the common options it lists, and every other key"
        (equal?
         (with-mac-settings '(options (accent) corner-radius 3)
@@ -86,12 +86,13 @@
                 (= (theme 'panel-hover) #x404040)
                 (= (theme 'button-idle) (mix #x404040 'text 0.15))))))
 
-;; Files today's tree wrote (tests' fixtures, from .work): Tokyo Night
-;; with an accent and a radius, Nord with a radius, Genera with its
-;; palette and an accent of its own, and one naming a style and a palette
-;; since removed. Each loads to what today's tree resolved from it: its
-;; own values, the built-in ones elsewhere; its style and palette chosen
-;; (mac and Tokyo Night where gone), and only your choices kept as changes.
+;; Theme files an older tree wrote (the tests' fixtures, from .work): Tokyo
+;; Night with an accent and a radius, Nord with a radius, Genera with its
+;; palette and an accent of its own, and one that names a style and a
+;; palette since removed. Each loads to what that tree resolved from it:
+;; its own values, and the built-in ones for the rest; its style and
+;; palette are chosen (mac and Tokyo Night where they are gone), and only
+;; your choices are kept as changes.
 (define old-theme-files
   '((default (accent . #xff9e64) (selection . #x6a493c)
              (window-border-focus . #x896051) (corner-radius . 4))
@@ -167,8 +168,8 @@
                                   corner-radius 4)))
                    (nord #t mac nord 4 gradient
                          ((mac palette nord corner-radius 4)))
-                   ;; a v1 file holds every color: those the Genera
-                   ;; style inks are its changes
+                   ;; a v1 file holds every color, and those the Genera
+                   ;; style inks become its changes
                    (genera #t genera genera 0 flat
                            ((genera palette genera bg-2 #xf0f0f0
                                     bg-3 #xd8d8d8 text-dim #x222222
@@ -182,9 +183,9 @@
                    (deleted #t mac tokyo-night 4 gradient
                             ((mac palette tokyo-night corner-radius 4)))))))
 
-;; Saved, cleared and loaded: the chosen style, the scale, the Overrides
-;; and every style's changes come back; the file is plain data, its colors
-;; in hex.
+;; Saved, cleared and loaded again, the chosen style, the scale, the
+;; Overrides and every style's changes come back; the file is plain data,
+;; with its colors in hex.
 (check "the theme file round-trips: style, scale, Overrides, changes"
        (let ([text (lambda ()
                      (call-with-input-file *theme-file-path* get-string-all))])
@@ -209,8 +210,8 @@
                   (string-contains-ci? file "(version . 2)")
                   (equal? (theme 'ui-font-size) 13))))))
 
-;; Every palette, Tokyo Night too, derives what it does not give as
-;; today's tree derived it (derive-colors, as it was).
+;; Every palette, Tokyo Night too, derives the colors it does not give as
+;; derived-as-today does: a copy of the tree's former derive-colors.
 (define (derived-as-today palette)
   (define (ref k) (plist-ref palette k #f))
   (define (unless-given p)

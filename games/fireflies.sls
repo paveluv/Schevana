@@ -1,32 +1,33 @@
-;;; (games fireflies) — Fireflies, a game on the core alone. At dusk
-;;; over a meadow, a glass jar that follows the mouse (or the arrow keys)
-;;; catches the fireflies that are lit; a dark one slips through, and a
-;;; moth cracks the jar: three cracks and it breaks. Every ten fireflies
-;;; is a level, with one more moth and all of them faster. The same game
-;;; is an app in a window on the desktop, (import (games fireflies)) and
-;;; (fireflies) at a REPL, and a surface that fills a screen of its own:
+;;; (games fireflies) — Fireflies, a game built on the core alone. At
+;;; dusk over a meadow, a glass jar that follows the mouse (or the arrow
+;;; keys) catches the fireflies that are lit; a dark one slips through,
+;;; and a moth cracks the jar: after three cracks it breaks. Every ten
+;;; fireflies make a level, which brings one more moth and makes all the
+;;; moths faster. The same game runs as an app in a window on the desktop
+;;; (type (import (games fireflies)) and (fireflies) at a REPL), and as a
+;;; surface that fills a screen of its own:
 ;;;
-;;;   ./game-demo [--size WxH] [--fullscreen]  a screen its own
-;;;   ./game-demo --headless                   a second played, read back,
-;;;                                            told
+;;;   ./game-demo [--size WxH] [--fullscreen]  a screen of its own
+;;;   ./game-demo --headless                   plays a second, reads the
+;;;                                            screen back and reports it
 
 (library (games fireflies)
   (export fireflies-main fireflies)
   (import (chezscheme)
           (schevana core))
 
-  ;; The jar's radius, and how near a bug's middle comes to touch it.
+  ;; The jar's radius, and how near a bug's middle must come to touch it.
   (define fireflies-jar-r 24)
   (define fireflies-reach 30)
 
-  ;; The cracks a lost life leaves in the jar, from its middle.
+  ;; The cracks a lost life leaves in the jar, as points from its middle.
   (define fireflies-cracks
     '(((-5 . -21) (1 . -9) (-4 . 1) (4 . 12))
       ((20 . -9) (9 . -3) (13 . 6) (3 . 15))
       ((-21 . 5) (-10 . 3) (-13 . 12) (-5 . 20))))
 
-  ;; A game, which its window or its surface keeps: the field's size, the
-  ;; jar and where it heads, the bugs, how it goes, and the seed its
+  ;; A game, kept by its window or its surface: the field's size, the jar
+  ;; and where it heads, the bugs, how the game stands, and the seed its
   ;; random numbers come from, so that a seed plays the same game again.
   (define-record-type fireflies-state
     (nongenerative games-fireflies-state)
@@ -39,14 +40,15 @@
             (mutable clock)               ; seconds played
             (mutable hurt)                ; seconds left of a crack's shake
             (mutable banner)              ; seconds left of the level's name
-            (mutable sparks)              ; ((x y . when) ...): catches
+            (mutable sparks)              ; ((x y . when) ...) of catches
             (mutable last)                ; the last frame's t, or #f
-            (mutable stars)               ; ((u v . phase) ...), the sky's
+            (mutable stars)               ; ((u v . phase) ...) in the sky
             small big))                   ; its fonts
 
-  ;; A firefly or a moth: where it is and heads, how fast it flies, and
-  ;; its phase, where a firefly is in its blinking (lit for lit seconds,
-  ;; then dark for dark), which also sets how either wanders.
+  ;; A firefly or a moth: where it is and where it heads, how fast it
+  ;; flies, and its phase: where a firefly is in its blinking (lit for lit
+  ;; seconds, then dark for dark seconds), which also sets how either kind
+  ;; wanders.
   (define-record-type fireflies-bug
     (nongenerative games-fireflies-bug)
     (fields moth?
@@ -57,16 +59,16 @@
 
   ;;; ---------------------------------------------------------------- rules
 
-  ;; The next of g's random numbers, in [lo, hi): Park and Miller's
-  ;; generator, whose state is the seed. Each draw is sequenced (let*),
-  ;; never an argument beside another, so a seed plays the same game
-  ;; compiled or spliced.
+  ;; Returns the next of g's random numbers, in [lo, hi), from Park and
+  ;; Miller's generator, whose state is the seed. Each draw is sequenced
+  ;; (let*), never an argument beside another, so a seed plays the same
+  ;; game whether the library is compiled or spliced.
   (define (fireflies-random! g lo hi)
     (let ([s (mod (* (fireflies-state-seed g) 48271) 2147483647)])
       (fireflies-state-seed-set! g s)
       (+ lo (* (- hi lo) (/ s 2147483647.0)))))
 
-  ;; A seed from the clock, for a game that isn't checking itself.
+  ;; Returns a seed from the clock, for a game that isn't checking itself.
   (define (fireflies-seed) (+ 1 (mod (now-ms) 2147483646)))
 
   (define (fireflies-distance x0 y0 x1 y1)
@@ -78,7 +80,8 @@
     (fireflies-distance (fireflies-bug-x b) (fireflies-bug-y b)
                         (fireflies-state-x g) (fireflies-state-y g)))
 
-  ;; Heading a from (x, y), turned toward (x1, y1) by at most most radians.
+  ;; Returns heading a at (x, y), turned toward (x1, y1) by at most `most`
+  ;; radians.
   (define (fireflies-turn a x y x1 y1 most)
     (let* ([d (- (atan (- y1 y) (- x1 x)) a)]
            [d (atan (sin d) (cos d))])
@@ -89,17 +92,18 @@
 
   (define (fireflies-over? g) (<= (fireflies-state-lives g) 0))
 
-  ;; How lit firefly b is now, 0 to 1: lit seconds, then dark seconds, by
-  ;; its own phase, fading in and out over a fifth of a second.
+  ;; How lit firefly b is now, from 0 to 1: lit for its lit seconds, then
+  ;; dark for its dark seconds, offset by its own phase, fading in and out
+  ;; over a fifth of a second.
   (define (fireflies-glow g b)
     (let* ([lit (fireflies-bug-lit b)]
            [s (mod (+ (fireflies-state-clock g) (fireflies-bug-phase b))
                    (+ lit (fireflies-bug-dark b)))])
       (if (< s lit) (min 1.0 (/ s 0.2) (/ (- lit s) 0.2)) 0.0)))
 
-  ;; b somewhere new: a moth past the left or right edge, heading in; a
-  ;; firefly in the sky, away from the jar, just going dark, so that it
-  ;; shows itself by lighting up.
+  ;; Puts b somewhere new: a moth just past the left or right edge,
+  ;; heading in; a firefly in the sky, away from the jar, just gone dark,
+  ;; so that it shows itself by lighting up.
   (define (fireflies-place! g b)
     (let ([w (fireflies-state-w g)]
           [top (fireflies-ground (fireflies-state-h g))])
@@ -127,7 +131,7 @@
                      b (- (fireflies-bug-lit b)
                           (fireflies-state-clock g))))))))))
 
-  ;; A new firefly or moth, placed.
+  ;; Returns a new firefly or moth, placed.
   (define (fireflies-bug-new g moth?)
     (let* ([speed (if moth?
                       (fireflies-random! g 80 100)
@@ -142,8 +146,8 @@
   (define (fireflies-add! g b)
     (fireflies-state-bugs-set! g (cons b (fireflies-state-bugs g))))
 
-  ;; A new game on g's field: three lives, seven fireflies (some lit
-  ;; already), two moths on their way in.
+  ;; Starts a new game on g's field: three lives, seven fireflies (some
+  ;; lit already), and two moths on their way in.
   (define (fireflies-restart! g)
     (fireflies-state-score-set! g 0)
     (fireflies-state-lives-set! g 3)
@@ -159,7 +163,8 @@
     (fireflies-add! g (fireflies-bug-new g #t))
     (fireflies-add! g (fireflies-bug-new g #t)))
 
-  ;; A game on a field w × h, its random numbers from seed (1 to 2^31 - 2).
+  ;; Returns a game on a field w × h, its random numbers drawn from seed
+  ;; (1 to 2^31 - 2).
   (define (fireflies-new w h seed)
     (let* ([y (* 0.6 (fireflies-ground h))]
            [g (make-fireflies-state w h seed (/ w 2.0) y (/ w 2.0) y
@@ -175,9 +180,9 @@
       (fireflies-restart! g)
       g))
 
-  ;; b flies dt seconds on, wandering in lazy curves; it turns back in
-  ;; near an edge, and a moth turns a little toward the jar, the more the
-  ;; fuller the jar is: moths come to light.
+  ;; Moves b dt seconds on, wandering in lazy curves. It turns back in
+  ;; near an edge, and a moth turns a little toward the jar, the more so
+  ;; the fuller the jar is: moths come to the light.
   (define (fireflies-fly! g b dt)
     (let* ([moth? (fireflies-bug-moth? b)]
            [t (fireflies-state-clock g)] [p (fireflies-bug-phase b)]
@@ -207,8 +212,9 @@
       (fireflies-bug-x-set! b (+ x (* v dt (cos a))))
       (fireflies-bug-y-set! b (+ y (* v dt (sin a))))))
 
-  ;; The jar glides toward where it heads, a tenth of a second behind it
-  ;; and at most so fast: glass has some weight.
+  ;; Moves the jar toward where it heads, about a tenth of a second
+  ;; behind, and no faster than 600 pixels a second: glass has some
+  ;; weight.
   (define (fireflies-jar-step! g dt)
     (let* ([x (fireflies-state-x g)] [y (fireflies-state-y g)]
            [dx (- (fireflies-state-tx g) x)] [dy (- (fireflies-state-ty g) y)]
@@ -218,8 +224,9 @@
         (fireflies-state-x-set! g (+ x (* step (/ dx d))))
         (fireflies-state-y-set! g (+ y (* step (/ dy d)))))))
 
-  ;; Firefly b caught: a spark where it was, and it goes elsewhere; every
-  ;; tenth is a level, with one more moth, up to ten.
+  ;; Catches firefly b: a spark shows where it was, and it moves
+  ;; elsewhere. Every tenth catch starts a new level, with one more moth,
+  ;; up to ten moths.
   (define (fireflies-catch! g b)
     (let ([score (+ 1 (fireflies-state-score g))])
       (fireflies-state-score-set! g score)
@@ -236,9 +243,9 @@
                  10)
           (fireflies-add! g (fireflies-bug-new g #t))))))
 
-  ;; What the jar touches: a lit firefly is caught, a dark one slips
-  ;; through; a moth cracks the jar, unless it still shakes from the last,
-  ;; and flies off past an edge.
+  ;; Handles what the jar touches: a lit firefly is caught, and a dark one
+  ;; slips through. A moth cracks the jar and flies off past an edge,
+  ;; unless the jar still shakes from the last crack.
   (define (fireflies-touch! g)
     (for-each
      (lambda (b)
@@ -252,7 +259,7 @@
             (fireflies-place! g b)])))
      (fireflies-state-bugs g)))
 
-  ;; g, dt seconds on. A broken jar lies still while the bugs fly on.
+  ;; Moves g dt seconds on. A broken jar lies still while the bugs fly on.
   (define (fireflies-step! g dt)
     (let ([clock (+ (fireflies-state-clock g) dt)])
       (fireflies-state-clock-set! g clock)
@@ -267,15 +274,16 @@
         (fireflies-jar-step! g dt)
         (fireflies-touch! g))))
 
-  ;; A frame at t, in nanoseconds: the game goes on by the time since the
-  ;; last, at most a twentieth of a second, so that a pause doesn't leap.
+  ;; Runs a frame at t, in nanoseconds: the game moves on by the time
+  ;; since the last frame, at most a twentieth of a second, so that it
+  ;; doesn't leap after a pause.
   (define (fireflies-frame! g t)
     (let ([last (fireflies-state-last g)])
       (fireflies-state-last-set! g t)
       (when last
         (fireflies-step! g (min 0.05 (max 0.0 (/ (- t last) 1e9)))))))
 
-  ;; g's field resized to w × h, the jar's aim kept on it.
+  ;; Resizes g's field to w × h, keeping the jar's aim on the field.
   (define (fireflies-resize! g w h)
     (unless (and (= w (fireflies-state-w g)) (= h (fireflies-state-h g)))
       (fireflies-state-w-set! g w)
@@ -284,19 +292,20 @@
 
   ;;; ---------------------------------------------------------------- input
 
-  ;; Where the jar heads, kept on the field, its cork too.
+  ;; Sets where the jar heads, kept on the field, its cork included.
   (define (fireflies-head! g x y)
     (let ([r fireflies-jar-r])
       (fireflies-state-tx-set! g (max r (min (- (fireflies-state-w g) r) x)))
       (fireflies-state-ty-set!
        g (max (+ r 8) (min (- (fireflies-state-h g) r) y)))))
 
-  ;; A click heads the jar there, or starts a new game once it's broken.
+  ;; A click heads the jar there, or starts a new game once the jar is
+  ;; broken.
   (define (fireflies-click! g x y)
     (if (fireflies-over? g) (fireflies-restart! g) (fireflies-head! g x y)))
 
-  ;; An arrow heads the jar a step its way, a step a key's repeat; space
-  ;; or Return starts a new game once the jar is broken.
+  ;; An arrow key heads the jar one step (60 pixels) its way, one step per
+  ;; key repeat; Space or Return starts a new game once the jar is broken.
   (define (fireflies-key! g key)
     (let ([step (lambda (dx dy)
                   (fireflies-head! g (+ (fireflies-state-x g) (* 60 dx))
@@ -310,8 +319,9 @@
 
   ;;; ---------------------------------------------------------------- drawing
 
-  ;; The dusk: the sky's gradient down to the grass, twinkling stars, a
-  ;; crescent moon (a disc, cut by one of the sky's own), far hills.
+  ;; Draws the dusk: the sky's gradient down to the grass, twinkling
+  ;; stars, a crescent moon (a disc cut by a disc of the sky itself), and
+  ;; far hills.
   (define (fireflies-draw-sky g w h)
     (let* ([top (fireflies-ground h)] [t (fireflies-state-clock g)]
            [sky (linear-gradient 0 0 0 top
@@ -340,7 +350,7 @@
                            points)))))
        #x1a1636)))
 
-  ;; The meadow: dark ground, and blades of grass that sway.
+  ;; Draws the meadow: dark ground, and blades of grass that sway.
   (define (fireflies-draw-grass g w h)
     (let ([top (fireflies-ground h)] [t (fireflies-state-clock g)])
       (fill-box 0 top w (- h top) (linear-gradient 0 top 0 h #x0d2018 #x050d0a))
@@ -352,7 +362,8 @@
                               (cons (+ x sway) (- top tall)))
                         (if (even? i) #x0f2a1d #x143522))))))
 
-  ;; A firefly: a dim speck dark, a soft green-gold glow lit.
+  ;; Draws a firefly: a dim speck when dark, a soft green-gold glow when
+  ;; lit.
   (define (fireflies-draw-firefly g b)
     (let ([x (fireflies-bug-x b)] [y (fireflies-bug-y b)]
           [k (fireflies-glow g b)])
@@ -363,8 +374,9 @@
                                              (alpha #xb4f04c 0))))
       (fill-circle x y 2.5 (mix #x3c3a26 #xf8ffc8 k))))
 
-  ;; A moth along its heading: hind and fore wings beating fast, a dark
-  ;; body, two feelers; a little larger than its numbers, to be seen.
+  ;; Draws a moth along its heading: hind and fore wings beating fast, a
+  ;; dark body and two feelers, a quarter larger than its numbers say, so
+  ;; that it is easy to see.
   (define (fireflies-draw-moth g b)
     (let* ([x (fireflies-bug-x b)] [y (fireflies-bug-y b)]
            [c (* 1.25 (cos (fireflies-bug-heading b)))]
@@ -387,7 +399,7 @@
       (fill-circle (car head) (cdr head) 2.6 #x4a4239)
       (fill-circle (car tail) (cdr tail) 2.2 #x4a4239)))
 
-  ;; Each catch: a ring that spreads and fades.
+  ;; Draws each catch as a ring that spreads and fades.
   (define (fireflies-draw-sparks g)
     (for-each (lambda (s)
                 (let ([age (- (fireflies-state-clock g) (cddr s))])
@@ -396,9 +408,9 @@
                                  2)))
               (fireflies-state-sparks g)))
 
-  ;; The jar: glass with a cork, aglow, the more so with the fireflies
-  ;; caught this level inside; a crack for each life lost; shaking red
-  ;; when a moth hits.
+  ;; Draws the jar: glass with a cork, glowing, the more so with each
+  ;; firefly caught this level, which shows inside it; a crack for each
+  ;; life lost; and a red shake when a moth hits.
   (define (fireflies-draw-jar g)
     (let* ([t (fireflies-state-clock g)] [hurt (fireflies-state-hurt g)]
            [x (+ (fireflies-state-x g) (* 4 hurt (sin (* 70 t))))]
@@ -427,12 +439,13 @@
       (fill-circle (- x 9) (- y 10) 4 (alpha #xffffff 0.45))
       (fill-box (- x 12) (- y r 7) 24 9 #x8b6239 3)))
 
-  ;; str centered on cx, its top at y.
+  ;; Draws str centered on cx, its top at y.
   (define (fireflies-text-centered cx y str color f)
     (draw-text (- cx (/ (text-width str f) 2)) y str color f))
 
-  ;; What's caught, the level and the lives left along the top; the
-  ;; level's name as it starts; the score once the jar is broken.
+  ;; Draws the catches, the level and the lives left along the top; the
+  ;; level's name as the level starts; and the score once the jar is
+  ;; broken.
   (define (fireflies-draw-words g w h)
     (let ([small (fireflies-state-small g)] [big (fireflies-state-big g)]
           [score (fireflies-state-score g)]
@@ -469,7 +482,7 @@
                                       "Catch the lit ones; mind the moths"
                                       (alpha #xc8cce4 a) small)))])))
 
-  ;; g drawn on a field w × h, from its top-left corner.
+  ;; Draws g on a field w × h, from its top-left corner.
   (define (fireflies-draw-field g w h)
     (fireflies-draw-sky g w h)
     (fireflies-draw-grass g w h)
@@ -484,8 +497,8 @@
 
   ;;; ---------------------------------------------------------------- two ways
 
-  ;; The game in a window, on whatever screen there is: it rides frames,
-  ;; and closing the window ends it.
+  ;; Opens the game in a window, on whatever screen there is: it runs on
+  ;; the window's frames, and closing the window ends it.
   (define (fireflies-open)
     (open-window "Fireflies"
       'size '(640 . 480)
@@ -510,7 +523,7 @@
   (define-app (fireflies) "Fireflies"
     (fireflies-open))
 
-  ;; "960x640" => (960 . 640); #f if it isn't a size.
+  ;; Returns "960x640" as (960 . 640), or #f if s isn't a size.
   (define (fireflies-size s)
     (let loop ([i 0])
       (cond [(= i (string-length s)) #f]
@@ -521,8 +534,8 @@
                (and (fixnum? w) (fixnum? h) (> w 0) (> h 0) (cons w h)))]
             [else (loop (+ i 1))])))
 
-  ;; The pixel of the screen's bytes at (u, v), fractions of its width
-  ;; and height, as (r g b).
+  ;; Returns the pixel of the screen's bytes at (u, v), given as fractions
+  ;; of its width and height, as (r g b).
   (define (fireflies-screen-pixel bytes u v)
     (let* ([x (min (- *canvas-pw* 1) (exact (floor (* u *canvas-pw*))))]
            [y (min (- *canvas-ph* 1) (exact (floor (* v *canvas-ph*))))]
@@ -531,7 +544,7 @@
             (bytevector-u8-ref bytes (+ at 1))
             (bytevector-u8-ref bytes at))))
 
-  ;; The lit firefly nearest the jar, or #f.
+  ;; Returns the lit firefly nearest the jar, or #f.
   (define (fireflies-nearest-lit g)
     (fold-left (lambda (best b)
                  (if (and (not (fireflies-bug-moth? b))
@@ -544,9 +557,10 @@
                #f
                (fireflies-state-bugs g)))
 
-  ;; The game checks itself, headless: a second played from seed 1, the
-  ;; jar steered onto the nearest lit firefly, then the screen read back
-  ;; and told: its size, the sky, the grass and the jar, and the score.
+  ;; The game checks itself, headless: it plays a second from seed 1,
+  ;; steering the jar onto the nearest lit firefly, then reads the screen
+  ;; back and prints its size, the pixels of the sky, the grass and the
+  ;; jar, and the score, lives and level.
   (define (fireflies-check g)
     (do ([i 0 (+ i 1)]) ((= i 60))
       (let ([b (fireflies-nearest-lit g)])
@@ -570,10 +584,11 @@
                    (fireflies-state-level g))
            (quit!))))))
 
-  ;; The game on a screen of its own, from the command line's args: a
-  ;; surface over all of it takes the mouse and the keys, and Escape
-  ;; quits. --headless plays a game and tells what it read back; --fork,
-  ;; the screen's thread and the world's, as with a window.
+  ;; Runs the game on a screen of its own, from the command line's args: a
+  ;; surface over the whole screen takes the mouse and the keys, and
+  ;; Escape quits. --headless plays a game and reports what it read back;
+  ;; --fork gives the screen and the world a thread each, as a window
+  ;; always does.
   (define (fireflies-main args)
     (let* ([headless? (and (member "--headless" args) #t)]
            [size (member "--size" args)]
@@ -596,7 +611,7 @@
                      (when (eq? kind 'key)
                        (if (eq? key 'escape) (quit!) (fireflies-key! g key)))
                      #t)
-              ;; headless, the check plays the game, by a clock of its own
+              ;; headless, the check plays the game on a clock of its own
               'frame (lambda (t)
                        (unless headless?
                          (fireflies-resize! g (screen-w) (screen-h))

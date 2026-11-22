@@ -1,9 +1,10 @@
-;;; tests/units/sdl.ss — core0's SDL side with no SDL: its events decoded
-;;; from a hand-filled SDL_Event, and its window code run against a
+;;; tests/units/sdl.ss — core0's SDL side, tested with no SDL: its events
+;;; decoded from a hand-filled SDL_Event, and its window code run against a
 ;;; stand-in for every SDL call it binds.
 
-;;; SDL3's event layout, from a hand-filled SDL_Event: the offsets are
-;;; SDL_events.h's (3.2). Core0 decodes it; the world lays it out.
+;;; SDL3's event layout, tested with a hand-filled SDL_Event whose offsets
+;;; are those of SDL_events.h (3.2). Core0 decodes the event, and the world
+;;; turns it into one of its own (screen-event->world).
 (define (decode-event type . fields)   ; fields: (type offset value) ...
   (do ([i 0 (+ i 1)]) ((= i 128)) (foreign-set! 'unsigned-8 *sdl-event* i 0))
   (foreign-set! 'unsigned-32 *sdl-event* 0 type)
@@ -35,15 +36,15 @@
               (equal? (wheel 0.4 0.4 -0.4 -0.4 -0.4)
                       '(#f #f #f #f (wheel 0 -1))))))
 
-;;; Core0's SDL code, run against a stand-in for SDL: every SDL call
-;;; (schevana sdl window) binds is a hook, and each is set to its stand-in
-;;; here (one with none raises), so nothing reaches the real SDL or opens a
-;;; window. The fake window is fake-units window units big with fake-ratio
+;;; Core0's SDL code, run against a stand-in for SDL: every SDL call that
+;;; (schevana sdl window) binds, except those for plain memory and the GPU,
+;;; is a hook, and each is set to its stand-in here (a call with no
+;;; stand-in raises), so nothing reaches the real SDL or opens a window.
+;;; The fake window is fake-units window units big, with fake-ratio
 ;;; physical pixels per unit, on a desktop that asks for fake-desktop
 ;;; (Xft.dpi / 96 under X11), so its display scale is their product, as
-;;; SDL3's is; its texture is an image that uploads copy rows into, as
-;;; SDL_UpdateTexture does. *core0-mode* is 'sdl only around single core0
-;;; calls, so steps stay headless.
+;;; SDL3's is. *core0-mode* is 'sdl only around single core0 calls, so
+;;; steps stay headless.
 
 (define fake-sdl-names
   ;; the library's body: what follows its name, exports and imports
@@ -60,7 +61,7 @@
               (memq (car x)
                     '(define-foreign define-foreign/collect-safe))
               (string-prefix? "SDL_" (caddr x))
-              ;; plain memory and the GPU's: kept
+              ;; the calls for plain memory and the GPU's are kept
               (not (member (caddr x) '("SDL_memcmp" "SDL_memcpy")))
               (not (string-contains-ci? (caddr x) "GPU"))))
        (loop (cdr forms) (cons (cadar forms) acc))]
@@ -130,7 +131,7 @@
        (pair! w h (* fake-ratio (car fake-units))
               (* fake-ratio (cdr fake-units))))]
     [(sdl-get-display-for-window) (lambda (win) 0)]
-    [(sdl-get-current-display-mode) (lambda (display) 0)]   ; none: 60 Hz
+    [(sdl-get-current-display-mode) (lambda (display) 0)]   ; no mode: 60 Hz
     [(sdl-get-error) (lambda () "")]
     [(sdl-get-clipboard-text) (lambda () 0)]
     [(sdl-poll-event) poll]
@@ -140,8 +141,8 @@
             (set! fake-unfaked (cons name fake-unfaked))
             (errorf name "the fake SDL has no stand-in for this"))]))
 
-;; Runs thunk with the fake SDL in place of the real one, the GPU's frames
-;; going on to its target.
+;; Runs thunk with the fake SDL in place of the real one. The GPU doesn't
+;; claim the fake window, so its frames go on to its own target.
 (define (with-fake-sdl thunk)
   ;; a hook is set by set!, in core0's environment, which imports it
   (define (hook-set! n v) (eval `(set! ,n ',v) main-env))
@@ -156,15 +157,15 @@
         (for-each hook-set! fake-sdl-names saved)
         (set! gpu-claim-window! claim)))))
 
-;; SDL reports window events (through core0's real event loop); the
-;; world handles what core0 makes of them.
+;; Has SDL report window events of these types (through core0's real
+;; event loop), and the world handle what core0 makes of them.
 (define (fake-event! . types)
   (set! fake-queue types)
   (apply inject! (fluid-let ([*core0-mode* 'sdl]) (screen-events 0)))
   (steps 2))
 
-;; As SDL3 reports a change of size or of pixel ratio: each of the three
-;; events may come alone, and the first makes the change.
+;; Reports a change of size or of pixel ratio as SDL3 does: each of the
+;; three events may come alone, and the first one makes the change.
 (define (fake-resize! units ratio)
   (set! fake-units units)
   (set! fake-ratio ratio)
@@ -181,7 +182,8 @@
         (fake-resize! '(1280 . 800) 1)
         (check "the fake SDL had a stand-in for every call"
                (null? fake-unfaked))
-        ;; measuring is by the fonts' tables: a scale changes nothing of it
+        ;; text is measured by the fonts' tables, so a scale changes none of
+        ;; it
         (let ([before (font-metrics 'mono)])
           ;; a window moved to a 2x display (macOS, Wayland)
           (fake-resize! '(1280 . 800) 2)
@@ -191,8 +193,8 @@
                  (and (= *scale* 2.0) (= *canvas-w* 1280) (= *canvas-h* 800)
                       (equal? before (font-metrics 'mono)))))
         (fake-resize! '(1280 . 800) 1)
-        ;; the minimum size: plain resizes do not repeat it; in full screen SDL
-        ;; only stores it, so it is passed on again after
+        ;; the minimum size: plain resizes do not set it again; in full
+        ;; screen SDL only stores it, so it is passed on again afterwards
         (do ([i 1 (+ i 1)]) ((> i 8))
           (fake-resize! (cons (+ 1280 (* 20 i)) (+ 800 (* 12 i))) 1))
         (set! fake-desktop 3/2)
@@ -215,8 +217,8 @@
                       (= *canvas-h* 800)))))))))
 
 ;; Core0's window opens hidden, is sized in window units once the pixel
-;; ratio and the desktop's scale are known, centered, and only then shown.
-;; SDL is told the app id that the desktop entry names.
+;; ratio and the desktop's scale are known, is centered, and only then is
+;; shown. SDL is told the app id that the desktop entry names.
 (test-with-quiet-status
  (lambda ()
    (fluid-let ([*core0-mode* 'headless] [*sdl-window* 0]
@@ -224,7 +226,7 @@
                [*pixel-ratio* 1] [*screen-chosen-scale* *screen-chosen-scale*])
      (with-fake-sdl
       (lambda ()
-        ;; the scale saved (a rescale builds the theme again from it)
+        ;; the scale as saved (a rescale builds the theme again from it)
         (define (open scale ratio desktop . fullscreen?)
           (set! *scale-setting* scale)
           (hashtable-set! *theme* 'scale scale)
@@ -249,7 +251,7 @@
           (set! fake-flags 0)
           (set! fake-desktop 1)
           (set! *screen-fullscreen* #f)
-          (fake-resize! '(1280 . 800) 1)   ; the world as it was
+          (fake-resize! '(1280 . 800) 1)   ; back to the world as it was
           (check (format "core0's window opens hidden, sized for the pixel \
                           ratio and the desktop's scale, then centered and \
                           shown ~s" (list explicit x11 wayland x150 full))
@@ -277,11 +279,11 @@
                (equal? (assoc "SDL_APP_ID" fake-hints)
                        (cons "SDL_APP_ID" core0-app-id))))))))
 
-;; What the host's desktop knows the window by: its title, a job of core0's;
-;; the least it may be dragged to, a program's own; its app id, which only
-;; a window not open yet may take. And the desktop's light or dark, which
-;; SDL tells of by an event: a style's dark palette follows it, unless a
-;; palette was chosen.
+;; What the host's desktop knows the window by: its title, which core0
+;; sets; the least size it may be dragged to, which the program sets; and
+;; its app id, which only a window not yet open may take. And the desktop's
+;; light or dark preference, which SDL reports by an event: a style's dark
+;; palette follows it, unless a palette was chosen.
 (test-with-quiet-status
  (lambda ()
    (fluid-let ([*screen-min-size* #f] [*pixel-ratio* 1]

@@ -1,11 +1,13 @@
 ;;; tests/units/procs.ss — processes ((schevana core processes)): a process
-;;; waits for what something done elsewhere hands a then (proc-wait).
+;;; waits (proc-wait) for the values that work done elsewhere hands to a
+;;; then, the procedure the work calls once it is done.
 
 (for-each close-window! (windows))
 (steps 2)
 
-;; A process that waits for what its start's done is given, done kept to
-;; be called by hand: => (values process done-box result-box).
+;; Spawns a process that waits for the values its start's done is called
+;; with, and keeps done in a box for the test to call by hand. Returns
+;; (values process done-box result-box).
 (define (procs-test-waiter)
   (let* ([done (box #f)] [result (box 'none)]
          [p (spawn "waiter"
@@ -57,9 +59,9 @@
          (and (not (memq p (procs))) (eq? (unbox result) 'none))))
 
 ;; The test's own clock (tests/lib.ss): a process that never yields runs
-;; till its share of a step is up by the world's clock, so under a clock
-;; held still it would run without end. The verdict and what's printed are
-;; this check's own for the while.
+;; until the world's clock says its share of a step is up, so under a held
+;; clock it would run forever. Meanwhile this check keeps the failure count
+;; and the printed output to itself.
 (let* ([p (spawn "never yields" (lambda () (let loop () (loop))))]
        [failed 0]
        [said (with-output-to-string

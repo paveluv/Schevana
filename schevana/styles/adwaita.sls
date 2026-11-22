@@ -1,25 +1,25 @@
-;;; (schevana styles adwaita) — GNOME's apps' look: libadwaita 1.7.6's
-;;; widgets and windows, as GNOME 48 draws them with the blue accent, in its
-;;; light style (the palette adwaita) or its dark one (adwaita-dark, which a
-;;; desktop that prefers dark gets). GNOME Shell's desktop around them is
-;;; the GNOME style's ((schevana styles gnome)), apart: a program taking
-;;; this look (a host app) has GNOME's own Shell around its window.
-;;; Facts only, from libadwaita's stylesheet (LGPL-2.1+) and GNOME Shell's
-;;; (GPL-2.0+): sizes, radii, colors and alphas, each cited as file:line at
-;;; those tags, libadwaita's under src/stylesheet/ (adw-…c files under
-;;; src/), the Shell's under data/theme/gnome-shell-sass/ and marked shell.
-;;; No SCSS, icon or image is copied: the glyphs are drawn here from their
-;;; geometry.
+;;; (schevana styles adwaita) — the look of GNOME's apps: libadwaita
+;;; 1.7.6's widgets and windows, as GNOME 48 draws them with the blue
+;;; accent, in its light style (the palette adwaita) or its dark one
+;;; (adwaita-dark, which a desktop that prefers dark gets). GNOME Shell's
+;;; desktop around them belongs to a separate style, GNOME ((schevana styles
+;;; gnome)): a program that takes this look (a host app) has GNOME's own
+;;; Shell around its window. Facts only, from libadwaita's stylesheet
+;;; (LGPL-2.1+) and GNOME Shell's (GPL-2.0+): sizes, radii, colors and
+;;; alphas, each cited as file:line at those tags, libadwaita's under
+;;; src/stylesheet/ (adw-…c files under src/), and the Shell's under
+;;; data/theme/gnome-shell-sass/, marked shell. No SCSS, icon or image is
+;;; copied: the glyphs are drawn here from their geometry.
 ;;;
 ;;; Controls are flat tints of the text color, 10 % at rest, 15 % under the
-;;; pointer, 30 % pressed, with no border or bevel; they are 34 high and 9
-;;; round, cards and boxed lists 12, popovers, dialogs and windows 15. A
-;;; window is a libadwaita window, its title bar a header bar 46 high, its
-;;; title bold in the middle, and as GNOME lays its buttons out
-;;; ("appmenu:close") only a close button, a 24-pixel circle: a double click
-;;; on the title maximizes the window, its menu (a right click on the title)
-;;; minimizes it, and adwaita-window-buttons all shows minimize and maximize
-;;; too, as GNOME Tweaks does.
+;;; pointer and 30 % pressed, with no border or bevel; they are 34 high and
+;;; 9 round, cards and boxed lists are 12 round, and popovers, dialogs and
+;;; windows 15. A window is a libadwaita window: its title bar is a header
+;;; bar 46 high, with the title bold in the middle and, as GNOME lays out
+;;; its buttons ("appmenu:close"), only a close button, a 24-pixel circle.
+;;; A double click on the title maximizes the window, its menu (a right
+;;; click on the title) minimizes it, and adwaita-window-buttons all shows
+;;; minimize and maximize too, as GNOME Tweaks does.
 
 (library (schevana styles adwaita)
   (export
@@ -76,9 +76,9 @@
   ;;; ------------------------------------------------------------------
   ;;; colors
 
-  ;; GNOME gives its sizes in a text of 11 pt, 14⅔ pixels; ours is 15, a
-  ;; whole pixel Settings can show: an em of GNOME's is our text size less
-  ;; a 45th.
+  ;; GNOME gives its sizes for a text of 11 pt, 14⅔ pixels; ours is 15, a
+  ;; whole number of pixels that Settings can show, so an em of GNOME's is
+  ;; our text size less a 45th.
   (define (adwaita-em) (* (theme 'ui-font-size) 44/45))
 
   (define (adwaita-luma c)
@@ -94,11 +94,11 @@
   ;; One value in the light style, another in the dark.
   (define (adwaita-by-style light dark) (if (adwaita-dark?) dark light))
 
-  ;; c as text or a mark on a plain surface, a "standalone" color: its OKLab
-  ;; lightness at most 0.5 in the light style, at least 0.85 in the dark,
-  ;; its hue kept, clipped to sRGB (_defaults.scss:25-37, 90-111;
-  ;; adw-accent-color.c:144-146). OKLab by Bjorn Ottosson's published
-  ;; matrices.
+  ;; c as text or a mark on a plain surface, a "standalone" color: its
+  ;; OKLab lightness at most 0.5 in the light style and at least 0.85 in the
+  ;; dark, its hue kept, clipped to sRGB (_defaults.scss:25-37, 90-111;
+  ;; adw-accent-color.c:144-146). OKLab is computed with Bjorn Ottosson's
+  ;; published matrices.
   (define (adwaita-standalone c dark?)
     (define (lin v)
       (if (<= v 0.04045) (/ v 12.92) (expt (/ (+ v 0.055) 1.055) 2.4)))
@@ -135,10 +135,11 @@
            (byte (+ (* -0.0041960863 l) (* -0.7034186147 m)
                     (* 1.7076147010 s))))))
 
-  ;; The surfaces the Adwaita palettes give exactly (_defaults.scss:39-88);
-  ;; under another palette, its window's color lightened as GNOME's dark
-  ;; style lightens it, a header bar by 5 % of white, a card by 8 %, a
-  ;; popover by 10 %, a sidebar a step toward the text.
+  ;; The surfaces, which the Adwaita palettes give exactly
+  ;; (_defaults.scss:39-88); under another palette, its window's color is
+  ;; lightened as GNOME's dark style lightens it: a header bar by 5 % of
+  ;; white, a card by 8 %, a popover by 10 %, and a sidebar by a step
+  ;; toward the text.
   (at-load
    (color-default! 'adwaita-headerbar (theme-rule (mix 'bg-1 #xffffff 0.05))))
   (at-load
@@ -158,7 +159,7 @@
    (color-default! 'adwaita-destructive (theme-rule (theme 'red))))
   ;; The accent and the destructive red as text (_defaults.scss:25-36):
   ;; the accent's is GNOME's link color (_colors.scss:79), and its focus
-  ;; ring's.
+  ;; ring's color.
   (at-load
    (color-default! 'adwaita-link
                    (theme-rule (adwaita-standalone 'accent (adwaita-dark?)))))
@@ -173,7 +174,7 @@
                                                  (alpha #xffffff 0.2)))))
   ;; The shades: a header bar's line (_defaults.scss:52), a boxed list's
   ;; line between rows (71), a sidebar's border (60), and what dims the
-  ;; window under a dialog, the shade at twice its alpha (87,
+  ;; window under a dialog, which is the shade at twice its alpha (87,
   ;; widgets/_dialogs.scss:72-74).
   (at-load
    (color-default! 'adwaita-headerbar-shade
@@ -200,9 +201,9 @@
    (color-default! 'adwaita-toast #x505053))
   ;; GNOME Shell's dark style: its menus' color, text, dimmed text (the fg
   ;; mixed half into the bg) and border (shell _colors.scss:12-13, 39,
-  ;; 52), a menu item under the pointer and pressed (widgets/
-  ;; _popovers.scss:5, _drawing.scss:381-390), a notification's card
-  ;; (_message-list.scss:94), the dash and its tiles, lighter under the
+  ;; 52); a menu item under the pointer and pressed (widgets/
+  ;; _popovers.scss:5, _drawing.scss:381-390); a notification's card
+  ;; (_message-list.scss:94); and the dash and its tiles, lighter under the
   ;; pointer and while chosen (_colors.scss:49, widgets/_dash.scss:57-68).
   (at-load
    (color-default! 'adwaita-shell-bg #x36363a))
@@ -228,10 +229,10 @@
    (color-default! 'adwaita-dash-text #xfafafb))
 
   ;; The style's own settings: a title-1 text, 181 % bold (widgets/
-  ;; _labels.scss:35-38), a status page's; the radius of a button (9:
+  ;; _labels.scss:35-38), for a status page; the radius of a button (9:
   ;; _common.scss:8), 12 in an alert, which a dialog's place gives; the
-  ;; header bar flat, as a toolbar view has it, or raised (widgets/
-  ;; _toolbars.scss:259-314); and the window buttons shown.
+  ;; header bar, flat as a toolbar view has it, or raised (widgets/
+  ;; _toolbars.scss:259-314); and which window buttons are shown.
   (at-load
    (theme-default! 'adwaita-title-1 (theme-font-rule 'ui 12 'bold)))
   (at-load
@@ -242,29 +243,29 @@
    (theme-default! 'adwaita-window-buttons 'close))
 
   ;;; ------------------------------------------------------------------
-  ;;; the window: a libadwaita window, its title bar a header bar
+  ;;; the window: a libadwaita window, with a header bar for its title bar
 
-  ;; A header bar is 46 high in a window: its buttons' 34 and 6 above and
+  ;; A header bar is 46 high in a window: its buttons' 34, and 6 above and
   ;; below them (widgets/_header-bar.scss:2, 14-15, 83-89); a larger text
-  ;; makes its buttons, and so it, taller.
+  ;; makes its buttons taller, and so the bar too.
   (define (adwaita-header-height) (+ 12 (ui-control-height)))
 
   (define (adwaita-insets win) (values 0 (adwaita-header-height) 0 0))
 
-  ;; 15 round (_common.scss:16-17), square while maximized (widgets/
+  ;; 15 round (_common.scss:16-17), and square while maximized (widgets/
   ;; _window.scss:52-55).
   (define (adwaita-radius win) (if (maximized? win) 0 (theme 'corner-radius)))
 
-  ;; As GNOME lays the window's buttons out by default ("appmenu:close"),
+  ;; As GNOME lays out the window's buttons by default ("appmenu:close"),
   ;; close alone; with adwaita-window-buttons all, minimize and maximize
-  ;; before it, as GNOME Tweaks shows them.
+  ;; come before it, as GNOME Tweaks shows them.
   (define (adwaita-button-kinds)
     (if (eq? (theme 'adwaita-window-buttons) 'all)
         '(minimize maximize close)
         '(close)))
 
-  ;; Each a control's square, 3 apart, 6 from the bar's end (widgets/
-  ;; _header-bar.scss:9-15, 164-170).
+  ;; Each button is a control's square, 3 apart, 6 from the bar's end
+  ;; (widgets/_header-bar.scss:9-15, 164-170).
   (define (adwaita-regions win)
     (let* ([b (ui-control-height)] [kinds (adwaita-button-kinds)]
            [n (length kinds)]
@@ -272,9 +273,9 @@
            [y (quotient (- (adwaita-header-height) b) 2)])
       (map (lambda (k i) (list k (+ x0 (* i (+ b 3))) y b b)) kinds (iota n))))
 
-  ;; The window, and its header bar: flat, the window's own color, or
-  ;; raised, the header bar's (white in the light style) while the window
-  ;; has the focus.
+  ;; The window and its header bar: flat, in the window's own color, or
+  ;; raised, in the header bar's color (white in the light style) while the
+  ;; window has the focus.
   (define (adwaita-draw-under win x y w h focused? hover pressed)
     (let ([hh (adwaita-header-height)] [r (adwaita-radius win)])
       (window-shadow win x y w h r focused?)
@@ -289,12 +290,13 @@
 
   ;;; Text as GTK sets a label (gtk/gtklabel.c:1388-1405 at 4.18.6): its
   ;;; box is the font's ascent and descent, rounded out to whole pixels
-  ;;; (pango_layout_get_pixel_extents), placed at a whole pixel in what
-  ;;; the label is given, centered and floored; its baseline is the ascent
-  ;;; below the box's top, unrounded, as GTK's own font rendering hints no
-  ;;; metrics (gtk/gtkwidget.c, update_pango_context).
+  ;;; (pango_layout_get_pixel_extents), and placed at a whole pixel in the
+  ;;; room the label is given, centered and floored; its baseline is the
+  ;;; ascent below the box's top, unrounded, since GTK's own font rendering
+  ;;; hints no metrics (gtk/gtkwidget.c, update_pango_context).
 
-  ;; draw-text's y for text whose box's top is top (the ui-text-y part).
+  ;; draw-text's y for text whose box's top is at top (the ui-text-y
+  ;; part).
   (define (adwaita-text-y top font)
     (let-values ([(ascent descent) (text-face-extent font)])
       (+ top (- ascent (font-ascent font)))))
@@ -304,37 +306,37 @@
     (let-values ([(ascent descent) (text-face-extent font)])
       (ceiling (+ ascent descent))))
 
-  ;; The top of a label in font centered down the box y h.
+  ;; The top of a label in font, centered vertically in the box y h.
   (define (adwaita-text-top y h font)
     (+ y (floor (/ (- h (adwaita-text-height font)) 2))))
 
   ;; Where something w2 wide starts, centered across x w.
   (define (adwaita-center x w w2) (+ x (floor (/ (- w w2) 2))))
 
-  ;; s with its box's top at top: what draw-text returns.
+  ;; Draws s with its box's top at top; returns what draw-text returns.
   (define (adwaita-text x top s ink font)
     (draw-text x (adwaita-text-y top font) s ink font))
 
-  ;; s at x, centered down the box y h.
+  ;; Draws s at x, centered vertically in the box y h.
   (define (adwaita-text-in x y h s ink font)
     (adwaita-text x (adwaita-text-top y h font) s ink font))
 
-  ;; s centered in the box x y w h.
+  ;; Draws s centered in the box x y w h.
   (define (adwaita-text-centered x y w h s ink font)
     (adwaita-text-in (adwaita-center x w (text-width s font)) y h s ink font))
 
-  ;; A wrapped label's lines from top, each at (at line), a line apart (as
-  ;; the kit measures them): the top after the last.
+  ;; Draws a wrapped label's lines from top, each at x (at line), a line
+  ;; apart (as the kit measures them). Returns the top after the last.
   (define (adwaita-lines at top lines ink font)
     (fold-left (lambda (top line)
                  (adwaita-text (at line) top line ink font)
                  (+ top (font-line-height font)))
                top lines))
 
-  ;; The title, bold, in the bar's middle, clear of the buttons either side
-  ;; as GTK centers it (widgets/_header-bar.scss:199-205), after the
-  ;; window's icon if its app gave one; an unfocused window's at half
-  ;; strength (35-45).
+  ;; The title, bold, in the bar's middle, clear of the buttons on either
+  ;; side as GTK centers it (widgets/_header-bar.scss:199-205), after the
+  ;; window's icon if its app gave one; an unfocused window's title is at
+  ;; half strength (35-45).
   (define (adwaita-title win x y w hh focused?)
     (let* ([icon (ui-title-icon win)] [s (ui-glyph-size)]
            [side (+ 6 12 (* (length (adwaita-button-kinds))
@@ -349,8 +351,8 @@
                        (if focused? 'title-text 'title-text-dim) 'title)))
 
   ;; A window button: a 24-pixel circle of the text at 10 %, 15 % under
-  ;; the pointer, 30 % pressed, its glyph in it (widgets/_header-bar.scss:
-  ;; 167-188); an unfocused window's at half strength.
+  ;; the pointer and 30 % pressed, with its glyph in it (widgets/
+  ;; _header-bar.scss:167-188); an unfocused window's is at half strength.
   (define (adwaita-window-button win x y reg focused? hover pressed)
     (let* ([kind (car reg)] [cx (+ x (cadr reg) (/ (cadddr reg) 2))]
            [cy (+ y (caddr reg) (/ (list-ref reg 4) 2))]
@@ -360,8 +362,9 @@
       (adwaita-window-glyph (ui-frame-glyph win kind) cx cy
                             (if focused? 'text (alpha 'text 0.5)))))
 
-  ;; The window's glyphs, after the Adwaita icons' shapes, 2 wide: close an
-  ;; X 8 across, maximize a square, restore two, minimize a bar low down.
+  ;; The window's glyphs, after the Adwaita icons' shapes, in lines 2 wide:
+  ;; close is an X 8 across, maximize a square, restore two squares, and
+  ;; minimize a bar low down.
   (define (adwaita-window-glyph kind cx cy ink)
     (case kind
       [(close)
@@ -392,9 +395,9 @@
   ;;; ------------------------------------------------------------------
   ;;; buttons
 
-  ;; The focus: a ring 2 wide of the accent at half strength inside the
-  ;; edge (_drawing.scss:12-23, _colors.scss:2, 116); outside it, past a
-  ;; pixel's gap, for a suggested button or a switch (widgets/
+  ;; The focus: a ring 2 wide of the accent at half strength, inside the
+  ;; edge (_drawing.scss:12-23, _colors.scss:2, 116), or outside it past a
+  ;; pixel's gap for a suggested button or a switch (widgets/
   ;; _buttons.scss:158, _switch.scss:11).
   (define (adwaita-ring x y w h r)
     (stroke-box x y w h (alpha 'adwaita-link 0.5) 2 r))
@@ -403,11 +406,11 @@
     (stroke-box (- x 3) (- y 3) (+ w 6) (+ h 6) (alpha 'adwaita-link 0.5)
                 2 (+ r 3)))
 
-  ;; The kit's ring, for what draws its own: inside.
+  ;; The kit's ring, for what does not draw its own: inside.
   (define (adwaita-focus x y w h flags r) (adwaita-ring x y w h r))
 
   ;; A box r round, square on its joined sides (flags join-left,
-  ;; join-right): a linked button's, a stepper's pieces (widgets/
+  ;; join-right): a linked button's, or a stepper's pieces' (widgets/
   ;; _linked.scss:14-45).
   (define (adwaita-box x y w h color r flags)
     (if (or (memq 'join-left flags) (memq 'join-right flags))
@@ -429,17 +432,18 @@
       (when label (adwaita-text-in (+ x0 gw) y h label ink 'ui-bold))))
 
   ;; A button (widgets/_buttons.scss): the text at 10 % behind its label,
-  ;; 15 % under the pointer, 30 % pressed and pressed in (selected), 35 and
-  ;; 40 % pressed in and under the pointer or pressed (1-6, 17-56); flat
-  ;; (quiet), nothing at rest, 7 % under the pointer, 16 % pressed, 10 %
-  ;; pressed in (234-274, _colors.scss:82-86); suggested (primary), the
-  ;; accent, its label white, white at 10 % over it under the pointer,
-  ;; rgb(0 0 6 / 20%) pressed (155-181, 220-228); destructive (danger),
-  ;; its label in the destructive red and that red at 15 % behind it, 20 %
-  ;; under the pointer, 35 % pressed (10-15, 183-211). Disabled, it is all at
-  ;; half strength, a flat one at 30 % (58-64, 272-274); a joined piece (a
-  ;; stepper's) keeps its box, its neighbors' too. A pill and a round one
-  ;; are round at their ends (312-326); a segment is a toggle group's.
+  ;; 15 % under the pointer, 30 % pressed and pressed in (selected), and 35
+  ;; and 40 % pressed in and under the pointer or pressed (1-6, 17-56). A
+  ;; flat one (quiet) has nothing at rest, 7 % under the pointer, 16 %
+  ;; pressed and 10 % pressed in (234-274, _colors.scss:82-86). A suggested
+  ;; one (primary) is the accent, its label white, with white at 10 % over
+  ;; it under the pointer and rgb(0 0 6 / 20%) pressed (155-181, 220-228).
+  ;; A destructive one (danger) has its label in the destructive red and
+  ;; that red at 15 % behind it, 20 % under the pointer and 35 % pressed
+  ;; (10-15, 183-211). Disabled, it is all at half strength, a flat one at
+  ;; 30 % (58-64, 272-274); a joined piece (a stepper's) keeps its box at
+  ;; full strength, as its neighbors do. A pill and a round one are round
+  ;; at their ends (312-326); a segment is a toggle group's.
   (define (adwaita-button x y w h flags label glyph)
     (if (memq 'segment flags)
         (adwaita-toggle-piece x y w h flags label glyph)
@@ -489,11 +493,12 @@
                 (adwaita-ring x y w h r))))))
 
   ;; A piece of a toggle group (AdwToggleGroup: widgets/_toggle-group.scss:
-  ;; 9-102), a segmented choice's or a tab's: the group the text at 10 %,
-  ;; 9 round at its ends; 3 inside it each toggle, 6 round, a pixel from its
-  ;; neighbors, its label bold; the chosen one raised in the toggle color
-  ;; (white in the light style) with a card's soft shadow, another the
-  ;; text at 7 % under the pointer, 16 % pressed.
+  ;; 9-102), a segmented choice's or a tab's. The group is the text at
+  ;; 10 %, 9 round at its ends; each toggle sits 3 inside it, 6 round, a
+  ;; pixel from its neighbors, with its label bold. The chosen one is
+  ;; raised in the toggle color (white in the light style) with a card's
+  ;; soft shadow; another is the text at 7 % under the pointer and 16 %
+  ;; pressed.
   (define (adwaita-toggle-piece x y w h flags label glyph)
     (let* ([on? (lambda (f) (memq f flags))]
            [off? (on? 'disabled)]
@@ -512,8 +517,9 @@
       (adwaita-button-content cx y cw h label glyph (ink 'text))
       (when (on? 'focused) (adwaita-ring cx cy cw ch 6))))
 
-  ;; A label's button is 17 either side of it (widgets/_buttons.scss:
-  ;; 72-75), a glyph's and a label's 9 (77-91), a glyph's alone a square.
+  ;; A label's button reaches 17 on either side of it (widgets/
+  ;; _buttons.scss:72-75), a glyph's and a label's 9 (77-91), and a
+  ;; glyph's alone is a square.
   (define (adwaita-button-size label glyph)
     (let ([h (ui-control-height)])
       (values (cond [(not label) h]
@@ -526,9 +532,10 @@
   ;;; check boxes, radios and switches
 
   ;; A check box's or a radio's mark, 20 square at x y, r round (widgets/
-  ;; _checks.scss:20-61): empty, a ring 2 wide of the text at 15 %, 20 %
-  ;; under the pointer, a fill of 25 % pressed; checked, the accent, white
-  ;; at 10 % over it under the pointer, rgb(0 0 6 / 20%) pressed.
+  ;; _checks.scss:20-61). Empty, it is a ring 2 wide of the text at 15 %,
+  ;; 20 % under the pointer, and a fill of 25 % pressed; checked, it is the
+  ;; accent, with white at 10 % over it under the pointer and
+  ;; rgb(0 0 6 / 20%) pressed.
   (define (adwaita-check-box x y flags r)
     (let* ([on? (lambda (f) (memq f flags))] [off? (on? 'disabled)]
            [ink (lambda (c) (if off? (alpha c 0.5) c))]
@@ -544,8 +551,8 @@
               (stroke-box x y 20 20 (ink (alpha 'text (if hover? 0.2 0.15))) 2
                           r)))))
 
-  ;; Its label, 4 after the mark, as the whole widget's focus ring has it,
-  ;; 4 out and 9 round (widgets/_checks.scss:3-13).
+  ;; Its label, 4 after the mark, and the whole widget's focus ring, 4 out
+  ;; and 9 round (widgets/_checks.scss:3-13).
   (define (adwaita-check-label x y w h flags label)
     (let ([lh (font-line-height 'ui)] [by (+ y (floor (/ (- h 20) 2)))])
       (when label
@@ -556,9 +563,9 @@
         (adwaita-ring (- x 4) (- by 4)
                       (+ 28 (if label (+ 4 (text-width label 'ui)) 0)) 28 9))))
 
-  ;; A check box: the mark 6 round, its check white, a stroke 2.5 wide
-  ;; through the points of the 14-pixel check icon (widgets/_checks.scss:
-  ;; 68-72).
+  ;; A check box: the mark 6 round, with its check in white, a stroke 2.5
+  ;; wide through the points of the 14-pixel check icon (widgets/
+  ;; _checks.scss:68-72).
   (define (adwaita-checkbox x y w h flags label)
     (let ([by (+ y (floor (/ (- h 20) 2)))])
       (adwaita-check-box x by flags 6)
@@ -570,16 +577,18 @@
                        2.5))
       (adwaita-check-label x y w h flags label)))
 
-  ;; The mark, 4, the label and the ring's 4 (a check button "Check" is 72
-  ;; by 28, measured).
+  ;; The mark, 4, the label and the ring's 4 (a check button "Check"
+  ;; measures 72 by 28).
   (define (adwaita-checkbox-size label)
     (values (+ 24 (text-width label 'ui) 4) 28))
 
-  ;; Where a radio's label starts: after the mark and 4, and an icon and 6.
+  ;; Where a radio's label starts: after the mark and 4, and after an icon
+  ;; and 6 if it has one.
   (define (adwaita-radio-text-x icon?)
     (+ 24 (if icon? (+ (ui-glyph-size) 6) 0)))
 
-  ;; A control's height, or its label and its hint wrapped under it.
+  ;; A control's height, or, if taller, its label with its hint wrapped
+  ;; under it.
   (define (adwaita-radio-size label hint icon? w)
     (let* ([tw (max 0 (- w (adwaita-radio-text-x icon?)))]
            [hh (if hint
@@ -590,7 +599,8 @@
                      (+ 8 (font-line-height 'ui) (if hint (+ 2 hh) 0))))))
 
   ;; A radio: the mark round, its bullet a white dot 8 across (widgets/
-  ;; _checks.scss:75-79); the label, an icon before it, a hint under it.
+  ;; _checks.scss:75-79); then the label, with an icon before it and a hint
+  ;; under it.
   (define (adwaita-radio x y w h flags label hint icon)
     (let* ([lh (font-line-height 'ui)] [g (ui-glyph-size)]
            [ly (if hint (+ y 4) (adwaita-text-top y h 'ui))]
@@ -612,13 +622,14 @@
         (adwaita-ring (- x 4) (- by 4)
                       (+ 28 4 (text-width label 'ui)) 28 9))))
 
-  ;; A switch (widgets/_switch.scss): its track 46 by 26, round (GTK makes
-  ;; it two knobs wide: gtkswitch.c), the text at 15 %, 20 % under the
-  ;; pointer, 25 % pressed (1-9), the accent when on (34-39); its knob a
-  ;; 20-pixel circle 3 in, the slider color (white in the light style),
-  ;; white under the pointer and when on, over a soft shadow (17-32). Its
-  ;; label goes first and the switch at the end, as a switch row has them
-  ;; (widgets/_lists.scss:124-163); focused, a ring outside it (11).
+  ;; A switch (widgets/_switch.scss): its track is 46 by 26 and round (GTK
+  ;; makes it two knobs wide: gtkswitch.c), the text at 15 %, 20 % under
+  ;; the pointer and 25 % pressed (1-9), and the accent when on (34-39);
+  ;; its knob is a 20-pixel circle 3 in, in the slider color (white in the
+  ;; light style), white under the pointer and when on, over a soft shadow
+  ;; (17-32). Its label goes first and the switch at the end, as a switch
+  ;; row has them (widgets/_lists.scss:124-163); focused, it has a ring
+  ;; outside it (11).
   (define (adwaita-toggle x y w h flags label)
     (let* ([on? (lambda (f) (memq f flags))] [checked? (on? 'checked)]
            [pressed? (on? 'pressed)] [hover? (on? 'hover)]
@@ -650,11 +661,11 @@
   ;;; scales and progress
 
   ;; A scale (widgets/_scale.scss): a trough 4 high and round, the text at
-  ;; 15 %, 20 % under the pointer, the accent up to the value (3-18, 57-63;
-  ;; GTK sizes the trough from the knob, gtkrange.c); the knob a 20-pixel
-  ;; circle of the slider color, white under the pointer, ringed in rgb(0
-  ;; 0 6 / 10%) over a soft shadow (44-54). A painted track (Settings'
-  ;; colors) is 6 high under the knob.
+  ;; 15 % and 20 % under the pointer, with the accent up to the value (3-18,
+  ;; 57-63; GTK sizes the trough from the knob, gtkrange.c); the knob is a
+  ;; 20-pixel circle of the slider color, white under the pointer, ringed
+  ;; in rgb(0 0 6 / 10%) over a soft shadow (44-54). A painted track
+  ;; (Settings' colors) is 6 high under the knob.
   (define (adwaita-slider x y w h flags frac paint)
     (let* ([cy (+ y (/ h 2))] [kx (+ x (* frac w))]
            [hot? (or (memq 'hover flags) (memq 'pressed flags))])
@@ -673,7 +684,8 @@
         (stroke-circle kx cy 11 (alpha 'adwaita-link 0.5) 2))))
 
   ;; A progress bar (widgets/_progress-bar.scss:1-56): a round trough, the
-  ;; text at 15 %, the accent filling it; 8 high, the progress-height.
+  ;; text at 15 %, with the accent filling it; 8 high, the
+  ;; progress-height.
   (define (adwaita-progress x y w h flags frac)
     (fill-box x y w h (alpha 'text 0.15) (/ h 2))
     (when (> frac 0)
@@ -683,7 +695,7 @@
   ;;; tabs, labels and surfaces
 
   ;; Tabs are libadwaita 1.7's inline view switcher, a toggle group of the
-  ;; views (adwaita-toggle-piece), the group's ends round.
+  ;; views (adwaita-toggle-piece), round at the group's ends.
   (define (adwaita-tab x y w h flags label)
     (adwaita-toggle-piece x y w h
                           (append (if (memq 'first flags) '() '(join-left))
@@ -691,16 +703,16 @@
                                   flags)
                           label #f))
 
-  ;; Each its label, bold, and 11 either side (a toggle's 8, the group's
-  ;; 3); a control high.
+  ;; Each tab is its label, bold, and 11 on either side (a toggle's 8 and
+  ;; the group's 3), and a control high.
   (define (adwaita-tabs-size labels)
     (values (fold-left (lambda (acc l) (+ acc 22 (text-width l 'ui-bold))) 0
                        labels)
             (ui-control-height)))
 
-  ;; A label: a heading's and a group's bold, in the text's color (.heading:
-  ;; widgets/_labels.scss:55-57), a hint and a description dimmed (13-15),
-  ;; an error in the destructive red.
+  ;; A label: a heading and a group's label bold, in the text's color
+  ;; (.heading: widgets/_labels.scss:55-57), a hint and a description
+  ;; dimmed (13-15), and an error in the destructive red.
   (define (adwaita-label x y w h flags text)
     (let* ([font (ui-label-font flags)]
            [color (cond [(memq 'error flags) 'adwaita-destructive-ink]
@@ -722,12 +734,13 @@
                           font)
             (+ y (max h lh))))))
 
-  ;; Surfaces: a page the window's color; a toolbar or a footer a top or a
-  ;; bottom bar's, flat as the header is, or raised, the header bar's color
-  ;; with its shade's line toward the page (widgets/_toolbars.scss:113-131,
-  ;; 187-208, 259-314); a side pane and a column of places a sidebar's, its
-  ;; border toward the content (widgets/_sidebars.scss:1-32); a well a
-  ;; frame, the view's color in a border, 12 round (widgets/_misc.scss:4-15).
+  ;; Surfaces: a page has the window's color; a toolbar or a footer is a
+  ;; top or a bottom bar, flat as the header is, or raised, in the header
+  ;; bar's color with its shade's line toward the page
+  ;; (widgets/_toolbars.scss:113-131, 187-208, 259-314); a side pane and a
+  ;; column of places are a sidebar's color, with its border toward the
+  ;; content (widgets/_sidebars.scss:1-32); and a well is a frame, the
+  ;; view's color in a border, 12 round (widgets/_misc.scss:4-15).
   (define (adwaita-surface x y w h flags)
     (let* ([floating? (memq 'floating flags)]
            [paper (lambda (c)
@@ -756,9 +769,9 @@
   ;;; ------------------------------------------------------------------
   ;;; entries, dropdowns, steppers and tags
 
-  ;; An entry (widgets/_entries.scss:1-40): the text at 10 % behind it,
-  ;; 9 round, no border; focused, the ring inside it however the focus
-  ;; came (17). A text area is one too.
+  ;; An entry (widgets/_entries.scss:1-40): the text at 10 % behind it, 9
+  ;; round, with no border; focused, it has the ring inside it however the
+  ;; focus came (17). A text area is drawn as one too.
   (define (adwaita-field x y w h flags)
     (adwaita-box x y w h (alpha 'text 0.1) 9 flags)
     (when (memq 'focused flags)
@@ -767,8 +780,8 @@
             (with-clip (x y w h) (adwaita-ring bx y bw h 9)))
           (adwaita-ring x y w h 9))))
 
-  ;; Its text 9 in from either side (widgets/_entries.scss:5-6), after a
-  ;; search glyph and 6 (8); an area's lines 6 down.
+  ;; Its text is 9 in from either side (widgets/_entries.scss:5-6), or
+  ;; after a search glyph and 6 (8); an area's lines start 6 down.
   (define (adwaita-text-box-areas x y w h flags)
     (let* ([left (if (memq 'search flags) (+ 9 (ui-glyph-size) 6) 9)]
            [bw (ui-scrollbar-width)]
@@ -779,8 +792,8 @@
             (list 'bar (- (+ x w) bw) y bw h))))
 
   ;; A dropdown (widgets/_dropdowns.scss:1-14): a button holding the
-  ;; choice, bold, 9 in, and the pan-down arrow 16 square 6 after the text
-  ;; and 9 from the end; open, pressed in.
+  ;; choice, bold, 9 in, and the pan-down arrow, 16 square, 6 after the
+  ;; text and 9 from the end; while open, it is pressed in.
   (define (adwaita-dropdown x y w h flags label)
     (let* ([on? (lambda (f) (memq f flags))] [g (ui-glyph-size)]
            [lh (font-line-height 'ui-bold)])
@@ -805,7 +818,7 @@
             (ui-control-height)))
 
   ;; A spin button (widgets/_spin-button.scss): the number at the start,
-  ;; then - and +, a control square each, in one box; each piece shares a
+  ;; then - and +, each a control's square, in one box; each piece shares a
   ;; pixel with the next, where a line shows, as GTK's separators do.
   (define (adwaita-stepper-areas x y w h)
     (let ([b (ui-control-height)])
@@ -816,9 +829,9 @@
   ;; A tag, which GNOME has no widget for, made as its designers make small
   ;; things: a pill of the text at 10 % (a toggle group's tint, widgets/
   ;; _toggle-group.scss:12-14), its label a caption (widgets/_labels.scss:
-  ;; 68-71), the tag's own color a 6-pixel dot before it, as GNOME marks
-  ;; what needs attention (_common.scss:106-120); a removable one's × a
-  ;; round flat button at its end.
+  ;; 68-71), and the tag's own color as a 6-pixel dot before it, as GNOME
+  ;; marks what needs attention (_common.scss:106-120); a removable one's ×
+  ;; is a round flat button at its end.
   (define (adwaita-chip x y w h flags label)
     (let* ([sh (font-line-height 'ui-small)] [g (ui-small-glyph-size)]
            [rem? (memq 'removable flags)])
@@ -844,9 +857,9 @@
             (round (+ (font-line-height 'ui-small) 10))))
 
   ;; A card's edge (widgets/_misc.scss:194-227), drawn over what the app
-  ;; drew in it, so of the card's shadows, which would cover that, its
-  ;; hairline alone, the text at 12 %; under the pointer a tint of 3 %;
-  ;; chosen or dragged, the accent's ring, as GNOME rings a chosen picture.
+  ;; drew in it, so of the card's shadows, which would cover that, only its
+  ;; hairline, the text at 12 %; under the pointer, a tint of 3 %; chosen or
+  ;; dragged, the accent's ring, as GNOME rings a chosen picture.
   (define (adwaita-card x y w h flags)
     (let ([r (ui-card-radius)])
       (if (or (memq 'selected flags) (memq 'floating flags))
@@ -862,11 +875,11 @@
   ;;; scroll bars and lists
 
   ;; An overlay scroll bar (widgets/_scrolling.scss), shown while the
-  ;; pointer is over its view: at rest a line 3 wide 4 from the edge, the
+  ;; pointer is over its view: at rest, a line 3 wide 4 from the edge, the
   ;; text at 20 %, outlined in the scroll bar outline color at 35 % (48-77,
-  ;; 107-110); under the pointer 8 wide on a trough of 10 %, the text at
-  ;; 40 % (60 % pressed), the outline at 60 % (26-32, 79-81); at least 40
-  ;; long (2).
+  ;; 107-110); under the pointer, 8 wide on a trough of 10 %, the text at
+  ;; 40 % (60 % pressed), the outline at 60 % (26-32, 79-81); and at least
+  ;; 40 long (2).
   (define (adwaita-scrollbar-areas x y w h start size)
     (let* ([l (max 0 (- h 8))] [th (min l (max 40 (* size l)))])
       (list (list 'thumb x
@@ -887,10 +900,10 @@
                 (alpha 'text (cond [pressed? 0.6] [hot? 0.4] [else 0.2]))
                 (/ sw 2))))
 
-  ;; A column view (widgets/_column-view.scss): a heading a caption, bold,
-  ;; the text at 40 % (70 % under the pointer), 6 in as the cells are (12-53,
-  ;; 72-84); no line under it, nor between rows or columns but where they
-  ;; are asked for (86-97).
+  ;; A column view (widgets/_column-view.scss): a heading is a caption,
+  ;; bold, the text at 40 % (70 % under the pointer), 6 in as the cells are
+  ;; (12-53, 72-84); there is no line under it, nor between rows or columns
+  ;; except where they are asked for (86-97).
   (define (adwaita-table-header x y w h flags label dir)
     (let* ([in 6] [f 'ui-small-bold] [g (ui-glyph-size)]
            [s (text-fit label (max 0 (- w in in (if dir (+ g 6) 0))) f)]
@@ -905,16 +918,17 @@
                        g g (list (cons 'ink ink))
                        (if (eq? dir 'up) 'chevron-up 'chevron-down)))))
 
-  ;; A row: chosen, the accent at 25 % (32 % under the pointer); under the
-  ;; pointer, the text at 4 % (widgets/_lists.scss:70-89, _colors.scss:
-  ;; 88-92).
+  ;; A row: chosen, the accent at 25 % (32 % under the pointer); otherwise
+  ;; under the pointer, the text at 4 % (widgets/_lists.scss:70-89,
+  ;; _colors.scss:88-92).
   (define (adwaita-table-row x y w h flags)
     (cond [(memq 'selected flags)
            (fill-box x y w h
                      (alpha 'accent (if (memq 'hover flags) 0.32 0.25)))]
           [(memq 'hover flags) (fill-box x y w h (alpha 'text 0.04))]))
 
-  ;; A column's edge, the border color, and the accent while dragged.
+  ;; A column's edge, in the border color, and in the accent under the
+  ;; pointer or while dragged.
   (define (adwaita-table-divider x y h flags)
     (if (or (memq 'hover flags) (memq 'pressed flags))
         (fill-box (- x 1) y 2 h 'adwaita-link)
@@ -925,12 +939,13 @@
   ;;; ------------------------------------------------------------------
   ;;; popups
 
-  ;; A popup's box: a tooltip's (widgets/_tooltip.scss:1-15), rgb(0 0 6 /
-  ;; 80%) in a hairline of white at 10 %, 9 round; a dialog's sheet
-  ;; (widgets/_dialogs.scss:71-84), 15 round, its inner edge white at 7 %;
-  ;; a toast, libadwaita's, #505053, round (widgets/_misc.scss:38-69); a
-  ;; menu's and the rest a popover's (widgets/_popovers.scss:7-33), its
-  ;; color in a hairline of black at 14 %, 15 round, two soft shadows.
+  ;; A popup's box: a tooltip's (widgets/_tooltip.scss:1-15) is
+  ;; rgb(0 0 6 / 80%) in a hairline of white at 10 %, 9 round; a dialog's
+  ;; sheet (widgets/_dialogs.scss:71-84) is 15 round, with its inner edge
+  ;; white at 7 %; a toast, libadwaita's, is #505053 and round
+  ;; (widgets/_misc.scss:38-69); a menu's and the rest are a popover's
+  ;; (widgets/_popovers.scss:7-33): its color in a hairline of black at
+  ;; 14 %, 15 round, with two soft shadows.
   (define (adwaita-panel x y w h flags)
     (cond
       [(memq 'tooltip flags)
@@ -950,8 +965,8 @@
 
   ;; The chosen entry of a menu or a list: the text at 10 %, 9 round, as a
   ;; menu item under the pointer or the keys (widgets/_menus.scss:130-144),
-  ;; 19 % held; one under the pointer not chosen, 7 % (a sidebar row's,
-  ;; widgets/_sidebars.scss:105-108), 10 % on a popup.
+  ;; and 19 % while held; one under the pointer but not chosen is 7 % (a
+  ;; sidebar row's, widgets/_sidebars.scss:105-108), or 10 % on a popup.
   (define (adwaita-highlight x y w h flags)
     (fill-box x y w h
               (alpha 'text (cond [(memq 'pressed flags) 0.19]
@@ -960,19 +975,20 @@
                                  [else 0.1]))
               9))
 
-  ;; A line, the border color (widgets/_misc.scss:21-24).
+  ;; A line in the border color (widgets/_misc.scss:21-24).
   (define (adwaita-separator x y w h flags)
     (fill-box x (floor (+ y (/ (- h 1) 2))) w 1 (alpha 'text 0.15)))
 
   ;; A tooltip's lines: its text in the text's own size, wrapped at 360;
-  ;; at most 6, or as many as it has.
+  ;; at most 6 lines, or as many as the text has if it has more.
   (define (adwaita-tooltip-lines text)
     (let ([n (fold-left (lambda (n c) (if (char=? c #\newline) (+ n 1) n))
                         1 (string->list text))])
       (let-values ([(lines cut?) (ui-wrap-lines text 360 'ui (max 6 n))])
         lines)))
 
-  ;; 6 above and below the text, 10 beside it (widgets/_tooltip.scss:13).
+  ;; 6 above and below the text, and 10 beside it
+  ;; (widgets/_tooltip.scss:13).
   (define (adwaita-tooltip-size text)
     (let ([lines (adwaita-tooltip-lines text)])
       (values (+ 20 (min 360 (text-widest lines 'ui)))
@@ -984,11 +1000,12 @@
                    (adwaita-tooltip-lines text) #xffffff 'ui))
 
   ;; An alert (AdwAlertDialog: widgets/_message-dialog.scss, adw-alert-
-  ;; dialog.c): 300 to 372 wide (175-178), wider when its buttons need it,
-  ;; to 600; 32 above its heading, a .title-2 (the heading font), 10 to
-  ;; the body, 9 under it, both centered, 24 from the sides (93-112); its
-  ;; buttons in a row of equal widths (615-665), 44 high, 12 round, 12
-  ;; apart, 24 from the edges and 12 under the body (114-125); 18 round (1).
+  ;; dialog.c): 300 to 372 wide (175-178), and wider when its buttons need
+  ;; it, up to 600; 32 above its heading, a .title-2 (the heading font), 10
+  ;; to the body and 9 under it, both centered, 24 from the sides (93-112);
+  ;; its buttons in a row of equal widths (615-665), 44 high, 12 round, 12
+  ;; apart, 24 from the edges and 12 under the body (114-125); and 18 round
+  ;; (1).
   (define (adwaita-dialog-button-widths labels)
     (map (lambda (l) (max 60 (+ 40 (text-width l 'ui-bold)))) labels))
 
@@ -1007,7 +1024,7 @@
                           (if (> ml 0) (+ 10 (* ml lh)) 0)
                           9 12 44 24)))))
 
-  ;; ((title x y w h) (message ..) (button x y w h) ...).
+  ;; Returns ((title x y w h) (message ..) (button x y w h) ...).
   (define (adwaita-dialog-areas x y w h labels)
     (let* ([n (length labels)] [hl (font-line-height 'heading)]
            [bw (if (zero? n) 0 (/ (- w 48 (* 12 (- n 1))) n))]
@@ -1019,9 +1036,9 @@
        (map (lambda (i) (list 'button (+ x 24 (* i (+ bw 12))) by bw 44))
             (iota n)))))
 
-  ;; The alert's box, under its sheet's shadows; its heading and its body
-  ;; centered, the body as the dialog's text (widgets/_message-dialog.scss:
-  ;; 53-66).
+  ;; The alert's box, over its sheet's shadows, with its heading and its
+  ;; body centered, the body as the dialog's text (widgets/
+  ;; _message-dialog.scss:53-66).
   (define (adwaita-dialog x y w h flags title message)
     (let* ([areas (ui-dialog-areas x y w h '())]
            [t (cdr (assq 'title areas))] [m (cdr (assq 'message areas))]
@@ -1041,7 +1058,7 @@
   (define (adwaita-scrim x y w h flags) (fill-box x y w h 'adwaita-dim))
 
   ;; The calendar (widgets/_calendar.scss) in a popover: its month bold,
-  ;; the days of the week dimmed.
+  ;; and the days of the week dimmed.
   (define (adwaita-calendar x y w h flags title)
     (let* ([areas (ui-calendar-areas x y w h)]
            [t (cdr (assq 'title areas))] [wk (cdr (assq 'week areas))]
@@ -1053,9 +1070,10 @@
                                (cadddr wk) (string (string-ref "MTWTFSS" i))
                                'text-dim 'ui-small))))
 
-  ;; A day (widgets/_calendar.scss:21-56): chosen, the accent, its number
-  ;; white, 9 round; today, a line 2 high of the border color under it;
-  ;; another month's at 30 %; under the pointer 7 %, the keys' ringed.
+  ;; A day (widgets/_calendar.scss:21-56): the chosen one is the accent,
+  ;; its number white, 9 round; today has a line 2 high of the border color
+  ;; under it; another month's days are at 30 %; the one under the pointer
+  ;; is 7 %, and the keys' one is ringed.
   (define (adwaita-day x y w h flags label)
     (let* ([on? (lambda (f) (memq f flags))] [s (- (min w h) 4)]
            [cx (+ x (/ (- w s) 2))] [cy (+ y (/ (- h s) 2))])
@@ -1071,8 +1089,8 @@
                           'ui)))
 
   ;; A person (AdwAvatar: widgets/_avatar.scss:1-38): round, shaded down
-  ;; between two of fourteen colors, its initials bold in a third; which of
-  ;; them, by the name.
+  ;; between two of fourteen colors, with the initials bold in a third; the
+  ;; name picks which colors.
   (define adwaita-avatar-colors
     '#((#xcfe1f5 #x83b6ec #x337fdc)
        (#xcaeaf2 #x7ad9f1 #x0f9ac8)
@@ -1089,8 +1107,8 @@
        (#xe5d6ca #xbe916d #x785336)
        (#xd8d7d3 #xc0bfbc #x6e6d71)))
 
-  ;; The same for a name however it was typed: spaces around it and
-  ;; capitals aside.
+  ;; The same for a name however it was typed: spaces and capitals do not
+  ;; count.
   (define (adwaita-avatar-index name)
     (mod (fold-left (lambda (h c)
                       (if (char-whitespace? c)
@@ -1107,9 +1125,9 @@
                              'ui-small-bold)))
 
   ;; The spinner (AdwSpinner: adw-spinner-paintable.c:18-35, 288-374): a
-  ;; ring of the text at 15 % and an arc of it, round at its ends, going
-  ;; round once in 1.2 s, its length growing and shrinking; 2.5 wide at a
-  ;; radius of 8, 7 at 32, between in proportion.
+  ;; ring of the text at 15 % and an arc of the text, round at its ends,
+  ;; going round once in 1.2 s while its length grows and shrinks; 2.5 wide
+  ;; at a radius of 8 and 7 at 32, in proportion between them.
   (define (adwaita-busy x y w h flags ms)
     (let* ([r (min 32 (/ (min w h) 2))]
            [lw (+ 2.5 (* 4.5 (clamp (/ (- r 8) 24) 0 1)))]
@@ -1126,7 +1144,8 @@
 
   ;; A navigation sidebar's row (widgets/_sidebars.scss:92-163): 6 in from
   ;; the sides, 9 round; chosen, the text at 10 % (13 % under the pointer),
-  ;; another under the pointer 7 %; its icon 8 in, its label 12 after.
+  ;; and another under the pointer 7 %; its icon 8 in, and its label 12
+  ;; after the icon.
   (define (adwaita-nav-row x y w h flags label icon)
     (let* ([on? (lambda (f) (memq f flags))] [rx (+ x 6)] [rw (- w 12)]
            [g (ui-glyph-size)] [ix (+ rx 8)] [lx (if icon (+ ix g 12) ix)]
@@ -1139,7 +1158,7 @@
                        'text 'ui)
       (when (on? 'focused) (adwaita-ring rx y rw h 9))))
 
-  ;; Whether a view is live, a pill as a toggle group's (widgets/
+  ;; Whether a view is live, as a pill like a toggle group's (widgets/
   ;; _toggle-group.scss:12-14): the text at 10 %, 15 % under the pointer;
   ;; live, the accent's dot before Live; held, the pause mark, and the way
   ;; back in the accent.
@@ -1171,9 +1190,9 @@
       (adwaita-text-in (+ x 12) y h (text-fit label (max 0 (- w 24)) 'ui)
                        'text 'ui)))
 
-  ;; The line between two panes, where a drag moves it: under the pointer a
-  ;; line of the text at 30 %, dragged the accent's (a paned's handle,
-  ;; widgets/_paned.scss).
+  ;; The line between two panes, where a drag moves it: under the pointer,
+  ;; a line of the text at 30 %, and while dragged the accent's (a paned's
+  ;; handle, widgets/_paned.scss).
   (define (adwaita-split x y h flags)
     (cond [(memq 'pressed flags) (fill-box x y 1 h 'adwaita-link)]
           [(memq 'hover flags) (fill-box x y 1 h (alpha 'text 0.3))]))
@@ -1182,20 +1201,21 @@
   ;;; boxed lists, status pages and banners
 
   ;; A preferences group (widgets/_preferences.scss:6-18): its title a
-  ;; heading, its description dimmed, 6 apart, the list 12 under them.
+  ;; heading and its description dimmed, 6 apart, with the list 12 under
+  ;; them.
   (define (adwaita-rows-spacing) (values 6 12))
 
   ;; An action row (widgets/_lists.scss:16-19, 118-163, 334-338): its
-  ;; header, at least 50 high, its title and subtitle 6 from its top and
-  ;; bottom, 3 apart, inside 2 of padding, over a line of 1.
+  ;; header is at least 50 high, with its title and subtitle 6 from its top
+  ;; and bottom and 3 apart, inside 2 of padding, over a line of 1.
   (define (adwaita-row-height title subtitle)
     (+ 2 2 1 (max 50 (+ 12 (adwaita-text-height 'ui)
                         (if subtitle (+ 3 (adwaita-text-height 'ui-small))
                             0)))))
 
   ;; The header, 2 in from the row's edges and over its line; what it
-  ;; holds 12 in from the header's sides, 6 apart, a prefix 6 more from
-  ;; the title (widgets/_lists.scss:124-163).
+  ;; holds sits 12 in from the header's sides, 6 apart, and a prefix 6 more
+  ;; from the title (widgets/_lists.scss:124-163).
   (define (adwaita-row-areas x y w h pw sw)
     (let* ([hy (+ y 2)] [hh (max 0 (- h 5))]
            [tx (if (> pw 0) (+ x 14 pw 12) (+ x 14))]
@@ -1209,18 +1229,18 @@
 
   ;; A boxed list is a card (widgets/_lists.scss:507-541, _misc.scss:
   ;; 194-201): the card's color, 12 round, over two soft shadows, in its
-  ;; hairline, rgb(0 0 6 / 3%).
+  ;; hairline of rgb(0 0 6 / 3%).
   (define (adwaita-rows x y w h flags)
     (if (memq 'over flags)
         (stroke-box x y w h (alpha #x000006 0.03) 1 12)
         (begin (draw-shadow x y w h 12 4)
                (fill-box x y w h 'adwaita-card 12))))
 
-  ;; A row of it (widgets/_lists.scss:118-122, 334-352, 528-538): if a press
-  ;; acts, under the pointer the text at 3 %, pressed 8 %; chosen, the
-  ;; accent at 25 %; a line of the card's shade under each but the last;
-  ;; its title in the text's color, its subtitle smaller and dimmed;
-  ;; focused, the ring a pixel in.
+  ;; A row of it (widgets/_lists.scss:118-122, 334-352, 528-538): if a
+  ;; press acts on it, the text at 3 % under the pointer and 8 % pressed;
+  ;; chosen, the accent at 25 %; a line of the card's shade under each row
+  ;; but the last; its title in the text's color, and its subtitle smaller
+  ;; and dimmed; focused, the ring a pixel in.
   (define (adwaita-row x y w h flags title subtitle tx tw)
     (let* ([on? (lambda (f) (memq f flags))]
            [lh (adwaita-text-height 'ui)] [sh (adwaita-text-height 'ui-small)]
@@ -1243,10 +1263,10 @@
         (adwaita-ring (+ x 1) (+ y 1) (- w 2) (- h 2) 11))))
 
   ;; A button row (AdwButtonRow: widgets/_lists.scss:440-455, adw-button-
-  ;; row.ui) that adds one: inside the row's 2 of padding a box 40 high,
-  ;; 12 in from its sides, a plus and the title, a heading, centered in it
-  ;; together, 6 apart; under the pointer and pressed as an activatable
-  ;; row; the last, so no line under it.
+  ;; row.ui) that adds a row: inside the row's 2 of padding, a box 40 high,
+  ;; 12 in from its sides, with a plus and the title, a heading, centered
+  ;; in it together, 6 apart; under the pointer and pressed, as an
+  ;; activatable row; it is the last row, so it has no line under it.
   (define (adwaita-add-row-height) 44)
 
   (define (adwaita-add-row x y w h flags label)
@@ -1263,15 +1283,15 @@
       (when (on? 'focused)
         (adwaita-ring (+ x 1) (+ y 1) (- w 2) (- h 2) 11))))
 
-  ;; A status page's title: .title-1, .title-2 compact (widgets/
+  ;; A status page's title: .title-1, or .title-2 when compact (widgets/
   ;; _misc.scss:147-149, 166-168).
   (define (adwaita-status-title-font flags)
     (if (memq 'compact flags) 'heading 'adwaita-title-1))
 
   ;; A status page (widgets/_misc.scss:122-190): its icon 128 square (96
-  ;; compact), 36 over the title (its 24 margin and the 12 between, 24 and
-  ;; 12 compact), the description 12 under the title, the button 36 under
-  ;; them (24 compact), the text 12 in from the sides.
+  ;; when compact), 36 over the title (its 24 margin and the 12 between; 24
+  ;; when compact), the description 12 under the title, the button 36 under
+  ;; them (24 when compact), and the text 12 in from the sides.
   (define (adwaita-status-page-areas x y w h flags title description label)
     (let*-values ([(compact?) (memq 'compact flags)]
                   [(s) (if compact? 96 128)]
@@ -1300,8 +1320,8 @@
             (list 'description (+ x 12) dy tw dh)
             (list 'button (+ x (/ (- w bw) 2)) by bw bh))))
 
-  ;; Its icon the text at 55 % (widgets/_misc.scss:134-136), the title and
-  ;; the description centered.
+  ;; Its icon is the text at 55 % (widgets/_misc.scss:134-136), and the
+  ;; title and the description are centered.
   (define (adwaita-status-page x y w h flags glyph title description label)
     (let* ([areas (ui-status-page-areas x y w h flags title description
                                         label)]
@@ -1321,9 +1341,9 @@
                        (cadr d) (ui-label-lines description (caddr d) 'ui)
                        'text 'ui))))
 
-  ;; A banner (AdwBanner: widgets/_toolbars.scss:235-254): its button 6
-  ;; inside it, so it is a control and 12 high; #7d7d83 mixed 30 % into the
-  ;; window's color, its title a heading.
+  ;; A banner (AdwBanner: widgets/_toolbars.scss:235-254): its button sits
+  ;; 6 inside it, so it is a control's height and 12 more; its color is
+  ;; #7d7d83 mixed 30 % into the window's color, and its title a heading.
   (define (adwaita-banner-height) (+ 12 (ui-control-height)))
 
   (define (adwaita-banner x y w h flags title label)
@@ -1353,8 +1373,8 @@
      'palette 'adwaita
      'palette-dark 'adwaita-dark
      'wallpaper 'gradient
-     ;; GNOME's text, this machine's: Cantarell 11, 15 here (adwaita-em);
-     ;; a caption 82 % (widgets/_labels.scss:63-71)
+     ;; GNOME's text, as on this machine: Cantarell 11, 15 here
+     ;; (adwaita-em); a caption 82 % (widgets/_labels.scss:63-71)
      'ui-font "Cantarell"
      'ui-font-size 15
      'mono-font "monospace"
@@ -1363,7 +1383,7 @@
      'ui-small-bold (theme-font-rule 'ui -3 'bold)
      'corner-radius 15
      'shadow 24
-     ;; a control's text and 5 above and below it, 34 at least (widgets/
+     ;; a control's text and 5 above and below it, at least 34 (widgets/
      ;; _buttons.scss:20-22)
      'control-height (theme-rule (+ 10 (max 24 (round (font-line-height
                                                         'ui)))))
@@ -1380,8 +1400,9 @@
      'scrollbar-width 16
      'scrollbar-show 'hover
      'surface-well-ring 1
-     ;; a column view's heading a caption and 3 above and below; a cell's
-     ;; text and 8 (widgets/_column-view.scss:12-20, 72-79)
+     ;; a column view's heading: a caption and 3 above and below; a cell:
+     ;; its text and 8 above and below (widgets/_column-view.scss:12-20,
+     ;; 72-79)
      'table-header-height (theme-rule (round (+ 8 (font-line-height
                                                    'ui-small-bold))))
      'table-row-height (theme-rule (round (+ 16 (font-line-height 'ui))))

@@ -1,12 +1,14 @@
-;;; tests/units/ui-dialog.ss — the kit's dialog ((schevana kits ui)), by itself:
-;;; the keyboard it takes, Return for its default button, Escape and a
-;;; press outside it, and its buttons by a click.
+;;; tests/units/ui-dialog.ss — the kit's dialog ((schevana kits ui)), tested
+;;; by itself: how it takes the keyboard, Return for its default button,
+;;; Escape and a press outside it, and clicks on its buttons.
 
 (define ui-dialog-test-title "Delete it?")
 (define ui-dialog-test-message "It can't be undone.")
 
-;; A text field and, while open is true, a dialog over it of Cancel and
-;; Delete, Delete disabled if disabled is; what was called, counted.
+;; A window with a text field and, while the open box holds true, a dialog
+;; over it with Cancel and Delete (Delete disabled when an argument is
+;; given). Returns the window and boxes for open, the field's text and the
+;; list of what the dialog called, latest first.
 (define (ui-dialog-test-window . disabled)
   (let ([open (box #f)] [field (box "")] [said (box '())])
     (define (said! what) (set-box! said (cons what (unbox said))))
@@ -73,8 +75,8 @@
          (ui-dialog-test-open! win open)
          (test-click! win '(dlg 0))
          (let-values ([(cx cy cw ch) (content-rect win)])
-           ;; outside the dialog, which is centered, and clear of the
-           ;; frame's edges
+           ;; a point outside the dialog (which is centered) and clear of
+           ;; the frame's edges
            (let ([x (+ cx 20)] [y (+ cy ch -20)])
              (inject! `(mouse-move ,x ,y) `(mouse-down ,x ,y left 1)
                       `(mouse-up ,x ,y left))))
@@ -83,7 +85,9 @@
          (printf "  ~s\n" (reverse (unbox said)))
          (equal? (reverse (unbox said)) '(cancel dismiss))))
 
-;; A sheet over a field: its body a field of its own, under the sheet's id.
+;; A window with a sheet over a field. The sheet's body is a field of its
+;; own, with an id under the sheet's. Returns the window and boxes for the
+;; body's text and the list of what the sheet called.
 (define (ui-dialog-test-sheet)
   (let ([body (box "")] [said (box '())])
     (values

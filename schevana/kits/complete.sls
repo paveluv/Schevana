@@ -1,24 +1,25 @@
 ;;; (schevana kits complete) — a completion list beside a caret.
 ;;;
-;;; A text field (the owner: any value; the REPL's record) completes the
-;;; word before its caret. At Tab (complete-tab!) it gives the choices
-;;; that match the word, best first: one that adds to the word goes in,
-;;; or the word grows to what those starting with it share and a list of
-;;; them opens under or over the caret's line; with nothing to add, a
-;;; popup says so. The field narrows the list as its text changes
-;;; (complete-narrow!); keys, the wheel and clicks choose from it, and the
-;;; field puts the chosen one in. Under the pointer a row shows it can be
-;;; clicked, and says what a click does (complete-pointer!). The field
-;;; keeps what is its own: where the word starts, the choices, their kinds
-;;; and descriptions, and putting one in. An owner shows one list or popup
-;;; at a time.
+;;; A text field (the owner: any value, such as the REPL's record) completes
+;;; the word before its caret. At Tab (complete-tab!) the field gives the
+;;; choices that match the word, best first. A single choice that adds to
+;;; the word goes in; or else the word grows to what the choices starting
+;;; with it share, and a list of them opens under or over the caret's line.
+;;; With nothing to add, a popup says so. The field narrows the list as its
+;;; text changes (complete-narrow!); keys, the wheel and clicks choose from
+;;; it, and the field puts the chosen one in. A row under the pointer shows
+;;; that it can be clicked, and says what a click does (complete-pointer!).
+;;; The field keeps what is its own: where the word starts, the choices,
+;;; their kinds and descriptions, and putting one in. An owner shows one
+;;; list or popup at a time.
 ;;;
-;;; An item is (name kind matched): kind is a string, or #f for one the
-;;; field works out only when the item shows; matched are the indices of
-;;; name that the typed text matched, drawn in the accent.
+;;; An item is (name kind matched): kind is a string, or #f when the field
+;;; works it out only once the item shows; matched lists the indices of the
+;;; characters of name that the typed text matched, drawn in the accent.
 ;;;
-;;; The seam, as in (schevana kits ui): only the complete-draw-… procedures draw
-;;; or name a theme color, and complete-size measures for them.
+;;; The seam is as in (schevana kits ui): only the complete-draw-…
+;;; procedures draw or name a theme color, and complete-size measures for
+;;; them.
 
 (library (schevana kits complete)
   (export
@@ -56,41 +57,43 @@
   (define-record-type complete
     (nongenerative schevana-complete)
     (fields context        ; the field's own: what it completes (the REPL's
-                           ; symbols, path or library)
+                           ; symbols, a path or a library)
             start          ; where the completed word starts in the text
             items          ; #(item ...), best first
             (mutable sel)  ; the selected row
             (mutable top)  ; the first row shown
-            message        ; #f for a list; else a popup's text, over the
-                           ; description of its item, if it has one
+            message        ; #f for a list; else a popup's text, shown over
+                           ; the description of its item, if it has one
             (mutable box)    ; (x y w h rows rows-y) as last drawn, or #f
-            (mutable hover)))  ; the item under the pointer, or #f
+            (mutable hover)))  ; the item under the pointer (its index), or #f
 
   (define-state *complete-open* (make-weak-eq-hashtable))   ; owner -> its list
 
-  (define complete-rows 8)          ; shown at once, at most
+  (define complete-rows 8)          ; the most rows shown at once
   (define complete-max-items 200)
 
-  ;; The list or popup owner shows, or #f.
+  ;; Returns the list or popup that owner shows, or #f.
   (define (complete-of owner) (hashtable-ref *complete-open* owner #f))
 
   (define (complete-close! owner) (hashtable-delete! *complete-open* owner))
 
-  ;; Opens a list of items for the word at start, its first row selected
-  ;; (none: it closes); opened again with fewer items, it narrows.
+  ;; Opens a list of items for the word at start, with its first row
+  ;; selected; with no items, it closes the list instead. Opened again with
+  ;; fewer items, the list narrows.
   (define (complete-open! owner context start items)
     (if (= 0 (vector-length items))
         (complete-close! owner)
         (hashtable-set! *complete-open* owner
                         (make-complete context start items 0 0 #f #f #f))))
 
-  ;; A popup instead: message, over the description of items' first one,
-  ;; if there is one.
+  ;; Opens a popup instead: message, shown over the description of the
+  ;; first of items, if there is one.
   (define (complete-say! owner message context start items)
     (hashtable-set! *complete-open* owner
                     (make-complete context start items 0 0 message #f #f)))
 
-  ;; A page: the rows the last draw showed (fewer in a small window).
+  ;; Returns how many rows a page has: as many as the last draw showed
+  ;; (fewer in a small window).
   (define (complete-page c)
     (let ([box (complete-box c)]) (if box (list-ref box 4) complete-rows)))
 
@@ -113,11 +116,12 @@
       (complete-sel-set! c sel)
       (complete-top-set! c (min sel (max 0 (- n rows))))))
 
-  ;; Tab, for the word typed at start, items ranked for it. With nothing to
-  ;; add, a popup says so: nothing matches, or only the word itself does.
-  ;; One other match goes in (accept! puts it in). Else the list opens, and
-  ;; the word grows to what the names starting with it share, as a shell's
-  ;; would (replace! puts that in place of the word, and narrows the list).
+  ;; Handles Tab for the word typed at start, with items ranked for it.
+  ;; With nothing to add, a popup says so: nothing matches, or only the word
+  ;; itself does. A single other match goes in (accept! puts it in).
+  ;; Otherwise the list opens, and the word grows to what the names starting
+  ;; with it share, as in a shell (replace! puts that in place of the word,
+  ;; and narrows the list).
   (define (complete-tab! owner context start typed items replace! accept!)
     (let ([n (vector-length items)])
       (cond
@@ -131,17 +135,17 @@
            (when (> (string-length shared) (string-length typed))
              (replace! shared)))])))
 
-  ;; The word changed to typed while the list was open, items ranked for
-  ;; it: the list narrows, or closes when nothing matches or only the word
-  ;; itself does.
+  ;; Called when the word changed to typed while the list was open, with
+  ;; items ranked for it: the list narrows, or closes when nothing matches
+  ;; or only the word itself does.
   (define (complete-narrow! owner context start typed items)
     (if (and (= 1 (vector-length items))
              (string=? typed (car (vector-ref items 0))))
         (complete-close! owner)
         (complete-open! owner context start items)))
 
-  ;; What the names of items that start with typed share; typed when none
-  ;; does.
+  ;; Returns the prefix that the names of items starting with typed share,
+  ;; or typed when none starts with it.
   (define (complete-shared typed items)
     (let ([names (filter (lambda (name) (string-prefix? typed name))
                          (map car (vector->list items)))])
@@ -157,12 +161,13 @@
                      (car names) (cdr names)))))
 
   ;;; ---------------------------------------------------------------- input
-  ;;; Each returns #t when the list used the input. A popup goes at any
+  ;;; Each returns #t when the list used the input. A popup closes at any
   ;;; input, which then acts as usual (#f). accept! puts an item in.
 
-  ;; Up and Down move, Page Up and Down a page's rows, Tab and Shift+Tab
-  ;; to the next or previous page's first row, Return accepts, Escape
-  ;; closes. Tab takes a list narrowed to one, as on a sole match.
+  ;; Up and Down move the selection, Page Up and Page Down move it by a
+  ;; page's rows, and Tab and Shift+Tab move it to the next or previous
+  ;; page's first row; Return accepts, and Escape closes. Tab accepts a list
+  ;; narrowed to one, as on a sole match.
   (define (complete-key! owner key mods accept!)
     (let ([c (complete-of owner)])
       (cond
@@ -186,7 +191,8 @@
            [(escape) (complete-close! owner) #t]
            [else #f])])))
 
-  ;; Typed text never goes to the list: the field narrows it.
+  ;; Typed text never goes to the list (the field narrows it); it only
+  ;; closes a popup.
   (define (complete-text! owner)
     (let ([c (complete-of owner)])
       (when (and c (complete-message c)) (complete-close! owner))))
@@ -198,8 +204,9 @@
             [(complete-message c) (complete-close! owner) #f]
             [else (complete-move! c (- dy)) #t])))
 
-  ;; A press at (x, y): a left one on a row accepts it; any other on the
-  ;; list does nothing; one outside it closes it, and acts as usual.
+  ;; A press at (x, y): a left press on a row accepts the row; any other
+  ;; press on the list does nothing; a press outside the list closes it and
+  ;; acts as usual.
   (define (complete-mouse-down! owner x y button accept!)
     (let* ([c (complete-of owner)] [box (and c (complete-box c))])
       (cond
@@ -215,12 +222,13 @@
              (accept! (vector-ref (complete-items c) i)))
            #t)])))
 
-  ;; The pointer's shape and the mouse documentation in win, owner's
-  ;; window, for where the pointer is: over a row a hand and what a click
-  ;; does, over the rest of the list an arrow, elsewhere cursor and doc,
-  ;; the field's own. Called as the pointer moves and after each draw (the
-  ;; list opens, moves or closes under a still pointer); #t when the item
-  ;; under the pointer changed, to redraw.
+  ;; Sets the pointer's shape and the mouse documentation in win, owner's
+  ;; window, for where the pointer is: over a row, a hand and what a click
+  ;; does; over the rest of the list, an arrow; elsewhere, cursor, the
+  ;; field's own, and its doc while nothing is open (else what a click there
+  ;; does). It is called as the pointer moves and after each draw (the list
+  ;; opens, moves or closes under a still pointer). Returns #t when the item
+  ;; under the pointer changed, so that the caller redraws.
   (define (complete-pointer! owner win cursor doc)
     (let* ([c (complete-of owner)] [at (complete-pointer-at win)]
            [box (and c at (complete-box c))]
@@ -228,7 +236,7 @@
                                     (caddr box) (cadddr box)))]
            [i (and in? (complete-item-at c (car at) (cdr at)))]
            [shape (cond [i 'hand] [in? 'arrow] [else cursor])])
-      ;; no redraw for either
+      ;; neither of these asks for a redraw
       (hashtable-set! (window-props win) 'mouse-doc
                       (cond [i '((L . "Complete") (W . "Scroll"))]
                             [(not c) doc]
@@ -241,13 +249,15 @@
       (and c (not (eqv? i (complete-hover c)))
            (begin (complete-hover-set! c i) #t))))
 
-  ;; The pointer over win's content, in its coordinates, (x . y), or #f.
+  ;; Returns where the pointer is over win's content, in its coordinates, as
+  ;; (x . y), or #f.
   (define (complete-pointer-at win)
     (and win (memq (window-hover win) '(content scrollbar))
          (let-values ([(x y) (window-local win *mouse-x* *mouse-y*)])
            (cons x y))))
 
-  ;; The item on the row of c's list at (x, y), as last drawn, or #f.
+  ;; Returns the index of the item on the row of c's list at (x, y), as last
+  ;; drawn, or #f.
   (define (complete-item-at c x y)
     (let ([box (complete-box c)])
       (and box (not (complete-message c))
@@ -259,18 +269,19 @@
 
   ;;; ------------------------------------------------------------------
   ;;; matching
-  ;;; From the editor e (its lib/foundation/fuzzy.sls). The typed text
-  ;;; aligns with a name in disjoint segments, in any order, each starting
-  ;;; where a part of the name starts (its beginning, or after a character
-  ;;; that is no letter or digit) or at a separator it leads with: "stp"
-  ;;; finds set-theme-plist!, ":sp" head:split-window but not
-  ;;; head:window-split. Past the name's first character a segment holds a
-  ;;; letter or digit ("*" finds *scratch*). Case is ignored.
+  ;;; Taken from the editor e (its lib/foundation/fuzzy.sls). The typed text
+  ;;; aligns with a name in disjoint segments, in any order. Each segment
+  ;;; starts where a part of the name starts (at its beginning, or after a
+  ;;; character that is not a letter or digit), or at a separator that the
+  ;;; segment leads with: "stp" finds set-theme-plist!, and ":sp" finds
+  ;;; head:split-window but not head:window-split. Except at the name's
+  ;;; first character, a segment must hold a letter or digit ("*" finds
+  ;;; *scratch*). Case is ignored.
 
-  ;; A name prepared for matching: its characters folded, where its
+  ;; A name prepared for matching: its characters case-folded; where its
   ;; segments may start (where its parts start, then the separators past
-  ;; its first character that start no part), its codes sorted, and a mask
-  ;; of the kinds of character it holds.
+  ;; its first character that start no part); its character codes, sorted;
+  ;; and a mask of the kinds of character it holds.
   (define-record-type (complete-source-record make-complete-source
                                               complete-source?)
     (nongenerative schevana-complete-source)
@@ -282,7 +293,8 @@
   (define (complete-separator? c)
     (not (or (char-alphabetic? c) (char-numeric? c))))
 
-  ;; A mask bit for each common character of names; the others share one.
+  ;; Returns a mask bit for each common character of names; the other
+  ;; characters share one.
   (define (complete-slot c)
     (let ([n (char->integer c)])
       (cond [(<= 97 n 122) (- n 97)]
@@ -314,9 +326,9 @@
                         (cons i leads)
                         leads)))))))
 
-  ;; Names recur from keystroke to keystroke: their sources are kept (a
-  ;; keystroke ranks 3,400 names in 0.2 to 0.7 ms with them, 1.7 to 2.2
-  ;; without), until there are too many.
+  ;; Names recur from keystroke to keystroke, so their sources are kept (a
+  ;; keystroke ranks 3,400 names in 0.2 to 0.7 ms with them, and in 1.7 to
+  ;; 2.2 ms without), until there are too many.
   (define-made *complete-sources* (make-hashtable string-hash string=?))
 
   (define (complete-source name)
@@ -327,7 +339,7 @@
           (hashtable-set! *complete-sources* name s)
           s)))
 
-  ;; Is the sorted multiset part within the sorted multiset whole?
+  ;; Whether the sorted multiset part is within the sorted multiset whole.
   (define (complete-codes-within? part whole)
     (let ([m (vector-length part)] [n (vector-length whole)])
       (let walk ([i 0] [j 0])
@@ -338,9 +350,9 @@
                (walk (+ i 1) (+ j 1))]
               [else #f]))))
 
-  ;; How the prepared query q aligns with the source s: its segments,
-  ;; ((query-index name-index length) ...), or #f. The masks and the codes
-  ;; turn most names away before a search.
+  ;; Returns how the prepared query q aligns with the source s: its
+  ;; segments, ((query-index name-index length) ...), or #f. The masks and
+  ;; the codes turn most names away before a search.
   (define (complete-align q s)
     (and (<= (string-length (complete-source-text q))
              (string-length (complete-source-text s)))
@@ -350,15 +362,16 @@
                                  (complete-source-codes s))
          (complete-search q s)))
 
-  ;; The longest segment first, then the earliest start. Backtracking keeps
-  ;; what matches independent of a greedy choice; used marks the name's
-  ;; characters taken; what failed is remembered once a choice was undone.
+  ;; Searches for the segments: the longest segment first, then the
+  ;; earliest start. Backtracking keeps what matches independent of a
+  ;; greedy choice; used marks the name's characters already taken, and
+  ;; what failed is remembered once a choice has been undone.
   (define (complete-search q s)
     (let* ([text (complete-source-text q)] [m (string-length text)]
            [name (complete-source-text s)] [n (string-length name)]
            [failed #f] [stride (ash 1 n)])
-      ;; how far text from at runs on in name from start, through free
-      ;; characters
+      ;; how far text from at matches name from start, through characters
+      ;; not yet used
       (define (run at start used)
         (let loop ([k 0])
           (if (and (< (+ at k) m) (< (+ start k) n)
@@ -393,7 +406,7 @@
                                  (cons (list at start size) tail)
                                  (sizes (- size 1))))))))
                 ;; (size start least) for each start whose run matches,
-                ;; longest first, the starts' order among equals
+                ;; longest first, and in the starts' order among equals
                 (sort (lambda (a b) (> (car a) (car b)))
                       (filter-map
                        (lambda (start)
@@ -408,10 +421,11 @@
                  (hashtable-set! failed (+ used (* at stride)) #t)
                  #f))]))))
 
-  ;; How well segments align a query size long with a name name-size long:
-  ;; fewer segments, fewer pairs out of order, an earlier first character,
-  ;; a tighter span and a shorter name first. Compared as lists of numbers,
-  ;; smaller first; the empty query matches every name alike.
+  ;; Returns how well segments align a query size long with a name
+  ;; name-size long: fewer segments, fewer pairs out of order, an earlier
+  ;; first character, a tighter span and a shorter name rank first. Scores
+  ;; compare as lists of numbers, smaller first; the empty query matches
+  ;; every name alike.
   (define (complete-score segments size name-size)
     (if (null? segments)
         '()
@@ -433,9 +447,10 @@
           [(> (car a) (car b)) #f]
           [else (complete-less? (cdr a) (cdr b))]))
 
-  ;; The choices ((name . kind) ...) that typed matches, best first, at
-  ;; most complete-max-items of them: #(item ...). Among equal matches,
-  ;; the names first? likes come first, then in alphabetical order.
+  ;; Returns the choices ((name . kind) ...) that typed matches, best
+  ;; first, as #(item ...), at most complete-max-items of them. Among equal
+  ;; matches, the names that first? accepts come first, and ties go in
+  ;; alphabetical order.
   (define (complete-rank typed choices first?)
     (let* ([q (complete-source-of typed)]
            [scored
@@ -462,7 +477,8 @@
       (list->vector
        (map cdr (list-head sorted (min complete-max-items (length sorted)))))))
 
-  ;; ui's suggestions rank by this (ui-rank, (schevana kits ui)).
+  ;; The widget kit's suggestions are ranked by this (ui-rank, (schevana
+  ;; kits ui)).
   (set-hook! (ui-rank typed choices first?)
              (complete-rank typed choices first?))
 
@@ -471,18 +487,19 @@
 
   (define (complete-row-height) (+ 3 (font-line-height 'mono)))
 
-  ;; The description's height, lines of it under the signature.
+  ;; Returns the description's height, with lines of doc under the
+  ;; signature.
   (define (complete-detail-height lines)
     (round (+ 12 (font-line-height 'mono-small)
               (* lines (+ (font-line-height 'ui-small) 2)))))
 
-  ;; Draws c, owner's list or popup, beside the caret at (x . y), or
-  ;; nothing when that is out of view (#f), and keeps where, for clicks and
-  ;; the pointer. The description goes on the far side of the rows from
-  ;; the line, so that the rows stay put as it changes.
-  ;; The word before the caret is word-w wide, its line line-h high, the
-  ;; window w × h. kind-of gives the kind of an item's name that has none;
-  ;; describe an item's (values signature doc).
+  ;; Draws c, owner's list or popup, beside the caret at (x . y), or nothing
+  ;; when the caret is out of view (#f), and keeps where it drew, for clicks
+  ;; and the pointer. The description goes on the far side of the rows from
+  ;; the line, so that the rows stay put as it changes. The word before the
+  ;; caret is word-w wide, its line is line-h high, and the window is w × h.
+  ;; kind-of gives the kind of an item's name when the item has none;
+  ;; describe gives an item's (values signature doc).
   (define (complete-show c caret word-w line-h w h kind-of describe)
     (complete-box-set! c #f)
     (when caret
@@ -495,11 +512,12 @@
                           (values "" ""))]
            [(rh) (complete-row-height)]
            [(most) (if message 1 complete-rows)]
-           ;; Below the line, or above it, by the tallest the list can be:
-           ;; it stays on its side while typing narrows it and descriptions
-           ;; change length. Where that fits neither, the side with more
-           ;; room; the description keeps the lines that fit, and the rows
-           ;; too, so the list leaves the line in view while one row fits.
+           ;; Below the line, or above it, chosen by the tallest the list
+           ;; can be, so it stays on its side while typing narrows it and
+           ;; descriptions change length. Where that fits on neither side,
+           ;; the side with more room; the description keeps the lines that
+           ;; fit, and so do the rows, so the list leaves the line in view
+           ;; while one row fits.
            [(below) (+ (cdr caret) line-h 2)]
            [(room-below) (- h 4 below)]
            [(room-above) (- (cdr caret) 2 4)]
@@ -550,8 +568,8 @@
                                  shown (iota (length shown)))
                             top n sig doc k))))
 
-  ;; Where the rows of a list at y, h high, start, count of them: at its
-  ;; top, or with above in flags at its bottom, under its description.
+  ;; Returns where the count rows of a list at y, h high, start: at its top,
+  ;; or, with above in flags, at its bottom, under its description.
   (define (complete-rows-y y h count flags)
     (if (memq 'above flags)
         (- (+ y h) 4 (* count (complete-row-height)))
@@ -559,23 +577,24 @@
 
   ;;; ------------------------------------------------------------------
   ;;; drawing
-  ;;; rows: ((name kind matched selected? hover?) ...), those shown, from
-  ;;; top of n; with message in flags, one row: a popup's text. Under them
-  ;;; (over them with above in flags) the signature, unless it is "", and
-  ;;; the first k lines of doc.
+  ;;; rows: ((name kind matched selected? hover?) ...), the rows shown, from
+  ;;; row top of n; with message in flags, one row that holds a popup's
+  ;;; text. Under them (over them, with above in flags) go the signature,
+  ;;; unless it is "", and the first k lines of doc.
 
-  ;; The widest kind, and room around it.
+  ;; Returns the width of the widest kind, with room around it.
   (define (complete-kinds-width rows)
     (+ 14 (text-widest (map cadr rows) 'ui-small)))
 
-  ;; doc's lines under sig in a list w wide, at most k.
+  ;; Returns doc's lines under sig in a list w wide, at most k of them.
   (define (complete-doc-lines sig doc w k)
     (if (or (string=? sig "") (string=? doc ""))
         '()
         (let ([lines (text-wrap doc (- w 20) 'ui-small)])
           (if (> (length lines) k) (list-head lines k) lines))))
 
-  ;; At least 260 wide, at most max-w. => (values w h)
+  ;; Returns the list's size as (values w h): at least 260 wide, and at most
+  ;; max-w.
   (define (complete-size flags rows sig doc k max-w)
     (let ([w (min max-w
                   (max 260
@@ -631,8 +650,9 @@
                             (cadr row) 'text-faint 'ui-small)))
            (when selected? (ui-draw-highlight-over rx ry rw rh '()))))
        rows (iota count))
-      ;; where the rows shown are in the whole list, on the style's side, no
-      ;; wider than the names' inset (Interlisp's bars are 24)
+      ;; a scroll bar for where the rows shown are in the whole list, on
+      ;; the style's side and no wider than the names' inset (Interlisp's
+      ;; bars are 24)
       (when (> n count)
         (let ([bw (min (ui-scrollbar-width) 10)])
           (ui-draw-scrollbar (if (eq? (theme 'scrollbar-side) 'left)

@@ -1,9 +1,10 @@
-;;; tests/units/boot.ss — the boot's chain: a launcher starts core0, whose
-;;; code is sealed in its libraries, and core1, the core sealed in its own,
-;;; which imports what core0 and the recorder give it, their facades; core1
-;;; makes "/", which imports what the core gives it, its facade, (schevana
-;;; core). In the hacker edition, every library spliced into one
-;;; environment, "/" itself, nothing sealed.
+;;; tests/units/boot.ss — the boot's chain. A launcher starts core0, whose
+;;; code is sealed in its libraries, and core1, the core, sealed in its own
+;;; libraries, which imports what core0 and the recorder give it through
+;;; their facades. Core1 makes "/", which imports what the core gives it
+;;; through its facade, (schevana core). In the hacker edition every
+;;; library is spliced into one environment, "/" itself, and nothing is
+;;; sealed.
 
 ;; What the core is given: the facades, imported as the core's libraries
 ;; import them.
@@ -37,8 +38,8 @@
               (not (named? 'gpu-frame-root-set!))
               (not (named? 'gpu-frame-earlier-set!))))))
 
-;; A "/" made as core1 makes it, importing the core's facade: the tests'
-;; own has its names settable (tests/reach.ss).
+;; A "/" made as core1 makes it, importing the core's facade; the tests'
+;; own "/" has its names made settable (tests/reach.ss).
 (unless test-hacker?
 (let ([world (let ([w (copy-environment (scheme-environment) #t)])
                (eval '(import (schevana core)) w)
@@ -62,7 +63,7 @@
               (not (named? 'gpu-publish!))))
   (check "a hook is settable from \"/\", reaching the core's variable, \
           but only with what the core calls"
-         ;; read by eval: the hook is a library's, a macro there
+         ;; read with eval: the hook is a library's, a macro there
          (let ([real (eval 'window-gone! core-env)]
                [mine (lambda (win) 'gone)])
            (and (raises? (lambda () (in-world '(set! window-gone! 5))))
@@ -72,10 +73,10 @@
                      mine)
                 (eq? (eval 'window-gone! core-env) real))))))
 
-;; In the hacker edition every library's names are here, internals too, and
-;; a redefinition takes at the core's next call, as a world of top-level
-;; files has it. Evaluated there only: the library edition refuses the
-;; set! as it expands.
+;; In the hacker edition every library's names are here, internals
+;; included, and a redefinition takes effect at the core's next call, as in
+;; a world of top-level files. This is evaluated only there: the library
+;; edition refuses the set! as it expands.
 (when test-hacker?
   (check "in the hacker edition every library's internals are names of the \
           world's, and the core's own calls reach a redefinition"
@@ -95,7 +96,8 @@
                          (lambda () (set! theme real))))))))
 
 ;; The desktop reads the command line before the world loads, each option
-;; once, in its defaults' order; a word it doesn't know prints the usage.
+;; once, in its defaults' order; an option it doesn't know, or a path that
+;; is no folder, prints the usage.
 (let ([defaults (if test-hacker?
                     (map (lambda (d)
                            (if (eq? (car d) 'hacker) '(hacker . #t) d))
@@ -144,7 +146,7 @@
 
 ;;; Core0's step: jobs posted (each a procedure and its arguments) run at
 ;;; its next step, in order; the events it pumps wait in the world's inbox
-;;; until taken; what it says of the window it read at the step.
+;;; until taken; and what it says about the window was read at that step.
 
 (let* ([ran '()]
        [job! (lambda (x) (set! ran (cons x ran)))]
@@ -167,26 +169,28 @@
 
 ;;; Core0's sleep, unwound from inside its wait: a second Ctrl-C before
 ;;; the first is answered makes Chez drop the first thread's stack where
-;;; it stands, in the wait too, where the mutex is given up. Here the
-;;; release that unwinding runs, in each of the three places.
+;;; it stands, even in the wait, where the mutex has been given up. Here is
+;;; the release that the unwinding runs, in each of the three places.
 (check "core0's sleep, dropped in its wait, unwinds without a word of the \
         mutex it gave up, and releases the one it holds, in the wait or not"
-       (let ([held? (lambda ()   ; whether a release of the mutex is taken
+       (let ([held? (lambda ()   ; whether a release of the mutex succeeds
                       (guard (c [#t #f])
                         (mutex-release *core0-world-mutex*)
                         #t))])
          (and
-          ;; in the wait, the mutex not this thread's: nothing is raised
+          ;; in the wait, with the mutex not this thread's: nothing is
+          ;; raised
           (fluid-let ([*core0-sleeping* #t])
             (guard (c [#t #f])
               (core0-sleep-release!)
               (not *core0-sleeping*)))
-          ;; in the wait's own frame, the mutex still held: released
+          ;; in the wait's own frame, with the mutex still held: it is
+          ;; released
           (fluid-let ([*core0-sleeping* #t])
             (mutex-acquire *core0-world-mutex*)
             (core0-sleep-release!)
             (not (held?)))
-          ;; out of the wait: released, as with-mutex would
+          ;; out of the wait: it is released, as with-mutex would do
           (begin
             (mutex-acquire *core0-world-mutex*)
             (core0-sleep-release!)
@@ -252,9 +256,9 @@
                       events failed refresh-said))
             (equal? (cdr (assq 'app-id (inspect-core0))) "schevana")))
 
-;; Core0's sleep, on a thread of its own: a job posted or a frame published
-;; wakes it, at once or from the next sleep; its events never do, so a
-;; sleep with nothing to wake it lasts its whole time.
+;; Core0's sleep, on a thread of its own: a posted job or a published
+;; frame wakes it, at once or from its next sleep; its events never do, so
+;; a sleep with nothing to wake it lasts its whole time.
 (fluid-let ([*core0-forked* #t] [*core0-woken* #f])
   (core0-wake!)
   (let ([t0 (now-ms)])
@@ -272,11 +276,11 @@
                          before alone during)
                  (and (< before 100) (>= alone 15) (< 25 during 500))))))))
 
-;; The process's end: whoever exits, core0 waits for the GPU first, as a
-;; driver's threads may still be at work (lavapipe compiling a frame's
-;; shaders) when exit() tears down what they use. Here the wait, once
-;; done, leaves by a continuation, before Chez's handler would end the run;
-;; an exit that never waited ends it with status 1, failed.
+;; The process's end: whoever exits, core0 waits for the GPU first, since
+;; a driver's threads may still be at work (lavapipe compiling a frame's
+;; shaders) when exit() tears down what they use. Here the wait, once done,
+;; leaves through a continuation before Chez's handler would end the run;
+;; an exit that never waited ends the run with status 1, a failure.
 (check "an exit waits for the GPU first: core0's exit handler waits for \
         the device, by name, before Chez's ends the process"
        (let ([real gpu-idle!])
@@ -290,8 +294,9 @@
 ;;; In the library edition a library is held to its layer as it compiles
 ;;; (library-layer, in (schevana base)): one that imports a layer above its
 ;;; own, or a piece of a sealed layer not its own, is refused; one that
-;;; imports its own layer or below loads. The looks are below the desktop.
-;;; Libraries of the test's own, in a folder of out/.
+;;; imports its own layer or one below loads. The looks are below the
+;;; desktop. The test writes libraries of its own, in a folder of
+;;; output-dir.
 (unless test-hacker?
 (let* ([dir (string-append out-dir "/library-layers")]
        [write! (lambda (name layer imports)

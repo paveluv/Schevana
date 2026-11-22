@@ -1,19 +1,20 @@
 ;;; (schevana styles gnome) — GNOME's desktop: GNOME Shell 48.7's top bar,
-;;; menus, notifications and dash around libadwaita's windows, the Adwaita
-;;; style's ((schevana styles adwaita)), which this one is under. The Shell
-;;; stays dark unless the person prefers light: a black top bar, the
-;;; Activities dots at its left and the clock in its middle; the desktop's
-;;; menus are the Shell's popup menus, a window's dropdowns libadwaita's
-;;; popovers; notifications are the Shell's banners at the top; and as GNOME
-;;; has no taskbar, the windows are a dash at the bottom, the one the
-;;; overview shows. Facts only, from GNOME Shell's stylesheet (GPL-2.0+),
-;;; each cited as file:line under data/theme/gnome-shell-sass/ and marked
-;;; shell; no SCSS, icon or image is copied.
+;;; menus, notifications and dash, around libadwaita's windows as the Adwaita
+;;; style draws them ((schevana styles adwaita), this style's parent). The
+;;; Shell stays dark unless the person prefers light: a black top bar, with
+;;; the Activities dots at its left and the clock in its middle. The
+;;; desktop's menus are the Shell's popup menus, and a window's dropdowns are
+;;; libadwaita's popovers; notifications are the Shell's banners at the top;
+;;; and since GNOME has no taskbar, the windows are a dash at the bottom,
+;;; like the one the overview shows. Facts only, from GNOME Shell's
+;;; stylesheet (GPL-2.0+), each cited as file:line under
+;;; data/theme/gnome-shell-sass/ and marked shell; no SCSS, icon or image is
+;;; copied.
 ;;;
-;;; Adwaita is apart from it: a program taking Adwaita's look (a host app,
-;;; (schevana kits host)) has GNOME's own Shell around its window, and this
-;;; is the Shell's. Like every look it imports nothing of the desktop's:
-;;; the desktop's parts are handed what they draw.
+;;; Adwaita is kept apart from this style: a program that takes Adwaita's
+;;; look (a host app, (schevana kits host)) has GNOME's own Shell around its
+;;; window, and this style is the Shell's part. Like every look, it imports
+;;; nothing of the desktop's: the desktop's parts are handed what they draw.
 
 (library (schevana styles gnome)
   (export
@@ -47,16 +48,16 @@
   ;;; the top bar: GNOME Shell's panel
 
   ;; The Activities button (shell widgets/_panel.scss:21-24, 49-61): a pill
-  ;; 3 inside the bar (_drawing.scss:393-407), 12 either side of its
-  ;; workspace dots, which sit 3 in and 5 apart: two of them, the current
-  ;; workspace's 3.625 times a dot's 8 (js/ui/panel.js:392-408), the next
-  ;; one's a dot.
+  ;; 3 pixels inside the bar (_drawing.scss:393-407), with 12 on either side
+  ;; of its workspace dots, which sit 3 in and 5 apart. There are two: the
+  ;; current workspace's is 3.625 times a dot's 8 (js/ui/panel.js:392-408),
+  ;; and the next one's is a dot.
   (define (gnome-activities-width) (+ 3 12 3 29 5 8 3 12 3))
 
   (define (gnome-topbar-areas h)
     (list (list 'launcher 0 0 (gnome-activities-width) h)))
 
-  ;; The clock as GNOME shows it by default, the month, the day and the
+  ;; The clock as GNOME shows it by default: the month, the day and the
   ;; time (org.gnome.desktop.interface clock-show-date, clock-format).
   (define (gnome-clock-text)
     (let ([d (current-date)])
@@ -66,22 +67,22 @@
                           (- (date-month d) 1))
               (date-day d) (date-hour d) (date-minute d))))
 
-  ;; The status the right of the bar shows, the system's place: every
-  ;; segment of status but the clock, which the middle has; or, where the
-  ;; style shows it, what the mouse buttons do, doc.
+  ;; The status the right of the bar shows, in the system's place: every
+  ;; segment of status but the clock, which is in the middle; or, when the
+  ;; style shows the mouse documentation, doc, what the mouse buttons do.
   (define (gnome-status-strings doc status)
     (if (theme 'mouse-doc)
         (if doc (list doc) '())
         (filter-map (lambda (s) (and (not (eq? (car s) 'clock)) (cdr s)))
                     status)))
 
-  ;; GNOME Shell's panel (shell widgets/_panel.scss:13-17): 2.2 em high,
-  ;; black (_colors.scss:24), its text bold and white; Activities at its
-  ;; left, the text at 17 % behind it under the pointer, 28 % while the
-  ;; apps are open (_drawing.scss:393-437), the current workspace's dot
-  ;; white, the next one's at three quarters its size and half its strength
-  ;; (js/ui/panel.js:50, 297-302); the clock in its middle; the status at
-  ;; its right, 12 from the end.
+  ;; GNOME Shell's panel (shell widgets/_panel.scss:13-17): 2.2 em high and
+  ;; black (_colors.scss:24), with bold white text. Activities is at its
+  ;; left, with the text color at 17 % behind it under the pointer, 28 %
+  ;; while the apps are open (_drawing.scss:393-437); the current
+  ;; workspace's dot is white, and the next one's is three quarters its size
+  ;; at half its strength (js/ui/panel.js:50, 297-302). The clock is in the
+  ;; middle, and the status at the right, 12 from the end.
   (define (gnome-draw-topbar h areas open? doc status)
     (let* ([w (screen-w)] [f 'ui-bold]
            [ty (/ (- h (font-line-height f)) 2)] [cy (/ h 2)]
@@ -107,19 +108,20 @@
   ;;; ------------------------------------------------------------------
   ;;; the dash
 
-  ;; GNOME has no taskbar; its designers' dock is the dash the overview
-  ;; shows (shell widgets/_dash.scss), so the windows are a dash floating
-  ;; at the bottom, in proportion to a bar's room: 6 from the screen's
-  ;; edge (12 at the overview's size, 8), its color the system's overlay
-  ;; (4, _colors.scss:49), 6 inside it a tile a window, 2 apart (19-25,
-  ;; 49-55), 12 round, a tile's 6 round its icon; its corners the tiles'
-  ;; and its padding (9); after a line, Show Apps (83-93). In a strip h
-  ;; high => (values the dash's height, a tile's side, an icon's)
+  ;; GNOME has no taskbar; the dock its designers made is the dash the
+  ;; overview shows (shell widgets/_dash.scss), so the windows are a dash
+  ;; floating at the bottom, sized in proportion to a bar's room: 6 from the
+  ;; screen's edge (12 at the overview's size, 8), in the system's overlay
+  ;; color (4, _colors.scss:49), with a tile for each window 6 inside it, 2
+  ;; apart (19-25, 49-55) and 12 round, and a tile's 6 around its icon. The
+  ;; dash's corners are the tiles' plus its padding (9); after a line comes
+  ;; Show Apps (83-93). Returns, for a strip h high, (values the dash's
+  ;; height, a tile's side, an icon's side).
   (define (gnome-dash-sizes h)
     (let* ([bh (- h 12)] [t (- bh 12)])
       (values bh t (- t 12))))
 
-  ;; ((launcher x y w h) (window x y w h) ...): the tiles, centered.
+  ;; Returns the tiles, centered: ((launcher x y w h) (window x y w h) ...).
   (define (gnome-taskbar-areas h hint)
     (let*-values ([(bh t icon) (gnome-dash-sizes h)]
                   [(ws) (sort (lambda (a b) (< (window-id a) (window-id b)))
@@ -135,8 +137,9 @@
                                        (- pitch 4) t))
                  ws (iota n)))))
 
-  ;; A window's icon, its app's where the app gives one (dimmed while it is
-  ;; minimized), else its title's first letter on its app's color.
+  ;; Draws a window's icon: its app's, where the app gives one, else its
+  ;; title's first letter on its app's color; either is dimmed while the
+  ;; window is minimized.
   (define (gnome-dash-icon win x y s shown?)
     (let ([icon (ui-title-icon win)])
       (if icon
@@ -150,10 +153,10 @@
                                   (if shown? #xffffff (alpha #xffffff 0.5))
                                   'ui-bold))))))
 
-  ;; The dash: its box, the tiles lighter under the pointer and the focused
-  ;; window's (shell widgets/_dash.scss:57-68), a dot 5 across under each
-  ;; (_app-grid.scss:45-51); the line of white at 10 % (83-87), and Show
-  ;; Apps, its grid of nine.
+  ;; Draws the dash: its box; the tiles, lighter under the pointer and for
+  ;; the focused window (shell widgets/_dash.scss:57-68), with a dot 5
+  ;; across under each (_app-grid.scss:45-51); the line, of white at 10 %
+  ;; (83-87); and Show Apps, with its grid of nine.
   (define (gnome-draw-taskbar h areas open? doc status hint)
     (let*-values ([(bh t icon) (gnome-dash-sizes h)]
                   [(l) (cdr (assq 'launcher areas))]
@@ -192,11 +195,11 @@
   ;;; ------------------------------------------------------------------
   ;;; notifications: GNOME Shell's banners
 
-  ;; The world's notices are the desktop's, not a window's, as the Shell's
-  ;; are: so they are its banners (shell widgets/_notifications.scss,
-  ;; _message-list.scss), at the top in the middle under the bar, 34 em
-  ;; wide and at least 64 high (3-12), 8 apart. => (#(x y w h text color)
-  ;; ...)
+  ;; The world's notices belong to the desktop, not to a window, as the
+  ;; Shell's do, so they are its banners (shell widgets/_notifications.scss,
+  ;; _message-list.scss): at the top in the middle, under the bar, 34 em
+  ;; wide and at least 64 high (3-12), 8 apart. Returns (#(x y w h text
+  ;; color) ...).
   (define (gnome-toast-boxes)
     (let* ([bw (min (round (* 34 (adwaita-em))) (- (screen-w) 24))]
            [h (max 64 (round (+ 42 (font-line-height 'ui))))])
@@ -213,9 +216,9 @@
 
   ;; A banner: a card 16 round, #54545a in the Shell's dark style, over its
   ;; shadow (shell widgets/_notifications.scss:7-12, _message-list.scss:
-  ;; 88-94), 6 inside it; its header, 24 high, the source dimmed, its icon
-  ;; 16 across, a dot of the notice's color, and Schevana bold (108-133);
-  ;; under it the notice.
+  ;; 88-94). 6 inside it is its header, 24 high, with the source dimmed:
+  ;; its icon 16 across, here a dot of the notice's color, and Schevana in
+  ;; bold (108-133). Under the header is the notice.
   (define (gnome-draw-toasts boxes)
     (let ([lh (font-line-height 'ui)])
       (for-each
@@ -234,22 +237,24 @@
   ;;; ------------------------------------------------------------------
   ;;; menus
 
-  ;; The desktop's own menus, the launcher and a window's, are GNOME
-  ;; Shell's popup menus; the rest (a dropdown's) libadwaita's popovers.
+  ;; The desktop's own menus, the launcher and a window's menu, are GNOME
+  ;; Shell's popup menus; the rest (a dropdown's) are libadwaita's
+  ;; popovers.
   (define (gnome-shell-menu? m)
     (let ([t (menu-tag m)])
       (or (eq? t 'launcher) (and (pair? t) (eq? (car t) 'window)))))
 
-  ;; The current choice of a dropdown's menu, which the kit marks with a
-  ;; check after its label: (values the label, and whether it is chosen),
-  ;; the check a glyph at the item's end, as GTK's dropdown has it
+  ;; The kit marks the current choice of a dropdown's menu with a check
+  ;; after its label. Returns (values the label, whether it is chosen); the
+  ;; check is drawn as a glyph at the item's end, as GTK's dropdown has it
   ;; (widgets/_dropdowns.scss:22-37).
   (define (gnome-menu-choice text)
     (if (string-suffix? "  ✓" text)
         (values (substring text 0 (- (string-length text) 3)) #t)
         (values text #f)))
 
-  ;; An item's text, its check, and the key that does the same, wide.
+  ;; The width of an item's text, its check, and the key that does the same
+  ;; thing.
   (define (gnome-menu-label-width label)
     (let-values ([(text chosen?) (gnome-menu-choice
                                   (menu-label-text label))])
@@ -258,12 +263,13 @@
          (let ([key (menu-label-key label)])
            (if key (+ 24 (text-width key 'ui)) 0)))))
 
-  ;; A Shell menu (shell widgets/_popovers.scss:15-33): 6 inside it, at
-  ;; least 15 em wide, an item its text and 9 above and below it, 12
-  ;; beside it (_common.scss:131-136). A popover menu (widgets/_menus.scss):
-  ;; 6 inside it (58-66), at least 120 wide (1-4), its items 32 high, 12 in
-  ;; (130-134); a line 6 from what is above and below it (68-70). The
-  ;; filter's field over the items.
+  ;; A Shell menu (shell widgets/_popovers.scss:15-33) has 6 inside it and
+  ;; is at least 15 em wide; an item is its text with 9 above and below it
+  ;; and 12 beside it (_common.scss:131-136). A popover menu
+  ;; (widgets/_menus.scss) has 6 inside it (58-66) and is at least 120 wide
+  ;; (1-4), with items 32 high and 12 in (130-134), and a separator line 6
+  ;; from what is above and below it (68-70). The filter's field sits over
+  ;; the items.
   (define (gnome-menu-areas m)
     (let* ([shell? (gnome-shell-menu? m)] [es (menu-entries m)]
            [ih (if shell? (round (+ (font-line-height 'ui) 18)) 32)]
@@ -294,14 +300,14 @@
                                         x ey w eh)
                                   (loop (cdr es) (+ i 1) (+ ey eh))))))))))
 
-  ;; A Shell menu's box: #36363a in a hairline of #424247, 20 round, over a
-  ;; shadow (shell widgets/_popovers.scss:27-33).
+  ;; Draws a Shell menu's box: #36363a in a hairline of #424247, 20 round,
+  ;; over a shadow (shell widgets/_popovers.scss:27-33).
   (define (gnome-shell-panel x y w h)
     (draw-shadow x y w h 20 6)
     (fill-box x y w h 'adwaita-shell-bg 20)
     (stroke-box x y w h 'adwaita-shell-border 1 20))
 
-  ;; The filter: an entry, what is typed in it, or a hint dimmed.
+  ;; Draws the filter: an entry with what is typed in it, or a dimmed hint.
   (define (gnome-menu-filter m x y w h shell?)
     (let* ([f (menu-filter m)] [lh (font-line-height 'ui)]
            [ink (if shell? 'adwaita-shell-text 'text)]
@@ -316,10 +322,11 @@
                                  ty f ink 'ui)])
               (fill-box ex ty 1 lh ink))))))
 
-  ;; Its items: the chosen one (the keys' or the pointer's) lighter, in
-  ;; the Shell's 12 round (shell widgets/_popovers.scss:36-39), the
-  ;; popover's the text at 10 %, 9 round, 19 % held; a key that does the
-  ;; same dimmed at the right (widgets/_menus.scss:76-81).
+  ;; Draws the menu and its items. The chosen item (by the keys or the
+  ;; pointer) is lighter: 12 round in the Shell's menu (shell
+  ;; widgets/_popovers.scss:36-39), and in a popover the text color at 10 %,
+  ;; 9 round, or 19 % while held. A key that does the same thing is dimmed
+  ;; at the right (widgets/_menus.scss:76-81).
   (define (gnome-draw-menu m areas on flags)
     (let* ([shell? (gnome-shell-menu? m)]
            [es (list->vector (menu-entries m))] [lh (font-line-height 'ui)]
@@ -381,10 +388,10 @@
   ;;; ------------------------------------------------------------------
   ;;; the desktop
 
-  ;; After GNOME 48's default wallpaper, the Adwaita one's blue shapes
+  ;; After the blue shapes of GNOME 48's default wallpaper, the Adwaita one
   ;; (gnome-backgrounds 48; facts only, no image): the desktop's colors
   ;; shading down, and over them three great circles, darker and lighter,
-  ;; which the screen's edges cut; another wallpaper alone.
+  ;; which the screen's edges cut. Any other wallpaper is drawn alone.
   (define (gnome-draw-wallpaper w h)
     (fill-wallpaper 0 0 w h (theme 'wallpaper) 'desktop-top 'desktop-bottom)
     (when (eq? (theme 'wallpaper) 'gradient)
@@ -401,8 +408,8 @@
   (at-load
    (define-style gnome "GNOME"
      'parent 'adwaita
-     ;; the top bar 2.2 em of GNOME's text (shell widgets/_panel.scss:10),
-     ;; 32 at its 11 pt; the dash's strip
+     ;; the top bar, 2.2 em of GNOME's text (shell widgets/_panel.scss:10),
+     ;; 32 at its 11 pt; and the dash's strip
      'topbar-height (theme-rule (max 32 (round (* 2.2 (adwaita-em)))))
      'taskbar-height 64
      'draw-topbar 'gnome-draw-topbar

@@ -1,13 +1,14 @@
-;;; tests/units/vat.ss — vats ((schevana services vat)): threads with a mailbox
-;;; and a sandbox; jobs, their deliveries on core1, and their kills.
+;;; tests/units/vat.ss — vats ((schevana services vat)): threads with a
+;;; mailbox and a sandbox; jobs, their results delivered on core1, and
+;;; killing them.
 
-;;; Vats ((schevana services vat)): threads with a mailbox and a sandbox; jobs,
-;;; their deliveries on core1, and their kills.
+;;; Vats ((schevana services vat)): threads with a mailbox and a sandbox;
+;;; jobs, their results delivered on core1, and killing them.
 
-;; Steps the world until (pred), a vat's thread doing its part meanwhile:
-;; a few ms alone, and as long as a busy machine keeps that thread waiting.
-;; The minute is no bound on that: it ends a run where the vat never
-;; answers.
+;; Steps the world until (pred) holds, while a vat's thread does its part:
+;; a few ms on an idle machine, and as long as a busy machine keeps that
+;; thread waiting. The minute's limit is no bound on that wait: it only
+;; ends a run in which the vat never answers.
 (define (vat-test-until pred)
   (let ([until (+ (real-time) 60000)])
     (let loop ()

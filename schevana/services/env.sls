@@ -6,34 +6,35 @@
 ;;;   (env-child (env-root) 'scratch 'chez)   a bare child: all of Chez, and
 ;;;                                           none of the world's names
 ;;;   (env-child (env-root) 'box 'confined)   what is always safe (below)
-;;;   (env-share! e '(windows (clock . now-ms)))   names of its parent's;
-;;;                                           a pair renames: e's clock is
+;;;   (env-share! e '(windows (clock . now-ms)))   names of the parent's; a
+;;;                                           pair renames, so e's clock is
 ;;;                                           the parent's now-ms
 ;;;   (env-share-setter! e '*crew-size* 'crew-size-set!)
 ;;;   (env-share-world! e)                    every name of the world's,
-;;;                                           and those it gains later,
-;;;                                           at its next evaluation or
-;;;                                           (env-sync! e)
+;;;                                           and those the world gains
+;;;                                           later, at e's next evaluation
+;;;                                           or (env-sync! e)
 ;;;   (env-eval e '(windows))   (env-load e path)
 ;;;   (env-path e) => "/scratch"   (env-find "/scratch")   (env-drop! e)
 ;;;
-;;; Root is the world (*world-env*), the superuser. A child has a base,
-;;; chez (all of Chez), confined (what is always safe, for sandboxes) or core
-;;; (Scheme's pure core, the worklets'), and of its parent's names only
-;;; those the parent shares, as read-only forwarders
-;;; (forwarder-to, src/base.ss): live, at no cost a call, and refusing a
+;;; Root is the world (*world-env*), the superuser. A child has a base:
+;;; chez (all of Chez), confined (what is always safe, for sandboxes) or
+;;; core (Scheme's pure core, the worklets' base). Of its parent's names it
+;;; has only those the parent shares, as read-only forwarders (forwarder-to,
+;;; in (schevana base)): they are live, cost nothing per call, and refuse a
 ;;; set! as it expands ("attempt to assign read-only variable"), as R6RS
-;;; refuses set! of an import. The child's define of
-;;; a name makes its own. A name not shared is unbound there, and the
+;;; refuses a set! of an import. The child's define of a name makes a name
+;;; of its own. A name that is not shared is unbound in the child, and the
 ;;; child's set! of it makes a variable of the child's. So a child changes
 ;;; its parent's state only through what the parent shares with it.
 ;;;
 ;;; A child on the chez base is a namespace: it can still reach the world
-;;; through Chez (eval, the inspector, C), so it organizes state and
-;;; confines nothing. Code shares a list of names; every name, followed,
-;;; is a world namespace's, which a person asks for (tests/sources.ss).
+;;; through Chez (eval, the inspector, C), so it organizes state but
+;;; confines nothing. Code that makes an environment shares it a list of
+;;; names; only a world namespace is shared every name of the world's as the
+;;; world gains them, and only a person asks for one (tests/sources.ss).
 ;;;
-;;; The tree is core1's: only it forks and drops.
+;;; The tree belongs to core1: only core1 forks and drops environments.
 
 (library (schevana services env)
   (export
@@ -62,22 +63,25 @@
 
   (library-layer services)
 
-  ;; An environment: its name and parent (root has none); its base (root's
-  ;; is #f); its Chez environment, and an identifier made there, from which
-  ;; identifiers of its names are made; its shares, name: the parent's name
-  ;; it forwards to, or #f for a name a world namespace kept its own; the
-  ;; setters of names shared through one, name: the setter's name; its
-  ;; children, the oldest first; whether it shares every name of the
-  ;; world's; its kind (#f: a bare child) and the kinds it may fork, a list
-  ;; or all; whether it was dropped; what its parent gave it, name: a note
-  ;; (env-give!); and a confined one's log, the text it wrote to the console.
+  ;; An environment: its name and its parent (root has none); its base (#f
+  ;; for root); its Chez environment, and an identifier made there, from
+  ;; which identifiers of its names are made; its shares, a table from each
+  ;; name to the parent's name it forwards to (or #f for a name a world
+  ;; namespace kept as its own); its setters, a table from each name shared
+  ;; through a setter to the setter's name; its children, oldest first;
+  ;; whether it shares every name of the world's; its kind (#f for a bare
+  ;; child) and the kinds it may fork (a list, or all); whether it was
+  ;; dropped; what its parent gave it, a table from each name to a note
+  ;; (env-give!); and, for a confined one, its log: the text it wrote to the
+  ;; console.
   (define-record-type env
     (nongenerative schevana-env-3)
     (fields name parent base environment anchor shares setters
             (mutable children) (mutable world?) (mutable kind)
             (mutable may-fork) (mutable dropped?) given (mutable log)))
 
-  ;; #<env /private chez>: its path and base, not the tree it holds.
+  ;; An env prints as #<env /private chez>: its path and its base, not the
+  ;; tree it holds.
   (at-load
    (record-writer (record-type-descriptor env)
      (lambda (e p wr)
@@ -85,9 +89,10 @@
            (fprintf p "#<env ~a ~a>" (env-path e) (env-base e))
            (fprintf p "#<env ~a>" (env-path e))))))
 
-  ;; An identifier at environment's top level. A macro there, under a name
-  ;; no code can type (a gensym), hands back the identifier it is used with:
-  ;; so it needs nothing of the environment's own, not even syntax.
+  ;; Returns an identifier at environment's top level. A macro defined there
+  ;; under a name no code can type (a gensym) hands back the identifier it is
+  ;; used with, so this needs nothing of the environment's own, not even
+  ;; syntax.
   (define (env-anchor-in environment)
     (let ([grab (gensym "env-anchor")] [got #f])
       (define-top-level-syntax grab
@@ -102,8 +107,8 @@
               (make-eq-hashtable) (make-eq-hashtable) '() #f kind may-fork
               #f (make-eq-hashtable) ""))
 
-  ;; Root, with the worklets' environment its child. Core0, the recorder
-  ;; and the core are sealed in their libraries, and have no environment.
+  ;; Root, with the worklets' environment as its child. Core0, the recorder
+  ;; and the core are sealed in their libraries and have no environment.
   (define-state *env-root*
     (let ([root (env-new 'root #f #f *world-env* 'root 'all)])
       (env-children-set! root
@@ -113,22 +118,23 @@
 
   (define (env-root) *env-root*)
 
-  ;; The world's shares are what the core gives it, at each load: a reload
-  ;; may bring new ones.
+  ;; The world's shares are what the core gives it. They are set at each
+  ;; load, since a reload may bring new ones.
   (at-load
    (for-each (lambda (n) (hashtable-set! (env-shares *env-root*) n n))
              (core1-exported)))
 
-  ;; /worklets: the worklets live there, and the pool's threads run them.
+  ;; /worklets: the worklets live there, and the threads of the pool
+  ;; (vat-pool) run them.
   (define (env-worklets)
     (find (lambda (c) (eq? (env-kind c) 'worklets)) (env-children *env-root*)))
 
-  ;; Counts the forks and drops: what shows the tree keeps its rows until
-  ;; it changes.
+  ;; Counts the forks and drops, so that a view of the tree keeps its rows
+  ;; until the tree changes.
   (define-state *env-generation* 0)
   (define (env-generation) *env-generation*)
 
-  ;; Chez's own names: the world's are the others.
+  ;; Chez's own names; the world's names are all the others.
   (define-made *env-chez-names*
     (let ([t (make-eq-hashtable)])
       (for-each (lambda (s) (hashtable-set! t s #t))
@@ -141,7 +147,7 @@
             [(env-parent p) (format "~a/~a" (env-path p) (env-name e))]
             [else (format "/~a" (env-name e))])))
 
-  ;; The environment at path ("/", "/private"), or #f.
+  ;; Returns the environment at path ("/", "/private"), or #f.
   (define (env-find path)
     (let loop ([e *env-root*]
                [names (remp (lambda (s) (string=? s ""))
@@ -160,10 +166,10 @@
   ;; The bases, largest first.
   (define env-bases '(chez confined core))
 
-  ;; A bare child of parent on base, named name, or name-2, name-3 ... where
-  ;; a sibling has it: shared nothing, forking nothing. A sandbox's child is
-  ;; a sandbox on its base or a smaller one: it may narrow what it hands
-  ;; down, never widen it.
+  ;; Makes a bare child of parent on base, named name (or name-2, name-3 ...
+  ;; when a sibling has that name), shared nothing and forking nothing. A
+  ;; sandbox's child is a sandbox on the same base or a smaller one: a
+  ;; sandbox may narrow what it hands down, never widen it.
   (define (env-child parent name base)
     (env-on-core1 'env-child)
     (when (and (memq (env-base parent) '(confined core))
@@ -188,8 +194,8 @@
       (set! *env-generation* (+ *env-generation* 1))
       e))
 
-  ;; The name a child named name gets under parent: name, or the first of
-  ;; name-2, name-3 ... no sibling has.
+  ;; Returns the name that a child called name gets under parent: name, or
+  ;; else the first of name-2, name-3 ... that no sibling has.
   (define (env-child-name parent name)
     (let ([taken (map env-name (env-children parent))])
       (let loop ([n 1])
@@ -201,8 +207,8 @@
       (unless p (errorf who "the world has no parent to share with it"))
       (env-anchor p)))
 
-  ;; Forwards e's names to those of anchor's environment: each a name, or
-  ;; (e's name . the other's).
+  ;; Forwards e's names to those of anchor's environment. Each of names is
+  ;; a name, or (e's name . the other environment's name).
   (define (env-forward! e anchor names)
     (for-each (lambda (n)
                 (let ([name (if (pair? n) (car n) n)]
@@ -217,8 +223,9 @@
   (define (env-share! e names)
     (env-forward! e (env-parent-anchor 'env-share! e) names))
 
-  ;; Forwards e's name (or (name . parent's)) as env-share! does, but e's
-  ;; set! of it calls the parent's setter with the value, which may refuse.
+  ;; Forwards e's name (or (name . parent's name)) as env-share! does, but
+  ;; e's set! of it calls the parent's setter with the value, and the setter
+  ;; may refuse.
   (define (env-share-setter! e n setter)
     (let* ([anchor (env-parent-anchor 'env-share-setter! e)]
            [name (if (pair? n) (car n) n)]
@@ -240,8 +247,9 @@
     (env-world?-set! e #t)
     (env-sync! e))
 
-  ;; The world's names a world namespace has not been shared yet, as
-  ;; (values new own): own, those of them it defined itself meanwhile.
+  ;; Returns the world's names that the world namespace e has not been
+  ;; shared yet, as (values new own): own holds those that e defined itself
+  ;; meanwhile, and new the rest.
   (define (env-world-new e)
     (let ([new (filter (lambda (s)
                          (not (or (hashtable-contains? *env-chez-names* s)
@@ -254,27 +262,30 @@
                       (environment-symbols (env-environment e)))
             (partition (lambda (s) (not (hashtable-contains? mine s))) new)))))
 
-  ;; What a world namespace's next sync brings: the world's names it gained
-  ;; since the last, but those e defined itself; none for another.
+  ;; Returns what a world namespace's next sync brings: the names the world
+  ;; gained since the last sync, except those e defined itself. For any other
+  ;; environment, returns none.
   (define (env-unsynced e)
     (if (env-world? e)
         (let-values ([(new own) (env-world-new e)]) new)
         '()))
 
   ;; Shares with a world namespace the world's names it has not been
-  ;; shared yet, but for those it defined itself meanwhile: they stay its
-  ;; own. Before each evaluation and load in it; a diff, under a ms.
+  ;; shared yet, except those it defined itself meanwhile, which stay its
+  ;; own. It runs before each evaluation and load in e; as a diff, it takes
+  ;; under a millisecond.
   (define (env-sync! e)
     (when (env-world? e)
       (let-values ([(new own) (env-world-new e)])
         (env-forward! e (env-anchor *env-root*) new)
         (for-each (lambda (s) (hashtable-set! (env-shares e) s #f)) own))))
 
-  ;; Where e's name is bound, as (values env name): up through the shares
-  ;; to the environment holding the binding, so that what describes a name
-  ;; (the REPL's help) describes what it forwards to. A shared name e
-  ;; defined itself is e's. An env's shares come from its parent; the
-  ;; world's, which has none, hold what the core gives it.
+  ;; Returns where e's name is bound, as (values env name). It follows the
+  ;; shares up to the environment that holds the binding, so that what
+  ;; describes a name (the REPL's help) describes what the name forwards to.
+  ;; A shared name that e defined itself is e's. An env's shares come from
+  ;; its parent; the world, which has no parent, holds in its shares what
+  ;; the core gives it.
   (define (env-holder e name)
     (let* ([from (env-parent e)]
            [target (and from (hashtable-ref (env-shares e) name #f))])
@@ -282,15 +293,16 @@
           (env-holder from target)
           (values e name))))
 
-  ;; The same, as (values environment name).
+  ;; The same as env-holder, but returns e's Chez environment: (values
+  ;; environment name).
   (define (env-binding e name)
     (let-values ([(h n) (env-holder e name)])
       (values (env-environment h) n)))
 
-  ;; form evaluated, and path loaded, in e, with interaction-environment
-  ;; bound to it, so that defvar, eval and load inside mean e; what a
-  ;; confined e writes to its console meanwhile goes to the caller's output
-  ;; too (a REPL's).
+  ;; Evaluates form, or loads path, in e, with interaction-environment bound
+  ;; to e's environment, so that defvar, eval and load inside mean e. What a
+  ;; confined e writes to its console meanwhile also goes to the caller's
+  ;; output (a REPL's).
   (define (env-eval e form)
     (env-sync! e)
     (parameterize ([interaction-environment (env-environment e)]
@@ -303,9 +315,10 @@
                    [env-listener (cons e (current-output-port))])
       (load-file! path)))
 
-  ;; Drops e, and with it its children, from the tree; they are marked
-  ;; dropped, so that what holds one (a REPL) knows. Not the world, nor
-  ;; /worklets, where the worklets live, nor one of a kind kept (/apps).
+  ;; Drops e and its children from the tree. They are marked dropped, so
+  ;; that whatever holds one (a REPL) knows. The world, /worklets (where the
+  ;; worklets live) and an environment of a kind registered as 'kept are
+  ;; never dropped.
   (define (env-drop! e)
     (env-on-core1 'env-drop!)
     (let ([p (env-parent e)])
@@ -322,14 +335,15 @@
         (env-dropped?-set! e #t)
         (for-each mark (env-children e)))
       (set! *env-generation* (+ *env-generation* 1))
-      ;; every window drawn again: one that holds e (a REPL) shows it dropped
+      ;; Every window draws again, so one that holds e (a REPL) shows it
+      ;; dropped.
       (invalidate!)))
 
   ;;; ---------------------------------------------------------------- names
-  ;;; What an environment holds: what it was shared and still forwards, and
-  ;;; what is its own, its base's names aside.
+  ;;; What an environment holds: the names it was shared and still forwards,
+  ;;; and the names that are its own, apart from its base's names.
 
-  ;; The confined and core bases' names, once each.
+  ;; The names of the confined and core bases, each found once.
   (define-made *env-base-names* (make-eq-hashtable))
   (define (env-base-names base)
     (define (names-of environment)
@@ -347,12 +361,13 @@
                        (if (eq? base 'confined) env-console-names '()))
              (hashtable-set! *env-base-names* base t)
              t))]
-      [else *env-chez-names*]))   ; chez; root: the world's are its own
+      [else *env-chez-names*]))   ; chez, and root: the world's are root's own
 
-  ;; The names e forwards, and those its parent gave it: ((name parent's-name
-  ;; setter note) ...), setter #f for a read-only one, note #f but for a
-  ;; given one, by name. With look? #f, those e defined over are not looked
-  ;; for in e (a vat's sandbox, its thread's to read).
+  ;; Returns the names e forwards and those its parent gave it, sorted by
+  ;; name, as ((name parent's-name setter note) ...): setter is #f for a
+  ;; read-only name, and note is #f except for a given one. With look? #f, e
+  ;; is not asked which shared names it defined over (a vat's sandbox, which
+  ;; only its thread may read).
   (define (env-shared-names e . look?)
     (let ([env (env-environment e)] [look? (or (null? look?) (car look?))])
       (sort (lambda (a b) (string<? (symbol->string (car a))
@@ -368,8 +383,8 @@
              (map (lambda (n) (list n n #f (hashtable-ref (env-given e) n #f)))
                   (vector->list (hashtable-keys (env-given e))))))))
 
-  ;; The names e defined itself, by name: not its base's, not forwarded, not
-  ;; given.
+  ;; Returns the names e defined itself, sorted: not its base's, not
+  ;; forwarded, not given.
   (define (env-own-names e)
     (let ([env (env-environment e)] [base (env-base-names (env-base e))])
       (sort (lambda (a b) (string<? (symbol->string a) (symbol->string b)))
@@ -381,10 +396,10 @@
                                     (not (top-level-bound? s env))))))
                     (environment-symbols env)))))
 
-  ;; e's name is value, which e's parent made for it (its fork, an app's
-  ;; narrowed procedure, a stub), listed among its shares with note, which
-  ;; says what it is ("its own fork"). env-give-syntax! gives a macro, its
-  ;; transformer.
+  ;; Binds e's name to value, which e's parent made for it (its fork, an
+  ;; app's narrowed procedure, a stub), and lists it with e's shared names
+  ;; with note, which says what it is ("its own fork"). env-give-syntax!
+  ;; gives a macro by its transformer.
   (define (env-give! e name value note)
     (define-top-level-value name value (env-environment e))
     (env-given! e name note))
@@ -399,17 +414,18 @@
     (hashtable-set! (env-given e) name note))
 
   ;;; ---------------------------------------------------------------- confined
-  ;;; The confined base, for sandboxes: what is always safe, touching only
-  ;;; its arguments and what it makes itself. R6RS's libraries but those of
-  ;;; I/O, files, programs, evaluation and record inspection; Chez's pure
-  ;;; extras; strings' ports; and, narrowed, records and the console. Left
-  ;;; out on purpose: syntax-case (datum->syntax on an identifier a world
-  ;;; macro hands in would name any of the world's bindings), record-writer
-  ;;; (it would change how the world prints the conditions' types), the
-  ;;; clock (the world's to share), eval and environments, C,
-  ;;; threads and sleep, the inspector, Chez's own parameters, files and the
-  ;;; console's ports, exit. One name per line: adding one is a reviewed change,
-  ;;; and tests/units.ss refuses the dangerous ones.
+  ;;; The confined base, for sandboxes: only what is always safe, which
+  ;;; touches only its arguments and what it makes itself. It has R6RS's
+  ;;; libraries except those for I/O, files, programs, evaluation and record
+  ;;; inspection; Chez's pure extras; string ports; and, narrowed, records
+  ;;; and the console. Left out on purpose: syntax-case (datum->syntax on an
+  ;;; identifier that a world macro hands in could name any of the world's
+  ;;; bindings), record-writer (it would change how the world prints the
+  ;;; types of conditions), the clock (the world's to share), eval and
+  ;;; environments, C, threads and sleep, the inspector, Chez's own
+  ;;; parameters, files, the console's ports, and exit. One name per line:
+  ;;; adding one is a reviewed change, and a test (tests/units/env.ss)
+  ;;; refuses the dangerous ones.
 
   (define env-confined-libraries
     '((rnrs base)
@@ -554,20 +570,21 @@
       eof-object
       eof-object?))
 
-  ;; A confined Chez environment, fresh; env-child gives it its console.
+  ;; Returns a fresh confined Chez environment; env-child gives it its
+  ;; records and its console.
   (define (env-confined-environment)
     (let ([e (copy-environment
-              (apply environment   ; Chez's last: its fx+ takes any count
+              (apply environment   ; Chez's last, as its fx+ takes any count
                      (append env-confined-libraries
                              (list `(only (chezscheme)
                                           ,@env-confined-extras))))
               #t)])
       e))
 
-  ;; e's records: a type named by a uid (nongenerative uid) stays one type as
-  ;; a file loads again, so what is kept across a reload still opens. Its uid
-  ;; is taken under e's path, so it cannot be another's, the world's too,
-  ;; and open its records.
+  ;; e's records: a type named by a uid (nongenerative uid) stays one type
+  ;; when a file loads again, so that what is kept across a reload still
+  ;; opens. The uid is put under e's path, so that it cannot be another
+  ;; environment's uid (the world's included) and open that one's records.
   (define (env-give-records! e)
     (define-top-level-syntax 'define-record-type
       (lambda (x) (env-confined-record-type e x))
@@ -597,13 +614,14 @@
            [(c . rest) (loop #'rest (cons #'c done))]))]))
 
   ;;; The console comes wrapped: what a confined environment writes to it
-  ;;; goes to its log (env-log), the last env-log-max characters, and, while
-  ;;; root evaluates in it (env-eval, a REPL's input), to root's output too.
-  ;;; A port given explicitly is written to as it is.
+  ;;; goes to its log (env-log), which keeps the last env-log-max
+  ;;; characters, and, while env-eval or env-load runs in it (a REPL's
+  ;;; input), to the caller's output too. A port passed explicitly is
+  ;;; written to directly.
 
   (define env-log-max 16384)
 
-  ;; (environment . port) while env-eval runs there.
+  ;; (env . port) while env-eval or env-load runs in env.
   (define-made env-listener (make-thread-parameter #f))
 
   (define env-console-names
@@ -618,7 +636,7 @@
                    n)
                  #f #f #f)]
            [flush (lambda (p) (when (eq? p log) (flush-output-port log)))]
-           [to (lambda (put)   ; to the log, or the port given
+           [to (lambda (put)   ; to the log, or to the port given
                  (case-lambda
                    [(x) (put x log) (flush log)]
                    [(x p) (put x p) (flush p)]))])
@@ -650,25 +668,28 @@
           (put-string (cdr l) s)))))
 
   ;;; ---------------------------------------------------------------- kinds
-  ;;; A child is of a kind, which says its base, what it is shared at once
-  ;;; and what it may fork in turn: a registry (env-register-kind!), vats
-  ;;; adding thread. An environment forks only the kinds its own allows
-  ;;; (env-forks): the world every one, a world namespace too (it holds the
-  ;;; world's names), a sandbox sandboxes and threads, the others none. One
-  ;;; that forks holds fork, a procedure of its own:
+  ;;; Each child is of a kind, which says its base, what it is shared at once
+  ;;; and what it may fork in turn. The kinds are a registry
+  ;;; (env-register-kind!), and the vats add thread. An environment forks
+  ;;; only the kinds its own kind allows (env-forks): the world forks every
+  ;;; kind, and so does a world namespace (it holds the world's names); a
+  ;;; sandbox forks sandboxes and threads; the others fork none. An
+  ;;; environment that forks holds fork, a procedure of its own:
   ;;;   (fork)                                  => the kinds it forks
   ;;;   (fork 'sandbox 'share '(add!))          => the child's path
   ;;;   private  a namespace shared what reads the world (env-private-names)
-  ;;;   world    a namespace shared every name of the world's, followed
+  ;;;   world    a namespace shared every name of the world's, as it gains
+  ;;;            them
   ;;;   pure     a namespace shared nothing
   ;;;   sandbox  Scheme's pure core, and what is shared with it
   ;;;   thread   a sandbox in a vat of its own ((schevana services vat))
 
-  ;; ((kind . plist) ...), in the order registered. plist: 'title, 'base,
-  ;; 'forks (the kinds a child of it forks: a list, or all), 'doc, 'share
-  ;; (procedure (child): its own shares, first), 'start (procedure (child),
-  ;; last), 'fork (#f: not forked by hand, made by code) and 'kept (why one
-  ;; is not dropped).
+  ;; ((kind . plist) ...), in the order registered. The plist's keys are
+  ;; 'title; 'base; 'forks (the kinds a child of this kind forks: a list, or
+  ;; all); 'doc; 'share (a procedure of the child that makes the kind's own
+  ;; shares, called first); 'start (a procedure of the child, called last);
+  ;; 'fork (#f for a kind that only code makes, never a fork by hand); and
+  ;; 'kept (the reason a child of the kind is never dropped).
   (define-state *env-kinds* '())
 
   (define (env-register-kind! kind . plist)
@@ -680,8 +701,8 @@
     (let ([k (assq kind *env-kinds*)])
       (if k (plist-ref (cdr k) key default) default)))
 
-  ;; What e may fork: a list of kinds. Kinds registered with 'fork #f are
-  ;; made by code alone.
+  ;; Returns the kinds e may fork, as a list. Kinds registered with 'fork #f
+  ;; are left out: only code makes them.
   (define (env-forks e)
     (let ([f (env-may-fork e)])
       (filter (lambda (k) (env-kind-ref k 'fork #t))
@@ -689,8 +710,8 @@
                   (env-kinds)
                   (filter (lambda (k) (assq k *env-kinds*)) f)))))
 
-  ;; What a kind is called, the world's and the worklets' too; a bare child
-  ;; by its base.
+  ;; Returns a kind's title, the world's and the worklets' included.
+  ;; env-title names a bare child by its base.
   (define (env-kind-title kind)
     (case kind
       [(root) "The world"]
@@ -702,8 +723,9 @@
         (env-kind-title (env-kind e))
         (if (eq? (env-base e) 'chez) "Namespace" "Sandbox")))
 
-  ;; What a private namespace is shared of the world's, read-only and live:
-  ;; what reads it. Acting on it is the world's.
+  ;; The world's names that a private namespace is shared, read-only and
+  ;; live: those that read the world. Acting on the world is left to the
+  ;; world.
   (define env-private-names
     '(windows
       focused-window
@@ -722,13 +744,14 @@
       uptime-ms
       source-files))
 
-  ;; A child of e of kind, which e must fork (env-forks), as e's fork makes
-  ;; it. opts: 'name, its name (the kind's by default; numbered where a
-  ;; sibling has it); 'share, names e holds, as env-share! takes them;
-  ;; 'setters, ((name . setter) ...), names e holds shared through e's
-  ;; setters, as env-share-setter! takes them. The kind's own shares come
-  ;; first, then these; a thread's vat starts last. Anything wrong is
-  ;; refused before the child is made. => the child
+  ;; Makes a child of e of the given kind, which must be one that e forks
+  ;; (env-forks), as e's fork procedure does. opts: 'name, the child's name
+  ;; (the kind's by default, numbered when a sibling has it); 'share, names
+  ;; e holds, in the form env-share! takes; 'setters, ((name . setter) ...),
+  ;; names e holds, shared through e's setters, in the form
+  ;; env-share-setter! takes. The kind's own shares come first, then these;
+  ;; a thread's vat starts last. Anything wrong is refused before the child
+  ;; is made. Returns the child.
   (define (env-fork e kind . opts)
     (let ([name (plist-ref opts 'name kind)]
           [shares (plist-ref opts 'share '())]
@@ -766,8 +789,9 @@
       (errorf 'fork "a name is a symbol without a slash, not ~s" name))
     (env-shares-check 'fork e shares setters))
 
-  ;; Refuses shares and setters, as env-share! and env-share-setter! take
-  ;; them from e, unless they are of that shape and name what e holds.
+  ;; Refuses shares and setters (in the forms env-share! and
+  ;; env-share-setter! take from e) unless they have that shape and name
+  ;; what e holds.
   (define (env-shares-check who e shares setters)
     (let ([held (make-eq-hashtable)])
       (for-each (lambda (s) (hashtable-set! held s #t))
@@ -790,8 +814,8 @@
         (for-each (lambda (s) (check (shape (car s))) (check (cdr s)))
                   setters))))
 
-  ;; e's fork, a procedure of its own: (fork) => the kinds; (fork kind opt
-  ;; ...) => the child's path.
+  ;; Gives e its own fork procedure: (fork) returns the kinds e forks, and
+  ;; (fork kind opt ...) returns the new child's path.
   (define (env-give-fork! e)
     (env-give! e 'fork
                (case-lambda

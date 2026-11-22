@@ -1,16 +1,16 @@
-;;; (schevana apps settings) — the look of the world: pick a style, then change
-;;; what it lets you.
+;;; (schevana apps settings) — the look of the world: pick a style, then
+;;; change what it lets you change.
 ;;;
-;;; A style is the one switch: frames, bars, widgets, palette, wallpaper,
-;;; fonts and what you changed for it. Every row is a theme setting (see
-;;; (schevana core theme)), so the REPL does the same: (set-style! 'genera),
-;;; (set-theme! 'accent #xff9e64) for the chosen style, (override!
-;;; 'ui-font-size 15) for every style that honors it, (reset-style!),
-;;; (save-style-as! 'my-genera "My Genera"). Changes apply live and are
-;;; saved to *theme-file-path* (~/.schevana-theme.ss). Settings draws with the
-;;; widget kit, so it is drawn in the chosen style too; its own pictures
-;;; (the styles' miniatures, swatches, color tracks) are its
-;;; settings-draw-… procedures.
+;;; A style is the one switch: it brings frames, bars, widgets, palette,
+;;; wallpaper, fonts and what you changed for it. Every row is a theme
+;;; setting (see (schevana core theme)), so the REPL can do the same:
+;;; (set-style! 'genera), (set-theme! 'accent #xff9e64) for the chosen
+;;; style, (override! 'ui-font-size 15) for every style that honors it,
+;;; (reset-style!), (save-style-as! 'my-genera "My Genera"). Changes apply
+;;; live and are saved to *theme-file-path* (~/.schevana-theme.ss).
+;;; Settings draws with the widget kit, so it is drawn in the chosen style
+;;; too; its own pictures (the styles' miniatures, swatches, color tracks)
+;;; are drawn by draw-style-preview and its settings-draw-… procedures.
 
 (library (schevana apps settings)
   (export
@@ -101,7 +101,8 @@
     '((theme . "Theme") (colors . "Colors") (fonts . "Fonts")
       (display . "Display") (paths . "Paths")))
 
-  ;; How frames reach the screen, those the window offers shown.
+  ;; How frames reach the screen; the Display tab shows those the window
+  ;; offers.
   (define settings-present-choices '(("VSync" . vsync) ("Mailbox" . mailbox)))
 
   ;; Percentages for the display's scale; 0 follows the desktop.
@@ -110,7 +111,8 @@
       ("200%" . 200) ("250%" . 250) ("300%" . 300)))
 
   ;; The colors the Colors tab lists, by group, and those the accent's
-  ;; swatches offer: settings, so a style may group its own (CDE its slots).
+  ;; swatches offer. They are settings, so that a style may group its own
+  ;; (CDE its slots).
   (at-load
    (theme-default! 'color-groups
      '(("BASE" bg-0 bg-1 bg-2 bg-3 text text-dim text-faint)
@@ -126,9 +128,9 @@
    (theme-default! 'accent-choices
      '(accent cyan teal green yellow orange red magenta accent-2)))
 
-  ;; The common options ((schevana core theme)) by group: Colors (a palette or a
-  ;; color), Desktop (a wallpaper), Text (on the Fonts tab) and Shape, the
-  ;; rest: the sizes.
+  ;; The common options ((schevana core theme)) by group: Colors (a palette
+  ;; or a color), Desktop (a wallpaper), Text (on the Fonts tab) and Shape
+  ;; (the rest: the sizes).
   (define settings-text-keys '(ui-font ui-font-size mono-font mono-font-size))
 
   (define (settings-group-of o)
@@ -140,9 +142,9 @@
   (define (settings-options-in group)
     (filter (lambda (o) (string=? (settings-group-of o) group)) common-options))
 
-  ;; The behaviors, (key "Label" . kind) as common-options: shared code does
-  ;; each whatever a style draws, so every style honors them; a style gives
-  ;; its own defaults, and a pin holds yours in every style.
+  ;; The behaviors, (key "Label" . kind) as in common-options. Shared code
+  ;; does each of them whatever a style draws, so every style honors them;
+  ;; a style gives its own defaults, and a pin holds yours in every style.
   (define settings-behaviors
     '((title-double-click "Double-click on a title"
        (("Maximize" . maximize) ("Shade" . shade) ("Nothing" . none)))
@@ -169,10 +171,11 @@
   (define-record-type settings-st
     (nongenerative schevana-settings-2)
     (fields (mutable tab)
-            (mutable key)       ; color being edited
-            (mutable scroll)    ; color list scroll offset
+            (mutable key)       ; the color being edited
+            (mutable scroll)    ; the color list's scroll offset
             (mutable hex)       ; hex digits being typed, or #f
-            ;; #(key rgb h s l): keeps hue stable at zero saturation
+            ;; #(key rgb h s l), which keeps the hue stable at zero
+            ;; saturation
             (mutable hsl)
             (mutable pane-scroll)))
 
@@ -185,12 +188,13 @@
                       '())))
 
   ;; key's descriptor: a common option, a behavior, or one of the chosen
-  ;; style's own; #f for another setting (a color).
+  ;; style's own options; #f for another setting (a color).
   (define (settings-option key)
     (or (assq key common-options) (assq key settings-behaviors)
         (assq key (settings-own-options))))
 
-  ;; The style that declares key as an option of its own: (name . o).
+  ;; The style that declares key as an option of its own, as (name . o), or
+  ;; #f.
   (define (settings-owner-option key)
     (exists (lambda (s)
               (let ([o (assq key (filter pair? (plist-ref (style-settings s)
@@ -198,7 +202,8 @@
                 (and o (cons (style-name s) o))))
             *styles*))
 
-  ;; key's label; another style's own option says whose it is.
+  ;; key's label; the label of another style's own option says whose it
+  ;; is.
   (define (settings-key-label key)
     (let ([o (settings-option key)] [owner (settings-owner-option key)])
       (cond [o (cadr o)]
@@ -206,8 +211,8 @@
                            (settings-style-title (car owner)))]
             [else (symbol->string key)])))
 
-  ;; Does key's setting apply in the chosen style: not a common option it
-  ;; fixes, nor another style's own option?
+  ;; Does key's setting apply in the chosen style, being neither a common
+  ;; option it fixes nor another style's own option?
   (define (settings-applies? key)
     (not (or (memq key (theme 'fixed))
              (and (not (settings-option key)) (settings-owner-option key)))))
@@ -219,12 +224,13 @@
   (define (settings-changed? key)
     (plist-has? (style-changes-of (current-style)) key))
 
-  ;; Your change: to the Override while key is pinned, else to this style.
+  ;; Makes your change: to the Override while key is pinned, else to the
+  ;; chosen style.
   (define (settings-set! key value)
     (if (settings-pinned? key) (override! key value) (set-theme! key value)))
 
-  ;; Pinned, key's value holds in every style that honors it (an Override);
-  ;; unpinned, it is your change to this style.
+  ;; Pinned, key's value holds in every style that honors it (an
+  ;; Override); unpinned, it is your change to the chosen style.
   (define (settings-pin! key on?)
     (let ([v (theme key)])
       (if on?
@@ -232,7 +238,7 @@
           (begin (override! key)
                  (unless (equal? (theme key) v) (set-theme! key v))))))
 
-  ;; Which layer gives key, in words: a label's tooltip.
+  ;; Which layer gives key, as text for a label's tooltip.
   (define (settings-source-words key)
     (let ([s (theme-source key)])
       (case (and s (car s))
@@ -254,7 +260,7 @@
   (define (settings-wallpaper-title name)
     (let ([wp (assq name *wallpapers*)]) (if wp (cadr wp) (format "~a" name))))
 
-  ;; v, a value of key, in words.
+  ;; v, a value of key, as text.
   (define (settings-value-words key v)
     (let ([kind (let ([o (or (settings-option key)
                              (let ([own (settings-owner-option key)])
@@ -280,13 +286,14 @@
   ;;; ------------------------------------------------------------------
   ;;; saving a style
 
-  ;; Where Save as new style writes: the user's styles folder, which loads
-  ;; at every boot.
+  ;; Where Save as new style writes: the styles folder in the user's
+  ;; folder, which loads at every boot.
   (define-made *settings-style-directory*
     (string-append user-directory "/styles"))
 
   ;; A new style's name from its title: "My Genera" -> my-genera, "1984"
-  ;; -> style-1984 (a name must not read as a number); #f for none.
+  ;; -> style-1984 (a name must not read as a number); #f for a title with
+  ;; no letters or digits.
   (define (settings-style-name title)
     (let ([words (filter (lambda (s) (not (string=? s "")))
                          (string-split
@@ -309,18 +316,19 @@
       (settings-make-directory! (path-parent dir))
       (mkdir dir)))
 
-  ;; A setting's value as save-style-as! writes it: colors in hex, names and
-  ;; lists quoted.
+  ;; A setting's value as save-style-as! writes it: colors in hex, names
+  ;; and lists quoted.
   (define (settings-datum key v)
     (cond [(and (memq key color-keys) (fixnum? v)) (theme-file-hex v)]
           [(or (symbol? v) (pair? v) (null? v)) (format "'~s" v)]
           [else (format "~s" v)]))
 
-  ;; Your changes to the chosen style as a new style, a file that defines
-  ;; it in *style-save-directory*: the chosen style its parent, your changes
-  ;; that are data its settings (a procedure typed at the REPL is not
-  ;; saved). It loads and is chosen, and the changes it took go from the
-  ;; parent; the Overrides stay. => the file's path.
+  ;; Saves your changes to the chosen style as a new style: a file in
+  ;; *settings-style-directory* that defines it, with the chosen style as
+  ;; its parent and your changes that are data as its settings (a procedure
+  ;; typed at the REPL is not saved). The new style is loaded and chosen,
+  ;; and the changes it took are dropped from the parent; the Overrides
+  ;; stay. Returns the file's path.
   (define (save-style-as! name title)
     (when (find-style name)
       (errorf 'save-style-as! "a style named ~s exists already" name))
@@ -350,10 +358,11 @@
 
   ;;; ------------------------------------------------------------------
   ;;; sizes
-  ;;; Sizes are worked out from the current fonts, so the layout still holds
-  ;;; after the Fonts tab makes text bigger. Each is a max with the number it
-  ;;; comes to at the default fonts. When the window is too small for what it
-  ;;; shows, the right-hand pane scrolls and label columns stack.
+  ;;; Sizes are computed from the current fonts, so that the layout still
+  ;;; holds after the Fonts tab makes text bigger. Each is the larger of
+  ;;; that and the number it comes to at the default fonts. When the window
+  ;;; is too small for what it shows, the right-hand pane scrolls and label
+  ;;; columns stack.
 
   (define (settings-sidebar-width)
     (max 168
@@ -369,7 +378,8 @@
                                      (filter symbol? (settings-color-rows)))
                                 'ui))))
 
-  ;; Color editor: label column, hex field and its marks.
+  ;; The color editor's widths: its label column, its readouts, the hex
+  ;; field and its marks.
   (define (settings-hsl-label-width)
     (max 96 (+ 24 (text-widest '("Hue" "Saturation" "Lightness") 'ui))))
   (define (settings-hsl-readout-width) (max 64 (+ 28 (text-width "100%" 'ui))))
@@ -386,7 +396,7 @@
   (define (settings-natural-height)
     (max 600 (* 30 (round (font-line-height 'ui)))))
 
-  ;; Label column and readout of a slider row.
+  ;; The label column and readout of a slider row.
   (define (settings-label-width labels)
     (max 180 (+ 24 (text-widest labels 'ui))))
   (define (settings-readout-width) (max 60 (+ 24 (text-width "00 px" 'ui))))
@@ -405,7 +415,7 @@
   (define (settings-shown? y h)
     (and (< y (settings-pane-height)) (> (+ y h) 0)))
 
-  ;; Lay cards out in a grid; place-card gets (item x y). Returns the y
+  ;; Lays cards out in a grid; place-card gets (item x y). Returns the y
   ;; below.
   (define (settings-card-grid items x y w cw ch place-card)
     (let* ([gap 12] [cols (max 1 (exact (floor (/ (+ w gap) (+ cw gap)))))])
@@ -419,13 +429,14 @@
   ;;; ------------------------------------------------------------------
   ;;; rows
 
-  ;; Title and subtitle of a tab; returns the y where its content starts.
+  ;; The title and subtitle of a tab. Returns the y where its content
+  ;; starts.
   (define (settings-heading x y w title subtitle)
     (let ([y (ui-draw-label x y w (font-line-height 'heading) '(heading)
                             title)])
       (+ 22 (ui-draw-label x (+ y 6) w 0 '(hint wrap) subtitle))))
 
-  ;; A group's title, small capitals above its rows; => the y below.
+  ;; A group's title, in small capitals above its rows. Returns the y below.
   (define (settings-section x y w title)
     (+ 10 (ui-draw-label x (+ y 18) w (font-line-height 'ui-small) '(section)
                          title)))
@@ -449,7 +460,8 @@
                     (- w (if inline? label-w 0) trailing-w))
       (if inline? (+ y row-h) (+ cy control-h))))
 
-  ;; ↺ at x y while you changed key for this style: it drops the change.
+  ;; A ↺ button at x y while you have changed key for the chosen style: it
+  ;; drops the change.
   (define (settings-revert ui x y key)
     (when (settings-changed? key)
       (let ([h (ui-control-height)])
@@ -459,8 +471,8 @@
                    'tip (format "Drop your change to ~a"
                                 (settings-style-title (current-style)))))))
 
-  ;; The marks after key's row at x y: ↺ while you changed it for this
-  ;; style, and its pin, on while it is an Override.
+  ;; The marks after key's row at x y: ↺ while you have changed it for the
+  ;; chosen style, and its pin, on while it is an Override.
   (define (settings-marks ui x y key)
     (let ([h (ui-control-height)] [pinned? (settings-pinned? key)])
       (settings-revert ui x y key)
@@ -488,9 +500,9 @@
           (ui-dropdown ui id x y (min w (+ 60 (text-widest (map car cs) 'ui)))
                        h cs current on-select))))
 
-  ;; Option o's control at x y, w wide: a slider (from the least the text
-  ;; needs, where the option names it), a choice, a toggle, the wallpapers,
-  ;; the typefaces.
+  ;; Option o's control at x y, w wide: a slider (starting from the least
+  ;; the text needs, where the option names a key for it), a choice, a
+  ;; toggle, the wallpapers or the typefaces.
   (define (settings-control ui x y w o)
     (let* ([key (car o)] [kind (cddr o)] [v (theme key)]
            [id (list 'option key)] [h (ui-control-height)]
@@ -521,14 +533,14 @@
            [else (ui-draw-label x y w h '(dim)
                                 (settings-value-words key v))])])))
 
-  ;; Option o's label; a pinned row reads Override.
+  ;; Option o's label; a pinned row's adds "Override".
   (define (settings-row-label o)
     (if (settings-pinned? (car o)) (format "~a · Override" (cadr o)) (cadr o)))
 
   ;; A row for option o, (key "Label" . kind): its control, then its marks.
   ;; The label's tooltip says which layer gives the value. A palette's row
-  ;; holds its cards, the accent's its swatches, under the label. => the y
-  ;; below.
+  ;; holds its cards, and the accent's its swatches, under the label.
+  ;; Returns the y below.
   (define (settings-option-row ui x y w label-w o)
     (let* ([key (car o)] [kind (cddr o)] [h (ui-control-height)]
            [mw (settings-marks-width)] [tip (settings-source-words key)])
@@ -548,9 +560,9 @@
                                             (+ cy (/ (- ch h) 2)) key))
                           (list 'label key) tip)))))
 
-  ;; A row for a common option the chosen style does not honor: dimmed,
-  ;; what it holds, and, wrapped, whether your change to it (with its ↺) or
-  ;; your Override is passed by here.
+  ;; A row for a common option the chosen style does not honor: dimmed, it
+  ;; says what the style sets it to and, wrapped, whether your change to it
+  ;; (with its ↺) or your Override is passed by here.
   (define (settings-unused-row ui x y w label-w key)
     (let* ([passed (lambda (whose v)
                      (format "; ~a (~a) does not apply" whose
@@ -595,8 +607,8 @@
   ;;; the Theme tab
 
   ;; A card's picture: style's miniature (with extra settings) over all but
-  ;; the label strip, which holds title, and a dot when changed?; the kit's
-  ;; card outline.
+  ;; the label strip, which holds title, and a dot when changed?; then the
+  ;; kit's card outline.
   (define (settings-draw-card x y w h flags title changed? style . extra)
     (let ([lh (settings-card-label-height)])
       (with-clip (x y w h (ui-card-radius))
@@ -638,13 +650,13 @@
       (ui-draw-field 14 (+ 28 h h) w h '())))
 
   ;; A mouse press on a card, a swatch or a tab takes the keyboard from
-  ;; where it was (a field would go on taking keys); a key's press keeps it
-  ;; on what was pressed.
+  ;; where it was (a field would go on taking keys); a press by a key keeps
+  ;; it on what was pressed.
   (define (settings-press-focus! ui id)
     (when (ui-active? ui id) (ui-focus! ui #f)))
 
-  ;; A style's card: its miniature, its title, a dot if you changed it; a
-  ;; press chooses it.
+  ;; A style's card: its miniature, its title, and a dot if you changed
+  ;; it; a press chooses it.
   (define (settings-style-card ui name x y w h)
     (let ([id (list 'style name)])
       (ui-pressable! ui id x y w h
@@ -681,15 +693,15 @@
                                   (palette-title name) #f (current-style)
                                   'palette name)))))))
 
-  ;; flags: selected, focused.
+  ;; A swatch of color, d across; flags: selected, focused.
   (define (settings-draw-swatch x y d color flags)
     (fill-circle (+ x (/ d 2)) (+ y (/ d 2)) (- (/ d 2) 3) color)
     (when (memq 'selected flags)
       (stroke-circle (+ x (/ d 2)) (+ y (/ d 2)) (+ (/ d 2) 1) 'text 2))
     (when (memq 'focused flags) (ui-draw-focus x y d d flags (/ d 2))))
 
-  ;; A color, key (the accent): the palette's colors as swatches. => the y
-  ;; below.
+  ;; A color, key (the accent), chosen from the palette's colors as
+  ;; swatches. Returns the y below.
   (define (settings-accent ui x y w key)
     (let ([colors (theme-palette-preview (theme 'palette))]
           [per-row (max 1 (exact (floor (/ (+ w 8) 36))))])
@@ -715,7 +727,7 @@
 
   ;; The chosen style, yours or as it comes; Reset (a dialog lists your
   ;; changes first) and Save as new style (a title typed in a field; the
-  ;; name follows it). => the y below.
+  ;; name follows it). Returns the y below.
   (define (settings-style-bar ui x y w)
     (let* ([name (current-style)] [title (settings-style-title name)]
            [keys (plist-keys (style-changes-of name))] [h (ui-control-height)]
@@ -749,7 +761,7 @@
           (+ by h))))
 
   ;; The title of the style being saved, Save and Cancel, and why Save is
-  ;; off when it is. => the y below.
+  ;; off when it is. Returns the y below.
   (define (settings-save-row ui x y w text)
     (let* ([h (ui-control-height)] [name (settings-style-name text)]
            [taken? (and name (find-style name) #t)]
@@ -777,7 +789,7 @@
 
   ;; The Theme tab: the styles' cards, the chosen style's bar, then its
   ;; options by group (Colors, Desktop, Shape, its own, Behavior), the
-  ;; common ones it does not use, dimmed, and your Overrides. => the y
+  ;; common ones it does not use, dimmed, and your Overrides. Returns the y
   ;; below.
   (define (settings-theme-tab ui x y w)
     (let* ([y (settings-heading x y w "Theme"
@@ -821,14 +833,14 @@
                              unused))])
       (settings-overrides ui x y w label-w)))
 
-  ;; An Override's value in words, and whether the chosen style passes it
-  ;; by (a common option it fixes, another style's own option).
+  ;; An Override's value as text, and whether the chosen style passes it by
+  ;; (a common option it fixes, or another style's own option).
   (define (settings-override-words key)
     (let ([v (settings-value-words key (plist-ref (theme-overrides) key #f))])
       (if (settings-applies? key) v (string-append v "; does not apply here"))))
 
   ;; Your Overrides, each with its value and a button that drops it, then
-  ;; one that drops them all. => the y below.
+  ;; a button that drops them all. Returns the y below.
   (define (settings-overrides ui x y w label-w)
     (let ([keys (plist-keys (theme-overrides))] [h (ui-control-height)])
       (if (null? keys)
@@ -867,9 +879,8 @@
                   (color-at (/ (+ i 0.5) n))))))
 
   ;; A row of the color list: its swatch and its name; flags: selected,
-  ;; hover.
-  ;; The swatch comes last, after a style that inverts the chosen row has:
-  ;; its own color, whatever the row's.
+  ;; hover. The swatch is drawn last, after a style that inverts the chosen
+  ;; row has done so, so that it shows its own color, whatever the row's.
   (define (settings-draw-color-row x y w h key flags)
     (cond [(memq 'selected flags) (ui-draw-highlight (+ x 4) y (- w 8) h '())]
           [(memq 'hover flags)
@@ -881,8 +892,8 @@
     (fill-box (+ x 12) (+ y (/ (- h 16) 2)) 16 16 key 4)
     (stroke-box (+ x 12) (+ y (/ (- h 16) 2)) 16 16 'settings-swatch-ring 1 4))
 
-  ;; A swatch's ring, which reads on its row, chosen or not: a stipple of ink
-  ;; and paper where a style inverts the chosen row (Genera).
+  ;; A swatch's ring, which shows on its row, chosen or not: a stipple of
+  ;; ink and paper where a style inverts the chosen row (Genera).
   (at-load
    (color-default! 'settings-swatch-ring (theme-rule (alpha 'text 0.25))))
 
@@ -898,7 +909,7 @@
            [row-h (settings-color-row-height)]
            [rows (settings-color-rows)]
            [total (+ 12 (* row-h (length rows)))]
-           ;; the editor sits beside the list, or below it when there's no room
+           ;; the editor sits beside the list, or below it without the room
            [beside? (>= (- w lw 28) (settings-color-editor-width))]
            [lh (if beside?
                    (max (* 6 row-h) (- (+ y avail) ly))
@@ -944,9 +955,9 @@
             16)]
       [else #f]))
 
-  ;; The swatch, the key's name, its hex digits (a field: type six, then
-  ;; Return) and marks, its hue, saturation and lightness, and how to read
-  ;; it at the REPL. Returns the y below the editor.
+  ;; The color editor: the swatch, the key's name, its hex digits (a field:
+  ;; type six, then Return) and marks, its hue, saturation and lightness,
+  ;; and how to read it at the REPL. Returns the y below the editor.
   (define (settings-color-editor ui st x y w)
     (let* ([key (settings-st-key st)]
            [value (theme key)]
@@ -1126,7 +1137,7 @@
                        ui 'present-mode sx sy
                        (min (max 160 (segmented-w present-choices)) sw)
                        h present-choices (theme 'present-mode)
-                       ;; the window's, whatever the style
+                       ;; an Override: it is the window's, whatever the style
                        (lambda (v)
                          (if (eq? v (theme-default 'present-mode))
                              (override! 'present-mode)
@@ -1143,10 +1154,10 @@
   ;;; paths
 
   ;; Where libraries are found, and what loads with the world: the library
-  ;; search, its folders in order (the first that holds a library is the
-  ;; one it loads from), each with a switch for whether it auto-loads, and
-  ;; a row that adds one; the libraries loaded from a file, by the rank of
-  ;; the layer each declares, and whether it auto-loads. => the y below
+  ;; search's folders in order (a library loads from the first that holds
+  ;; it), each with a switch for whether it auto-loads, and a row that adds
+  ;; one; then the libraries loaded from a file, by the rank of the layer
+  ;; each declares, and whether each auto-loads. Returns the y below.
   (define (settings-paths ui x y w)
     (let* ([facts (settings-path-facts ui)]
            [dirs (car facts)] [libs (cadr facts)]
@@ -1188,15 +1199,16 @@
                                     (- (length (library-list))
                                        (length libs))))))
 
-  ;; A layer's rank, the lowest 1; past them all for one that isn't.
+  ;; A layer's rank, 1 for the lowest; past them all for a name that is
+  ;; not a layer.
   (define (settings-layer-rank layer)
     (let ([names (library-layer-names)])
       (+ 1 (or (list-index (lambda (l) (eq? l layer)) names)
                (length names)))))
 
-  ;; What the tab shows, worked out once while the library search, the
-  ;; libraries loaded and what auto-loads stay the same: (search-folders
-  ;; ((name file layer auto?) ...)), the libraries by their layers' rank,
+  ;; What the tab shows, computed again only when the library search, the
+  ;; libraries loaded or what auto-loads changes: (search-folders ((name
+  ;; file layer auto?) ...)), the libraries sorted by their layers' rank,
   ;; then by name.
   (define (settings-path-facts ui)
     (let ([key (list (library-directories) (length (library-list))
@@ -1229,19 +1241,19 @@
             (ui-memo! ui 'path-facts (cons key facts))
             facts))))
 
-  ;; The file of library name in folder dir, a source's, or #f.
+  ;; The source file (.sls or .ss) of library name in folder dir, or #f.
   (define (settings-library-file dir name)
     (let ([base (string-append (path-full dir) "/"
                                (string-join (map symbol->string name) "/"))])
       (find file-exists?
             (map (lambda (ext) (string-append base ext)) '(".sls" ".ss")))))
 
-  ;; A folder of the library search, d (source . objects), the i-th: how
-  ;; it is written where that isn't in full (Chez's ".", the current
-  ;; folder), where its libraries compile to, and whether it auto-loads.
-  ;; The tree's own world loads from the tree; a folder that holds the tree
-  ;; never auto-loads (its tests and its own sources would load), nor can
-  ;; one of Schevana's own folders be turned off.
+  ;; The row of d, the i-th folder of the library search, (source .
+  ;; objects): how it is written where that isn't in full (Chez's ".", the
+  ;; current folder), where its libraries compile to, and whether it
+  ;; auto-loads. The tree's own world loads from the tree; a folder that
+  ;; holds the tree never auto-loads (its tests and its own sources would
+  ;; load), and one of Schevana's own folders can't be turned off.
   (define (settings-search-row ui d i)
     (let* ([source (if (pair? d) (car d) d)]
            [objects (if (pair? d) (cdr d) d)]
@@ -1309,9 +1321,9 @@
                  (lambda () (reset-theme!)))
       (ui-draw-label 18 (+ by bh 12) (- sw 32) 0 '(hint wrap) hint)))
 
-  ;; The pane's scroll bar, when what the tab shows is taller than h: on
-  ;; the style's side of the pane from x0 to x1 (left, or right), shown as
-  ;; it says (always, or while the pointer is over the pane).
+  ;; The pane's scroll bar, for a tab taller than h: on the style's side
+  ;; (left or right) of the pane from x0 to x1, and shown as the style says
+  ;; (always, or while the pointer is over the pane).
   (define (settings-pane-scrollbar ui st x0 x1 h content-h max-scroll)
     (let ([bw (ui-scrollbar-width)])
       (when (or (eq? (theme 'scrollbar-show) 'always)
@@ -1326,7 +1338,7 @@
                          st (clamp (exact (round off)) 0 max-scroll)))))))
 
   ;; The pane scrolls to a widget focused out of view (by Tab, or a field
-  ;; just opened). => #t when it moved.
+  ;; just opened). Returns #t when it moved.
   (define (settings-reveal! ui st h)
     (let* ([rv (ui-state-reveal ui)] [r (and rv (ui-find ui (car rv)))])
       (ui-state-reveal-set! ui #f)
@@ -1364,9 +1376,9 @@
            [max-scroll (max 0 (- content-h h))])
       (when (> max-scroll 0)
         (settings-pane-scrollbar ui st (+ sw 1) w h content-h max-scroll))
-      ;; the wheel went past the end, which only drawing finds, or the pane
-      ;; scrolls to a widget: drawn again where it stops, not shown for a
-      ;; frame before
+      ;; the wheel went past the end, which only drawing finds out, or the
+      ;; pane scrolls to a widget: the pane is drawn again where it stops,
+      ;; rather than shown out of place for a frame
       (if (or (and (> scroll max-scroll)
                    (begin (settings-st-pane-scroll-set! st max-scroll) #t))
               (settings-reveal! ui st h))
@@ -1386,8 +1398,8 @@
            (invalidate! win)
            #t)))
 
-  ;; The wheel goes to the kit's (a dialog, a scroll bar), else scrolls the
-  ;; color list under the pointer, else the pane.
+  ;; The wheel goes to the kit's widgets (a dialog, a scroll bar), else
+  ;; scrolls the color list under the pointer, else the pane.
   (define (settings-wheel ui st dy)
     (let ([r (and (eq? (settings-st-tab st) 'colors) (ui-find ui 'color-list))])
       (cond

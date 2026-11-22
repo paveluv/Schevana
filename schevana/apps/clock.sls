@@ -1,4 +1,5 @@
-;;; (schevana apps clock) — an analog clock. Shows a timer + 'draw.
+;;; (schevana apps clock) — an analog clock, an example of a timer and a 'draw
+;;; handler.
 
 (library (schevana apps clock)
   (export draw-clock-face clock)
@@ -10,8 +11,8 @@
 
   (library-layer apps)
 
-  ;; The face at date d (default: now). Clock windows opened before a reload
-  ;; still call it with w and h only.
+  ;; Draws the face for date d (by default, now). Clock windows opened before
+  ;; a reload still call it with w and h only.
   (define draw-clock-face
     (case-lambda
       [(w h) (draw-clock-face (current-date) w h)]
@@ -44,9 +45,9 @@
                             'text-dim 'mono))]))
 
   (define-app (clock) "Clock"
-    (let ([shown (current-date)]   ; the time on the face, taken each second
+    (let ([shown (current-date)]   ; the time on the face, read each second
           [open? #t])
-      ;; a timer at the start of each second, until the window closes
+      ;; sets a timer for the start of the next second, until the window closes
       (define (next-second! win)
         (after (- 1000 (quotient (date-nanosecond (current-date)) 1000000))
                (lambda ()

@@ -1,10 +1,10 @@
-;;; tests/units/windows.ss — the window manager's stacking: a window opened
-;;; above its owner stays there, and the two move as one; the frames a
+;;; tests/units/windows.ss — the window manager's stacking (a window opened
+;;; above its owner stays there, and the two move as one) and the frames a
 ;;; window asks for.
 
 (for-each close-window! (windows))
 
-;; Open windows, front first, by title.
+;; The titles of the visible windows, front first.
 (define (windows-titles)
   (map window-title (filter visible? (windows))))
 
@@ -62,8 +62,9 @@
   (check "and all go with the owner"
          (null? (windows))))
 
-;; A window's 'frame comes once for each time it asks, at the next tick,
-;; with when that frame shows; never unasked, nor while it's minimized.
+;; A window's 'frame is called once for each time it asks, at the next
+;; tick, with the time that frame shows. It is never called unasked, nor
+;; while the window is minimized (it waits until the window is seen again).
 (let* ([frames '()]
        [again? #f]
        [win (windows-open "Frames"
@@ -104,8 +105,9 @@
            (and (= while-minimized 0) (= (length frames) 1))))
   (close-window! win))
 
-;; A window that rides frames, its draw raising once: its frame waits while
-;; the error shows, and it rides on once a press clears the error.
+;; A window that rides frames (asking for the next one from each 'frame),
+;; whose draw raises once: its frames wait while the error shows, and go on
+;; once a press clears the error.
 (let* ([frames 0]
        [raise? #f]
        [win (windows-open "Rides"
@@ -158,9 +160,10 @@
                (close-window! w)
                (and quiet (> (window-ref w 'wm-asked 0) asked)))))))
 
-;;; Frames: whenever something asks for one, everything is drawn again;
-;;; when nothing does, nothing is. The test's clock holds, so the top
-;;; bar's second, which asks for a frame of its own, comes only when said.
+;;; Frames: whenever something asks for a frame, one is drawn; when nothing
+;;; does, none is. The test's clock is held, so the top bar's update each
+;;; second, which asks for a frame of its own, comes only when the test
+;;; says so.
 
 (for-each close-window! (windows))
 (set! *toasts* '())
@@ -172,7 +175,8 @@
     (test-step!)
     (> *frames-drawn* n)))
 
-;; A counter of win's draws.
+;; Counts win's draws from now on, and returns a thunk that gives the
+;; count.
 (define (windows-count-draws! win)
   (let ([n 0]
         [draw (hashtable-ref (window-handlers win) 'draw
@@ -180,8 +184,8 @@
     (window-on! win 'draw (lambda (w cw ch) (set! n (+ n 1)) (draw w cw ch)))
     (lambda () n)))
 
-;; Input asks for a frame by itself, so a handler that only changes its
-;; state is seen.
+;; Input asks for a frame by itself, so what a handler that only changes
+;; its state does is shown.
 (let* ([seen #f] [state 0]
        [bump (lambda (win . args) (set! state (+ state 1)))]
        [w (windows-open "Quiet"
@@ -229,10 +233,10 @@
              (and (not (eq? a b)) (not (eq? b c))))))
   (close-window! w))
 
-;; Steps that nothing asked a frame of draw nothing. A frame the top bar
-;; asks for (its second's) draws no window, which keeps what it drew;
-;; (invalidate!) draws every window once; an expose shows a frame again:
-;; what the window showed may be gone.
+;; Steps for which nothing asked a frame draw nothing. A frame the top bar
+;; asks for (each second) draws no window, and each window keeps what it
+;; drew; (invalidate!) draws every window once; an expose draws a frame
+;; again, since what the OS window showed may be gone.
 (test-clock-hold!)
 (let* ([a (windows-open "One")] [b (windows-open "Two" 'pos '(420 . 160))]
        [na (windows-count-draws! a)] [nb (windows-count-draws! b)])
@@ -243,7 +247,7 @@
                       drew
                       (loop (+ n 1) (if (windows-step-drew?) (+ drew 1)
                                         drew))))])
-      (status-show!)   ; as at the clock's second
+      (status-show!)   ; as the clock does each second
       (let ([bar (windows-step-drew?)])
         (check (format "idle steps draw nothing (~a of 20 drew); a frame \
                         the top bar asks for draws no window" idle)
@@ -251,7 +255,7 @@
   (test-with-quiet-status
    (lambda ()
      (invalidate!)
-     (steps 1)   ; the quiet top bar drawn
+     (steps 1)   ; draws the quiet top bar
      (let ([a0 (na)] [b0 (nb)])
        (invalidate!)
        (steps 1)

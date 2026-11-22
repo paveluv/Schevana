@@ -1,14 +1,15 @@
-;;; (schevana core0 gpu) — the GPU layer's device side, in core0 below the core
-;;; (.work/gpu-design.md 9.5): the device, pipelines, images, buffers and lists
-;;; on the GPU, uploads, the pass, the swapchain, presenting a frame core1
-;;; publishes. Only core0 names SDL; this file alone knows one driver from
-;;; another, so that another back end stays a swap. It names nothing of the
-;;; core above it but what tests/sources.ss lists, on its way out.
+;;; (schevana core0 gpu) — the device side of the GPU layer, in core0 below
+;;; the core (.work/gpu-design.md 9.5): the device; pipelines, images,
+;;; buffers and lists on the GPU; uploads; the pass; the swapchain; and
+;;; presenting a frame that core1 publishes. Only core0 names SDL, and this
+;;; file alone tells one driver from another, so that another back end stays
+;;; a swap. It names nothing of the core above it except what
+;;; tests/sources.ss lists as on its way out.
 ;;;
 ;;; Everything that touches a device hangs off one record, a renderer, so
-;;; that one can be rebuilt on another device. SDL handles what the GPU still
+;;; that it can be rebuilt on another device. SDL handles what the GPU still
 ;;; holds: buffers uploaded and transfer buffers mapped with cycling on are
-;;; ring buffers, and no fence bookkeeping is needed for them.
+;;; ring buffers, so they need no fence bookkeeping.
 
 (library (schevana core0 gpu)
   (export
@@ -48,7 +49,7 @@
 
   (library-layer core0)
 
-  ;; structs, on their way to SDL
+  ;; scratch memory for structs on their way to SDL
   (define-state *gpu-scratch* (foreign-alloc 2048))
 
   (define gpu-atlas-side 4096)
@@ -59,7 +60,7 @@
   (define gpu-usage-graphics-read 8)
   (define gpu-usage-compute-read 16)
   (define gpu-usage-compute-write 32)
-  ;; What shaders are, to SDL: SPIR-V, or MSL.
+  ;; The shaders' format, as SDL numbers it: SPIR-V or MSL.
   (define-made gpu-shader-format (if (eq? shader-target 'msl) 16 2))
   (define gpu-blend-zero 1)
   (define gpu-blend-one 2)
@@ -71,9 +72,10 @@
   (define gpu-load-clear 1)
   (define gpu-address-clamp 2)
 
-  ;;; ---- SDL's structs. Chez lays them out by the platform's C rules, so no
-  ;;; offset here is counted by hand. Each has a place of its own in the
-  ;;; scratch memory, and a pointer made once: a frame allocates none.
+  ;;; ---- SDL's structs. Chez lays out their fields by the platform's C
+  ;;; rules, so no field's offset is counted by hand. Each struct has a place
+  ;;; of its own in the scratch memory, and a pointer made once, so a frame
+  ;;; allocates none.
 
   (define-syntax gpu-struct
     (syntax-rules ()
@@ -174,9 +176,9 @@
                      [pad2 unsigned-8] [pad3 unsigned-8])))
   (gpu-struct gpu-sampler-bindings gpu-sampler-bindings* 672
     (array 2 (struct [texture void*] [sampler void*])))
-  ;; The vertex shader's uniforms; the fragment shader's are the last five,
-  ;; where the list is on the target and its buffers' lengths in words, which
-  ;; go as bytes (gpu-list-words).
+  ;; The vertex shader's uniforms. The fragment shader's are the last five
+  ;; (where the list sits on the target, and its buffers' lengths in words),
+  ;; which go as bytes (gpu-list-words).
   (gpu-struct gpu-frame-uniforms gpu-frame-uniforms* 1040
     (struct [w float] [h float] [first int] [ox int] [oy int]
             [records int] [extras int] [glyphs int]))
@@ -188,7 +190,7 @@
   (gpu-struct gpu-fence-list gpu-fence-list* 736
     (array 1 void*))
 
-  ;; Where a struct is, for the C call that takes it.
+  ;; The address of a struct, for the C call that takes it.
   (define (gpu-at pointer) (ftype-pointer-address pointer))
 
   (define (gpu-must who p)
@@ -197,9 +199,9 @@
 
   ;;; ------------------------------------------------------------------ devices
 
-  ;; On Linux, which Vulkan drivers may load, by a file for each: lavapipe
-  ;; alone for the CPU, the others for the GPU, so that lavapipe and LLVM
-  ;; never load then. Elsewhere the driver is SDL's choice.
+  ;; On Linux, the Vulkan drivers that may load, by a file for each:
+  ;; lavapipe alone for the CPU, and the others for the GPU, so that lavapipe
+  ;; and LLVM never load for the GPU. Elsewhere the driver is SDL's choice.
   (define (gpu-driver-files kind)
     (let ([files
            (apply append
@@ -215,14 +217,14 @@
       (define (lavapipe? f) (string-contains-ci? f "lvp_icd"))
       (if (eq? kind 'cpu) (filter lavapipe? files) (remp lavapipe? files))))
 
-  ;; With no window: what renders, and SDL's video driver, none named meaning
-  ;; its choice. Metal is a Mac's one renderer and needs its real video driver,
-  ;; which opens no window until asked; Vulkan has lavapipe for this.
+  ;; With no window: what renders, and SDL's video driver (#f leaves the
+  ;; choice to SDL). Metal is a Mac's only renderer and needs its real video
+  ;; driver, which opens no window until asked; Vulkan has lavapipe for this.
   (define-made gpu-windowless-kind (if (eq? shader-target 'msl) 'gpu 'cpu))
   (define-made gpu-windowless-video
     (if (eq? shader-target 'msl) #f "offscreen"))
 
-  ;; A device of this kind, 'gpu or 'cpu; or #f.
+  ;; Opens a device of this kind, 'gpu or 'cpu, and returns it, or #f.
   (define (gpu-open-device kind)
     (let ([files (gpu-driver-files kind)])
       (unless (null? files)
@@ -253,7 +255,8 @@
       (ftype-set! gpu-sampler-info (address-w) p gpu-address-clamp)
       (gpu-must 'gpu-make-sampler (sdl-create-gpu-sampler device (gpu-at p)))))
 
-  ;; The renderer of this kind, ready to draw; the GPU falls back to the CPU.
+  ;; Opens the renderer of this kind, ready to draw; the GPU falls back to
+  ;; the CPU.
   (define (gpu-open! kind)
     (let* ([device (or (gpu-open-device kind)
                        (and (eq? kind 'gpu) (gpu-open-device 'cpu))
@@ -272,17 +275,17 @@
         (gpu-facts-refresh!)
         r)))
 
-  ;; Waits till the device has done all it was sent, if one is open: before
-  ;; the window goes, and before the process ends.
+  ;; Waits until the device has done all it was sent, if one is open:
+  ;; before the window goes, and before the process ends.
   (define (gpu-idle!)
     (when *renderer* (sdl-wait-gpu-idle (renderer-device *renderer*))))
 
   ;; Every exit waits for the GPU first, whoever calls it: the world's quit,
   ;; a suite's verdict, a script. A driver's own threads may still be at
-  ;; work, lavapipe compiling a frame's new shaders with LLVM, whose globals
-  ;; exit() would tear down under them. Set on the thread that loads core0,
-  ;; the process's first, whose exit alone ends the process (on one that
-  ;; Chez forked, exit ends that thread).
+  ;; work (lavapipe compiling a frame's new shaders with LLVM), and exit()
+  ;; would tear down LLVM's globals under them. The handler is set on the
+  ;; thread that loads core0, the process's first, whose exit alone ends the
+  ;; process (on a thread that Chez forked, exit ends only that thread).
   (at-load
    (exit-handler
     (let ([chez (exit-handler)])
@@ -291,14 +294,14 @@
         (guard (c [#t #f]) (gpu-idle!))
         (apply chez args)))))
 
-  ;; Frames in flight, as many images in the swapchain: three, the most SDL
-  ;; allows, by default (the world's 'frames-in-flight, with each frame).
-  ;; With two, GPU work of most of a refresh missed refreshes; three cover a
-  ;; stall of core0's of up to about two refreshes, a refresh more of
-  ;; latency when the queue fills.
+  ;; Frames in flight, and so images in the swapchain: by default three,
+  ;; the most SDL allows (the world's 'frames-in-flight, sent with each
+  ;; frame). With two, GPU work that took most of a refresh missed
+  ;; refreshes; three cover a stall of core0's of up to about two refreshes,
+  ;; at the cost of a refresh more of latency when the queue fills.
   (define-state *gpu-frames-in-flight* 3)
 
-  ;; What frames draw to with no window: a texture w × h.
+  ;; Sets what frames draw to with no window: a texture w × h.
   (define (gpu-set-target! w h)
     (let ([r *renderer*])
       (unless (and (= w (renderer-target-w r)) (= h (renderer-target-h r))
@@ -355,10 +358,10 @@
         (foreign-free code)
         s)))
 
-  ;; Mode 0 covers what's there, premultiplied; mode 1 leaves source - what's
-  ;; there; mode 2 turns what's there to its inverse by the source's amount,
-  ;; so that a pattern's clear pixels leave it alone; mode 3 adds. Those three
-  ;; leave alpha.
+  ;; Mode 0 covers what's there, premultiplied; mode 1 leaves the source
+  ;; minus what's there; mode 2 turns what's there to its inverse by the
+  ;; source's amount, so that a pattern's clear pixels leave it alone; mode 3
+  ;; adds. The last three leave alpha as it is.
   (define (gpu-make-pipeline device vs fs format mode)
     (let ([t gpu-target-description*] [p gpu-pipeline-info*])
       (define (blend! source target op source-a target-a)
@@ -389,14 +392,14 @@
       (gpu-must 'gpu-make-pipeline
                 (sdl-create-gpu-pipeline device (gpu-at p)))))
 
-  ;; The core's shaders, which records are drawn with, as core1 hands them
-  ;; over ((schevana core draw)): (vertex . fragments), a vector of the fragment
-  ;; shader's variants.
+  ;; The core's shaders, with which records are drawn, as core1 hands them
+  ;; over ((schevana core draw)): (vertex . fragments), where fragments is a
+  ;; vector of the fragment shader's variants.
   (define-state *gpu-shaders* #f)
 
-  ;; The pipelines drawing records to this format, made once: four by mode for
-  ;; each variant of the fragment shader, in their order. All of them, so that
-  ;; a run that's the first to need one doesn't wait for it.
+  ;; Returns the pipelines that draw records to this format, made once: four,
+  ;; by mode, for each variant of the fragment shader, in their order. All
+  ;; are made at once, so that the first run to need one doesn't wait for it.
   (define (gpu-pipelines-for format)
     (let ([r *renderer*])
       (cond
@@ -423,7 +426,7 @@
       (sdl-release-gpu-shader d fs)
       ps))
 
-  ;; After a reload the shaders may be new.
+  ;; Releases every pipeline: after a reload the shaders may be new.
   (define (gpu-forget-pipelines!)
     (when *renderer*
       (for-each (lambda (p)
@@ -463,11 +466,11 @@
            p)])))
 
   ;;; ------------------------------------------------------------------ objects
-  ;;; The SDL objects behind core1's handles, by id, (kind object . sizes):
-  ;;; (texture object w h), (buffer object bytes), (atlas object). Made and let
-  ;;; go of by the jobs core1 asks, which core0 runs before anything that needs
-  ;;; them (.work/gpu-design.md 9.12); the sizes are core0's own, which every
-  ;;; write core1 hands it must fit.
+  ;;; The SDL objects behind core1's handles, by id, each as (kind object .
+  ;;; sizes): (texture object w h), (buffer object bytes), (atlas object).
+  ;;; They are made and released by the jobs core1 asks for, which core0 runs
+  ;;; before anything that needs them (.work/gpu-design.md 9.12); the sizes
+  ;;; are core0's own, and every write core1 hands it must fit them.
 
   (define-state *gpu-objects* (make-eqv-hashtable))
 
@@ -480,21 +483,23 @@
       (unless o (errorf 'gpu-object "~a has no object: its job hasn't run" id))
       (cadr o)))
 
-  ;; Core1's jobs, in order: (texture id w h usage levels), (buffer id bytes),
-  ;; zeroed, (atlas id), the glyphs' atlas under id, (shaders vertex
-  ;; fragments), the core's, (target w h), the size frames draw to with no
-  ;; window, (release id), and (read then recs recs-n extras extras-n table
-  ;; table-n pieces runs w h clear?), a drawing read back, its pixels left with
-  ;; then in *gpu-answers*, newest first.
+  ;; Core1's jobs, run in order: (texture id w h usage levels); (buffer id
+  ;; bytes), zeroed; (atlas id), the glyphs' atlas under id; (shaders vertex
+  ;; fragments), the core's; (target w h), the size frames draw to with no
+  ;; window; (release id); and (read then recs recs-n extras extras-n table
+  ;; table-n pieces runs w h clear?), a drawing read back, whose pixels are
+  ;; left with then in *gpu-answers*, newest first.
   (define-state *gpu-answers* (box '()))
 
-  ;; What core0 read back for core1 since core1 last took it, (then . bytes)
-  ;; each, in order: core1 hands each to its then. From any thread.
+  ;; Takes what core0 read back for core1 since core1 last took it, each as
+  ;; (then . bytes), in order: core1 hands each to its then. Safe from any
+  ;; thread.
   (define (gpu-take-answers!) (core0-take! *gpu-answers*))
 
-  ;; The jobs, and core1's writes since it last handed them on (writes, a
-  ;; recording of the recorder's, or #f): what makes objects first, then the
-  ;; writes into them, then the reads that see them and the releases.
+  ;; Runs the jobs and core1's writes since it last handed them on (writes:
+  ;; a recording of the recorder's, or #f): first the jobs that make
+  ;; objects, then the writes into them, then the reads that see them and
+  ;; the releases.
   (define (gpu-run-jobs! jobs writes)
     (for-each (lambda (job)
                 (unless (memq (car job) '(read release)) (gpu-run-job! job)))
@@ -545,8 +550,8 @@
                [(texture) (sdl-release-gpu-texture d (cadr o))]
                [(buffer) (sdl-release-gpu-buffer d (cadr o))])))])))
 
-  ;; A new buffer's n bytes zeroed, by a copy of its own sent now: what's
-  ;; written into it after goes after.
+  ;; Zeroes a new buffer's n bytes, by a copy of its own sent now, so that
+  ;; what is written into it later comes after.
   (define (gpu-buffer-zero! d buffer n)
     (let* ([transfer (gpu-make-transfer d 0 n)]
            [mapped (gpu-must 'gpu-buffer-zero!
@@ -560,8 +565,8 @@
         (sdl-submit-gpu cb))
       (sdl-release-gpu-transfer d transfer)))
 
-  ;; n bytes from off in the transfer to buffer at at, what's around them
-  ;; kept.
+  ;; Copies n bytes from off in the transfer to buffer at at, keeping what
+  ;; is around them.
   (define (gpu-to-region! pass transfer off buffer at n)
     (let ([from gpu-transfer-location*] [to gpu-buffer-region*])
       (ftype-set! gpu-transfer-location (transfer) from transfer)
@@ -572,18 +577,18 @@
       (sdl-upload-to-buffer pass (gpu-at from) (gpu-at to) #f)))
 
   ;;; ------------------------------------------------------------------ writes
-  ;;; What core1 writes into buffers and images goes in a recording of
-  ;;; the recorder's, the frame's writes: its records spans of 32 bytes, (kind
-  ;;; id x y src n 0 0), its extras the words they name. Kind 0, n words into
-  ;;; buffer id from word x, from src in the extras; kind 1, n pixels into
-  ;;; image id at (x, y), from src; kind 2, rows y .. y + n of image id from
-  ;;; the next of the recording's loans, each a recording whose records are
-  ;;; the image's pixels, chained through their runs from the recording's.
-  ;;; Core0 checks each against the sizes it made the object with, and skips
-  ;;; one that doesn't fit.
+  ;;; What core1 writes into buffers and images goes in a recording of the
+  ;;; recorder's, the frame's writes. Its records are spans of 32 bytes,
+  ;;; (kind id x y src n 0 0), and its extras the words they name. Kind 0
+  ;;; writes n words into buffer id from word x, from src in the extras;
+  ;;; kind 1, n pixels into image id at (x, y), from src; kind 2, rows y to
+  ;;; y + n of image id from the next of the recording's loans, each a
+  ;;; recording whose records are the image's pixels, chained through their
+  ;;; runs from the recording's. Core0 checks each span against the sizes
+  ;;; it made the object with, and skips one that doesn't fit.
 
-  ;; What span (kind id x y n, loan its loan's bytes, or #f) writes into:
-  ;; (kind object . sizes), or #f if it doesn't fit it.
+  ;; Returns what a span (kind id x y n, with loan its loan's bytes, or #f)
+  ;; writes into, as (kind object . sizes), or #f if the span doesn't fit.
   (define (gpu-write-fits kind id x y n loan)
     (let ([o (hashtable-ref *gpu-objects* id #f)])
       (and o
@@ -600,10 +605,11 @@
              [else #f])
            o)))
 
-  ;; Each span of writes that fits, in order, each kind 2 the next loan's:
-  ;; with mapped, its loan's rows copied into the transfer mapped there; with
-  ;; pass, it goes into its object from the transfer, by pass. The rows go
-  ;; after the extras, which go first, whole. => where they end
+  ;; Walks each span of writes that fits, in order, each of kind 2 taking
+  ;; the next loan. With mapped, it copies the loan's rows into the transfer
+  ;; mapped there; with pass, it copies the span into its object from the
+  ;; transfer, by pass. The rows go after the extras, which go first, whole.
+  ;; Returns where they end.
   (define (gpu-writes-walk! writes mapped pass transfer)
     (let ([recs (gpu-recording-recs writes)] [n (gpu-recording-recs-n writes)])
       (let loop ([at 0] [loans (gpu-recording-runs writes)]
@@ -638,10 +644,10 @@
                           [else loans])
                     (+ off size)))))))
 
-  ;; Core1's writes (writes, or #f for none) into their objects, by a copy
-  ;; pass of their own sent now, ahead of anything that reads them, through
-  ;; one transfer; then free for the recorder to write again, loans and all,
-  ;; core0 done reading them.
+  ;; Sends core1's writes (writes, or #f for none) into their objects, by a
+  ;; copy pass of their own sent now, ahead of anything that reads them,
+  ;; through one transfer. Then, with core0 done reading them, they are free
+  ;; for the recorder to write again, loans and all.
   (define (gpu-send-writes! writes)
     (when writes
       (gpu-writes-copy! writes)
@@ -671,46 +677,48 @@
           (sdl-submit-gpu cb)))))
 
   ;;; ------------------------------------------------------------------ images
-  ;;; An image is a texture of premultiplied BGRA, its pixels on the GPU alone.
+  ;;; An image is a texture of premultiplied BGRA, with its pixels on the
+  ;;; GPU alone.
 
-  ;; Core1's handle on one: its id in *gpu-objects*, its size and levels, the
-  ;; recording its loans are chained after, the recorder's (#f till it lends
-  ;; one), and gone?, let go of, so that a list kept from before that names it
-  ;; draws without it.
+  ;; Core1's handle on an image: its id in *gpu-objects*, its size and
+  ;; levels, the recording its loans are chained after (the recorder's; #f
+  ;; until it lends one), and gone?, whether it was released, so that a list
+  ;; kept from before that names it draws without it.
   (define-record-type gpu-image
     (nongenerative schevana-gpu-image-3)
     (fields id w h levels (mutable loans) (mutable gone?)))
 
   (define (gpu-image-texture image) (gpu-object (gpu-image-id image)))
 
-  ;; What's just been drawn on image goes down its chain.
+  ;; Carries what was just drawn on image down its chain of mip levels.
   (define (gpu-image-fill-levels! cb image)
     (when (> (gpu-image-levels image) 1)
       (sdl-generate-gpu-mipmaps cb (gpu-image-texture image))))
 
   ;;; ------------------------------------------------------------------ buffers
-  ;;; A buffer a shader reads or writes: whole numbers or floats, 32 bits each,
-  ;;; on the GPU alone. What's set goes up with the next frame, or the next
-  ;;; compute run, among core1's writes.
+  ;;; A buffer a shader reads or writes: whole numbers or floats, 32 bits
+  ;;; each, on the GPU alone. What is set goes up with the next frame, or
+  ;;; the next compute run, among core1's writes.
 
-  ;; Core1's handle on one: its id in *gpu-objects*, its size in bytes, and
-  ;; gone?, let go of, as an image can be.
+  ;; Core1's handle on a buffer: its id in *gpu-objects*, its size in
+  ;; bytes, and gone?, whether it was released, as for an image.
   (define-record-type (gpu-buffer make-gpu-buffer* gpu-buffer?)
     (nongenerative schevana-gpu-buffer-3)
     (fields id size (mutable gone?)))
 
-  ;; What a paint or a compute run is called with: its shader, its uniforms as
-  ;; bytes, its buffers.
+  ;; What a paint or a compute run is called with: its shader, its
+  ;; uniforms as bytes, and its buffers.
   (define-record-type gpu-call
     (nongenerative schevana-gpu-call-1)
     (fields shader uniforms buffers))
 
-  ;; What a recording left, the recorder's ((schevana recorder bytes)), the
+  ;; What a recording left. The recorder ((schevana recorder bytes)) is the
   ;; only code that writes one: its records and extras, as bytes, and how
-  ;; many of them; its runs; its version, its list's count of recordings.
-  ;; Frozen once recorded, it's what core0 reads, whole: a list or a frame
-  ;; swaps to a newer one by one store. until and next are the recorder's
-  ;; own: when it may be written again, and its list's other recordings.
+  ;; many of each; its runs; and its version, its list's count of
+  ;; recordings. Frozen once recorded, it is what core0 reads, whole: a list
+  ;; or a frame swaps to a newer one by one store. until and next are the
+  ;; recorder's own: when it may be written again, and its list's other
+  ;; recordings.
   (define-record-type gpu-recording
     (nongenerative schevana-gpu-recording-1)
     (fields (mutable recs) (mutable recs-n) (mutable extras) (mutable extras-n)
@@ -719,7 +727,7 @@
   ;; A list kept to be shown by another: its recording, and the labels the
   ;; recorder gave it; when it was last recorded (core0-clock-ns) and in how
   ;; many ns, for (schevana kits inspect). Its id, a handle's, names its GPU
-  ;; buffers in *gpu-lists*; #f for a copy that's never shown
+  ;; buffers in *gpu-lists*; it is #f for a copy that is never shown
   ;; ((schevana kits inspect)).
   (define-record-type gpu-list
     (nongenerative schevana-gpu-list-3)
@@ -727,10 +735,11 @@
             (mutable took)))
 
   ;; What core0 keeps of each list shown, by id: #(records extras version
-  ;; recs-at extras-at seen seen-in), its GPU buffers (buffer . size) each,
-  ;; the version that went up, where its records and extras wait in the
-  ;; transfer while they go, or #f, and the recording this pass reads.
-  ;; A list goes up when it has a newer version.
+  ;; recs-at extras-at seen seen-in), with its GPU buffers, each (buffer .
+  ;; size); the version that went up; where its records and extras wait in
+  ;; the transfer while they go up, or #f; and the recording this pass reads,
+  ;; with the pass it was read in. A list goes up when it has a newer
+  ;; version.
   (define-state *gpu-lists* (make-eqv-hashtable))
 
   (define (gpu-list-state l)
@@ -742,8 +751,9 @@
             state))))
 
   ;; Each upload and the drawing after it is a pass, which reads each list's
-  ;; recording once, the first time it meets it: a list recorded again while
-  ;; core0 reads it shows the same recording in every step of the pass.
+  ;; recording once, the first time it meets the list, so that a list
+  ;; recorded again while core0 reads it shows the same recording in every
+  ;; step of the pass.
   (define-state *gpu-pass* 0)
 
   (define (gpu-list-seen l)
@@ -757,8 +767,8 @@
     (not (fx= (vector-ref (gpu-list-state l) 2)
               (gpu-recording-version (gpu-list-seen l)))))
 
-  ;; Its GPU buffers let go of, by core1's release job: shown again, it goes
-  ;; up again.
+  ;; Releases a list's GPU buffers, for core1's release job: shown again,
+  ;; the list goes up again.
   (define (gpu-list-free! id)
     (let ([state (hashtable-ref *gpu-lists* id #f)])
       (when state
@@ -771,11 +781,13 @@
 
   ;; A run that shows a list: (show list ox oy x0 y0 x1 y1 labels), at (ox,
   ;; oy) in device pixels from its own list's origin, inside the clip x0 y0
-  ;; x1 y1 there, x0 #f for none; labels, the recorder's, before it.
+  ;; x1 y1 there (x0 is #f for none), with labels, the recorder's, before
+  ;; it.
   (define (gpu-show-run? run) (eq? (car run) 'show))
 
-  ;; What the lists runs show, and those they show, that changed since they
-  ;; went up take in the transfer, after n: a list shown twice counts twice.
+  ;; Returns n plus the bytes that the lists runs show (and the lists those
+  ;; show) take in the transfer, for those that changed since they went up:
+  ;; a list shown twice counts twice.
   (define (gpu-fresh-bytes runs n)
     (cond
       [(null? runs) n]
@@ -789,18 +801,19 @@
                                                n))))]
       [else (gpu-fresh-bytes (cdr runs) n)]))
 
-  ;; Does a run, (mode image first count variant), show an image or a paint's
-  ;; buffer let go of since it was drawn? A list kept draws without it.
+  ;; Whether a run, (mode image first count variant), shows an image or a
+  ;; paint's buffer released since it was drawn. A list kept draws without
+  ;; it.
   (define (gpu-run-gone? run)
     (let ([x (cadr run)])
       (cond [(gpu-image? x) (gpu-image-gone? x)]
             [(gpu-call? x) (exists gpu-buffer-gone? (gpu-call-buffers x))]
             [else #f])))
 
-  ;; Can core0 draw a run now: not gone, and every object it names made? A
-  ;; list recorded again for the next frame, which core0 may read before it
-  ;; takes that frame, can name what that frame's jobs make: the run waits
-  ;; for them, a frame.
+  ;; Whether core0 can draw a run now: it is not gone, and every object it
+  ;; names is made. A list recorded again for the next frame, which core0
+  ;; may read before it takes that frame, can name what that frame's jobs
+  ;; make; the run then waits a frame for them.
   (define (gpu-run-drawable? run)
     (and (not (gpu-run-gone? run))
          (let ([x (cadr run)])
@@ -837,8 +850,8 @@
         (foreign-free code)
         c)))
 
-  ;; The pipeline that runs a compute shader, built when first asked for and
-  ;; kept with the paints'.
+  ;; The pipeline that runs a compute shader, built when first asked for,
+  ;; and kept with the paints'.
   (define (gpu-compute-pipeline shader)
     (let* ([r *renderer*]
            [ps (hashtable-ref (renderer-paints r) shader '())])
@@ -850,7 +863,7 @@
                            (cons (cons 'compute p) ps))
            p)])))
 
-  ;; A compute run on cb, in a pass of its own.
+  ;; Records a compute run on cb, in a pass of its own.
   (define (gpu-dispatch! cb run)
     (apply
      (lambda (call w h writes reads)
@@ -878,7 +891,7 @@
            (sdl-end-compute-pass pass))))
      run))
 
-  ;; run, now, core1's jobs and writes first, and a wait for it.
+  ;; Runs run now, after core1's jobs and writes, and waits for it.
   (define (gpu-compute-now! run jobs writes)
     (gpu-run-jobs! jobs writes)
     (let* ([r *renderer*]
@@ -887,13 +900,13 @@
       (gpu-dispatch! cb run)
       (gpu-wait! (gpu-must 'gpu-compute-now! (sdl-submit-gpu-fence cb)))))
 
-  ;; runs, in order, on cb: after its uploads, before its draws.
+  ;; Records runs, in order, on cb: after its uploads, before its draws.
   (define (gpu-run-computes! cb runs)
     (for-each (lambda (run) (gpu-dispatch! cb run)) runs))
 
-  ;; runs that no frame took, core1's jobs and writes first, sent with no
-  ;; frame and waited for by nobody. The queue keeps the order: what a frame
-  ;; sent after them reads finds them done.
+  ;; Sends runs that no frame took, after core1's jobs and writes, with no
+  ;; frame, and nobody waits for them. The queue keeps the order: what a
+  ;; frame sent after them reads finds them done.
   (define (gpu-submit-computes! runs jobs writes)
     (gpu-run-jobs! jobs writes)
     (let* ([r *renderer*]
@@ -902,11 +915,12 @@
       (gpu-run-computes! cb runs)
       (sdl-submit-gpu cb)))
 
-  ;; runs, then the buffers reads names read back, (id . then) each, core1's
-  ;; jobs and writes first: each buffer's bytes, a copy of its own, or #f if
-  ;; id names none, left with its then in *gpu-answers*, core1 woken for
-  ;; them. The queue keeps the order: a read finds the runs done. Core0 waits
-  ;; for its copies, between frames; core1 never does.
+  ;; Sends runs, after core1's jobs and writes, then reads back the buffers
+  ;; that reads names, each as (id . then): each buffer's bytes, a copy of
+  ;; its own, or #f if id names none, are left with its then in
+  ;; *gpu-answers*, and core1 is woken for them. The queue keeps the order:
+  ;; a read finds the runs done. Core0 waits for its copies, between frames;
+  ;; core1 never does.
   (define (gpu-reads-now! runs jobs writes reads)
     (gpu-submit-computes! runs jobs writes)
     (for-each (lambda (read)
@@ -916,8 +930,8 @@
               reads)
     (core0-world-wake!))
 
-  ;; What's in buffer id now, core1's jobs and writes first: => its bytes, a
-  ;; copy of its own, or #f if id names no buffer.
+  ;; Returns what is in buffer id now, after core1's jobs and writes: its
+  ;; bytes, a copy of its own, or #f if id names no buffer.
   (define (gpu-buffer-download! jobs writes id)
     (gpu-run-jobs! jobs writes)
     (let ([o (hashtable-ref *gpu-objects* id #f)])
@@ -950,8 +964,8 @@
 
   ;;; ------------------------------------------------------------------ frames
 
-  ;; A buffer at least n bytes big: a pair (buffer . capacity), the same one
-  ;; while it fits.
+  ;; Returns a buffer at least n bytes big, as a pair (buffer . capacity):
+  ;; the same one while it fits.
   (define (gpu-sized-buffer r pair n)
     (if (>= (cdr pair) n)
         pair
@@ -988,7 +1002,7 @@
 
   ;; Uploads what a frame needs, in a copy pass of cb: the records and extras,
   ;; the glyph table if it changed, new atlas pieces ((u v w h bytes) ...),
-  ;; and the lists the runs show that changed. All through one transfer
+  ;; and the lists the runs show that changed, all through one transfer
   ;; buffer, mapped once. A frame with none of those allocates nothing.
   (define (gpu-upload! r cb recs recs-n extras extras-n table table-n
                        atlas-pieces runs)
@@ -1027,9 +1041,9 @@
   ;; Where the next bytes go in the transfer being filled.
   (define-state gpu-put-at 0)
 
-  ;; n of bv's bytes into the mapped transfer, each on a word: a piece of
-  ;; the atlas leaves any length, and what follows starts on a word. => where
-  ;; they went
+  ;; Copies n of bv's bytes into the mapped transfer, starting on a word: a
+  ;; piece of the atlas may leave any length, and what follows starts on a
+  ;; word. Returns where they went.
   (define (gpu-put! mapped bv n)
     (let ([off (logand (+ gpu-put-at 3) -4)])
       (gpu-copy-in (+ mapped off) bv n)
@@ -1038,15 +1052,15 @@
 
   (define (gpu-piece-bytes p) (car (cddddr p)))
 
-  ;; The bytes of each of xs, bytes-of's of it, after n, each a word at most
-  ;; more for where it starts.
+  ;; Returns n plus the bytes of each of xs (by bytes-of), with up to 3
+  ;; more for each, for where it starts.
   (define (gpu-each-bytes xs bytes-of n)
     (if (null? xs)
         n
         (gpu-each-bytes (cdr xs) bytes-of
                         (+ n 3 (bytevector-length (bytes-of (car xs)))))))
 
-  ;; Each of xs's bytes into the transfer: => where each went.
+  ;; Copies each of xs's bytes into the transfer. Returns where each went.
   (define (gpu-put-each! mapped xs bytes-of)
     (if (null? xs)
         '()
@@ -1054,7 +1068,8 @@
           (let ([off (gpu-put! mapped bv (bytevector-length bv))])
             (cons off (gpu-put-each! mapped (cdr xs) bytes-of))))))
 
-  ;; The lists runs show that changed into the transfer, each once.
+  ;; Copies the lists that runs show and that changed into the transfer,
+  ;; each once.
   (define (gpu-put-lists! mapped runs)
     (unless (null? runs)
       (when (gpu-show-run? (car runs))
@@ -1070,7 +1085,7 @@
           (gpu-put-lists! mapped (gpu-recording-runs rec))))
       (gpu-put-lists! mapped (cdr runs))))
 
-  ;; Those lists from the transfer into their own buffers, in pass.
+  ;; Copies those lists from the transfer into their own buffers, in pass.
   (define (gpu-send-lists! r pass transfer runs)
     (unless (null? runs)
       (when (gpu-show-run? (car runs))
@@ -1098,7 +1113,8 @@
                          (car p) (cadr p) (caddr p) (cadddr p)))
       (gpu-send-pieces! r pass transfer (cdr pieces) (cdr offs))))
 
-  ;; n bytes from off in the transfer to the start of a buffer, (id . size).
+  ;; Copies n bytes from off in the transfer to the start of a buffer,
+  ;; given as (buffer . capacity).
   (define (gpu-to-buffer! pass transfer pair off n)
     (when (> n 0)
       (let ([from gpu-transfer-location*] [to gpu-buffer-region*])
@@ -1109,7 +1125,7 @@
         (ftype-set! gpu-buffer-region (size) to n)
         (sdl-upload-to-buffer pass (gpu-at from) (gpu-at to) #t))))
 
-  ;; w × h pixels from off in the transfer to texture at (u, v).
+  ;; Copies w × h pixels from off in the transfer to texture at (u, v).
   (define (gpu-to-texture! pass transfer texture off u v w h)
     (let ([from gpu-texture-transfer*] [to gpu-texture-region*])
       (gpu-zero! from (ftype-sizeof gpu-texture-transfer))
@@ -1126,9 +1142,10 @@
       (ftype-set! gpu-texture-region (d) to 1)
       (sdl-upload-to-texture pass (gpu-at from) (gpu-at to) #f)))
 
-  ;; Draws the runs, ((mode image first count variant) ...), to target, w × h,
-  ;; cleared to black, or to nothing if clear?. A run that shows a list draws
-  ;; its runs, from its buffers, where it puts it and inside its clip.
+  ;; Draws the runs, ((mode image first count variant) ...), to target, w ×
+  ;; h, cleared to opaque black, or to transparent if clear?. A run that
+  ;; shows a list draws the list's runs, from its buffers, where the run
+  ;; puts it and inside its clip.
   (define (gpu-draw-runs! r cb target format w h runs clear?)
     (let ([c gpu-color-target*]
           [samplers gpu-sampler-bindings*]
@@ -1139,7 +1156,7 @@
       (ftype-set! gpu-color-target (load-op) c gpu-load-clear)
       (let ([pass (gpu-must 'gpu-draw-runs!
                             (sdl-begin-render-pass cb (gpu-at c) 1 0))])
-        ;; as floats only when they change: a float is made each time
+        ;; set as floats only when they change: each set makes a float
         (unless (and (eqv? w gpu-drawn-w) (eqv? h gpu-drawn-h))
           (set! gpu-drawn-w w)
           (set! gpu-drawn-h h)
@@ -1159,7 +1176,8 @@
   (define-state gpu-drawn-w #f)
   (define-state gpu-drawn-h #f)
 
-  ;; A list's: its buffers, where it is, its lengths, for the runs next.
+  ;; Binds a list's buffers, where it is and its lengths, for the runs that
+  ;; come next.
   (define (gpu-bind-list! r recs extras ox oy)
     (let* ([buffers gpu-storage-buffers*] [uniforms gpu-frame-uniforms*]
            [words gpu-list-words] [glyphs (renderer-glyphs r)]
@@ -1179,7 +1197,7 @@
       (bytevector-s32-native-set! words 12 en)
       (bytevector-s32-native-set! words 16 gn)))
 
-  ;; What's drawn next is cut to x0 y0 x1 y1, in the target's pixels.
+  ;; Cuts what is drawn next to x0 y0 x1 y1, in the target's pixels.
   (define (gpu-scissor! pass x0 y0 x1 y1)
     (let ([box gpu-scissor*])
       (ftype-set! gpu-scissor (x) box x0)
@@ -1188,9 +1206,9 @@
       (ftype-set! gpu-scissor (h) box (max 0 (- y1 y0)))
       (sdl-set-gpu-scissor pass (gpu-at box))))
 
-  ;; A list's runs, from its buffers, at (ox, oy) on the target, inside x0
-  ;; y0 x1 y1; a list it shows inside that and its own clip, and after it
-  ;; this one's state back.
+  ;; Draws a list's runs, from its buffers, at (ox, oy) on the target,
+  ;; inside x0 y0 x1 y1. A list it shows is drawn inside that and its own
+  ;; clip, and after it this list's state is bound again.
   (define (gpu-draw-list! r cb pass pipelines format runs recs extras ox oy
                           x0 y0 x1 y1)
     (let ([buffers gpu-storage-buffers*]
@@ -1246,9 +1264,9 @@
                               [(> count 0) pipeline]
                               [else bound])))))))))
 
-  ;; A paint's run: its pipeline, the list's buffers then its own, and its
-  ;; uniforms, where the list is first and the list's lengths first of its
-  ;; buffers'.
+  ;; Draws a paint's run: binds its pipeline, the list's buffers and then
+  ;; its own, and pushes its uniforms, with where the list is written first
+  ;; and the list's lengths first among its buffers' lengths.
   (define (gpu-draw-call! r cb pass call format)
     (let ([buffers gpu-storage-buffers*]
           [u (gpu-call-uniforms call)])
@@ -1271,7 +1289,7 @@
                         8)
       (sdl-push-fragment-uniform cb 0 u (bytevector-length u))))
 
-  ;; How this window may present.
+  ;; The ways a window may present, by SDL's numbers.
   (define gpu-present-codes '((vsync . 0) (immediate . 1) (mailbox . 2)))
   (define gpu-composition-sdr 0)   ; the one a claim gives: colors stay the same
 
@@ -1285,21 +1303,22 @@
                           (renderer-device r) (renderer-sdl-window r) (cdr m)))
                        gpu-present-codes)))))
 
-  ;; How this window presents, and what it was last asked to.
+  ;; How this window presents, and how it was last asked to.
   (define-state *gpu-present-mode* 'vsync)
   (define-state *gpu-present-asked* 'vsync)
 
   ;;; ------------------------------------------------------------------ facts
-  ;;; What core0 says of itself, for the world to read (.work/gpu-design.md
-  ;;; 9.12): an alist the world never changes, made again at the end
-  ;;; of a frame only when what it's made of changed, so that a frame like the
-  ;;; last allocates nothing. What became of each frame is in its report
-  ;;; ((schevana core0 present)).
+  ;;; What core0 reports about itself, for the world to read
+  ;;; (.work/gpu-design.md 9.12): an alist the world never changes, made
+  ;;; again at the end of a frame only when what it is made from has
+  ;;; changed, so that a frame like the last one allocates nothing. What
+  ;;; became of each frame is in its report ((schevana core0 present)).
 
   (define-state *gpu-facts* '())
 
-  ;; What they were made of: records', extras', glyphs' and the transfer's
-  ;; capacity, the target's size, whether there's a window; and the mode.
+  ;; What the facts were made from: the capacities of the records',
+  ;; extras', glyphs' and transfer buffers, the target's size, and whether
+  ;; there is a window; and the present mode.
   (define-state *gpu-facts-of* (make-fxvector 7 -1))
   (define-state *gpu-facts-mode* #f)
 
@@ -1339,8 +1358,9 @@
              (target texture
                      . ,(* 4 (renderer-target-w r) (renderer-target-h r)))))))))
 
-  ;; The window this renderer draws to from now on. The count goes
-  ;; first: on a claimed window, setting it builds the swapchain again.
+  ;; Makes sdl-window the window this renderer draws to from now on. The
+  ;; count of frames in flight is set first, since setting it on a claimed
+  ;; window builds the swapchain again.
   (define (gpu-claim-window! sdl-window)
     (sdl-set-frames-in-flight (renderer-device *renderer*)
                               *gpu-frames-in-flight*)
@@ -1351,9 +1371,10 @@
     (renderer-sdl-window-set! *renderer* sdl-window)
     (gpu-facts-refresh!))
 
-  ;; Between frames, the window presents by mode from now on. A mode it doesn't
-  ;; offer leaves it as it is, and is asked once a change: a choice saved on
-  ;; another machine costs this one's frames nothing.
+  ;; Between frames: the window presents by mode from now on. A mode the
+  ;; window doesn't offer leaves it as it is, and is asked about only once
+  ;; per change, so a choice saved on another machine costs this one's
+  ;; frames nothing.
   (define (gpu-present-mode! mode)
     (unless (eq? mode *gpu-present-asked*)
       (set! *gpu-present-asked* mode)
@@ -1364,8 +1385,8 @@
                     gpu-composition-sdr (cdr (assq mode gpu-present-codes))))
           (set! *gpu-present-mode* mode)))))
 
-  ;; Between frames, n frames in flight from now on, 1 to 3, as SDL allows:
-  ;; the swapchain is built again. Another count is left as it is.
+  ;; Between frames: n frames in flight from now on, 1 to 3, as SDL
+  ;; allows, and the swapchain is built again. Any other count is ignored.
   (define (gpu-frames-in-flight! n)
     (when (and (fixnum? n) (fx<= 1 n 3) (not (fx= n *gpu-frames-in-flight*))
                (sdl-set-frames-in-flight (renderer-device *renderer*) n))
@@ -1373,16 +1394,16 @@
       (set! *gpu-facts-mode* #f)))       ; the facts say so at the next look
 
   ;;; ------------------------------------------------------------------ frames
-  ;;; A frame as core1 hands it to core0, which reads nothing else of core1's
-  ;;; (.work/gpu-design.md 9.5): the root's recording and the frame's number,
-  ;;; the recorder's to set ((schevana recorder bytes)), the glyph table if it
-  ;;; changed, the atlas's new pieces, the jobs, the writes and the compute
-  ;;; runs asked for since, the present mode, the frames in flight, and lists
-  ;;; kept from earlier to draw on images first, (image . recording) each, the
-  ;;; recorder's copies.
-  ;;; It comes back with whether it reached the screen.
-  ;;; The same few records go back and forth, filled again for each frame: a
-  ;;; frame allocates none.
+  ;;; A frame as core1 hands it to core0, which reads nothing else of
+  ;;; core1's (.work/gpu-design.md 9.5): the root's recording and the
+  ;;; frame's number, which the recorder sets ((schevana recorder bytes));
+  ;;; the glyph table if it changed; the atlas's new pieces; the jobs, the
+  ;;; writes and the compute runs asked for since the last frame; the
+  ;;; present mode; the frames in flight; and lists kept from earlier to
+  ;;; draw on images first, each (image . recording), the recorder's copies.
+  ;;; It comes back with whether it reached the screen. The same few records
+  ;;; go back and forth, filled again for each frame, so a frame allocates
+  ;;; none.
 
   (define-record-type gpu-frame
     (nongenerative schevana-gpu-frame-7)
@@ -1395,17 +1416,19 @@
   (define (gpu-frame-make)
     (make-gpu-frame #f 0 #f 0 '() '() #f '() #f 3 '() #f))
 
-  ;; The number of the last frame core0 gave back: what it read of the
-  ;; recorder's is free to write again once a later frame doesn't show it.
+  ;; The number of the last frame core0 gave back: what core0 read of the
+  ;; recorder's for it is free to write again once a later frame doesn't
+  ;; show it.
   (define-state *gpu-frame-back* 0)
 
-  ;; The frame core1 published, till core0 takes it, else #f; and those core0
-  ;; gave back since core1 last took them, newest first.
+  ;; The frame core1 published, until core0 takes it, or else #f; and the
+  ;; frames core0 gave back since core1 last took them, newest first.
   (define-state *gpu-published* (box #f))
   (define-state *gpu-given-back* (box '()))
 
-  ;; Core1's side: f to the screen, core0 woken. One waits at a time: core1
-  ;; publishes again once core0 has taken it (gpu-frame-waiting?).
+  ;; Core1's side: publishes f for the screen and wakes core0. One frame
+  ;; waits at a time: core1 publishes again once core0 has taken it
+  ;; (gpu-frame-waiting?).
   (define (gpu-publish! f)
     (memory-order-release)
     (let loop ()
@@ -1417,12 +1440,14 @@
 
   (define (gpu-frame-waiting?) (and (unbox *gpu-published*) #t))
 
-  ;; The frames core0 gave back since core1 last took them, oldest first.
+  ;; Takes the frames core0 gave back since core1 last took them, oldest
+  ;; first.
   (define (gpu-frames-back!) (core0-take! *gpu-given-back*))
 
-  ;; Core1's jobs and writes, the lists kept from earlier on their images,
-  ;; then the frame. => #t if the frame reached the screen; #f if the window
-  ;; had no room for it yet, and it should be tried again.
+  ;; Runs core1's jobs and writes, draws the lists kept from earlier on
+  ;; their images, then the frame. Returns #t if the frame reached the
+  ;; screen, or #f if the window had no room for it yet and it should be
+  ;; tried again.
   (define (gpu-present! f)
     (gpu-run-jobs! (gpu-frame-jobs f) (gpu-frame-writes f))
     (gpu-present-mode! (gpu-frame-mode f))
@@ -1433,23 +1458,23 @@
             (gpu-list-on-image! (caar earlier) (cdar earlier))
             (loop (cdr earlier)))
           (let ([shown? (gpu-frame! f)])
-            ;; read and gone up: what it read goes back
+            ;; read and gone up: what it read is given back
             (memory-order-release)
             (set! *gpu-frame-back* (gpu-frame-number f))
             (gpu-facts-refresh!)
             shown?))))
 
-  ;; With no window, core0 on a thread of its own holds each frame till the
-  ;; next refresh of a screen of its own, at the window's rate, as a screen
-  ;; holds the acquire. Its refreshes fall on whole periods of
+  ;; With no window, core0 on a thread of its own holds each frame until
+  ;; the next refresh of a screen of its own, at the window's rate, as a
+  ;; screen holds the acquire. Its refreshes fall on whole periods of
   ;; core0-clock-ns's clock.
   (define (gpu-headless-hold!)
     (let ([p (core0-frame-ns)])
       (sleep (make-time 'time-duration (- p (mod (core0-clock-ns) p)) 0))))
 
-  ;; One frame: uploads, then the runs, to the window or the target. => #t if
-  ;; it reached the screen; #f if the window had no room for it yet (a frame
-  ;; still in flight, or it is hidden).
+  ;; Draws one frame: the uploads, then the runs, to the window or the
+  ;; target. Returns #t if it reached the screen, or #f if the window had no
+  ;; room for it yet (a frame still in flight, or the window is hidden).
   (define (gpu-frame! f)
     (let* ([r *renderer*]
            [root (gpu-frame-root f)]
@@ -1472,7 +1497,7 @@
               (when (renderer-fence r) (gpu-wait! (renderer-fence r)))
               (renderer-fence-set! r fence))
             #t)
-          ;; the driver may hold either end of this till the screen is ready
+          ;; the driver may hold either end of this until the screen is ready
           (let* ([out gpu-swapchain-out*]
                  [shown?
                   (let ([ok (begin
@@ -1498,7 +1523,7 @@
                               (ftype-ref gpu-swapchain-out (w) out)
                               (ftype-ref gpu-swapchain-out (h) out)
                               runs #f))
-            ;; the screen asked to report on it, before the submit presents it
+            ;; the screen is asked to report on it before the submit presents it
             (when shown?
               (present-sent! (gpu-frame-number f))
               (platform-report-ask! (gpu-frame-number f)))
@@ -1507,9 +1532,10 @@
             (core0-trace! 5 (gpu-frame-number f))
             shown?))))
 
-  ;; A list kept from earlier drawn on image, ahead of the next frame, which
-  ;; sends its own: its glyphs are all up already. Its images and paints show
-  ;; what they hold now, but those let go of since.
+  ;; Draws a list kept from earlier on image, ahead of the next frame, which
+  ;; sends its own glyph table and atlas pieces: the list's glyphs are all
+  ;; up already. Its images and paints show what they hold now, except those
+  ;; released since.
   (define (gpu-list-on-image! image rec)
     (let* ([r *renderer*]
            [d (renderer-device r)]
@@ -1524,9 +1550,10 @@
       (gpu-image-fill-levels! cb image)
       (sdl-submit-gpu cb)))
 
-  ;; The same, drawn to a new texture w × h and read back: its pixels, row
-  ;; after row, premultiplied BGRA. What screenshots and icons see;
-  ;; jobs, writes and computes, what core1 asked of the GPU since, go first.
+  ;; The same, drawn to a new texture w × h and read back. Returns its
+  ;; pixels, row after row, in premultiplied BGRA: what screenshots and icons
+  ;; see. jobs, writes and computes, which core1 asked of the GPU since, go
+  ;; first.
   (define (gpu-drawing->bytes jobs writes computes recs recs-n extras extras-n
                              table table-n atlas-pieces runs w h clear?)
     (gpu-run-jobs! jobs writes)

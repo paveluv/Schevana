@@ -1,8 +1,8 @@
 ;;; (schevana apps tasks) — a small jira-style task manager: a board, a list
 ;;; and a tree of tasks, their details, a search and filters.
 ;;;
-;;; The tasks live on the heap (no files yet) and are live Scheme values;
-;;; the open window shows every change at once:
+;;; The tasks live on the heap (they are not saved to a file) as live
+;;; Scheme values; the open window shows every change at once:
 ;;;
 ;;;   (tasks-list 'status 'doing)        (find-task 12)
 ;;;   (add-task! "Fix the menu" 'priority 'high 'tags '("ui"))
@@ -14,11 +14,12 @@
 ;;; A task may wait for others (blocked-by), never in a cycle; the Tree
 ;;; shows under each task what it waits for.
 ;;;
-;;; Keys, with no field focused: n new task, / search, v Board, List or
-;;; Tree, arrows move the selection (in the Tree, Right and Left also
-;;; expand and collapse, as Space does) and Shift+arrows the task, Enter
-;;; edits the title, Delete deletes, Escape leaves a field, then the task.
-;;; Ctrl+E in the description opens it in a window of its own.
+;;; Keys, with no field focused: n makes a new task, / searches, v
+;;; switches between Board, List and Tree, the arrows move the selection
+;;; (in the Tree, Right and Left also expand and collapse, as Space does)
+;;; and Shift with the arrows moves the task, Enter edits the title, Delete
+;;; deletes the task (after asking), and Escape leaves a field, then the
+;;; task. Ctrl+E in the description opens it in a window of its own.
 
 (library (schevana apps tasks)
   (export
@@ -142,11 +143,11 @@
             (mutable kind)           ; bug feature chore
             (mutable priority)       ; urgent high normal low
             (mutable assignee)       ; a name, or #f
-            (mutable tags)           ; tasks-tag strings as added, at most 64
+            (mutable tags)           ; tasks-tag strings, in order, at most 64
             (mutable due)            ; (year month day), or #f
             (mutable checklist)      ; (("Write the test" . #f) ...)
             (mutable blocked-by)     ; ids of the tasks to be done first, each
-                                     ; once; whom it blocks is worked out
+                                     ; once; the tasks it blocks are worked out
             created                  ; seconds since the epoch
             (mutable updated)))
 
@@ -156,7 +157,7 @@
        (fprintf p "#<task ~a ~a ~a ~s>" (task-label t) (task-status t)
                 (task-priority t) (task-title t)))))
 
-  ;; In reading order; sorting "up" follows it.
+  ;; In reading order, which sorting "up" follows.
   (define tasks-statuses
     '((todo . "To do") (doing . "In progress") (review . "Review")
       (done . "Done")))
@@ -167,16 +168,16 @@
   (define-state *tasks* #f)          ; every task, in board order
   (define-state *tasks-next-id* 1)   ; ids are never reused
 
-  ;; The most characters a description holds: whatever the REPL gives is
-  ;; cut to it, and the text boxes stop there.
+  ;; The most characters a description holds: a longer one from the REPL
+  ;; is cut to it, and the text boxes stop there.
   (define tasks-description-max 65536)
 
   (define (task-label t) (format "TASK-~a" (task-id t)))
 
   (define (tasks-now) (time-second (current-time)))
 
-  ;; s without white space at its ends, or only at its start: (tasks-trim s
-  ;; 'left).
+  ;; Returns s without whitespace at its ends, or only at its start with
+  ;; (tasks-trim s 'left).
   (define (tasks-trim s . left)
     (let loop ([i 0] [j (string-length s)])
       (cond [(and (< i j) (char-whitespace? (string-ref s i))) (loop (+ i 1) j)]
@@ -198,11 +199,12 @@
       (tags . ,task-tags-set!) (due . ,task-due-set!)
       (checklist . ,task-checklist-set!) (blocked-by . ,task-blocked-by-set!)))
 
-  ;; value checked and made what field key holds, or an error that lists
-  ;; the valid choices. From the window (task-set!), a title or description
-  ;; comes from a text box, which cleaned what was typed or pasted (and
-  ;; kept a description to the most): it is not scanned again, so that a
-  ;; keystroke in a long one costs nothing for its length.
+  ;; Checks value and returns it as field key holds it, or raises an error
+  ;; that lists the valid choices. From the window (task-set!), a title or
+  ;; a description comes from a text box, which has already cleaned what
+  ;; was typed or pasted (and kept a description within the most): it is
+  ;; not scanned again, so that a keystroke in a long one costs nothing for
+  ;; its length.
   (define (tasks-normalize who key value)
     (define (names alist)
       (string-join (map (lambda (c) (symbol->string (car c))) alist) " "))
@@ -230,8 +232,9 @@
        (let ([s (and value (edit-clean value #f))])
          (and s (not (string=? (tasks-trim s) ""))
               ;; the details' field types a name a letter at a time, so a
-              ;; space after it stays there, for the next word; at most 64
-              ;; characters, so the draws that list the names stay cheap
+              ;; space after it stays there for the next word; a name keeps
+              ;; at most 64 characters, so the draws that list the names
+              ;; stay cheap
               (let ([t (if (eq? who 'task-set!)
                            (tasks-trim s 'left)
                            (tasks-trim s))])
@@ -239,8 +242,8 @@
       [(tags)
        (unless (and (list? value) (for-all string? value))
          (errorf who "tags must be a list of strings, not ~s" value))
-       ;; each once, in order, at most 64: a pasted log makes a few tags,
-       ;; not thousands for every draw to lay out
+       ;; each tag once, in order, at most 64: a pasted log makes a few
+       ;; tags, not thousands for every draw to lay out
        (let loop ([l value] [acc '()] [n 0])
          (cond [(or (null? l) (= n 64)) (reverse acc)]
                [(tasks-tag (car l))
@@ -264,7 +267,7 @@
                     [else (errorf who "a checklist item is a string or \
                                        (text . done?), not ~s" i)]))
             value)]
-      [(blocked-by)   ; the ids, each once; a task named as find-task names it
+      [(blocked-by)   ; the ids, each once; tasks given as find-task takes them
        (unless (list? value)
          (errorf who "blocked-by must be a list of tasks, not ~s" value))
        (let loop ([l value] [acc '()])
@@ -275,9 +278,10 @@
       [else (errorf who "~s is not a field; the fields are ~a" key
                     (names tasks-setters))]))
 
-  ;; Sets fields, a property list, of t (all checked first: blockers that
-  ;; would make a cycle are refused, the error naming it) and stamps it. A
-  ;; new status moves it to the end of that column.
+  ;; Sets the fields of t from a property list (all checked first: blockers
+  ;; that would make a cycle are refused, with an error naming the cycle)
+  ;; and stamps t's update time. A new status moves t to the end of that
+  ;; column.
   (define (tasks-update! who t fields)
     (let ([pairs (let loop ([f fields] [acc '()])
                    (cond [(null? f) (reverse acc)]
@@ -310,13 +314,13 @@
           (tasks-changed! 'fields))
       t))
 
-  ;; What t waiting in a cycle says: the cycle as tasks-cycle gives it.
+  ;; The message for t waiting in a cycle, given as tasks-cycle returns it.
   (define (tasks-cycle-text t cycle)
     (format "~a would wait for itself: ~a (each waits for the next)"
             (task-label t) (string-join (map task-label cycle) " → ")))
 
-  ;; Done while it still waits for others is allowed (the user may know
-  ;; better), but said: t, whose status was was.
+  ;; Marking t done while it still waits for others is allowed (the user
+  ;; may know better), but a note says so; was is t's status before.
   (define (tasks-done-note t was)
     (let ([open (remp (lambda (b) (eq? (task-status b) 'done))
                       (tasks-blockers-of t))])
@@ -326,12 +330,13 @@
                         (task-label t)
                         (string-join (map task-label open) ", "))))))
 
-  ;; The window's edits: one field of t, whose card is then kept in view.
+  ;; The window's edits: sets one field of t, whose card is then kept in
+  ;; view.
   (define (task-set! v t key value)
     (tasks-update! 'task-set! t (list key value))
     (tasks-view-reveal?-set! v #t))
 
-  ;; A task with the next id, at the end of its column.
+  ;; Makes a task with the next id, at the end of its column.
   (define (tasks-new! . fields)
     (let* ([now (tasks-now)]
            [t (make-task *tasks-next-id* "" "" 'todo 'feature 'normal #f '() #f
@@ -339,11 +344,11 @@
       (tasks-update! 'add-task! t fields)
       (set! *tasks-next-id* (+ *tasks-next-id* 1))
       (set! *tasks* (tasks-move *tasks* t (task-status t) #f))
-      (tasks-done-note t 'todo)   ; unsaid by tasks-update!: t was not placed
+      (tasks-done-note t 'todo)   ; tasks-update! skipped it: t wasn't placed
       (tasks-changed!)
       t))
 
-  ;; t to status, before task before (#f: the column's end).
+  ;; Moves t to status, before task before (#f for the column's end).
   (define (tasks-place! t status before)
     (let ([was (task-status t)])
       (set! *tasks* (tasks-move *tasks* t status before))
@@ -352,7 +357,8 @@
       (tasks-done-note t was)
       (tasks-changed!)))
 
-  ;; A copy with a new id, right after t; it waits for what t waits for.
+  ;; Makes a copy of t with a new id, right after t; the copy waits for
+  ;; what t waits for.
   (define (tasks-duplicate! t)
     (let* ([now (tasks-now)]
            [c (make-task *tasks-next-id*
@@ -369,7 +375,7 @@
       (tasks-changed!)
       c))
 
-  ;; Gone, it blocks nothing any more.
+  ;; Removes t; once gone, it blocks nothing any more.
   (define (tasks-remove! t)
     (set! *tasks* (remq t *tasks*))
     (for-each (lambda (x)
@@ -379,13 +385,14 @@
               *tasks*)
     (tasks-changed!))
 
-  ;; A new pair whenever which tasks there are, their order, a status or a
-  ;; link changes: what is worked out from those alone is kept while it is
-  ;; the same (eq?), so a keystroke costs nothing for the number of tasks.
-  ;; (A reload makes another: nothing kept outlives the code that made it.)
+  ;; A new pair whenever the set of tasks, their order, a status or a link
+  ;; changes: what is worked out from those alone is kept while the pair
+  ;; stays the same (eq?), so a keystroke costs nothing for the number of
+  ;; tasks. (A reload makes the memos again: nothing kept outlives the code
+  ;; that made it.)
   (define-state tasks-generation (list 'tasks))
 
-  ;; (lambda () (make)), its value kept for a generation.
+  ;; Returns (lambda () (make)), with its value kept for a generation.
   (define (tasks-kept make)
     (let ([memo (cons #f #f)])
       (lambda ()
@@ -393,10 +400,10 @@
           (set! memo (cons tasks-generation (make))))
         (cdr memo))))
 
-  ;; The open window shows the heap as it is now; what it held of a task
-  ;; that is gone, it lets go. how: 'fields when only a task's fields that
-  ;; shape nothing changed (its title, description, ...), not which tasks
-  ;; there are, their order, a status or a link: the generation stays.
+  ;; Makes the open window show the heap as it is now, letting go of what
+  ;; it held of a task that is gone. how is 'fields when only fields that
+  ;; shape nothing changed (a title, a description, ...), not the set of
+  ;; tasks, their order, a status or a link; then the generation stays.
   (define (tasks-changed! . how)
     (unless (equal? how '(fields)) (set! tasks-generation (list 'tasks)))
     (let ([win (find-window 'tasks)]
@@ -418,7 +425,7 @@
   (define (tasks-rank choices v)
     (list-index (lambda (c) (eq? (car c) v)) choices))
 
-  ;; Where t is in ts, or #f.
+  ;; Returns t's index in ts, or #f.
   (define (tasks-index t ts) (list-index (lambda (x) (eq? x t)) ts))
 
   ;; The tasks of ts in the column of status.
@@ -429,10 +436,10 @@
   ;; label) ...).
   (define (tasks-choices alist) (map (lambda (c) (cons (cdr c) (car c))) alist))
 
-  ;; The search's lowercase words, each once, at most 16 and each cut to 64
-  ;; characters: a pasted page searches by its first words, not by thousands
-  ;; each over a long title, and no word costs a long title more than 64
-  ;; compares a character.
+  ;; Returns the search's lowercase words, each once, at most 16 of them
+  ;; and each cut to 64 characters: a pasted page searches by its first
+  ;; words, not by thousands, each run over a long title, and no word costs
+  ;; a long title more than 64 compares per character.
   (define (tasks-words query)
     (let loop ([ws (map (lambda (w) (substring w 0 (min 64 (string-length w))))
                         (string-split (string-downcase query) #\space))]
@@ -442,7 +449,8 @@
              (loop (cdr ws) acc)]
             [else (loop (cdr ws) (cons (car ws) acc))])))
 
-  ;; Is a the name b, ignoring case and spaces around it?
+  ;; Whether a and b are the same name, ignoring case and the spaces
+  ;; around them.
   (define (tasks-same-name? a b) (string-ci=? (tasks-trim a) (tasks-trim b)))
 
   ;; The assignees of ts, each once (the first spelling, trimmed), sorted.
@@ -466,9 +474,10 @@
                                   acc (task-tags t)))
                      '() ts)))
 
-  ;; Every word is found, ignoring case, in "task-12", the title, the
-  ;; description, the assignee or a tag; each filter is #f for any, and
-  ;; assignee none means unassigned. Without done?, done tasks are out.
+  ;; Whether t passes: every word is found, ignoring case, in "task-12",
+  ;; the title, the description, the assignee or a tag; each filter is #f
+  ;; for any, and an assignee of none means unassigned. Without done?, done
+  ;; tasks are left out.
   (define (tasks-match? t words kind priority assignee tag done?)
     (and (or done? (not (eq? (task-status t) 'done)))
          (or (not kind) (eq? (task-kind t) kind))
@@ -480,10 +489,10 @@
          (or (not tag) (member tag (task-tags t)))
          (or (null? words) (tasks-found? t words))))
 
-  ;; Whether t's texts hold every word, as found last for the same words
-  ;; and texts (eq?, each set anew when it changes): a draw, at every
-  ;; keystroke anywhere, searches only a task that changed, not every long
-  ;; description again.
+  ;; Whether t's texts hold every word, as found the last time for the
+  ;; same words and texts (eq?, since each text is set anew when it
+  ;; changes): a draw, at every keystroke anywhere, searches only a task
+  ;; that changed, not every long description again.
   (define-made tasks-found-memo (make-weak-eq-hashtable))
   (define (tasks-found? t words)
     (let ([texts (list (task-title t) (task-description t) (task-assignee t)
@@ -501,9 +510,10 @@
             (hashtable-set! tasks-found-memo t (list words texts found?))
             found?))))
 
-  ;; Stable. key: board id title status kind priority assignee due updated;
-  ;; board is status order, keeping list order. Enums go in their lists'
-  ;; order; no assignee or due date sorts last either way. dir: up or down.
+  ;; Sorts ts, stably, by key: board, id, title, status, kind, priority,
+  ;; assignee, due or updated; board is status order, keeping the list's
+  ;; order. Enums go in their lists' order; no assignee or no due date
+  ;; sorts last either way. dir is up or down.
   (define (tasks-sorted ts key dir)
     (define (value t)
       (case key
@@ -525,8 +535,8 @@
                          [else (before? b a)])))
                ts))
 
-  ;; ts with t before task before, or after the last task of status when
-  ;; before is #f (at the end when there is none).
+  ;; Returns ts with t before task before or, when before is #f, after the
+  ;; last task of status (at the end when there is none).
   (define (tasks-move ts t status before)
     (let* ([rest (remq t ts)]
            [i (or (tasks-index before rest)
@@ -537,7 +547,8 @@
                           [else (loop (cdr l) (+ i 1) last)])))])
       (append (list-head rest i) (list t) (list-tail rest i))))
 
-  ;; The drop slot: the first card whose middle is below py, or the count.
+  ;; Returns the drop slot: the index of the first card whose middle is
+  ;; below py, or the count of cards.
   (define (tasks-slot tops heights py)
     (let loop ([ts tops] [hs heights] [i 0])
       (cond [(null? ts) i]
@@ -552,8 +563,9 @@
             [else (let loop ([l ts] [prev #f])
                     (if (eq? (car l) t) prev (loop (cdr l) (car l))))])))
 
-  ;; Trimmed, lowercase, spaces become -, no commas, at most 24 characters;
-  ;; #f when nothing is left.
+  ;; Returns str as a tag: trimmed and lowercase, with whitespace turned
+  ;; into - and commas dropped, at most 24 characters; #f when nothing is
+  ;; left.
   (define (tasks-tag str)
     (let* ([s (list->string
                (filter-map (lambda (c)
@@ -594,10 +606,11 @@
 
   ;;; ------------------------------------------------------------------
   ;;; dependencies, pure but for *tasks*
-  ;;; t waits for the tasks whose ids are in its blocked-by; whom it blocks
-  ;;; (the inverse) is worked out when asked, never stored.
+  ;;; t waits for the tasks whose ids are in its blocked-by; the tasks it
+  ;;; blocks (the inverse) are worked out when asked, never stored.
 
-  ;; ts's tasks of each status in turn, keeping their order: board order.
+  ;; Returns ts in board order: the tasks of each status in turn, keeping
+  ;; their order.
   (define (tasks-board-order ts)
     (apply append (map (lambda (s) (tasks-in (car s) ts)) tasks-statuses)))
 
@@ -612,7 +625,7 @@
       table))
 
   ;; The id table of *tasks*, made again only when *tasks* is another list
-  ;; (every change of which tasks there are makes one; ids never change).
+  ;; (every change to the set of tasks makes one; ids never change).
   (define-made tasks-by-id
     (let ([memo (cons #f #f)])
       (lambda ()
@@ -629,17 +642,17 @@
   ;; The tasks that wait for t, in board order.
   (define (tasks-blocks-of t) (hashtable-ref (tasks-inverted) (task-id t) '()))
 
-  ;; Is t waiting for a task that is not done?
+  ;; Whether t waits for a task that is not done.
   (define (tasks-blocked? t)
     (exists (lambda (b) (not (eq? (task-status b) 'done)))
             (tasks-blockers-of t)))
 
-  ;; The cycle t waiting for the tasks ids would make, as tasks: (t, one it
-  ;; would wait for, what that one waits for, ..., t); #f when none would.
-  ;; by-id: an id table.
+  ;; Returns the cycle that t waiting for the tasks ids would make, as
+  ;; tasks: (t, one it would wait for, what that one waits for, ..., t);
+  ;; #f when there would be none. by-id is an id table.
   (define (tasks-cycle by-id t ids)
     (let ([seen (make-eqv-hashtable)])
-      (let walk ([ids ids] [path (list t)])   ; path: the last first
+      (let walk ([ids ids] [path (list t)])   ; path: the last task first
         (and (pair? ids)
              (or (let ([b (hashtable-ref by-id (car ids) #f)])
                    (cond [(not b) #f]
@@ -665,9 +678,9 @@
   (define-made tasks-inverted
     (tasks-kept (lambda () (tasks-inverse (tasks-ordered)))))
 
-  ;; The ids of the tasks that wait for t, directly or through others, as
-  ;; an eqv hashtable, from inverse (as tasks-inverse makes it): t waiting
-  ;; for any of them would make a cycle.
+  ;; Returns the ids of the tasks that wait for t, directly or through
+  ;; others, as an eqv hashtable, from inverse (as tasks-inverse makes it):
+  ;; t waiting for any of them would make a cycle.
   (define (tasks-waiters inverse t)
     (let ([found (make-eqv-hashtable)])
       (let walk ([t t])
@@ -688,13 +701,13 @@
                          (hashtable-contains? waiters (task-id c)))))
               (tasks-ordered))))
 
-  ;; The tree of ts, in board order: under each task, the tasks it waits for
-  ;; (that are in ts); the roots are the tasks nothing in ts waits for, then
-  ;; any left over (a cycle made behind the REPL's back). A task waited for
-  ;; by several shows what it waits for under the first of them, depth
-  ;; first. => (values roots homes order): the roots' ids; an eqv hashtable
-  ;; from each id to the id of the task it shows its own under (#f for a
-  ;; root); and every id, depth first.
+  ;; The tree of ts, in board order: under each task go the tasks it waits
+  ;; for (those in ts); the roots are the tasks nothing in ts waits for,
+  ;; then any left over (a cycle made behind the REPL's back). A task
+  ;; waited for by several shows what it waits for under the first of
+  ;; them, depth first. Returns (values roots homes order): the roots' ids;
+  ;; an eqv hashtable from each id to the id of the task under which it
+  ;; shows what it waits for (#f for a root); and every id, depth first.
   (define (tasks-forest ts)
     (let ([by-id (tasks-id-table ts)] [waited (make-eqv-hashtable)]
           [homes (make-eqv-hashtable)] [order '()])
@@ -739,8 +752,8 @@
 
   ;;; ---------------------------------------------------------------- REPL
 
-  ;; The task x names: a task, an id (12), "TASK-12" or a piece of its title
-  ;; (the first match); #f when none does, or x is blank.
+  ;; Returns the task x names: a task, an id (12), "TASK-12" or a piece of
+  ;; its title (the first match); #f when none matches, or when x is blank.
   (define (find-task x)
     (cond [(task? x) (and (memq x *tasks*) x)]
           [(fixnum? x) (find (lambda (t) (= (task-id t) x)) *tasks*)]
@@ -756,8 +769,9 @@
 
   (define (tasks-get who x) (or (find-task x) (errorf who "no task ~s" x)))
 
-  ;; Every task, in board order. filters: status kind priority assignee tag
-  ;; search, e.g. (tasks-list 'status 'doing 'assignee "Pavel").
+  ;; Returns every task that passes the filters, in board order. The
+  ;; filters are status, kind, priority, assignee, tag and search, e.g.
+  ;; (tasks-list 'status 'doing 'assignee "Pavel").
   (define (tasks-list . filters)
     (let ([f (lambda (k) (plist-ref filters k #f))])
       (for-each (lambda (k)
@@ -786,12 +800,12 @@
   ;;            'description "..." 'checklist '("Reproduce" "Fix"))
   (define (add-task! title . fields) (apply tasks-new! 'title title fields))
 
-  ;; (set-task! 12 'status 'review 'priority 'urgent): any fields.
+  ;; (set-task! 12 'status 'review 'priority 'urgent) sets any fields.
   (define (set-task! x . fields)
     (tasks-update! 'set-task! (tasks-get 'set-task! x) fields))
 
-  ;; (move-task! 12 'done): to the end of a column; (move-task! 12 'todo 7):
-  ;; before TASK-7.
+  ;; (move-task! 12 'done) moves TASK-12 to the end of a column;
+  ;; (move-task! 12 'todo 7) moves it before TASK-7.
   (define (move-task! x status . before)
     (let ([t (tasks-get 'move-task! x)]
           [s (tasks-normalize 'move-task! 'status status)]
@@ -799,23 +813,24 @@
       (tasks-place! t s b)
       t))
 
-  ;; #t if it was there. Whatever waited for it waits for it no more.
+  ;; Deletes the task x names; returns #t if it was there. Whatever waited
+  ;; for it no longer does.
   (define (delete-task! x)
     (let ([t (find-task x)]) (and t (begin (tasks-remove! t) #t))))
 
-  ;; The tasks x waits for: (task-blockers 13). (set-task! 13 'blocked-by
-  ;; '(10 "TASK-31")) sets them, as any task names; one that would make a
-  ;; cycle is refused.
+  ;; Returns the tasks x waits for: (task-blockers 13).
+  ;; (set-task! 13 'blocked-by '(10 "TASK-31")) sets them, each given as
+  ;; find-task takes it; one that would make a cycle is refused.
   (define (task-blockers x) (tasks-blockers-of (tasks-get 'task-blockers x)))
 
   ;; The tasks that wait for x, in board order.
   (define (task-blocks x) (tasks-blocks-of (tasks-get 'task-blocks x)))
 
-  ;; Every task's dependencies as nested lists of ids: a node is (id node
-  ;; ...), under it the tasks it waits for; the roots are the tasks nothing
-  ;; waits for. A task waited for by several is a node under the first of
-  ;; them, depth first, and only its id under the others: ((11 (9)) (16)
-  ;; (13 (31) (10)) (17 31) ...).
+  ;; Returns every task's dependencies as nested lists of ids: a node is
+  ;; (id node ...), with the tasks it waits for under it; the roots are the
+  ;; tasks nothing waits for. A task waited for by several is a node under
+  ;; the first of them, depth first, and only its id under the others:
+  ;; ((11 (9)) (16) (13 (31) (10)) (17 31) ...).
   (define (tasks-tree)
     (let-values ([(roots homes order) (apply values (tasks-whole-forest))])
       (let ([by-id (tasks-by-id)])
@@ -831,10 +846,10 @@
                         (task-blocked-by (hashtable-ref by-id id #f))))))
              roots))))
 
-  ;; Schevana's own backlog, board order within each column: (id status
-  ;; kind priority assignee tags due checklist title description); due in
-  ;; days from today, a checklist item done when paired with #t, and a
-  ;; description that is a symbol made when the backlog is seeded (see
+  ;; Schevana's own backlog, in board order within each column: (id status
+  ;; kind priority assignee tags due checklist title description). due is
+  ;; in days from today, a checklist item paired with #t is done, and a
+  ;; description that is a symbol is made when the backlog is seeded (see
   ;; tasks-seed-text).
   (define tasks-seed
     '((16 todo bug high "Claude" ("perf" "render") -2 ()
@@ -976,11 +991,12 @@
     '((11 9) (13 31 10) (17 31) (18 31) (19 10) (20 10) (21 10) (22 14) (14 33)
       (33 9) (15 32) (26 32) (23 7)))
 
-  ;; The seed's long descriptions, made when the backlog is seeded: real
-  ;; text from the tree's own files, the README and the widget kit's source;
-  ;; the backlog itself as one paragraph; and a base64 blob, with no spaces
-  ;; at all. Each holds at most tasks-description-max characters; a file
-  ;; that cannot be read gives the backlog's paragraph instead.
+  ;; Returns one of the seed's long descriptions, made when the backlog is
+  ;; seeded: real text from the tree's own files, the README and the widget
+  ;; kit's source; the backlog itself as one paragraph; and a base64 blob,
+  ;; with no spaces at all. Each holds at most tasks-description-max
+  ;; characters; a file that cannot be read gives the backlog's paragraph
+  ;; instead.
   (define (tasks-seed-text what)
     (define (file f)
       (guard (c [#t (tasks-seed-text 'changelog)])
@@ -1015,7 +1031,7 @@
           (bytevector-copy! bv 0 cut 0 n)
           (tasks-base64 cut))])))
 
-  ;; bv in base64.
+  ;; Returns bv in base64.
   (define (tasks-base64 bv)
     (let ([abc "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz\
                 0123456789+/"]
@@ -1026,7 +1042,7 @@
                                                (bytevector-u8-ref bv (+ i k))
                                                0)))
                             0 '(0 1 2))])
-          (for-each (lambda (k)   ; six bits a digit, = past the end
+          (for-each (lambda (k)   ; six bits per digit, = past the end
                       (write-char
                        (if (<= k (- n i))
                            (string-ref abc (fxand 63 (fxsra v (- 18 (* 6 k)))))
@@ -1034,8 +1050,8 @@
                        o))
                     '(0 1 2 3))))))
 
-  ;; The seed backlog again: created over the last three weeks, the done
-  ;; ones first.
+  ;; Restores the seed backlog: its tasks created over the last three
+  ;; weeks, most of the done ones first.
   (define (tasks-reset!)
     (let ([now (tasks-now)] [today (ui-date->day (ui-today))] [day 86400])
       (set! *tasks*
@@ -1073,19 +1089,19 @@
             (mutable kind) (mutable priority) (mutable assignee)
             (mutable tag)         ; filters: a value, or #f for any
                                   ; (assignee: a name, none, or #f)
-            (mutable done?)       ; Show done
-            (mutable sort)        ; (key . up|down), or #f: board order
+            (mutable done?)       ; whether Show done is on
+            (mutable sort)        ; (key . up|down), or #f for board order
             (mutable selected)    ; a task, or #f
-            (mutable page?)       ; narrow windows: the details page shows
+            (mutable page?)       ; in a narrow window, the details page shows
             (mutable confirm)     ; the task the dialog would delete, or #f
             (mutable drag)        ; a tasks-drag, or #f
             (mutable reveal?)     ; scroll the selection into view next draw
-            (mutable tag-draft)   ; typed in the tags' field
-            (mutable item-draft)  ; typed in "Add an item…"
+            (mutable tag-draft)   ; what is typed in the tags' field
+            (mutable item-draft)  ; what is typed in "Add an item…"
             (mutable editor)      ; the description's editor window, or #f:
                                   ; while it is open, Tasks waits on it
-            (mutable node)))      ; the Tree's row the selection was picked
-                                  ; at, when it is one of its later rows
+            (mutable node)))      ; the Tree's row where the selection was
+                                  ; picked, when it is one of its later rows
 
   (define-record-type tasks-drag
     (nongenerative schevana-tasks-drag-1)
@@ -1093,13 +1109,14 @@
             (mutable x) (mutable y)       ; the pointer now
             (mutable moving?)             ; moved more than 4 px
             (mutable status) (mutable before)))  ; the slot of the last draw;
-                                                 ; status #f: no target
+                                                 ; status #f for no target
 
   (define (tasks-view-new ui)
     (make-tasks-view ui 'board "" #f #f #f #f #t #f #f #f #f #f #f "" "" #f
                      #f))
 
-  ;; Does a task match the search and filters? (lambda (t) ...)
+  ;; Returns (lambda (t) ...), whether a task matches the search and the
+  ;; filters.
   (define (tasks-matcher v)
     (let ([words (tasks-words (tasks-view-query v))])
       (lambda (t)
@@ -1126,8 +1143,8 @@
           (tasks-sorted visible (car sort) (cdr sort))
           (tasks-sorted visible 'board 'up))))
 
-  ;; A press on the List's heading key: sorted by it, then the other way,
-  ;; then in board order again.
+  ;; A press on the List's heading for key: sorts by it, then the other
+  ;; way, then in board order again.
   (define (tasks-sort-by! v key)
     (let ([s (tasks-view-sort v)])
       (tasks-view-sort-set! v (cond [(not (and s (eq? (car s) key)))
@@ -1151,7 +1168,7 @@
 
   (define (tasks-select! v t)
     (let ([ui (tasks-view-ui v)])
-      (unless (eq? t (tasks-view-selected v))   ; another task, from its top
+      (unless (eq? t (tasks-view-selected v))   ; another task, from the top
         (tasks-view-tag-draft-set! v "")
         (tasks-view-item-draft-set! v "")
         (for-each (lambda (id) (ui-forget! ui id))
@@ -1161,14 +1178,15 @@
       (tasks-view-reveal?-set! v #t)
       (ui-focus! ui #f)))
 
-  ;; The Tree's nodes: a task's id for its own row, (parent-id . id) for a
-  ;; later one, under another task that waits for it.
+  ;; Returns node's task. The Tree's nodes are a task's id for its own row,
+  ;; and (parent-id . id) for a later row, under another task that waits
+  ;; for it.
   (define (tasks-node-task node)
     (hashtable-ref (tasks-by-id) (if (pair? node) (cdr node) node) #f))
 
-  ;; The Tree's selected row: the later one the selection was picked at,
-  ;; while it is one still (its parent waits for the task, whose own row is
-  ;; under another), else the selected task's own.
+  ;; Returns the Tree's selected row: the later row where the selection was
+  ;; picked, while it still is one (its parent waits for the task, whose
+  ;; own row is under another), else the selected task's own row.
   (define (tasks-tree-node v)
     (let ([t (tasks-view-selected v)] [node (tasks-view-node v)])
       (cond [(not t) #f]
@@ -1187,13 +1205,13 @@
     (tasks-view-node-set! v (and (pair? node) node)))
 
   ;; Return or a double click in the Tree: on a task's own row its title is
-  ;; edited, on a later row the selection goes to its own.
+  ;; edited; on a later row the selection goes to the task's own row.
   (define (tasks-tree-open! v node)
     (if (pair? node)
         (tasks-select! v (tasks-node-task node))
         (tasks-edit-title! v)))
 
-  ;; In a window too narrow for the details beside the view?
+  ;; Whether the window is too narrow for the details beside the view.
   (define (tasks-narrow? v)
     (let-values ([(w h) (window-content-size (current-window))])
       (let-values ([(mode view details) (tasks-layout v w h 0)])
@@ -1203,8 +1221,9 @@
     (when (tasks-narrow? v) (tasks-view-page?-set! v #t))
     (ui-focus! (tasks-view-ui v) 'title))
 
-  ;; A new untitled task at the end of a column, with the filters' values,
-  ;; selected and its title focused; the search is cleared so it shows.
+  ;; Makes a new untitled task at the end of a column, with the filters'
+  ;; values, selects it and focuses its title; the search is cleared so
+  ;; that the task shows.
   (define (tasks-new-task! v status)
     (let ([t (tasks-new! 'status status
                          'kind (or (tasks-view-kind v) 'feature)
@@ -1256,7 +1275,8 @@
     (max 160 (round (* 11 (font-line-height 'ui)))))
   (define (tasks-column-width)
     (max 200 (round (* 27/2 (font-line-height 'ui)))))
-  ;; A column's heading; a style's part, as the column's insets are.
+  ;; A column heading's height; a style's part, as the column's insets
+  ;; are.
   (define-part (tasks-column-header-height)
     (round (+ (font-line-height 'ui) 14)))
   ;; How far the details, or the keys when nothing is selected, are from
@@ -1265,13 +1285,15 @@
   ;; How far a card's marks, title, tags and dates are from its edges.
   (define-part (tasks-card-pad) 10)
   ;; Inside a column: its cards' margin at either side, the room above the
-  ;; first card and between two, and the + button's from the header's end.
-  ;; A style's part, as the cards' insets are: one that draws something
-  ;; between or beside the cards (Cons's pointers) makes room for it.
+  ;; first card and between two cards, and the + button's distance from the
+  ;; header's end. It is a style's part, as the cards' insets are: a style
+  ;; that draws something between or beside the cards (Cons's pointers)
+  ;; makes room for it.
   (define-part (tasks-column-insets) (values 10 8 8 6))
 
-  ;; A column's cards' left and right insets: its side, or the room a
-  ;; style's scroll bar keeps beside them (Genera's), if more.
+  ;; The left and right insets of a column's cards: the column's side
+  ;; margin, or the room a style's scroll bar keeps beside them (Genera's),
+  ;; if that is more.
   (define-part (tasks-card-insets)
     (let-values ([(side first between edge) (tasks-column-insets)])
       (values (max side (ui-scrollbar-inset 'left))
@@ -1281,7 +1303,8 @@
   (define (tasks-avatar-size) (round (+ (font-line-height 'ui-small) 7)))
   (define (tasks-mark-size) (round (* (font-line-height 'ui) 0.8)))
 
-  ;; 4 columns and the details, tall enough for most of a task.
+  ;; The natural size: 4 columns and the details, tall enough for most of a
+  ;; task.
   (define (tasks-natural-size)
     (values (+ (* 4 (tasks-column-width)) (* 3 (ui-gap)) (* 2 (ui-pad))
                (tasks-details-width))
@@ -1292,7 +1315,7 @@
             (max 420 (* 28 (font-line-height 'ui)))))
 
   ;; The width from which v's details sit beside its view: the view's
-  ;; least, its columns' or its list's, and the details'.
+  ;; least width (its columns' or its list's) plus the details'.
   (define (tasks-wide-width v)
     (let ([n (length (tasks-shown-statuses v))])
       (+ (tasks-details-width)
@@ -1301,9 +1324,10 @@
                 (* 2 (ui-pad)))
              (tasks-list-min-width)))))
 
-  ;; (values mode view-rect details-rect) under a toolbar top high: wide
-  ;; puts the details at the right; narrow gives the view the whole width,
-  ;; or to the details page when it shows (details-rect #f otherwise).
+  ;; Returns (values mode view-rect details-rect) under a toolbar top high:
+  ;; wide puts the details at the right; narrow gives the view the whole
+  ;; width, and the details page, when it shows, a centered column at most
+  ;; tasks-page-width wide (details-rect is #f otherwise).
   (define (tasks-layout v w h top)
     (let ([dw (tasks-details-width)] [vh (- h top)])
       (if (>= w (tasks-wide-width v))
@@ -1317,19 +1341,20 @@
   (define (tasks-shown-title t)
     (if (string=? (task-title t) "") "Untitled" (task-title t)))
 
-  ;; s as a menu entry or a message quotes it: at most 20 line heights wide,
-  ;; so a long name keeps a menu on the screen, and a long title leaves room
-  ;; for what the message says after it.
+  ;; Returns s as a menu entry or a message quotes it: at most 20 line
+  ;; heights wide, so that a long name keeps a menu on the screen, and a
+  ;; long title leaves room for what the message says after it.
   (define (tasks-quoted s) (text-fit s (* 20 (font-line-height 'ui)) 'ui))
 
   ;; The title's lines on a card w wide, wrapped as the details wrap it (a
   ;; long word breaks): at most 3, the last ending in "…" when there are
-  ;; more. => (values lines cut?)
+  ;; more. Returns (values lines cut?).
   (define (tasks-card-title w t)
     (ui-wrap-lines (tasks-shown-title t) (- w (* 2 (tasks-card-pad))) 'ui 3))
 
   ;; The tag chips that fit on a card w wide, the first always (cut to the
-  ;; room), and how many more a "+k" after them counts. => (values widths k)
+  ;; room), and how many more a "+k" after them counts. Returns
+  ;; (values widths k).
   (define (tasks-card-tags w t)
     (let ([room (- w (* 2 (tasks-card-pad)))]
           [more (lambda (k)   ; "+k" and its gap
@@ -1359,11 +1384,13 @@
                           (tasks-card-pad))))))
 
 
-  ;; Is t's title wider than room? Its row's tooltip shows it.
+  ;; Whether t's title is wider than room; then its row's tooltip shows
+  ;; it.
   (define (tasks-title-cut? t room)
     (> (text-width (text-within (task-title t) room) 'ui) room))
 
-  ;; How wide ids show: as the largest in use, of three digits at least.
+  ;; How wide ids show: as wide as the largest in use, with three digits at
+  ;; least.
   (define (tasks-id-width)
     (text-width (format "TASK-~a" (max 100 (tasks-largest-id))) 'mono-small))
 
@@ -1379,12 +1406,13 @@
   (define (tasks-node-room t w)
     (- w (* 2 (ui-table-cell-inset)) (tasks-id-width) 8 (tasks-mark-room t)))
 
-  ;; Columns at width w, ((key title width) ...): those of keys, flex (key
-  ;; title) at index at taking the rest. drops leave, in that order, while
-  ;; flex would be narrower than 13 lines.
+  ;; Returns the columns at width w, as ((key title width) ...): those of
+  ;; keys, with flex (key title) at index at taking the rest. The columns
+  ;; of drops leave, in that order, while flex would be narrower than 13
+  ;; line heights.
   (define (tasks-fit-columns w keys drops flex at)
     (let* ([lh (font-line-height 'ui)] [m (tasks-mark-size)]
-           ;; a cell's text inset at either side (20 at the built-in's)
+           ;; a cell's text inset at either side (20 with the kit's own)
            [in2 (* 2 (ui-table-cell-inset))]
            [names (filter-map task-assignee *tasks*)]
            [all `((id "ID" ,(+ in2 (tasks-id-width)))
@@ -1417,8 +1445,9 @@
                        '(updated kind due assignee priority status)
                        '(title "Title") 1))
 
-  ;; The Tree's: the task (its id, mark and title, indented) takes the rest;
-  ;; Due, Assignee, Priority and Status drop.
+  ;; The Tree's columns at width w: the task (its id, mark and title,
+  ;; indented) takes the rest; Due, Assignee, Priority and Status drop, in
+  ;; that order.
   (define (tasks-tree-columns w)
     (tasks-fit-columns w '(status priority assignee due)
                        '(due assignee priority status) '(task "Task") 0))
@@ -1433,8 +1462,8 @@
             [cut? title]
             [else waits])))
 
-  ;; "Blocked by TASK-10 Threads spec…, TASK-31 Each window…": the tasks
-  ;; t waits for that are not done.
+  ;; Returns "Blocked by TASK-10 Threads spec…, TASK-31 Each window…": the
+  ;; tasks t waits for that are not done.
   (define (tasks-waits-text t)
     (string-append
      "Blocked by "
@@ -1449,12 +1478,12 @@
   ;;; ------------------------------------------------------------------
   ;;; the app's own drawing: card, column, slot, marks, cells, empty states
 
-  ;; A task's mark in the s-square at (x, y): what is priority (1–4 bars:
-  ;; low, normal, high, urgent), kind (bug a circle, feature a diamond,
-  ;; chore a square: form and color both), blocked (a no-entry sign) or
-  ;; status (its dot), value its value. Returns the width it took: s, or 0
-  ;; for none (a style may leave out a mark whose word is written beside
-  ;; it).
+  ;; Draws a task's mark in the s-square at (x, y): what is priority (1–4
+  ;; bars for low, normal, high, urgent), kind (a circle for a bug, a
+  ;; diamond for a feature, a square for a chore: by form and color both),
+  ;; blocked (a no-entry sign) or status (its dot), and value is its value.
+  ;; Returns the width it took: s, or 0 for none (a style may leave out a
+  ;; mark whose word is written beside it).
   (define-part (tasks-draw-mark x y s what value)
     (case what
       [(priority)
@@ -1490,23 +1519,23 @@
                       [else 'text-faint]))])
     s)
 
-  ;; A line of t's title at (x, y): faint for "Untitled", dim when t is
-  ;; done. Returns the x after it.
+  ;; Draws a line of t's title at (x, y): faint for "Untitled", dim when t
+  ;; is done. Returns the x after it.
   (define (tasks-draw-title x y line t)
     (draw-text x y line (cond [(string=? (task-title t) "") 'text-faint]
                               [(eq? (task-status t) 'done) 'text-dim]
                               [else 'text])
                'ui))
 
-  ;; A due date's label at (x, y), cut to w, when it is past or today (else
-  ;; #f): red when past, orange today. A style draws it as it likes, given
+  ;; Draws a due date's label at (x, y), cut to w; when is past, today or
+  ;; #f: red when past, orange today. A style draws it as it likes, given
   ;; nothing of a task's but this.
   (define-part (tasks-draw-due x y w label when font)
     (draw-text x y (text-fit label w font)
                (case when [(past) 'red] [(today) 'orange] [else 'text-faint])
                font))
 
-  ;; t's due date at (x, y), cut to w, by the part.
+  ;; Draws t's due date at (x, y), cut to w, with the part.
   (define (tasks-draw-due-of x y w t today font)
     (tasks-draw-due x y w (tasks-due-label (task-due t) today)
                     (cond [(tasks-overdue? t today) 'past]
@@ -1516,14 +1545,16 @@
                           [else #f])
                     font))
 
-  ;; flags: hover, selected, floating (being dragged), blocked.
+  ;; Draws t's card. flags: hover, selected, floating (being dragged),
+  ;; blocked.
   (define (tasks-draw-card x y w h flags t today)
     (let* ([on? (lambda (f) (memq f flags))]
            [lh (font-line-height 'ui)] [sh (font-line-height 'ui-small)]
            [a (tasks-avatar-size)] [m (tasks-mark-size)] [p (tasks-card-pad)]
            [y1 (+ y p)] [right (- (+ x w) p)])
-      ;; bg-3 would hide the progress track; a square card's on whole device
-      ;; pixels, so its edge stays crisp over what it is dragged across
+      ;; bg-3 would hide the progress track; a square card sits on whole
+      ;; device pixels, so its edge stays crisp over what it is dragged
+      ;; across
       (if (<= (theme 'corner-radius) 0)
           (fill-box x y w h 'bg-2)
           (fill-box x y w h 'bg-2 (ui-card-radius)))
@@ -1587,8 +1618,8 @@
             (ui-draw-progress (- right bar-w) (+ fy (/ (- sh ph) 2)) bar-w ph
                               '() (/ done n)))))))
 
-  ;; A column's well and header: the status dot, its name and the count.
-  ;; flags: empty (says so in its middle).
+  ;; Draws a column's well and header: the status dot, its name and the
+  ;; count. flags: empty (the column says so in its middle).
   (define-part (tasks-draw-column x y w h flags status label count)
     (let ([hh (tasks-column-header-height)] [lh (font-line-height 'ui)]
           [sh (font-line-height 'ui-small)] [m (tasks-mark-size)])
@@ -1608,14 +1639,14 @@
     (fill-box x y w h (alpha 'accent 0.15) 8)
     (stroke-box x y w h 'accent 1 8))
 
-  ;; After a card at x y w h is drawn, with its flags: what links it to
-  ;; the next card, gap below it (Cons's pointer), or to nothing when it
-  ;; is the last; nothing by default.
+  ;; Drawn after a card at x y w h, with its flags: what links it to the
+  ;; next card, gap below it (Cons's pointer), or to nothing when it is the
+  ;; last; by default, nothing.
   (define-part (tasks-draw-link x y w h flags gap last?) (void))
 
-  ;; A cell of the List or the Tree. flags: the kit's (hover, selected, dim:
-  ;; the search and filters leave it out), blocked (a mark before the
-  ;; title).
+  ;; Draws a cell of the List or the Tree. flags: the kit's (hover,
+  ;; selected, dim: the search and filters leave the task out), and blocked
+  ;; (a mark before the title).
   (define (tasks-draw-cell x y w h flags t key today)
     (let* ([lh (font-line-height 'ui)] [sh (font-line-height 'ui-small)]
            [m (tasks-mark-size)] [in (ui-table-cell-inset)] [px (+ x in)]
@@ -1678,11 +1709,11 @@
                     'text-faint 'ui-small)])
       (ui-draw-dim x y w h flags)))
 
-  ;; The Tree's first cell: t's id, its mark while blocked, its title. A
-  ;; later row of a task (flags: reference) is faint and says, at its end,
-  ;; under which task its own row is: where; said shorter, or not at all,
-  ;; rather than leave the title less than half the room (or less than its
-  ;; whole width). flags as a cell's.
+  ;; Draws the Tree's first cell: t's id, its mark while blocked, and its
+  ;; title. A later row of a task (flags: reference) is faint and says at
+  ;; its end under which task the task's own row is (where); it says so
+  ;; shorter, or not at all, rather than leave the title less than half
+  ;; the room (or less than its whole width). flags are as a cell's.
   (define (tasks-draw-node x y w h flags t where)
     (let* ([lh (font-line-height 'ui)] [sh (font-line-height 'ui-small)]
            [m (tasks-mark-size)] [in (ui-table-cell-inset)] [px (+ x in)]
@@ -1710,7 +1741,7 @@
           (tasks-draw-title tx ty line t))
       (ui-draw-dim x y w h flags)))
 
-  ;; The details panel when nothing is selected: the keys.
+  ;; Draws the details panel when nothing is selected: the keys.
   (define (tasks-draw-cheat-sheet x y w h flags)
     (let* ([lh (font-line-height 'ui)]
            [kw (+ 16 (text-width "Shift+arrows" 'mono-small))]
@@ -1748,8 +1779,9 @@
   ;;; the screens
 
   ;; A filter's dropdown in the toolbar: fixed and more are its choices
-  ;; ((label . value) ...). A value no task has any more (the last one lost
-  ;; the tag) stays a choice, so the box shows it until the filter changes.
+  ;; ((label . value) ...). A value that no task has any more (the last
+  ;; task with the tag lost it) stays a choice, so the box shows it until
+  ;; the filter changes.
   (define (tasks-filter v x y w h key label value set fixed more)
     (let ([more (if (exists (lambda (c) (equal? (cdr c) value))
                             (append fixed more))
@@ -1760,8 +1792,9 @@
              (lambda (new) (set v new) (tasks-view-reveal?-set! v #t))
              (if value '(set #t) (list 'label label)))))
 
-  ;; The toolbar's items, left to right: ((w h draw) ...), draw a (lambda
-  ;; (x y w h) ...). The search's w is #f: it takes what the others leave.
+  ;; Returns the toolbar's items, left to right, as ((w h draw) ...), each
+  ;; draw a (lambda (x y w h) ...). The search's w is #f: it takes what the
+  ;; others leave.
   ;; What the tasks hold never moves an item: the filters are as wide as
   ;; their fixed labels need (a long name or tag is cut).
   (define (tasks-toolbar-items v visible)
@@ -1833,10 +1866,10 @@
                                  'quiet #t 'disabled (not (tasks-filtered? v))
                                  'tip "Clear the search and filters")))))))
 
-  ;; The toolbar across the top (the kit's: the search takes what the other
-  ;; items leave of the row, within 150 to 300, so Tasks' natural width holds
-  ;; it in one row); returns its height. The count at its right has room
-  ;; for any count of this many tasks.
+  ;; Draws the toolbar across the top (the kit's: the search takes what the
+  ;; other items leave of the row, within 150 to 300, so that Tasks'
+  ;; natural width holds it in one row); returns its height. The count at
+  ;; its right has room for any count of this many tasks.
   (define (tasks-toolbar v w visible)
     (let* ([total (length *tasks*)]
            [count (if (and (= (length visible) total) (not (tasks-filtered? v)))
@@ -1854,7 +1887,7 @@
                              (lambda (x y w h)
                                (ui-draw-label x y w h '(dim right) count))))))
 
-  ;; The columns of the board in x y w h.
+  ;; Draws the board's columns in x y w h.
   (define (tasks-board v visible today x y w h)
     (let* ([ui (tasks-view-ui v)] [pad (ui-pad)] [gap (ui-gap)]
            [cols (tasks-columns v visible)] [n (length cols)]
@@ -1884,8 +1917,9 @@
                                  (- (tasks-drag-y d) (tasks-drag-gy d))
                                  w h '(floating) moving today))))))))
 
-  ;; One column: its well and header, a + button, and the cards, which
-  ;; scroll. target?: a dragged card is over it, so it shows the slot.
+  ;; Draws one column: its well and header, a + button, and the cards,
+  ;; which scroll. target? says a dragged card is over it, so it shows the
+  ;; slot.
   (define (tasks-column v status tasks today x y w h target?)
     (let*-values
         ([(ui) (tasks-view-ui v)] [(hh) (tasks-column-header-height)]
@@ -1946,10 +1980,11 @@
                       (loop (cdr ts) (cdr hs) (+ i 1)
                             (+ cy (car hs) between)))))))))))
 
-  ;; A card: pressed it selects (a double click edits the title) and may be
-  ;; dragged to another column or place; right-pressed, the menu. Another
-  ;; button pressed during a drag ends it, the card back where it was.
-  ;; gap and last?: what follows it in its column, for its link.
+  ;; A card: a press selects it (a double click edits the title), and it
+  ;; may be dragged to another column or place; a right press opens the
+  ;; menu. Another button pressed during a drag ends the drag, with the card
+  ;; back where it was. gap and last? say what follows it in its column,
+  ;; for its link.
   (define (tasks-card v t x y w h today gap last?)
     (let* ([ui (tasks-view-ui v)] [id (list 'card (task-id t))])
       (let-values ([(lines cut?) (tasks-card-title w t)])
@@ -2036,13 +2071,13 @@
                            (tasks-select! v t)
                            (tasks-menu v t mx my)))))
 
-  ;; The Tree: under each task, the tasks it waits for, and so on; the
+  ;; The Tree: under each task go the tasks it waits for, and so on; the
   ;; roots are the tasks nothing waits for. A task waited for by several
   ;; shows what it waits for under the first of them, depth first, and is
   ;; a later row under the others, which says where (Return goes there).
-  ;; Every task shows, those the search and filters leave out dimmed; the
-  ;; selected row is kept in view, its parents expanded. The kit keeps the
-  ;; rows for a generation.
+  ;; Every task shows, with those the search and filters leave out dimmed;
+  ;; the selected row is kept in view, with its parents expanded. The kit
+  ;; keeps the rows for a generation.
   (define (tasks-tree-view v today x y w h)
     (let*-values ([(ui) (tasks-view-ui v)] [(pad) (ui-pad)]
                   [(roots homes order) (apply values (tasks-whole-forest))]
@@ -2056,7 +2091,7 @@
                                    b
                                    (cons node b))))
                         (task-blocked-by (tasks-node-task node)))))
-      (define (home-label node)   ; where a later row's task shows its own
+      (define (home-label node)   ; where a later row's task has its own row
         (task-label (tasks-node-task (hashtable-ref homes (cdr node) #f))))
       (when (and at (tasks-view-reveal? v))
         (let up ([id (if (pair? at) (car at) (hashtable-ref homes at #f))])
@@ -2096,14 +2131,15 @@
                             (tasks-tip t (tasks-title-cut?
                                           t (tasks-node-room t cw)))))))))
 
-  ;; The details of the selected task in x y w h (wide? beside the view,
-  ;; else a page), or the keys when nothing is selected.
+  ;; Draws the details of the selected task in x y w h (beside the view
+  ;; when wide?, else as a page), or the keys when nothing is selected.
   (define (tasks-details v today wide? x y w h)
     (let ([t (tasks-view-selected v)] [ui (tasks-view-ui v)]
           [p (tasks-details-pad)])
       (when wide? (ui-draw-surface x y w h '(side)))
       (if t
-          ;; its pad either side, or the room the scroll bar keeps if more
+          ;; its pad at either side, or the room the scroll bar keeps, if
+          ;; more
           (let ([l (max p (ui-scrollbar-inset 'left))]
                 [r (max p (ui-scrollbar-inset 'right))])
             (ui-scroll ui 'details x y w h
@@ -2139,11 +2175,12 @@
                      (cdr (assq (task-kind t) tasks-kinds)))
       (+ y bh (ui-gap))))
 
-  ;; The details' form: status, priority, kind, assignee (suggested from the
-  ;; names the tasks have), due date and tags (from theirs), then what the
-  ;; task waits for, chips a × removes, and Add, a menu of the tasks it may
-  ;; wait for (typing filters it, and it shows only what fits); and what
-  ;; waits for it. A chip of a task selects it. Returns the y below them.
+  ;; Draws the details' form: status, priority, kind, assignee (suggested
+  ;; from the names the tasks have), due date and tags (suggested from
+  ;; theirs); then what the task waits for, as chips that a × removes, and
+  ;; Add, a menu of the tasks it may wait for (typing filters it, and it
+  ;; shows only what fits); and what waits for the task. A press on a
+  ;; task's chip selects that task. Returns the y below them.
   (define (tasks-details-form v t today x y cw)
     (let*-values ([(ui) (tasks-view-ui v)]
                   [(dw dh) (ui-dropdown-size '())]
@@ -2174,7 +2211,7 @@
       (define (add!)   ; the menu under the button just pressed
         (let ([r (ui-find ui '(blocked-by add))]
               [choices (tasks-blocker-choices t)] [room (tasks-menu-room)]
-              [memo (cons #f #f)])   ; the shell asks at each draw and move
+              [memo (cons #f #f)])   ; asked for at each draw and move
           (ui-open-menu!
            ui (ui-region-x r) (+ (ui-region-y r) (ui-region-h r))
            (if (null? choices)
@@ -2235,8 +2272,8 @@
                add!)
         (chips "Blocks" 'blocks (tasks-blocks-of t) #f #f)))))
 
-  ;; A chip's label for t: its id and the start of its title, ticked when
-  ;; it is done.
+  ;; Returns a chip's label for t: its id and the start of its title, with
+  ;; a tick when t is done.
   (define (tasks-chip-label t)
     (let ([s (tasks-shown-title t)])
       (format "~a~a ~a" (if (eq? (task-status t) 'done) "✓ " "") (task-label t)
@@ -2249,9 +2286,10 @@
                                (menu-item-height))))
               2)))
 
-  ;; Add's entries for the filter f: the choices whose id or title holds f
-  ;; (ignoring case), the one f names by its id first, at most room of them,
-  ;; the last then saying how many more there are; pick (c) adds c.
+  ;; Returns Add's entries for the filter f: the choices whose id or title
+  ;; holds f (ignoring case), with the one f names by its id first, at most
+  ;; room of them, the last one then saying how many more there are;
+  ;; (pick c) adds c.
   (define (tasks-blocker-entries choices f room pick)
     (let*-values ([(s) (string-downcase (tasks-trim f))]
                   [(id) (string->number (if (string-prefix? "task-" s)
@@ -2276,8 +2314,8 @@
                               void))
                   '()))))
 
-  ;; t made to wait for c, picked in Add's menu; what the REPL changed
-  ;; while the menu was open may refuse it, which a toast says.
+  ;; Makes t wait for c, picked in Add's menu; a change made at the REPL
+  ;; while the menu was open may refuse it, and then a toast says so.
   (define (tasks-add-blocker! v t c)
     (let ([cycle (tasks-cycle (tasks-by-id) t (list (task-id c)))])
       (cond [cycle (notify (tasks-cycle-text t cycle))]
@@ -2287,8 +2325,8 @@
                              (append (task-blocked-by t)
                                      (list (task-id c))))])))
 
-  ;; The checklist: its progress, the items, and a field that adds one.
-  ;; Returns the y below it.
+  ;; Draws the checklist: its progress, the items, and a field that adds
+  ;; an item. Returns the y below it.
   (define (tasks-details-checklist v t x y cw)
     (let*-values ([(ui) (tasks-view-ui v)] [(gap) (ui-gap)]
                   [(fw fh) (ui-text-box-size '() cw 1)]
@@ -2332,8 +2370,9 @@
                                  (tasks-view-item-draft-set! v ""))))
               (+ iy 4 fh))))))
 
-  ;; The description: its label, a button that opens it in a window of its
-  ;; own (as Ctrl+E does in it), and the text. Returns the y below it.
+  ;; Draws the description: its label, a button that opens it in a window
+  ;; of its own (as Ctrl+E in it does), and the text. Returns the y below
+  ;; it.
   (define (tasks-details-description v t x y cw)
     (let*-values ([(ui) (tasks-view-ui v)]
                   [(lw lh) (ui-label-size '(section) "Description" cw)]
@@ -2356,7 +2395,7 @@
                                    (begin (open!) #t))))
       (+ y lh 6 dh)))
 
-  ;; Returns the y below the details.
+  ;; Draws the details and returns the y below them.
   (define (tasks-details-body v t today wide? x y cw)
     (let*-values ([(ui) (tasks-view-ui v)] [(gap) (ui-gap)]
                   [(y) (tasks-details-head v t wide? x y cw)]
@@ -2372,8 +2411,8 @@
       (let*-values ([(y) (tasks-details-form v t today x (+ y th gap 8) cw)]
                     [(y) (tasks-details-description v t x (+ y 16 gap) cw)])
         (let*-values ([(y) (tasks-details-checklist v t x (+ y 16) cw)]
-                      ;; labels h 0: as high as their role's font, which the
-                      ;; kit decides
+                      ;; a label of h 0 is as high as its role's font,
+                      ;; which the kit decides
                       [(y) (ui-draw-label
                             x (+ y 16) cw 0 '(hint)
                             (format "Created ~a  ·  Updated ~a"
@@ -2385,8 +2424,8 @@
                      'danger #t 'tip "Delete  Del")
           (+ y 12 bh)))))
 
-  ;; What a search and filters that show nothing are; centered in the view,
-  ;; with a button that undoes them (or makes a task, when there is none).
+  ;; Says which search and filters show nothing, centered in the view, with
+  ;; a button that clears them (or makes a task, when there is none).
   (define (tasks-empty v x y w h)
     (let* ([ui (tasks-view-ui v)] [none? (null? *tasks*)]
                                   [bw (min (- w 32) 460)]
@@ -2461,26 +2500,28 @@
              (apply tasks-table v visible today view)]
             [else (apply tasks-tree-view v today view)])
           (when (eq? mode 'wide)
-            ;; page? follows whether the details have the keyboard, so a
-            ;; window made narrow shows them as the page, the field focused
+            ;; page? follows whether the details have the keyboard, so that
+            ;; a window made narrow shows them as the page, with the field
+            ;; still focused
             (let* ([f (ui-focused ui)] [before? (and f (ui-find ui f))])
               (apply tasks-details v today #t details)
               (tasks-view-page?-set! v (and f (not before?) (ui-find ui f)
                                             #t))))))
       (let ([t (tasks-view-confirm v)]) (when t (tasks-dialog v t)))
-      (let ([e (tasks-view-editor v)])   ; closed in any way, it lets go
+      (let ([e (tasks-view-editor v)])   ; closed in any way, it is let go
         (when (and e (not (memq e (windows)))) (tasks-view-editor-set! v #f)))
       (ui-due! ui (ui-next-midnight))
       (tasks-view-reveal?-set! v #f)
       (ui-end! ui w h)))
 
-  ;;; ------------------------------------------------------------------ the
-  ;;; description's editor A long description in a window of its own: a text
-  ;;; area filling it, a status line, Save (Ctrl+S) and Cancel (Escape, which
-  ;;; asks first when there are changes). Tasks waits on it (ui-open-modal): a
-  ;;; scrim covers Tasks, and a press there brings the editor to the front;
-  ;;; closing it in any way ends that. An Editor app would add undo and redo,
-  ;;; find and replace, files, and a choice of font next.
+  ;;; ------------------------------------------------------------------
+  ;;; the description's editor
+  ;;; A long description in a window of its own: a text area filling it, a
+  ;;; status line, Save (Ctrl+S) and Cancel (Escape, which asks first when
+  ;;; there are changes). Tasks waits on it (ui-open-modal): a scrim covers
+  ;;; Tasks, and a press there brings the editor to the front; closing the
+  ;;; editor in any way ends that. An Editor app would add undo and redo,
+  ;;; find and replace, files, and a choice of font.
 
   (define-record-type tasks-editor
     (nongenerative schevana-tasks-editor-1)
@@ -2489,14 +2530,15 @@
             original             ; the description it started from
             (mutable confirm)    ; the caret while the dialog asks to
                                  ; discard, or #f
-            (mutable lines)))    ; (text caret line column), the last count
+            (mutable lines)))    ; (text caret line column) of the last count
 
   (define (tasks-editor-size)
     (let ([lh (font-line-height 'ui)])
       (values (exact (round (* 50 lh))) (exact (round (* 34 lh))))))
 
-  ;; Opens t's description in the editor, the caret at caret, centered over
-  ;; Tasks; or brings the open one to the front. Returns its window.
+  ;; Opens t's description in the editor, with the caret at caret,
+  ;; centered over Tasks; or brings the open editor to the front. Returns
+  ;; its window.
   (define (tasks-open-editor! v t caret)
     (let ([open (tasks-view-editor v)])
       (if (and open (memq open (windows)))
@@ -2531,9 +2573,9 @@
       (ui-stale! (tasks-view-ui v))
       (invalidate!)))
 
-  ;; Saves the draft and closes. A task deleted meanwhile (from the REPL)
-  ;; leaves the draft to a new task of its title, which a toast names,
-  ;; rather than lose it.
+  ;; Saves the draft and closes the editor. If the task was deleted
+  ;; meanwhile (from the REPL), the draft goes to a new task with its
+  ;; title, which a toast names, rather than being lost.
   (define (tasks-editor-save! ed)
     (let ([v (tasks-editor-view ed)] [t (tasks-editor-task ed)]
           [text (tasks-editor-text ed)])
@@ -2545,25 +2587,26 @@
                              task, ~a" (task-label t) (task-label new)))))
       (tasks-close-editor! v)))
 
-  ;; Closes it, asking first when the draft has changes.
+  ;; Closes the editor, asking first when the draft has changes.
   (define (tasks-editor-cancel! ed)
     (if (string=? (tasks-editor-text ed) (tasks-editor-original ed))
         (tasks-close-editor! (tasks-editor-view ed))
         (tasks-editor-confirm-set! ed (or (ui-caret (tasks-editor-ui ed)) 0))))
 
-  ;; Ctrl+S saves, Escape cancels; true when it acted.
+  ;; Ctrl+S saves and Escape cancels; returns true when it acted.
   (define (tasks-editor-key ed key mods)
     (cond [(and (eqv? key #\s) (equal? mods '(ctrl))) (tasks-editor-save! ed)
                                                       #t]
           [(and (eq? key 'escape) (null? mods)) (tasks-editor-cancel! ed) #t]
           [else #f]))
 
-  ;; The line and column of e's caret, both from 1, counted on from the
-  ;; last count, (text caret line column), over the characters between:
-  ;; from its caret, or from where e's change began, whichever is first
-  ;; (the edit says where, so the texts are not compared). A keystroke
-  ;; counts a character or two, not the text; only a line joined to the one
-  ;; before is counted back over, for the column.
+  ;; Returns the line and column of e's caret, both counted from 1. They
+  ;; are counted on from the last count, (text caret line column), over the
+  ;; characters in between: from the last count's caret, or from where e's
+  ;; change began, whichever comes first (the edit says where, so the texts
+  ;; are not compared). A keystroke counts a character or two, not the
+  ;; whole text; only a line joined to the one before it is counted back
+  ;; over, for the column.
   (define (tasks-editor-line-column ed e)
     (let* ([t (edit-text e)] [c (edit-caret e)] [was (tasks-editor-lines ed)]
            [change (edit-change e)]
@@ -2599,8 +2642,9 @@
             [(newline? t i) (on (+ i 1) (+ line 1) 1)]
             [else (on (+ i 1) line (+ column 1))])))))
 
-  ;; "Line 3, column 12  ·  1,234 of 65,536 characters", for the edit e (or
-  ;; #f, unfocused); at the most, it says so.
+  ;; Returns "Line 3, column 12  ·  1,234 of 65,536 characters" for the
+  ;; edit e (or #f when unfocused, which leaves out the line and column);
+  ;; at the most characters, it says so.
   (define (tasks-editor-status ed e)
     (let* ([n (string-length (tasks-editor-text ed))]
            [chars (format "~:d of ~:d characters~a" n tasks-description-max
@@ -2678,9 +2722,10 @@
                        (pick other (min i (- (length other) 1))))))]
              [else #f]))])))
 
-  ;; t, the selected task, to status, before task before (#f: the column's
-  ;; end), kept in view; when that hides it (Show done is off, on the Board
-  ;; or the List), the task next to it is selected, as after a delete.
+  ;; Moves t, the selected task, to status, before task before (#f for the
+  ;; column's end), and keeps it in view; when that hides it (Show done is
+  ;; off, on the Board or the List), the task next to it is selected, as
+  ;; after a delete.
   (define (tasks-move-to! v t status before)
     (let ([peers (tasks-peers v t)])
       (tasks-place! t status before)
@@ -2689,7 +2734,8 @@
                  (not (memq t (tasks-visible v))))
         (tasks-select! v (tasks-neighbor peers t)))))
 
-  ;; Shift+Left/Right: t to the previous or next status, at the same place.
+  ;; Shift+Left/Right: moves t to the previous or next status, at the same
+  ;; place.
   (define (tasks-shift-status! v t dir visible)
     (let* ([i (tasks-rank tasks-statuses (task-status t))]
            [j (clamp (+ i dir) 0 (- (length tasks-statuses) 1))])
@@ -2702,7 +2748,7 @@
       (tasks-view-reveal?-set! v #t)
       #t))
 
-  ;; Shift+Up/Down on the Board: t up or down its column.
+  ;; Shift+Up/Down on the Board: moves t up or down its column.
   (define (tasks-shift-order! v t dir visible)
     (let* ([col (tasks-in (task-status t) visible)]
            [i (tasks-index t col)] [n (length col)])
@@ -2756,7 +2802,7 @@
                [else #f])]
         [else #f])))
 
-  ;; Letter commands arrive as text no widget took.
+  ;; Letter commands arrive as text that no widget took.
   (define (tasks-text v str)
     (let ([ui (tasks-view-ui v)])
       (and (not (ui-focused ui))
@@ -2788,9 +2834,9 @@
                   'key (lambda (win key mods) (tasks-key v key mods))
                   'text (lambda (win str) (tasks-text v str)))))))))
 
-  ;; A task record of another type, from before a reload that changed
-  ;; task's fields (a new uid), as a task: its fields by name, a new one
-  ;; empty.
+  ;; Returns x as a task when it is a task record of another type, from
+  ;; before a reload that changed task's fields (a new uid): its fields are
+  ;; taken by name, and a new field starts empty.
   (define (tasks-carried x)
     (if (task? x)
         x
@@ -2805,9 +2851,10 @@
                      (old 'due #f) (old 'checklist '()) (old 'blocked-by '())
                      (old 'created 0) (old 'updated 0)))))
 
-  ;; Tasks' windows hold records a reload changed (its view, the tasks):
-  ;; the description's editor closes, and Tasks opens again in its place
-  ;; once the reload is done. Their close handlers knew the old records.
+  ;; Tasks' windows hold records that a reload changed (its view, the
+  ;; tasks): the description's editor closes, and Tasks opens again in its
+  ;; place once the reload is done. Their close handlers are dropped first,
+  ;; since they knew the old records.
   (define (tasks-reopen!)
     (for-each (lambda (win)
                 (when (tasks-editor? (window-ref win 'state #f))

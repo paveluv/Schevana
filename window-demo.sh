@@ -1,9 +1,10 @@
 #!/bin/sh
-# The checklist demo, window-demo.ss: a plain program, run with
-# this folder, the tree, as Chez's library folder. Chez compiles each
-# library as it's imported, into the launchers' own cache (src/launch.ss
-# names it so: Chez's version, then its machine type), and loads it from
-# there once it's newer than its source.
+# Runs the checklist demo, window-demo.ss, as a plain Chez program with
+# this folder (the tree) as Chez's library folder. Chez compiles each
+# library when it is imported, into the same cache the launchers use
+# (src/launch.ss names its folders the same way: Chez's version, then the
+# machine type), and loads the compiled file from there while it is newer
+# than its source.
 dir=$(dirname "$0")
 cache=$dir/.cache/$(scheme --version 2>&1)-$(echo '(display (machine-type))' \
                                                | scheme -q)

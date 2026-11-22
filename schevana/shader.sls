@@ -5,12 +5,12 @@
 ;;; dividing an int by 0 gives 0; operands are worked out left to right; a
 ;;; shift's count is taken mod 32; a read outside a buffer reads its last
 ;;; word, and a write outside is left out), and asks only for what every GPU
-;;; API has: three stages, scalars, buffers of 4-byte elements by index, a 2D
-;;; texture by integer fetch at a level, a uniform block of scalars, if and
-;;; bounded loops. No structs, pointers, recursion or shared memory; a buffer
-;;; is read or written in a run, never both.
+;;; API has: three stages, scalars, buffers of 4-byte elements by index, a
+;;; 2D texture fetched by integer coordinates at a level, a uniform block of
+;;; scalars, if, and bounded loops. It has no structs, pointers, recursion
+;;; or shared memory, and in a run a buffer is read or written, never both.
 ;;;
-;;; The front end checks types, inlines local functions, prices the shader
+;;; The front end checks types, inlines local functions, prices the shader,
 ;;; and gives a small typed tree with no target in it:
 ;;;   (const type value)  (var type id)  (op type name arg ...)
 ;;;   (let id init body)  (seq form ...)  (if type test yes no)
@@ -18,12 +18,13 @@
 ;;;   (load type buffer index)  (store buffer index value)
 ;;;   (fetch texture u v channel level)  (emit-position x y id)
 ;;;   (emit-color r g b a)  (nothing)
-;;; cond, case, when and unless are only ways to write if, a constant is its
-;;; number, helpers are local functions and a layout's field an index: all gone
-;;; by the tree, and no back end knows of them. A back end is a table from those
-;;; to its target and a walk over the tree. SPIR-V's and MSL's are here; the
-;;; twin ((schevana kits twin)), the same tree as a Scheme procedure, is
-;;; another, so that nothing one target alone can do gets into the language.
+;;; cond, case, when and unless are only ways to write if; a constant is
+;;; its number; helpers are local functions, and a layout's field is an
+;;; index. All of these are gone by the tree, and no back end knows of them.
+;;; A back end is a table from the tree's nodes to its target, and a walk
+;;; over the tree. SPIR-V's and MSL's are here; the twin ((schevana kits
+;;; twin)), which runs the same tree as a Scheme procedure, is another, so
+;;; that nothing only one target can do gets into the language.
 
 (library (schevana shader)
   (export
@@ -45,25 +46,26 @@
   (library-layer foundation)
 
   ;;; ------------------------------------------------------------------ shaders
-  ;;; What a compiled shader is, the compiler's and the device's contract,
-  ;;; and which back end this machine speaks.
+  ;;; What a compiled shader is (the contract between the compiler and the
+  ;;; device), and which back end this machine speaks.
 
   ;; This machine's back end: a Mac has Metal, everything else Vulkan.
   (define-made shader-target (if (platform-mac?) 'msl 'spirv))
 
-  ;; What a shader's entry is called: main is no function's name in MSL.
+  ;; The name of a shader's entry point: in MSL, main can't name a function.
   (define-made shader-entry (if (eq? shader-target 'msl) "main0" "main"))
 
-  ;; A compute shader's group, across: a dispatch counts in these.
+  ;; A compute shader's group width: a dispatch counts in groups this wide.
   (define shader-group-x 64)
 
   (define-record-type shader
     (nongenerative schevana-shader-1)
     (fields name stage coords params source code price))
 
-  ;; The uniforms a stage's block holds, hidden ones first: ((name type) ...).
-  ;; After the parameters, each buffer's length in words, in their order: no
-  ;; GPU API but Vulkan tells a shader how long its buffers are.
+  ;; Returns the uniforms a stage's block holds, hidden ones first, as
+  ;; ((name type) ...). After the parameters comes each buffer's length in
+  ;; words, in the buffers' order, since no GPU API but Vulkan tells a shader
+  ;; how long its buffers are.
   (define (shader-uniforms stage params)
     (append (if (eq? stage 'compute)
                 '((shader-w fixnum) (shader-h fixnum))
@@ -73,7 +75,8 @@
                  (filter (lambda (p) (memq (cadr p) '(fx-buffer fl-buffer)))
                          params))))
 
-  ;; The uniform holding buffer name's length: a name no parameter can have.
+  ;; Returns the name of the uniform that holds buffer name's length: a name
+  ;; no parameter can have.
   (define (shader-words name) (string->symbol (format "~a words" name)))
 
 
@@ -87,8 +90,8 @@
 
   (define (shader-error . args) (apply errorf 'shader args))
 
-  ;; map, left to right: a back end works out operands in the language's order,
-  ;; where Chez's map calls in an order of its own
+  ;; map, left to right: a back end works out operands in the language's
+  ;; order, while Chez's map calls f in an order of its own
   (define (shader-map-in-order f xs)
     (if (null? xs)
         '()
@@ -106,9 +109,9 @@
          (define name value)
          (at-load (hashtable-set! *shader-constants* 'name name)))]))
 
-  ;; A set of local functions, which a shader takes with
-  ;; (use-shader-helpers name) where a define could go. They see what's in scope
-  ;; there, and what isn't called costs nothing.
+  ;; A set of local functions, which a shader takes in with
+  ;; (use-shader-helpers name) wherever a define could go. They see what is in
+  ;; scope there, and a helper that isn't called costs nothing.
   (define-made *shader-helpers* (make-eq-hashtable))
   (define-syntax define-shader-helpers
     (syntax-rules ()
@@ -116,12 +119,11 @@
        (at-load (hashtable-set! *shader-helpers* 'name '(form ...)))]))
 
   ;; Names for a row's words, so that what writes a table and what reads it
-  ;; can't disagree. (define-shader-layout glyph-row glyphs (u v)) gives
-  ;; glyph-row-words, and glyph-row-u and glyph-row-v, each its offset to Scheme
-  ;; and to shaders.
-  ;; In a shader, (glyph-row-v row) reads that word through the reader, a
-  ;; buffer or a function in scope there; with no row, the reader takes the
-  ;; offset alone.
+  ;; can't disagree. (define-shader-layout glyph-row glyphs (u v)) defines
+  ;; glyph-row-words, and glyph-row-u and glyph-row-v, each the field's
+  ;; offset, for Scheme and for shaders. In a shader, (glyph-row-v row) reads
+  ;; that word through the reader, a buffer or a function in scope there;
+  ;; with no row, the reader is given the offset alone.
   (define-made *shader-fields* (make-eq-hashtable))
   (define-syntax define-shader-layout
     (lambda (x)
@@ -145,7 +147,8 @@
                     (hashtable-set! *shader-fields* 'full '(reader . at))))
                  ...)))])))
 
-  ;; cond as ifs. With no else, it has no value: what wants one refuses it.
+  ;; Rewrites cond as ifs. With no else, it has no value, so a place that
+  ;; wants a value refuses it.
   (define (shader-cond-form clauses form)
     (cond
       [(null? clauses) '(begin)]
@@ -160,11 +163,12 @@
             (begin ,@(cdar clauses))
             ,(shader-cond-form (cdr clauses) form))]))
 
-  ;; A fixnum, or a constant's name that's one.
+  ;; Whether d is a fixnum, or the name of a constant that is one.
   (define (shader-case-datum? d)
     (or (fixnum? d) (fixnum? (hashtable-ref *shader-constants* d #f))))
 
-  ;; case as a cond: its key read once, each clause's fixnums by fx=.
+  ;; Rewrites case as a cond: the key is worked out once, and each clause's
+  ;; fixnums are compared with fx=.
   (define (shader-case-form key clauses form)
     (let ([k (gensym)])
       `(let ([,k ,key])
@@ -183,8 +187,8 @@
                               (cdr clause))))
                   clauses)))))
 
-  ;; Is an if a select: a value whose arms have nothing to work out, so that a
-  ;; back end needs no branch for it?
+  ;; Whether an if is a select: a value whose arms have nothing to work
+  ;; out, so that a back end needs no branch for it.
   (define (shader-select? t)
     (and (not (eq? (cadr t) 'void))
          (memq (car (cadddr t)) '(const var))
@@ -202,7 +206,8 @@
 
   (define shader-nothing '(nothing))
 
-  ;; Lowers forms for a stage: the tree, with coords and params in scope.
+  ;; Lowers forms for a stage into the tree, with coords and params in
+  ;; scope.
   (define (shader-lower stage coords params forms)
     (define next-id 0)
     (define (new-id!) (set! next-id (+ next-id 1)) next-id)
@@ -245,10 +250,11 @@
       (list 'op 'boolean name
             (want type (lower (car args) env) form)
             (want type (lower (cadr args) env) form)))
-    ;; Targets leave dividing by 0, and the smallest int by -1, undefined, and
-    ;; Vulkan a remainder of a negative: here by 0 gives 0, by -1 negates, and a
-    ;; remainder is a - d(a/d). A divisor that isn't a constant divides as 1
-    ;; where it's 0 or -1, and the quotient is multiplied by it there.
+    ;; Targets leave dividing by 0, and the smallest int by -1, undefined,
+    ;; and Vulkan leaves the remainder of a negative undefined too. Here
+    ;; dividing by 0 gives 0, dividing by -1 negates, and a remainder is
+    ;; a - d(a/d). A divisor that isn't a constant divides as 1 where it is 0
+    ;; or -1, and the quotient is then multiplied by it.
     (define (divide name args env form)
       (let ([a (want 'fixnum (lower (car args) env) form)]
             [b (want 'fixnum (lower (cadr args) env) form)])
@@ -276,7 +282,8 @@
                       (divided name a d
                                (list 'if 'fixnum edge b
                                      '(const fixnum 1))))))))))))
-    ;; by d, never 0 or -1; the quotient times k, if any
+    ;; divides by d, which is never 0 or -1; the quotient is multiplied by
+    ;; k, if there is one
     (define (divided name a d k)
       (let ([q (list 'op 'fixnum 'fxquotient a d)])
         (cond
@@ -287,7 +294,8 @@
                         d)))]
           [k (list 'op 'fixnum 'fx* q k)]
           [else q])))
-    ;; fxmod floors: a remainder that truncates, given the divisor's sign
+    ;; fxmod floors: a truncated remainder that isn't 0 and whose sign
+    ;; differs from the divisor's gets the divisor added
     (define (floored r b)
       (bound r
         (lambda (r)
@@ -307,12 +315,13 @@
               (if (and (eq? (car n) 'const) (<= 0 (caddr n) 31))
                   n
                   (list 'op 'fixnum 'fxand n '(const fixnum 31))))))
-    ;; A buffer's word at index i, read, or written with v: the index is checked
-    ;; against the buffer's length, so that a shader touches only what it was
-    ;; handed. A read's index is at most the last word's, unsigned, so that a
-    ;; negative one is past it too: one instruction, where a compare and a
-    ;; select cost a frame a fifth more. A write outside is left out: 0 <= i <
-    ;; n as one compare, unsigned by the sign bit flipped on both sides.
+    ;; Reading a buffer's word at index i, or writing v there: the index is
+    ;; checked against the buffer's length, so that a shader touches only
+    ;; what it was handed. A read's index is capped at the last word's,
+    ;; compared unsigned so that a negative index is past it too: one
+    ;; instruction, where a compare and a select cost a frame a fifth more. A
+    ;; write outside is left out: 0 <= i < n is tested as one compare, made
+    ;; unsigned by flipping the sign bit on both sides.
     (define (in-range i name)
       (list 'op 'boolean 'fx<
             (list 'op 'fixnum 'fxxor i '(const fixnum -2147483648))
@@ -360,7 +369,8 @@
                          env)
                    acc))]
           [else (loop (cdr forms) env (cons (lower (car forms) env) acc))])))
-    ;; (let id init (let id init ... body)); sequential? sees earlier ones
+    ;; (let id init (let id init ... body)); with sequential?, each init
+    ;; sees the earlier ones
     (define (lower-lets bindings sequential? body env)
       (let loop ([bs bindings] [inner env])
         (if (null? bs)
@@ -375,7 +385,8 @@
                                 (bind-value name
                                             (list 'var (shader-type t) id)
                                             inner)))))))))
-    ;; A local function, inlined: its arguments evaluated once, as let's.
+    ;; Inlines a local function: its arguments are evaluated once, as a
+    ;; let's are.
     (define (lower-inline b args env form)
       (let ([ps (car b)] [body (cadr b)] [fenv (caddr b)])
         (unless (= (length ps) (length args))
@@ -392,9 +403,10 @@
                                   (bind-value
                                    (car ps) (list 'var (shader-type t) id)
                                    inner))))))))))
-    ;; A test known here leaves only its arm, so that a shader made twice, with
-    ;; a part and without, has none of it the second time, whatever the target's
-    ;; compiler would do. A name bound to a constant is the constant.
+    ;; A test known at this point leaves only its arm, so that a shader made
+    ;; twice, once with a part and once without, has none of that part the
+    ;; second time, whatever the target's compiler would do. A name bound to
+    ;; a constant is the constant.
     (define (lower-if test yes no env form)
       (let ([c (want 'boolean (lower test env) form)]
             [a (lower yes env)]
@@ -405,7 +417,7 @@
         (if (eq? (car c) 'const)
             (if (caddr c) a b)
             (list 'if (shader-type a) c a b))))
-    ;; (do-bounded most ([v init step] ...) (test result)): at most most
+    ;; (do-bounded most ([v init step] ...) (test result)) runs at most most
     ;; rounds, so a shader's cost is known before it runs.
     (define (lower-do form env)
       (let* ([most (cadr form)]
@@ -431,8 +443,8 @@
                 (map (lambda (id i s) (list id (shader-type i) i s))
                      ids inits steps)
                 test result))))
-    ;; A layout's field read: (reader offset), or at a row, (reader row +
-    ;; offset).
+    ;; Reads a layout's field: (reader offset), or at a row, (reader (fx+
+    ;; row offset)).
     (define (lower-field f args env form)
       (let* ([reader (car f)]
              [offset (cdr f)]
@@ -580,8 +592,9 @@
            [(compute vertex) '(fixnum fixnum)]
            [else '(flonum flonum fixnum)])))
 
-  ;; What a run of the tree costs at most: one unit an operation, a little
-  ;; more for what touches memory or takes a root, times a loop's bound.
+  ;; What a run of the tree costs at most: one unit per operation, a little
+  ;; more for what touches memory or takes a root, sine or cosine, times a
+  ;; loop's bound.
   (define (shader-tree-price t)
     (define (sum ts)
       (fold-left (lambda (n t) (+ n (shader-tree-price t))) 0 ts))
@@ -609,11 +622,12 @@
       [else 0]))
 
   ;;; ------------------------------------------------------------------ SPIR-V
-  ;;; A module is a stream of 32-bit words; an instruction's first word holds
-  ;;; its length and opcode, and every result has a number, assigned once.
-  ;;; SDL's numbering: compute, read-only buffers in set 0, read-write in 1,
-  ;;; uniforms in 2; vertex, textures then buffers in set 0, uniforms in 1;
-  ;;; fragment, the same in sets 2 and 3.
+  ;;; A module is a stream of 32-bit words: an instruction's first word
+  ;;; holds its length and opcode, and every result has a number, assigned
+  ;;; once. SDL's numbering: for compute, read-only buffers in set 0,
+  ;;; read-write ones in 1 and uniforms in 2; for vertex, textures then
+  ;;; buffers in set 0 and uniforms in 1; for fragment, the same in sets 2
+  ;;; and 3.
 
   (define spirv-binary-ops
     '((fx+ . 128) (fl+ . 129) (fx- . 130) (fl- . 131) (fx* . 132) (fl* . 133)
@@ -625,8 +639,8 @@
   (define spirv-unary-ops
     '((fxneg . 126) (flneg . 127) (fxnot . 200) (not . 168)
       (fixnum->flonum . 111) (flonum->fixnum . 110)))
-  ;; GLSL.std.450's numbers; flround is RoundEven, for Round leaves which way a
-  ;; half goes to the driver
+  ;; GLSL.std.450's numbers; flround is RoundEven, since Round leaves it to
+  ;; the driver which way a half goes
   (define spirv-math-ops
     '((flround . 2) (flabs . 4) (flfloor . 8) (flceiling . 9)
       (flsin . 13) (flcos . 14) (flsqrt . 31) (flmin . 37) (fxumin . 38)
@@ -779,8 +793,9 @@
           [(assq name spirv-math-ops)
            => (lambda (o) (apply op! 12 type ext (cdr o) args))]
           [else (shader-error "no SPIR-V for ~a" name)])))
-    ;; Every if is a branch with a declared merge, as SPIR-V's structured
-    ;; control flow demands, and its value a phi there.
+    ;; Every if but a select (OpSelect) is a branch with a declared merge, as
+    ;; SPIR-V's structured control flow demands, and its value is a phi at
+    ;; the merge.
     (define (branch t)
       (if (shader-select? t)
           (op! 169 (type-id (cadr t)) (value (caddr t)) (value (cadddr t))
@@ -801,9 +816,10 @@
             (if (eq? (cadr t) 'void)
                 0
                 (op! 245 (type-id (cadr t)) a a-end b b-end))))))
-    ;; The test in a block of its own, as it may hold branches; at most most
-    ;; rounds, by a counter the tree doesn't see. A phi names its later value
-    ;; before that exists: its place is filled once it does.
+    ;; A loop's test goes in a block of its own, since it may hold branches,
+    ;; and the loop runs at most most rounds, by a counter the tree doesn't
+    ;; see. A phi names its later value before that value exists, so its
+    ;; place is filled in once it does.
     (define (bounded-loop t)
       (let* ([most (caddr t)]
              [specs (cadddr t)]
@@ -979,13 +995,14 @@
 
   ;;; ------------------------------------------------------------------ MSL
   ;;; Metal's language, as text for its compiler. It has no statement
-  ;;; expressions, so each node of the tree prints as one assignment and a
-  ;;; walk gives back what names its value. Every name is a number of ours,
-  ;;; whatever the source called it: a name printed from the source could say
-  ;;; anything, and a shader sees only what it was handed. Signed overflow is
-  ;;; undefined there, so what wraps goes through uint.
-  ;;; SDL's numbering: buffers count uniforms, then read-only ones, then
-  ;;; read-write ones; textures count from 0, in every stage.
+  ;;; expressions, so each node of the tree prints as one assignment, and
+  ;;; the walk returns the name that holds the node's value. Every name is a
+  ;;; number of ours, whatever the source called it: a name printed from the
+  ;;; source could say anything, and a shader sees only what it was handed.
+  ;;; Signed overflow is undefined in MSL, so arithmetic that wraps goes
+  ;;; through uint. SDL's numbering: buffer slots count the uniforms first,
+  ;;; then the read-only buffers, then the read-write ones; textures count
+  ;;; from 0, in every stage.
 
   (define msl-ops
     '((fx+ . "int(uint(~a) + uint(~a))") (fx- . "int(uint(~a) - uint(~a))")
@@ -1100,8 +1117,8 @@
         (arm (car (cddddr t)))
         (line "}")
         (or v "")))
-    ;; A round's new values are all worked out before any is set: a step may
-    ;; name another variable, and means the value it had.
+    ;; A round's new values are all worked out before any is set, since a
+    ;; step may name another variable and means the value it had.
     (define (bounded-loop t)
       (let ([specs (cadddr t)] [count (fresh!)])
         (for-each (lambda (s)
@@ -1132,7 +1149,7 @@
            [tex-n 0])
       (define (arg! . parts)
         (set! args (cons (apply string-append parts) args)))
-      ;; Metal's default is fast math, which takes (a + b) - a for b
+      ;; Metal's default is fast math, which may take (a + b) - a as b
       (line "#pragma METAL fp math_mode(safe)")
       (line "#include <metal_stdlib>")
       (line "using namespace metal;")
@@ -1211,7 +1228,8 @@
 
   ;;; ------------------------------------------------------------------ shaders
 
-  ;; (code . price) of a shader's source, for this machine's back end.
+  ;; Compiles a shader's source for this machine's back end. Returns (code
+  ;; . price).
   (define (shader-compile stage coords params forms)
     (let ([tree (shader-lower stage coords params forms)])
       (cons (if (eq? shader-target 'msl)
@@ -1224,8 +1242,9 @@
     (shader-lower (shader-stage s) (shader-coords s) (shader-params s)
                   (shader-source s)))
 
-  ;; The shader of a source, compiled where it is defined: as the definition
-  ;; runs, when what it names (constants, helpers, layouts) is there.
+  ;; Makes the shader of a source, compiled where it is defined: as the
+  ;; definition runs, when what it names (constants, helpers, layouts) is
+  ;; there.
   (define (shader-make name stage coords params forms)
     (let ([compiled (shader-compile stage coords params forms)])
       (make-shader name stage coords params forms (car compiled)

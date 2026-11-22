@@ -1,7 +1,8 @@
 #!/usr/bin/env scheme-script
-;;; game-demo — Fireflies, a game on the core alone: no desktop, the
-;;; screen its own (games fireflies). The same game is an app on the
-;;; desktop too: (import (games fireflies)) and (fireflies) at a REPL.
+;;; game-demo — starts Fireflies, a game built on the core alone, with
+;;; no desktop: the game has the screen to itself (games fireflies). The
+;;; same game also runs as an app on the desktop: type
+;;; (import (games fireflies)) and (fireflies) at a REPL.
 ;;;
 ;;;   ./game-demo [--size WxH] [--fullscreen] [--headless]
 

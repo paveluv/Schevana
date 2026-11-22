@@ -2,15 +2,16 @@
 ;;;
 ;;; A draw paints nothing: it writes flat records of whole numbers into a
 ;;; list, with no C, no allocation and no questions asked of a renderer; the
-;;; GPU draws the list. In logical pixels, and the window manager translates
-;;; and clips to a window's content area before calling its draw handler:
+;;; GPU draws the list. Drawing is in logical pixels, and the window manager
+;;; translates and clips to a window's content area before calling its draw
+;;; handler:
 ;;;
 ;;;   (fill-box 10 10 100 40 'accent)
 ;;;   (draw-text 16 20 "hello" 'text 'mono)
 ;;;
 ;;; Colors are #xRRGGBB fixnums, theme keys ('accent), (alpha c 0.5),
-;;; stipples, patterns used as colors (stipple, below), or gradients
-;;; (linear-gradient, below).
+;;; stipples, which are patterns used as colors (stipple, below), or
+;;; gradients (linear-gradient, below).
 
 (library (schevana core draw)
   (export
@@ -56,13 +57,15 @@
   (define-state *canvas-pw* 0)
   (define-state *canvas-ph* 0)
 
-  ;; Whatever changed in the look, the theme is built again
-  ;; ((schevana core theme) sets it); with no theme, nothing. Here, as a
-  ;; canvas at another scale changes what a theme's rules compute.
+  ;; Called when anything in the look changes, to build the theme again.
+  ;; (schevana core theme) sets it; with no theme it does nothing. It is
+  ;; defined here because a canvas at another scale changes what a theme's
+  ;; rules compute.
   (define-hook (theme-changed!) (void))
 
-  ;; A canvas pw × ph pixels big, drawn scale times bigger than the logical
-  ;; pixels apps use; its logical size is the whole part of pw / scale.
+  ;; Makes a canvas of pw × ph pixels, drawn scale times bigger than the
+  ;; logical pixels apps use; its logical size is the whole parts of
+  ;; pw / scale and ph / scale.
   (define (canvas-create-pixels! pw ph scale)
     (let ([rescaled? (not (= (inexact scale) *scale*))])
       (set! *canvas-pw* pw)
@@ -76,7 +79,7 @@
       (request-frame!)
       (when rescaled? (theme-changed!))))
 
-  ;; A canvas of w × h logical pixels.
+  ;; Makes a canvas of w × h logical pixels.
   (define (canvas-create! w h scale)
     (canvas-create-pixels! (exact (round (* w scale)))
                            (exact (round (* h scale)))
@@ -90,10 +93,11 @@
   (define (rgb r g b) (fxior (fxsll r 16) (fxsll g 8) b))
   (define (alpha c a) (cons c a))
 
-  ;; A pattern used as a color: rows of one length, of #\# (ink) and of
-  ;; anything else (paper; #f paper is clear), a logical pixel each, tiled
-  ;; from the screen's device origin, so tiles line up across windows as
-  ;; Medley's textures do. Plain data: it saves and prints.
+  ;; A pattern used as a color: rows of equal length, of #\# (ink) and
+  ;; anything else (paper; a paper of #f is clear), each character a logical
+  ;; pixel, tiled from the screen's device origin so that tiles line up
+  ;; across windows, as Medley's textures do. It is plain data, so it saves
+  ;; and prints.
   ;;   (stipple 'text 'bg-1 "#..." "...." "..#." "....")
   (define (stipple ink paper . rows) (cons* 'stipple ink paper rows))
   (define (stipple? c) (and (pair? c) (eq? (car c) 'stipple)))
@@ -133,14 +137,15 @@
          (values r g b (* a (cdr c))))]
       [else (errorf 'color "not a color: ~s" c)]))
 
-  ;; Blend two colors: t=0 gives c1, t=1 gives c2.
+  ;; Blends two colors: t=0 gives c1, t=1 gives c2.
   (define (mix c1 c2 t)
     (let-values ([(r1 g1 b1 a1) (color-rgba c1)]
                  [(r2 g2 b2 a2) (color-rgba c2)])
       (define (m a b) (exact (round (* 255 (+ a (* t (- b a)))))))
       (rgb (m r1 r2) (m g1 g2) (m b1 b2))))
 
-  ;; A color as a record's word: straight, alpha on top. The GPU premultiplies.
+  ;; Returns a color as a record's word: straight, with alpha in the top
+  ;; byte. The GPU premultiplies.
   (define (color-word c)
     (cond
       [(fixnum? c) (fxior #xff000000 (fxand c #xffffff))]
@@ -151,16 +156,18 @@
            (fxior (fxsll (byte a) 24) (fxsll (byte r) 16)
                   (fxsll (byte g) 8) (byte b))))]))
 
-  ;; Faint text's font: its own (#f), or what a style's procedure makes of
-  ;; it, a part (Genera, with no gray, sets its hints in italic).
+  ;; The font for faint text: the font itself (when the setting is #f), or
+  ;; what a style's part makes of it (Genera, which has no gray, sets its
+  ;; hints in italic).
   (at-load (theme-table-default! 'faint-text-font #f))
   (define (faint-font color f)
     (let ([make (and (eq? color 'text-faint) (theme-part 'faint-text-font))])
       (if make (make f) f)))
 
   ;;; ---------------------------------------------------------------- records
-  ;;; A record is eight 32-bit words, whole numbers: floats are what would
-  ;;; allocate. The format is private to this file and its shaders.
+  ;;; A record is eight 32-bit words, all whole numbers, since floats are
+  ;;; what would allocate. The format is private to this file and its
+  ;;; shaders.
   ;;;   0  kind (low 4 bits), paint kind (next 4), clip (the rest)
   ;;;   1  paint: a color's word, or where its row is in the extras
   ;;;   2 to 5  x0 y0 x1 y1, in 1/256ths of a device pixel
@@ -174,8 +181,9 @@
   ;;;            word 6 is rec-glyph-turned if turned a quarter counterclockwise
   ;;;   shadow   radius, size; the box casting it
   ;;; Paint kinds: solid; gradient, stipple and image, each with a row in the
-  ;;; extras. The extras also hold clips: what's drawn has to be inside both a
-  ;;; clip's boxes. Their word 0 is unused, so that clip 0 is no clip.
+  ;;; extras; and shader, a paint's, whose call is its run's. The extras also
+  ;;; hold clips: what is drawn has to be inside both of a clip's boxes. The
+  ;;; extras' word 0 is unused, so that clip 0 means no clip.
 
   (define-shader-constant rec-kind-box 0)
   (define-shader-constant rec-kind-segment 1)
@@ -196,41 +204,44 @@
   (define-shader-layout rec-polygon word (head paint x0 y0 x1 y1 points count))
   (define-shader-layout rec-glyph word (head paint pen-x pen-y number pad turn))
   (define-shader-layout rec-shadow word (head paint x0 y0 x1 y1 radius size))
-  ;; a radial one's center is x0 y0 and its radius x1; stops colors from color0
+  ;; a radial one's center is x0 y0 and its radius x1; its stops' colors
+  ;; start at color0
   (define-shader-layout gradient-row extra
     (kind x0 y0 x1 y1 stops color0 color1))
   (define-shader-layout stipple-row extra (u v w h ink paper))
   (define-shader-layout image-row extra (w h level gray))
-  ;; its rect; the clip around it; the rounded box it lies in, its radius first
+  ;; its box, the radius of the rounded box it lies in, the clip around it,
+  ;; and that rounded box
   (define-shader-layout clip-row extra
     (x0 y0 x1 y1 radius parent rx0 ry0 rx1 ry1))
   (define rec-most-points 256)
 
-  ;; The bytes recorded into, records and extras, are the recorder's, sealed
-  ;; ((schevana recorder bytes)): written only through rec-write!, rec-extra!
-  ;; and rec-extra-u32!, read through rec-extra-ref, rec-extra-at and
-  ;; rec-count.
-  ;; the transform: num/den device pixels a logical pixel, the origin in
-  ;; 1/256ths of a device pixel; a turn, as cos and sin, or #f
+  ;; The bytes recorded into, records and extras, belong to the recorder,
+  ;; sealed in (schevana recorder bytes): they are written only through
+  ;; rec-write!, rec-extra! and rec-extra-u32!, and read through
+  ;; rec-extra-ref, rec-extra-at and rec-count.
+  ;; the transform: num/den device pixels per logical pixel, the origin in
+  ;; 1/256ths of a device pixel, and a turn, as cos and sin, or #f
   (define-state *rec-num* 1)
   (define-state *rec-den* 1)
   (define-state *rec-ox* 0)
   (define-state *rec-oy* 0)
   (define-state *rec-turn* #f)
-  ;; the clip: where its row is, 0 for none; its box, while there's one
   (define-state *rec-labels* (make-vector 256 #f))   ; (record label) ...
   (define-state *rec-label-at* 0)
   (define-state *rec-label* #f)
+  ;; the clip: where its row is, 0 for none; its box, while there is one
   (define-state *rec-clip* 0)
   (define-state *rec-cx0* 0)
   (define-state *rec-cy0* 0)
   (define-state *rec-cx1* 0)
   (define-state *rec-cy1* 0)
-  ;; runs, the newest first: (mode image first count variant); this one's mode,
-  ;; image, variant and first record. Those of the list recorded before are
-  ;; kept, and while the new ones are the same they're used again: *rec-runs*
-  ;; holds only those made since the first that differs, and
-  ;; *rec-runs-same* the old ones not yet matched, or #f once one differed.
+  ;; the runs, newest first, each (mode image first count variant); and the
+  ;; current run's mode, image, variant and first record. The runs of the
+  ;; list recorded before are kept (*rec-runs-was*), and while the new runs
+  ;; are the same they are used again: *rec-runs* holds only those made
+  ;; since the first that differs, and *rec-runs-same* the old ones not yet
+  ;; matched, or #f once one has differed.
   (define-state *rec-runs* '())
   (define-state *rec-runs-was* '())
   (define-state *rec-runs-same* '())
@@ -238,13 +249,16 @@
   (define-state *rec-image* #f)
   (define-state *rec-variant* 0)
   (define-state *rec-run-first* 0)
-  ;; what shaders' cost a list adds up to, as it's written: area in pixels
+  ;; what the shaders' cost of a list adds up to as it is written: area in
+  ;; pixels
   (define-state *rec-area* 0)
 
-  ;; Which of the fragment shader's variants a record needs, by its head: an
-  ;; index in gfx-fragments. A box or glyph in a solid color needs the plain
-  ;; one; a line, a shadow or a paint the one with its code; a line or shadow
-  ;; in a gradient or stipple the full one. Kinds and paints in their order.
+  ;; Returns which of the fragment shader's variants a record needs, by its
+  ;; head: an index in gfx-fragments. A box or glyph in a solid color needs
+  ;; the plain one; a segment or polygon, a shadow, or a paint (gradient,
+  ;; stipple, image) needs the one with its code; a segment, polygon or
+  ;; shadow in such a paint needs the full one. The vectors give the kinds
+  ;; and the paints in their order.
   (define (rec-variant head)
     (let ([k (vector-ref '#(0 1 1 0 2) (fxand head 15))]
           [p (vector-ref '#(0 3 4 5 0) (fxand (fxsrl head 4) 15))])
@@ -258,8 +272,9 @@
         (set! *rec-variant* v)))
     (rec-write! w0 w1 x0 y0 x1 y1 a b))
 
-  ;; Starts the root's list at a scale, in bytes the world owns. A new list
-  ;; resets everything, so a draw that crashed leaves nothing to unwind.
+  ;; Starts the root's list at a scale of ratio device pixels per logical
+  ;; pixel. A new list resets everything, so a draw that crashed leaves
+  ;; nothing to unwind.
   (define (rec-begin! ratio)
     (rec-bytes-begin!)
     (set! *rec-num* (numerator ratio))
@@ -279,7 +294,7 @@
     (set! *rec-area* 0))
 
   ;; Whether the run recorded before at this place is the list of the
-  ;; values e ..., each compared once, nothing made.
+  ;; values e ..., each compared once, with nothing allocated.
   (define-syntax rec-run-is?
     (syntax-rules ()
       [(_ run) (null? run)]
@@ -287,7 +302,7 @@
        (let ([r run])
          (and (pair? r) (eqv? (car r) e) (rec-run-is? (cdr r) more ...)))]))
 
-  ;; The run so far ends here.
+  ;; Ends the run so far here.
   (define (rec-run-end!)
     (let ([n (rec-count)])
       (when (fx> n *rec-run-first*)
@@ -300,8 +315,8 @@
                                   *rec-variant*))))
         (set! *rec-run-first* n))))
 
-  ;; A run that differs from the one recorded before at its place: those that
-  ;; matched are copied first.
+  ;; Adds a run that differs from the one recorded before at its place; the
+  ;; runs that matched until then are copied in first.
   (define (rec-run-add! run)
     (when *rec-runs-same*
       (let copy ([was *rec-runs-was*])
@@ -311,9 +326,9 @@
       (set! *rec-runs-same* #f))
     (set! *rec-runs* (cons run *rec-runs*)))
 
-  ;; The runs recorded, in order, the run so far ended: the same list as the
-  ;; last time when they're all the same, which the next recording starts
-  ;; from.
+  ;; Ends the run so far and returns the runs recorded, in order: the same
+  ;; list as last time when they are all the same. The next recording
+  ;; starts from this list.
   (define (rec-runs)
     (rec-run-end!)
     (unless (null? *rec-runs-same*)
@@ -331,7 +346,7 @@
       (set! *rec-mode* mode)
       (set! *rec-image* image)))
 
-  ;; The transform and clip as they were, given as values.
+  ;; Restores the transform and clip as they were, given as values.
   (define (rec-state-restore! num den ox oy turn clip cx0 cy0 cx1 cy1)
     (set! *rec-num* num)
     (set! *rec-den* den)
@@ -347,11 +362,12 @@
 
   ;;; -- lists
 
-  ;; What thunk draws, recorded into lst (gpu-list-new) in place of what it
-  ;; held, from its own origin, at this list's scale: then a show-list of it
-  ;; draws it. The list being recorded goes on after, as it was. lst counts
-  ;; the time, and, while the profiler is on, when and how long it took: off,
-  ;; only the pacer reads the clock.
+  ;; Records what thunk draws into lst (gpu-list-new), in place of what lst
+  ;; held, from lst's own origin and at the scale of the list being
+  ;; recorded; a show-list of lst then draws it. The list being recorded
+  ;; goes on afterwards as it was. While the profiler is on, lst keeps when
+  ;; it was recorded and how long that took; with the profiler off, only
+  ;; the pacer reads the clock.
   (define (record-list! lst thunk)
     (let ([t0 (and *profile-span* (now-ns))]
           [outer (vector *rec-labels* *rec-label-at* *rec-label* *rec-runs*
@@ -376,8 +392,8 @@
          (set! *rec-oy* 0)
          (set! *rec-turn* #f)
          (set! *rec-clip* 0))
-       ;; its bytes, the recorder's, written there; its runs end while they're
-       ;; the ones written
+       ;; its bytes, which are the recorder's, are written there; its runs
+       ;; end while they are the ones being written
        (lambda ()
          (rec-into-list! lst thunk (lambda () (rec-runs))))
        (lambda ()
@@ -401,9 +417,10 @@
          (set! *rec-runs-same* (vector-ref outer 10))
          (apply rec-state-restore! (list-tail (vector->list outer) 11))))))
 
-  ;; lst drawn with its origin at (x, y), inside the clip: no record, a run that
-  ;; shows it, and how many labels came before it, for (schevana kits inspect).
-  ;; Moved, only this run changes; lst isn't recorded again.
+  ;; Draws lst with its origin at (x, y), inside the clip. It adds no
+  ;; record, only a run that shows lst, with how many labels came before it
+  ;; (for (schevana kits inspect)). When lst moves, only this run changes;
+  ;; lst isn't recorded again.
   (define (show-list lst x y)
     (rec-run-end!)
     (let* ([ox (fxsra (rec-snap (rec-device x *rec-ox*)) 8)]
@@ -420,7 +437,7 @@
 
   ;;; -- the transform
 
-  ;; v, along an axis whose origin is o, in 1/256ths of a device pixel.
+  ;; Returns v, on an axis whose origin is o, in 1/256ths of a device pixel.
   (define (rec-device v o)
     (if (fixnum? v)
         (fx+ o (fxdiv (fx* (fx* v *rec-num*) 256) *rec-den*))
@@ -430,11 +447,12 @@
   ;; A length in 1/256ths of a device pixel.
   (define (rec-length v) (rec-device v 0))
 
-  ;; To the nearest whole pixel, half up: px's rule, so that no box is ever
-  ;; blurred, and neighbors share an edge with no gap.
+  ;; Rounds to the nearest whole pixel, half up (px's rule), so that no box
+  ;; is ever blurred and neighbors share an edge with no gap.
   (define (rec-snap d) (fxand (fx+ d 128) -256))
 
-  ;; Under a turn: (x, y) in 1/256ths of a device pixel, as a pair.
+  ;; Returns (x, y) under the turn, in 1/256ths of a device pixel, as a
+  ;; pair.
   (define (rec-turned x y)
     (let* ([t *rec-turn*]
            [c (car t)]
@@ -446,7 +464,8 @@
 
   ;;; -- paints
 
-  ;; Sets the paint's kind in *rec-paint-kind*; => the record's word 1.
+  ;; rec-paint sets the paint's kind in *rec-paint-kind* and returns the
+  ;; record's word 1.
   (define-state *rec-paint-kind* 0)
   (define (rec-paint color)
     (cond
@@ -488,10 +507,12 @@
       (set! *rec-paint-kind* rec-paint-gradient)
       row))
 
-  ;; A stipple's tile in the atlas, on device pixels where px's rule puts them
-  ;; at this scale (logical ceiling((d + 1/2)/s) - 1), whole periods: exact
-  ;; anywhere. Coverage only: its colors stay in the record's row, so that a
-  ;; palette's change needs no new tile. Made once per rows and scale.
+  ;; A stipple's tile in the atlas, with its cells on the device pixels
+  ;; where px's rule puts them at this scale (logical pixel
+  ;; ceiling((d + 1/2)/s) - 1), in whole periods, so that it is exact
+  ;; anywhere. The tile is coverage only: its colors stay in the record's
+  ;; row, so that a change of palette needs no new tile. It is made once per
+  ;; rows and scale.
   (define (rec-stipple c)
     (let* ([s (/ *rec-num* *rec-den*)]
            [rows (cdddr c)]
@@ -533,7 +554,8 @@
          (or (fx>= x0 *rec-cx1*) (fx>= y0 *rec-cy1*)
              (fx<= x1 *rec-cx0*) (fx<= y1 *rec-cy0*))))
 
-  ;; corner radius 0 makes a style square: all it draws, an app's too
+  ;; a corner radius of 0 makes a style square: everything it draws, an
+  ;; app's drawing too
   (at-load (theme-table-default! 'corner-radius 9))
   (define (rec-radius r w h)
     (if (eqv? r 0)
@@ -560,13 +582,15 @@
               (rec-put! (rec-head rec-kind-box) paint x0 y0 x1 y1
                         radius line))))))
 
-  ;; (fill-box x y w h color [r]): a rect, or with r a rounded one, a pill.
+  ;; (fill-box x y w h color [r]): a box, or with r a rounded one, up to a
+  ;; pill.
   (define fill-box
     (case-lambda
       [(x y w h color) (rec-box! x y w h color 0 0)]
       [(x y w h color r) (rec-box! x y w h color (rec-radius r w h) 0)]))
 
-  ;; A line lw wide inside the box, a whole number of pixels, at least one.
+  ;; The width of a line lw wide inside the box: a whole number of pixels,
+  ;; at least one.
   (define (rec-line-width lw)
     (fxmax 256 (rec-snap (rec-length lw))))
 
@@ -610,8 +634,8 @@
                    (rec-point-x x2 y2) (rec-point-y x2 y2)
                    (rec-length lw) 0))]))
 
-  ;; points: list of (x . y). A record a segment: one that's translucent
-  ;; darkens a little at its joints.
+  ;; points: a list of (x . y). Each segment is a record, so a translucent
+  ;; line darkens a little at its joints.
   (define draw-polyline
     (case-lambda
       [(points color) (draw-polyline points color 1)]
@@ -625,8 +649,9 @@
                  (draw-line (car a) (cdr a) (caar ps) (cdar ps) color lw)
                  (loop (car ps) (cdr ps))))))]))
 
-  ;; points: list of (x . y). Icons, not thousands of points: the shader's
-  ;; loop has a bound, and the points past it are dropped.
+  ;; points: a list of (x . y). It is for icons, not thousands of points:
+  ;; the shader's loop has a bound (rec-most-points), and the points past it
+  ;; are dropped.
   (define (fill-polygon points color)
     (unless (null? points)
       (let* ([paint (rec-paint color)]
@@ -653,15 +678,15 @@
        (rec-box! x y w h sum 0 0)
        (rec-run! 0 #f)]))
 
-  ;; Adds color to each pixel: what's past white from invert-box's sum.
+  ;; Adds color to each pixel: what goes past white in invert-box's sum.
   (define (add-box x y w h color)
     (rec-run! 3 #f)
     (rec-box! x y w h color 0 0)
     (rec-run! 0 #f))
 
-  ;; A box with a shadow under it, lower by a third of its size. The shader
-  ;; fades it out over size pixels; a stack of translucent boxes would give
-  ;; the same line. With turned drawing, none.
+  ;; The shadow of a box, which the shader fades out over size pixels; a
+  ;; stack of translucent boxes would give the same line. Turned drawing has
+  ;; no shadows.
   (define (rec-shadow! x y w h r size color)
     (unless *rec-turn*
       (let* ([x0 (rec-snap (rec-device x *rec-ox*))]
@@ -675,20 +700,21 @@
                     (rec-radius r w h) d)))))
 
   ;; A soft shadow under the box (x y w h) with corner radius r, spreading
-  ;; size pixels, a little lower than the box.
+  ;; size pixels, a third of size lower than the box.
   (define (draw-shadow x y w h r size)
     (when (> size 0)
       (rec-shadow! x (+ y (/ size 3)) w h r size (alpha #x000000 0.11))))
 
   ;;; -- text
 
-  ;; x, in 1/256ths of a logical pixel: a pen's start.
+  ;; Returns x in 1/256ths of a logical pixel: a pen's start.
   (define (rec-text-x x)
     (if (fixnum? x)
         (fxsll x 8)
         (exact (floor (* (exact x) 256)))))
 
-  ;; Draws str with its top-left at (x, y). => the x where the text ends.
+  ;; Draws str with its top-left at (x, y). Returns the x where the text
+  ;; ends.
   (define draw-text
     (case-lambda
       [(x y str) (draw-text x y str 'text 'ui)]
@@ -741,9 +767,9 @@
 
   ;;; -- images
 
-  ;; The level of image's chain to show it w × h in device pixels: the last at
-  ;; least that big. Two of its pixels blended cover more than a step between
-  ;; them, so that nothing is skipped.
+  ;; Returns the level of image's chain to show it at w × h device pixels:
+  ;; the last one that is still at least that big. Two of its pixels blended
+  ;; then cover more than a step between them, so that nothing is skipped.
   (define (rec-image-level image w h)
     (let loop ([level 0]
                [iw (quotient (gpu-image-w image) 2)]
@@ -752,10 +778,10 @@
           (loop (+ level 1) (quotient iw 2) (quotient ih 2))
           level)))
 
-  ;; An image on the GPU, scaled to w × h at (x, y). At its size or bigger, each
-  ;; pixel a sharp block; smaller, blended, from a level of its chain if it has
-  ;; one. Given 'gray, its first channel shows as gray: an image of one
-  ;; channel, as a texture viewer shows it.
+  ;; Draws an image on the GPU, scaled to w × h at (x, y). At its size or
+  ;; bigger, each pixel is a sharp block; smaller, pixels are blended, from a
+  ;; level of its chain if it has one. Given 'gray, its first channel shows
+  ;; as gray, as a texture viewer shows an image of one channel.
   (define (draw-image image x y w h . gray)
     (let ([row (rec-extra-at)]
           [x0 (rec-snap (rec-device x *rec-ox*))]
@@ -773,25 +799,27 @@
       (rec-run! 0 #f)))
 
   ;;; ---------------------------------------------------------------- paints
-  ;;; A paint is a fragment shader the person writes: its body runs for each
-  ;;; pixel of the box it fills, x and y from the box's corner in device pixels,
-  ;;; and gives a color's word, #xAARRGGBB; 0 leaves the pixel alone. What's
-  ;;; left, the clip and the blending, the wrapper around it does. Its buffers
-  ;;; and numbers change without a thing recorded again.
+  ;;; A paint is a fragment shader that a person writes: its body runs for
+  ;;; each pixel of the box it fills, with x and y from the box's corner in
+  ;;; device pixels, and returns a color's word, #xAARRGGBB; 0 leaves the
+  ;;; pixel alone. The wrapper around it does the rest: the clip and the
+  ;;; blending. Its buffers and numbers can change with nothing else recorded
+  ;;; again.
 
   (define-record-type gfx-paint
     (nongenerative schevana-gfx-paint-1)
-    (fields shader params))   ; params: as it was given them, colors and all
+    (fields shader params))   ; params as the paint was given them, colors too
 
-  ;; The core's clip, then the body; the source the compiler is given.
+  ;; A paint's source, as the compiler is given it, runs the core's clip and
+  ;; then the body; these are the helpers it uses.
   (define-shader-helpers gfx-helpers
     (define (word k) (fx-ref records (fx+ (fx* id rec-row-words) k)))
     (define (extra k) (fx-ref extras k))
     (define (pixels n) (fl/ (fixnum->flonum n) 256.0))
     (define (clamp01 x) (flmax 0.0 (flmin 1.0 x)))
     (define (mixed a b t) (fl+ a (fl* t (fl- b a))))
-    ;; a channel of a color's word, 0 to 1: times 1/255, for on Metal an exact
-    ;; division by it took a third of a frame
+    ;; a channel of a color's word, 0 to 1: times 1/255, since on Metal an
+    ;; exact division by 255 took a third of a frame
     (define (channel w shift)
       (fl* (fixnum->flonum (fxand (fxsrl w shift) 255)) 0.00392156862745098))
     ;; how far outside a rounded box the pixel's center is; inside, negative
@@ -805,8 +833,8 @@
         (fl- (fl+ (flsqrt (fl+ (fl* ox ox) (fl* oy oy)))
                   (flmin (flmax qx qy) 0.0))
              r)))
-    ;; how much of the pixel a clip's row leaves: its rect, and the rounded box
-    ;; that rect lies in
+    ;; how much of the pixel a clip's row leaves: its box, and the rounded
+    ;; box that box lies in
     (define (clip-coverage clip)
       (if (fx= clip 0)
           1.0
@@ -856,7 +884,8 @@
     (map (lambda (p) (if (eq? (cadr p) 'color) (list (car p) 'fixnum) p))
          params))
 
-  ;; The paint of a source, compiled where it is defined (shader-make).
+  ;; Makes the paint of a source, compiled where it is defined
+  ;; (shader-make).
   (define (gfx-paint-of name x y params forms)
     (make-gfx-paint
      (shader-make name 'fragment '(px py id)
@@ -869,8 +898,9 @@
       [(_ (name x y) params form ...)
        (define name (gfx-paint-of 'name 'x 'y 'params '(form ...)))]))
 
-  ;; A box filled by a paint, its arguments in its parameters' order: a color
-  ;; as ever (a theme key, say), whole numbers, floats, buffers.
+  ;; Fills a box with a paint, its arguments in its parameters' order: a
+  ;; color as anywhere else (a theme key, say), whole numbers, floats,
+  ;; buffers.
   (define (fill-shader x y w h paint . args)
     (let ([params (gfx-paint-params paint)])
       (rec-run! 0 (gpu-make-call
@@ -888,10 +918,10 @@
 
   ;;; ---------------------------------------------------------------- state
 
-  ;; What's drawn next is clipped to a box, rounded if r: nested clips intersect
-  ;; their boxes, and a clip with no radius keeps the rounded box it lies in, so
-  ;; that a window's content stays inside the window's corners. Of two rounded
-  ;; ones, the innermost holds.
+  ;; Clips what is drawn next to a box, rounded if r: nested clips intersect
+  ;; their boxes, and a clip with no radius keeps the rounded box it lies
+  ;; in, so that a window's content stays inside the window's corners. Of
+  ;; two rounded ones, the innermost holds.
   (define (rec-clip-enter! x y w h r)
     (let* ([clip *rec-clip*]
            [ax (rec-snap (rec-device x *rec-ox*))]
@@ -930,8 +960,9 @@
         (set! *rec-cx1* (rec-extra-ref clip clip-row-x1))
         (set! *rec-cy1* (rec-extra-ref clip clip-row-y1)))))
 
-  ;; These are forms, not procedures taking a thunk: no closure a call, and a
-  ;; draw that raises leaves nothing to unwind (record-world! resets the state).
+  ;; These are forms, not procedures taking a thunk: no closure per call,
+  ;; and a draw that raises leaves nothing to unwind (record-safely and the
+  ;; next rec-begin! reset the state).
   (define-syntax with-clip
     (syntax-rules ()
       [(_ (x y w h) body ...) (with-clip (x y w h 0) body ...)]
@@ -972,9 +1003,9 @@
       (set! *rec-num* (* *rec-num* (numerator s)))
       (set! *rec-den* (* *rec-den* (denominator s)))))
 
-  ;; Turned by angle radians, clockwise on the screen. Lines and polygons turn
-  ;; any way; boxes become polygons; text turns by a quarter counterclockwise
-  ;; only, all that's asked of it.
+  ;; What body draws is turned by angle radians, clockwise on the screen.
+  ;; Lines and polygons turn any way; boxes become polygons; text turns only
+  ;; by a quarter counterclockwise, which is all that is asked of it.
   (define-syntax with-turn
     (syntax-rules ()
       [(_ (angle) body ...)
@@ -988,8 +1019,8 @@
     (let ([a (inexact angle)])
       (set! *rec-turn* (cons (cos a) (sin a)))))
 
-  ;; Names what's drawn inside, for the Pipeline: a label holds from a record
-  ;; on, until the next.
+  ;; Names what is drawn inside, for the Pipeline: a label holds from its
+  ;; first record until the next label.
   (define-syntax with-label
     (syntax-rules ()
       [(_ (text) body ...)
@@ -1010,16 +1041,16 @@
     (set! *rec-label-at* (fx+ *rec-label-at* 2))
     (set! *rec-label* text))
 
-  ;; Device pixels per logical pixel where we draw: the picker's miniature is
-  ;; drawn scaled down.
+  ;; Returns device pixels per logical pixel where drawing happens now: the
+  ;; picker's miniature, say, is drawn scaled down.
   (define (draw-scale) (/ (inexact *rec-num*) *rec-den*))
 
   ;;; ---------------------------------------------------------------- shaders
-  ;;; One shader draws everything, in one instanced call and in order, but for
-  ;;; what forces a new run: an image, another blend, or a record that needs
-  ;;; another variant of the fragment shader. They're made from one source,
-  ;;; each with only some of its code (gfx-fragments), so that a pixel pays only
-  ;;; for what its run draws.
+  ;;; One shader draws everything, in order, in one instanced call, except
+  ;;; where something forces a new run: an image, a paint, another blend, or
+  ;;; a record that needs another variant of the fragment shader. The
+  ;;; variants are made from one source, each with only some of its code
+  ;;; (gfx-fragments), so that a pixel pays only for what its run draws.
 
   (define-vertex-shader (gfx-vertex v i)
     ([records fx-buffer]
@@ -1095,11 +1126,12 @@
                        (fl- 1.0 (fl/ (fl* 2.0 (fl+ py (whole oy))) th))
                        id))))
 
-  ;; How a record colors a pixel, with features or without: lines? (segments
-  ;; and polygons), shadows?, gradients?, stipples? and images? are #t or #f,
-  ;; known when it's compiled, so that a shader without one has none of its
-  ;; code. Code a pixel never runs still costs it: on Metal, the image's took a
-  ;; third of a frame, and the rest's more than a third of what was left.
+  ;; How a record colors a pixel, with or without each feature: lines?
+  ;; (segments and polygons), shadows?, gradients?, stipples? and images? are
+  ;; #t or #f, known when the shader is compiled, so that a shader without a
+  ;; feature has none of its code. Code that a pixel never runs still costs
+  ;; it: on Metal, the image's code took a third of a frame, and the rest of
+  ;; the code more than a third of what was left.
   (define-shader-helpers gfx-coloring
     ;; where p falls on an image n wide drawn from p0 to p1, in a level's
     ;; pixels: whole at their centers
@@ -1112,7 +1144,7 @@
       (flonum->fixnum
        (flmax 0.0 (flmin (fl+ (flfloor b) 1.0)
                          (fixnum->flonum (fx- (fxsrl n level) 1))))))
-    ;; premultiplied: alpha is shift 24
+    ;; premultiplied; alpha is at shift 24
     (define (premultiplied w shift)
       (if (fx= shift 24)
           (channel w 24)
@@ -1135,8 +1167,8 @@
              [ipy (flonum->fixnum (flfloor py))]
              [cover
               (cond
-                ;; box: rect, round rect, circle; a line inside it, if it has
-                ;; one
+                ;; box: a box, a rounded box or a circle, and a line inside
+                ;; it if it has one
                 [(fx= kind rec-kind-box)
                  (let* ([radius a]
                         [line b]
@@ -1163,7 +1195,7 @@
                    (clamp01
                     (fl- 0.5 (fl- (flsqrt (fl+ (fl* dx dx) (fl* dy dy)))
                                   (fl* 0.5 width)))))]
-                ;; polygon: distance to its edges, sign by crossings
+                ;; polygon: the distance to its edges, its sign by crossings
                 [(and lines? (fx= kind rec-kind-polygon))
                  (let ([o (rec-polygon-points)] [n (rec-polygon-count)])
                    (define (vx k) (pixels (extra (fx+ o (fx* 2 k)))))
@@ -1256,9 +1288,9 @@
              [low (if (fx>= low stops) (fx- stops 1) low)]
              [low (if (fx< low 0) 0 low)]
              [between (fl- place (fixnum->flonum low))]
-             ;; less than a level either way, by the screen's pixel: a slow
-             ;; gradient would show its 8-bit steps as bands (interleaved
-             ;; gradient noise)
+             ;; less than a level either way, by the screen's pixel, since a
+             ;; slow gradient would show its 8-bit steps as bands
+             ;; (interleaved gradient noise)
              [dither (if gradient?
                          (let* ([sx (fl+ px (fixnum->flonum ox))]
                                 [sy (fl+ py (fixnum->flonum oy))]
@@ -1347,7 +1379,8 @@
            (paint 0 (if gray? red (image-channel 2)))
            (paint 24 (image-channel 3)))))))
 
-  ;; A variant of the fragment shader, its features on or off.
+  ;; Defines a variant of the fragment shader, with each of its features on
+  ;; or off.
   (define-syntax define-gfx-fragment
     (syntax-rules ()
       [(_ name lines? shadows? gradients? stipples? images?)
@@ -1366,9 +1399,9 @@
            (use-shader-helpers gfx-coloring)
            (pixel-color lines? shadows? gradients? stipples? images?)))]))
 
-  ;; What draws a run, by what its records need (rec-variant): boxes and glyphs
-  ;; in a solid color, and with them lines, shadows, gradients, stipples or an
-  ;; image; and all but images.
+  ;; The variants that draw a run, by what its records need (rec-variant):
+  ;; boxes and glyphs in a solid color; the same with lines, shadows,
+  ;; gradients, stipples or an image; and everything but images.
   (define-gfx-fragment gfx-fragment #f #f #f #f #f)
   (define-gfx-fragment gfx-line-fragment #t #f #f #f #f)
   (define-gfx-fragment gfx-shadow-fragment #f #t #f #f #f)
@@ -1397,8 +1430,8 @@
 
   ;;; ---------------------------------------------------------------- frames
 
-  ;; What's on its way up with a list: new atlas pieces, the glyph table if it
-  ;; changed, and the images that have new pixels.
+  ;; What goes up with a list: the new atlas pieces, and the glyph table if
+  ;; it changed.
   (define (rec-take-atlas-pieces!)
     (let ([p (reverse *atlas-pieces*)])
       (set! *atlas-pieces* '())
@@ -1415,32 +1448,33 @@
    (theme-table-default! 'present-mode 'vsync)
    (theme-table-default! 'frames-in-flight 3))
 
-  ;; The list written since rec-begin!, as the frame core1 hands core0,
-  ;; with the lists kept from earlier: the past one, and the preview's, which
-  ;; its procedure makes here, on core1, of the frame just recorded.
+  ;; Returns the list written since rec-begin! as the frame that core1 hands
+  ;; core0, with the lists kept from earlier: the past one, and the
+  ;; preview's, which the preview's procedure makes here, on core1, from the
+  ;; frame just recorded.
   (define (rec-publish)
     (rec-freeze! (rec-runs))
     (let* ([preview *rec-preview*]
            [kept (and preview
                       (guard (c [#t (report-error! 'preview c) #f])
                         ((cdr preview))))])
-      ;; the past one first; each copied by the recorder as it's handed
+      ;; the past one first; the recorder copies each as it is handed over
       (when *rec-past* (apply rec-earlier-add! *rec-past*))
       (when kept (apply rec-earlier-add! (car preview) kept))
       (set! *rec-preview* #f)
       (set! *rec-past* #f)
-      ;; its recording, the frozen one, and those copies it's lent by
-      ;; the recorder
+      ;; the recorder lends the frame its recording, the frozen one, and
+      ;; those copies
       (let ([f (gpu-publish (rec-take-table!) (rec-table-bytes)
                             (rec-take-atlas-pieces!) (theme 'present-mode)
                             (pacer-knob 'frames-in-flight))])
         (rec-lend! f)
         f)))
 
-  ;; The list written since rec-begin! goes to the screen: core1 publishes it,
-  ;; and core0 presents it, at once while it has no thread of its own
-  ;; (render-frames-back! tells what came of it). => the frame's number, its
-  ;; report's (core0-frame-report).
+  ;; Sends the list written since rec-begin! to the screen: core1 publishes
+  ;; it, and core0 presents it, at once while core0 has no thread of its own
+  ;; (render-frames-back! tells what came of it). Returns the frame's
+  ;; number, which is also its report's (core0-frame-report).
   (define (rec-present!)
     (rec-run-end!)
     (let ([f (rec-publish)])
@@ -1448,26 +1482,27 @@
       (unless (core0-forked?) (core0-step!))
       (gpu-frame-number f)))
 
-  ;; With the next frame, a list drawn on image too, as big as the screen, for
-  ;; the Pipeline: what (list-of) gives as it's sent, made of the frame just
-  ;; recorded, (recs recs-n extras extras-n runs), which can't show image; or
-  ;; #f for none.
+  ;; With the next frame, a list drawn on image too, as big as the screen,
+  ;; for the Pipeline: what (list-of) returns as the frame is sent, made from
+  ;; the frame just recorded, as (recs recs-n extras extras-n runs), which
+  ;; can't show image; or #f for none.
   (define-state *rec-preview* #f)
   (define (rec-preview! image list-of)
     (set! *rec-preview* (cons image list-of)))
 
-  ;; Ahead of the next frame, a list kept from earlier drawn on image:
-  ;; (image recs recs-n extras extras-n runs), its images and paints as they
-  ;; are now.
+  ;; Ahead of the next frame, a list kept from earlier, drawn on image:
+  ;; (image recs recs-n extras extras-n runs), with its images and paints as
+  ;; they are now.
   (define-state *rec-past* #f)
   (define (rec-past! image recs recs-n extras extras-n runs)
     (set! *rec-past* (list image recs recs-n extras extras-n runs)))
 
-  ;; What thunk draws, on an image pw × ph, scale times bigger, clear or black:
-  ;; its pixels, row after row, premultiplied BGRA.
-  ;; The same, its pixels handed to then on core1 once core0 has drawn them,
-  ;; with a frame soon: nothing waits for them (.work/gpu-design.md 9.4). What
-  ;; was recorded goes to core0 as its own copy.
+  ;; drawing->bytes draws what thunk draws on an image of pw × ph, scale
+  ;; times bigger, on clear or black, and returns its pixels, row after row,
+  ;; in premultiplied BGRA. drawing->bytes-then does the same, but hands the
+  ;; pixels to then on core1 once core0 has drawn them, with a frame soon,
+  ;; so that nothing waits for them (.work/gpu-design.md 9.4); what was
+  ;; recorded goes to core0 as its own copy.
   (define (drawing->bytes-then pw ph scale thunk clear? then)
     (rec-begin! (rationalize (exact scale) 1/100000))
     (thunk)

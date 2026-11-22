@@ -1,9 +1,10 @@
-;;; tests/lib.ss — what the suites share, loaded once a suite has found the
-;;; tree's root (*schevana-root*): the world loaded but not booted, the
-;;; tests' reach into the core (tests/reach.ss), the scratch files, the
-;;; checks and the verdict. Each suite boots the world itself, as it needs.
-;;; The library edition's, or with SCHEVANA_HACKER set the hacker
-;;; edition's (src/hacker.ss), where the tests have every name already.
+;;; tests/lib.ss — what the suites share, loaded once a suite has found
+;;; the tree's root (*schevana-root*): the world, loaded but not booted,
+;;; the tests' reach into the core (tests/reach.ss), the scratch files, the
+;;; checks and the verdict. Each suite boots the world itself, as it needs
+;;; it. The world is the library edition's, or with SCHEVANA_HACKER set the
+;;; hacker edition's (src/hacker.ss), where the tests have every name
+;;; already.
 ;;;
 ;;;   (load (string-append *schevana-root* "/tests/lib.ss"))
 ;;;   ... checks ...
@@ -12,22 +13,24 @@
 ;; The world, loaded but not booted, and the tests' reach.
 (load (string-append *schevana-root* "/tests/boot.ss"))
 
-;; The demos named, loaded into the world now, as the desktop loads the
-;; folder it is given (./desktop demo): the tests' world
-;; has none but those a test uses. (test-demos! 'life 'sketch)
+;; Loads the demos named into the world now, as the desktop loads the
+;; folder it is given (./desktop demo): the tests' world has no demos but
+;; the ones a test uses. (test-demos! 'life 'sketch)
 (define (test-demos! . names)
   (load-sources! (map (lambda (name) (list 'demo name)) names)))
 
-;; A library evaluated again, and what imports it, as a reload does when
-;; its file changed, in either edition: => the libraries evaluated again.
+;; Evaluates library name again, with every library that imports it, as a
+;; reload does when its file has changed, in either edition. Returns the
+;; libraries evaluated again.
 (define (test-reload-library! name)
   (if test-hacker?
       ((eval 'hacker-reload-libraries!) (source-held-libraries) name)
       (reload-libraries! (source-held-libraries) name)))
 
-;; The programs at the tree's root: the launchers, desktop and the
-;; demos', each a program of a few lines (src/launch.ss), and the window
-;; demo's script: each file there that starts with #! or is Scheme's.
+;; The programs at the tree's root: the launchers (the desktop's and the
+;; demos', each a program of a few lines that loads src/launch.ss) and the
+;; window demo's script. That is, each file there that starts with #! or
+;; ends in .ss.
 (define test-launchers
   (filter (lambda (f)
             (let ([path (string-append *schevana-root* "/" f)])
@@ -40,8 +43,9 @@
           (sort string<? (directory-list *schevana-root*))))
 
 ;; The libraries below the world, under schevana/: core0's, the
-;; recorder's and the core's, and those they stand on, by the layer each
-;; declares, in file-name order; each a path from the tree's root.
+;; recorder's and the core's, and the foundation they stand on, chosen by
+;; the layer each declares, in file-name order, each as a path from the
+;; tree's root.
 (define test-core-libraries
   (let walk ([dir "schevana"])
     (apply append
@@ -74,22 +78,24 @@
 (when (file-exists? *theme-file-path*) (delete-file *theme-file-path*))
 
 ;; The crew's limit on core1 ((schevana services crew)) is 100 ms of the
-;; machine's clock, for runaways. A busy machine keeps a worker waiting longer
-;; than that in the middle of an ordinary call, and the caller then raises as
-;; for a runaway: so the limit is long in every suite, and the crew's own topic
-;; checks it, at what it is, with a call that never ends.
+;; machine's clock, to catch runaways. A busy machine can keep a worker
+;; waiting longer than that in the middle of an ordinary call, and the
+;; caller then raises as if for a runaway. So the limit is long in every
+;; suite, and the crew's own topic checks it, at its real value, with a
+;; call that never ends.
 (define test-crew-budget crew-core1-ms)
 (set! crew-core1-ms 60000)
 
 ;; The collector looks at the older generations (collector-tick!) as the
-;; world's loop steps, at most every 500 ms of the clock. Under the held
-;; clock it would never look, and what outlives a young collection would
-;; pile up, gigabytes of it: so the tests stand in for the look, which,
-;; the clock held, goes through each time the world takes it, as if the
-;; clock had moved on. It collects what the world would by its own
-;; measure; and with the heap past half the run's limit (busy, the world
-;; lets the old generations grow 512 MB, and a test's pictures to compare
-;; are 37 MB each at 300 %), every generation, lest garbage stop the run.
+;; world's loop steps, at most once every 500 ms of the clock. Under the
+;; held clock it would never look, and what outlives a young collection
+;; would pile up, gigabytes of it. So the tests stand in for the look:
+;; while the clock is held, it goes through each time the world takes it,
+;; as if the clock had moved on. It collects what the world would by its
+;; own measure; and once the heap is past half the run's limit, it
+;; collects every generation, so that garbage doesn't stop the run (while
+;; busy, the world lets the old generations grow by 512 MB, and a test's
+;; pictures to compare are 37 MB each at 300 %).
 (let ([look collector-tick!])
   (set! collector-tick!
         (lambda ()
@@ -99,19 +105,19 @@
             (collector-pass! 3 3)
             (set! *collector-old-kept* (collector-grown))))))
 
-;; The look now, after a check (tests/check.ss): one that never steps the
-;; world never lets the world take it.
+;; The collector's look, taken right after each check (tests/check.ss): a
+;; test that never steps the world never lets the world take it.
 (define (test-collector-look!)
   (set! *collector-check-ms* 0)
   (collector-tick!))
 
-;; The test's clock: the world's milliseconds (now-ms, by which timers,
-;; tooltips and carets go) held still, moving only when a test says, so a
-;; delay is the same on any machine. now-ns stays the machine's: the pacer
-;; and the profiler go by it. test-clock-ms is the time held, or #f while
-;; the clock goes as the machine's; released, it goes on from where it was
-;; held, the machine's plus what was skipped, so the world's time never
-;; runs back.
+;; The test's clock: the world's milliseconds (now-ms, which timers,
+;; tooltips and carets go by) held still, moving only when a test says so,
+;; so that a delay is the same on any machine. now-ns stays the machine's,
+;; since the pacer and the profiler go by it. test-clock-ms is the time
+;; held, or #f while the clock runs with the machine's. Once released, the
+;; clock goes on from where it was held (the machine's time plus what was
+;; skipped), so the world's time never runs backward.
 (define test-real-now-ms now-ms)
 (define test-clock-ms #f)
 (define test-clock-skipped 0)
@@ -127,12 +133,12 @@
 (define (test-clock-advance! ms)
   (when test-clock-ms (set! test-clock-ms (+ test-clock-ms ms))))
 
-;; The held clock, read. What waits for it to move waits forever: a process
-;; that never yields runs till its share of a step is up by this clock
-;; (run-procs!), collections held off meanwhile, until the machine is out
-;; of memory. So a tick of the world's that reads it a hundred thousand
-;; times fails the run, once, and from then on the clock moves a ms a
-;; read till it's held anew, which ends such a wait.
+;; Reads the held clock. Whatever waits for it to move waits forever: a
+;; process that never yields runs until its share of a step is up by this
+;; clock (run-procs!), with collections held off in the meantime, until
+;; the machine runs out of memory. So a tick of the world's that reads the
+;; clock 100,000 times fails the run, once, and from then on the clock
+;; moves 1 ms per read until it is held again, which ends such a wait.
 (define test-clock-reads 0)
 (define test-clock-tick #f)
 (define test-clock-stuck? #f)
@@ -149,8 +155,8 @@
   (when test-clock-stuck? (set! test-clock-ms (+ test-clock-ms 1)))
   test-clock-ms)
 
-;; What a stream's rows hold of moment seq (the widget kit's), read back
-;; from the GPU now: its words.
+;; Returns the words that a stream (the widget kit's) holds for moment
+;; seq, read back from the GPU now.
 (define (test-stream-row s seq)
   (let ([at (* (ui-stream-words s) (modulo seq (ui-stream-rows s)))]
         [bytes (gpu-buffer-read! (ui-stream-buffer s))])
@@ -158,22 +164,24 @@
          (iota (ui-stream-words s)))))
 
 ;; How a test steps the world (tests/GUIDE.md). Core1's loop paces its
-;; steps (schevana-step!): one ticks only when a tick is wanted and due
-;; (pacer-start), after a wait for it, and its processes run till the next
-;; tick's frame must be drawn (pacer-procs-ms). A test steps the world
-;; itself, each step a tick and no wait, as a screen ready for every frame
-;; at once would have it: a test's step asks for a tick, as input does,
-;; and the pacer's two decisions are the test's for the step, its tick due
-;; now, and its processes 10 ms, the most the pacer gives, for the next
-;; tick comes when the test steps again. Set for the step and put back
-;; after it, not by fluid-let: a process first run in the step would keep
-;; its dynamic-wind, and wind them in again at every turn.
+;; steps (schevana-step!): a step ticks only when a tick is wanted and due
+;; (pacer-start), after waiting for it, and its processes run until the
+;; next tick's frame must be drawn (pacer-procs-ms). A test steps the
+;; world itself, each step a tick with no wait, as a screen ready for
+;; every frame at once would have it. A test's step asks for a tick, as
+;; input does, and the test makes the pacer's two decisions for the step:
+;; the tick is due now, and the processes get 10 ms, the most the pacer
+;; gives, since the next tick comes when the test steps again. These are
+;; set for the step and put back after it, not by fluid-let: a process
+;; first run in the step would keep the fluid-let's dynamic-wind, and wind
+;; the test's values in again at every turn.
 (define (test-tick-due) 0)
 (define (test-procs-ms) 10)
 
-;; One step of the world's, a tick (but while a reload holds it), after
-;; waiting for the screen's events up to wait-ms, else none. What it stood
-;; in for goes back, unless a reload in the step defined it anew.
+;; One step of the world, a tick (except while a reload holds ticks back),
+;; after waiting up to wait-ms for the screen's events (or not at all).
+;; What it stood in for is put back, unless a reload in the step defined
+;; it anew.
 (define (test-step! . wait-ms)
   (let ([start pacer-start] [procs-ms pacer-procs-ms])
     (frame-turn-soon!)
@@ -183,14 +191,16 @@
     (when (eq? pacer-start test-tick-due) (set! pacer-start start))
     (when (eq? pacer-procs-ms test-procs-ms) (set! pacer-procs-ms procs-ms))))
 
-;; The world's loop, n times, each after the held clock moves on ms.
+;; Runs n steps of the world, each after the held clock moves on by ms (if
+;; given).
 (define (steps n . ms)
   (do ([i 0 (+ i 1)]) ((= i n))
     (when (pair? ms) (test-clock-advance! (car ms)))
     (test-step!)))
 
-;; pred's first true value as the world goes on, a step each 5 ms, for up
-;; to ms of the clock, held or the machine's; #f if it never is.
+;; Returns pred's first true value as the world goes on, a step each 5 ms,
+;; for up to ms of the clock (the held one or the machine's); #f if pred
+;; never returns true.
 (define (test-wait ms pred)
   (if test-clock-ms
       (let loop ([left ms])
@@ -202,22 +212,23 @@
               (and (< (now-ms) until)
                    (begin (test-step! 5) (loop))))))))
 
-;; Text typed and a key pressed, as the screen would send them; not
-;; stepped.
+;; Types text and presses a key, as the screen would send them, without
+;; stepping.
 (define (test-type! str)
   (for-each (lambda (c) (inject! (list 'text (string c)))) (string->list str)))
 (define (test-press! key . mods) (inject! (list 'key-down key mods)))
 
-;; Region id of ui, as the last layout left it; a region not laid out
-;; (out of view, or never drawn) fails the check it's in, by its id.
+;; Returns region id of ui, as the last layout left it. A region that is
+;; not laid out (out of view, or never drawn) raises, failing the check it
+;; is in, with its id.
 (define (test-region ui id)
   (or (ui-find ui id)
       (errorf 'test-region "no region ~s laid out" id)))
 
-;; A window of kit widgets drawn by draw (ui w h), size (w . h) if given,
-;; then an app's handlers as ui-handlers takes them ('key (win key mods)):
-;; one widget, or a few, by themselves, as a widget's topic tests them. Its
-;; ui is (window-ref win 'ui).
+;; Opens a window of kit widgets drawn by draw (ui w h), of size (w . h)
+;; if given, followed by an app's handlers as ui-handlers takes them ('key
+;; (win key mods)): one widget, or a few, by themselves, as a widget's
+;; topic tests them. Its ui is (window-ref win 'ui).
 (define (test-kit-window title draw . more)
   (let ([ui (make-ui)]
         [size (if (and (pair? more) (pair? (car more)))
@@ -229,9 +240,10 @@
                    (ui-begin! ui) (draw ui w h) (ui-end! ui w h))
            (apply ui-handlers ui app))))
 
-;; Region id of win's ui: its middle on the screen, dx to its right, or at
-;; x within it (a number from the region's left) if given as 'at x; whole
-;; pixels, whatever fractions the region is laid at.
+;; Returns the point on screen of region id of win's ui: its middle, or dx
+;; to the right of that, or x from the region's left if given as 'at x.
+;; The point is in whole pixels, whatever fractions the region is laid out
+;; at.
 (define (test-point win id . dx)
   (let ([r (test-region (window-ref win 'ui) id)])
     (let-values ([(cx cy cw ch) (content-rect win)])
@@ -244,14 +256,14 @@
               (exact (floor (+ cy (ui-region-y r)
                                (/ (ui-region-h r) 2))))))))
 
-;; The pointer moved over region id (test-point's dx), a step.
+;; Moves the pointer over region id (with test-point's dx), then steps.
 (define (test-move! win id . dx)
   (let-values ([(x y) (apply test-point win id dx)])
     (inject! `(mouse-move ,x ,y))
     (steps 1)))
 
-;; A left click on region id, clicks times at once (2: a double click),
-;; at test-point's dx; a step.
+;; Left-clicks region id, clicks times in a row (2 for a double click),
+;; at test-point's dx, then steps.
 (define (test-click! win id . more)
   (let ([clicks (if (and (pair? more) (fixnum? (car more))) (car more) 1)]
         [dx (if (and (pair? more) (fixnum? (car more))) (cdr more) more)])
@@ -261,9 +273,9 @@
                  `(mouse-up ,x ,y left)))
       (steps 1))))
 
-;; Wheels win's scroll view view (its region's id) until region id is
-;; whole in it, so that a press on it lands with any font; a step each
-;; notch, 40 at most.
+;; Turns the wheel over win's scroll view (view is its region's id) until
+;; region id is wholly inside it, so that a press on it lands with any
+;; font: a step for each notch, 40 at most.
 (define (test-show! win view id)
   (let ([ui (window-ref win 'ui)])
     (let loop ([n 0])
@@ -279,8 +291,8 @@
           (steps 1)
           (loop (+ n 1)))))))
 
-;; Clicks the open menu's entry that starts with label, where menu-areas
-;; puts it; a step or two.
+;; Clicks the open menu's entry that starts with label, where
+;; placed-menu-areas puts it, then steps twice.
 (define (test-menu-click! label)
   (let* ([es (menu-entries *menu*)]
          [i (list-index (lambda (e)
@@ -293,7 +305,8 @@
                `(mouse-up ,x ,my left))
       (steps 2))))
 
-;; thunk with status segments that never change, so the top bar stays put.
+;; Runs thunk with status segments that never change, so that the top bar
+;; stays put, and returns its value.
 (define (test-with-quiet-status thunk)
   (let ([segs *status-segments*])
     (set! *status-segments* (list (cons 'quiet (lambda () "quiet"))))
@@ -303,7 +316,8 @@
       (steps 1)
       v)))
 
-;; The world as a scene starts from: no window, toast, hover, drag or menu.
+;; Clears the world for a scene to start from: no window, toast, hover,
+;; drag or menu.
 (define (test-clear-world!)
   (for-each close-window! (windows))
   (set! *toasts* '())
@@ -312,8 +326,8 @@
   (set! *drag* #f)
   (when (menu-open?) (close-menu!)))
 
-;; A scene: thunk from a cleared world, its own state set by itself; one
-;; that raises fails by its name, and the next starts afresh.
+;; Runs a scene: thunk, from a cleared world, setting up its own state. A
+;; scene that raises fails under its name, and the next starts afresh.
 (define (test-scene name thunk)
   (test-clear-world!)
   (guard (c [#t (set! failures (+ failures 1))

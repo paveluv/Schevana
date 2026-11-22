@@ -1,6 +1,7 @@
-;;; (schevana base) — the basics, which every piece of Schevana has:
-;;; numbers, strings, lists and property lists, and which platform this
-;;; is. Pure: it keeps no state and calls no C.
+;;; (schevana base) — the basics that every piece of Schevana has:
+;;; numbers, strings, lists and property lists, which platform this is,
+;;; and the forms that declare a library's layer, its states, views, made
+;;; values and hooks. It is pure: it keeps no state and calls no C.
 
 (library (schevana base)
   (export
@@ -16,23 +17,25 @@
     platform-x86-64? platform-arm64?)
   (import (chezscheme))
 
-  ;; Expressions among definitions, as a definition of a name nobody can
-  ;; type: a library's body takes no definition after an expression.
+  ;; (at-load form ...) runs expressions among a library's definitions, as
+  ;; the definition of a name nobody can type, since a library's body takes
+  ;; no definition after an expression.
   (define-syntax at-load
     (syntax-rules ()
       [(_ form ...) (define at-load-done (begin form ...))]))
 
   ;;; ------------------------------------------------------------------ layers
-  ;;; (library-layer layer), or (library-layer layer facade), first in a
-  ;;; library's body: the layer it belongs to. As the library compiles, its
-  ;;; imports are held to the layers' order: none of a layer above its own,
-  ;;; and of a sealed layer other than its own only the facade, the front
-  ;;; door it declares. A library not of Schevana's (Chez's own) is below
-  ;;; them all; one of Schevana's declares its layer. Programs and tests
-  ;;; import anything.
+  ;;; (library-layer layer), or (library-layer layer facade), comes first
+  ;;; in a library's body and names the layer the library belongs to. As
+  ;;; the library compiles, its imports are held to the layers' order: it
+  ;;; may import nothing from a layer above its own, and from a sealed
+  ;;; layer other than its own only the facade, the front door that layer
+  ;;; declares. A library outside Schevana's (Chez's own, a demo) declares
+  ;;; no layer and counts as below them all; each of Schevana's declares
+  ;;; one. Programs and tests may import anything.
 
-  ;; The layers, lowest first; a sealed one is reached from outside it
-  ;; only through its facade. The looks are below the desktop: a program
+  ;; The layers, lowest first. A sealed layer is reached from outside only
+  ;; through its facade. The looks are below the desktop, so that a program
   ;; may take a look without the desktop's surfaces and keys.
   (meta define library-layers
     '((foundation) (core0 sealed) (recorder sealed) (core sealed) (kits)
@@ -44,8 +47,8 @@
             [(eq? (caar ls) layer) i]
             [else (loop (cdr ls) (+ i 1))])))
 
-  ;; (library-layer-names): the layers' names, lowest first, for what
-  ;; shows a library's (its rank, from 1).
+  ;; (library-layer-names) returns the layers' names, lowest first, for
+  ;; code that shows a library's layer (and its rank, counted from 1).
   (define-syntax library-layer-names
     (lambda (x)
       (syntax-case x ()
@@ -54,8 +57,8 @@
   (meta define (library-layer-sealed? layer)
     (let ([l (assq layer library-layers)]) (and l (memq 'sealed l) #t)))
 
-  ;; The file a library is compiled from, as Chez's library manager finds
-  ;; it (library-directories, library-extensions), or #f.
+  ;; Returns the file a library is compiled from, as Chez's library
+  ;; manager finds it (library-directories, library-extensions), or #f.
   (meta define (library-layer-source name)
     (let ([path (apply string-append
                        (map (lambda (part)
@@ -70,13 +73,13 @@
                          (library-extensions))
                  (loop (cdr dirs)))))))
 
-  ;; A library's form as its file holds it, or #f.
+  ;; Returns the library form that file holds, or #f.
   (meta define (library-layer-form file)
     (let ([form (guard (c [#t #f]) (call-with-input-file file read))])
       (and (list? form) (>= (length form) 4) (eq? (car form) 'library)
            form)))
 
-  ;; What each library declares, by name: (layer . facade?), or none.
+  ;; What each library declares, by its name: (layer . facade?), or 'none.
   (meta define library-layer-known (make-hashtable equal-hash equal?))
 
   (meta define (library-layer-declared form)
@@ -95,7 +98,7 @@
           (hashtable-set! library-layer-known name layer)
           layer)))
 
-  ;; The library an import spec names, its version left out.
+  ;; Returns the library an import spec names, without its version.
   (meta define (library-layer-imported spec)
     (cond
       [(and (pair? spec) (memq (car spec) '(only except prefix rename for))
@@ -105,10 +108,11 @@
        (library-layer-imported (cadr spec))]
       [else (filter symbol? spec)]))
 
-  ;; What is wrong with each of form's imports, for a library of layer.
+  ;; Returns a message for each of form's imports that breaks the layers'
+  ;; order, for a library of layer.
   (meta define (library-layer-faults form layer)
     (let ([rank (library-layer-rank layer)] [name (cadr form)])
-      ;; filter-map is this library's, out of reach at expansion
+      ;; filter-map is this library's own, out of reach at expansion
       (filter
        string?
        (map
@@ -160,22 +164,23 @@
                                              faults))))))
            #'(define library-layer-declared 'layer))])))
 
-  ;; this library's own, once the form is there to say it
+  ;; This library's own layer, declared once the form is defined.
   (library-layer foundation)
 
-  ;; (define-global name g init kept?): a global of Chez's own under the
-  ;; symbol g, and name a macro that reads it, or sets it under set! (and
-  ;; so under fluid-let). A global, not a box: Chez reads it from the
-  ;; symbol itself, one load, where a box would be a variable of the
-  ;; library that every closure reading it must hold, so that a thunk which
-  ;; only calls such a procedure is allocated each time it is made.
-  ;; $top-level-value and $set-top-level-value! are Chez's internals, the
-  ;; two its expander writes for every variable of the top level. kept?: a
-  ;; value already there stays as the library is evaluated again (a
-  ;; reload). Each use names global-made too, a variable of the library's,
-  ;; where it is never reached: Chez runs a library only for code that
-  ;; names a variable of it, and code that used only its globals would
-  ;; find them unbound. The optimizer drops the branch.
+  ;; (define-global name g init kept?) keeps a value in a global of Chez's
+  ;; own, under the symbol g, and makes name a macro that reads it, or sets
+  ;; it under set! (and so under fluid-let). It is a global rather than a
+  ;; box because Chez reads a global from the symbol itself, in one load,
+  ;; while a box would be a variable of the library that every closure
+  ;; reading it must hold, so that a thunk which only calls such a
+  ;; procedure would be allocated each time it is made. $top-level-value
+  ;; and $set-top-level-value! are Chez's internals, the two its expander
+  ;; emits for every variable of the top level. With kept?, a value already
+  ;; there stays when the library is evaluated again (at a reload). Each
+  ;; use also names global-made, a variable of the library's, in a branch
+  ;; that is never taken: Chez runs a library only for code that names one
+  ;; of its variables, so code that used only its globals would find them
+  ;; unbound. The optimizer drops the branch.
   (define-syntax define-global
     (lambda (x)
       (syntax-case x ()
@@ -195,10 +200,10 @@
                       [(_ . rest)
                        #'(if #f global-made ((get 'g) . rest))]))))))])))
 
-  ;; The symbol a state is kept under: fixed by the file it is defined in
-  ;; and its name, so that the library evaluated again finds it; a fresh
-  ;; one where the expander knows no file. Its pretty name says nothing of
-  ;; what it holds.
+  ;; Returns the symbol a state is kept under. The symbol is fixed by the
+  ;; file the state is defined in and the state's name, so that the library,
+  ;; evaluated again, finds it; where the expander knows no file, it is a
+  ;; fresh one. Its pretty name says nothing about what it holds.
   (meta define (state-symbol id)
     (let* ([a (syntax->annotation id)]
            [s (and a (annotation-source a))])
@@ -209,12 +214,13 @@
                           (syntax->datum id)))
           (gensym "state"))))
 
-  ;; (define-state name init): a variable a library may export, to be read
-  ;; and set by those that import it, kept as the library is evaluated
-  ;; again (reload-libraries!) as a defvar is. Chez exports no variable
-  ;; that is assigned, so the value is a global (define-global). name is
-  ;; the definer's own, never one a macro makes up: two states a macro
-  ;; made in one file would share the symbol.
+  ;; (define-state name init) defines a variable that a library may export,
+  ;; for the libraries that import it to read and set, and that keeps its
+  ;; value when the library is evaluated again (reload-libraries!), as a
+  ;; defvar does. Chez exports no variable that is assigned, so the value
+  ;; is a global (define-global). name must be written by the definer,
+  ;; never made up by a macro: two states that a macro made in one file
+  ;; would share the symbol.
   (define-syntax define-state
     (lambda (x)
       (syntax-case x ()
@@ -222,9 +228,10 @@
          (with-syntax ([g (datum->syntax #'name (state-symbol #'name))])
            #'(define-global name g init #t))])))
 
-  ;; (define-view name state): state under another name, to read and never
-  ;; to set: what a library gives on of a state it imports. A set! of it
-  ;; is refused as it expands, in the words Chez uses for an import's.
+  ;; (define-view name state) gives state under another name, to read and
+  ;; never to set: how a library passes on a state it imports. A set! of
+  ;; the view is refused at expansion, with the message Chez gives for an
+  ;; import.
   (define-syntax define-view
     (syntax-rules ()
       [(_ name state)
@@ -237,9 +244,9 @@
               [id (identifier? #'id) #'state]
               [(_ . rest) #'(state . rest)]))))]))
 
-  ;; (define-settable name state check): state again, as a facade gives a
-  ;; hook a later layer fills, whose set! (set-hook!, fluid-let) takes
-  ;; only a value check passes.
+  ;; (define-settable name state check) also gives state under another
+  ;; name, as a facade gives a hook that a later layer fills; its set!
+  ;; (set-hook!, fluid-let) accepts only a value that check passes.
   (define-syntax define-settable
     (syntax-rules ()
       [(_ name state check)
@@ -255,16 +262,17 @@
               [id (identifier? #'id) #'state]
               [(_ . rest) #'(state . rest)]))))]))
 
-  ;; (define-made name init): a value made as the library loads, read and
-  ;; never set: a buffer, a table, a foreign procedure, a fact found out. A
-  ;; global under a view, not a definition: a library's own variable is
-  ;; held by every procedure that reads it, and by every procedure that
-  ;; calls one of those, so that a closure made at run time which only
-  ;; calls one carries it, and is allocated where the top level's was not.
-  ;; With none, a library's procedures carry nothing
-  ;; (tests/units/allocation.ss). Made again as the library is evaluated
-  ;; again; a value a state may hold is a state itself, so the two stay
-  ;; one.
+  ;; (define-made name init) defines a value made as the library loads,
+  ;; read and never set: a buffer, a table, a foreign procedure, a fact
+  ;; found out. It is a global under a view rather than a definition: a
+  ;; library's own variable is held by every procedure that reads it and by
+  ;; every procedure that calls one of those, so a closure made at run time
+  ;; that only calls one of them carries it, and is allocated where the
+  ;; same closure at the top level was not. Without such variables, a
+  ;; library's procedures carry nothing (tests/units/allocation.ss). The
+  ;; value is made again when the library is evaluated again, so a value
+  ;; that a state may hold is made a state itself, and the two stay the
+  ;; same object.
   (define-syntax define-made
     (lambda (x)
       (syntax-case x ()
@@ -274,12 +282,12 @@
                     (define-view name made)))])))
 
   ;; (define-hook (name . formals) body ...), or (define-hook name
-  ;; procedure): a procedure that may be replaced, under its own name. The
-  ;; piece that has what it does sets it (set-hook!), where the one that
-  ;; calls it sits below. Called by its name, set by set!, as a state is;
-  ;; made again as the library is evaluated again, and set again by the
-  ;; piece that sets it, which imports it and so is evaluated again after
-  ;; it.
+  ;; procedure), defines a procedure that may be replaced, under its own
+  ;; name. The library that calls it sits below the one that knows what it
+  ;; does, which sets it (set-hook!). It is called by its name and set by
+  ;; set!, as a state is. It is made again when the library is evaluated
+  ;; again, and set again by the library that sets it, which imports it and
+  ;; so is evaluated again after it.
   (define-syntax define-hook
     (lambda (x)
       (syntax-case x ()
@@ -289,8 +297,9 @@
          (with-syntax ([g (datum->syntax #'name (gensym "hook"))])
            #'(define-global name g procedure #f))])))
 
-  ;; (set-hook! (name . formals) body ...): what the hook name does, from
-  ;; here on. A definition, so it stands among a library's.
+  ;; (set-hook! (name . formals) body ...) sets what the hook name does
+  ;; from here on. It expands to a definition, so it can stand among a
+  ;; library's definitions.
   (define-syntax set-hook!
     (syntax-rules ()
       [(_ (name . formals) body ...)
@@ -326,10 +335,11 @@
                 '()
                 l))
 
-  ;; Compared in place, a character at a time: a long str costs no copies.
+  ;; Whether str contains sub, ignoring case. It compares in place, a
+  ;; character at a time, so a long str costs no copies.
   (define (string-contains-ci? str sub)
     (let ([n (string-length str)] [m (string-length sub)])
-      (define (at? i j)   ; sub from j on is in str at i + j
+      (define (at? i j)   ; sub from j on matches str from i + j
         (or (= j m)
             (and (char-ci=? (string-ref str (+ i j)) (string-ref sub j))
                  (at? i (+ j 1)))))
@@ -358,10 +368,11 @@
     (let loop ([l lst] [i 0])
       (cond [(null? l) #f] [(pred (car l)) i] [else (loop (cdr l) (+ i 1))])))
 
-  ;; A read-only forwarder to the identifier id's binding: a macro that,
-  ;; installed in another environment, makes code there refer to that
-  ;; binding itself (live, and at no cost a call). A set! of it is refused
-  ;; as it expands, in the words Chez uses for an R6RS import's.
+  ;; Returns a read-only forwarder to the binding of the identifier id: a
+  ;; macro that, installed in another environment, makes code there refer
+  ;; to that binding itself (live, and without the cost of a call). A set!
+  ;; of it is refused at expansion, with the message Chez gives for an
+  ;; R6RS import.
   (define (forwarder-to id)
     (make-variable-transformer
      (lambda (x)
@@ -381,12 +392,13 @@
           (append entries (list entry)))))
 
   ;;; ---- what the platform is
-  ;;; Which OS and CPU this is, as Chez was built for them: known before
-  ;;; anything loads, so here, where every environment has them. What is
-  ;;; known only once SDL and the GPU start (the windowing system, the GPU's
-  ;;; API) core0 says in *core0-platform* ((schevana core0 platform)), and the
-  ;;; world asks (schevana core platform). These say what the platform is;
-  ;;; whether it can do a thing is asked of the thing.
+  ;;; Which OS and CPU this is, as Chez was built for them. These are
+  ;;; known before anything loads, so they are here, where every
+  ;;; environment has them. What is known only once SDL and the GPU start
+  ;;; (the windowing system, the GPU's API) core0 reports in
+  ;;; *core0-platform* ((schevana core0 platform)), and the world asks
+  ;;; (schevana core platform) for it. These say what the platform is;
+  ;;; whether it can do a thing is asked of the thing itself.
 
   ;; 'linux, 'macos, 'windows, or 'other.
   (define (platform-os)

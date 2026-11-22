@@ -1,6 +1,6 @@
-;;; tests/units/boids3d.ss — Boids 3D: a demo, what of the world it uses:
-;;; its shaders on the device against the twin, its picture, its keys, its
-;;; frames and its timer.
+;;; tests/units/boids3d.ss — Boids 3D, a demo, and what of the world it
+;;; uses: its shaders on the device, checked against the twin, its picture,
+;;; its keys, its frames and its timer.
 
 ;; Boids 3D's own names, b3:boids3d-steer and the rest (tests/reach.ss).
 (test-library '(demo boids3d) 'b3:)
@@ -30,7 +30,7 @@
 
 ;;; ------------------------------------------------------------------ steps
 
-;; A flock as the bytes a buffer holds, floats, and back.
+;; A flock as the bytes a buffer holds (floats), and back.
 (define (b3-bytes flock)
   (let ([bv (make-bytevector (* 4 b3:boids3d-words (length flock)) 0)])
     (for-each (lambda (b i)
@@ -69,7 +69,7 @@
                  (list (random 6.2831853) (- (random 1.0) 0.5))))
        (iota n)))
 
-;; Two flocks the same, but for floats' rounding.
+;; Whether two flocks are the same, apart from floats' rounding.
 (define (b3-close? a b)
   (for-all (lambda (x y)
              (for-all (lambda (u v)
@@ -77,7 +77,7 @@
                       x y))
            a b))
 
-;; A step on the device, by the frame, read back.
+;; A step on the device (gpu-compute!), read back.
 (define (b3-device-step flock rules)
   (let* ([n (length flock)]
          [in (make-gpu-buffer (* b3:boids3d-words n))]
@@ -92,8 +92,9 @@
       (gpu-buffer-release! out)
       next)))
 
-;; But for rounding: a root is a device's to round as it likes, Metal's too
-;; (tests/units/shader.ss holds it to the twin's +, -, * and / alone).
+;; The same apart from rounding: a device may round a square root as it
+;; likes, Metal included (tests/units/shader.ss holds the device to the
+;; twin's +, -, * and / alone).
 (check "Boids 3D: a step on the device is the twin's"
        (let* ([flock (b3-random-flock 200 300.0 7)]
               [rules (b3:boids3d-set-rule b3:boids3d-default-rules 'back-off
@@ -141,9 +142,9 @@
 
 ;;; ------------------------------------------------------------------ the app
 
-;; The flock window, paused, its rules window closed: one bird, at the middle
-;; of the ball heading right across the camera's view, the camera level in
-;; front of it.
+;; Opens the flock window, paused, with its rules window closed and one
+;; bird, at the middle of the ball, heading right across the camera's view,
+;; with the camera level in front of it.
 (define (b3-one-bird-window)
   (let ([win (b3:boids3d)])
     (close-window! (find-window "Boids 3D — Rules"))
@@ -301,10 +302,10 @@
                 (< (abs (- two (* 2 0.0015))) 1e-12)
                 (not (hashtable-contains? (window-handlers win) 'tick))))))
 
-;; Riding frames, the default, a minimized flock stays where it was; riding a
-;; timer (boids3d-ride!, the rules window's checkbox), it flies on, asking
-;; for no frame, its steps sent to the GPU at each turn's end; riding frames
-;; again, its timer stops.
+;; Riding frames (the default), a minimized flock stays where it was.
+;; Riding a timer (boids3d-ride!, the rules window's checkbox), it flies on,
+;; asking for no frame, and its steps are sent to the GPU at the end of each
+;; turn. Riding frames again, its timer stops.
 (check "Boids 3D rides frames by default: minimized, its flock waits"
        (let* ([win (b3:boids3d)]
               [flipped (lambda () (window-ref win 'flipped?))])
@@ -325,13 +326,13 @@
          (close-window! (find-window "Boids 3D — Rules"))
          (minimize-window! win)
          (steps 1)
-         ;; its timers alone: the top bar's, once a second, asks for a
+         ;; only its own timers: the top bar's, once a second, asks for a
          ;; frame of its own
-         ;; a copy: after links a timer in place, behind any already
-         ;; due, so into these very cells on a machine running late
+         ;; a copy, since after links a timer in place, behind any already
+         ;; due, and so into these very cells on a machine running late
          (let ([before (list-copy *timers*)])
            (b3:boids3d-ride! 'timer)
-           (window-call win 'frame (now-ns))   ; its timer set
+           (window-call win 'frame (now-ns))   ; this sets its timer
            (let* ([own (remp (lambda (x) (memq x before)) *timers*)]
                   ;; the first of its 15 ms steps finds it due
                   [t (if (pair? own)

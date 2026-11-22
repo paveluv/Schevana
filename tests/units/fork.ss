@@ -1,7 +1,7 @@
-;;; tests/units/fork.ss — the world on a thread of its own, core0 on the
-;;; process's first, as with a window, but headless (--fork): a run of
-;;; ./desktop in a process of its own, HOME a scratch folder, which
-;;; reports what it saw (tests/fork/run.ss).
+;;; tests/units/fork.ss — the world on a thread of its own and core0 on the
+;;; process's first thread, as with a window, but headless (--fork): a run
+;;; of ./desktop in a process of its own, with HOME set to a scratch folder,
+;;; which reports what it saw (tests/fork/run.ss).
 
 (let* ([home (string-append out-dir "/fork-home")]
        [out (string-append out-dir "/fork-seen.ss")]
@@ -32,8 +32,8 @@
          (and (saw 'readback) (saw 'compute) (> (saw 'bytes) 0)
               (equal? (saw 'read-then) '(0 1 4 9))
               (equal? (saw 'waited) '(0 1 4 9))))
-  ;; by the frames' own t, core0's screen: how many refreshes a busy
-  ;; machine is late for is the bench's
+  ;; judged by the frames' own t, which follows core0's screen. How many
+  ;; refreshes a busy machine is late for is for the bench to measure.
   (check (format "frame turns follow core0's screen: a window that \
                   animates gets its frames, each one's t whole refreshes \
                   after the last (~a frames, ~a uneven; ~a refreshes by \
@@ -47,8 +47,8 @@
                  (saw 'ticks) (saw 'unsummed))
          (and (saw 'ticks) (> (saw 'ticks) 30) (= (saw 'unsummed) 0))))
 
-;; The guard on that run: a run that hangs is killed in its time, and what
-;; a word holds reaches sh whole.
+;; The guards on that run: a run that hangs is killed once its time is up,
+;; and a word reaches sh whole, whatever it holds.
 (let ([began (real-time)])
   (check "a run still going after its time is killed, not waited for"
          (and (eqv? (test-system-within 1 "exec sleep 30") 137)

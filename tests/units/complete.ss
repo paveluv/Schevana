@@ -1,7 +1,7 @@
-;;; tests/units/complete.ss — the completion list ((schevana kits complete)), by
-;;; itself, its owner a test's own: Tab's list, prefix and popups, the
-;;; list narrowed, keys, the wheel and presses, and the matching. What the
-;;; REPL completes, describes and draws is smoke's.
+;;; tests/units/complete.ss — the completion list ((schevana kits
+;;; complete)) by itself, with the test as its owner: Tab's list, prefix and
+;;; popups, the list narrowed, keys, the wheel and presses, and the
+;;; matching. What the REPL completes, describes and draws is smoke's.
 
 (test-focus (schevana kits complete))
 
@@ -9,13 +9,14 @@
   '("set-theme!" "set-theme-plist!" "set-style!" "setting-of" "sum"
     "head:split-window" "head:window-split" "*scratch*"))
 
-;; The names typed matches, best first, as items.
+;; Returns the names that typed matches, best first, as items.
 (define (complete-test-rank typed)
   (complete-rank typed (map (lambda (n) (cons n "procedure"))
                             complete-test-names)
                  (lambda (n) #f)))
 
-;; An owner, and what its Tab put in: (replaced . accepted) as boxes.
+;; Presses Tab on typed for a new owner. Returns (values owner replaced
+;; accepted): the owner, and what its Tab put in.
 (define (complete-test-tab typed)
   (let ([owner (list 'owner)] [replaced (box #f)] [accepted (box #f)])
     (complete-tab! owner 'names 0 typed (complete-test-rank typed)

@@ -1,24 +1,25 @@
 ;;; (demo boids3d) — Boids in three dimensions, as Craig Reynolds
 ;;; first made them (1987), all on the GPU: compute shaders steer the flock
-;;; and lay it out on the screen, and a paint draws it, birds far off
-;;; against an evening sky over the sea, the sun setting, a wooded shore
-;;; with a lighthouse.
+;;; and lay it out on the screen, and a paint draws it: birds far off
+;;; against an evening sky over the sea, with the sun setting and a wooded
+;;; shore with a lighthouse.
 ;;; The flock never comes back to the CPU, which only sets the rules, moves
 ;;; the camera and asks for the shaders with each frame.
 ;;;
-;;; The rules are Boids', in space: cohesion, alignment and
+;;; The rules are Boids' rules in space: cohesion, alignment and
 ;;; separation, a field of view that is a cone, and the two blocker rules
-;;; from Flake's "The Computational Beauty of Nature". Clear view steps along
-;;; the part of the heading square to the line to a blocker, which is what
-;;; the 2D rule works out, in any dimension; back off steps straight away.
-;;; Where Boids wraps at the screen's edges, these turn back toward the
-;;; middle of their space when they leave it (home).
+;;; from Flake's "The Computational Beauty of Nature". Clear view steps
+;;; along the part of the heading at a right angle to the line to a
+;;; blocker, which is what the 2D rule works out, in any number of
+;;; dimensions; back off steps straight away. Where Boids wraps around at
+;;; the screen's edges, these birds turn back toward the middle of their
+;;; space when they leave it (home).
 ;;;
-;;; A bird is a body and two wings, beating, swept back and banked into its
+;;; A bird is a body and two beating wings, swept back and banked into its
 ;;; turns, seen by a camera that circles the flock: far away, its outline
-;;; changes as a real one's does, a dash from the side, a V from below.
+;;; changes as a real bird's does, a dash from the side and a V from below.
 ;;; R: random rules · D: the defaults · S: scatter · H: the rules window ·
-;;; Space: pause · drag: move round the flock
+;;; Space: pause · drag: move around the flock
 ;;;
 ;;; Its shaders touch only the buffers it hands them.
 
@@ -32,13 +33,13 @@
 
   ;;; ------------------------------------------------------------------ rules
 
-  ;; The flocking rules, as a plist: Boids', and home, how hard a bird
-  ;; outside the space turns back. Speeds are in units a step; the space is a
-  ;; ball boids3d-space units from its middle. Boids' own defaults, seeing only
-  ;; ahead and hardly apart, string a flock out in lines; these make a
-  ;; murmuration of it, a sheet that bends and thins as it turns: cohesion
-  ;; weak and wide, alignment near, room between them, and seeing most of the
-  ;; way round.
+  ;; The flocking rules, as a plist: Boids' rules, plus home, how hard a
+  ;; bird outside the space turns back. Speeds are in units per step; the
+  ;; space is a ball of radius boids3d-space. Boids' own defaults, which see
+  ;; only ahead and keep the birds hardly apart, string a flock out in
+  ;; lines; these make a murmuration of it, a sheet that bends and thins as
+  ;; it turns: cohesion is weak and wide, alignment near, there is room
+  ;; between the birds, and they see most of the way around.
   (define boids3d-default-rules
     '(cohesion 0.001
       cohesion-radius 120.0
@@ -77,8 +78,9 @@
       (min-speed 0.0 5.0)
       (max-speed 0.5 10.0)))
 
-  ;; Rules picked at random within their ranges, a weight on a cube, max speed
-  ;; from min speed up, as Boids picks them.
+  ;; Returns rules picked at random within their ranges, as Boids picks
+  ;; them: a weight as the cube of a uniform pick, and max speed from min
+  ;; speed up.
   (define (boids3d-random-rules)
     (fold-left
      (lambda (rules range)
@@ -92,7 +94,8 @@
               range))
      '() boids3d-ranges))
 
-  ;; Rules with key's value v; min and max speed push each other along.
+  ;; Returns rules with key set to v; min and max speed push each other
+  ;; along.
   (define (boids3d-set-rule rules key v)
     (define (with rules key v)
       (cond [(null? rules) (errorf 'boids3d-set-rule "no rule ~s" key)]
@@ -108,10 +111,11 @@
                          rules)]
         [else rules])))
 
-  ;; What a step's shader is handed of the rules, in its parameters' order:
-  ;; the weights; the cosines of half the field of view and of half the
-  ;; blockers' cone, -2 for all around, which any heading beats; the reaches
-  ;; squared, 0 for a rule without weight; home; the speed limits.
+  ;; Returns what a step's shader is handed of the rules, in the order of
+  ;; its parameters: the weights; the cosines of half the field of view and
+  ;; of half the blockers' cone (-2 for all around, which any heading
+  ;; beats); the squared reaches, 0 for a rule without weight; home; and
+  ;; the speed limits.
   (define (boids3d-steering rules)
     (define (rule key) (inexact (boids3d-rule rules key)))
     (define (reach weight radius)
@@ -132,17 +136,18 @@
 
   ;;; ------------------------------------------------------------------ the GPU
 
-  (define boids3d-most 4096)       ; birds at most: the shaders' loops' bound
-  (define boids3d-space 250.0)     ; the ball they keep to, its radius
+  (define boids3d-most 4096)       ; the most birds: the shaders' loop bound
+  (define boids3d-space 250.0)     ; the radius of the ball they keep to
   (define boids3d-words 8)         ; a bird: x y z, its velocity, wing, bank
-  (define boids3d-shape-words 24)  ; one on the screen (boids3d-place)
-  (define boids3d-tile 16)         ; device pixels a tile's side
-  (define boids3d-tile-most 48)    ; birds a tile lists at most
+  (define boids3d-shape-words 24)  ; a bird on the screen (boids3d-place)
+  (define boids3d-tile 16)         ; a tile's side, in device pixels
+  (define boids3d-tile-most 48)    ; the most birds a tile lists
 
-  ;; A step: every bird steered by the flock as it is, into next. The pairs
-  ;; the rules count are those Boids' do; what one neighbor adds is
-  ;; worked out again for each sum, which the GPU's compiler does once, and its
-  ;; ifs are selects (1.0 or 0.0), so that the loop doesn't branch.
+  ;; A step: steers every bird by the flock as it is, into next. The rules
+  ;; count the same pairs as Boids' rules do. What one neighbor adds is
+  ;; written out again for each sum, which the GPU's compiler works out
+  ;; once, and its ifs are selects (1.0 or 0.0), so that the loop doesn't
+  ;; branch.
   (define-compute-shader (boids3d-steer i row)
     ([flock fl-buffer]
      [next fl-buffer write]
@@ -163,7 +168,7 @@
      [min-speed flonum]
      [max-speed flonum]
      [space flonum]
-     [dt flonum])               ; how much: a step's worth is 1.0
+     [dt flonum])               ; how far to step: a whole step is 1.0
     (define (at j k) (fl-ref flock (fx+ (fx* j 8) k)))
     (define (on c) (if c 1.0 0.0))
     (let* ([x (at i 0)]
@@ -182,22 +187,25 @@
           (fl+ (fl+ (fl* a a) (fl* b b)) (fl* c c))))
       (define (ahead j)
         (fl+ (fl+ (fl* vx (dx j)) (fl* vy (dy j))) (fl* vz (dz j))))
-      ;; 1.0 if j is another bird within reach r2, inside the cone whose half's
-      ;; cosine is c: ahead > c √(h2 d2), squared with its sign, no root. A bird
-      ;; standing still sees everything.
+      ;; 1.0 if j is another bird within reach r2, inside the cone whose
+      ;; half-angle has cosine c: ahead > c √(h2 d2), compared squared with
+      ;; each side's sign, so no root is taken. A bird standing still sees
+      ;; everything.
       (define (in j r2 c)
         (let ([d2 (dist2 j)] [a (ahead j)])
           (fl* (fl* (on (fl> d2 0.0)) (on (fl< d2 r2)))
                (flmax (on (fl= h2 0.0))
                       (on (fl> (fl* a (flabs a))
                                (fl* (fl* c (flabs c)) (fl* h2 d2))))))))
-      ;; part k of what j's nearness pushes: away from it, close; and, with the
-      ;; blocker rules on, a unit step sideways out from behind it and one away
+      ;; part k of the push that j's nearness gives: away from j when close;
+      ;; and, with the blocker rules on, a unit step sideways out from
+      ;; behind j and one straight away
       (define (push j d k)
         (let* ([d2 (dist2 j)]
                [dist (flsqrt (flmax d2 0.000001))]
                [a (ahead j)]
-               ;; the heading's part square to the line to j, its length
+               ;; the heading's part at a right angle to the line to j, and
+               ;; its squared length
                [side (fl- (fl* (if (fx= k 0) vx (if (fx= k 1) vy vz)) d2)
                           (fl* a d))]
                [side2 (fl* d2 (fl- (fl* h2 d2) (fl* a a)))])
@@ -210,7 +218,7 @@
                         (fl* (fl* back-off (in j back-reach cone))
                              (fl/ (fl- 0.0 d) dist)))
                    0.0))))
-      ;; toward the mean of a sum over count, from own, by weight
+      ;; the push from own toward the mean (sum over count), times weight
       (define (toward sum count own weight)
         (if (fl> count 0.0)
             (fl* (fl- (fl/ sum count) own) weight)
@@ -229,7 +237,7 @@
            [py 0.0 (fl+ py (push j (dy j) 1))]
            [pz 0.0 (fl+ pz (push j (dz j) 2))])
         ((fx>= j n)
-         (let* (;; out of the ball, back toward its middle, the harder the
+         (let* (;; out of the ball, back toward its middle, harder the
                 ;; farther out
                 [r (flsqrt (fl+ (fl+ (fl* x x) (fl* y y)) (fl* z z)))]
                 [pull (fl/ (fl* home (flmax (fl- r space) 0.0)) (flmax r 1.0))]
@@ -246,7 +254,7 @@
                                                    (toward az an vz alignment))
                                               pz)
                                          (fl* z pull))))]
-                ;; the speed limits; standing still, it stays put
+                ;; the speed limits; a bird standing still stays put
                 [s (flsqrt (fl+ (fl+ (fl* nx nx) (fl* ny ny)) (fl* nz nz)))]
                 [k (if (fl> s max-speed)
                        (fl/ max-speed s)
@@ -257,14 +265,14 @@
                 [ny (fl* ny k)]
                 [nz (fl* nz k)]
                 [s (fl* s k)]
-                ;; the wings beat faster climbing, slower diving; a turn
-                ;; banks it, round the way it turns
+                ;; the wings beat faster when climbing and slower when
+                ;; diving; a turn banks the bird into the turn
                 [climb (if (fl> s 0.0) (fl/ ny s) 0.0)]
                 [beat (flmin (flmax (fl+ 0.45 (fl* 0.3 climb)) 0.2) 0.8)]
                 [wing (fl+ (at i 6) (fl* beat dt))]
                 [wing (fl- wing (fl* 6.2831853
                                      (flfloor (fl* wing 0.15915494))))]
-                ;; a step's worth of turning, however much this is
+                ;; the turning per whole step, however big this step is
                 [turn (if (fl> (fl* (fl* h2 (fl* s s)) dt) 0.0)
                           (fl/ (fl- (fl* vz nx) (fl* vx nz))
                                (fl* (flsqrt (fl* h2 (fl* s s))) dt))
@@ -284,15 +292,16 @@
            (fl-set! next (fx+ o 6) wing)
            (fl-set! next (fx+ o 7) bank))))))
 
-  ;; Each bird on the screen, by a camera at the eye, its axes right, up and
-  ;; ahead, focal device pixels to the unit at a unit away, its middle at cx
-  ;; cy: its box; its chest, head and tail; each wing's wrist and tip, left
-  ;; then right; the chest's, the shoulder's, the wrist's and the tip's half
-  ;; widths; and how much the haze leaves of it. A bird behind the eye has an
-  ;; empty box, one that ends before it starts, left of the screen. A wing
-  ;; bends at the wrist, the hand swept back and beating further than the arm,
-  ;; so that far off its outline is a bird's: an M, a gull's curve, a dash edge
-  ;; on.
+  ;; Lays out each bird on the screen, seen by a camera at the eye with
+  ;; axes right, up and ahead, focal device pixels per unit at one unit
+  ;; away, and its middle at (cx, cy). It writes the bird's box; its chest,
+  ;; head and tail; each wing's wrist and tip, left then right; the half
+  ;; widths at the chest, the shoulder, the wrist and the tip; and how much
+  ;; of the bird the haze leaves. A bird behind the eye gets an empty box,
+  ;; one that ends before it starts, left of the screen. A wing bends at the
+  ;; wrist, with the hand swept back and beating farther than the arm, so
+  ;; that far off the outline is a bird's: an M, a gull's curve, or a dash
+  ;; edge on.
   (define-compute-shader (boids3d-place i row)
     ([flock fl-buffer]
      [shapes fl-buffer write]
@@ -312,7 +321,7 @@
      [cx flonum]
      [cy flonum]
      [span flonum]              ; a bird's wings, tip to tip, in units
-     [haze flonum])             ; how far, until half of it is gone
+     [haze flonum])             ; how far until half a bird is gone
     (define (at k) (fl-ref flock (fx+ (fx* i 8) k)))
     (define (put k v) (fl-set! shapes (fx+ (fx* i 24) k) v))
     (let* ([x (at 0)]
@@ -341,7 +350,7 @@
            [qx (fl- (fl* tx c) (fl* bx sn))]
            [qy (fl* ty c)]
            [qz (fl- (fl* tz c) (fl* bz sn))]
-           ;; the wings' angle: a beat, wide climbing and slow, small diving
+           ;; the wings' angle in a beat: wide when climbing, small when diving
            [climb (if (fl> s 0.0) (fl/ vy s) 0.0)]
            [wide (flmin (flmax (fl+ 0.5 (fl* 0.6 climb)) 0.15) 0.9)]
            [lift (fl* wide (flsin (at 6)))]
@@ -356,8 +365,8 @@
            [mz (fl- z ez)]
            [depth (fl+ (fl+ (fl* mx fx) (fl* my fy)) (fl* mz fz))]
            [k (if (fl> depth 1.0) (fl/ focal depth) 0.0)])
-      ;; a point da ahead, dr right and du up from the bird's middle, on the
-      ;; screen
+      ;; where a point da ahead, dr right and du up from the bird's middle
+      ;; falls on the screen
       (define (screen-x da dr du)
         (let ([px (fl+ (fl+ (fl+ mx (fl* ax da)) (fl* wx dr)) (fl* qx du))]
               [py (fl+ (fl+ (fl+ my (fl* ay da)) (fl* wy dr)) (fl* qy du))]
@@ -432,9 +441,10 @@
         (put 21 (fl* k (fl* 0.012 span)))
         (put 22 (fl/ 1.0 (fl+ 1.0 (fl* d d)))))))
 
-  ;; Each tile across × down of the screen lists the birds whose boxes touch
-  ;; it, at most most of them: its count, then theirs, most + 1 words a tile.
-  ;; A tile writes only its own, so that no two cells touch one word.
+  ;; Each of the across × down tiles of the screen lists the birds whose
+  ;; boxes touch it, at most `most` of them: its count, then their indexes,
+  ;; in most + 1 words per tile. A tile writes only its own words, so that
+  ;; no two cells write the same word.
   (define-compute-shader (boids3d-bin tx ty)
     ([shapes fl-buffer]
      [tiles fx-buffer write]
@@ -462,15 +472,16 @@
                              c)])
                  ((fx>= j n) c)))))
 
-  ;; The scene round the flock, a pixel at a time: an evening sky from its top
-  ;; to the horizon, clouds drifting in a band of it, the sun half set at
-  ;; bearing 0, the sea below the horizon mirroring the sky, the sun's road on
-  ;; it glittering, and a wooded headland at bearing 1.7 with a lighthouse at
-  ;; its tip, a hazy ridge behind, both mirrored. It turns with the scene's own
-  ;; bearing, not the camera's circling. Over it the birds the pixel's tile
-  ;; lists: each dark strokes for its body and its wings, narrowing to the
-  ;; tips, as much of it as the haze leaves. They're all one ink, so what's in
-  ;; front doesn't matter: the scene shows through each by what it leaves.
+  ;; The scene around the flock, a pixel at a time: an evening sky from its
+  ;; top to the horizon, clouds drifting in a band of it, the sun half set
+  ;; at bearing 0, the sea below the horizon mirroring the sky with the
+  ;; sun's road glittering on it, and a wooded headland at bearing 1.7 with
+  ;; a lighthouse at its tip and a hazy ridge behind, both mirrored. The
+  ;; scene turns with its own bearing, not with the camera's circling. Over
+  ;; it go the birds the pixel's tile lists, each in dark strokes for its
+  ;; body and its wings, narrowing to the tips, with as much of it as the
+  ;; haze leaves. They are all one ink, so which is in front doesn't
+  ;; matter: the scene shows through each bird by what the bird leaves.
   (define-paint (boids3d-view x y)
     ([shapes fl-buffer]
      [tiles fx-buffer]
@@ -483,10 +494,10 @@
      [low color]
      [ink color]
      [left flonum]        ; the bearing at the field's left edge, radians
-     [step flonum]        ; radians a device pixel
-     [drift flonum]       ; how far the clouds have drifted, cells
+     [step flonum]        ; radians per device pixel
+     [drift flonum]       ; how far the clouds have drifted, in cells
      [time flonum]        ; seconds, for the waves and the lamp
-     [horizon flonum])    ; the horizon's height, a share of the field's
+     [horizon flonum])    ; the horizon's height, a fraction of the field's
     (define (at j k) (fl-ref shapes (fx+ (fx* j 24) k)))
     (define (part c shift) (fixnum->flonum (fxand (fxsrl c shift) 255)))
     (define (clamp01 v) (flmax 0.0 (flmin 1.0 v)))
@@ -530,7 +541,7 @@
            [count (fx-ref tiles base)]
            [bearing (fl+ left (fl* px step))]
            [focal (fl/ 1.0 step)]
-           ;; the sun: due bearing 0, half set
+           ;; the sun: at bearing 0, half set
            [r (fl* hf 0.032)]
            [sdx (fl* (around bearing) focal)]
            [sy (fl- hy (fl* r 0.35))]
@@ -605,7 +616,7 @@
                                                         (fl/ ld
                                                              (fl* hf 0.05))))])
                                    (fl* 0.6 (fl* g g))))))]
-           ;; the clouds, slower, in a band of the upper sky
+           ;; the clouds, drifting slowly in a band of the upper sky
            [cu (fl+ (fl* bearing (fl/ 20.0 6.2831853)) drift)]
            [cv (fl* py (fl* (fl/ (fl/ 20.0 6.2831853) focal) 2.6))]
            [cuc (fl* cu 1.0)]
@@ -621,8 +632,8 @@
            [cover (if sea? 0.0
                       (fl* (smooth (clamp01 (fl* (fl- d 0.47) 3.2))) band))]
            [core (clamp01 (fl* (fl- d 0.62) 3.0))]
-           ;; the sea: deeper toward the viewer, the shore's mirror under
-           ;; it, rippled, and the sun's road, glittering
+           ;; the sea: deeper toward the viewer, with the shore's rippled
+           ;; mirror image under the shore, and the sun's glittering road
            [s (if sea? (clamp01 (fl/ (fl- py hy) (fl- hf hy))) 0.0)]
            [ripple (if sea?
                        (noise (fl* sdx (fl/ 0.07 (fl+ s 0.04)))
@@ -734,13 +745,13 @@
 
   ;;; ------------------------------------------------------------------ flocks
 
-  ;; A flock's two buffers, room for boids3d-most birds each: a step reads one
-  ;; and writes the other.
+  ;; Returns a flock's two buffers, each with room for boids3d-most birds:
+  ;; a step reads one and writes the other.
   (define (boids3d-buffers)
     (cons (make-gpu-buffer (* boids3d-words boids3d-most))
           (make-gpu-buffer (* boids3d-words boids3d-most))))
 
-  ;; A point in the ball of radius r, picked evenly.
+  ;; Returns a point picked evenly in the ball of radius r.
   (define (boids3d-random-in-ball r)
     (let loop ()
       (let ([x (- (random 2.0) 1.0)]
@@ -750,9 +761,9 @@
             (loop)
             (list (* r x) (* r y) (* r z))))))
 
-  ;; Birds from up to to, new in both buffers, since a step waiting for the
-  ;; frame may read either: in the ball, heading anywhere, their wings anywhere
-  ;; in a beat.
+  ;; Writes new birds, from index `from` up to `to`, into both buffers,
+  ;; since a step waiting for the frame may read either: placed in the
+  ;; ball, heading anywhere, their wings anywhere in a beat.
   (define (boids3d-scatter-into! buffers from to)
     (do ([i from (+ i 1)]) ((>= i to))
       (let ([words (append (boids3d-random-in-ball (* 0.8 boids3d-space))
@@ -764,8 +775,9 @@
                               words (iota boids3d-words)))
                   (list (car buffers) (cdr buffers))))))
 
-  ;; The camera on a sphere round the flock's middle, looking at it: its eye,
-  ;; then its axes right, up and ahead, as boids3d-place takes them.
+  ;; Returns the camera on a sphere around the flock's middle, looking at
+  ;; it: its eye, then its axes right, up and ahead, as boids3d-place takes
+  ;; them.
   (define (boids3d-camera yaw pitch distance)
     (let* ([ex (* distance (cos pitch) (sin yaw))]
            [ey (* distance (sin pitch))]
@@ -783,14 +795,14 @@
 
   ;;; ------------------------------------------------------------------ the app
 
-  (define boids3d-step-ns 15000000) ; a step about 60 times a second, as Boids'
+  (define boids3d-step-ns 15000000) ; a step about 60 times a second, as Boids
   (define boids3d-step-ms (quotient boids3d-step-ns 1000000))
   (define boids3d-count 1000)    ; how many a new window starts with
   (define boids3d-span 9.0)      ; a bird's wings, tip to tip, in units
-  (define boids3d-haze 1400.0)   ; how far until half a bird is gone in it
+  (define boids3d-haze 1400.0)   ; how far until the haze hides half a bird
 
-  ;; The evening sky, from its top to the horizon, and the birds against it:
-  ;; a scene's own colors, the theme's in no style.
+  ;; The evening sky's colors, from its top to the horizon, and the birds'
+  ;; ink: the scene's own colors, which no style's theme sets.
   (define boids3d-top #xff22385f)
   (define boids3d-middle #xff6f88aa)
   (define boids3d-low #xffe7bb93)
@@ -804,20 +816,22 @@
              to turn · space pause"
             n (if running? "" "paused   ")))
 
-  ;; The flock's field in win: its content above the status line.
+  ;; Returns the size of the flock's field in win: the content above the
+  ;; status line.
   (define (boids3d-field-size win)
     (let-values ([(w h) (window-content-size win)])
       (values w (max 1 (- h (boids3d-bar-height))))))
 
-  ;; The buffer the newest step wrote, which the next reads.
+  ;; Returns the buffer the newest step wrote, which the next step reads.
   (define (boids3d-current win)
     (let ([b (window-ref win 'buffers)])
       (if (window-ref win 'flipped?) (cdr b) (car b))))
 
-  ;; A step of the flock in win, with the next frame: the current buffer into
-  ;; the other, which is current then: dt steps' worth of it (1.0, a whole
-  ;; step), steering and flight, so that the flock turns and flies as far
-  ;; as the time that passed, however often it's stepped.
+  ;; Steps the flock in win with the next frame, from the current buffer
+  ;; into the other, which then becomes current. dt is how much of a step
+  ;; to take (1.0 is a whole one), in steering and in flight alike, so that
+  ;; the flock turns and flies as far as the time that passed, however
+  ;; often it is stepped.
   (define (boids3d-step! win . dt)
     (let* ([b (window-ref win 'buffers)]
            [from (boids3d-current win)]
@@ -828,8 +842,8 @@
                      (list boids3d-space (if (pair? dt) (car dt) 1.0))))
       (window-set! win 'flipped? (not (window-ref win 'flipped?)))))
 
-  ;; The tiles' buffer for at least words, made again when the field outgrows
-  ;; it.
+  ;; Returns the tiles' buffer, with room for at least words; it is made
+  ;; again when the field outgrows it.
   (define (boids3d-tiles! win words)
     (let ([t (window-ref win 'tiles)])
       (if (and t (>= (cdr t) words))
@@ -839,9 +853,10 @@
             (window-set! win 'tiles (cons new words))
             new))))
 
-  ;; The field, w × h: the flock laid out by the camera and listed by tile,
-  ;; with the frame, then drawn by the paint over the scene, seen at the
-  ;; window's scene bearing, the horizon raised as the camera looks down.
+  ;; Draws the field, w × h: with the frame, the flock is laid out by the
+  ;; camera and listed by tile, then the paint draws it over the scene,
+  ;; seen at the window's scene bearing, with the horizon raised as the
+  ;; camera looks down.
   (define (boids3d-draw-field win w h)
     (let* ([s (draw-scale)]
            [pw (exact (ceiling (* w s)))]
@@ -852,11 +867,11 @@
            [tiles (boids3d-tiles! win (* across down (+ boids3d-tile-most 1)))]
            [shapes (window-ref win 'shapes)]
            [n (window-ref win 'count)]
-           [focal (* ph 1.07)]   ; 50° from the top of the field to its foot
+           [focal (* ph 1.07)]   ; 50° from the field's top to its bottom
            [turn 6.283185307179586]
            [left (- (window-ref win 'scene-bearing) (/ (/ pw 2.0) focal))]
            [ms (now-ms)]
-           ;; a cloud cell drifts by in 150 s, 20 of them round the sky
+           ;; a cloud cell drifts by in 150 s, with 20 cells around the sky
            [drift (/ ms 150000.0)])
       (apply gpu-compute-soon! boids3d-place n 1 (boids3d-current win) shapes
              (append (boids3d-camera (window-ref win 'yaw)
@@ -874,8 +889,9 @@
                    (/ (mod ms 1000000) 1000.0)
                    (boids3d-horizon (window-ref win 'pitch)))))
 
-  ;; The horizon's height, a share of the field's, for the camera's pitch: at
-  ;; the pitch it starts at, about seven tenths down.
+  ;; Returns the horizon's height, as a fraction of the field's, for the
+  ;; camera's pitch: at the starting pitch, about seven tenths of the way
+  ;; down.
   (define (boids3d-horizon pitch)
     (max 0.35 (min 0.95 (- 0.8 (* 1.07 (+ pitch 0.25))))))
 
@@ -887,7 +903,8 @@
   (define (boids3d-scatter! win)
     (boids3d-scatter-into! (window-ref win 'buffers) 0 (window-ref win 'count)))
 
-  ;; n birds: the first n of the flock, or all of it and newcomers.
+  ;; Sets the flock to n birds: the first n of it, or all of it plus
+  ;; newcomers.
   (define (boids3d-resize! win n)
     (let ([was (window-ref win 'count)])
       (when (> n was)
@@ -899,16 +916,17 @@
           [running? #t] [last-step (now-ns)]
           [drag #f]          ; (x y yaw pitch bearing) where a drag began
           [rules-win #f]
-          [flying? #f]       ; its timer is set: it rides one ('ride timer)
+          [flying? #f]       ; whether its timer is set ('ride timer)
           [closed? #f])
       (define (toggle-rules! win)
         (if rules-win
             (close-window! rules-win)
             (set! rules-win
                   (boids3d-open-rules win (lambda () (set! rules-win #f))))))
-      ;; While it rides a timer: a step every 15 ms, seen or not, until it
-      ;; rides frames again or closes. A timer more than three steps late
-      ;; starts again from now rather than catching up.
+      ;; While the window rides a timer, the flock steps every 15 ms, seen
+      ;; or not, until the window rides frames again or closes. A timer
+      ;; more than three steps late starts again from now rather than
+      ;; catching up.
       (define (fly! win due)
         (after (max 0 (- due (now-ms)))
                (lambda ()
@@ -935,11 +953,12 @@
                 'distance 760.0
                 'ride 'frames        ; or timer: boids3d-ride!
                 'open (lambda (win) (window-frame-soon! win))
-                ;; one step a frame, as far as the time since the last
+                ;; one step per frame, as far as the time since the last
                 ;; frame's t, so that the flock moves as evenly as the screen
-                ;; shows it; three steps' worth at most, so that a flock seen
-                ;; again goes on rather than jumping ahead; riding a timer,
-                ;; the timer steps it and its frames only turn the camera
+                ;; shows it; at most three steps' worth, so that a flock seen
+                ;; again goes on rather than jumping ahead. While the window
+                ;; rides a timer, the timer steps the flock and the frames
+                ;; only turn the camera
                 'frame (lambda (win t)
                          (window-frame-soon! win)
                          (when (and (eq? (window-ref win 'ride) 'timer)
@@ -952,8 +971,8 @@
                            (when (and running? (> k 0.0))
                              (when (eq? (window-ref win 'ride) 'frames)
                                (boids3d-step! win k))
-                             ;; the camera goes slowly round, unless held: by
-                             ;; time
+                             ;; the camera circles slowly, by time, unless
+                             ;; a drag holds it
                              (unless drag
                                (window-set! win 'yaw
                                             (+ (window-ref win 'yaw)
@@ -1020,9 +1039,11 @@
 
   ;;; ------------------------------------------------------------------
   ;;; the rules window
-  ;;; Boids', but for the threads: a slider for the count and
-  ;;; each rule, and the keys' buttons. It reads and sets the flock window's
-  ;;; properties, so it shows them as they are, whoever changed them.
+  ;;; Like Boids' rules window, but with no threads slider (the GPU steps
+  ;;; the flock) and with a switch for riding a timer: a slider for the
+  ;;; count and for each rule, and buttons for what the keys do. It reads
+  ;;; and sets the flock window's properties, so it shows them as they are,
+  ;;; whoever changed them.
 
   (define (boids3d-setting-label key)
     (list->string (map (lambda (c) (if (char=? c #\-) #\space c))
@@ -1030,8 +1051,9 @@
 
   (define (boids3d-weight? range) (pair? (cdddr range)))
 
-  ;; Where v sits on range's slider, from 0 to 1, and back; a weight's slider
-  ;; is a cube, as Boids' is.
+  ;; Where v sits on range's slider, from 0 to 1 (boids3d-slider-t), and
+  ;; back (boids3d-slider-value); a weight's slider follows a cube, as in
+  ;; Boids.
   (define (boids3d-slider-t range v)
     (let ([t (/ (- v (cadr range)) (- (caddr range) (cadr range)))])
       (if (boids3d-weight? range) (expt (max t 0.0) 1/3) t)))
@@ -1065,13 +1087,14 @@
   (define boids3d-ride-label
     "Fly on while hidden: steps on a timer, not frames")
 
-  ;; The newest flock's window, while it's open: what boids3d-ride! takes
-  ;; with none given.
+  ;; The newest flock's window while it is open: the one boids3d-ride!
+  ;; acts on when given none.
   (define-state *boids3d-flock* #f)
 
-  ;; Whether the flock in win steps with its frames, pausing while it's unseen
-  ;; (frames, the default), or on a timer, flying on while hidden (timer):
-  ;; (boids3d-ride! 'timer) at a REPL in Boids 3D's environment.
+  ;; Sets whether the flock in win steps with its frames, pausing while it
+  ;; is unseen (frames, the default), or on a timer, flying on while hidden
+  ;; (timer): (boids3d-ride! 'timer) at a REPL of the hacker edition
+  ;; (--hacker), which has the library's own names.
   (define (boids3d-ride! mode . win)
     (let ([win (if (pair? win) (car win) *boids3d-flock*)])
       (unless (memq mode '(frames timer))
@@ -1085,8 +1108,9 @@
                       (let-values ([(w h) (ui-button-size label #f)]) w))
                     boids3d-buttons)))
 
-  ;; The rules window's content size: room for its rows, sliders 140 wide,
-  ;; three buttons as wide as the widest label, and the timer's checkbox.
+  ;; Returns the rules window's content size: room for its rows, with
+  ;; sliders 140 wide, for three buttons as wide as the widest one, and for
+  ;; the timer's checkbox.
   (define (boids3d-rules-size)
     (let ([pad (ui-pad)] [gap (ui-gap)] [sh (ui-slider-height)])
       (values (+ pad pad
@@ -1100,8 +1124,9 @@
                  (* (length boids3d-ranges) (+ sh gap))
                  gap (font-line-height 'ui-small) pad))))
 
-  ;; The rows, top to bottom: the count, the buttons, whether it rides a timer,
-  ;; a slider for each rule, and a hint.
+  ;; Draws the rows, top to bottom: the count, the buttons, the switch for
+  ;; riding a timer, a slider for each rule, and a hint. Returns the y
+  ;; below them.
   (define (boids3d-draw-rules ui flock-win w)
     (let* ([pad (ui-pad)] [gap (ui-gap)] [sh (ui-slider-height)]
            [lw (boids3d-label-width)] [rw (boids3d-readout-width)]
@@ -1158,11 +1183,12 @@
         (+ y gap (font-line-height 'ui-small) pad))))
 
   ;; Opens the rules window for the flock in flock-win, beside it and above
-  ;; it, the flock's own: raised, minimized and closed with it. on-close is
-  ;; called when it closes. Its keys are the flock's.
+  ;; it. The rules window belongs to the flock window: it is raised,
+  ;; minimized and closed with it. Returns the rules window; on-close is
+  ;; called when it closes. Its keys go to the flock window.
   (define (boids3d-open-rules flock-win on-close)
     (let ([ui (make-ui)]
-          [shown #f])   ; the rules and the count it last drew
+          [shown #f])   ; the rules, the count and the ride it last drew
       (define (now-shown)
         (list (window-ref flock-win 'rules) (window-ref flock-win 'count)
               (window-ref flock-win 'ride)))
@@ -1198,7 +1224,8 @@
           (boids3d-keep-on-desktop! win)
           win))))
 
-  ;; Grows win's content to at least w × h, kept on the desktop; never shrinks.
+  ;; Grows win's content to at least w × h, keeping win on the desktop; it
+  ;; never shrinks win.
   (define (boids3d-grow-to! win w h)
     (let-values ([(cw ch) (window-content-size win)])
       (when (and (or (> w cw) (> h ch)) (not (shaded? win)))

@@ -1,15 +1,16 @@
-;;; tests/units/ui-tree.ss — the kit's tree ((schevana kits ui)), by itself:
-;;; rows selected by a click or by keys, a twisty, Right, Left and Space
-;;; expanding and collapsing, Return and a double click opening, a right press's
-;;; menu, a collapse that hides the selection, and a tree with no rows. The
-;;; rows' order and steps are ui.ss's (ui-tree-rows, -step).
+;;; tests/units/ui-tree.ss — the kit's tree ((schevana kits ui)), tested by
+;;; itself: rows selected by a click or by keys, expanding and collapsing by
+;;; a twisty, Right, Left and Space, opening by Return and a double click, a
+;;; right press's menu, a collapse that hides the selection, and a tree with
+;;; no rows. The rows' order and steps are tested in ui.ss (ui-tree-rows,
+;;; ui-tree-step).
 
 (define ui-tree-test-kids
   '((a a1 a2) (a1 a11) (c c1)))
 
-;; A tree of a (a1 (a11) a2), b and c (c1), expanded, its selection, what
-;; it opened and what its menu was for kept in boxes; nodes, if given,
-;; are its roots instead.
+;; A window with a tree of a (a1 (a11) a2), b and c (c1), expanded. Returns
+;; the window and boxes for its selection, the node it opened and the node
+;; its menu was for. nodes, if given, are its roots instead.
 (define (ui-tree-test-window . nodes)
   (let ([selected (box #f)] [opened (box #f)] [menu (box #f)]
         [roots (if (pair? nodes) (car nodes) '(a b c))])
@@ -38,7 +39,8 @@
 (define (ui-tree-test-nodes win)
   (map ui-tree-row-node (vector->list (ui-tree-test-rows win))))
 
-;; Row node's region id, and the x of its twisty within the row.
+;; The region id of node's row, and the x of the middle of its twisty
+;; within the row.
 (define (ui-tree-test-row win node)
   (list 't 'row (ui-tree-index (ui-tree-test-rows win) node)))
 

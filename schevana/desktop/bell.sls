@@ -1,6 +1,6 @@
 ;;; (schevana desktop bell) — the bell: (bell) flashes the screen or the
-;;; focused window for 100 ms, or does nothing, as the style's bell says (none,
-;;; screen, window). The REPL rings it.
+;;; focused window for 100 ms, or does nothing, as the style's 'bell setting
+;;; says (none, screen or window). The REPL rings it.
 
 (library (schevana desktop bell)
   (export
@@ -18,8 +18,9 @@
 
   (define-state *bell* #f)   ; (end-ms x y w h) while the flash shows
 
-  ;; White by the difference operator: what is there, inverted, in any
-  ;; palette (the CADR complemented its screen; Medley flashes the window).
+  ;; Inverts what is there (white minus each pixel), so the flash shows in
+  ;; any palette (the CADR complemented its screen; Medley flashes the
+  ;; window).
   (define-part (draw-bell-flash x y w h)
     (invert-box x y w h))
 
@@ -28,8 +29,8 @@
   (define (bell-box)
     (if *bell* (apply values (cdr *bell*)) (values 0 0 0 0)))
 
-  ;; The flash's timer: it ends, unless a ring since made it longer, whose
-  ;; own timer ends it then.
+  ;; The flash's timer ends the flash, unless a later ring made it longer;
+  ;; that ring's own timer ends it then.
   (define (bell-end!)
     (when (and *bell* (>= (now-ms) (car *bell*)))
       (apply request-frame! (cdr *bell*))

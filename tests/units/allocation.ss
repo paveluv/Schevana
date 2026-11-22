@@ -1,18 +1,18 @@
 ;;; tests/units/allocation.ss — what the core allocates as the world steps.
 ;;; Requirement 3 of the GPU design: the core's allocation stays out of the
-;;; way, leaving the room to app writers. A guard is what's left: Chez's
-;;; allocates a handler and a continuation each time, and the core keeps one
-;;; around each part that may raise, so the budgets here are guards,
-;;; measured in place, and a little more. Without surfaces, whose drawing is
-;;; the desktop's, and with windows that ask no frames, whose frames are
-;;; apps'.
+;;; way, leaving the room to app writers. What is left is the guards:
+;;; Chez's guard allocates a handler and a continuation each time, and the
+;;; core keeps one around each part that may raise, so the budgets here are
+;;; a number of guards, measured in place, plus a little more. The checks
+;;; run without surfaces, whose drawing is the desktop's, and with windows
+;;; that ask for no frames, since their frames are the apps'.
 
 (for-each close-window! (windows))
 
 ;; Bytes allocated, collections or not.
 (define (allocation-now) (+ (bytes-allocated) (bytes-deallocated)))
 
-;; The least that thunk allocates, of n calls.
+;; The least that thunk allocates over n calls, after two to warm up.
 (define (allocation-least n thunk)
   (thunk)
   (thunk)
@@ -24,15 +24,16 @@
           (let ([d (- (allocation-now) a)])
             (loop (+ i 1) (if least (min least d) d)))))))
 
-;; What every check here measures counts every thread's allocation, and
-;; the suites' own thread, the heap's watch (tests/lib.ss), allocates
-;; nothing as it looks.
+;; What every check here measures counts every thread's allocation, so
+;; the suites' own thread, the heap's watch (tests/check.ss), must
+;; allocate nothing as it looks.
 (let ([look (allocation-least 3 test-heap-look)])
   (check (format "the heap's watch allocates nothing a look (~a bytes)" look)
          (= look 0)))
 
-;; Thunk's value, on a clock that goes on a microsecond each time it's
-;; read, and the machine's again once it has caught up.
+;; Returns thunk's value, run on a clock that moves on a microsecond each
+;; time it is read; afterward the clock is the machine's again, once the
+;; machine's has caught up.
 (define (allocation-on-clock thunk)
   (let* ([ns now-ns] [ms now-ms] [t (ns)])
     (dynamic-wind
@@ -45,12 +46,13 @@
         (set! now-ms ms)
         (let wait () (when (< (ns) t) (wait)))))))
 
-;; The least a step allocates, of 20, each after a call of before, which
-;; isn't counted: a step now and then also keeps the profiler's second,
-;; which allocates. On a clock of their own: by the machine's, each step of
-;; a slow run comes late, a flag the profiler keeps three ticks on (some
-;; 11 KB), and with a second between them each has what the world does
-;; once a second (40 KB). The least of 20 leaves out only what some lack.
+;; The least that a step allocates over 20 steps, each after a call of
+;; before, which isn't counted: now and then a step also keeps the
+;; profiler's second, which allocates. The steps run on a clock of their
+;; own: by the machine's, each step of a slow run comes late, which the
+;; profiler flags and keeps for three ticks (some 11 KB), and with a second
+;; between steps each would have what the world does once a second
+;; (40 KB). The least of 20 leaves out only what some steps lack.
 (define (allocation-step-least before)
   (allocation-on-clock
    (lambda ()
@@ -119,9 +121,10 @@
                   ;; its new run, and the list of runs made again
                   (<= (- move3 frame3) 640))))))
 
-;;; Timers: one is linked in place, so setting it costs a vector and a pair
-;;; however many are set; the world's own runs as it is, allocating
-;;; nothing; one an app set (in an engine) runs in one, with a fuel.
+;;; Timers: a timer is linked in place, so setting one costs a vector and a
+;;; pair however many are set; a timer of the world's own runs as it is,
+;;; allocating nothing; a timer that an app set (in an engine) runs in an
+;;; engine, with fuel.
 (let ([noop (lambda () (void))])
   (define (set-cost n)   ; the bytes of after with n set before it
     (fluid-let ([*timers* '()])
@@ -158,13 +161,14 @@
 
 ;;; A library's procedures carry nothing. A variable of a library's own is
 ;;; held by every procedure that reads it, and by every procedure that
-;;; calls one of those, so that a closure made at run time which only calls
-;;; one carries it, and is allocated where the top level's, which named a
-;;; global, was not. So what a library makes as it loads is a state or a
-;;; made value (define-state, define-made: schevana/base.sls), and a
-;;; procedure it defines is no closure at all. Asked of Chez's inspector,
-;;; of each procedure a library of the core's defines and exports; what a
-;;; state, a made value or a hook holds is its own.
+;;; calls one of those, so a closure made at run time that only calls one
+;;; of them carries it, and is allocated where the same closure at the top
+;;; level, which named a global, was not. So what a library makes as it
+;;; loads is a state or a made value (define-state, define-made:
+;;; schevana/base.sls), and a procedure it defines is no closure at all.
+;;; Chez's inspector is asked this of each procedure that a library of the
+;;; core's defines and exports; what a state, a made value or a hook holds
+;;; is its own business.
 (let ()
   ;; a library's file, read: (library name (export ...) (import ...) . body)
   (define (library-form file)

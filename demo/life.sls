@@ -1,12 +1,12 @@
-;;; (demo life) — Conway's Game of Life. Shows mouse input,
-;;; animation and the crew: a generation runs on as many threads as it is
-;;; given, and the controls beside the grid push it as far as the machine
-;;; goes, up to one pixel a cell in a maximized window and a generation
-;;; every frame, or as many as fit in one. The grid is as many cells as the
-;;; window has room for: a new size keeps what fits and seeds the new
-;;; ground.
-;;; Space: pause · R: randomize · C: clear · N: single step · H: the controls,
-;;; as does the button at the end of the status line · Click/drag: draw
+;;; (demo life) — Conway's Game of Life. It shows mouse input, animation
+;;; and the crew: a generation runs on as many threads as it is given, and
+;;; the controls beside the grid push it as far as the machine can go,
+;;; down to one pixel per cell in a maximized window, and up to a
+;;; generation every frame, or as many as fit in one. The grid has as many
+;;; cells as the window has room for; when the window changes size, the
+;;; grid keeps what still fits and seeds the new space at random.
+;;; Space: pause · R: randomize · C: clear · N: single step · H: the controls
+;;; (as does the button at the end of the status line) · Click/drag: draw
 
 (library (demo life)
   (export life)
@@ -21,27 +21,28 @@
   (define (life-bar-height)
     (max 26 (round (+ (font-line-height 'ui-small) 13))))
 
-  ;; The status line under the grid.
+  ;; Returns the text of the status line under the grid.
   (define (life-status-text generation running? cols rows rate)
     (format "generation ~a   ~a   ~a × ~a   ~a a second   space pause · \
              r random · c clear · n step · h controls"
             generation (if running? "▶" "❚❚") cols rows (exact (round rate))))
 
-  ;; The live-cell pixel of each row, top to bottom (color->pixel reads the
-  ;; theme).
+  ;; Returns the pixel of a live cell in each row, top to bottom
+  ;; (color->pixel reads the theme).
   (define (life-row-pixels rows)
     (let ([v (make-fxvector rows)])
       (do ([y 0 (fx+ y 1)]) ((fx= y rows) v)
         (fxvector-set! v y (color->pixel (mix 'green 'cyan (/ y rows)))))))
 
   ;;; ----------------------------------------------------------------- worklets
-  ;;; What the crew runs, on disjoint rows. They touch only their arguments
-  ;;; and allocate nothing.
+  ;;; What the crew runs, each call on rows of its own. The worklets touch
+  ;;; only their arguments and allocate nothing.
 
-  ;; Rows [y0, y1) of the next generation on a torus into next, and one pixel
-  ;; per cell into pix, the pixmap's (pixmap-rows!). Fixnum operations, at
-  ;; most three arguments to fx+ (a + or fx+ of four or more allocates its
-  ;; arguments: an 8-argument + took 300 KB a generation).
+  ;; Writes rows [y0, y1) of the next generation, on a torus, into next,
+  ;; and one pixel per cell into pix, the pixmap's pixels (pixmap-rows!).
+  ;; It uses fixnum operations with at most three arguments to fx+: a + or
+  ;; fx+ of four or more allocates its arguments (an 8-argument + took
+  ;; 300 KB a generation).
   (define-worklet (life-step-rows! y0 y1 pix grid next row-px dead cols rows)
     (let ([last-x (fx- cols 1)] [last-y (fx- rows 1)])
       (do ([y y0 (fx+ y 1)]) ((fx= y y1))
@@ -67,9 +68,9 @@
                                             (if (fx= alive 1) live dead))
                 (loop (fx+ x 1) here right))))))))
 
-  ;; Rows [y0, y1) of grid at random, about 22% alive, each row from its
-  ;; seed: a linear congruential generator, whose high bits are the good
-  ;; ones, on 32 bits.
+  ;; Fills rows [y0, y1) of grid at random, about 22% alive, each row from
+  ;; its own seed. The generator is a linear congruential one on 32 bits,
+  ;; read by its high bits, which are the good ones.
   (define-worklet (life-seed-rows! y0 y1 grid seeds cols)
     (do ([y y0 (fx+ y 1)]) ((fx= y y1))
       (let ([mid (fx* y cols)])
@@ -79,7 +80,8 @@
                                 (if (fx< (fxsrl s 16) 14418) 1 0))
             (loop (fx+ x 1) (fxlogand (fx+ (fx* s 69069) 1) #xffffffff)))))))
 
-  ;; Rows [y0, y1) of pix, the pixmap's: each cell's pixel.
+  ;; Writes each cell's pixel into rows [y0, y1) of pix, the pixmap's
+  ;; pixels.
   (define-worklet (life-paint-rows! y0 y1 pix grid row-px dead cols)
     (do ([y y0 (fx+ y 1)]) ((fx= y y1))
       (let ([mid (fx* y cols)] [live (fxvector-ref row-px y)])
@@ -90,15 +92,16 @@
                                             live
                                             dead)))))))
 
-  ;; Rows a call of the crew: at least 8,000 cells, about 80 µs of a
-  ;; generation. So a small grid runs on the caller alone, where waking the
-  ;; crew would cost more than it gives.
+  ;; The rows each call of the crew gets: at least 8,000 cells, about
+  ;; 80 µs of a generation. So a small grid runs on the caller alone,
+  ;; where waking the crew would cost more than it saves.
   (define (life-chunk-rows cols) (max 1 (quotient 8000 cols)))
 
   ;;; ------------------------------------------------------------------ drawing
 
-  ;; The cells (a pixmap, one pixel each) scaled up at (ox, oy), then the
-  ;; one-pixel gaps between them, while cells are big enough to spare them.
+  ;; Draws the cells (a pixmap, one pixel each) scaled up at (ox, oy),
+  ;; then the one-pixel gaps between them when the cells are big enough to
+  ;; spare them (5 screen pixels or more).
   (define (draw-life-cells pixels cols rows cell ox oy)
     (pixmap-draw pixels ox oy (* cell cols) (* cell rows))
     (when (>= (* cell (screen-scale)) 5)
@@ -109,11 +112,11 @@
 
   ;;; ----------------------------------------------------------------- controls
 
-  ;; How big a cell can be, in the screen's pixels: 1 is the screen's own.
+  ;; The sizes a cell can have, in the screen's own pixels.
   (define life-cell-stops '(1 2 3 4 5 6 8 10 12 16 20 24 32 40))
 
-  ;; How often a generation comes: ms apart, 0 for every frame, or flat for as
-  ;; many as life-flat-ns holds.
+  ;; How often a generation comes: the ms between two generations, 0 for
+  ;; one every frame, or flat for as many as fit in life-flat-ns.
   (define life-speeds
     '(("1 a second" . 1000)
       ("2 a second" . 500)
@@ -125,12 +128,13 @@
 
   (define life-default-speed 3)
 
-  ;; Flat out, a tick steps this long, at least a generation. What is left
-  ;; of a 60 Hz tick draws the frame: the desktop stays usable.
+  ;; Flat out, each frame steps generations for this long (at least one).
+  ;; The rest of a 60 Hz frame is left for drawing, so the desktop stays
+  ;; usable.
   (define life-flat-ns 10000000)
 
-  ;; What the panel's sliders mean, made once: a tooltip is asked for at
-  ;; every draw.
+  ;; The tooltips of the panel's sliders, made once, since a tooltip is
+  ;; asked for at every draw.
   (define life-cell-tip
     "The side of a cell, in the screen's own pixels: at 1 px, a cell is a \
      pixel")
@@ -140,10 +144,10 @@
   (define life-threads-tip
     "The threads a generation runs on: the crew's, which every app shares")
 
-  ;; How often the numbers change, to stay readable.
+  ;; How often the numbers change, in ns, so that they stay readable.
   (define life-meter-ns 500000000)
 
-  ;; Index of the stop nearest px.
+  ;; Returns the index of the stop nearest to px.
   (define (life-nearest-stop px)
     (let loop ([stops life-cell-stops] [i 0] [best 0] [gap +inf.0])
       (if (null? stops)
@@ -153,7 +157,7 @@
                 (loop (cdr stops) (+ i 1) i d)
                 (loop (cdr stops) (+ i 1) best gap))))))
 
-  ;; A rate in thousands, millions or billions.
+  ;; Formats a rate in thousands, millions or billions.
   (define (life-amount n)
     (cond [(>= n 1e9) (format "~,2f G" (/ n 1e9))]
           [(>= n 1e6) (format "~,1f M" (/ n 1e6))]
@@ -177,8 +181,8 @@
       "Cells a second"
       "Per thread"))
 
-  ;; The panel's width: room for a label and its widest value on one line,
-  ;; and for two buttons.
+  ;; The panel's width, with room for a label and its widest value on one
+  ;; line, and for two buttons side by side.
   (define (life-panel-width)
     (let ([pad (ui-pad)] [gap (ui-gap)])
       (+ pad pad
@@ -193,7 +197,7 @@
 
   (define (life-line-height) (+ 6 (font-line-height 'ui)))
 
-  ;; The panel's height, as life's draw-panel lays it out.
+  ;; The panel's height, as the app's draw-panel lays it out.
   (define (life-panel-height)
     (let ([pad (ui-pad)] [gap (ui-gap)] [ch (ui-control-height)]
           [line (life-line-height)])
@@ -201,25 +205,27 @@
          gap (* 3 (+ line (ui-slider-height) gap))
          gap (* 4 line) pad)))
 
-  ;; The least room for the grid to show beside the panel: narrower, no panel.
+  ;; The least width the grid needs beside the panel; in a narrower window
+  ;; there is no panel.
   (define life-grid-least 200)
 
   ;;; ------------------------------------------------------------------ the app
 
   (define-app (life) "Life"
     (let* ([cols 0] [rows 0]
-           [grid (make-bytevector 0)]    ; a byte per cell, 1 for alive
+           [grid (make-bytevector 0)]    ; a byte per cell, 1 if alive
            [next (make-bytevector 0)]
-           [pixels #f]                   ; a pixmap, one pixel per cell: shown
+           [pixels #f]                   ; the pixmap shown, a pixel per cell
            [row-px #f] [dead 0] [palette-key #f]
            [running? #t] [generation 0] [last-step 0]
            [speed life-default-speed]    ; an index into life-speeds
            [cell-px (exact (round (* 10 (screen-scale))))]
            [painting #f]                 ; #f, 'fresh or the value being painted
            [painted #f]                  ; the last cell painted, or #f
-           [cell 10] [ox 0] [oy 0]       ; layout from the last draw
+           [cell 10] [ox 0] [oy 0]       ; the last draw's layout
            [ui (make-ui)]
-           ;; the meter: since meter-from, and what it showed last
+           ;; the meter: the counts since meter-from, and the numbers it
+           ;; showed last
            [meter-from (now-ns)] [gens 0] [step-ns 0] [draws 0] [draw-ns 0]
            [shown-rate 0] [shown-step 0] [shown-draw 0])
       (define (index x y) (+ x (* y cols)))
@@ -229,8 +235,9 @@
             dead))
       (define (repaint-pixels!)
         (pixmap-rows! pixels 0 rows life-paint-rows! grid row-px dead cols))
-      ;; Colors for every row: again only when one it uses changed (by any
-      ;; means: a raw hashtable-set! of *theme* too)
+      ;; Makes every row's colors again, but only when a theme color they
+      ;; use has changed (by any means, a raw hashtable-set! of *theme*
+      ;; included).
       (define (palette!)
         (let ([key (list (theme 'green) (theme 'cyan) (theme 'bg-0))])
           (unless (equal? key palette-key)
@@ -243,7 +250,8 @@
           (do ([y 0 (fx+ y 1)]) ((fx= y r))
             (fxvector-set! seeds y (random 4294967296)))
           (crew-for* (life-chunk-rows c) 0 r life-seed-rows! g seeds c)))
-      ;; A grid of c × r cells: what fits of the old one, the rest seeded.
+      ;; Makes a grid of c × r cells, which keeps what fits of the old one
+      ;; and seeds the rest at random.
       (define (regrid! c r)
         (let ([g (make-bytevector (* c r) 0)])
           (seed! g c r)
@@ -256,8 +264,9 @@
           (set! pixels (make-pixmap c r))
           (set! palette-key #f)
           (palette!)))
-      ;; The grid for a field fw × fh; sets a cell's logical size and the
-      ;; grid's place, centered in what whole cells leave over.
+      ;; Fits the grid to a field fw × fh: sets a cell's logical size and
+      ;; the grid's place, centered from side to side in what whole cells
+      ;; leave over.
       (define (fit! fw fh)
         (let* ([c (/ cell-px (exact (screen-scale)))]
                [nc (max 1 (exact (floor (/ fw c))))]
@@ -274,7 +283,7 @@
         (let ([t grid]) (set! grid next) (set! next t))
         (set! gens (+ gens 1))
         (set! generation (+ generation 1)))
-      ;; What the speed owes this tick.
+      ;; Steps the generations the speed asks for in this frame.
       (define (run! win)
         (let ([delay (cdr (list-ref life-speeds speed))])
           (cond
@@ -315,8 +324,8 @@
       (define (paint-cell! x y)
         (bytevector-u8-set! grid (index x y) painting)
         (pixmap-set-pixel! pixels x y (pixel-of (index x y))))
-      ;; From the last cell painted to the one under the pointer: a fast drag
-      ;; over small cells leaves no holes.
+      ;; Paints each cell from the last one painted to the one under the
+      ;; pointer, so that a fast drag over small cells leaves no holes.
       (define (paint! x y)
         (let ([c (cell-at x y)])
           (when c
@@ -331,14 +340,14 @@
                 (paint-cell! (+ (car from) (round (/ (* i dx) n)))
                              (+ (cdr from) (round (/ (* i dy) n))))))
             (set! painted c))))
-      ;; The controls and the numbers in a panel at x, w wide.
+      ;; Draws the controls and the numbers in a panel at x, w wide.
       (define (draw-panel x w h)
         (let* ([pad (ui-pad)] [gap (ui-gap)] [ch (ui-control-height)]
                [line (life-line-height)] [sh (ui-slider-height)]
                [lx (+ x pad)] [lw (- w pad pad)]
                [bw (/ (- lw gap) 2)] [cpus (max 2 (platform-cpu-count))]
                [threads (+ 1 (crew-size))]
-               ;; on one thread alone while a generation is one call
+               ;; one thread alone, while a generation is a single call
                [used (if (<= rows (life-chunk-rows cols)) 1 threads)]
                [cells-a-second (if (> shown-step 0)
                                    (/ (* 1e9 cols rows) shown-step)
@@ -389,7 +398,7 @@
                  [y (numbers! y "Per thread"
                               (life-amount (/ cells-a-second used)))])
             y)))
-      ;; The grid in w × h.
+      ;; Draws the grid in w × h.
       (define (draw-grid w h)
         (fit! w h)
         (palette!)
@@ -408,9 +417,10 @@
                  paint!
                  'cursor 'crosshair
                  'doc '((L . "Draw or erase cells"))))
-      ;; The status line at y, the window's width, the panel's button at its
-      ;; end: clear of the grid and of a style's resize grip, and in one
-      ;; place whether the panel shows or not.
+      ;; Draws the status line at y, as wide as the window, with the
+      ;; panel's button at its end: there it is clear of the grid and of a
+      ;; style's resize grip, and stays in place whether the panel shows or
+      ;; not.
       (define (draw-status w y bar)
         (let* ([bh (- bar 6)] [bw (+ bh 6)] [bx (- w bw 14)])
           (fill-box 0 y w bar 'bg-1)
@@ -445,7 +455,7 @@
                                    (ui-side-panel-toggle! ui 'life-controls)])
                                 (invalidate! win)
                                 #t))
-         ;; the generations and the meter, while it's seen
+         ;; the generations and the meter, run while the window is seen
          (list 'open (lambda (win) (window-frame-soon! win))
                'frame (lambda (win t)
                         (window-frame-soon! win)

@@ -1,9 +1,10 @@
 # Environments
 
-An environment is where a name means something. Schevana keeps them in a
-tree whose root is the world, "/": the worklets' under it in "/worklets",
-and whatever you make. A REPL evaluates in one ([REPL.md](REPL.md)), and
-`(envs)` shows the tree.
+An environment is where a name means something. Schevana keeps its
+environments in a tree. The root is the world, "/"; under it are the
+worklets' environment, "/worklets", and whatever environments you make.
+A REPL evaluates in one environment ([REPL.md](REPL.md)), and `(envs)`
+shows the tree.
 
 ## The tree
 
@@ -15,10 +16,10 @@ and whatever you make. A REPL evaluates in one ([REPL.md](REPL.md)), and
 (env-forks (env-root))                     ; => (private world pure sandbox thread)
 ```
 
-A kind says what an environment is built on, its base, what it is given
-at once, and what kinds it may make in turn: the world makes every kind a
-person may ask for, a sandbox makes sandboxes and threads, and the others
-make none.
+A kind says three things about an environment: what it is built on (its
+base), what it is shared at once, and which kinds it may fork in turn.
+The world and a world namespace fork every kind a person may ask for, a
+sandbox forks sandboxes and threads, and the others fork none.
 
 | Kind | Base | What it holds |
 | --- | --- | --- |
@@ -30,8 +31,8 @@ make none.
 
 ## Making one
 
-`env-fork` makes a child of a kind, named, and shares it names of its
-parent's:
+`env-fork` makes a child of a given kind, with a name, and shares some
+of its parent's names with it:
 
 ```scheme
 (define lab (env-fork (env-root) 'sandbox 'name 'lab 'share '(now-ms)))
@@ -41,9 +42,10 @@ parent's:
 (number? (env-eval lab '(now-ms)))         ; => #t
 ```
 
-`env-eval` is what a REPL does for each form you type. To type them
-yourself, open a REPL in the environment, by its path or the environment
-itself; its title names it, `REPL — /lab`:
+`env-eval` does what a REPL does with each form you type. To type the
+forms yourself, open a REPL in the environment, given by its path or by
+the environment itself; the REPL's title names the environment, `REPL —
+/lab`:
 
 ```scheme
 (repl "/lab")
@@ -51,13 +53,14 @@ itself; its title names it, `REPL — /lab`:
 (window-title (focused-window))            ; => "REPL — /lab"
 ```
 
-There, `x` is 41, `(now-ms)` the world's clock, and nothing else of the
-world's is there. `(repl)` alone opens one at "/", and `(repl 'sandbox)`
-makes a new sandbox for the REPL it opens.
+In that REPL, `x` is 41 and `(now-ms)` is the world's clock, and nothing
+else of the world's is there. `(repl)` alone opens a REPL at "/", and
+`(repl 'sandbox)` makes a new sandbox for the REPL it opens.
 
-A shared name is a read-only forwarder to the parent's binding: live, so
-a redefinition there shows at once, and free to call. A child can't
-assign it, and its own `define` of the name makes its own:
+A shared name is a read-only forwarder to the parent's binding. It is
+live, so a redefinition in the parent shows in the child at once, and it
+costs nothing extra to call. The child can't assign it, and the child's
+own `define` of the name makes a name of its own:
 
 ```scheme
 (guard (c [#t (condition-message c)])
@@ -67,16 +70,18 @@ assign it, and its own `define` of the name makes its own:
 (number? (now-ms))                         ; => #t
 ```
 
-A sandbox's base is Scheme's pure core: no files, no `eval`, no C, no
-threads, no clock, so what it can touch is what it was shared:
+A sandbox's base is Scheme's pure core, which has no files, no `eval`,
+no C, no threads and no clock, so a sandbox can touch only what it was
+shared:
 
 ```scheme
 (guard (c [#t #f]) (env-eval lab '(open-input-file "/etc/passwd")))  ; => #f
 (guard (c [#t #f]) (env-eval lab '(open-window "x")))               ; => #f
 ```
 
-More names can be shared later, renamed as they go, and a setter can take
-a child's `set!` of one, so the parent decides what a change does:
+More names can be shared later, and a name can be renamed as it is
+shared. A setter can take the child's `set!` of a name, so the parent
+decides what the change does (the setter may refuse it):
 
 ```scheme
 (env-share! lab '((clock . now-ms)))
@@ -91,13 +96,16 @@ lab-count                                  ; => 5
 ```
 
 So a child changes its parent's state only through what it was shared. A
-sandbox's own children are sandboxes on its base or a smaller one, shared
-what it holds: it narrows what it hands down, never widens it. Inside an
-environment that may fork, `fork` does what `env-fork` does for it:
-`(fork)` lists the kinds, and `(fork 'sandbox 'name 'inner)` makes one.
+sandbox's own children are sandboxes on its base or a smaller one, and
+can be shared only what the sandbox holds: a sandbox can narrow what it
+hands down, never widen it. An environment that may fork holds its own
+`fork` procedure, which does what `env-fork` does for it: `(fork)` lists
+the kinds it forks, and `(fork 'sandbox 'name 'inner)` makes a child and
+returns the child's path.
 
-A private or world namespace is on all of Chez, so it can still reach the
-world through Chez: it organizes what you define, and confines nothing.
+A private, world or pure namespace is built on all of Chez, so it can
+still reach the world through Chez (`eval`, the inspector, C): it
+organizes what you define, and confines nothing.
 
 ## Files and dropping
 
@@ -107,10 +115,12 @@ world through Chez: it organizes what you define, and confines nothing.
 ```
 
 `(env-load e path)` evaluates a file in `e`. A sandbox on the confined
-base, what is always safe (`(env-child e 'name 'confined)`), has a
-console, which writes to its log, `(env-log e)`; a sandbox on Scheme's
-pure core has none. Dropping an environment drops what is under it and
-stops their threads; what still holds it can ask `env-dropped?`.
+base, which holds only what is always safe (`(env-child e 'name
+'confined)`), has a console that writes to its log, `(env-log e)`; a
+sandbox on Scheme's pure core has none. `env-drop!` drops an environment
+and everything under it, and `vat-drop-env!` also stops their threads
+(as the app's Drop does); code that still holds a dropped environment can
+ask `env-dropped?`.
 
 Core0, the recorder and the core are sealed in their libraries, and have
 no environment: the world imports what the core gives it
@@ -118,24 +128,27 @@ no environment: the world imports what the core gives it
 
 ## The Environments app
 
-`(envs)` opens Environments, which shows the tree: each environment's icon,
-kind, how many names it was shared and holds, and its thread's jobs;
-past a line you can drag, the one selected: kind, base, parent,
-children, what it forks, its jobs (× stops one) and its names, shared
-(the parent's name, read-only or through a setter, where bound) or its
-own. Its toolbar and a row's right-press menu act on it:
+`(envs)` opens Environments, which shows the tree: each environment's
+icon, its kind, how many names it was shared and how many it holds of its
+own, and its thread's jobs. Past a line you can drag, it shows the
+environment selected: its kind, base, parent, children, what it forks,
+its jobs (× stops one), and its names, each either shared (with the
+parent's name it forwards to, whether it is read-only or set through a
+setter, and where it is bound) or its own. The toolbar, and the menu of a
+right press on a row, act on the environment selected:
 
-- **Fork…**: a child of a kind it forks, named and shared names
-  (suggested as you type; `now-ms as clock` renames, `size via
-  size-set!` goes through a setter), optionally with a REPL in it.
-- **REPL** (Return): a REPL in it.
-- **Share…**: more of its parent's names, ticked in a dialog, each
-  renamed or set through a setter (not into a thread's sandbox); the
-  Fork sheet's Choose… picks there too.
-- **Load…**: a file evaluated in it (`env-load`), picked in the
-  desktop's file dialog, which stays above Environments while it waits
-  (a style's `modal-above`).
-- **Drop…**: it, what is under it and their threads.
+- **Fork…**: makes a child of a kind it forks, with a name and shared
+  names (suggested as you type; `now-ms as clock` renames, and `size via
+  size-set!` goes through a setter), and optionally a REPL in it.
+- **REPL** (Return): opens a REPL in it.
+- **Share…**: shares more of its parent's names, ticked in a dialog, each
+  renamed or set through a setter (not into a thread's sandbox); the Fork
+  sheet's Choose… picks names there too.
+- **Load…**: evaluates a file in it (`env-load`), picked in the desktop's
+  file dialog, which stays above Environments while it waits (a style's
+  `modal-above`).
+- **Drop…**: drops it, what is under it, and their threads.
 
-On `/worklets` it sets the pool's threads. A world namespace gets the names the world gains at its next
-evaluation; Sync shares them now (`env-sync!`).
+On `/worklets`, the app sets the number of the pool's threads. A world
+namespace is shared the names the world gains at its next evaluation;
+Sync shares them at once (`env-sync!`).

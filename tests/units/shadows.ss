@@ -1,4 +1,4 @@
-;;; tests/units/shadows.ss — a shadow is a record the shader fades.
+;;; tests/units/shadows.ss — a shadow is a record, which the shader fades out.
 
 
 (define (shadow-picture s)

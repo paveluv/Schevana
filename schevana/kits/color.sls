@@ -1,6 +1,6 @@
 ;;; (schevana kits color) — color math: a color as an image's pixel; as hue,
-;;; saturation and lightness, and back (Settings' color picker); as one
-;;; #xRRGGBB fixnum; the text color that reads on it.
+;;; saturation and lightness, and back (for Settings' color picker); as one
+;;; #xRRGGBB fixnum; and the text color that is readable on it.
 
 (library (schevana kits color)
   (export
@@ -11,8 +11,8 @@
 
   (library-layer kits)
 
-  ;; A color as one pixel: premultiplied, a native word of B, G, R and A bytes,
-  ;; what an image holds. #xRRGGBB is opaque.
+  ;; Returns c as one pixel, the way an image holds it: a native 32-bit word
+  ;; #xAARRGGBB, premultiplied by its alpha. A #xRRGGBB fixnum is opaque.
   (define (color->pixel c)
     (if (fixnum? c)
         (fxior #xff000000 (fxand c #xffffff))
@@ -22,7 +22,8 @@
             (fxior (fxsll (byte a) 24) (fxsll (byte (* r a)) 16)
                    (fxsll (byte (* g a)) 8) (byte (* b a)))))))
 
-  ;; Hue in degrees, saturation and lightness in [0, 1].
+  ;; Returns three values: the hue in degrees, then the saturation and the
+  ;; lightness in [0, 1].
   (define (color->hsl c)
     (let-values ([(r g b a) (color-rgba c)])
       (let* ([hi (max r g b)] [lo (min r g b)] [l (/ (+ hi lo) 2)]
@@ -49,14 +50,14 @@
                                   [else (values c 0 x)])])
         (rgb (byte r) (byte g) (byte b)))))
 
-  ;; c as one #xRRGGBB fixnum, its alpha dropped.
+  ;; Returns c as one #xRRGGBB fixnum, its alpha dropped.
   (define (color->fixnum c)
     (let-values ([(r g b a) (color-rgba c)])
       (rgb (exact (round (* r 255)))
            (exact (round (* g 255)))
            (exact (round (* b 255))))))
 
-  ;; Black or white, whichever reads better on color c.
+  ;; Returns near black or near white, whichever reads better on color c.
   (define (color-readable-on c)
     (let-values ([(r g b a) (color-rgba c)])
       (if (> (+ (* 0.299 r) (* 0.587 g) (* 0.114 b)) 0.45) #x111111 #xf4f4f4))))

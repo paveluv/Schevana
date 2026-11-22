@@ -1,9 +1,11 @@
-;;; tests/units/debug-repl.ss — what talks to the world from outside: a local
-;;; socket that exists while the window is open, in plain sight on it.
+;;; tests/units/debug-repl.ss — what talks to the world from outside: a
+;;; local socket that exists only while the Debug REPL's window is open, in
+;;; plain sight on the screen.
 
 (define debug-repl-test-path (string-append out-dir "/debug.sock"))
 
-;; text as a client sends it, steps until the answer has come. => the datum
+;; Sends text as a client would, and steps until the answer has come.
+;; Returns the answer as a datum.
 (define (debug-repl-test-ask text)
   (let ([fd (socket-connect debug-repl-test-path)]
         [bytes (string->utf8 text)]
@@ -13,7 +15,7 @@
         (let ([next (socket-write fd bytes at)])
           (unless (= next (bytevector-length bytes)) (send next))))
       (socket-end-writing fd)
-      ;; it serves by a timer, so the answer is waited for by the clock
+      ;; it serves from a timer, so the answer is waited for by the clock
       (let wait ([until (+ (now-ms) 5000)])
         (when (> (now-ms) until)
           (errorf 'debug-repl-test-ask "no answer to ~a" text))
@@ -90,8 +92,9 @@
            (socket-write fd bytes 0)
            (socket-end-writing fd)
            (socket-close fd)
-           ;; it serves by a timer and answers from a process: waited for
-           ;; by the clock, as an answer is, not by a count of steps
+           ;; it serves from a timer and answers from a process, so this is
+           ;; waited for by the clock, as an answer is, not by a count of
+           ;; steps
            (and (test-wait 5000
                            (lambda ()
                              (null? (debug-repl-clients

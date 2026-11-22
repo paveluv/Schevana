@@ -1,6 +1,7 @@
 ;;; (schevana kits text) — text in boxes, measured with the core's text-width
-;;; and drawn with its draw-text: a string's ink, the widest of some strings, a
-;;; string centered, cut to fit with an ellipsis, or broken into lines.
+;;; and drawn with its draw-text: the ink of a string, the widest of several
+;;; strings, and a string centered, cut to fit with an ellipsis, or broken
+;;; into lines.
 
 (library (schevana kits text)
   (export
@@ -14,9 +15,9 @@
 
   (library-layer kits)
 
-  ;; The ink of str in font: (values left top width height) from the pen on
-  ;; the baseline (top < 0 above), in logical pixels, from the core's font
-  ;; tables. Unhinted.
+  ;; Returns the ink of str in font as (values left top width height),
+  ;; measured from the pen on the baseline (a top < 0 is above it), in
+  ;; logical pixels, from the core's font tables. Unhinted.
   (define (text-ink str font)
     (let* ([f (get-font font)]
            [ff (font-ready f)]
@@ -46,26 +47,27 @@
                           (if y0 (min y0 ay) ay)
                           (max y1 (+ ay (* h scale)))))))))))
 
-  ;; font's ascent and descent as its face has them, in logical pixels,
-  ;; unrounded (the core's font-ascent and font-descent are whole):
-  ;; (values ascent descent).
+  ;; Returns (values ascent descent) of font as its face gives them, in
+  ;; logical pixels and unrounded (the core's font-ascent and font-descent
+  ;; are whole numbers).
   (define (text-face-extent font)
     (let* ([f (get-font font)] [ff (font-ready f)]
            [scale (/ (font-size f) (font-file-upem ff))])
       (values (* scale (font-file-ascender ff))
               (* scale (- (font-file-descender ff))))))
 
-  ;; s at most n characters, its last an ellipsis when it's cut.
+  ;; Returns s cut to at most n characters, the last one an ellipsis when it
+  ;; is cut.
   (define (text-shorten s n)
     (if (<= (string-length s) n)
         s
         (string-append (substring s 0 (max 0 (- n 1))) "…")))
 
-  ;; Width of the widest of strs (0 for none).
+  ;; Returns the width of the widest of strs (0 for none).
   (define (text-widest strs font)
     (apply max 0 (map (lambda (s) (text-width s font)) strs)))
 
-  ;; Text centered in a box.
+  ;; Draws str centered in a box.
   (define (text-draw-centered x y w h str color font)
     (let ([tw (text-width str font)] [th (font-line-height font)])
       (draw-text (+ x (/ (- w tw) 2)) (+ y (/ (- h th) 2)) str color font)))
@@ -92,8 +94,8 @@
                     [(<= (width (cut mid)) max-w) (loop mid hi)]
                     [else (loop lo (- mid 1))]))))))
 
-  ;; Break str into lines no wider than max-w, at spaces. Newlines are kept;
-  ;; a single word wider than max-w gets a line of its own.
+  ;; Returns str broken at spaces into lines no wider than max-w. Newlines
+  ;; are kept; a single word wider than max-w gets a line of its own.
   (define (text-wrap str max-w font)
     (apply append
            (map (lambda (para)

@@ -1,7 +1,7 @@
-;;; (schevana palettes neon) — the Neon palette. Downtown at night: wet asphalt
-;;; and a dark sky, and the signs: hot pink for the accent, electric cyan
-;;; beside it, acid yellow, violet; the desktop glows purple from the streets
-;;; below, the λ a pink sign.
+;;; (schevana palettes neon) — the Neon palette: downtown at night, with wet
+;;; asphalt, a dark sky and the signs. Hot pink is the accent and electric
+;;; cyan the second accent, with acid yellow and violet. The desktop glows
+;;; purple from the streets below, and its λ is a pink sign.
 
 (library (schevana palettes neon)
   (export)

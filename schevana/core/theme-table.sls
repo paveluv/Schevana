@@ -1,8 +1,9 @@
-;;; (schevana core theme-table) — the settings in effect: the one table (theme
-;;; key) reads, where drawing finds a color or a font by its key. What fills
-;;; it, the layers of a look (styles, palettes, the built-in defaults), is the
-;;; theme's, above drawing ((schevana core theme)); with none, the table is
-;;; empty, and a color is its number.
+;;; (schevana core theme-table) — the settings in effect: the one table that
+;;; (theme key) reads, where drawing finds a color or a font by its key. The
+;;; theme ((schevana core theme)), which sits above drawing, fills it from
+;;; the layers of a look (styles, palettes, the built-in defaults). Without
+;;; a look, the table holds only the defaults that pieces below the look
+;;; give (theme-table-default!), and a color is given as its number.
 
 (library (schevana core theme-table)
   (export
@@ -15,8 +16,9 @@
   (library-layer core)
 
   (define-state *theme* (make-eq-hashtable))   ; every setting in effect
-  ;; the chosen style's: *theme* is another while a window of another style,
-  ;; a preview or a place is drawn, or a window's handler runs
+  ;; The chosen style's table. *theme* is a different one while a window of
+  ;; another style is drawn or its handler runs, and while a preview or a
+  ;; place is drawn.
   (define-state *main-theme* *theme*)
 
   ;; A setting computed from others when the theme is built.
@@ -27,10 +29,11 @@
     (syntax-rules () [(_ e) (make-theme-rule (lambda () e))]))
 
   (define-made theme-unset (list 'unset))
-  (define-state theme-busy (list 'busy))   ; *theme* holds it, a while
+  (define-state theme-busy (list 'busy))   ; a key's value while its rule runs
 
-  ;; thunk's values with t (a resolved theme) in effect meanwhile: a look
-  ;; that isn't on, read as if it were (a preview, a comparison).
+  ;; Returns thunk's values with t (a resolved theme) in effect while it
+  ;; runs, so that a look that isn't on is read as if it were (for a preview
+  ;; or a comparison).
   (define (call-with-theme t thunk)
     (fluid-let ([*theme* t]) (thunk)))
 
@@ -56,16 +59,17 @@
                     (string<? (symbol->string a) (symbol->string b)))
                   (hashtable-keys *theme*))))
 
-  ;; A procedure of the world's by its name, looked up at each call, so that
-  ;; a redefinition takes at the next: the world's boot says how
-  ;; ((schevana core sources)); a library is handed the procedure itself.
+  ;; Returns the world's procedure of that name, looked up at each call, so
+  ;; that a redefinition takes effect at the next call. (schevana core
+  ;; sources) sets the hook that looks in the world; this default only
+  ;; errors, since a library is handed the procedure itself.
   (define-hook (world-value name)
     (errorf 'world-value "~s: a library is handed the procedure, not its name"
             name))
 
-  ;; The procedure the theme gives for key: a procedure, or the name of a
-  ;; top-level one, looked up at each call, so a redefinition shows on the
-  ;; next frame.
+  ;; Returns the procedure the theme gives for key. The setting is a
+  ;; procedure, or the name of a top-level one, which is looked up at each
+  ;; call so that a redefinition shows on the next frame.
   (define (theme-part key)
     (let ([v (theme key)])
       (if (symbol? v) (world-value v) v)))
@@ -79,10 +83,10 @@
           [(eq? (car p) key) (plist-remove (cddr p) key)]
           [else (cons* (car p) (cadr p) (plist-remove (cddr p) key))]))
 
-  ;; A setting that a piece below the look reads, and what it is till a look
-  ;; says: given as the piece loads, so that the table has it with no look
-  ;; at all. The look's built-in defaults start from these
-  ;; ((schevana core theme)).
+  ;; A setting that a piece below the look reads, with its value until a
+  ;; look gives one. The piece gives it as it loads, so that the table has
+  ;; it even with no look at all. The look's built-in defaults start from
+  ;; these ((schevana core theme)).
   (define-state *theme-table-defaults* '())   ; key value ...
 
   (define (theme-table-default! key value)
@@ -91,9 +95,11 @@
     (unless (hashtable-contains? *theme* key)
       (hashtable-set! *theme* key value)))
 
-  ;; The pacer's choices, settings a person may change live ((schevana core
-  ;; theme)), unless a trial holds them: ((key . value) ...), the pacer lab's
-  ;; ((schevana services pacer-lab)), which is never saved with the look.
+  ;; The pacer's choices are settings that a person may change live
+  ;; ((schevana core theme)), unless a trial holds them. The trial is an
+  ;; alist, ((key . value) ...), that the pacer lab sets through
+  ;; pacer-trial! ((schevana services pacer-lab)); it is never saved with
+  ;; the look. (pacer-knob key) reads the trial first, then the theme.
   (define-state *pacer-trial* '())
 
   (define (pacer-knob key)

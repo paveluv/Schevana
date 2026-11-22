@@ -1,24 +1,26 @@
-;;; tests/reach.ss — how a test reaches past the exports, loaded by
-;;; tests/lib.ss once the world is loaded: the test goes on in "/", the
-;;; world core1 made, where every name of the core's libraries, and of the
+;;; tests/reach.ss — how a test reaches past the exports. tests/boot.ss
+;;; loads it once the world is loaded. The test goes on in "/", the world
+;;; that core1 made, where every name of the core's libraries and of the
 ;;; tests' own environment (core0's libraries and the recorder's, imported
-;;; there whole), is forwarded and may be set (set!, fluid-let), as the
-;;; tests stand in for SDL and the screen and look into the core. The world
-;;; itself has only what the core's facade gives it, (schevana core),
-;;; read-only. What the test defined before it loaded the tree is forwarded
-;;; too, and so are main-env and core-env, the tests' environment and one of
-;;; the core's libraries whole, for what goes by name (top-level-value).
+;;; there whole) is forwarded and may be set (set!, fluid-let), so that the
+;;; tests can stand in for SDL and the screen and look into the core. The
+;;; world itself has only what the core's facade, (schevana core), gives
+;;; it, read-only. What the test defined before it loaded the tree is
+;;; forwarded too, and so are main-env and core-env (the tests' environment,
+;;; and an environment with the core's libraries whole), for what goes by
+;;; name (top-level-value).
 ;;;
-;;; In the hacker edition the tests' environment is the world, every name
-;;; of every library there already, to set as any other: main-env, core-env
-;;; and world-env are the one.
+;;; In the hacker edition the tests' environment is the world, which
+;;; already has every name of every library, to set as any other: main-env,
+;;; core-env and world-env are the same environment.
 
 (define main-env (interaction-environment))
 
-;; The core's libraries whole, their internals with them, which the tests
-;; look into, the desktop's start, and the sockets' (a client's end); the
-;; world has only what the core's facade gives. Imported again as a reload
-;; evaluates one again (reload-import!).
+;; An environment with the core's libraries whole, internals included, for
+;; the tests to look into, along with the desktop's start and the sockets'
+;; library (for a client's end); the world has only what the core's facade
+;; gives. A library is imported here again when a reload evaluates it again
+;; (reload-import!).
 (define core-env
   (if test-hacker? main-env (copy-environment (scheme-environment) #t)))
 (unless test-hacker?
@@ -32,21 +34,22 @@
               (schevana core sources) (schevana desktop main))))
 (define world-env (eval '*world-env* core-env))
 
-;; Where the tests go on, and their reach: "/" itself; but for a docs
-;; page's run (tests/units/docs.ss), whose examples run at "/" as typed at
-;; a REPL there, which has only what the world gives it: the tests go on
-;; in a copy of "/" made as the world loaded, their names and reach in it
-;; alone.
+;; Where the tests go on, with their reach: "/" itself. The exception is a
+;; docs page's run (tests/units/docs.ss), whose examples run at "/" as
+;; typed at a REPL there, with only what the world gives it. There the
+;; tests go on in a copy of "/" made once the world has loaded, and their
+;; names and reach are in the copy alone.
 (define test-env
   (if (and (not test-hacker?) (getenv "SCHEVANA_DOCS_PAGE"))
       (copy-environment world-env #t)
       world-env))
 
-;; The recorder's library whole, its internals with it, which the tests
-;; look into; the core has only its facade's.
+;; The recorder's library whole, internals included, for the tests to look
+;; into; the core has only what the recorder's facade gives.
 (unless test-hacker? (eval '(import (schevana recorder bytes)) main-env))
 
-;; A forwarder to id's binding that a set! goes through, as fluid-let's do.
+;; Returns a forwarder to id's binding that a set! goes through, and so
+;; does a fluid-let's.
 (define (reach-forwarder id)
   (make-variable-transformer
    (lambda (x)
@@ -60,9 +63,10 @@
   (let ([s (symbol->string n)])
     (and (> (string-length s) 5) (string=? (substring s 0 5) "test:"))))
 
-;; What the build gives of the libraries imported into env, each under
-;; the name itself, where env has none of its own: what a library of a
-;; sealed layer keeps to itself.
+;; Defines in env, under its plain name, each name that the build gives
+;; (test:name) of the libraries imported into env, unless env has that
+;; name already: these are what a library of a sealed layer keeps to
+;; itself.
 (define (reach-given! env)
   (let ([anchor (environment-anchor env)] [had (make-eq-hashtable)]
         [names (environment-symbols env)])
@@ -86,26 +90,26 @@
 ;;; a library's own names
 ;;; A test asks nothing of a library: no export, hook or name of its own
 ;;; for the test. It reaches what the library keeps to itself by stripping
-;;; it, as the hacker edition strips every library: in the library
-;;; edition, its body evaluated again at the top level of an environment
-;;; of its own, after its imports and the top level's forms as the hacker
-;;; edition has them (src/base.ss, src/strip.ss); in the hacker edition,
-;;; as the world loads it (it loads it, if it hasn't), its names in "/".
-;;; Its names come to "/" under a prefix, so that none of them is one of
-;;; the world's.
+;;; it, as the hacker edition strips every library. In the library
+;;; edition, the library's body is evaluated again at the top level of an
+;;; environment of its own, after its imports and the top level's forms as
+;;; the hacker edition has them (src/base.ss, src/strip.ss). In the hacker
+;;; edition, it is the library as the world loads it (loading it first, if
+;;; the world hasn't), with its names in "/". Its names come to "/" under a
+;;; prefix, so that none of them clashes with one of the world's.
 ;;;
 ;;;   (test-library '(demo boids) 'bo:)
 ;;;   (bo:boids-step (bo:boids-scatter 3 100 100) bo:boids-default-rules)
 ;;;   (fluid-let ([bo:boids-scatter (lambda (n w h) (make-flvector 0))])
 ;;;     ...)
 ;;;
-;;; Each is settable, and a set (fluid-let's stand-in) is the library's
-;;; own: its calls to its procedures go by the top level. Stripped again,
-;;; it is another of the library: its state its own, its app the one the
-;;; launcher opens.
+;;; Each name is settable, and a set (a fluid-let's stand-in) reaches the
+;;; library itself, since its calls to its own procedures go through the
+;;; top level. Stripped again, it is another instance of the library, with
+;;; state of its own, and its app is the one that the launcher opens.
 
-;; The source of library name: the first folder of the library search
-;; that holds it.
+;; Returns the source file of library name, from the first folder of the
+;; library search path that holds it.
 (define (test-library-file name)
   (let ([rel (string-append
               (apply string-append
@@ -142,11 +146,12 @@
                   test-env))
               (apply append (map test-defined-names body)))))
 
-;; Each name of the two's, in "/" (test-env), from the first of the core's
-;; and the tests' that has it, a state or a hook (a macro) as a variable
-;; is, to be set (by its names: top-level-syntax? says so of any name).
-;; What the facade gives of core0's, a view, comes from the tests', which
-;; has the state itself. A name "/" had already stays as it is but for
+;; Forwards each name of the two environments (core-env and main-env) into
+;; "/" (test-env), from the first of them that has it, a state or a hook
+;; (a macro) the same way as a variable, so that each can be set
+;; (top-level-syntax? is true of every one of them). What the facade gives
+;; of core0's, a view, is forwarded from the tests' environment, which has
+;; the state itself. A name that "/" already had stays as it is, except
 ;; what the facade gives, which becomes settable.
 (unless test-hacker?
   (let ([had (make-eq-hashtable)]

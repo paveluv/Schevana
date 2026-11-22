@@ -1,6 +1,6 @@
 ;;; (schevana sdl window) — SDL3's bindings for the window, its events,
-;;; the display and the clipboard, as SDL names them. Only core0 imports
-;;; it, the one thread that may call them.
+;;; the display and the clipboard, named as SDL names them. Only core0
+;;; imports it: core0's is the one thread that may call them.
 
 (library (schevana sdl window)
   (export
@@ -65,10 +65,10 @@
   (define-foreign sdl-set-hint "SDL_SetHint" (string string) bool)
   (define-foreign sdl-create-window "SDL_CreateWindow"
     (string int int unsigned-64) uptr)
-  ;; Collect-safe, as is what may size, show or let go of the window's Metal
-  ;; layer once it has run: Core Animation may hold the layer's lock running
-  ;; a presented handler of core0's, which may wait for a collection
-  ;; ((schevana core0 platform)).
+  ;; Collect-safe, as is every call that may size, show or release the
+  ;; window's Metal layer once frames are being presented: Core Animation
+  ;; may hold the layer's lock while it runs one of core0's presented
+  ;; handlers, which may wait for a collection ((schevana core0 platform)).
   (define-foreign/collect-safe sdl-destroy-window "SDL_DestroyWindow" (uptr)
     void)
   (define-foreign/collect-safe sdl-set-window-minimum-size
@@ -104,11 +104,11 @@
   (define-foreign sdl-set-window-icon "SDL_SetWindowIcon" (uptr uptr) bool)
   (define-foreign sdl-set-window-title "SDL_SetWindowTitle" (uptr string)
     bool)
-  ;; The desktop's light or dark: 0 unknown, 1 light, 2 dark.
+  ;; Whether the desktop is light or dark: 0 unknown, 1 light, 2 dark.
   (define-foreign sdl-get-system-theme "SDL_GetSystemTheme" () int)
-  ;; A window whose frame the program draws: what of it the desktop moves or
-  ;; resizes it by (a callback's entry point), and what its buttons and
-  ;; menu do.
+  ;; For a window whose frame the program draws: which parts of it the
+  ;; desktop moves or resizes it by (a callback's entry point), and what its
+  ;; buttons and menu do.
   (define-foreign sdl-set-window-hit-test "SDL_SetWindowHitTest"
     (uptr uptr uptr) bool)
   (define-foreign/collect-safe sdl-maximize-window "SDL_MaximizeWindow"
@@ -121,7 +121,7 @@
     (uptr int int) bool)
   (define-foreign sdl-memset "SDL_memset" (uptr int size_t) uptr)
 
-  ;; What the window and the platform say of themselves.
+  ;; What the window and the platform report about themselves.
   (define-foreign sdl-get-window-properties "SDL_GetWindowProperties" (uptr)
     unsigned-32)
   (define-foreign sdl-get-pointer-property "SDL_GetPointerProperty"

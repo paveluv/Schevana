@@ -1,7 +1,7 @@
-;;; (schevana socket) — local sockets, for what talks to the world from
-;;; outside (the Debug REPL's): a Unix socket at a path only this user can
-;;; reach. Nothing here waits: a read or a write asks poll first and does
-;;; no more than will go at once. A socket is its file descriptor.
+;;; (schevana socket) — local sockets, for programs that talk to the
+;;; world from outside (the Debug REPL): a Unix socket at a path only this
+;;; user can reach. Nothing here waits: a read or a write asks poll first
+;;; and does no more than can go at once. A socket is its file descriptor.
 
 (library (schevana socket)
   (export
@@ -12,7 +12,7 @@
 
   (library-layer foundation)
 
-  ;; The C library's sockets come with what's loaded.
+  ;; The C library's socket calls come with the process, already loaded.
   (define-foreign c-socket "socket" (int int int) int)
   (define-foreign c-bind "bind" (int uptr unsigned-32) int)
   (define-foreign c-listen "listen" (int int) int)
@@ -24,8 +24,9 @@
   (define-foreign c-poll "poll" (uptr unsigned-long int) int)
   (define-foreign c-signal "signal" (int uptr) uptr)
 
-  ;; sockaddr_un, as Linux and macOS share it: on macOS the first byte is the
-  ;; length and the second the family, which family below folds into one.
+  ;; sockaddr_un, in the layout Linux and macOS share: on macOS the first
+  ;; byte is the length and the second the family, which the 16-bit family
+  ;; below holds together.
   (define-ftype socket-sockaddr
     (struct [family unsigned-16] [path (array 104 unsigned-8)]))
   (define-ftype socket-pollfd (struct [fd int] [events short] [revents short]))
@@ -38,11 +39,12 @@
     (make-ftype-pointer socket-pollfd
                         (+ *socket-memory*
                            (ftype-sizeof socket-sockaddr))))
-  ;; a write's most at once: poll's "writable" means this much goes unblocked
+  ;; the most a write sends at once: "writable" from poll means this much
+  ;; goes without blocking
   (define socket-chunk 2048)
   (define-made *socket-chunk* (make-bytevector socket-chunk))
 
-  ;; The address of path, in the memory above. => its length
+  ;; Writes the address of path into the memory above. Returns its length.
   (define (socket-address! path)
     (let* ([bytes (string->utf8 path)] [n (bytevector-length bytes)]
            [length (+ n 3)] [a socket-sockaddr*])
@@ -56,9 +58,10 @@
       (ftype-set! socket-sockaddr (path n) a 0)
       length))
 
-  ;; A socket listening at path, which only this user can reach; what was there
-  ;; before goes, unless it's a plain file. A client that goes away must fail a
-  ;; write, not end the world: SIGPIPE is ignored from now on.
+  ;; Returns a socket listening at path, which only this user can reach.
+  ;; Whatever was at path before is deleted, unless it's a plain file. A
+  ;; client that goes away must make a write fail, not end the world, so
+  ;; SIGPIPE is ignored from now on.
   (define (socket-listen path)
     (c-signal 13 1)
     (when (file-exists? path)
@@ -75,7 +78,7 @@
         (errorf 'socket-listen "can't listen at ~a" path))
       fd))
 
-  ;; A socket connected to path, or #f.
+  ;; Returns a socket connected to path, or #f.
   (define (socket-connect path)
     (let* ([length (socket-address! path)] [fd (c-socket 1 1 0)])
       (if (and (>= fd 0)
@@ -84,7 +87,8 @@
           fd
           (begin (when (>= fd 0) (c-close fd)) #f))))
 
-  ;; Would events (poll's: 1, in; 4, out) go at once, or has it ended?
+  ;; Whether events (poll's: 1 for in, 4 for out) would go at once, or the
+  ;; socket has ended.
   (define (socket-ready? fd events)
     (let ([p socket-pollfd*])
       (ftype-set! socket-pollfd (fd) p fd)
@@ -93,18 +97,20 @@
       (and (> (c-poll (ftype-pointer-address p) 1 0) 0)
            (not (zero? (ftype-ref socket-pollfd (revents) p))))))
 
-  ;; A client waiting at listening socket fd, as a socket of its own, or #f.
+  ;; Returns a client waiting at the listening socket fd, as a socket of
+  ;; its own, or #f.
   (define (socket-accept fd)
     (and (socket-ready? fd 1)
          (let ([c (c-accept fd 0 0)]) (and (>= c 0) c))))
 
-  ;; What's there into bytes: how many; 0, it has ended; #f, nothing yet.
+  ;; Reads what's there into bytes. Returns how many bytes it read, 0 when
+  ;; the socket has ended, or #f when nothing has come yet.
   (define (socket-read fd bytes)
     (and (socket-ready? fd 1)
          (max 0 (c-recv fd bytes (bytevector-length bytes) 0))))
 
-  ;; bytes from at on, as much as goes now. => where that leaves it, or #f once
-  ;; the other end has gone
+  ;; Writes bytes from at on, as much as goes now. Returns the position it
+  ;; reached, or #f once the other end has gone.
   (define (socket-write fd bytes at)
     (let loop ([at at] [left 32])
       (if (or (= at (bytevector-length bytes)) (= left 0)
@@ -115,7 +121,8 @@
             (let ([sent (c-send fd *socket-chunk* n 0)])
               (and (> sent 0) (loop (+ at sent) (- left 1))))))))
 
-  ;; No more will be written to fd: the other end reads to its end.
+  ;; Says that no more will be written to fd, so the other end reads to
+  ;; the end.
   (define (socket-end-writing fd) (c-shutdown fd 1))
 
   (define (socket-close fd) (c-close fd)))

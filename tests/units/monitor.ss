@@ -1,7 +1,9 @@
-;;; tests/units/monitor.ss — the Ticks: a bar a tick, its waits too, against
-;;; the pacer's period.
+;;; tests/units/monitor.ss — Monitor's Ticks: a bar for each tick, its
+;;; waits included, against the pacer's period; then the profiler and
+;;; Monitor, driven.
 
-;;; The Ticks: a bar a tick, its waits too, against the pacer's period.
+;;; The Ticks: a bar for each tick, its waits included, against the pacer's
+;;; period.
 
 
 (check "a tick's waits are phases of their own, the screen's too, so that \
@@ -12,10 +14,11 @@
        (let* ([real now-ns] [fake (* 1000 1000000000)]
               [clock (lambda (ns) (set! fake (+ fake ns)))]
               [win (open-window "Grower" 'size '(120 . 80) 'pos '(600 . 400))])
-         ;; a step by hand, a tick of its own, as core1's loop's (a
-         ;; window's handlers run in an engine, where spans are untimed):
-         ;; 10 ms waiting for input (the step's own), 1 of ticks, 3 of the
-         ;; window's drawing, and 2 waiting for the screen in render
+         ;; a step by hand, with a tick of its own, as core1's loop makes
+         ;; one (a window's handlers run in an engine, where spans are
+         ;; untimed): 10 ms waiting for input (the step's own), 1 ms of
+         ;; ticks, 3 ms of the window's drawing, and 2 ms waiting for the
+         ;; screen in render
          (set! now-ns (lambda () fake))
          (profile-clear!)
          (with-profile-span 'step #f
@@ -45,18 +48,19 @@
            (and (equal? phases '((input-wait . 10000000) (render . 3000000)
                                  (vsync-wait . 2000000) (tick . 1000000)))
                 (= (profile-tick-ns seq 'ns) (apply + (map cdr phases)))
-                ;; every phase of the profiler's a series of the bars'
+                ;; every phase of the profiler's is a series of the bars
                 (= (length monitor-phases) profile-phase-count)
                 (for-all (lambda (p) (assq p monitor-phases))
                          (vector->list profile-phase-names))
-                ;; 16 ms, its wait for input too, but the screen's 2 ms,
-                ;; which aren't core1's: late past periods of 28/3 ms
+                ;; 14 ms count: the wait for input, but not the screen's
+                ;; 2 ms, which aren't core1's; so it is late for periods
+                ;; under 28/3 ms
                 (member seq (profile-slow-ticks 9333333))
                 (not (member seq (profile-slow-ticks 9333334)))
                 (not (member seq (profile-slow-ticks 16666666)))
-                ;; the work by what it spent, the waits above it
+                ;; the work ordered by what it spent, the waits above it
                 (equal? order (map index '(render tick input-wait vsync-wait)))
-                ;; the kit's tooltip shows it a line each, as it is
+                ;; the kit's tooltip shows each line as it is
                 (equal? (ui-tooltip-lines tip) lines)
                 (equal? (cadr (ui-tooltip-lines late))
                         "16 ms, late (a tick is 3 ms)")
@@ -70,7 +74,7 @@
               [m (monitor)] [ui (window-ref m 'ui)]
               [ring (monitor-ticks-stream)])
          (steps 3)
-         (let-values ([(cx cy cw ch) (content-rect m)])   ; its Ticks
+         (let-values ([(cx cy cw ch) (content-rect m)])   ; to its Ticks
            (let* ([r (ui-find ui '(tab ticks))]
                   [x (exact (round (+ cx (ui-region-x r)
                                       (/ (ui-region-w r) 2))))]
@@ -96,8 +100,8 @@
 
 (check "Monitor's Flags tab lists every late tick, the newest first, why it \
         came late and the ticks about it, a row's tooltip all that's known"
-       ;; the clock held still but for the one late tick, so a step a busy
-       ;; machine makes late isn't one
+       ;; the clock is held still except for the one late tick, so that a
+       ;; step a busy machine makes late doesn't count as one
        (let* ([real now-ns] [at (real)] [held 0]
               [m (monitor)] [ui (window-ref m 'ui)])
         (fluid-let ([now-ns (lambda () (+ at held))])
@@ -217,19 +221,20 @@
              (close-window! m)
              (and ticks flags)))))
 
-;;; The profiler and Monitor, driven: on at boot, the profiler collects
-;;; with Monitor closed; Monitor's graphs, tables, rows and Kill.
+;;; The profiler and Monitor, driven: the profiler is on at boot and
+;;; collects with Monitor closed; Monitor's graphs, tables, rows and Kill.
 
-;; A click on Monitor's region id, and a step for what it changed.
+;; Clicks Monitor's region id, then steps once to show what it changed.
 (define (monitor-test-click! win id)
   (test-click! win id)
   (steps 1))
 
-;; The profiler: on at boot, it collects with Monitor closed. Monitor
-;; draws its graphs; a window's name focuses it and a process's Kill
-;; kills it; the Profiling checkbox turns it off, and Monitor lists the
-;; windows and processes in tables, whose rows focus and kill as they
-;; always did; and on again.
+;; The profiler is on at boot and collects with Monitor closed. Monitor
+;; draws its graphs; a window's name focuses the window, and a process's
+;; Kill kills the process. The Profiling checkbox turns the profiler off,
+;; and Monitor still lists the windows and processes in tables, where a
+;; window's row focuses it and a process's Kill kills it; then the checkbox
+;; turns the profiler on again.
 (let ([m (find-window 'monitor)]) (when m (close-window! m)))
 (steps 2)
 (check "profiling is on at boot, and collects with Monitor closed"
@@ -272,8 +277,8 @@
          (and (null? (bars)) (ui-find ui (window-row))
               (ui-find ui (row 'monitor-procs p (procs)))))
   (monitor-test-click! m '(tab ticks))
-  ;; the Consumers sum seconds done: until one with Target in it is done,
-  ;; and Monitor's view has moved on (twice a second) since
+  ;; the Consumers sum up whole seconds: wait until one with Target in it
+  ;; is done, and Monitor's view has moved on (twice a second) since
   (test-wait 10000
              (lambda ()
                (and (pair? (bars))
@@ -287,10 +292,11 @@
          (and (not (window-error m)) (pair? (bars))
               (ui-find ui (list 'monitor-kill (proc-id p)))
               (ui-find ui (list 'monitor-focus (window-id target)))))
-  ;; the Consumers sorted by a heading: by name, again the other way, and
+  ;; the Consumers sorted by a heading: by name, by name the other way, and
   ;; back to ms/s, the most first. Monitor's view moves on twice a second,
-  ;; and its rows with it (a consumer's first second, a window opened):
-  ;; paused, it holds the one view the three orders are of
+  ;; and its rows change with it (a consumer's first second, a window
+  ;; opened), so Monitor is paused to hold the one view all three orders
+  ;; are of
   (monitor-test-click! m 'pause)
   (let ([order (lambda (nodes)   ; the same nodes, in a fixed order
                  (list-sort string<? (map (lambda (n) (format "~s" n))
@@ -314,8 +320,7 @@
                       (equal? (order by-rate) (order by-name))
                       (equal? (order by-rate) (order (roots)))))))))
   (monitor-test-click! m 'pause)
-  ;; The rows drawn selected, at a draw of Monitor's: where each is, down
-  ;; the window.
+  ;; The rows drawn selected at a draw of Monitor's, as the y of each.
   (let ([selected-rows
          (lambda ()
            (let ([ys '()] [real ui-draw-highlight-over])
@@ -335,8 +340,8 @@
                             [else (loop (+ k 1))]))))])
     (monitor-test-click! m '(consumers row 0))
     ;; Monitor's view moves on twice a second, and its rows sort again by
-    ;; what they spent: the second press is on the row drawn selected,
-    ;; wherever it is by then, not on the first again
+    ;; what they spent, so the second press goes to the row drawn
+    ;; selected, wherever it is by then, not to the first row again
     (let* ([chosen (selected-rows)]
            [k (and (pair? chosen) (row-at (car chosen)))])
       (when k (monitor-test-click! m (list 'consumers 'row k)))
@@ -349,13 +354,13 @@
          (let ([r (ui-find ui '(consumers header avg))])
            (and r (string? (ui-region-tip r))
                 (string-contains-ci? (ui-region-tip r) "average"))))
-  ;; the pointer resting on the newest bar: its tooltip, what it spent
+  ;; the pointer rests on the newest bar, whose tooltip says what it spent
   (let ([r (car (bars))])
     (let-values ([(cx cy cw ch) (content-rect m)])
       (inject! `(mouse-move ,(+ cx (ui-region-x r) (ui-region-w r) -2)
                             ,(+ cy (ui-region-y r)
                                 (quotient (ui-region-h r) 2)))))
-    ;; until it has rested there a tooltip's wait
+    ;; wait until it has rested there for a tooltip's wait
     (test-wait 5000 (lambda ()
                       (< (+ (car (ui-state-rest ui)) ui-tip-ms 100)
                          (now-ms))))
@@ -404,8 +409,9 @@
   (close-window! target)
   (steps 2))
 
-;; Input to screen, when the screen reports and no frame shows any input:
-;; a hands-off run. The newest frame's report is written as core0 would.
+;; Monitor's Input to screen: with no word from the screen; with reports
+;; but no input on any frame (a hands-off run); and with input. The test
+;; writes the newest frame's report as core0 would.
 (begin
   (request-frame!)
   (steps 2)

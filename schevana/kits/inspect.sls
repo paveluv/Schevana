@@ -3,7 +3,7 @@
 ;;;
 ;;; A frame is recorded in the buffers it would be read from, so a list is
 ;;; read from a copy of the last frame's: (inspect-list), about 2 µs for 150
-;;; KB. What's read of it comes in device pixels, the screen's.
+;;; KB. What is read from it comes in device pixels, the screen's.
 
 (library (schevana kits inspect)
   (export
@@ -93,16 +93,16 @@
 
   (library-layer kits)
 
-  ;; What (schevana core draw)'s record kinds and paints are, by number; a
-  ;; test holds the two together.
+  ;; The names of (schevana core draw)'s record kinds and paints, by number;
+  ;; a test holds the two together.
   (define inspect-kinds '#(box segment polygon glyph shadow))
   (define inspect-paints '#(solid gradient stipple image shader))
 
   ;;; -- frames
 
-  ;; The newest n frames at most, newest first: each (us records extras runs
-  ;; glyphs shown? screen latency), screen and latency what the screen said
-  ;; of it (inspect-frame-screen, inspect-frame-latency).
+  ;; Returns the newest n frames at most, newest first, each as (us records
+  ;; extras runs glyphs shown? screen latency), where screen and latency are
+  ;; what the screen said of it (inspect-frame-screen, inspect-frame-latency).
   (define (inspect-frames n)
     (let ([have (min n *frame-ring-n* frame-ring-rows)])
       (map (lambda (k)
@@ -120,41 +120,46 @@
            (iota have))))
 
   ;;; -- what became of each frame
-  ;;; Frame i, counting from 0 for the first drawn, as long as the ring keeps
-  ;;; it; its report, the screen's (core0-frame-report), by its number.
+  ;;; Frame i counts from 0 for the first frame drawn, and is there as long
+  ;;; as the ring keeps it; its report, the screen's (core0-frame-report), is
+  ;;; found by its number.
 
-  ;; Word k of frame i's row (inspect-frames' order, then its number and when
-  ;; the oldest input it shows came), or #f once it's gone.
+  ;; Returns word k of frame i's row (in inspect-frames' order, then its
+  ;; number, then when the oldest input it shows came, ...), or #f once the
+  ;; frame is gone.
   (define (inspect-frame-ref i k)
     (and (< -1 i *frame-ring-n*)
          (> i (- *frame-ring-n* frame-ring-rows 1))
          (fxvector-ref *frame-ring*
                        (+ k (* frame-ring-words (modulo i frame-ring-rows))))))
 
-  ;; Word k of frame i's report: 1 its kind (0 sent, 1 shown, 2 dropped), 2
-  ;; when sent, 3 when the refresh it showed at came, by the screen's clock
-  ;; (now-ns), 4 the refresh, 5 that refresh's number, counted from the
-  ;; reports' times, 6 when its GPU work was seen done (0, not yet), 10 the
-  ;; screen's own stamp of its showing, 11 the last look that found its GPU
-  ;; work going (0, none); or #f.
+  ;; Returns word k of frame i's report, or #f: 1 its kind (0 sent, 1 shown,
+  ;; 2 dropped); 2 when it was sent; 3 when the refresh it showed at came, by
+  ;; the screen's clock (now-ns); 4 that refresh's length; 5 that refresh's
+  ;; number, counted from the reports' times; 6 when its GPU work was seen
+  ;; done (0 for not yet); 7 when core0 took it, and 8 and 9 when core0's
+  ;; acquire of a swapchain image for it began and returned; 10 the screen's
+  ;; own stamp of its showing; 11 the last look that found its GPU work
+  ;; still going (0 for none).
   (define (inspect-frame-report i k)
     (let ([n (inspect-frame-ref i 6)])
       (and n (> n 0) (core0-frame-report n k))))
 
   (define (inspect-frame-shown? i) (eqv? (inspect-frame-report i 1) 1))
 
-  ;; What core0 did with frame i: sent it to the screen, or found the window
-  ;; had no room for it; #f till it gives it back.
+  ;; Returns what core0 did with frame i: 'sent it to the screen, or found
+  ;; that the window had 'no-room for it; #f until core0 gives it back.
   (define (inspect-frame-sent i)
     (case (inspect-frame-ref i 5)
       [(1) 'sent]
       [(2) 'no-room]
       [else #f]))
 
-  ;; The refreshes that showed frame i-1 again before i, while frames came a
-  ;; period apart, sent within one and a half refreshes of each other: the
-  ;; screen frozen where an update was due. 0 when it showed in time; #f when
-  ;; it can't be told (no report, or frames apart).
+  ;; Returns how many refreshes showed frame i-1 again before frame i, while
+  ;; frames came a period apart (sent within one and a half refreshes of
+  ;; each other): the screen froze where an update was due. Returns 0 when
+  ;; frame i showed in time, and #f when it can't be told (no report, or
+  ;; frames further apart).
   (define (inspect-frame-missed i)
     (and (inspect-frame-shown? i) (inspect-frame-shown? (- i 1))
          (let ([p (inspect-frame-report i 4)]
@@ -165,15 +170,16 @@
                           (inspect-frame-report (- i 1) 5)
                           1))))))
 
-  ;; How long after the refresh frame i showed at, by the screen's clock,
-  ;; the screen stamped it, ns: a stamp that ran late (0, one that didn't);
-  ;; #f when it didn't show.
+  ;; Returns how long, in ns, after the refresh frame i showed at (by the
+  ;; screen's clock) the screen stamped it: how late the stamp ran (0 when
+  ;; it didn't); #f when the frame didn't show.
   (define (inspect-frame-stamp-late i)
     (and (inspect-frame-shown? i)
          (max 0 (- (inspect-frame-report i 10) (inspect-frame-report i 3)))))
 
-  ;; Frame i on the screen: shown, late (inspect-frame-missed), dropped by the
-  ;; compositor, or #f (no report, none yet).
+  ;; Returns what became of frame i on the screen: 'shown, 'late
+  ;; (inspect-frame-missed), 'dropped by the compositor, or #f (no report
+  ;; yet).
   (define (inspect-frame-screen i)
     (case (inspect-frame-report i 1)
       [(1) (let ([m (inspect-frame-missed i)])
@@ -181,9 +187,9 @@
       [(2) 'dropped]
       [else #f]))
 
-  ;; Frame i's GPU: late when the frame came late and its work was seen done
-  ;; only after the refresh it missed; done when seen done otherwise; #f when
-  ;; not seen.
+  ;; Returns how frame i's GPU work went: 'late when the frame came late and
+  ;; its work was seen done only after the refresh it missed; 'done when it
+  ;; was otherwise seen done; #f when it was not seen done.
   (define (inspect-frame-gpu i)
     (let ([done (inspect-frame-report i 6)])
       (and done (> done 0)
@@ -193,14 +199,14 @@
                'late
                'done))))
 
-  ;; When frame i's point came (now-ns), or #f: its oldest input by SDL's
-  ;; stamp (sdl), by the compositor's own time (wl), and as core0's pump
-  ;; first saw it (pumped); its tick as the pacer planned it (planned), its
-  ;; tick, its draw and its publish on core1; core0
-  ;; taking it (taken), asking for a swapchain image for it and having one
-  ;; (acquiring, acquired), and sending it (sent); its GPU work seen done
-  ;; (gpu); on the screen, by the screen's clock (shown), and by the
-  ;; screen's own stamp (stamped).
+  ;; Returns when frame i reached point (now-ns), or #f. The points are: its
+  ;; oldest input by SDL's stamp (sdl), by the compositor's own time (wl),
+  ;; and as core0's pump first saw it (pumped); its tick as the pacer
+  ;; planned it (planned), and its tick, its draw and its publish on core1
+  ;; (tick, draw, publish); core0 taking it (taken), asking for a swapchain
+  ;; image for it and getting one (acquiring, acquired), and sending it
+  ;; (sent); its GPU work seen done (gpu); and on the screen, by the
+  ;; screen's clock (shown) and by the screen's own stamp (stamped).
   (define (inspect-frame-at i point)
     (let ([t (case point
                [(sdl) (inspect-frame-ref i 7)]
@@ -222,8 +228,9 @@
                [else #f])])
       (and t (> t 0) t)))
 
-  ;; From the oldest input frame i shows to its showing, ns, the input by
-  ;; point (sdl, wl or pumped); #f when it shows no input, or hasn't shown.
+  ;; Returns the time in ns from the oldest input that frame i shows to its
+  ;; showing, the input's time taken by point (sdl, wl or pumped); #f when
+  ;; the frame shows no input, or hasn't shown.
   (define (inspect-frame-latency-from i point)
     (let ([in (inspect-frame-at i point)] [shown (inspect-frame-at i 'shown)])
       (and in shown (- shown in))))
@@ -232,11 +239,12 @@
   (define (inspect-frame-latency i) (inspect-frame-latency-from i 'sdl))
 
   ;;; -- the screen's clock's drift
-  ;; How far core0's clock ((schevana core0 present)) moved at each refresh from
-  ;; oldest on that a frame showed at, ns: the refresh's time past that of
-  ;; the frame shown before and the periods between them, negative when
-  ;; earlier. ((refresh . ns) ...), oldest first; none for the first frame
-  ;; shown, one reported out of order, or a screen with no steady refresh.
+  ;; Returns how far core0's clock ((schevana core0 present)) moved, in ns,
+  ;; at each refresh from refresh oldest on that a frame showed at: the
+  ;; refresh's time past that of the frame shown before it and the periods
+  ;; between them, negative when it came earlier. The result is ((refresh .
+  ;; ns) ...), oldest first, with none for the first frame shown, for one
+  ;; reported out of order, or on a screen with no steady refresh.
   (define (inspect-clock-moves oldest)
     (let loop ([i (- *frame-ring-n* 1)] [later #f] [moves '()])
       (cond
@@ -258,8 +266,8 @@
                     (loop (- i 1) (cons t k) (cons move moves))))]
              [else (loop (- i 1) (cons t k) moves)]))])))
 
-  ;; The frames kept, and how many of them had no room on the screen.
-  ;; => (values kept not-shown)
+  ;; Returns (values kept not-shown): how many frames are kept, and how many
+  ;; of them had no room on the screen.
   (define (inspect-frames-kept)
     (let ([n (min *frame-ring-n* frame-ring-rows)])
       (let loop ([k 0] [not-shown 0])
@@ -270,20 +278,21 @@
                       (+ not-shown 1)
                       not-shown))))))
 
-  ;; Of the frames shown in the last ms: their input-to-screen times' 50th
-  ;; and 99th percentiles (ns, #f with none), the input by point (as
-  ;; inspect-frame-latency's), and the refreshes they missed.
-  ;; => (values p50 p99 missed)
+  ;; Returns (values p50 p99 missed) for the frames published in the last ms
+  ;; milliseconds: the 50th and 99th percentiles of their input-to-screen
+  ;; times (in ns, #f with none), the input's time taken by point (as for
+  ;; inspect-frame-latency-from), and the refreshes they missed.
   (define (inspect-frames-truth ms . point)
     (let-values ([(by missed) (inspect-frames-truths
                                ms (list (if (pair? point) (car point) 'sdl)))])
       (values (caar by) (cadar by) missed)))
 
-  ;; The same for each of points, in one walk of the frames, which is most of
-  ;; the cost. => (values ((p50 p99) ...) missed)
+  ;; Returns the same for each of points, in one walk of the frames, which is
+  ;; most of the cost: (values ((p50 p99) ...) missed).
   (define (inspect-frames-truths ms points)
     (let ([since (- (now-ns) (* ms 1000000))])
-      ;; by publish: the newest frames, not yet sent, have no report
+      ;; chosen by when they were published: the newest frames, not yet
+      ;; sent, have no report
       (let loop ([i (- *frame-ring-n* 1)] [lats (map (lambda (p) '()) points)]
                  [missed 0])
         (let ([publish (inspect-frame-at i 'publish)])
@@ -312,13 +321,14 @@
                missed))))))
 
   ;;; -- refreshes
-  ;;; The screen's rhythm, a refresh a number: core0's count from the
-  ;;; reports' times ((schevana core0 present)), anchored at the newest frame
-  ;;; the screen reported showing; where it reports none, counted from
-  ;;; now-ns's 0 a period apart, an estimate. A refresh's time is its
-  ;;; vblank's (now-ns).
+  ;;; The screen's rhythm, with a number for each refresh: core0's count from
+  ;;; the reports' times ((schevana core0 present)), anchored at the newest
+  ;;; frame the screen reported showing. Where the screen reports none, the
+  ;;; refreshes are an estimate, counted a period apart from now-ns's 0. A
+  ;;; refresh's time is its vblank's (now-ns).
 
-  ;; The grid as it stands: #(refresh time period estimated?), its anchor.
+  ;; Returns the grid as it stands, as its anchor: #(refresh time period
+  ;; estimated?).
   (define (inspect-refresh-grid)
     (let loop ([i (- *frame-ring-n* 1)] [k 0])
       (cond
@@ -331,17 +341,18 @@
   (define (inspect-refresh-period g) (vector-ref g 2))
   (define (inspect-refresh-estimated? g) (vector-ref g 3))
 
-  ;; The refresh at t (now-ns), or the last before it, by grid g.
+  ;; Returns the refresh at t (now-ns), or the last one before it, by grid g.
   (define (inspect-refresh-of g t)
     (+ (vector-ref g 0) (div (- t (vector-ref g 1)) (vector-ref g 2))))
 
-  ;; Refresh k's time, by grid g.
+  ;; Returns refresh k's time, by grid g.
   (define (inspect-refresh-time g k)
     (+ (vector-ref g 1) (* (- k (vector-ref g 0)) (vector-ref g 2))))
 
-  ;; The refresh frame i showed at, by grid g: its report's; with no
-  ;; reports, once core0 sent it, the one after it was sent (with no screen,
-  ;; published), an estimate. #f when it didn't show, or hasn't yet.
+  ;; Returns the refresh frame i showed at, by grid g: its report's. With no
+  ;; reports, once core0 has sent it, the estimate is the refresh after it
+  ;; was sent (or published, with no screen). #f when it didn't show, or
+  ;; hasn't yet.
   (define (inspect-frame-refresh g i)
     (cond
       [(inspect-frame-shown? i) (inspect-frame-report i 5)]
@@ -350,8 +361,9 @@
                                       (inspect-frame-at i 'publish))))]
       [else #f]))
 
-  ;; The refresh frame i was meant for: the one after the latch its tick aimed
-  ;; at; with no aim, the second after its tick began. #f with no tick.
+  ;; Returns the refresh frame i was meant for: the one after the latch its
+  ;; tick aimed at, or with no aim, the second one after its tick began; #f
+  ;; with no tick.
   (define (inspect-frame-target g i)
     (let ([aimed (inspect-frame-ref i 13)])
       (if (and aimed (> aimed 0))
@@ -359,36 +371,34 @@
           (let ([tick (inspect-frame-at i 'tick)])
             (and tick (+ 2 (inspect-refresh-of g tick)))))))
 
-  ;; When the compositor took the frame shown at refresh k: in the refresh
-  ;; before, at the latch's phase, as the pacer learned it; or #f.
+  ;; Returns when the compositor took the frame shown at refresh k: in the
+  ;; refresh before, at the latch's phase as the pacer learned it; or #f.
   (define (inspect-refresh-latch g k)
     (and *pacer-latch-phase*
          (+ (inspect-refresh-time g (- k 1)) *pacer-latch-phase*)))
 
-  ;; When the oldest input frame i shows came: by the compositor's own time,
-  ;; else SDL's stamp, else core0's pump; #f with none.
+  ;; Returns when the oldest input that frame i shows came: by the
+  ;; compositor's own time, else by SDL's stamp, else by core0's pump; #f
+  ;; with none.
   (define (inspect-frame-input i)
     (or (inspect-frame-at i 'wl) (inspect-frame-at i 'sdl)
         (inspect-frame-at i 'pumped)))
 
   ;;; -- lists
 
-  ;; A copy of the last frame's list: #(records extras labels count words row
-  ;; runs frame segments), labels ((label first-record count) ...) in draw
-  ;; order, row the frame's in inspect-frames, runs its runs, frame its
-  ;; number, segments where its records came from (inspect-record-list). The
-  ;; lists it shows are in it, flattened: each one's records where its runs
-  ;; draw them, moved to where it's shown and cut to its clip, so it draws the
-  ;; same pixels from one list, and its records come in the order they're
-  ;; drawn.
+  ;; Returns a copy of the last frame's list: #(records extras labels count
+  ;; words row runs frame segments), where labels is ((label first-record
+  ;; count) ...) in draw order, row is the frame's row in inspect-frames,
+  ;; runs its runs, frame its number, and segments where its records came
+  ;; from (inspect-record-list). The lists the frame shows are in it,
+  ;; flattened: each one's records are where its runs draw them, moved to
+  ;; where the list is shown and cut to its clip, so the copy draws the same
+  ;; pixels from one list, and its records come in the order they are drawn.
   (define (inspect-list) (inspect-list-read! (inspect-list-empty)))
 
   (define (inspect-list-empty)
     (vector (make-bytevector 0) (make-bytevector 0) '() 0 0 #f '() -1 '()))
 
-  ;; l holds the last list recorded from now on, the frame's, in its own
-  ;; buffers when they're big enough: they stay where they are, and a
-  ;; collection needn't copy them.
   ;; The last frame's records and extras as the kit reads them: its own copy
   ;; (the recorder lends a frame's bytes to no one), its buffers kept to grow.
   (define-made inspect-last-bytes
@@ -408,19 +418,22 @@
         (values (vector-ref inspect-last-bytes 0) recs-n
                 (vector-ref inspect-last-bytes 1) extras-n))))
 
+  ;; Fills l with the last list recorded, the frame's, in l's own buffers
+  ;; when they are big enough: they stay where they are, and a collection
+  ;; needn't copy them.
   (define (inspect-list-read! l)
     (let-values ([(newest) (inspect-frames 1)]
                  [(recs recs-n extras extras-n) (inspect-last-read!)])
-      ;; the runs of the frame its records are, not of what was recorded
-      ;; since (a drawing, a window's icon)
+      ;; the runs of the frame whose records these are, not of what was
+      ;; recorded since (a drawing, a window's icon)
       (inspect-list-flat! l recs recs-n extras extras-n (rec-last-runs)
                           (list->vector (list-head (vector->list *rec-labels*)
                                                    *rec-label-at*))
                           (and (pair? newest) (car newest))
                           (- *frame-ring-n* 1))))
 
-  ;; The list record i of l came from, and its place there: (values list j),
-  ;; list #f for the root's.
+  ;; Returns the list that record i of l came from, and its place there, as
+  ;; (values list j), with list #f for the root's.
   (define (inspect-record-list l i)
     (let ([s (find (lambda (s) (< -1 (- i (vector-ref s 1)) (vector-ref s 2)))
                    (vector-ref l 8))])
@@ -428,8 +441,8 @@
           (values (vector-ref s 0) (+ (vector-ref s 3) (- i (vector-ref s 1))))
           (values #f i))))
 
-  ;; The lists records first to first + count of l came from, each once, in
-  ;; order: a drawer's.
+  ;; Returns the lists that records first to first + count of l came from,
+  ;; each once, in order: the lists of a drawer.
   (define (inspect-span-lists l first count)
     (fold-left (lambda (acc s)
                  (let ([lst (vector-ref s 0)])
@@ -440,8 +453,8 @@
                        acc)))
                '() (vector-ref l 8)))
 
-  ;; What a list is: ((owner . name) (version . n) (records . n) (bytes . n)
-  ;; (recorded . ns) (took . ns)), recorded on now-ns's clock.
+  ;; Returns what a list is: ((owner . name) (version . n) (records . n)
+  ;; (bytes . n) (recorded . ns) (took . ns)), recorded on now-ns's clock.
   (define (inspect-list-facts lst)
     `((owner . ,(inspect-list-owner lst))
       (version . ,(gpu-list-version lst))
@@ -450,19 +463,21 @@
       (recorded . ,(gpu-list-recorded lst))
       (took . ,(gpu-list-took lst))))
 
-  ;; The recordings x holds, the recorder's, newest first: a list's, the
-  ;; root's (#f, the frames'), the copies drawn ahead of frames ('earlier),
-  ;; the writes handed to core0 ('writes), or an image's loans.
-  ;; ((version . n) (until . frame) (free . bool)) each, until #f for the
-  ;; newest, which nothing has replaced, or a loan not yet handed.
+  ;; Returns the recorder's recordings that x holds, newest first: a list's,
+  ;; the root's (#f, the frames'), the copies drawn ahead of frames
+  ;; ('earlier), the writes handed to core0 ('writes), or an image's loans.
+  ;; Each is ((version . n) (until . frame) (free . bool)), with until #f
+  ;; for the newest, which nothing has replaced, or for a loan not yet
+  ;; handed.
   (define (inspect-recordings x)
     (map (lambda (r)
            `((version . ,(car r)) (until . ,(cadr r)) (free . ,(caddr r))))
          (rec-recordings x)))
 
-  ;; Whose a list is, in words, and which of its owner's: a window's, its
-  ;; frame and all, window, or its content, content; else list. A kept copy's
-  ;; are its list's then.
+  ;; Return whose a list is, in words, and which of its owner's lists it is:
+  ;; a window's whole list, frame and all, is window, its content's is
+  ;; content, and any other is list. A kept copy's are those of its list
+  ;; when the copy was made.
   (define (inspect-list-owner lst) (car (inspect-list-whose lst)))
   (define (inspect-list-part lst) (cdr (inspect-list-whose lst)))
 
@@ -476,26 +491,29 @@
                  (cons (window-title (car ws)) 'content)]
                 [else (loop (cdr ws))]))))
 
-  ;; The lists l's records came from, each once, in order.
+  ;; Returns the lists that l's records came from, each once, in order.
   (define (inspect-list-lists l)
     (inspect-span-lists l 0 (inspect-list-count l)))
 
-  ;;; -- lists kept: one copy a version
+  ;;; -- lists kept: one copy per version
 
   ;; Caches, which only save copying: each list's newest copy, and each
-  ;; copy's owner, said when it's made (inspect-list-whose); and each copy's
-  ;; list and basis, (list . basis). Ephemeron tables, not weak ones: a copy
-  ;; is often its own basis, and a weak table's value keeps its key.
+  ;; copy's owner, as said when it was made (inspect-list-whose); and each
+  ;; copy's list and basis, (list . basis). They are ephemeron tables, not
+  ;; weak ones: a copy is often its own basis, and a weak table's value
+  ;; keeps its key.
   (define-made inspect-copies (make-ephemeron-eq-hashtable))
   (define-made inspect-owners (make-ephemeron-eq-hashtable))
   (define-made inspect-sources (make-ephemeron-eq-hashtable))
 
-  ;; The list a copy is of; a list that isn't one, itself.
+  ;; Returns the list that a copy is of; for a list that isn't a copy, the
+  ;; list itself.
   (define (inspect-list-original copy)
     (let ([s (hashtable-ref inspect-sources copy #f)]) (if s (car s) copy)))
 
-  ;; The first of the copies in a row that hold the very same records as
-  ;; copy: a list recorded again the same, its basis is the copy before's.
+  ;; Returns the first of the copies in a row that hold the very same
+  ;; records as copy: when a list is recorded again the same, its basis is
+  ;; that of the copy before.
   (define (inspect-list-basis copy)
     (let ([s (hashtable-ref inspect-sources copy #f)]) (if s (cdr s) copy)))
 
@@ -513,9 +531,9 @@
                         (equal? r s)))
                   (gpu-list-runs a) (gpu-list-runs b))))
 
-  ;; lst as it is now, to keep: a copy of its records and extras, its runs
-  ;; showing copies of the lists it shows, the same copy as the last time
-  ;; while it and they haven't changed.
+  ;; Returns lst as it is now, to keep: a copy of its records and extras,
+  ;; whose runs show copies of the lists it shows. It is the same copy as
+  ;; the last time while lst and those lists haven't changed.
   (define (inspect-list-copy lst)
     (let ([runs (inspect-runs-copied (gpu-list-runs lst))]
           [old (hashtable-ref inspect-copies lst #f)])
@@ -533,9 +551,9 @@
                                           copy)))
             copy))))
 
-  ;; runs, those that show a list showing its copy instead: the same run
-  ;; objects otherwise, and a show run the same as the last time while its
-  ;; copy is.
+  ;; Returns runs, with each run that shows a list showing the list's copy
+  ;; instead. The other runs are the same objects, and a show run is the
+  ;; same as the last time while its copy is.
   (define (inspect-runs-copied runs)
     (map (lambda (run)
            (if (gpu-show-run? run)
@@ -549,11 +567,11 @@
                run))
          runs))
 
-  ;; Each show run's copy that shows a copy: a cache too.
+  ;; For each show run, its copy that shows a list's copy: a cache too.
   (define-made inspect-shows (make-ephemeron-eq-hashtable))
 
-  ;; The bytes the flattened list takes: (records . extras), each list as
-  ;; often as it's shown, and a clip row for each show.
+  ;; Returns the bytes the flattened list takes, as (records . extras):
+  ;; each list as often as it is shown, and a clip row for each show.
   (define (inspect-flat-size recs-n extras-n runs)
     (fold-left (lambda (n run)
                  (if (gpu-show-run? run)
@@ -566,25 +584,26 @@
                      n))
                (cons recs-n extras-n) runs))
 
-  ;; Writes the list (recs, extras, its runs and labels, as the recorder keeps
-  ;; them) and those it shows into to and to-extras, flattened. =>
-  ;; (labels count words runs segments): labels a list ((first . label) ...)
-  ;; in order, count the records, words the extras' words, segments where
-  ;; each stretch of records came from, #(list first count its-first), list
-  ;; #f for the root's.
+  ;; Writes the list (recs, extras, its runs and labels, as the recorder
+  ;; keeps them) and the lists it shows into to and to-extras, flattened.
+  ;; Returns (labels count words runs segments): labels is ((first . label)
+  ;; ...) in order, count the records, words the extras' words, and
+  ;; segments where each stretch of records came from, #(list first count
+  ;; its-first), with list #f for the root's.
   (define (inspect-flatten! to to-extras recs extras extras-n runs labels)
     (let ([count 0] [words 1] [out-runs '()] [out-labels '()]
           [segments '()])
       (define (word bv i) (bytevector-s32-native-ref bv (fx* 4 i)))
       (define (word! bv i v) (bytevector-s32-native-set! bv (fx* 4 i) v))
-      ;; a label the same as the one before goes on
+      ;; a label the same as the one before it just goes on
       (define (label! text)
         (unless (and (pair? out-labels) (equal? (cdar out-labels) text))
           (set! out-labels (cons (cons count text) out-labels))))
-      ;; a list's extras, bytes long, after those so far, its rows moved by
-      ;; (dx, dy) in 256ths, a clip's cut to box; then its records, by
-      ;; recs-of, handed how to find and move its rows. Its first word is
-      ;; the reserved one, and a list not recorded yet has none at all.
+      ;; copies a list's extras, bytes long, after those so far, its rows
+      ;; moved by (dx, dy) in 256ths and a clip's cut to box; then its
+      ;; records, by recs-of, which is handed how to find and move its
+      ;; rows. The extras' first word is the reserved one, and a list not
+      ;; recorded yet has no extras at all.
       (define (extras! from bytes dx dy box recs-of)
         (let ([base (fx- words 1)] [seen (make-eqv-hashtable)]
               [n (fxmax 0 (fx- (fxquotient bytes 4) 1))])
@@ -643,8 +662,8 @@
                   (move! row (fx* 2 k) dx)
                   (move! row (fx+ 1 (fx* 2 k)) dy))))
             (recs-of at sr clip! paint! points!))))
-      ;; a list's records first to first + n, at the end of to, moved by
-      ;; (dx, dy) in 256ths, their rows by at
+      ;; copies a list's records first to first + n to the end of to, moved
+      ;; by (dx, dy) in 256ths, their rows found by at
       (define (records! lst from first n dx dy at sr clip! paint! points!)
         (set! segments (cons (vector lst count n first) segments))
         (bytevector-copy! from (fx* 32 first) to (fx* 32 count) (fx* 32 n))
@@ -684,9 +703,9 @@
                  (word! to (+ o rec-polygon-points)
                         (at (word to (+ o rec-polygon-points)))))])))
         (set! count (fx+ count n)))
-      ;; a list at (ox, oy) device pixels, inside box or none, its runs in
-      ;; order; its labels where they fall among them, none being outer, the
-      ;; label of what shows it
+      ;; flattens a list at (ox, oy) device pixels, inside box or none, its
+      ;; runs in order, and its labels where they fall among them; no label
+      ;; means outer, the label of what shows the list
       (define (flatten! lst recs extras extras-n runs labels ox oy box outer)
         (let ([dx (fx* ox 256)] [dy (fx* oy 256)] [li 0]
               [label-n (vector-length labels)])
@@ -723,7 +742,7 @@
                          (let ([shown (and (pair? out-labels)
                                            (cdar out-labels))])
                            ;; a list shown has its bytes read from its
-                           ;; copy, kept while it's the same
+                           ;; copy, kept while it stays the same
                            (let ([own (if (gpu-list-id lst)
                                           (inspect-list-copy lst)
                                           lst)])
@@ -736,7 +755,7 @@
                            (label! shown)))
                        (let ([first (caddr run)] [n (cadddr run)])
                          (let split ([first first] [n n])
-                           ;; a label inside the run starts where it falls
+                           ;; a label inside the run starts where it is
                            (labels-upto! label-n first)
                            (let ([next (and (fx< li label-n)
                                             (vector-ref labels li))])
@@ -757,9 +776,9 @@
       (list (reverse out-labels) count words (reverse out-runs)
             (reverse segments))))
 
-  ;; The labels' spans of the first count records, from ((first . label) ...)
-  ;; in order: a label holds until the next, and a span of none, or of no
-  ;; label, is left out.
+  ;; Returns the labels' spans, (label first count), over the first count
+  ;; records, from ((first . label) ...) in order: a label holds until the
+  ;; next one, and an empty span, or one with no label, is left out.
   (define (inspect-label-spans labels count)
     (let loop ([ls labels] [acc '()])
       (if (null? ls)
@@ -771,8 +790,9 @@
                       acc
                       (cons (list (cdar ls) first (- end first)) acc)))))))
 
-  ;; l as a root's records and extras, bytes long, its runs and labels,
-  ;; flattened, its row and frame number those given.
+  ;; Fills l with a root's records and extras (recs-n and extras-n bytes
+  ;; long) and its runs and labels, flattened, and with the row and frame
+  ;; number given. Returns l.
   (define (inspect-list-flat! l recs recs-n extras extras-n runs labels row
                               frame)
     (let ([need (inspect-flat-size recs-n extras-n runs)]
@@ -794,9 +814,9 @@
         (vector-set! l 8 (list-ref flat 4))
         l)))
 
-  ;; The lists the last frame shows, as a tree: ((x y records bytes version
-  ;; children) ...) in draw order, (x, y) in device pixels from what shows it,
-  ;; version how many times it's been recorded.
+  ;; Returns the lists the last frame shows, as a tree: ((x y records bytes
+  ;; version children) ...) in draw order, with (x, y) in device pixels from
+  ;; what shows the list, and version how many times it has been recorded.
   (define (inspect-list-tree)
     (let walk ([runs (rec-last-runs)])
       (map (lambda (run)
@@ -814,12 +834,12 @@
     (+ (* 32 (vector-ref l 3)) (* 4 (vector-ref l 4))))
   (define (inspect-list-row l) (vector-ref l 5))
   (define (inspect-list-runs l) (vector-ref l 6))
-  ;; The name of the fragment shader a run draws with: the variant its records
-  ;; need.
+  ;; Returns the name of the fragment shader a run draws with: the variant
+  ;; its records need.
   (define (inspect-run-shader run) (vector-ref gfx-fragments (list-ref run 4)))
 
-  ;; The compute runs waiting for the next frame, in the order they'll run:
-  ;; (shader-name w h) each, w × h its cells.
+  ;; Returns the compute runs waiting for the next frame, in the order they
+  ;; will run, each as (shader-name w h), with w × h its cells.
   (define (inspect-computes)
     (map (lambda (run)
            (list (shader-name (gpu-call-shader (car run)))
@@ -828,18 +848,19 @@
          (reverse *gpu-computes*)))
   (define (inspect-list-frame l) (vector-ref l 7))
 
-  ;; How many of its runs show an image or a paint let go of since: drawn again,
-  ;; the list leaves them out. Those still there show what they hold now.
+  ;; Returns how many of l's runs show an image or a paint let go of since:
+  ;; drawn again, the list leaves them out. Those still there show what they
+  ;; hold now.
   (define (inspect-list-left-out l)
     (length (filter gpu-run-gone? (inspect-list-runs l))))
 
   ;;; -- the frames kept
 
-  ;; The last frames, as many as it was made for, by frame number: a ring its
-  ;; caller holds. A frame keeps the root's records, in its slot's buffers used
-  ;; again, and copies of the lists it shows, a list unchanged since the
-  ;; frame before the same copy; flattened as it's asked for, the last few
-  ;; flattened kept.
+  ;; The last frames, as many as the history was made for, by frame number:
+  ;; a ring its caller holds. A frame keeps the root's records, in its
+  ;; slot's buffers used again, and copies of the lists it shows; a list
+  ;; unchanged since the frame before keeps the same copy. A frame is
+  ;; flattened when it is asked for, and the last few flattened are kept.
   (define-record-type inspect-history
     (fields slots (mutable newest) (mutable flat)))
 
@@ -850,7 +871,7 @@
   (define (inspect-history-slot-empty)
     (vector (make-bytevector 0) 0 (make-bytevector 0) 0 '() '#() #f -1))
 
-  ;; Keeps the frame drawn last, unless it's kept already.
+  ;; Keeps the frame drawn last, unless it is kept already.
   (define (inspect-history-add! h)
     (let ([frame (- *frame-ring-n* 1)] [slots (inspect-history-slots h)])
       (when (> frame (inspect-history-newest h))
@@ -875,8 +896,8 @@
           (vector-set! slots i slot)
           (inspect-history-newest-set! h frame)))))
 
-  ;; Frame n's slot while it's kept, or #f; whether it is, without flattening
-  ;; it.
+  ;; Returns frame n's slot while the frame is kept, or #f; and whether it
+  ;; is kept, without flattening it.
   (define (inspect-history-slot h n)
     (let* ([slots (inspect-history-slots h)]
            [slot (and (>= n 0)
@@ -885,8 +906,8 @@
 
   (define (inspect-history-kept? h n) (and (inspect-history-slot h n) #t))
 
-  ;; Frame n's list, flattened, while it's kept; or #f. A list asked for is
-  ;; one of its own, which a later ask doesn't touch.
+  ;; Returns frame n's list, flattened, while the frame is kept; or #f. Each
+  ;; frame's list is its own, which asking for another frame doesn't touch.
   (define (inspect-history-ref h n)
     (let ([slot (inspect-history-slot h n)])
       (and slot
@@ -907,10 +928,10 @@
                          (if (< (length flat) 3) flat (list-head flat 2))))
                 l)]))))
 
-  ;; The lists the frames kept up to frame upto showed, frame by frame,
-  ;; none of them flattened: (values n table), n how many frames, and table
-  ;; each list's copies, a vector of n, the oldest frame first, #f where it
-  ;; wasn't shown.
+  ;; Returns the lists that the kept frames up to frame upto showed, frame
+  ;; by frame, without flattening any: (values n table), where n is how many
+  ;; frames there are, and table holds each list's copies, a vector of n,
+  ;; the oldest frame first, with #f where the list wasn't shown.
   (define (inspect-history-copies h upto)
     (let* ([len (vector-length (inspect-history-slots h))]
            [slots (filter values
@@ -936,8 +957,8 @@
        slots (iota n))
       (values n table)))
 
-  ;; How many frames are kept, and the bytes they hold now: each slot's, and
-  ;; each list's copy once.
+  ;; Return how many frames are kept, and the bytes they hold now: each
+  ;; slot's, and each list's copy once.
   (define (inspect-history-count h)
     (length (filter values (vector->list (inspect-history-slots h)))))
 
@@ -967,8 +988,8 @@
 
   (define (inspect-pixels n) (fl/ (fixnum->flonum n) 256.0))
 
-  ;; A record's clip row, if it has one: (x0 y0 x1 y1 radius rx0 ry0 rx1 ry1),
-  ;; the radius being that of the rounded box it lies in.
+  ;; Returns a record's clip row, if it has one: (x0 y0 x1 y1 radius rx0 ry0
+  ;; rx1 ry1), where radius is that of the rounded box it lies in.
   (define (inspect-clip l i)
     (let ([row (fxsrl (fxand (inspect-word l i rec-row-head) #xffffffff) 8)])
       (and (not (fx= row 0))
@@ -980,7 +1001,7 @@
                       clip-row-radius
                       clip-row-rx0 clip-row-ry0 clip-row-rx1 clip-row-ry1)))))
 
-  ;; The character of record i, a glyph's.
+  ;; Returns the character of record i, a glyph.
   (define (inspect-glyph-char l i)
     (glyph-row-ref (inspect-word l i rec-glyph-number) glyph-row-character))
 
@@ -991,7 +1012,7 @@
     (vector-ref inspect-paints
                 (fxand (fxsrl (inspect-word l i rec-row-head) 4) 15)))
 
-  ;; (x0 y0 x1 y1): what a record may touch, its clip left out.
+  ;; Returns what a record may touch, its clip left out: (x0 y0 x1 y1).
   (define (inspect-reach l i)
     (let ([word (lambda (k) (inspect-word l i k))]
           [px (lambda (k) (inspect-pixels (inspect-word l i k)))])
@@ -1017,9 +1038,9 @@
                 (list (fl- x0 d) (fl- y0 d) (fl+ x1 d) (fl+ y1 d)))]
              [else (list x0 y0 x1 y1)]))])))
 
-  ;; A record, for reading: ((kind . box) (paint . solid) (color . #xff112233)
-  ;; (reach x0 y0 x1 y1) (clip x0 y0 x1 y1 radius)), with more by kind: a box's
-  ;; radius and line, a glyph's char.
+  ;; Returns a record, for reading: ((kind . box) (paint . solid) (color .
+  ;; #xff112233) (reach x0 y0 x1 y1) (clip x0 y0 x1 y1 radius rx0 ry0 rx1
+  ;; ry1)), with more by kind: a box's radius and line, a glyph's char.
   (define (inspect-record l i)
     (let ([kind (inspect-kind l i)] [paint (inspect-paint l i)])
       `((kind . ,kind)
@@ -1036,9 +1057,9 @@
             [(glyph) `((char . ,(integer->char (inspect-glyph-char l i))))]
             [else '()]))))
 
-  ;; The font glyph g was made in, and at what scale: (font . key), key num ×
-  ;; 65536 + den as its pages are kept; or #f. A glyph's number is in one
-  ;; font's pages, at its character.
+  ;; Returns the font glyph g was made in, and at what scale: (font . key),
+  ;; with key num × 65536 + den as the font's pages are kept; or #f. A
+  ;; glyph's number is in one font's pages, at its character.
   (define (inspect-glyph-font g)
     (let* ([c (glyph-row-ref g glyph-row-character)]
            [at (fx* 4 (fxand c 255))]
@@ -1054,9 +1075,9 @@
                   (and sized (cons f (car sized)))))
               (vector->list (hashtable-values *font-specs*)))))
 
-  ;; How many spaces lie between glyph records i and j on a line: how far the
-  ;; pen went past i's advance, in spaces of i's font, whose pen moves only by
-  ;; advances; 0 when its font is gone.
+  ;; Returns how many spaces lie between glyph records i and j on a line:
+  ;; how far the pen went past i's advance, in spaces of i's font, whose pen
+  ;; moves only by advances; 0 when the font is gone.
   (define (inspect-glyph-spaces l i j)
     (let ([found (inspect-glyph-font (inspect-word l i rec-glyph-number))])
       (if (not found)
@@ -1071,10 +1092,11 @@
                          (advance (inspect-glyph-char l i)))])
             (exact (round (/ gap (advance 32))))))))
 
-  ;; The records first .. first + count - 1 as rows for reading: #(first count
-  ;; kind what), a run of glyphs on one baseline in one paint being one row
-  ;; whose what is its text, its spaces read back from where its glyphs are.
-  ;; A gap of more than a few spaces, or back, is another text's.
+  ;; Returns the records first .. first + count - 1 as rows for reading, each
+  ;; #(first count kind what). A run of glyphs on one baseline in one paint
+  ;; is one row whose what is its text, with its spaces read back from where
+  ;; its glyphs are. A gap of more than a few spaces, or one going back,
+  ;; starts another text.
   (define (inspect-rows l first count)
     (let loop ([i first] [end (+ first count)] [acc '()])
       (cond
@@ -1101,30 +1123,30 @@
                (cons (vector i 1 (inspect-kind l i) (inspect-what l i))
                      acc))])))
 
-  ;; A record's size, in words.
+  ;; Returns a record's size as text, "w × h".
   (define (inspect-what l i)
     (let ([r (inspect-reach l i)])
       (format "~a × ~a"
               (exact (round (- (caddr r) (car r))))
               (exact (round (- (cadddr r) (cadr r)))))))
 
-  ;; A record's paint: a solid one's color, its word #xAARRGGBB; another's
-  ;; kind, as inspect-paint names it.
+  ;; Returns a record's paint: a solid one's color, as its word #xAARRGGBB;
+  ;; another's kind, as inspect-paint names it.
   (define (inspect-record-paint l i)
     (let ([paint (inspect-paint l i)])
       (if (eq? paint 'solid)
           (fxand (inspect-word l i rec-row-paint) #xffffffff)
           paint)))
 
-  ;; A paint, as inspect-record-paint gives it, in words: a color #RRGGBB,
-  ;; its alpha first only when it isn't opaque.
+  ;; Returns a paint, as inspect-record-paint gives it, as text: a color as
+  ;; #RRGGBB, with its alpha first only when it isn't opaque.
   (define (inspect-paint-text paint)
     (cond [(not (fixnum? paint)) (symbol->string paint)]
           [(= (fxsrl paint 24) 255) (format "#~6,'0x" (fxand paint #xffffff))]
           [else (format "#~8,'0x" paint)]))
 
-  ;; Does record i touch the device pixel x, y, as far as its reach and clip
-  ;; tell?
+  ;; Whether record i touches the device pixel x, y, as far as its reach and
+  ;; clip tell.
   (define (inspect-covers? l i x y)
     (let ([in? (lambda (b)
                  (and (<= (car b) x) (< x (caddr b))
@@ -1132,14 +1154,14 @@
           [clip (inspect-clip l i)])
       (and (in? (inspect-reach l i)) (or (not clip) (in? clip)))))
 
-  ;; The records that may touch a device pixel, the one on top first.
+  ;; Returns the records that may touch a device pixel, the one on top first.
   (define (inspect-records-at l x y)
     (let loop ([i 0] [acc '()])
       (cond [(= i (inspect-list-count l)) acc]
             [(inspect-covers? l i x y) (loop (+ i 1) (cons i acc))]
             [else (loop (+ i 1) acc)])))
 
-  ;; The label that holds at record i, or #f.
+  ;; Returns the label that holds at record i, or #f.
   (define (inspect-label-at l i)
     (let ([span (find (lambda (s) (< -1 (- i (cadr s)) (caddr s)))
                       (inspect-list-labels l))])
@@ -1149,10 +1171,10 @@
 
   ;;; -- the platform
 
-  ;; Which platform this is, an alist, its keys in reading order: the
-  ;; system, the window, the drawing, the screen's reports, the libraries,
-  ;; the predicates that hold, and the checkout's commit. #f where it isn't
-  ;; known here.
+  ;; Returns which platform this is, as an alist with its keys in reading
+  ;; order: the system, the window, the drawing, the screen's reports, the
+  ;; libraries, the predicates that hold, and the checkout's commit. A value
+  ;; is #f where it isn't known here.
   (define (inspect-platform)
     (let ([fact platform-fact]
           [gpu (lambda (k) (let ([f (assq k *gpu-facts*)]) (and f (cdr f))))])
@@ -1180,8 +1202,8 @@
           (predicates . ,(map car (filter cdr (platform-predicates))))
           (commit . ,(inspect-commit))))))
 
-  ;; The checkout's commit, (branch . short hash), from its .git folder; #f
-  ;; with none, or a detached head's branch as #f.
+  ;; Returns the checkout's commit as (branch . short hash), from its .git
+  ;; folder; #f with none, and a detached head's branch as #f.
   (define (inspect-commit)
     (let ([git (string-append *schevana-root* "/.git")]
           [line (lambda (path)
@@ -1200,7 +1222,7 @@
                [(>= (string-length head) 7) (cons #f (substring head 0 7))]
                [else #f])))))
 
-  ;; ref's hash in git's packed-refs, or #f.
+  ;; Returns ref's hash in git's packed-refs, or #f.
   (define (inspect-packed-ref git ref)
     (let ([path (string-append git "/packed-refs")])
       (and (file-exists? path)
@@ -1213,26 +1235,27 @@
                           (substring l 0 40)]
                          [else (loop)]))))))))
 
-  ;; Chez's version alone, as "10.0.0".
+  ;; Returns Chez's version alone, as "10.0.0".
   (define (inspect-chez-version)
     (let ([v (scheme-version)])
       (if (string-prefix? "Chez Scheme Version " v)
           (substring v 20 (string-length v))
           v)))
 
-  ;; The display in pixels, as "3840 × 2160", from (w h numerator denominator
-  ;; density): SDL gives its size in points.
+  ;; Returns the display's size in pixels, as "3840 × 2160", from (w h
+  ;; numerator denominator density): SDL gives the size in points.
   (define (inspect-display-pixels display)
     (format "~a × ~a" (exact (round (* (car display) (list-ref display 4))))
             (exact (round (* (cadr display) (list-ref display 4))))))
 
-  ;; The display's refresh, Hz, from (w h numerator denominator density).
+  ;; Returns the display's refresh rate in Hz, from (w h numerator
+  ;; denominator density).
   (define (inspect-display-hz display)
     (and display (> (cadddr display) 0)
          (/ (round (* 100 (/ (caddr display) (cadddr display)))) 100.0)))
 
-  ;; This run, as a row of docs/PLATFORMS.md's Runs: what ran and its result
-  ;; left for the person to say.
+  ;; Returns this run as a row of docs/PLATFORMS.md's Runs: what ran, with
+  ;; its result left for the person to fill in.
   (define (inspect-platform-row)
     (let* ([p (inspect-platform)]
            [of (lambda (k) (cdr (assq k p)))]
@@ -1264,8 +1287,9 @@
               (of 'sdl)
               (of 'chez))))
 
-  ;; What draws: ((renderer . gpu) (window? . #t) (pixels w . h) ...), as
-  ;; core0 says it (*gpu-facts*). The display is core0-display's, or #f.
+  ;; Returns what draws: ((renderer . gpu) (window? . #t) (pixels w . h)
+  ;; ...), as core0 says it (*gpu-facts*). The display is core0-display's,
+  ;; or #f.
   (define (inspect-device)
     (let ([fact (lambda (k) (cdr (assq k *gpu-facts*)))])
       `((renderer . ,(fact 'renderer))
@@ -1277,44 +1301,47 @@
         (present-modes . ,(fact 'present-modes))
         (display . ,(core0-display)))))
 
-  ;; The glyphs made, and how full the atlas is, of 1.
+  ;; Returns how many glyphs were made, and how full the atlas is, as a
+  ;; fraction of 1.
   (define (inspect-glyphs)
     `((glyphs . ,(- *glyph-count* 1))
       (atlas-side . ,gpu-atlas-side)
       (atlas-used . ,(/ (+ *atlas-y* *atlas-row*) (inexact gpu-atlas-side)))))
 
-  ;; What's held on the GPU for frames: ((name kind . bytes) ...), as core0
-  ;; says it.
+  ;; Returns what is held on the GPU for frames, ((name kind . bytes) ...),
+  ;; as core0 says it.
   (define (inspect-gpu-objects) (cdr (assq 'objects *gpu-facts*)))
 
-  ;; Core1's handles: the GPU bytes made so far, which the collector counts,
-  ;; and how many the guardian let go of once nothing held them.
+  ;; Returns facts of core1's handles: the GPU bytes made so far, which the
+  ;; collector counts, and how many the guardian let go of once nothing held
+  ;; them.
   (define (inspect-gpu-held)
     `((bytes-made . ,*gpu-bytes-made*)
       (let-go . ,*gpu-held-gone*)))
 
-  ;; How core0 presents now: vsync, mailbox or immediate.
+  ;; Returns how core0 presents now: vsync, mailbox or immediate.
   (define (inspect-present-mode)
     (let ([f (assq 'present-mode *gpu-facts*)]) (and f (cdr f))))
 
-  ;; Libraries reloaded in place ((schevana reload)): how many it holds the
-  ;; text of, the environments it imports them into again, and what the
-  ;; last reload evaluated again, in order.
+  ;; Returns facts of the libraries reloaded in place ((schevana reload)):
+  ;; how many it holds the text of, the environments it imports them into
+  ;; again, and what the last reload evaluated again, in order.
   (define (inspect-reload) (reload-facts))
 
-  ;; What of the world still waits to load, after the screen showed
-  ;; ((schevana core sources)): its entries, in order.
+  ;; Returns what of the world still waits to load after the screen has
+  ;; shown ((schevana core sources)): its entries, in order.
   (define (inspect-world-later) *world-later*)
 
-  ;; Every file and folder that loads with the world, in order.
+  ;; Returns every file and folder that loads with the world, in order.
   (define (inspect-auto-loads) (auto-loads))
 
   ;;; -- the pacer
 
-  ;; Core0's step: the window's facts as it last read them, who it is to the
-  ;; desktop (its app id, the least it may be dragged to, logical pixels,
-  ;; and the desktop's light or dark), the jobs posted to it and the steps'
-  ;; events not yet taken, and the last job that raised.
+  ;; Returns core0's step: the window's facts as core0 last read them; who
+  ;; the window is to the desktop (its app id, the least size it may be
+  ;; dragged to in logical pixels, and the desktop's light or dark); the
+  ;; jobs posted to core0 and the steps' events not yet taken; and the last
+  ;; job that raised.
   (define (inspect-core0)
     (let ([state (core0-step-state)])
       `((sizes . ,(call-with-values core0-window-sizes list))
@@ -1327,19 +1354,21 @@
         (jobs . ,(cdr (assq 'jobs state)))
         (events . ,(cdr (assq 'events state)))
         (failed . ,(cdr (assq 'failed state)))
-        ;; the refresh's length said in place of the screen's (0, none)
+        ;; the refresh's length said in place of the screen's (0 for none)
         (refresh-said . ,(cdr (assq 'refresh-said state))))))
 
-  ;; The pacer: its period and its grid's next tick (ns), whether the screen
-  ;; paces it (frames back by vsync), and its t; the
-  ;; compositor's last latch seen and the lead before one (pacer-just-in-time),
-  ;; its margin, its counts (frames judged, late of its own, the
-  ;; compositor's), the trial holding its choices (the pacer lab's), the
-  ;; closest to its latch a frame that made its latch was sent lately, the
-  ;; newest late run's first frame and how many runs came in a chain, the
-  ;; frames judged since the last the GPU made late once such a frame taught
-  ;; it (#f, none), the first latch the next frame may take, the compositor's
-  ;; depth, and when the next tick may begin.
+  ;; Returns the pacer's state: its period and its grid's next tick (ns);
+  ;; whether the screen paces it (frames come back by vsync), and when the
+  ;; last tick's frame should show; the compositor's last latch seen, and
+  ;; the lead before one (pacer-just-in-time); its margin; its counts (the
+  ;; frames judged, those late by its own fault, and those late by the
+  ;; compositor's); the trial holding its choices (the pacer lab's); of the
+  ;; frames that made their latch lately, how long before it the one sent
+  ;; closest to it was sent; the newest late run's first frame, and how many
+  ;; runs came in a chain; once a frame the GPU made late has taught it, the
+  ;; frames judged since the last such frame (#f for none); the first latch
+  ;; the next frame may take; the compositor's depth; the latch the last
+  ;; tick aimed at; and when the next tick may begin.
   (define (inspect-pacer)
     `((period . ,(pacer-period))
       (due . ,*pacer-due*)
@@ -1361,14 +1390,14 @@
 
   ;;; -- what shaders share
 
-  ;; The constants a shader can name, by name: ((name . value) ...).
+  ;; Returns the constants a shader can name, by name: ((name . value) ...).
   (define (inspect-shader-constants)
     (let-values ([(names numbers) (hashtable-entries *shader-constants*)])
       (sort (lambda (a b)
               (string<? (symbol->string (car a)) (symbol->string (car b))))
             (map cons (vector->list names) (vector->list numbers)))))
 
-  ;; The sets of helpers, by name: ((set function ...) ...).
+  ;; Returns the sets of helpers, by name: ((set function ...) ...).
   (define (inspect-shader-helpers)
     (let-values ([(names sets) (hashtable-entries *shader-helpers*)])
       (sort (lambda (a b)
@@ -1377,7 +1406,7 @@
                    (cons name (map caadr forms)))
                  (vector->list names) (vector->list sets)))))
 
-  ;; A layout's fields, by name: ((field reader . offset) ...).
+  ;; Returns each layout's fields, by name: ((field reader . offset) ...).
   (define (inspect-shader-fields)
     (let-values ([(names rows) (hashtable-entries *shader-fields*)])
       (sort (lambda (a b)
@@ -1386,13 +1415,14 @@
 
   ;;; -- the preview
 
-  ;; An image w × h for inspect-preview!, and letting go of it.
+  ;; Makes an image w × h for inspect-preview!, reads its size, and lets go
+  ;; of it.
   (define (inspect-preview-image w h) (gpu-image-make-target w h))
   (define (inspect-preview-w image) (gpu-image-w image))
   (define (inspect-preview-h image) (gpu-image-h image))
   (define (inspect-preview-free! image) (gpu-image-release! image))
 
-  ;; What it holds on the GPU, its levels with it.
+  ;; Returns the bytes a preview image holds on the GPU, its levels with it.
   (define (inspect-preview-bytes image)
     (let loop ([level 0] [w (gpu-image-w image)] [h (gpu-image-h image)] [n 0])
       (if (= level (gpu-image-levels image))
@@ -1400,11 +1430,12 @@
           (loop (+ level 1) (max 1 (quotient w 2)) (max 1 (quotient h 2))
                 (+ n (* 4 w h))))))
 
-  ;; The frame inspect-preview! draws: a cache, which only saves the buffers.
+  ;; The frame that inspect-preview! draws: a cache, which only saves the
+  ;; buffers.
   (define-made inspect-live (inspect-list-empty))
 
-  ;; Ahead of the next frame, a kept list's first count records drawn on image,
-  ;; but those left out, as inspect-preview! has them.
+  ;; Draws a kept list's first count records on image ahead of the next
+  ;; frame, except those left out, as inspect-preview! takes them.
   (define inspect-preview-list!
     (case-lambda
       [(image l count) (inspect-preview-list! image l count #f)]
@@ -1417,8 +1448,8 @@
                          runs (left-out (inspect-list-labels l)))
                         runs)))]))
 
-  ;; The runs, (mode image first count variant) ..., as far as record n, but
-  ;; those that show image, which is being drawn on.
+  ;; Returns the runs, (mode image first count variant) ..., as far as
+  ;; record n, except those that show image, which is being drawn on.
   (define (inspect-runs-upto runs n image)
     (let loop ([runs runs] [acc '()])
       (if (or (null? runs) (>= (caddr (car runs)) n))
@@ -1432,18 +1463,19 @@
                                   (list-ref run 4))
                             acc)))))))
 
-  ;; The runs but for the records in ranges, ((first . count) ...) in order: a
-  ;; run with records left out in its middle is cut in two.
+  ;; Returns the runs without the records in ranges, ((first . count) ...) in
+  ;; order: a run with records left out in its middle is cut in two.
   (define (inspect-runs-without runs ranges)
     (if (null? ranges)
         runs
         (apply append
                (map (lambda (run) (inspect-run-pieces run ranges)) runs))))
 
-  ;; With the next frame, its first count records drawn on image, but those
-  ;; (left-out spans) gives: ((first . count) ...) in order, spans the frame's
-  ;; labels' spans, as inspect-list-labels has them. Without left-out, none
-  ;; are. The frame is read, flattened, into a list kept for it.
+  ;; With the next frame, draws its first count records on image, except
+  ;; those that (left-out spans) gives as ((first . count) ...) in order,
+  ;; where spans are the frame's labels' spans, as inspect-list-labels has
+  ;; them. Without left-out, none are left out. The frame is read,
+  ;; flattened, into a list kept for it.
   (define inspect-preview!
     (case-lambda
       [(image count) (inspect-preview! image count #f)]
@@ -1460,7 +1492,7 @@
                                     runs (left-out (inspect-list-labels l)))
                                    runs)))))]))
 
-  ;; What's left of run without the records in ranges, as runs.
+  ;; Returns what is left of run without the records in ranges, as runs.
   (define (inspect-run-pieces run ranges)
     (let ([end (+ (caddr run) (cadddr run))]
           [piece (lambda (from to)
@@ -1477,12 +1509,13 @@
 
   ;;; -- a list repainted, and what a span of it costs
 
-  ;; into, a list as inspect-list-empty makes, holds l from now on with every
-  ;; record's paint solid, record i's (word-of i), a color's word: what each
-  ;; covers stays, in colors of the caller's choosing (who drew it, its kind).
-  ;; Its runs are those solid records need, blended by mode, a run's (0 over,
-  ;; 3 adding); its extras are l's, its records in into's own buffer when it's
-  ;; big enough. => into
+  ;; Fills into, a list as inspect-list-empty makes, with l, every record's
+  ;; paint made solid: record i's is (word-of i), a color's word. What each
+  ;; record covers stays the same, in colors of the caller's choosing (by
+  ;; who drew it, or its kind). Its runs are those that solid records need,
+  ;; blended by mode, a run's (0 over, 3 adding); its extras are l's, and
+  ;; its records go in into's own buffer when that is big enough. Returns
+  ;; into.
   (define (inspect-list-paint! into l word-of mode)
     (let ([n (inspect-list-count l)])
       (when (< (bytevector-length (vector-ref into 0)) (* 32 n))
@@ -1509,7 +1542,7 @@
         (vector-set! into 4 (vector-ref l 4))
         (vector-set! into 5 (inspect-list-row l))
         (vector-set! into 7 (inspect-list-frame l))
-        ;; a run a stretch of records that need the same variant
+        ;; a run for each stretch of records that need the same variant
         (vector-set!
          into 6
          (let loop ([i 0] [first 0] [variant #f] [acc '()])
@@ -1528,8 +1561,8 @@
                                 acc))))])))
         into)))
 
-  ;; How many device pixels record i may touch: its reach within its clip and
-  ;; the screen, what the GPU shades for it.
+  ;; Returns how many device pixels record i may touch: its reach within its
+  ;; clip and the screen, which is what the GPU shades for it.
   (define (inspect-record-pixels l i)
     (let* ([r (inspect-reach l i)]
            [c (or (inspect-clip l i) (list 0 0 *canvas-pw* *canvas-ph*))]
@@ -1538,9 +1571,9 @@
                  (max (cadr r) (cadr c) 0))])
       (if (and (> w 0) (> h 0)) (* w h) 0)))
 
-  ;; What count records of l from first cost: the device pixels they may touch,
-  ;; a pixel once a record over it, and how many runs start among them, each a
-  ;; draw call. => (values pixels runs)
+  ;; Returns what count records of l from first cost, as (values pixels
+  ;; runs): the device pixels they may touch, a pixel counted once for each
+  ;; record over it, and how many runs start among them, each a draw call.
   (define (inspect-span-cost l first count)
     (values
      (let loop ([i first] [px 0.0])
@@ -1550,10 +1583,10 @@
      (length (filter (lambda (run) (< -1 (- (caddr run) first) count))
                      (inspect-list-runs l)))))
 
-  ;; Does record i of l say what record j of b does? What a record says of
-  ;; where it is in the list's extras, its clip and its rows, moves when
-  ;; something before it changes, so it isn't compared. Making nothing: the
-  ;; Pipeline asks it of every record of a frame.
+  ;; Whether record i of l says what record j of b does. What a record says
+  ;; of where things are in the list's extras (its clip and its rows) moves
+  ;; when something before it changes, so it isn't compared. It allocates
+  ;; nothing: the Pipeline asks it of every record of a frame.
   (define (inspect-record-same? l i b j)
     (let ([head (inspect-word l i rec-row-head)])
       (and (fx= (fxand head #xff) (fxand (inspect-word b j rec-row-head) #xff))
@@ -1566,8 +1599,9 @@
                           (fx= (inspect-word l i k) (inspect-word b j k)))
                       (loop (fx+ k 1))))))))
 
-  ;; How many of count records of l from first differ from bcount records of b
-  ;; from bfirst, one by one, a record past b's counting as changed.
+  ;; Returns how many of count records of l from first differ from bcount
+  ;; records of b from bfirst, compared one by one; a record past b's last
+  ;; counts as changed.
   (define (inspect-span-changed l first count b bfirst bcount)
     (let loop ([k 0] [n 0])
       (cond [(= k count) n]
@@ -1578,21 +1612,22 @@
 
   ;;; -- inside a record
 
-  ;; The run that draws record i of l, (mode image first count variant), or #f.
+  ;; Returns the run that draws record i of l, (mode image first count
+  ;; variant), or #f.
   (define (inspect-record-run l i)
     (find (lambda (run) (< -1 (- i (caddr run)) (cadddr run)))
           (inspect-list-runs l)))
 
-  ;; The shader a run's records are drawn with: a paint's own, or the variant
-  ;; of the fragment shader they need.
+  ;; Returns the shader a run's records are drawn with: a paint's own, or
+  ;; the variant of the fragment shader they need.
   (define (inspect-run-fragment run)
     (let ([x (cadr run)])
       (if (gpu-call? x)
           (gpu-call-shader x)
           (world-value (inspect-run-shader run)))))
 
-  ;; The helper groups a shader's source takes, wherever it takes them, in
-  ;; order.
+  ;; Returns the helper groups a shader's source uses, wherever it uses
+  ;; them, in order.
   (define (inspect-helpers-used form)
     (let walk ([form form] [acc '()])
       (cond [(not (pair? form)) acc]
@@ -1600,8 +1635,8 @@
              (if (memq (cadr form) acc) acc (append acc (list (cadr form))))]
             [else (walk (cdr form) (walk (car form) acc))])))
 
-  ;; A shader's source, pretty-printed, and after it the helpers it uses
-  ;; written out, under their names: lines.
+  ;; Returns a shader's source, pretty-printed, followed by the helpers it
+  ;; uses written out under their names, as a list of lines.
   (define (inspect-shader-lines shader)
     (let ([text (with-output-to-string
                   (lambda ()
@@ -1621,6 +1656,7 @@
                (loop (cdr chars) '() (cons (list->string (reverse line)) acc))]
               [else (loop (cdr chars) (cons (car chars) line) acc)]))))
 
-  ;; The glyphs' atlas as an image, to draw: one channel, coverage, as the
-  ;; glyph records read it. Core0's own: it's never let go of here.
+  ;; Returns the glyphs' atlas as an image to draw: one channel, coverage,
+  ;; as the glyph records read it. It is core0's own, and never let go of
+  ;; here.
   (define (inspect-atlas-image) (gpu-atlas-image)))

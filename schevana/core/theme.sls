@@ -1,16 +1,17 @@
 ;;; (schevana core theme) — how everything looks, as live data: each setting
-;;; from the first layer that has it (your Overrides, your changes to the
-;;; chosen style, the style, its palette, the built-in defaults), resolved into
-;;; one table that (theme key) reads; and the looks' registries, styles,
-;;; palettes and wallpapers.
+;;; comes from the first layer that has it (your Overrides, your changes to
+;;; the chosen style, the style, its palette, the built-in defaults), resolved
+;;; into one table that (theme key) reads; and the registries of the looks:
+;;; styles, palettes and wallpapers.
 ;;;
 ;;; (theme 'accent)                 => #x7aa2f7
 ;;; (set-style! 'genera)            the one switch: frames, palette, ...
 ;;; (set-theme! 'accent #xff9e64)   your change, remembered for this style
 ;;; (override! 'ui-font-size 15)    on top of every style that honors it
 ;;;
-;;; The table itself, and (theme key), are (schevana core theme-table)'s,
-;;; below drawing; this file fills it, and loads once colors can be mixed.
+;;; The table itself, and (theme key), belong to (schevana core theme-table),
+;;; below drawing; this library fills the table, and loads once colors can
+;;; be mixed.
 ;;;
 ;;; A rule is a setting computed from others when the table is built:
 ;;; 'selection (theme-rule (mix 'accent 'bg-1 0.65)). A part is a setting
@@ -41,19 +42,19 @@
   (library-layer core)
 
   (define-state *theme-version* 0)
-  ;; Keeps a change to the layers: (schevana services theme-file) sets it (the
-  ;; file saved soon after); till then nothing.
+  ;; Keeps a change to the layers. (schevana services theme-file) sets it (it
+  ;; saves the file soon after); until then it does nothing.
   (define-hook (theme-save!) (void))
 
   (define-state *style-name* 'mac)   ; the chosen style's name
-  ;; ((style key value ...) ...): yours, per style
+  ;; ((style key value ...) ...): your changes, per style
   (define-state *style-changes* '())
   ;; (key value ...): on top of every style
   (define-state *theme-overrides* '())
   (define-state *scale-setting* 0)   ; the display's, in percent; 0 follows it
 
   ;; The built-in defaults, the bottom layer: Tokyo Night's colors, the
-  ;; rest derived from them as every palette's are, and the metrics.
+  ;; other colors derived from them as every palette's are, and the metrics.
   (define base-colors
     '(bg-0 #x13141c
       bg-1 #x1a1b26
@@ -96,8 +97,8 @@
             'button-idle (theme-rule (mix 'bg-3 'text 0.15)))))
 
   ;; What the rest of the world adds as it loads (theme-default!): the
-  ;; fonts, the frame's parts, the kits' and the desktop layer's; kept
-  ;; across a reload until they add it again.
+  ;; fonts, the frame's parts, and the kits' and the desktop layer's
+  ;; settings. They are kept across a reload until they are added again.
   (define-state *added-defaults* '())
 
   (define-state default-theme
@@ -113,7 +114,7 @@
               palette tokyo-night
               ;; a wallpaper's name: gradient, flat or shade
               wallpaper gradient
-              ;; the behaviors a style chooses: today's feel
+              ;; the behaviors a style chooses, here the default feel
               frame-edge 5
               frame-corner 14
               title-double-click maximize
@@ -123,16 +124,17 @@
               raise-on-click #t
               ;; a dialog stays above the window that waits on it
               modal-above #t)
-            ;; what drawing, the pacer and the screen read, as they gave it
+            ;; what drawing, the pacer and the screen read, as they give it
             *theme-table-defaults*
             *added-defaults*))
 
   (define-state color-keys
     (append (plist-keys base-colors) (plist-keys derived-colors)))
 
-  ;; The look's knobs, (key "Label" . kind): a style honors those its
-  ;; 'options list (none: all); one it does not list holds its own value
-  ;; whatever you change. Pixels: lo hi, and the key of the text's least.
+  ;; The look's knobs, (key "Label" . kind). A style honors those that its
+  ;; 'options lists (all of them when it has no 'options); a knob it does
+  ;; not list keeps the style's own value whatever you change. A size in
+  ;; pixels is lo hi, then the key of the least size its text needs.
   (define common-options
     '((palette "Palette" palette)
       (accent "Accent" color)
@@ -147,13 +149,13 @@
       (topbar-height "Top bar" 22 40 topbar-height-min)
       (taskbar-height "Taskbar" 28 56 taskbar-height-min)))
 
-  ;; The built-in value of key (a rule as it is).
+  ;; Returns the built-in value of key (a rule as it is, not computed).
   (define (theme-default key) (plist-ref default-theme key #f))
 
   ;;; ------------------------------------------------------------------
   ;;; palettes
-  ;;; A palette is named colors, a layer under the styles. Each is a file in
-  ;;; palettes/; the setting 'palette names the one in use:
+  ;;; A palette is a set of named colors, a layer under the styles. Each is a
+  ;;; file in palettes/; the setting 'palette names the one in use:
   ;;;
   ;;;   (define-palette nord "Nord" '(bg-0 #x242933 ... panel #x1f232b))
 
@@ -176,16 +178,16 @@
   (define (palette-title name)
     (let ([p (assq name *palettes*)]) (if p (cadr p) (symbol->string name))))
 
-  ;; (a world from before keeps #f for a palette of no colors until its
+  ;; (a world from before may hold #f for a palette with no colors until its
   ;; files register again)
   (define (palette-colors name)
     (let ([p (assq name *palettes*)]) (or (and p (caddr p)) '())))
 
   ;;; ------------------------------------------------------------------
   ;;; wallpapers
-  ;;; A wallpaper fills the desktop from the theme's two desktop colors, a
-  ;;; layer of the look as a palette is. Each is a file in wallpapers/; the
-  ;;; setting 'wallpaper names the one in use:
+  ;;; A wallpaper fills the desktop from the theme's two desktop colors; it
+  ;;; is a layer of the look, as a palette is. Each is a file in
+  ;;; wallpapers/; the setting 'wallpaper names the one in use:
   ;;;
   ;;;   (define-wallpaper flat "Flat"
   ;;;     (lambda (x y w h top bottom) (fill-box x y w h top)))
@@ -205,16 +207,16 @@
 
   (define (wallpapers) (map car *wallpapers*))
 
-  ;; The name of the wallpaper drawn for name: the default for one that is
-  ;; gone, #f when that is gone too.
+  ;; Returns the name of the wallpaper drawn for name: the default one when
+  ;; name is gone, or #f when that is gone too.
   (define (wallpaper-shown name)
     (let ([wp (or (assq name *wallpapers*)
                   (assq (theme-default 'wallpaper) *wallpapers*))])
       (and wp (car wp))))
 
-  ;; The desktop's background in a rectangle: the wallpaper named pattern (a
-  ;; value of the theme key 'wallpaper) from the colors top and bottom, or a
-  ;; plain fill when none is there.
+  ;; Fills a rectangle with the desktop's background: the wallpaper named
+  ;; pattern (a value of the theme key 'wallpaper) made from the colors top
+  ;; and bottom, or a plain fill when there is no wallpaper.
   (define (fill-wallpaper x y w h pattern top bottom)
     (let ([wp (assq (wallpaper-shown pattern) *wallpapers*)])
       (if wp
@@ -224,11 +226,11 @@
   ;;; ------------------------------------------------------------------
   ;;; styles
   ;;; A style is a name, a title and settings: theme keys, and 'parent (a
-  ;;; style's name: it inherits that style's settings), 'options (the
-  ;;; common options it honors and its own) and 'places. A style whose
-  ;;; 'palette has a dark twin names it 'palette-dark: on a desktop that
-  ;;; prefers dark (screen-system-theme) it is the palette, unless one was
-  ;;; chosen. Each is a file in styles/:
+  ;;; style's name, whose settings it inherits), 'options (the common
+  ;;; options it honors, and its own) and 'places. A style whose 'palette
+  ;;; has a dark twin names it as 'palette-dark: on a desktop that prefers
+  ;;; dark (screen-system-theme) the twin is the palette, unless one was
+  ;;; chosen. Each style is a file in styles/:
   ;;;
   ;;;   (define-style flat-mac "Flat Mac" 'parent 'mac 'corner-radius 0)
 
@@ -245,7 +247,7 @@
     name)
 
   ;; (define-style name "Title" key value ...) adds a style, or replaces the
-  ;; one of that name; the next frame shows it, in every style under it.
+  ;; one of that name; the next frame shows it, and every style built on it.
   (define-syntax define-style
     (syntax-rules ()
       [(_ name title setting ...)
@@ -262,17 +264,18 @@
   ;;; parts
 
   ;; (define-part (name formal ...) body ...) defines name* as the body (the
-  ;; built-in) and name as a call to the theme's part for the key name,
-  ;; whose built-in setting is name*; a style replaces it by setting the key.
-  ;; The built-in is given by its name, which the theme looks up at each
-  ;; call (world-value), so that a redefinition in the world takes at the
-  ;; next. name is a hook, so that the part may be replaced live, set as a
-  ;; state is: defined by the define-hook where the part is, a definition
-  ;; like any at the top level, where a name used before it is defined is a
-  ;; variable's.
+  ;; built-in), and name as a call to the theme's part for the key name,
+  ;; whose built-in setting is name*; a style replaces the part by setting
+  ;; the key. The built-in is given by its name, which the theme looks up at
+  ;; each call (world-value), so that a redefinition in the world takes
+  ;; effect at the next call. name is a hook, so that the part may be
+  ;; replaced live, and it is set as a state is. It is defined by the
+  ;; define-hook in scope where the part is defined; at the top level that
+  ;; is a definition like any other, and a name used before it is defined
+  ;; is a variable.
   (define-syntax define-part
     (lambda (x)
-      ;; name*, made where name is: the keyword may be a forwarder's, from
+      ;; name*, made in name's scope: the keyword may be a forwarder's, from
       ;; another environment
       (define (star name)
         (datum->syntax name
@@ -300,7 +303,7 @@
     (theme-default! key value))
 
   ;; A built-in setting, under every layer: kits and the desktop layer give
-  ;; their parts and sizes so as they load.
+  ;; their parts and sizes this way as they load.
   (define (theme-default! key value)
     (set! *added-defaults*
           (cons* key value (plist-remove *added-defaults* key)))
@@ -312,12 +315,13 @@
   ;;; ------------------------------------------------------------------
   ;;; another style's theme
 
-  ;; Themes of other styles, of styles with a preview's settings, and inside
-  ;; containers, built once per change.
+  ;; The themes of other styles, of styles with a preview's settings, and
+  ;; inside containers, each built once per change.
   (define-made *style-themes* (make-hashtable equal-hash equal?))
 
-  ;; The theme of style name with your changes to it and the Overrides,
-  ;; extra (key value ...) over all, inside the container place (#f: none).
+  ;; Returns the theme of style name with your changes to it and the
+  ;; Overrides, with extra (key value ...) over all, inside the container
+  ;; place (#f for none).
   (define (style-theme name place . extra)
     (let ([k (list* name place extra)])
       (or (hashtable-ref *style-themes* k #f)
@@ -332,8 +336,8 @@
     (fluid-let ([*theme* (apply style-theme name #f extra)]) (thunk)))
 
   ;; Draws thunk inside a container: a dialog, a field, a list, a tooltip,
-  ;; a menu, a bar or a toast. A style colors what sits there by
-  ;; its settings for that place: 'places ((dialog key value ...) ...).
+  ;; a menu, a bar or a toast. A style colors what sits there by its
+  ;; settings for that place: 'places ((dialog key value ...) ...).
   (define (with-place place thunk)
     (if (assq place (theme 'places))
         (fluid-let ([*theme* (apply style-theme (theme 'window-style) place
@@ -347,8 +351,8 @@
   (define (style-changes-of name)
     (let ([p (assq name *style-changes*)]) (if p (cdr p) '())))
 
-  ;; The style and its parents, nearest first; a loop or a missing parent
-  ;; ends the chain (the built-in defaults are under every chain).
+  ;; Returns the style and its parents, nearest first; a loop or a missing
+  ;; parent ends the chain (the built-in defaults are under every chain).
   (define (style-chain name)
     (let loop ([n name] [seen '()])
       (let ([s (and (not (memq n seen)) (find-style n))])
@@ -357,7 +361,7 @@
                           (cons n seen)))
             '()))))
 
-  ;; The nearest style setting of key in the chain.
+  ;; Returns the nearest style's setting of key in the chain, or default.
   (define (chain-ref chain key default)
     (let ([s (find (lambda (s) (plist-has? (style-settings s) key)) chain)])
       (if s (plist-ref (style-settings s) key default) default)))
@@ -378,11 +382,12 @@
           (hashtable-set! t (car p) (cadr p)))
         (loop (cddr p)))))
 
-  ;; The theme of style name with these Overrides and changes: each setting
-  ;; from the first layer that has it, the palette's colors under the
-  ;; styles; at: inside a container place, and a preview's extra settings
-  ;; over all. Its rules are computed when read (theme-changed! reads them
-  ;; all, so that a broken one fails at the change that broke it).
+  ;; Returns the theme of style name with these Overrides and changes: each
+  ;; setting comes from the first layer that has it, with the palette's
+  ;; colors under the styles. at gives a container place to be inside, and
+  ;; a preview's extra settings over all. Its rules are computed when they
+  ;; are read (theme-changed! reads them all, so that a broken one fails at
+  ;; the change that broke it).
   (define (resolve-theme name overrides changes . at)   ; at: [place [extra]]
     (let* ([chain (style-chain name)] [t (make-eq-hashtable)]
            [places (chain-ref chain 'places '())]
@@ -402,8 +407,8 @@
       ;; inside a container, the style's settings for it (with-place)
       (let ([p (assq place places)])
         (when p (plist-into! t (cdr p) all)))
-      ;; a desktop that prefers dark: the dark palette (one chosen, where
-      ;; the style offers the choice, or the style's own), unless a
+      ;; on a desktop that prefers dark, the dark palette (one chosen, where
+      ;; the style offers the choice, or else the style's own), unless a
       ;; palette was chosen
       (let ([dark (or (hashtable-ref t 'palette-dark #f)
                       (chain-ref chain 'palette-dark #f))])
@@ -420,12 +425,13 @@
   (define (compute-rules! t)
     (fluid-let ([*theme* t]) (vector-for-each theme (hashtable-keys t))))
 
-  ;; A change not only of colors changes the chrome: the windows hear of
-  ;; their new frames ((schevana core windows) sets it); till then nothing.
+  ;; A change to more than colors changes the chrome, and the windows hear
+  ;; of their new frames ((schevana core windows) sets this); until then it
+  ;; does nothing.
   (define-hook (wm-chrome-changed!) (void))
 
-  ;; Whatever changed: build the theme again, then tell who cares: a change
-  ;; not only of colors changes the chrome.
+  ;; Whatever changed, builds the theme again, then tells whoever cares: a
+  ;; change to more than colors changes the chrome.
   (set-hook! (theme-changed!)
     (let* ([old *main-theme*]
            [new (resolve-theme *style-name* *theme-overrides*
@@ -447,9 +453,9 @@
 
   ;;; ------------------------------------------------------------------
   ;;; fonts and heights
-  ;;; The fonts' roles ((schevana core fonts)), from the four font settings (a
-  ;;; style may give any): the ui or mono family at its size plus d (or
-  ;;; twice it).
+  ;;; The fonts' roles ((schevana core fonts)), made from the four font
+  ;;; settings (a style may give any of them): the ui or mono family at its
+  ;;; size plus d (or at twice the size).
 
   (define (theme-font-rule family d . opts)
     (theme-rule
@@ -472,10 +478,10 @@
        (theme-default! (car roles) (cadr roles))
        (loop (cddr roles)))))
 
-  ;; A title's or a bar's height, key: the setting, grown to the room its
-  ;; text needs (the setting min, named key-min) unless the style fixes
-  ;; it, meaning its pixels; 0 is none. At the default fonts the text fits
-  ;; every setting the Settings app offers.
+  ;; Returns a title's or a bar's height: the setting key, grown to the room
+  ;; its text needs (the setting min, named key-min), unless the style fixes
+  ;; key, which then means its pixels; 0 is none. With the default fonts the
+  ;; text fits at every setting the Settings app offers.
   (define (chrome-height key min)
     (let ([v (theme key)])
       (if (or (eqv? v 0) (memq key (theme 'fixed))) v (max v (theme min)))))
@@ -488,8 +494,8 @@
 
   ;;; ------------------------------------------------------------------
   ;;; the frame
-  ;;; The frame around each window's content: parts of the style that the
-  ;;; window manager calls with the window, in its theme.
+  ;;; The frame around each window's content is made of the style's parts,
+  ;;; which the window manager calls with the window, in its theme.
   ;;;
   ;;;   frame-insets   (win) -> (values left top right bottom), its thickness
   ;;;   frame-regions  (win) -> ((kind x y w h) ...) in window coordinates:
@@ -503,12 +509,13 @@
   ;;;   frame-radius   (win) -> its corners' radius
   ;;;   frame-bleed    (win) -> how far, in logical pixels, it draws past
   ;;;                  its frame (a glow, say): a window is drawn clipped to
-  ;;;                  its extent (window-extent in wm.ss), its frame and at
-  ;;;                  least that bleed, and only that much is drawn again
-  ;;;                  when it changes
+  ;;;                  its extent (window-extent, (schevana core windows)),
+  ;;;                  its frame and at least that bleed, and only that much
+  ;;;                  is drawn again when it changes
   ;;;   frame-under, frame-over   (win x y w h focused? hover pressed) draw
-  ;;;                  it before the content and after; hover is the region
-  ;;;                  under the mouse, pressed the drag in progress
+  ;;;                  the frame before the content and after it; hover is
+  ;;;                  the region under the mouse, pressed the drag in
+  ;;;                  progress
   ;;;
   ;;; A style gives the procedures by name. Each style is a file in styles/;
   ;;; add your own there, in ~/.schevana.d/styles/, or from the REPL:
@@ -519,8 +526,8 @@
   ;;;   (set-style! 'bare)
   ;;;   (open-window "Odd one out" 'window-style 'windows)   ; one window's
 
-  ;; The plain frame, what a style leaves out: a title bar's height on top,
-  ;; and nothing drawn.
+  ;; The plain frame, for what a style leaves out: a title bar's height on
+  ;; top, and nothing drawn.
   (define (frame-insets* win) (values 0 (title-height) 0 0))
   (define (frame-regions* win) '())
   (define (frame-radius* win) 0)
@@ -538,9 +545,10 @@
   ;;; ------------------------------------------------------------------
   ;;; changing settings
 
-  ;; Changes the layers by thunk and builds the theme again; if that fails
-  ;; (a broken rule, a bad value), the layers are as they were, and so is
-  ;; the theme (a failure after the new table took over, in fonts, say).
+  ;; Changes the layers by thunk and builds the theme again. If that fails
+  ;; (a broken rule, a bad value), the layers go back to what they were, and
+  ;; so does the theme (for a failure after the new table took over, in
+  ;; fonts, say).
   (define (change-layers! thunk)
     (let ([s *style-name*] [c *style-changes*] [o *theme-overrides*]
           [sc *scale-setting*])
@@ -551,8 +559,8 @@
         (thunk)
         (theme-changed!))))
 
-  ;; The layers at once, as a saved look gives them ((schevana services
-  ;; theme-file)).
+  ;; Sets all the layers at once, as a saved look gives them ((schevana
+  ;; services theme-file)).
   (define (theme-layers-set! style overrides changes scale)
     (set! *style-name* style)
     (set! *theme-overrides* overrides)
@@ -564,14 +572,15 @@
                                       *style-changes*)])
                       (if (null? plist) rest (cons (cons name plist) rest)))))
 
-  ;; The one switch: frames, palette, everything you changed for it.
+  ;; The one switch: it changes the frames, the palette, and everything you
+  ;; changed for the style.
   (define (set-style! name)
     (unless (find-style name) (errorf 'set-style! "no style ~s" name))
     (change-layers! (lambda () (set! *style-name* name)))
     (theme-save!))
 
-  ;; Your change to the chosen style, remembered for it. window-style
-  ;; chooses a style, scale the display's scale.
+  ;; Your change to the chosen style, remembered for it. The key
+  ;; window-style chooses a style, and scale sets the display's scale.
   (define (set-theme! key value)
     (case key
       [(window-style) (set-style! value)]
@@ -597,7 +606,8 @@
     (theme-save!))
 
   ;; (override! key value) holds in every style that honors key;
-  ;; (override! key) clears it. The style and the scale are not a style's.
+  ;; (override! key) clears it. The style and the scale are not a style's
+  ;; settings, so they can't be overridden.
   (define (override! key . value)
     (when (memq key '(window-style scale))
       (errorf 'override! "~s is not a style's setting" key))
@@ -610,12 +620,13 @@
 
   (define (theme-overrides) *theme-overrides*)
 
-  ;; The display's scale in percent, 0 to follow the desktop: not a style's.
+  ;; Sets the display's scale in percent, 0 to follow the desktop; it is not
+  ;; a style's setting.
   (define (set-scale! pct)
     (change-layers! (lambda () (set! *scale-setting* pct)))
     (theme-save!))
 
-  ;; Old names, kept.
+  ;; Old names, kept for callers that still use them.
   (define (set-theme-plist! plist)
     (for-each (lambda (k) (set-theme! k (plist-ref plist k #f)))
               (plist-keys plist)))
@@ -627,14 +638,14 @@
 
   (define (set-accent! color) (set-theme! 'accent color))
 
-  ;; Every style's changes and the Overrides go.
+  ;; Forgets every style's changes and the Overrides.
   (define (reset-theme!)
     (change-layers!
      (lambda () (set! *style-changes* '()) (set! *theme-overrides* '())))
     (theme-save!))
 
-  ;; The theme until its first change, its rules computed when read (no
-  ;; color can be mixed before gfx.ss loads).
+  ;; The theme until its first change, with its rules computed when they are
+  ;; read (no color can be mixed before (schevana core draw) loads).
   (at-load
    (set! *theme* (resolve-theme *style-name* *theme-overrides*
                                 (style-changes-of *style-name*)))

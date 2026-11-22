@@ -38,7 +38,8 @@
               (begin (pixmap-fill! pm (alpha #xffffff 0.5))
                      (all? #x80808080)))))
 
-;; Rows y0 .. y1 of a w-wide pixmap's bytes: each pixel its row's number.
+;; Paints rows y0 up to (not including) y1 of a w-wide pixmap's bytes, each
+;; pixel with its row's number.
 (define-worklet (pixmap-test-rows! y0 y1 bytes w)
   (do ([y y0 (fx+ y 1)]) ((fx= y y1))
     (do ([x 0 (fx+ x 1)]) ((fx= x w))
@@ -60,8 +61,8 @@
                 (raises? (lambda () (pixmap-rows! pm 80 91 pixmap-test-rows!
                                                   300)))))))
 
-;; Each device pixel of the drawn rect shows its pixmap pixel, and nothing
-;; outside the rect changes.
+;; Whether, at scale s, each device pixel of the drawn rect shows its
+;; nearest pixmap pixel, and nothing outside the rect changes.
 (define (draws-nearest? s pm)
   (canvas-create! 1280 800 s)
   (let* ([own (pixmap-picture pm)]
@@ -99,8 +100,9 @@
               '(0 1 2 3) '(#xffff0000 #xff00ff00 #xff0000ff #xff123456))
     pm))
 
-;; A frame's new glyphs go up a byte a pixel: one size of them or another
-;; leaves an odd offset, which Metal would shift pixels after them by.
+;; A frame's new glyphs are uploaded at one byte per pixel, so some sizes of
+;; them leave an odd offset, and Metal would shift the pixels uploaded after
+;; them by that offset.
 (check "a pixmap arrives whole, whatever new glyphs the frame sends before it"
        (for-all
         (lambda (i)

@@ -1,7 +1,7 @@
 ;;; tests/units/looks.ss — the styles' own looks: Genera, the CADR, Interlisp,
 ;;; OPEN LOOK, Adwaita, Mac and ours, drawn and measured.
 
-;;; Our styles, finished (step 9)
+;;; The styles' own looks
 
 (define (style-insets st)
   (let ([w (open-window "Insets" 'size '(300 . 200) 'window-style st)])
@@ -48,8 +48,8 @@
               (equal? (of 'mac 'drag-feedback 'bell 'mouse-doc)
                       '(live none #f)))))
 
-;; An outline drawn on white at 100 and 150 %: what changed, and what
-;; changed outside its rectangle.
+;; Draws an outline on white at 100 and 150 %, and returns for each scale
+;; what changed, and what changed outside the outline's rectangle.
 (define (outline-changes st w h)
   (map (lambda (s)
          (with-style st
@@ -274,7 +274,7 @@
 
 (check "Genera's caret is a block in reverse video and its selection an \
         underline (text-caret, text-selection)"
-       (let ([probe   ; ink at x on any of the rows ys
+       (let ([probe   ; whether there is ink at x on any of the rows ys
               (lambda (style text at x ys)
                 (set-style! style)
                 (let-values ([(win ui) (field-window text)])
@@ -359,8 +359,9 @@
               (and (equal? (assoc "One" seen) '("One" . #f))
                    (equal? (assoc "Kind" seen) '("Kind" . #t))))))))
 
-;; Pixels of an image drawn by thunk in Genera, scale s, extra settings
-;; over it: ((x y) ...) read in device pixels.
+;; Returns the pixels at the points at, each (x y) in device pixels, of a
+;; pw × ph image that thunk draws in Genera at scale s, with the extra
+;; settings over the style's.
 (define (genera-pixels pw ph s at thunk . extra)
   (apply with-style 'genera
          (lambda ()
@@ -530,7 +531,8 @@
            (steps 3)
            (let*-values ([(cx cy cw ch) (content-rect win)]
                          [(f) (ui-region-frame (ui-find ui '(column todo)))]
-                         ;; the well's last row: the board's, a pad up
+                         ;; the well's last row: a pad up from the board's
+                         ;; bottom
                          [(ps) (map (lambda (dx)
                                       (canvas-pixel (+ cx (car f) dx)
                                                     (+ cy ch (- (ui-pad)) -1)))
@@ -654,8 +656,8 @@
                  (override! 'scrollbar-side)
                  (close-window! w)
                  (steps 1)
-                 ;; from the title strip's bottom (the inset less the
-                 ;; ink) to the frame's
+                 ;; the bar runs from the title strip's bottom (the inset
+                 ;; less the ink) to the frame's bottom
                  (let ([strip (- t 2)])
                    (and (= l 28) (eq? region 'scrollbar) bar
                         (= (car bar) -28) (= (caddr bar) 24)
@@ -719,9 +721,10 @@
            (paint 1.5)
            (and (= one 1) (= (hashtable-size *stipple-tiles*) 2)))))
 
-;;; the verifier's findings on steps 8 and 9
+;;; Saving, style names, options, corners and frames
 
-;; Runs the timers due within the next second: a save asked for soon.
+;; Runs the timers due within the next second, such as a save asked for
+;; soon.
 (define (run-soon-timers!)
   (let ([real now-ms])
     (fluid-let ([now-ms (lambda () (+ (real) 1000))]) (steps 1))))
@@ -873,7 +876,7 @@
                            (and r (ui-region-x r))))]
                 [sw (settings-sidebar-width)])
            (let-values ([(cx cy cw ch) (content-rect s)])
-             (inject! `(mouse-move ,(+ cx 40) ,(+ cy 200)))   ; the sidebar
+             (inject! `(mouse-move ,(+ cx 40) ,(+ cy 200)))   ; over the sidebar
              (let ([right (bar-x)])
                (override! 'scrollbar-side 'left)
                (let ([left (bar-x)])
@@ -1038,8 +1041,8 @@
 
 ;;; Adwaita: libadwaita's widgets and windows, GNOME Shell's desktop
 
-;; A pixel's channels, each within 2 of color's: what the GPU blends,
-;; rounded its own way.
+;; Whether each of a pixel's channels is within 2 of color's: the GPU
+;; rounds what it blends in its own way.
 (define (adwaita-test-near? pixel color)
   (let ([want (color->pixel color)])
     (for-all (lambda (shift)
@@ -1048,8 +1051,8 @@
                    2))
              '(0 8 16))))
 
-;; The pixels at points of what draw draws in a w x h picture on the
-;; window's color, in Adwaita.
+;; Returns the pixels at points of what draw draws in Adwaita, in a w × h
+;; picture on the window's color.
 (define (adwaita-test-pixels w h draw points)
   (with-style 'adwaita
     (lambda ()
@@ -1093,8 +1096,8 @@
                           (ui-draw-button 10 10 80 h '() "Go" #f)
                           (ui-draw-button 110 10 80 h '(primary) "Go" #f)
                           (ui-draw-button 210 10 80 h '(danger) "Go" #f))
-                        ;; inside each, clear of its label; a corner
-                        ;; outside the 9 round
+                        ;; a point inside each, clear of its label, and a
+                        ;; corner outside the radius of 9
                         '((14 . 20) (114 . 20) (214 . 20) (10 . 10)))])
              (and (= h (+ 10 (max 24 (round (font-line-height 'ui)))))
                   (= (theme 'adwaita-button-radius) 9)
@@ -1166,8 +1169,9 @@
                        (lambda ()
                          (ui-draw-checkbox 10 0 20 30 '() #f)
                          (ui-draw-checkbox 50 0 20 30 '(checked) #f))
-                       ;; the box is 5 down: its ring's middle row, its
-                       ;; inside, a checked one's corner clear of the check
+                       ;; the box is 5 down: points on its ring's middle
+                       ;; row, inside it, and in a checked box's corner,
+                       ;; clear of the check
                        '((20 . 5) (20 . 15) (52 . 22) (31 . 15)))])
              (and (adwaita-test-near? (car ps) (mix 'window-bg 'text 0.15))
                   (adwaita-test-near? (cadr ps) 'window-bg)

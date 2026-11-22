@@ -1,10 +1,10 @@
-;;; (schevana styles halo) — the Halo window style. Calm, floating cards with
+;;; (schevana styles halo) — the Halo window style: calm, floating cards with
 ;;; no title bar. The title is a small pill threaded on the card's top edge,
 ;;; like a fieldset's legend breaking its border; the buttons are three dots in
 ;;; a second pill at the right that bloom into glyphs under the mouse. Focus is
 ;;; the halo: a thin ring running from accent to accent-2 around the card, with
-;;; a faint glow around card and pills alike. Other cards keep a hairline and
-;;; recede.
+;;; a faint glow around the card and the pills alike. Other cards keep a
+;;; hairline and recede.
 
 (library (schevana styles halo)
   (export
@@ -23,14 +23,14 @@
 
   (library-layer looks)
 
-  ;; Even, so the line through the pills' middle stays crisp.
+  ;; An even height, so that the line through the pills' middle stays crisp.
   (define (halo-pill-height)
     (* 2 (exact (ceiling (/ (max 20 (+ (font-line-height 'ui) 6)) 2)))))
 
   (define (halo-top) (max (title-height) (+ (halo-pill-height) 4)))
 
-  ;; The card starts at the pills' middle. Maximized, it fills the window
-  ;; and the pills drop to the middle of the top inset.
+  ;; The card starts at the pills' middle. When maximized, it fills the
+  ;; window and the pills drop to the middle of the top inset.
   (define (halo-edge win)
     (if (maximized? win) 0 (quotient (halo-pill-height) 2)))
 
@@ -59,10 +59,11 @@
       (map (lambda (kind i) (list kind (+ x0 (* i c)) (halo-drop win) c ph))
            '(minimize maximize close) '(0 1 2))))
 
-  ;; The pills as ((x width title) ...) in window coordinates: the title's,
-  ;; unless the window is too narrow for it, and the buttons'. The title's
-  ;; ends at most two thirds of the way across, so that some of the edge
-  ;; shows between the pills however long the title is.
+  ;; Returns the pills as ((x width title) ...) in window coordinates: the
+  ;; title's pill, unless the window is too narrow for it, and the buttons'
+  ;; pill. The title's pill ends at most two thirds of the way across, so
+  ;; that some of the edge shows between the pills however long the title
+  ;; is.
   (define (halo-pills win)
     (let* ([ph (halo-pill-height)] [tx (halo-margin win)]
            [bx (- (cadr (car (halo-regions win))) 2)]
@@ -74,31 +75,31 @@
           (list buttons)
           (list (list tx tw title) buttons))))
 
-  ;; Each box (x y w h r) stroked by a line lw wide.
+  ;; Strokes each box (x y w h r) with a line lw wide.
   (define (halo-stroke-boxes boxes color lw)
     (for-each (lambda (b)
                 (stroke-box (car b) (cadr b) (caddr b) (cadddr b) color lw
                             (car (cddddr b))))
               boxes))
 
-  ;; The pills' outlines at y, as halo-stroke-boxes' boxes (x y w h r),
-  ;; each grown by d at every side: a line 2d wide stroked inside one runs
-  ;; along the pill's edge.
+  ;; Returns the pills' outlines at y as boxes for halo-stroke-boxes, (x y w
+  ;; h r), each grown by d on every side: a line 2d wide stroked inside one
+  ;; runs along the pill's edge.
   (define (halo-pill-boxes pills x y d)
     (map (lambda (p)
            (list (- (+ x (car p)) d) (- y d) (+ (cadr p) d d)
                  (+ (halo-pill-height) d d) (/ (halo-pill-height) 2)))
          pills))
 
-  ;; The halo's ink, accent at the top left turning to accent-2 at the
-  ;; bottom right, at opacity a; unfocused, the plain border color.
+  ;; Returns the halo's ink: accent at the top left turning to accent-2 at
+  ;; the bottom right, at opacity a; unfocused, the plain border color.
   (define (halo-ink x y w h focused? a)
     (apply linear-gradient x y (+ x w) (+ y h)
            (map (lambda (key) (alpha (if focused? key 'window-border) a))
                 '(accent accent-2))))
 
-  ;; ×, −, or two corners of a frame: pointing out to maximize, in to
-  ;; restore. (x, y) is a pixel's middle.
+  ;; Draws ×, −, or two corners of a frame, pointing out to maximize and in
+  ;; to restore. (x, y) is a pixel's middle.
   (define (halo-glyph win kind x y ink)
     (define (line . points) (draw-polyline points ink 1.25))
     (case kind
@@ -116,8 +117,9 @@
   (define (halo-draw-under win x y w h focused? hover pressed)
     (let ([e (halo-edge win)] [r (halo-radius win)] [pills (halo-pills win)])
       (window-shadow win x (+ y e) w (- h e) r focused?)
-      ;; the glow: strokes around card and pills together, fading outward;
-      ;; the card and the pills then cover their inner halves
+      ;; the glow: strokes around the card and the pills together, fading
+      ;; outward; the card and the pills then cover the strokes' inner
+      ;; halves
       (when (and focused? (not (maximized? win)))
         (for-each (lambda (lw)
                     (let ([d (/ lw 2)])
@@ -137,7 +139,7 @@
            [gy (+ (floor mid) 1/2)]   ; the glyphs' row
            [bloom? (memq hover '(close minimize maximize))]
            [ink (halo-ink x y w h focused? 1)])
-      ;; the card's edge: maximized, a line lw high across the top
+      ;; the card's edge; when maximized, a line lw high across the top
       (if (maximized? win)
           (fill-box x (- mid (/ lw 2)) w lw ink)
           (stroke-box x (+ y e) w (- h e) ink lw (halo-radius win)))

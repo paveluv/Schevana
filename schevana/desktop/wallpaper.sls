@@ -1,8 +1,8 @@
-;;; (schevana desktop wallpaper) — the desktop under the windows: the
-;;; wallpaper the theme key 'wallpaper names, filled from the theme's two
-;;; desktop colors. The wallpapers themselves are the core's registry, a
-;;; layer of the look (define-wallpaper, (schevana core theme)); each is a
-;;; file in wallpapers/.
+;;; (schevana desktop wallpaper) — the desktop under the windows. It shows
+;;; the wallpaper that the theme key 'wallpaper names, filled from the
+;;; theme's two desktop colors. The wallpapers themselves are kept in the
+;;; core's registry, one layer of the look (define-wallpaper, (schevana core
+;;; theme)); each wallpaper is a file in wallpapers/.
 
 (library (schevana desktop wallpaper)
   (export
@@ -19,8 +19,8 @@
 
   (library-layer desktop)
 
-  ;; An error in draw-wallpaper is reported, and the rest of the desktop goes
-  ;; on.
+  ;; An error in draw-wallpaper is reported, and the rest of the desktop
+  ;; keeps working.
   (define (draw-desktop)
     (guard (c [#t (report-error! 'desktop c)])
       (draw-wallpaper *canvas-w* *canvas-h*)))
@@ -41,7 +41,8 @@
         [(right) (open-launcher! x y (cons x y))]   ; apps open where clicked
         [(left) (focus-window! #f)])))
 
-  ;; A new theme repaints the app icon too (icon-follow-theme!).
+  ;; A new theme repaints the app icon too (icon-follow-theme!), checked
+  ;; before each frame.
   (define (desktop-frame t)
     (icon-follow-theme!))
 

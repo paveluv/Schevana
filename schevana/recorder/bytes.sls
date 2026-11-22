@@ -1,22 +1,24 @@
-;;; (schevana recorder bytes) — the recorder (.work/gpu-design.md 9.14): the
-;;; bytes of what the world records and hands core0, and the only code that
-;;; writes them. Core1 reaches it only through what its facade,
-;;; (schevana recorder), gives it, and the world through what the core's
-;;; gives it again, so nothing either does, however written, can
-;;; write a byte core0 reads. Core1 keeps the rest of the recorder
-;;; ((schevana core draw)): colors, shapes, text, runs and labels.
+;;; (schevana recorder bytes) — the recorder (.work/gpu-design.md 9.14): it
+;;; holds the bytes of what the world records and hands to core0, and it is
+;;; the only code that writes them. Core1 reaches it only through its
+;;; facade, (schevana recorder), and the world only through what the core's
+;;; facade passes on, so no code of theirs, however it is written, writes a
+;;; byte that core0 reads. The rest of the recorder is core1's ((schevana
+;;; core draw)): colors, shapes, text, runs and labels.
 ;;;
-;;; What's recorded goes into a recording (gpu-recording, (schevana core0
-;;; gpu)): a list's, or the root's, the frame's. Recorded, it's frozen with
-;;; its runs and version and swapped into its holder by one store, so core0
-;;; reads a whole one, never written again while a frame may read it. Each
-;;; holder keeps its older recordings chained after its newest, to write
-;;; again once free: retired after frame N, the last published when it was
-;;; replaced, it's free once core0 gave frame N back.
+;;; What is recorded goes into a recording (gpu-recording, (schevana core0
+;;; gpu)), which belongs to a list or to the root (the frame's). Once
+;;; recorded, a recording is frozen with its runs and version and swapped
+;;; into its holder by one store, so core0 always reads a whole recording,
+;;; and a recording is never written again while a frame may read it. Each
+;;; holder keeps its older recordings chained after its newest, to be
+;;; written again once they are free: a recording replaced when frame N was
+;;; the last one published is retired after frame N, and it is free once
+;;; core0 has given frame N back.
 ;;;
-;;; What the world writes into buffers and images goes the same way, in
+;;; What the world writes into buffers and images travels the same way, in
 ;;; the frame's writes ((schevana core0 gpu)'s gpu-send-writes!), and so do
-;;; the rows an app paints, in loans of the image's own.
+;;; the rows that an app paints, in loans that belong to the image.
 
 (library (schevana recorder bytes)
   (export
@@ -34,17 +36,19 @@
 
   (library-layer recorder)
 
-  ;; Written to between a publish and the next list: a write there raises.
-  ;; A state, as *rec-now* holds it: a reload keeps the two one.
+  ;; What *rec-now* holds while nothing is being recorded (after a frame is
+  ;; frozen, until the next frame or list begins): a write to it raises. It
+  ;; is a state because *rec-now* holds it, so that a reload keeps the two
+  ;; the same object.
   (define-state rec-nothing
     (make-gpu-recording (make-bytevector 0) 0 (make-bytevector 0) 4 '() 0 #f
                         #f))
 
   (define-state *rec-now* rec-nothing)   ; the recording being written
-  ;; the root's newest, the last frame's, or #f
+  ;; the root's newest recording (the last frame's), or #f
   (define-state *rec-root* #f)
-  (define-state *rec-root-next* #f)  ; the root's being written, or #f
-  (define-state *rec-published* 0)   ; frames lent so far, the last one's number
+  (define-state *rec-root-next* #f)  ; the root's recording being written, or #f
+  (define-state *rec-published* 0)   ; frames lent so far: the last one's number
 
   (define (rec-count) (fxquotient (gpu-recording-recs-n *rec-now*) 32))
   (define (rec-extra-at) (fxsrl (gpu-recording-extras-n *rec-now*) 2))
@@ -60,7 +64,8 @@
       (bytevector-copy! old 0 new 0 (gpu-recording-recs-n r))
       (gpu-recording-recs-set! r new)))
 
-  ;; A record's eight words into recording rec, counted once all are in.
+  ;; Puts a record's eight words into recording rec, and counts the record
+  ;; once all of them are in.
   (define-syntax rec-words-put!
     (syntax-rules ()
       [(_ rec w0 w1 x0 y0 x1 y1 a b)
@@ -81,7 +86,8 @@
   (define (rec-write! w0 w1 x0 y0 x1 y1 a b)
     (rec-words-put! *rec-now* w0 w1 x0 y0 x1 y1 a b))
 
-  ;; Room for n more extra words in r: => where the next goes, in bytes.
+  ;; Makes room for n more extra words in r. Returns where the next one
+  ;; goes, in bytes.
   (define (rec-extras-room! r n)
     (let ([at (gpu-recording-extras-n r)] [old (gpu-recording-extras r)])
       (when (> (+ at (* 4 n)) (bytevector-length old))
@@ -104,14 +110,15 @@
       (bytevector-u32-native-set! (gpu-recording-extras r) at v)
       (gpu-recording-extras-n-set! r (fx+ at 4))))
 
-  ;; Word k of the row at row the recording being written wrote.
+  ;; Returns word k of the row that starts at extra word row of the
+  ;; recording being written.
   (define (rec-extra-ref row k)
     (bytevector-s32-native-ref (gpu-recording-extras *rec-now*)
                                (fx* 4 (fx+ row k))))
 
   ;;; ------------------------------------------------------------------ holding
 
-  ;; A recording as big as like's, or a little one.
+  ;; Returns a new recording as big as like, or a small one when like is #f.
   (define (rec-make like)
     (make-gpu-recording
      (make-immobile-bytevector
@@ -121,15 +128,16 @@
       (if like (bytevector-length (gpu-recording-extras like)) 256) 0)
      4 '() 0 #f #f))
 
-  ;; Free once core0 says it's done reading it, by a frame back or by
-  ;; setting its until itself: what it read before, read before this.
+  ;; Whether r is free: core0 says it is done reading r by giving a frame
+  ;; back or by setting r's until itself. The fence orders core0's reads of
+  ;; r before anything written to r after this.
   (define (rec-free? r)
     (let ([until (gpu-recording-until r)])
       (memory-order-acquire)
       (and until (fx<= until *gpu-frame-back*))))
 
-  ;; Of the recordings chained after head (#f for none), one that's free,
-  ;; taken off the chain, or #f.
+  ;; Takes a free recording off the chain after head (#f for none) and
+  ;; returns it, or returns #f.
   (define (rec-take-free! head)
     (let loop ([prev head])
       (let ([r (and prev (gpu-recording-next prev))])
@@ -139,8 +147,8 @@
                r]
               [else (loop r)]))))
 
-  ;; A recording to write for the holder whose newest is head (#f for none):
-  ;; one of those chained after it that's free, or a new one; empty.
+  ;; Returns an empty recording to write for the holder whose newest is
+  ;; head (#f for none): a free one from its chain, or a new one.
   (define (rec-take! head)
     (let ([r (or (rec-take-free! head) (rec-make head))])
       (gpu-recording-recs-n-set! r 0)
@@ -150,31 +158,32 @@
       (gpu-recording-next-set! r #f)
       r))
 
-  ;; r, recorded, frozen with its runs, to be its holder's newest after head
-  ;; (#f for none).
+  ;; Freezes r, now recorded, with its runs, to become its holder's newest
+  ;; recording, ahead of head (#f for none).
   (define (rec-frozen! r runs head)
     (gpu-recording-runs-set! r runs)
     (gpu-recording-version-set! r (if head (fx+ 1 (gpu-recording-version head))
                                       1))
     (gpu-recording-next-set! r head))
 
-  ;; head, replaced in its holder: the holder stores the newer first, then
-  ;; this reads the frames published, so only frames up to that one may show
-  ;; head.
+  ;; Retires head once it is replaced in its holder. The holder stores the
+  ;; newer recording first, and only then does this read the count of
+  ;; frames published, so only frames up to that one may show head.
   (define (rec-retired! head)
     (when head (gpu-recording-until-set! head *rec-published*)))
 
-  ;; The root's recording begins: written from the start.
+  ;; Begins the root's recording, written from the start.
   (define (rec-bytes-begin!)
     (unless *rec-root-next* (set! *rec-root-next* (rec-take! *rec-root*)))
     (gpu-recording-recs-n-set! *rec-root-next* 0)
     (gpu-recording-extras-n-set! *rec-root-next* 4)
     (set! *rec-now* *rec-root-next*))
 
-  ;; What thunk records goes into a recording of lst's own (a gpu-list's),
-  ;; frozen after with the runs runs-of gives while it's still the one written
-  ;; (the runs end there), and swapped into lst; the recording written before
-  ;; goes on as it was.
+  ;; What thunk records goes into a recording of lst's own (lst is a
+  ;; gpu-list). Afterwards that recording is frozen with the runs that
+  ;; runs-of returns while it is still the one being written (the runs end
+  ;; there), and swapped into lst. The recording that was being written
+  ;; before goes on as it was.
   (define (rec-into-list! lst thunk runs-of)
     (let ([outer *rec-now*] [r #f])
       (dynamic-wind
@@ -189,8 +198,8 @@
            (rec-retired! head))
          (set! *rec-now* outer)))))
 
-  ;; The root's recording frozen with runs: the last frame, the next to lend,
-  ;; and nothing written till the next begins.
+  ;; Freezes the root's recording with runs. It becomes the last frame, the
+  ;; next one to lend, and nothing is recorded until the next frame begins.
   (define (rec-freeze! runs)
     (let ([r (or *rec-root-next*
                  (errorf 'rec-freeze! "no frame is being recorded"))])
@@ -201,18 +210,19 @@
       (set! *rec-root-next* #f)
       (when (eq? *rec-now* r) (set! *rec-now* rec-nothing))))
 
-  ;; The copies drawn ahead of frames, each read by one: chained after a head
-  ;; that's never written; and those the next frame is lent, (image .
-  ;; recording), newest first.
+  ;; The copies drawn ahead of frames, each read by one frame, chained after
+  ;; a head that is never written; and the copies that the next frame is
+  ;; lent, as (image . recording) pairs, newest first.
   (define-state *rec-earlier* (rec-make #f))
   (define-state *rec-earlier-next* '())
 
-  ;; A list the world made of its own bytes (the Pipeline's flattened frames),
-  ;; drawn on image ahead of the next frame: copied as it's handed, into a
-  ;; recording only that frame reads, free once core0 gave it back. The copy
-  ;; is the Pipeline's cost alone; if another app needs a list drawn on an
-  ;; image, make it zero copy: hand core0 a recorded list (a gpu-list), whose
-  ;; frozen recording it draws as it draws any list, and no bytes.
+  ;; Has a list that the world made of its own bytes (the Pipeline's
+  ;; flattened frames) drawn on image ahead of the next frame. The bytes are
+  ;; copied as they are handed in, into a recording that only that frame
+  ;; reads, which is free once core0 has given the frame back. Only the
+  ;; Pipeline pays for this copy; if another app needs a list drawn on an
+  ;; image, make it zero copy: hand core0 a recorded list (a gpu-list),
+  ;; whose frozen recording it draws as it draws any list, instead of bytes.
   (define (rec-earlier-add! image recs recs-n extras extras-n runs)
     (let ([r (rec-take! *rec-earlier*)]
           [fit (lambda (bv n)
@@ -231,8 +241,8 @@
       (gpu-recording-next-set! *rec-earlier* r)
       (set! *rec-earlier-next* (cons (cons image r) *rec-earlier-next*))))
 
-  ;; Frame f is lent the root's newest recording, numbered the next, the
-  ;; writes, and the copies to draw ahead of it.
+  ;; Lends frame f the root's newest recording, the writes, and the copies
+  ;; to draw ahead of it, and gives f the next frame number.
   (define (rec-lend! f)
     (set! *rec-published* (fx+ *rec-published* 1))
     (gpu-frame-number-set! f *rec-published*)
@@ -244,20 +254,22 @@
 
   ;;; ------------------------------------------------------------------ writes
   ;;; What the world writes into buffers and images: spans in a recording of
-  ;;; their own, the writes, handed to core0 whole with the next frame, or
-  ;;; with a call that sends them sooner, and free again once that frame is
-  ;;; back. A word or a pixel is copied in; rows an app paints are painted in
-  ;;; a loan, a recording whose records are the image's pixels, never written
-  ;;; while core0 may read it. So core0 reads what was painted, and only an
-  ;;; app that keeps a loan's bytes past its paint, against the rule, can
-  ;;; tear what it painted: its own image's pixels, never another's.
+  ;;; their own, the writes, handed to core0 whole with the next frame (or
+  ;;; with a call that sends them sooner), and free again once core0 has
+  ;;; sent them. A word or a pixel is copied in. Rows that an app paints are
+  ;;; painted in a loan: a recording whose records are the image's pixels,
+  ;;; never written while core0 may read it. So core0 reads what was
+  ;;; painted, and only an app that keeps a loan's bytes past its paint,
+  ;;; against the rule, can tear what it painted: its own image's pixels,
+  ;;; never another's.
 
-  (define-state *rec-writes-head* (rec-make #f))  ; never written: those handed
+  (define-state *rec-writes-head* (rec-make #f))  ; head of the writes handed
   (define-state *rec-writes* #f)       ; the writes being written, or #f
   (define-state *rec-writes-last* #f)  ; their last loan, or #f
   (define-state *rec-loan-stamp* 0)    ; loans lent so far: the last one's stamp
 
-  ;; The writes being written, taken when the first goes in.
+  ;; Returns the writes being written, taking a recording for them when the
+  ;; first write goes in.
   (define (rec-writes-now)
     (or *rec-writes*
         (begin
@@ -267,16 +279,17 @@
 
   (define (rec-writes-pending?) (and *rec-writes* #t))
 
-  ;; A word into the writes, v a float or a whole number of 32 bits: kind 0,
-  ;; word x of buffer id, or kind 1, pixel (x, y) of image id. Next to the
-  ;; last span's word, it lengthens that span, whose words end the extras.
+  ;; Puts a word into the writes. v is a float or a whole number of 32 bits;
+  ;; kind 0 writes word x of buffer id, and kind 1 pixel (x, y) of image id.
+  ;; A word right after the last span's words lengthens that span, whose
+  ;; words are the last ones in the extras.
   (define (rec-word-write! kind id x y v)
     (let* ([r (rec-writes-now)]
            [at (rec-extras-room! r 1)]
            [extras (gpu-recording-extras r)]
            [recs (gpu-recording-recs r)]
            [last (fx- (gpu-recording-recs-n r) 32)])
-      ;; a word that can't go raises before anything counts it
+      ;; a word that can't be stored raises before anything counts it
       (cond [(flonum? v) (bytevector-ieee-single-native-set! extras at v)]
             [(fx< v 0) (bytevector-s32-native-set! extras at v)]
             [else (bytevector-u32-native-set! extras at v)])
@@ -296,13 +309,14 @@
   (define (rec-buffer-set! id i v) (rec-word-write! 0 id i 0 v))
   (define (rec-pixel-set! id x y pixel) (rec-word-write! 1 id x y pixel))
 
-  ;; A recording of bytes alone: a loan, or the head its image chains them
-  ;; after.
+  ;; Returns a recording of bytes alone: a loan, or the head that an image
+  ;; chains its loans after.
   (define (rec-loan-make bytes)
     (make-gpu-recording bytes 0 (make-bytevector 0) 0 '() 0 #f #f))
 
-  ;; A loan of image's to paint: one of those chained after its loans' head
-  ;; that's free, or a new one; stamped the next, and not free till handed.
+  ;; Returns a loan of image's to paint: a free one from the chain after its
+  ;; loans' head, or a new one. It gets the next stamp, and it is not free
+  ;; until it has been handed to core0.
   (define (rec-loan-take! image)
     (let* ([head (or (gpu-image-loans image)
                      (let ([h (rec-loan-make (make-bytevector 0))])
@@ -317,10 +331,11 @@
       (gpu-recording-until-set! loan #f)
       loan))
 
-  ;; Rows y0 .. y1 of image painted by (paint bytes): bytes, a loan's, are
-  ;; the image's pixels, row after row, and paint writes every pixel of those
-  ;; rows, whatever they held. They go into the writes once paint returns; a
-  ;; paint that doesn't writes nothing, and one that returns again raises.
+  ;; Rows y0 .. y1 of image, painted by (paint bytes). bytes are a loan's:
+  ;; the image's pixels, row after row. paint writes every pixel of those
+  ;; rows, whatever they held before. The rows go into the writes once
+  ;; paint returns; a paint that doesn't return writes nothing, and one
+  ;; that returns twice raises.
   (define (rec-image-rows! image y0 y1 paint)
     (unless (fx<= 0 y0 y1 (gpu-image-h image))
       (errorf 'rec-image-rows! "rows ~s .. ~s aren't the image's" y0 y1))
@@ -343,10 +358,10 @@
                    (eqv? (word 4) (gpu-image-id image))
                    (fx<= y0 (word 12))
                    (fx<= (fx+ (word 12) (word 20)) y1))
-              ;; the last write, rows of the image's this paint covers: its
-              ;; loan takes these bytes, and this loan, its old ones, is free
-              ;; again, so paints faster than frames take two loans, not one
-              ;; each
+              ;; the last write is rows of this image that this paint
+              ;; covers: its loan takes these bytes, and this loan takes its
+              ;; old bytes and is free again, so paints faster than frames
+              ;; use two loans, not one each
               (let ([bytes (gpu-recording-recs loan)])
                 (gpu-recording-recs-set! loan (gpu-recording-recs last))
                 (gpu-recording-recs-set! last bytes)
@@ -363,8 +378,9 @@
           (gpu-recording-next-set! loan (gpu-recording-next head))
           (gpu-recording-next-set! head loan)))))
 
-  ;; The writes, to hand core0: free again, with their loans, once core0 has
-  ;; sent them, which it says itself. => them, or #f for none.
+  ;; Takes the writes to hand to core0. They and their loans are free again
+  ;; once core0 has sent them, which core0 marks itself. Returns them, or #f
+  ;; for none.
   (define (rec-writes-take!)
     (let ([r *rec-writes*])
       (when r
@@ -379,10 +395,11 @@
         (set! *rec-writes-last* #f))
       r))
 
-  ;; Calls that hand core0 the writes with no frame, run now while one thread
-  ;; plays both: a compute run; and buffer id's bytes, read back (#f if id
-  ;; names none). On a world of its own thread they'd hold core1 till core0
-  ;; answered: they raise.
+  ;; Calls that hand core0 the writes with no frame and run at once, while
+  ;; one thread plays both core0 and core1: a compute run, and a read back
+  ;; of buffer id's bytes (#f if id names no buffer). With the world on a
+  ;; thread of its own they would hold core1 until core0 answered, so there
+  ;; they raise.
   (define (rec-one-thread who)
     (when (core0-forked?)
       (errorf who "readbacks never hold core1: on a world of its own \
@@ -396,18 +413,18 @@
     (rec-one-thread 'gpu-buffer-read!)
     (gpu-buffer-download! jobs (rec-writes-take!) id))
 
-  ;; The compute runs no frame took and the writes, then the buffers reads
-  ;; names read back, (id . then) each, their bytes left for core1 to hand
-  ;; each then: by a job of core0's, or at once while one thread plays both.
-  ;; Core1 never waits for them.
+  ;; Sends the compute runs that no frame took and the writes, then reads
+  ;; back the buffers that reads names, (id . then) each, and leaves their
+  ;; bytes for core1 to hand to each then. Core0 does it by a job, or at
+  ;; once while one thread plays both. Core1 never waits for them.
   (define (rec-buffer-read-then! runs jobs reads)
     (let ([writes (rec-writes-take!)])
       (if (core0-forked?)
           (core0-post-reads! runs jobs writes reads)
           (gpu-reads-now! runs jobs writes reads))))
 
-  ;; The compute runs no frame took, and the writes, sent with no frame: by a
-  ;; job of core0's, or at once while one thread plays both.
+  ;; Sends the compute runs that no frame took, and the writes, with no
+  ;; frame: by a job of core0's, or at once while one thread plays both.
   (define (rec-submit-computes! runs jobs)
     (let ([writes (rec-writes-take!)])
       (if (core0-forked?)
@@ -416,18 +433,20 @@
 
   ;;; ------------------------------------------------------------------ lists
 
-  ;; A list to record into, its handle's id given: empty.
+  ;; Returns an empty list to record into, with its handle's id.
   (define (rec-list-new id)
     (make-gpu-list id (rec-make #f) '() 0 0))
 
-  ;; Of the list's newest recording: its length in bytes, of records and of
-  ;; extras; its runs; its version, how many times it was recorded.
+  ;; Of the list's newest recording: the length in bytes of its records and
+  ;; of its extras, its runs, and its version (how many times the list was
+  ;; recorded).
   (define (gpu-list-recs-n l) (gpu-recording-recs-n (gpu-list-recording l)))
   (define (gpu-list-extras-n l) (gpu-recording-extras-n (gpu-list-recording l)))
   (define (gpu-list-runs l) (gpu-recording-runs (gpu-list-recording l)))
   (define (gpu-list-version l) (gpu-recording-version (gpu-list-recording l)))
 
-  ;; r's records and extras, copied: (values recs recs-n extras extras-n).
+  ;; Returns copies of r's records and extras: (values recs recs-n extras
+  ;; extras-n).
   (define (rec-copies r)
     (let ([copy (lambda (bv n)
                   (let ([c (make-bytevector n)])
@@ -438,8 +457,8 @@
               (copy (gpu-recording-extras r) (gpu-recording-extras-n r))
               (gpu-recording-extras-n r))))
 
-  ;; A copy of lst, never shown (its id #f), its own bytes, showing runs: what
-  ;; the inspect kit keeps.
+  ;; Returns a copy of lst that is never shown (its id is #f), with bytes of
+  ;; its own, showing runs: what the inspect kit keeps.
   (define (rec-list-copy lst runs)
     (let-values ([(recs recs-n extras extras-n)
                   (rec-copies (gpu-list-recording lst))])
@@ -449,7 +468,8 @@
                            (gpu-list-version lst) #f #f)
        (gpu-list-labels lst) (gpu-list-recorded lst) (gpu-list-took lst))))
 
-  ;; A copy's bytes: a list that may be shown keeps its own here.
+  ;; A copy's bytes. A list that may be shown keeps its bytes here, in the
+  ;; recorder.
   (define (rec-copy-recording who l)
     (when (gpu-list-id l)
       (errorf who "a list shown keeps its bytes in /recorder: read a copy \
@@ -462,10 +482,10 @@
 
   ;;; ------------------------------------------------------------------ reading
 
-  ;; The recordings x holds, newest first: x a gpu-list, #f for the root,
-  ;; 'earlier for the copies drawn ahead of frames, 'writes for the writes
-  ;; handed, or a gpu-image for its loans. (version until free?) each, until
-  ;; #f for the newest of a list or the root.
+  ;; Returns the recordings that x holds, newest first, as (version until
+  ;; free?) each. x is a gpu-list, #f for the root, 'earlier for the copies
+  ;; drawn ahead of frames, 'writes for the writes handed, or a gpu-image
+  ;; for its loans. until is #f for the newest of a list or of the root.
   (define (rec-recordings x)
     (let loop ([r (cond [(eq? x 'earlier) (gpu-recording-next *rec-earlier*)]
                         [(eq? x 'writes) (gpu-recording-next *rec-writes-head*)]
@@ -480,20 +500,21 @@
                 (loop (gpu-recording-next r)))
           '())))
 
-  ;; How many bytes of records and of extras the last frame has: (values
-  ;; recs-n extras-n), 0 before the first.
+  ;; Returns how many bytes of records and of extras the last frame has, as
+  ;; (values recs-n extras-n), or 0 and 0 before the first frame.
   (define (rec-last-sizes)
     (let ([r *rec-root*])
       (if r
           (values (gpu-recording-recs-n r) (gpu-recording-extras-n r))
           (values 0 0))))
 
-  ;; The last frame's runs, those its records go with; none before one.
+  ;; Returns the last frame's runs (those its records go with), or '()
+  ;; before the first frame.
   (define (rec-last-runs)
     (let ([r *rec-root*]) (if r (gpu-recording-runs r) '())))
 
-  ;; The last frame's records and extras copied into recs and extras, each
-  ;; big enough (rec-last-sizes): the world reads a frame only so.
+  ;; Copies the last frame's records and extras into recs and extras, each
+  ;; big enough (rec-last-sizes). The world reads a frame only this way.
   (define (rec-last-copy! recs extras)
     (let ([r *rec-root*])
       (when r
@@ -502,9 +523,9 @@
         (bytevector-copy! (gpu-recording-extras r) 0 extras 0
                           (gpu-recording-extras-n r)))))
 
-  ;; The recording being written, drawn by core0 now on an image pw × ph, the
-  ;; rest of the frame given, the writes with it: its pixels
-  ;; (gpu-drawing->bytes).
+  ;; Has core0 draw the recording being written now, on an image of
+  ;; pw × ph, with the rest of the frame given and the writes with it.
+  ;; Returns its pixels (gpu-drawing->bytes).
   (define (rec-drawing->bytes jobs computes table table-n pieces runs pw ph
                               clear?)
     (rec-one-thread 'drawing->bytes)
@@ -514,6 +535,6 @@
                           (gpu-recording-extras r) (gpu-recording-extras-n r)
                           table table-n pieces runs pw ph clear?)))
 
-  ;; The recording being written as copies of its own, for a job core0 runs
-  ;; later: (values recs recs-n extras extras-n).
+  ;; Returns copies of the recording being written, for a job that core0
+  ;; runs later: (values recs recs-n extras extras-n).
   (define (rec-bytes-copies) (rec-copies *rec-now*)))

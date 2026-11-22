@@ -1,8 +1,10 @@
-;;; tests/units/ui.ss — the widget kit: flow, forms, suggestions, tables' keys,
-;;; dates, trees, side panels; when a window is drawn again by itself.
+;;; tests/units/ui.ss — the widget kit: flow, forms, suggestions, tables'
+;;; keys, dates, trees and side panels, and when a window is drawn again by
+;;; itself.
 
-;; A side panel and its button, where it says, laid out in w × h: (values
-;; rest panel) as called, each its rectangle or #f. opts: ui-side-panel's.
+;; Lays out a side panel and its button on the given side, in w × h.
+;; Returns (values rest panel), each the rectangle its procedure was called
+;; with, or #f. opts are passed to ui-side-panel.
 (define (side-panel-layout ui side w h . opts)
   (let* ([rest #f] [panel #f]
          [drawn (image (exact w) (exact h) 1
@@ -68,7 +70,7 @@
                  (and (equal? shown '(0 0 400 280))
                       (equal? shown-panel '(300 0 100 280))
                       (equal? hidden shown) (not hidden-panel)))))
-      ;; what's under it, red, and a press on it
+      ;; what is under the panel, drawn red, and a press on it
       (let* ([pressed 0]
              [pixel (lambda opts
                       (let* ([a (image 400 300 1
@@ -236,7 +238,7 @@
 
 (check "a row under another at any depth, and not under its siblings"
        (let ([all (ui-tree-rows '(a) (lambda (n) (cdr (assq n tree-kids)))
-                                (lambda (n) #t))])   ; a b d c
+                                (lambda (n) #t))])   ; rows a b d c
          (and (ui-tree-under? all 2 0) (ui-tree-under? all 2 1)
               (ui-tree-under? all 3 0) (not (ui-tree-under? all 3 1))
               (not (ui-tree-under? all 1 2)) (not (ui-tree-under? all 0 0))
@@ -348,7 +350,8 @@
       (press! '(s up))
       (check "at its limit an arrow goes no further"
              (= value 60))
-      ;; its digits at the right: a click goes by where they're drawn
+      ;; its digits are at the right, and a click goes by where they are
+      ;; drawn
       (set! value 5)
       (draw!)
       (ui-focus! ui #f)
@@ -373,8 +376,9 @@
                (= value 15)))))
   (close-window! win))
 
-;; What's inked in a picture's device rect, by how far it is from its corner's
-;; color: (left right top bottom).
+;; Returns the extent of what is inked in a picture's device rect, judged by
+;; how far each pixel is from the color at the rect's corner: (left right
+;; top bottom).
 (define (ui-test-ink img x0 y0 w h)
   (let* ([channel (lambda (p shift) (logand (ash p shift) 255))]
          [bg (pixel-at img x0 y0)]
@@ -395,10 +399,10 @@
                      (map (lambda (i) (+ y0 i)) (iota h)))])
     (list (apply min xs) (apply max xs) (apply min ys) (apply max ys))))
 
-;; A stepper at 5 with a label's 5 beside it, the two read from a picture at
-;; scale s: (the digit's ink, the label's, where the field's text starts and
-;; how wide it may be, the ink of a 5 drawn to end at the text's right edge,
-;; device pixels).
+;; Draws a stepper at 5 with a label's 5 beside it, in style at scale s, and
+;; reads them from the picture. Returns, in device pixels: (the digit's
+;; ink, the label's ink, where the field's text starts, how wide it may be,
+;; and the ink of a 5 drawn to end at the text's right edge).
 (define (ui-test-stepper-ink style s)
   (with-style style
     (lambda ()
@@ -483,9 +487,9 @@
                   (< (top '(single)) 10)
                   (= (top '(field)) (/ (- 100 lh) 2)))))))
 
-;; The digit's ink against a 5's that ends at the right edge, not against a
-;; gap, which is the font's: Verdana's 5 keeps more room at its right than
-;; DejaVu's.
+;; The digit's ink is compared with that of a 5 that ends at the right
+;; edge, not with a fixed gap, since the gap depends on the font: Verdana's
+;; 5 keeps more room at its right than DejaVu's.
 (check "and they're at the field's right, as a table's numbers are"
        (for-all
         (lambda (style)
@@ -496,8 +500,9 @@
                  (<= (abs (- (cadr digit) (cadr at-right))) 1))))
         '(mac genera cons)))
 
-;; What a window looks like by itself later comes by a timer, set once for
-;; the soonest; rows a scroll bar waits on come by frames it asks for.
+;; A window that will look different later by itself (ui-due!) is drawn
+;; again by a timer, set once for the soonest time; the rows a scroll bar
+;; waits on are computed in frames the window asks for.
 (let* ([t 1000]
        [ui (make-ui)]
        [win (apply open-window "Later" 'size '(200 . 100) (ui-handlers ui))]
@@ -511,8 +516,8 @@
       (when (and scan (not (edit-layout-done? scan)))
         (ui-state-scans-set! ui (list scan)))
       (ui-end! ui 200 100)))
-  ;; the timers its own alone: the world's, set as it booted, may be due by
-  ;; a time made up so early
+  ;; only the test's own timers: the world's, set as it booted, may already
+  ;; be due at a made-up time this early
   (fluid-let ([now-ms (lambda () t)] [*timers* '()])
     (let ([timers (length *timers*)] [before (asked)])
       (draw! 1500)
@@ -543,8 +548,8 @@
                     (not (window-ref win 'wm-frame-soon #f))))))
   (close-window! win))
 
-;; A live badge: a press turns it, live to held and back; held, it says
-;; what it holds and the way back, and is wider for it.
+;; A live badge: a press turns it from live to held and back; held, it says
+;; what it holds and how to go back, and is wider for it.
 (let ([win (open-window "Live" 'size '(400 . 100))])
   (parameterize ([current-window win])
     (let ([ui (make-ui)] [live? #t] [turns '()])

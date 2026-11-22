@@ -1,35 +1,38 @@
-;;; hacker.ss — the hacker edition: every library loaded from a file,
-;;; Schevana's and anyone's, spliced into this one top-level environment,
-;;; its internals with it, each name there to see and to redefine, as in a
-;;; world of top-level files; a redefinition takes at the next call, the
-;;; core's own calls too. src/launch.ss loads it for --hacker, after
-;;; src/base.ss and before any of the tree's libraries. From source only:
+;;; hacker.ss — the hacker edition. Every library loaded from a file,
+;;; Schevana's or anyone's, is spliced into this one top-level environment
+;;; with its internals, so that each of its names can be seen and
+;;; redefined there, as in a world of top-level files. A redefinition takes
+;;; effect at the next call, in the core's own calls too. src/launch.ss
+;;; loads this file for --hacker, after src/base.ss and src/strip.ss and
+;;; before any of the tree's libraries. Everything loads from source:
 ;;; nothing is compiled to a file.
 ;;;
-;;; The libraries' own forms take their top-level sense here, as
-;;; src/strip.ss, loaded before this, has them.
+;;; The libraries' own forms have their top-level meaning here, as
+;;; src/strip.ss, loaded before this file, defines them.
 
-;; Chez's library and import forms, under names of their own.
+;; Chez's library and import forms, renamed so this file can redefine
+;; library and import.
 (import (prefix (only (chezscheme) library import) chez:))
 
-;; The libraries here before any is spliced: Chez's, and (schevana base),
-;; which src/base.ss imported. Not spliced again.
+;; The libraries loaded before any is spliced: Chez's, and (schevana
+;; base), which src/base.ss imported. These are never spliced.
 (define hacker-real-libraries (library-list))
 
 ;; This environment, and an identifier in it, from which the spliced
-;; libraries' exports are forwarded to whoever imports one elsewhere.
+;; libraries' exports are forwarded to any other environment that imports
+;; one of them.
 (define hacker-environment (interaction-environment))
 (define hacker-anchor (environment-anchor hacker-environment))
 
-;; A library's name in an import spec.
+;; Returns the library's name in an import spec.
 (meta define (hacker-spec-library s)
   (if (and (pair? s) (memq (car s) '(only except prefix rename for)))
       (hacker-spec-library (cadr s))
       s))
 
-;; (import spec ...) here: each library that is not Chez's loaded,
-;; spliced as it loads, and no name bound, as its names are here already
-;; under the names it defines them by.
+;; Here (import spec ...) loads each library that isn't one of
+;; hacker-real-libraries, which splices it as it loads, and binds no name:
+;; the library's names are here already, under the names it defines.
 (define-syntax import
   (lambda (x)
     (syntax-case x ()
@@ -41,16 +44,18 @@
                                       (syntax->datum #'(spec ...)))))])
          #'(begin (chez:import (only lib)) ...))])))
 
-;; A library's body-level (export (import lib ...)), another's names
-;; given as its own: here those are spliced, so it loads them.
+;; A library's body may hold (export (import lib ...)), which exports the
+;; names of other libraries as its own. Here those libraries are spliced
+;; too, so the form just loads them.
 (define-syntax export
   (syntax-rules ()
     [(_ (import lib ...)) (import lib ...)]
     [(_ . x) (begin)]))
 
-;; Each library spliced, the first first: (name file text imports), its
-;; file, the text that was spliced, for a reload to tell a change, and the
-;; libraries it imports that were spliced too.
+;; The libraries spliced so far, in the order they were first spliced,
+;; each as (name file text imports): its file, the text that was spliced
+;; (so that a reload can tell a change), and the libraries it imports that
+;; were spliced too.
 (define hacker-spliced '())
 
 (define (hacker-splice-noted! name file imports)
@@ -62,20 +67,23 @@
           (set-cdr! had (cdr entry))
           (set! hacker-spliced (append hacker-spliced (list entry)))))))
 
-;; (library name (export ...) (import spec ...) body ...): the body
-;; spliced here, after each library it imports that is not Chez's,
-;; spliced as it is first named (import's search loads its file here,
-;; through this form again); a name it exports renamed, here under that
-;; name too. Then a real library of the name, whose exports forward to
-;; the names here, read-only, so that import finds it loaded, and another
-;; environment that imports it has its names.
+;; Here (library name (export ...) (import spec ...) body ...) splices
+;; the body into this environment, after each library it imports that
+;; isn't one of hacker-real-libraries. Each of those is spliced when it is
+;; first named (import's search loads its file here, through this form
+;; again). A name the library exports under another name (rename) is
+;; defined here under that name too. Then a real library of the same name
+;; is defined, whose exports forward, read-only, to the names here, so
+;; that import finds it loaded and another environment that imports it
+;; gets its names.
 (define-syntax library
   (lambda (x)
     (define (file-of x)
       (let ([a (syntax->annotation x)])
         (and a (source-file-descriptor-path
                 (source-object-sfd (annotation-source a))))))
-    ;; (external . internal) syntax pairs, of the export clause's specs
+    ;; The (external . internal) pairs of identifiers that the export
+    ;; clause's specs name.
     (define (export-pairs specs)
       (apply append
              (map (lambda (s)
@@ -111,14 +119,16 @@
                (chez:library name (ex external ...) (im (chezscheme))
                  (define-syntax external (quote forward)) ...))))])))
 
-;; Each spliced library whose file changed since (and those of forced, as
-;; if theirs had), and each that imports one of them, spliced again, in the
-;; order they were first: their names redefined here, which every caller
-;; reaches at its next call, and what sets a hook set again; a macro's
-;; users keep what they expanded to. held: libraries that stay as they
-;; are, with all they import, as in the library edition
-;; (reload-libraries!). => the names of those spliced again, kept as the
-;; library edition's reload keeps them.
+;; Splices again each spliced library whose file has changed since it was
+;; spliced (and each library in forced, as if its file had changed), and
+;; each library that imports one of them, in the order they were first
+;; spliced. Their names are redefined here, which every caller reaches at
+;; its next call, and the code that sets a hook sets it again; code that
+;; used a macro keeps what the macro expanded to. held names libraries
+;; that stay as they are, with everything they import, as in the library
+;; edition (reload-libraries!). Returns the names of the libraries spliced
+;; again, and keeps them in *reload-last* as the library edition's reload
+;; does.
 (define (hacker-reload-libraries! held . forced)
   (let* ([imports (lambda (name)
                     (let ([e (assoc name hacker-spliced)])

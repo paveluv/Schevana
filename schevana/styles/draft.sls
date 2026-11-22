@@ -1,12 +1,13 @@
 ;;; (schevana styles draft) — the Draft window style. Every window is a
-;;; technical drawing of itself: a fine outline, and along its top a dimension
-;;; line from the left edge to the title block, with the title and the window's
-;;; live size in logical pixels in a gap at its middle, "REPL · 662 × 470";
-;;; resize the window and its dimension follows. The buttons are the title
-;;; block, the boxed table in the corner of a drawing, its top and right sides
-;;; the outline's. No title bar fill: the band is the sheet's margin. One ink
-;;; for everything, as on paper: the accent while the window has the focus,
-;;; faded while not.
+;;; technical drawing of itself: a fine outline, and along its top a
+;;; dimension line from the left edge to the title block, with the title and
+;;; the window's live size in logical pixels in a gap at its middle,
+;;; "REPL · 662 × 470"; resize the window and its dimension follows. The
+;;; buttons form the title block, the boxed table in the corner of a
+;;; drawing, whose top and right sides are the outline's. The title bar has
+;;; no fill: the band is the sheet's margin. One ink draws everything, as on
+;;; paper: the accent while the window has the focus, and a faint ink faded
+;;; toward the sheet while it does not.
 
 (library (schevana styles draft)
   (export
@@ -26,18 +27,19 @@
   (library-layer looks)
 
   (define draft-arrow 8)   ; an arrowhead's length; it is 5 pixels wide
-  (define draft-pad 6)     ; between the dimension line and its text
+  (define draft-pad 6)     ; the gap between the dimension line and text
 
-  ;; The band on top. Odd, so that the dimension line runs through its
-  ;; middle row, with the block's cells as tall above it as below.
+  ;; The band on top. Its height is odd, so that the dimension line runs
+  ;; through its middle row, with the block's cells as tall above the line
+  ;; as below it.
   (define (draft-band)
     (let ([t (title-height)]) (if (even? t) (+ t 1) t)))
 
-  ;; A cell of the title block. Even, so that its inside is odd and a
-  ;; glyph's 1-pixel lines fall on its middle pixel.
+  ;; The width of a cell of the title block. It is even, so that its inside
+  ;; is odd and a glyph's 1-pixel lines fall on its middle pixel.
   (define (draft-cell) (max 20 (* 2 (round (* 2/5 (title-height))))))
 
-  ;; A 1-pixel outline, none at the screen's edges.
+  ;; A 1-pixel outline, and none at the screen's edges (maximized).
   (define (draft-edge win) (if (maximized? win) 0 1))
   (define (draft-insets win)
     (let ([e (draft-edge win)]) (values e (draft-band) e e)))
@@ -55,9 +57,10 @@
     (let-values ([(l top w h) (text-ink "H" 'title)])
       (+ cy (/ (- top) 2))))
 
-  ;; The dimension's text in room, as (values title size): both where they
-  ;; fit, else the title cut to fit, else nothing: the line reads better
-  ;; unbroken than cut by a stub such as "A …". The title comes first.
+  ;; The dimension's text in room pixels, as (values title size): both where
+  ;; they fit, else the title cut to fit, else nothing, since the line reads
+  ;; better unbroken than cut by a stub such as "A …". The title comes
+  ;; first.
   (define (draft-label win room)
     (let* ([title (window-title win)]
            [size (format "~a~a × ~a" (if (string=? title "") "" " · ")
@@ -70,13 +73,14 @@
              (values cut "")]
             [else (values "" "")])))
 
-  ;; An arrowhead with its tip at (x, y) and its base dir lengths away.
+  ;; An arrowhead with its tip at (x, y) and its base an arrowhead's length
+  ;; away in the direction dir (1 or -1).
   (define (draft-arrowhead x y dir ink)
     (let ([bx (+ x (* dir draft-arrow))])
       (fill-polygon `((,x . ,y) (,bx . ,(- y 5/2)) (,bx . ,(+ y 5/2))) ink)))
 
-  ;; A button's mark, 2k + 1 pixels across around the middle of the pixel
-  ;; at (cx, cy), in 1-pixel lines like the rest of the drawing (the ×'s
+  ;; A button's mark, 2k + 1 pixels across, around the middle of the pixel
+  ;; at (cx, cy), in 1-pixel lines like the rest of the drawing (the × runs
   ;; from pixel middle to pixel middle).
   (define (draft-glyph win kind cx cy k ink)
     (let ([flags (list (cons 'ink ink))])
@@ -86,7 +90,8 @@
                          (ui-frame-glyph win kind)))))
 
   ;; The title block: a box the band's height, ruled into cells. The cell
-  ;; under the mouse lights in the accent, even on an unfocused window.
+  ;; under the mouse lights up in the accent (close in red), even on an
+  ;; unfocused window.
   (define (draft-block win x y hover pressed ink)
     (let ([c (draft-cell)] [b (draft-band)])
       (stroke-box (+ x (draft-block-x win)) y (+ 1 (* 3 c)) b ink)
@@ -109,7 +114,7 @@
        (draft-regions win))))
 
   (define (draft-draw-under win x y w h focused? hover pressed)
-    ;; Unfocused lines fade toward the sheet, as faint ink alone is too
+    ;; Unfocused lines fade toward the sheet, since faint ink alone is too
     ;; close to Genera's black; their text keeps the dim title color.
     (let*-values ([(ink) (if focused? 'accent
                              (mix 'text-faint (window-bg win) 0.3))]
@@ -127,7 +132,7 @@
                   [(base) (draft-baseline (+ ly 1/2))])
       (window-shadow win x y w h 0 focused?)
       (fill-box x y w h (window-bg win))
-      (with-clip (x y w h)   ; a window narrower than its block cuts it
+      (with-clip (x y w h)   ; a window narrower than its block clips it
         (unless (maximized? win) (stroke-box x y w h ink))
         (when (> (- right left) (* 2 a))
           (fill-box (+ left a -1) ly (- lx pad left a -1) 1 ink)
@@ -141,9 +146,9 @@
                    (if focused? ink 'title-text-dim) 'ui)
         (draft-block win x y hover pressed ink))))
 
-  ;; A move or a resize drags a drawing of where the window goes: its
-  ;; outline and, along its top, the dimension line with the live size,
-  ;; within it, where they fit.
+  ;; A move or a resize drags a drawing of where the window will go: its
+  ;; outline and, along its top and inside it, the dimension line with the
+  ;; live size, where they fit.
   (define (draft-drag-outline x y w h)
     (let* ([a draft-arrow] [p draft-pad] [ly (+ y (quotient (draft-band) 2))]
            [size (format "~a × ~a" (exact (round w)) (exact (round h)))]
@@ -160,8 +165,8 @@
 
   (at-load
    (define-style draft "Draft"
-     ;; square, and so is everything drawn in it (rrect-path!); every common
-     ;; option but the radius
+     ;; square, and so is everything drawn in it (rec-radius); it has
+     ;; every common option except the radius
      'corner-radius 0
      'options (remq 'corner-radius (map car common-options))
      'drag-feedback 'outline

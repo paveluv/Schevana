@@ -1,7 +1,7 @@
-;;; (schevana ffi) — how Schevana binds C: define-foreign, the shared
-;;; library a binding comes from, and the few calls of the C library's
-;;; that more than one piece makes. Each piece that talks to C binds its
-;;; own with these: (schevana sdl) SDL3's, (schevana socket) the
+;;; (schevana ffi) — how Schevana binds C: define-foreign, loading the
+;;; shared library a binding comes from, and the few C library calls that
+;;; more than one piece makes. Each piece that talks to C binds its own
+;;; calls with these: (schevana sdl) binds SDL3's, (schevana socket) the
 ;;; sockets'.
 
 (library (schevana ffi)
@@ -12,20 +12,22 @@
 
   (library-layer foundation)
 
-  ;; Where a Mac is also asked for a library by its bare name: what
-  ;; DYLD_FALLBACK_LIBRARY_PATH lists, then the package managers' folders
-  ;; (Homebrew's on Apple silicon and on Intel, MacPorts'). The loader
-  ;; itself looks only in /usr/local/lib and /usr/lib, and the variable,
-  ;; set outside, doesn't reach a process started through /usr/bin/env or
-  ;; /bin/sh: macOS drops it on the way.
+  ;; The folders where, on a Mac, a library given by its bare name is also
+  ;; looked for: those DYLD_FALLBACK_LIBRARY_PATH lists, then the package
+  ;; managers' folders (Homebrew's on Apple silicon and on Intel, then
+  ;; MacPorts'). The loader itself looks only in /usr/local/lib and
+  ;; /usr/lib, and the variable, set outside, doesn't reach a process
+  ;; started through /usr/bin/env or /bin/sh, because macOS drops it on the
+  ;; way.
   (define (ffi-mac-folders)
     (append (let ([v (getenv "DYLD_FALLBACK_LIBRARY_PATH")])
               (if v (remp (lambda (d) (string=? d "")) (string-split v #\:))
                   '()))
             '("/opt/homebrew/lib" "/usr/local/lib" "/opt/local/lib")))
 
-  ;; The first of names, a library's file names on the platforms, that
-  ;; loads: each as it is, then, on a Mac, a bare one in each folder.
+  ;; Loads the first of names (a library's file names on the various
+  ;; platforms) that loads, and returns it. It tries each name as given,
+  ;; then, on a Mac, each bare name in each of those folders.
   (define (load-first-library names)
     (let loop ([ns (if (platform-mac?)
                        (append names
@@ -45,17 +47,18 @@
         [(guard (c [#t #f]) (load-shared-object (car ns)) #t) (car ns)]
         [else (loop (cdr ns))])))
 
-  ;; The C library's calls are the process's own: found once the process
-  ;; is loaded as a shared object, which every binding made here waits
-  ;; for.
+  ;; The C library's procedures are the process's own: they are found once
+  ;; the process is loaded as a shared object, which every binding made
+  ;; here waits for.
   (define ffi-process (load-shared-object #f))
 
-  ;; Like foreign-procedure, but `double` arguments accept any real number,
-  ;; and `bool` is C's one-byte bool (SDL3's) as #t or #f: Chez's boolean is
-  ;; an int, whose upper bytes a C bool leaves undefined. Only core0 and
-  ;; core1 call them: workers run worklets, which cannot name them.
-  ;; collect-safe: a call that blocks, given foreign memory only, during
-  ;; which a collection another thread needs does not wait for it.
+  ;; Like foreign-procedure, except that `double` arguments accept any real
+  ;; number, and `bool` is C's one-byte bool (SDL3's), passed and returned
+  ;; as #t or #f: Chez's boolean is an int, whose upper bytes a C bool
+  ;; leaves undefined. Only core0 and core1 call these bindings: workers run
+  ;; worklets, which cannot name them. collect-safe is for a call that
+  ;; blocks and is given only foreign memory: while it runs, a collection
+  ;; that another thread needs does not wait for it.
   (define-syntax define-foreign-as
     (lambda (x)
       (define (is? t name) (eq? (syntax->datum t) name))
@@ -71,8 +74,8 @@
                                #'(type ...) #'(arg ...))]
                          [(ctype ...) (map c-type #'(type ...))]
                          [cret (c-type #'ret)])
-             ;; the foreign procedure is made as the library loads, and
-             ;; so held as a made value: name carries nothing
+             ;; the foreign procedure is made as the library loads, so
+             ;; it is held as a made value, and name carries nothing
              #`(begin
                  (define-made f
                    (begin

@@ -1,7 +1,7 @@
-;;; (schevana core0 renderer) — the record everything that touches a device
-;;; hangs off ((schevana core0 gpu) fills it), and the one in use: below what
-;;; times its frames ((schevana core0 present)) and what asks which driver
-;;; it is ((schevana core0 platform)).
+;;; (schevana core0 renderer) — the record that everything touching a
+;;; device hangs off ((schevana core0 gpu) fills it), and the one in use.
+;;; It sits below what times the frames ((schevana core0 present)) and what
+;;; asks which driver this is ((schevana core0 platform)).
 
 (library (schevana core0 renderer)
   (export
@@ -28,11 +28,11 @@
             (mutable extras)
             (mutable glyphs)
             (mutable transfer)       ; (transfer buffer . capacity)
-            (mutable sdl-window)     ; core0's window it draws to, or 0
+            (mutable sdl-window)     ; the core0 window it draws to, or 0
             (mutable target)         ; an offscreen texture, or 0
             (mutable target-w)
             (mutable target-h)
-            (mutable fence)))        ; the last frame's, or #f
+            (mutable fence)))        ; the last frame's fence, or #f
 
   (define-state *renderer* #f)
 

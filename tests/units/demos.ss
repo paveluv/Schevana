@@ -1,14 +1,14 @@
-;;; tests/units/demos.ss — the demos: each launcher at the tree's root runs
-;;; its program on a screen of its own, headless, in a process of its own,
-;;; and tells what it read back (a window that drew, its parts found in the
-;;; program's "/"); a plain script among them, the checklist, its .sh
-;;; giving scheme-script the tree as its library folder. On the desktop
-;;; (its folder auto-loaded) each demo's library (demo/) registers
-;;; its app, which opens a window that draws.
+;;; tests/units/demos.ss — the demos. Each launcher at the tree's root runs
+;;; its program headless, on a screen of its own and in a process of its
+;;; own, and tells what it read back (a window that drew, its parts found
+;;; in the program's "/"). One of them, the checklist, is a plain script:
+;;; its .sh gives scheme-script the tree as its library folder. On the
+;;; desktop (with its folder auto-loaded), each demo's library (demo/)
+;;; registers its app, which opens a window that draws.
 
-;; What launcher (a file at the tree's root: a launcher of Schevana's, or a
-;; shell script) prints, run headless with args more and HOME a scratch
-;; folder, and its exit status: (status . output).
+;; Runs launcher (a file at the tree's root: one of Schevana's launchers,
+;; or a shell script) headless, with args and with HOME set to a scratch
+;; folder. Returns its exit status and what it printed: (status . output).
 (define (demos-run launcher . args)
   (let ([home (string-append out-dir "/demos-home")]
         [said (string-append out-dir "/demos-" launcher ".txt")]
@@ -37,9 +37,10 @@
  '("window-demo.sh" "rings-demo" "game-demo")
  '("a host app made of widgets, a plain script" "drawing alone" "a game"))
 
-;; The checklist in a style of Schevana's own, a desktop's look among them
-;; (Cons draws the desktop's bars too), host-main's --style: drawn in it,
-;; no desktop with it; a name that is no style's is refused.
+;; The checklist in a style of Schevana's own that is also a desktop's
+;; look (Cons draws the desktop's bars too), chosen by host-main's --style:
+;; the checklist is drawn in it, with no desktop; a name that is no style's
+;; is refused.
 (let ([cons (demos-run "window-demo.sh" "--style" "cons")]
       [none (demos-run "window-demo.sh" "--style" "no-such")])
   (check (format "--style draws the checklist in a style by name, and refuses \
@@ -49,8 +50,9 @@
               (not (eqv? (car none) 0))
               (string-contains-ci? (cdr none) "no style no-such"))))
 
-;; A program that takes a look of a desktop's, GNOME's, and no desktop: the
-;; looks come before the desktop and bring none of it, no surface or key.
+;; A program that takes a desktop's look, GNOME's, without the desktop:
+;; the looks come before the desktop and bring none of it, no surface and
+;; no key.
 (let* ([home (string-append out-dir "/demos-home")]
        [prog (string-append out-dir "/demos-look.ss")]
        [said (string-append out-dir "/demos-look.txt")]
@@ -86,8 +88,9 @@
                 (equal? (guard (c [#t #f]) (read (open-input-string out)))
                         '(gnome () ()))))))
 
-;; A path is kept in full, as given to auto-load! or the library search:
-;; from the current folder, ~ the home folder, . and .. resolved.
+;; A path given to auto-load! or the library search is kept in full:
+;; relative to the current folder, with ~ as the home folder, and with .
+;; and .. resolved.
 (check "paths are kept in full: relative, ~, . and .., a slash at the end"
        (and (equal? (path-full "a/./b/../c/")
                     (path-full (string-append (current-directory) "/a/c")))
@@ -101,8 +104,8 @@
                      (auto-loads))))
 
 ;; On the desktop: the demos' folder loaded with the world, as
-;; ./desktop demo has it: each library in it runs, and
-;; an app it defines registers itself.
+;; ./desktop demo loads it. Each library in it runs, and an app it defines
+;; registers itself.
 (let ([dir (string-append *schevana-root* "/demo")])
   (auto-load! dir)
   (check (format "a folder auto-loaded joins the library search and loads \
@@ -126,9 +129,9 @@
                 (auto-load! (string-append *schevana-root* "/README.md"))
                 #f))))
 
-;; A folder of files of the test's own, read again at (reload!): a file
-;; added since loads, and one taken away is let go of; folders inside it
-;; are read too.
+;; A folder of the test's own files, read again at (reload!): a file added
+;; since then loads, and one taken away is let go; folders inside it are
+;; read too.
 (let* ([dir (string-append out-dir "/auto")]
        [file (lambda (name)
                (call-with-output-file (string-append dir "/" name)
@@ -170,9 +173,9 @@
      (steps 1)))
  '(rings))
 
-;; A library from outside the tree: its name from its first form, and the
-;; folder its name is found from added to the library search, so that it
-;; loads by its name and "/" has what it exports.
+;; A library from outside the tree: its name comes from its first form,
+;; and the folder from which its name is found is added to the library
+;; search, so that it loads by its name and "/" has what it exports.
 (let ([dir (string-append out-dir "/autolib")])
   (system (format "rm -rf '~a' && mkdir -p '~a/auto-test'" dir dir))
   (call-with-output-file (string-append dir "/auto-test/hello.sls")

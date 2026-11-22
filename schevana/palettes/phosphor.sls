@@ -1,6 +1,6 @@
-;;; (schevana palettes phosphor) — the Phosphor palette. A green monitor: one
-;;; phosphor, so every hue is a brightness of green, except alarms, which glow
-;;; amber as the other phosphor did.
+;;; (schevana palettes phosphor) — the Phosphor palette: a green monochrome
+;;; monitor. It has one phosphor, so every hue is a brightness of green,
+;;; except alarms, which glow amber like the phosphor of an amber monitor.
 
 (library (schevana palettes phosphor)
   (export)

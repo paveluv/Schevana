@@ -1,12 +1,13 @@
 # Widgets
 
-`schevana/kits/ui.sls` is the widget kit every app here is built with: buttons,
-text, choices, tables, trees, scroll views, menus, dialogs and charts. It
-is immediate-mode: there is no tree of widget objects. A window's draw
-procedure calls a procedure for each widget, where it should be, every
-time the window draws; the widget draws itself and records where it can
-be pressed, and the window's handlers ask the kit what was hit. So the
-draw procedure is the layout, and the app's own data is the only state.
+`schevana/kits/ui.sls` is the widget kit that every app here is built
+with: buttons, text, choices, tables, trees, scroll views, menus, dialogs
+and charts. It is immediate-mode, so there is no tree of widget objects.
+Each time a window draws, its draw procedure calls one procedure for each
+widget, at the place where the widget goes. The widget draws itself and
+records where it can be pressed, and the window's handlers ask the kit
+what was hit. So the draw procedure is the layout, and the app keeps no
+state but its own data.
 
 ## A button
 
@@ -24,12 +25,14 @@ draw procedure is the layout, and the app's own data is the only state.
 ```
 
 A `ui` holds what the kit remembers between draws: which widget the
-pointer is over, which one has the keyboard, a scroll view's offset.
-`ui-begin!` and `ui-end!` bracket a draw, and `ui-handlers` gives the
-window the kit's mouse, wheel and key handlers. Each widget has an id,
-`'hi` here, unique in its window.
+pointer is over, which one has the keyboard, and each scroll view's
+offset. `ui-begin!` and `ui-end!` go around a draw. `ui-handlers` gives
+the window the kit's handlers for the mouse, the wheel, keys and typed
+text, and keeps the `ui` in the window as its `'ui` property, where the
+examples below find it (`(window-ref win 'ui)`). Each widget has an id
+(`'hi` here) that is unique in its window.
 
-Press it as a person would:
+Press the button as a person would:
 
 ```scheme
 (focus-window! hello)
@@ -41,11 +44,11 @@ Press it as a person would:
 presses                                    ; => 1
 ```
 
-A widget takes options after its arguments: `'tip` gives a tooltip,
-`'disabled #t` greys it out, and a button takes `'primary`, `'danger` or
-`'quiet` (flat until the pointer is on it), and `'pill` or `'circular` for
-round ends. `ui-linked` puts buttons side by side as one group, their
-inner sides joined:
+A widget takes options after its arguments, each a key and its value:
+`'tip` gives the widget a tooltip, and `'disabled #t` grays it out. A
+button also takes `'primary`, `'danger` or `'quiet` (flat until the
+pointer is on it), and `'pill` or `'circular` for round ends. `ui-linked`
+puts buttons side by side as one group, with their inner sides joined:
 
 ```scheme
 (apply open-window "Linked" 'size '(320 . 70)
@@ -62,9 +65,10 @@ inner sides joined:
 
 ## Values and changes
 
-A widget shows a value it's given and calls a procedure with a new one;
-the app keeps the value. Kept in the window, with `window-set!`, which
-draws the window again:
+A widget shows the value it is given, and when the person changes it,
+calls a procedure with the new value; the app keeps the value. Here the
+window keeps each value, with `window-set!`, which also draws the window
+again:
 
 ```scheme
 (define (prefs-draw win w h)
@@ -111,13 +115,15 @@ draws the window again:
     (ui-handlers (make-ui))))
 ```
 
-`ui-form` lays out rows of a label and a control, each `(label height
-place)`: `place` draws the control at the x, y and width the form gives
-it, and a row with no label spans the width. The window calls `prefs-draw`
-by name, so redefining it changes the window at once.
+`ui-form` lays out rows, each a label and a control, given as `(label
+height place)`: `place` draws the control at the x, y and width that the
+form gives it, and a row whose label is `#f` spans the whole width. The
+window calls `prefs-draw` by name, so redefining `prefs-draw` at the REPL
+changes the window at once.
 
-Typing goes to the focused widget. A click focuses what takes typing, Tab
-and Shift+Tab go through the widgets in draw order, and Escape leaves:
+Typing goes to the focused widget. A click focuses a widget that takes
+typing, Tab and Shift+Tab move through the widgets in the order they are
+drawn, and Escape takes the focus away:
 
 ```scheme
 (focus-window! prefs)
@@ -127,16 +133,19 @@ and Shift+Tab go through the widgets in draw order, and Escape leaves:
 (window-ref prefs 'name)                   ; => "Ada"
 ```
 
-The other choices: `ui-radio` (one of several, each its own widget),
-`ui-segmented` and `ui-tabs` (choices side by side), `ui-text-area` (many
-lines), `ui-chips` and `ui-chip-input` (tags), `ui-breadcrumbs`, `ui-nav`
-(a list to choose a page from), and `ui-live-badge`.
+The kit has more widgets of this kind: `ui-radio` (one choice of
+several, each choice its own widget), `ui-segmented` and `ui-tabs`
+(choices side by side), `ui-text-area` (text of many lines), `ui-chips`
+and `ui-chip-input` (tags), `ui-breadcrumbs` (a path), `ui-nav` (a list to
+choose a page from), and `ui-live-badge` (whether a view is live or holds
+still).
 
 ## Rows, empty views and banners
 
-Settings are often a group of rows in one box, a boxed list: each row a
-title, maybe a subtitle, and what ends it (a switch, a button, a value) or
-comes before its title (a check box), under the group's title:
+Settings are often shown as a boxed list: a group of rows in one box,
+under the group's title. Each row has a title, maybe a subtitle, and a
+control at its end (a switch, a button, a value) or before its title (a
+check box):
 
 ```scheme
 (define (net-draw win w h)
@@ -161,16 +170,17 @@ comes before its title (a check box), under the group's title:
     (ui-handlers (make-ui))))
 ```
 
-A row is `(title subtitle suffix-width suffix opt ...)`: `suffix` draws
-what ends the row in a place that wide, `(lambda (x y w h) ...)`, and
-`'on-press` makes the whole row a button. `ui-switch-row`,
-`ui-check-row` and `ui-entry-row` make the common ones, and
-`(ui-rows-height w rows opt ...)` says how tall the box will be before it
-is drawn, as `ui-form-height` does for a form.
+A row is `(title subtitle suffix-width suffix opt ...)`. `suffix`, a
+`(lambda (x y w h) ...)`, draws what ends the row in a place
+`suffix-width` wide, and the option `'on-press` makes the whole row a
+button. `ui-switch-row`, `ui-check-row` and `ui-entry-row` make the common
+kinds of row. `(ui-rows-height w rows opt ...)` returns how tall the box
+will be before it is drawn, as `ui-form-height` does for a form.
 
-A view with nothing to show says so with `ui-status-page`, a large glyph,
-a title and what to do, centered; `ui-banner` is a strip across a view's
-top with an action at its end:
+A view with nothing to show says so with `ui-status-page`: a large
+glyph, a title and a line on what to do, centered, with an optional
+button. `ui-banner` is a strip across the top of a view with an action at
+its end, and returns its height:
 
 ```scheme
 (apply open-window "Empty" 'size '(380 . 320)
@@ -188,10 +198,11 @@ top with an action at its end:
 
 ## Laying out
 
-The kit's sizes are settings that follow the fonts: `(ui-control-height)`
-is a control's height, and `(ui-gap)` and `(ui-pad)` the space between
-controls and inside a box. Lay widgets out from those, never from pixels,
-and they stay right in every style and at every text size.
+The kit's sizes are settings computed from the fonts, and a style may
+give its own: `(ui-control-height)` is the height of a control, `(ui-gap)`
+the space between controls, and `(ui-pad)` the space inside a box. Lay
+widgets out from these, never from fixed pixels, and the layout stays
+right in every style and at every text size.
 
 ```scheme
 (ui-control-height)
@@ -201,19 +212,22 @@ and they stay right in every style and at every text size.
   places)                                  ; where each goes, wrapping at 200
 ```
 
-`ui-flow` places items left to right, wrapping; `ui-toolbar` does that
-for a bar of items with one that stretches; `ui-split` divides a width at
-a line the person can drag. `(ui-side-panel ui id x y w h side width
-least rest panel)` lays a panel along a side and the rest beside it;
-hidden, or where the rest would be narrower than `least`, the rest has all
-the room. With `'floating #t` the panel lies over the rest instead, so the
-rest never changes size, as Life's grid doesn't. `ui-side-panel-button`
-is its button, which the app lays where it has room, and
-`(ui-side-panel-toggle! ui id)` turns it from a key.
+`ui-flow` places items from left to right, wrapping them into rows, and
+returns their places and the height they take. `ui-toolbar` does the same
+for a bar of items, one of which may stretch. `ui-split` divides a width
+at a line that the person can drag. `(ui-side-panel ui id x y w h side
+width least rest panel)` lays a panel along one side and the rest of the
+view beside it; when the panel is hidden, or when the rest would be
+narrower than `least`, the rest gets all the room. With `'floating #t` the
+panel lies over the rest instead, so the rest never changes size (Life's
+grid works this way). `ui-side-panel-button` draws the panel's button,
+which the app places where it has room, and `(ui-side-panel-toggle! ui
+id)` shows or hides the panel from a key.
 
 ## Lists, tables and trees
 
-A table draws only the rows it shows, and the app draws each cell:
+A table draws only the rows that are in view, and the app draws each
+cell:
 
 ```scheme
 (define planets '(("Mercury" 0.39) ("Venus" 0.72) ("Earth" 1.0)
@@ -238,12 +252,15 @@ A table draws only the rows it shows, and the app draws each cell:
       (ui-handlers ui))))
 ```
 
-A column is `(key title width flag ...)`: the width is a default the
-person may drag, and `right` aligns numbers. Options add sorting by a
-heading (`'sort`, `'on-sort`), a double click (`'on-open`), a right press
-(`'on-menu`), a tooltip a row, and checkboxes. `ui-tree` is a table whose
-first column holds a tree: it takes the roots and a procedure giving a
-node's children, and draws only the nodes expanded.
+A column is `(key title width flag ...)`: the width is a default that
+the person may change by dragging, and the flag `right` aligns the
+column's cells at the right, as for numbers. Options add sorting by a
+press on a heading (`'sort`, `'on-sort`), an action on a double click
+(`'on-open`) and on a right press (`'on-menu`), a tooltip for each row
+(`'tip`), and a checkbox before each row (`'checked`, `'on-check`).
+`ui-tree` is a table whose first column holds a tree: it takes the roots
+and a procedure that returns a node's children, and it draws a node's
+children only while the node is expanded.
 
 ## Scrolling
 
@@ -262,9 +279,9 @@ node's children, and draws only the nodes expanded.
     (ui-handlers ui)))
 ```
 
-A scroll view's body draws its content from `top` and says where it ends;
-the wheel and the scroll bar move it, and the bar is where and when the
-style puts it.
+A scroll view's body draws its content starting at `top`, and returns
+the y where the content ends. The wheel and the scroll bar move the
+content; the style decides where the bar is and when it shows.
 
 ## Menus, dialogs and tooltips
 
@@ -293,12 +310,15 @@ style puts it.
     (ui-handlers (make-ui))))
 ```
 
-A dialog is drawn over the window at `ui-end!`, so it's a widget too: the
-app shows it while its state says so. Return presses its last button,
-and Escape or a press outside calls `on-dismiss`. `ui-sheet` is a dialog
-whose body the app draws, a form, say. `ui-open-modal` opens a window that
-waits over another, as the file dialog does. A tooltip is a widget's
-`'tip`; the kit shows it once the pointer rests.
+`ui-open-menu!` opens a menu at a point in the window, each entry a
+`(label . thunk)`. A dialog is drawn over the window at `ui-end!`, so it
+is a widget too: the app draws it for as long as its own state says the
+dialog is open. Return presses the dialog's last button, and Escape or a
+press outside the dialog calls `on-dismiss`, its last argument.
+`ui-sheet` is a dialog whose body the app draws (a form, say).
+`ui-open-modal` opens a window that waits over another one, as the file
+dialog does. A tooltip is a widget's `'tip` option; the kit shows it once
+the pointer has rested on the widget.
 
 ## Charts
 
@@ -314,22 +334,24 @@ waits over another, as the file dialog does. A tooltip is a widget's
   'draw (lambda (win w h) (chart-draw win w h)))
 ```
 
-A series is `(color value ...)`, the oldest first, and the legend's keys
-`(color . label)`. `ui-bar-chart` draws stacked bars, a press on one
-reporting it, as Monitor's ticks are. A series is drawn
-in the color the app gives it, and the kit's `chart-1` to `chart-8` are
-settings from the palette's hues, so a style can give its own: Genera,
-which has no color, gives stipples.
+A series is `(color value ...)`, with the oldest value first, and each
+legend key is `(color . label)`. `ui-bar-chart` draws stacked bars, and
+calls the app with a bar's index when it is pressed; `ui-stream` draws
+bars that keep coming, their numbers kept on the GPU, as Monitor's ticks
+are drawn. A series is drawn in the color the app gives it. The kit's
+`chart-1` to `chart-8` are settings taken from the palette's hues, so a
+style can give its own: Genera, which has no color, gives stipples.
 
 ## How a style changes them
 
-Each kind of widget draws through one procedure, `ui-draw-KIND`, given its
-rectangle, its state as a list of flags (`hover`, `pressed`, `focused`,
-`selected`, `checked`, `disabled`, ...) and its data; its size comes from
-`ui-KIND-size` and its pieces' places from `ui-KIND-areas`. Those are
-parts ([LOOKS.md](LOOKS.md)), and only they decide colors, fonts and
-spacing, so a style replaces any of them by its key, and every state can
-be drawn from made-up flags:
+Each kind of widget draws through one procedure, `ui-draw-KIND`, which
+is given the widget's rectangle, its state as a list of flags (`hover`,
+`pressed`, `focused`, `selected`, `checked`, `disabled`, ...) and its
+data. The widget's size comes from `ui-KIND-size`, and the places of its
+pieces from `ui-KIND-areas`. These procedures are parts
+([LOOKS.md](LOOKS.md)), and only they decide colors, fonts and spacing, so
+a style can replace any of them by its key. They read nothing but their
+arguments, so every state can be drawn from made-up flags:
 
 ```scheme
 (open-window "Every button" 'size '(420 . 60)

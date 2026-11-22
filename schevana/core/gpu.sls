@@ -1,10 +1,11 @@
-;;; (schevana core gpu) — core1's side of the GPU layer: what the world asks of
-;;; the GPU, kept until it hands core0 a frame. Images and buffers as handles,
-;;; and the jobs that make them; the calls a paint or a compute run makes, the
-;;; compute runs to go with the next frame, and the frame filled for core0.
-;;; What's written into buffers and images the recorder keeps ((schevana
-;;; recorder bytes)). The device's side is core0's ((schevana core0 gpu)), and
-;;; no SDL is named here (tests/sources.ss).
+;;; (schevana core gpu) — core1's side of the GPU layer: what the world asks
+;;; of the GPU, kept until core1 hands core0 a frame. Here are images and
+;;; buffers as handles and the jobs that make them, the calls that a paint
+;;; or a compute run makes, the compute runs to go with the next frame, and
+;;; the frame filled for core0. The recorder keeps what is written into
+;;; buffers and images ((schevana recorder bytes)). The device's side is
+;;; core0's ((schevana core0 gpu)), and no SDL is named here
+;;; (tests/sources.ss).
 
 (library (schevana core gpu)
   (export
@@ -24,9 +25,10 @@
   (library-layer core)
 
   ;;; ---------------------------------------------------------------- handles
-  ;;; An image or a buffer core1 holds is a handle, with an integer id; the
-  ;;; SDL object behind it is core0's. Core1 makes the handle at once and asks
-  ;;; for the object by a job, which core0 runs before anything that needs it.
+  ;;; An image or a buffer that core1 holds is a handle with an integer id;
+  ;;; the SDL object behind it is core0's. Core1 makes the handle at once and
+  ;;; asks for the object by a job, which core0 runs before anything that
+  ;;; needs it.
 
   (define-state *gpu-next-id* 1)
 
@@ -40,21 +42,24 @@
 
   (define (gpu-ask! job) (set! *gpu-jobs* (cons job *gpu-jobs*)))
 
-  ;; The jobs asked since, in order, taken from core1.
+  ;; Takes the jobs asked for since core0 last took them, and returns them
+  ;; in order.
   (define (gpu-take-jobs!)
     (let ([jobs (reverse *gpu-jobs*)])
       (set! *gpu-jobs* '())
       jobs))
 
-  ;; Every image, buffer and list made is let go of once nothing holds it: an
-  ;; app never has to, and one that does frees at once, where this waits for
-  ;; a collection of the handle's generation. The guardian gives back the id;
-  ;; one let go of by hand already is let go of again, which core0 finds done.
-  ;; A call holds its buffers and images, so a list shown, a compute run
-  ;; waiting and a frame in core0's hands keep what they use.
+  ;; Every image, buffer and list is let go of once nothing holds it. An app
+  ;; never has to let go of one itself; one that does frees it at once,
+  ;; where the guardian waits for a collection of the handle's generation.
+  ;; The guardian gives back the id; a handle already let go of by hand is
+  ;; let go of again, which core0 finds already done. A run holds its image
+  ;; and a call its buffers, so a list shown, a compute run waiting and a
+  ;; frame in core0's hands keep what they use.
   (define-state *gpu-held* (make-guardian))
-  ;; GPU bytes made, which the collector counts with the old generations'
-  ;; growth (it sees only the handles), and handles let go of by the guardian
+  ;; The GPU bytes made, which the collector counts with the old
+  ;; generations' growth (it sees only the handles), and the number of
+  ;; handles the guardian let go of
   (define-state *gpu-bytes-made* 0)
   (define-state *gpu-held-gone* 0)
 
@@ -63,7 +68,8 @@
     (*gpu-held* handle id)
     handle)
 
-  ;; At each step's end: what the guardian gave back, let go of by jobs.
+  ;; At each step's end, asks core0 by jobs to let go of what the guardian
+  ;; gave back.
   (define (gpu-held-sweep!)
     (let loop ()
       (let ([id (*gpu-held*)])
@@ -74,8 +80,8 @@
 
   ;;; ---------------------------------------------------------------- images
 
-  ;; An image of w × h, premultiplied BGRA, its pixels on the GPU alone; usage
-  ;; and levels as the GPU layer names them.
+  ;; Returns an image of w × h in premultiplied BGRA, its pixels on the GPU
+  ;; alone; usage and levels are as the GPU layer names them.
   (define gpu-image-make
     (case-lambda
       [(w h) (gpu-image-make w h gpu-usage-sampler 1)]
@@ -84,8 +90,9 @@
          (gpu-ask! (list 'texture id w h usage levels))
          (gpu-hold! (make-gpu-image id w h levels #f #f) id (* 4 w h)))]))
 
-  ;; An image that can also be drawn on. It has a chain of levels, each half the
-  ;; last down to a pixel, so that it can be shown smaller: a third more memory.
+  ;; Returns an image that can also be drawn on. It has a chain of levels,
+  ;; each half the size of the last, down to one pixel, so that it can be
+  ;; shown smaller; the chain costs a third more memory.
   (define (gpu-image-make-target w h)
     (gpu-image-make w h (fxior gpu-usage-sampler gpu-usage-target)
                     (fxlength (max w h))))
@@ -94,8 +101,8 @@
     (gpu-image-gone?-set! image #t)
     (gpu-ask! (list 'release (gpu-image-id image))))
 
-  ;; The glyphs' atlas as an image, to draw: one channel, coverage, as the
-  ;; glyph records read it. Core0's own, never let go of.
+  ;; The glyphs' atlas as an image to draw: one channel of coverage, as the
+  ;; glyph records read it. It is core0's own and is never let go of.
   (define-state *gpu-atlas-image* #f)
 
   (define (gpu-atlas-image)
@@ -108,17 +115,19 @@
 
   ;;; ---------------------------------------------------------------- lists
 
-  ;; A list to record into (record-list!), a handle like an image's: its GPU
-  ;; buffers are core0's.
+  ;; Returns a list to record into (record-list!). It is a handle like an
+  ;; image's; its GPU buffers are core0's.
   (define (gpu-list-new)
     (let ([id (gpu-new-id!)]) (gpu-hold! (rec-list-new id) id 0)))
 
-  ;; Its GPU buffers let go of: shown again, it goes up again.
+  ;; Lets go of the list's GPU buffers; if it is shown again, it is uploaded
+  ;; again.
   (define (gpu-list-release! l) (gpu-ask! (list 'release (gpu-list-id l))))
 
   ;;; ---------------------------------------------------------------- buffers
 
-  ;; At least a word: a read outside it reads word 0 (shader.ss). Zeroed.
+  ;; Returns a zeroed buffer of at least one word, so that a read outside it
+  ;; has a last word to read ((schevana shader)).
   (define (make-gpu-buffer words)
     (let ([n (* 4 (max 1 words))] [id (gpu-new-id!)])
       (gpu-ask! (list 'buffer id n))
@@ -126,15 +135,16 @@
 
   (define (gpu-buffer-words b) (fxquotient (gpu-buffer-size b) 4))
 
-  ;; A float, or a whole number that fits 32 bits, a color's word with its top
-  ;; bit, too.
+  ;; Stores v at byte at: a float, or a whole number that fits in 32 bits,
+  ;; signed or unsigned (so a color's word with its top bit set fits too).
   (define (gpu-word-set! bytes at v)
     (cond
       [(flonum? v) (bytevector-ieee-single-native-set! bytes at v)]
       [(fx< v 0) (bytevector-s32-native-set! bytes at v)]
       [else (bytevector-u32-native-set! bytes at v)]))
 
-  ;; Word i: it goes up with the next frame, or the next compute run.
+  ;; Sets word i of b to v. The word goes up to the GPU with the next frame
+  ;; or the next compute run.
   (define (gpu-buffer-set! b i v)
     (unless (fx< -1 i (gpu-buffer-words b))
       (errorf 'gpu-buffer-set! "~s isn't a word of a buffer of ~a" i
@@ -142,7 +152,7 @@
     (rec-buffer-set! (gpu-buffer-id b) i v))
 
   (define (gpu-buffer-release! b)
-    ;; a run waiting for the frame would name it
+    ;; a run waiting for the frame that names it goes too
     (set! *gpu-computes*
       (filter (lambda (run)
                 (not (memv (gpu-buffer-id b)
@@ -151,31 +161,34 @@
     (gpu-buffer-gone?-set! b #t)
     (gpu-ask! (list 'release (gpu-buffer-id b))))
 
-  ;; What the buffer holds, what was set and what shaders wrote: => its
-  ;; bytes, a copy of the world's own, or #f once it's let go of. Read now
-  ;; while one thread plays core0 and core1; on core1's own, read back by a
-  ;; then while the process that asked waits (proc-wait): outside a process,
-  ;; nothing may wait, and gpu-buffer-read-then! is the way.
+  ;; Returns what the buffer holds (what was set and what shaders wrote) as
+  ;; bytes, a copy that is the world's own, or #f once the buffer is let go
+  ;; of. While one thread plays core0 and core1, the buffer is read now.
+  ;; With core1 on its own thread, it is read back by a then while the
+  ;; process that asked waits (proc-wait); outside a process nothing may
+  ;; wait, so use gpu-buffer-read-then! there.
   (define (gpu-buffer-read! b)
     (if (core0-forked?)
         (proc-wait 'gpu-buffer-read!
                    (lambda (done) (gpu-buffer-read-then! b done)))
         (rec-buffer-read! (gpu-take-jobs!) (gpu-buffer-id b))))
 
-  ;; The reads asked for, (id . then), the newest first. A frame published
-  ;; and not yet taken goes after core0's jobs, so its compute runs would
-  ;; follow a read sent now: one goes once no frame waits.
+  ;; The reads asked for, (id . then) each, newest first. A frame that is
+  ;; published and not yet taken runs after core0's jobs, so its compute
+  ;; runs would come after a read sent now; reads are sent only once no
+  ;; frame waits.
   (define-state *gpu-reads* '())
 
-  ;; What the buffer holds once what was asked of the GPU before is done,
-  ;; handed to then on core1 later: its bytes, a copy of the world's own, or
-  ;; #f once it's let go of. Nothing waits for it: core0 reads it back
-  ;; between frames.
+  ;; Later, on core1, hands then what the buffer holds once everything
+  ;; asked of the GPU before is done: its bytes, a copy that is the world's
+  ;; own, or #f once the buffer is let go of. Nothing waits for it: core0
+  ;; reads the buffer back between frames.
   (define (gpu-buffer-read-then! b then)
     (set! *gpu-reads* (cons (cons (gpu-buffer-id b) then) *gpu-reads*)))
 
-  ;; Once no frame waits for core0, before a tick or at a turn's end: the
-  ;; reads asked for, after the compute runs, jobs and writes no frame took.
+  ;; Sends the reads asked for, after the compute runs, jobs and writes that
+  ;; no frame took. It runs before a tick and at a turn's end, and sends
+  ;; only once no frame waits for core0.
   (define (gpu-reads-send!)
     (when (and (pair? *gpu-reads*) (not (gpu-frame-waiting?)))
       (let ([reads (reverse *gpu-reads*)])
@@ -185,7 +198,7 @@
 
   ;;; ---------------------------------------------------------------- calls
 
-  ;; The arguments of the parameters that keep? takes.
+  ;; Returns the arguments whose parameters keep? accepts.
   (define (gpu-args-of keep? params args)
     (cond [(null? params) '()]
           [(keep? (car params))
@@ -194,9 +207,10 @@
 
   (define (gpu-buffer-param? p) (memq (cadr p) '(fx-buffer fl-buffer)))
 
-  ;; A shader's arguments in its parameters' order, by their kinds, its
-  ;; hidden uniforms first, then its buffers' lengths: one it isn't handed
-  ;; here, a paint's list's, the frame fills in => a gpu-call
+  ;; Returns a gpu-call: a shader's arguments in its parameters' order, by
+  ;; their kinds, with its hidden uniforms first and its buffers' lengths
+  ;; last. The frame fills in the length of a buffer that isn't handed in
+  ;; here (a paint's list's).
   (define (gpu-make-call shader hidden params args)
     (let* ([given (map cons (map car params) args)]
            [values (append hidden
@@ -214,7 +228,8 @@
       (make-gpu-call shader bytes
                      (gpu-args-of gpu-buffer-param? params args))))
 
-  ;; A compute run: (call w h written read), the buffers by id.
+  ;; Returns a compute run: (call w h written read), where written and read
+  ;; are the ids of the buffers it writes and reads.
   (define (gpu-compute-run shader w h args)
     (let* ([params (shader-params shader)]
            [ids (lambda (write?)
@@ -228,10 +243,11 @@
 
   ;;; ---------------------------------------------------------------- compute
 
-  ;; Runs a compute shader over w × h cells now, and waits: while one thread
-  ;; plays core0 and core1, for its end; on core1's own, in a process, till
-  ;; core0 has sent it, a read of no buffer answered after it. Either way, a
-  ;; read after it finds what it wrote.
+  ;; Runs a compute shader over w × h cells now, and waits. While one thread
+  ;; plays core0 and core1, it waits for the run to end. With core1 on its
+  ;; own thread, it must be called in a process, and it waits until core0
+  ;; has sent the run, by asking for a read of no buffer, which is answered
+  ;; after it. Either way, a read after it finds what it wrote.
   (define (gpu-compute! shader w h . args)
     (if (core0-forked?)
         (begin
@@ -246,27 +262,29 @@
   (define-state *gpu-computes* '())
 
   ;; Runs a compute shader over w × h cells soon: with the frame this turn
-  ;; makes, ahead of what it draws, so that a paint shows what it wrote, or at
-  ;; the turn's end with none (gpu-computes-send!). Nothing waits for it.
+  ;; makes, ahead of what the frame draws, so that a paint shows what it
+  ;; wrote; or at the turn's end when there is no frame
+  ;; (gpu-computes-send!). Nothing waits for it.
   (define (gpu-compute-soon! shader w h . args)
     (set! *gpu-computes*
       (cons (gpu-compute-run shader w h args) *gpu-computes*)))
 
-  ;; What core1 asked of the GPU since it last handed it on, taken from it: the
-  ;; jobs and the compute runs, in order.
+  ;; Takes what core1 asked of the GPU since it last handed it on, and
+  ;; returns the jobs and the compute runs, each in order.
   (define (gpu-take-asks!)
     (let ([runs (reverse *gpu-computes*)])
       (set! *gpu-computes* '())
       (values (gpu-take-jobs!) runs)))
 
-  ;; Is there what a turn's end sends, with no frame: jobs (what the guardian
-  ;; let go of, say), compute runs or writes?
+  ;; Whether there is anything that a turn's end sends with no frame: jobs
+  ;; (what the guardian let go of, say), compute runs or writes.
   (define (gpu-asks-pending?)
     (or (pair? *gpu-jobs*) (pair? *gpu-computes*) (rec-writes-pending?)))
 
-  ;; At a turn's end: compute runs and writes no frame took go now, on their
-  ;; own, so that one an app steps on a timer, its window unseen, isn't kept
-  ;; waiting, and what's written is held no longer than a turn.
+  ;; At a turn's end, sends on their own the jobs, compute runs and writes
+  ;; that no frame took, so that a run an app steps on a timer while its
+  ;; window is unseen isn't kept waiting, and nothing written is held longer
+  ;; than a turn.
   (define (gpu-computes-send!)
     (unless (eq? *core0-mode* 'none)
       (let-values ([(jobs runs) (gpu-take-asks!)])
@@ -274,7 +292,7 @@
 
   ;;; ---------------------------------------------------------------- frames
 
-  ;; The frames core0 gave back, to fill again, and the last of them.
+  ;; The frames core0 gave back, to fill again, and the last one it gave.
   (define-state *gpu-frames-free* '())
   (define-state *gpu-frame-last* #f)
 
@@ -282,8 +300,9 @@
     (set! *gpu-frames-free* (cons f *gpu-frames-free*))
     (set! *gpu-frame-last* f))
 
-  ;; Core1's side: the frame filled, what it asked of the GPU since handed on
-  ;; with it; its writes the recorder's to hand (rec-lend!). => the frame
+  ;; Core1's side of publishing: fills a frame, and hands on with it what
+  ;; core1 asked of the GPU since the last time. The recorder gives it the
+  ;; writes (rec-lend!). Returns the frame.
   (define (gpu-publish table table-n pieces mode in-flight)
     (let ([f (if (pair? *gpu-frames-free*)
                  (let ([f (car *gpu-frames-free*)])

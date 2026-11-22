@@ -9,7 +9,7 @@
         (font-metrics (make-font* "sans" 13))
         (font-metrics (make-font* "monospace" 11 'bold))))
 
-;; Fontconfig's own choices there lack a λ or break the layouts.
+;; On a Mac, fontconfig's own choices lack a λ or break the layouts.
 (when (string-contains-ci? (symbol->string (machine-type)) "osx")
   (check "a Mac's generic font names give DejaVu, or the nearest it has"
          (for-all

@@ -1,6 +1,6 @@
 ;;; (schevana desktop file-dialog) — the desktop's file dialog: a window that
-;;; picks a file, a folder, or either, for the window that asked, which
-;;; waits on it (ui-open-modal).
+;;; picks a file, a folder, or either, for the window that asked for it,
+;;; which waits on it (ui-open-modal).
 ;;;
 ;;;   (open-file-dialog parent "Load into /lab" "Load"
 ;;;                     (lambda (path) ...)
@@ -9,16 +9,17 @@
 ;;;                              ("All files")))
 ;;;   (open-file-dialog parent "Add a path" "Add" add! 'picks 'any)
 ;;;
-;;; Across the top, Back, Forward and Up, the folder as crumbs (Home for
-;;; your home) and a filter. Left, places (Home, Schevana's tree, your
-;;; folder, the computer), past a line that drags; right, the folder's
-;;; folders, then its files of the chosen type, by name, size or date. A
-;;; click selects, a double click goes into a folder or picks a file.
-;;; Under them the file's name, which takes a path too and suggests as you
-;;; type, the types, Cancel and the action. Keys, with no field focused:
-;;; arrows move, Return opens, Backspace goes up, Alt+Left and Alt+Right
-;;; go back and forward, Alt+Up up, Ctrl+L to the name, Ctrl+H shows the
-;;; hidden files (a dot first), Escape cancels; typing filters.
+;;; Across the top are Back, Forward and Up, the folder as crumbs (Home for
+;;; your home) and a filter. On the left are the places (Home, Schevana's
+;;; tree, your folder, the computer), with a line you can drag beside them;
+;;; on the right, the folder's folders, then its files of the chosen type,
+;;; sorted by name, size or date. A click selects, and a double click goes
+;;; into a folder or picks a file. Below them are the file's name, which
+;;; takes a path too and makes suggestions as you type, the types, Cancel
+;;; and the action. Keys, when no field is focused: the arrows move, Return
+;;; opens, Backspace goes up, Alt+Left and Alt+Right go back and forward,
+;;; Alt+Up goes up, Ctrl+L goes to the name, Ctrl+H shows the hidden files
+;;; (whose names start with a dot), and Escape cancels; typing filters.
 
 (library (schevana desktop file-dialog)
   (export
@@ -71,26 +72,27 @@
             picks                ; files, folders or any: what it may pick
             ui
             (mutable folder)
-            (mutable back)       ; the folders before, the newest first
-            (mutable forward)    ; and after, as Back left them
+            (mutable back)       ; the folders visited before, newest first
+            (mutable forward)    ; and the ones after, as Back left them
             (mutable selected)   ; the entry selected, or #f
             (mutable name)       ; the name field's text
-            (mutable filter)     ; the filter's
-            (mutable type)       ; which of types is shown
-            (mutable hidden?)    ; whether the hidden files show
+            (mutable filter)     ; the filter's text
+            (mutable type)       ; the index in types of the type shown
+            (mutable hidden?)    ; whether hidden files are shown
             (mutable sort)       ; (key . up|down)
-            (mutable listing)    ; (folder hidden? . entries), the last read
-            (mutable memo)       ; (key . value): the last suggestions
-            (mutable done?)))    ; picked or cancelled: closing tells no more
+            (mutable listing)    ; (folder hidden? . entries), as last read
+            (mutable memo)       ; (typed . choices): the last suggestions
+            (mutable done?)))    ; picked or canceled: closing reports no more
 
-  ;; A folder's entry: its name and path, whether it is a folder, and its
-  ;; size (a file's) and when it changed, in seconds, or #f.
+  ;; An entry of a folder: its name and path, whether it is a folder, its
+  ;; size (a file's) and when it changed, in seconds; size and changed may
+  ;; be #f.
   (define-record-type file-dialog-entry
     (nongenerative schevana-file-dialog-entry-1)
     (fields name path dir? size changed))
 
   ;;; ------------------------------------------------------------------
-  ;;; paths, pure
+  ;;; paths (pure)
 
   (define (file-dialog-join folder name)
     (if (string=? folder "/")
@@ -102,9 +104,10 @@
 
   (define (file-dialog-home) (or (getenv "HOME") "/"))
 
-  ;; text as a whole path: ~ and ~/x as your home's, x from folder (itself
-  ;; from the current directory, if it is relative too); its . and .. worked
-  ;; out, and no / at its end. Every folder the dialog shows is one.
+  ;; Returns text as a whole path: ~ and ~/x are in your home, and a
+  ;; relative x is taken from folder (itself taken from the current
+  ;; directory if it is relative too). Its . and .. are worked out, and it
+  ;; has no / at its end. Every folder the dialog shows is such a path.
   (define (file-dialog-resolve folder text)
     (let* ([home (file-dialog-home)]
            [base (if (string-prefix? "/" folder)
@@ -117,7 +120,7 @@
              [(string-prefix? "/" text) text]
              [else (file-dialog-join base text)]))))
 
-  ;; A whole path without its . and .., nor empty parts.
+  ;; Returns a whole path without its . and .. parts or empty parts.
   (define (file-dialog-clean path)
     (let loop ([parts (string-split path #\/)] [acc '()])
       (cond [(null? parts)
@@ -131,8 +134,8 @@
              (loop (cdr parts) (if (pair? acc) (cdr acc) acc))]
             [else (loop (cdr parts) (cons (car parts) acc))])))
 
-  ;; The folder as crumbs, ((label . path) ...) from the top: Home, if it
-  ;; is in home, else the Computer, then each folder down to it.
+  ;; Returns the folder as crumbs, ((label . path) ...) from the top: Home
+  ;; if the folder is in home, else Computer, then each folder down to it.
   (define (file-dialog-crumbs folder home)
     (let-values ([(top rest)
                   (if (and (> (string-length home) 1)
@@ -151,7 +154,8 @@
             (let ([p (file-dialog-join path (car names))])
               (loop (cdr names) p (cons (cons (car names) p) acc)))))))
 
-  ;; "512 bytes", "4.2 KB", "1.3 MB": a file's size as people read it.
+  ;; Returns a file's size as people read it: "512 bytes", "4.2 KB",
+  ;; "1.3 MB".
   (define (file-dialog-size-label n)
     (let loop ([v n] [units '("bytes" "KB" "MB" "GB" "TB")])
       (cond [(and (< v 1000) (string=? (car units) "bytes"))
@@ -160,8 +164,8 @@
              (format "~a ~a" (/ (round (* v 10)) 10.0) (car units))]
             [else (loop (/ v 1000) (cdr units))])))
 
-  ;; When a file changed, at the second secs, as people read it beside now:
-  ;; "14:05" today, "Nov 5" this year, "Nov 5, 2024" before.
+  ;; Returns when a file changed, at second secs, as people read it against
+  ;; now: "14:05" for today, "Nov 5" for this year, "Nov 5, 2024" before.
   (define (file-dialog-date-label secs now)
     (let ([d (time-utc->date (make-time 'time-utc 0 secs))]
           [n (time-utc->date (make-time 'time-utc 0 now))])
@@ -179,8 +183,8 @@
   ;;; ------------------------------------------------------------------
   ;;; the folder
 
-  ;; A file's size: a regular file's, never opening anything else (a pipe
-  ;; would wait for a writer).
+  ;; Returns a file's size, or #f. It opens only a regular file, never
+  ;; anything else (opening a pipe would wait for a writer).
   (define (file-dialog-size path)
     (guard (c [#t #f])
       (and (file-regular? path)
@@ -188,8 +192,8 @@
              (close-port p)
              n))))
 
-  ;; The folder's entries, the hidden ones (a dot first) only with hidden?;
-  ;; #f when it can't be read.
+  ;; Returns the folder's entries, with the hidden ones (whose names start
+  ;; with a dot) only when hidden? is true; #f when it can't be read.
   (define (file-dialog-read folder hidden?)
     (guard (c [#t #f])
       (map (lambda (n)
@@ -202,7 +206,8 @@
            (filter (lambda (n) (or hidden? (not (string-prefix? "." n))))
                    (directory-list folder)))))
 
-  ;; The folder's entries, read again only when it or hidden? changed.
+  ;; Returns the folder's entries, read again only when the folder or
+  ;; hidden? has changed.
   (define (file-dialog-entries d)
     (let ([l (file-dialog-listing d)] [f (file-dialog-folder d)]
           [h (file-dialog-hidden? d)])
@@ -212,8 +217,9 @@
             (file-dialog-listing-set! d (cons* f h es))
             es))))
 
-  ;; What the list shows: the folders, then the files of the type shown,
-  ;; that the filter leaves, as sorted. => #f when the folder can't be read
+  ;; Returns what the list shows: the folders, then the files of the type
+  ;; shown, those that pass the filter, in the chosen order; #f when the
+  ;; folder can't be read.
   (define (file-dialog-shown d)
     (let ([es (file-dialog-entries d)])
       (and es
@@ -258,7 +264,8 @@
       (file-dialog-forward-set! d '())
       (file-dialog-show! d folder)))
 
-  ;; Shows folder, its list from the top, nothing selected or filtered.
+  ;; Shows folder, with its list from the top and nothing selected or
+  ;; filtered.
   (define (file-dialog-show! d folder)
     (let ([ui (file-dialog-ui d)])
       (file-dialog-folder-set! d folder)
@@ -285,7 +292,8 @@
   (define (file-dialog-up! d)
     (file-dialog-go! d (file-dialog-above (file-dialog-folder d))))
 
-  ;; What the name names, as a path, or else the entry selected's.
+  ;; Returns the path the name field names, or else the selected entry's
+  ;; path, or #f.
   (define (file-dialog-target d)
     (let ([n (file-dialog-name d)] [e (file-dialog-selected d)])
       (cond [(not (string=? n ""))
@@ -293,9 +301,10 @@
             [e (file-dialog-entry-path e)]
             [else #f])))
 
-  ;; What the action picks, as the dialog picks files, folders or any: the
-  ;; target, a file that is there or a folder; with none named or selected,
-  ;; the folder shown, where a folder may be picked; else #f.
+  ;; Returns what the action would pick, as the dialog picks files, folders
+  ;; or any: the target, when it is a file that exists or a folder; with
+  ;; nothing named or selected, the folder shown, when a folder may be
+  ;; picked; else #f.
   (define (file-dialog-choice d)
     (let ([p (file-dialog-target d)]
           [folders? (memq (file-dialog-picks d) '(folders any))]
@@ -305,8 +314,9 @@
             [(file-exists? p) (and files? p)]
             [else #f])))
 
-  ;; Return, or a double click: a folder named or selected is gone into, a
-  ;; file picked; with none, the folder shown, where a folder may be.
+  ;; On Return or a double click: a folder that is named or selected is
+  ;; opened, and a file is picked; with nothing named or selected, the
+  ;; folder shown is picked, when a folder may be.
   (define (file-dialog-open! d)
     (let ([p (file-dialog-target d)])
       (cond [(and p (file-directory? p))
@@ -314,7 +324,8 @@
              (file-dialog-go! d p)]
             [(file-dialog-choice d) => (lambda (f) (file-dialog-pick! d f))])))
 
-  ;; The dialog closes, then the window that waited gets the path.
+  ;; Closes the dialog, then hands the path to the window that waited, if
+  ;; it is still open.
   (define (file-dialog-pick! d path)
     (file-dialog-done?-set! d #t)
     (close-window! (current-window))
@@ -327,7 +338,8 @@
   (define (file-dialog-cancel! d)
     (close-window! (current-window)))
 
-  ;; Closed by Cancel, Escape or its frame: the caller's on-cancel, once.
+  ;; When the dialog is closed by Cancel, Escape or its frame, calls the
+  ;; caller's on-cancel, once.
   (define (file-dialog-closed! d)
     (unless (file-dialog-done? d)
       (file-dialog-done?-set! d #t)
@@ -336,9 +348,9 @@
           (parameterize ([current-window parent])
             ((file-dialog-on-cancel d)))))))
 
-  ;; What the name may go on to: the entries of its folder that start with
-  ;; its last part, folders with a / after them, then the files the type
-  ;; shows.
+  ;; Returns what the typed name may be completed to: the entries of its
+  ;; folder that start with its last part, the folders first, with a / after
+  ;; them, then the files of the type shown.
   (define (file-dialog-choices d typed)
     (let* ([cut (let loop ([i (string-length typed)])
                   (cond [(= i 0) 0]
@@ -372,8 +384,8 @@
   ;;; ------------------------------------------------------------------
   ;;; drawing
 
-  ;; An entry's icon or a place's, s square: a folder's or a file's, home,
-  ;; the tree, the computer.
+  ;; Draws an entry's or a place's icon, s square: a folder, a file, home,
+  ;; the tree, or the computer.
   (define-part (draw-file-dialog-icon what x y s flags)
     (let-values ([(glyph ink)
                   (case what
@@ -384,7 +396,7 @@
                     [else (values 'file 'text-dim)])])
       (ui-draw-glyph x y s s (list (cons 'ink ink)) glyph)))
 
-  ;; The list's first cell: the icon, then the name.
+  ;; Draws the list's first cell: the icon, then the name.
   (define-part (draw-file-dialog-name e x y w h flags)
     (let* ([g (ui-glyph-size)] [in (ui-table-cell-inset)])
       (draw-file-dialog-icon (if (file-dialog-entry-dir? e) 'folder 'file)
@@ -428,7 +440,7 @@
                                     'on-enter (lambda () (ui-focus! ui #f))))))
        'flex '(150 . 100000))))
 
-  ;; The places, there to go to: those that are there.
+  ;; Draws the places to go to, those of them that exist.
   (define (file-dialog-places d x y w h)
     (let ([ui (file-dialog-ui d)])
       (ui-draw-surface x y w h '(nav))
@@ -464,7 +476,7 @@
                                ,(round (+ in (text-width "Nov 30, 2026" 'ui)))))
                     '(size changed) (* 10 (font-line-height 'ui)))))
 
-  ;; The folder's list, or why there is none.
+  ;; Draws the folder's list, or why there is none.
   (define (file-dialog-list d x y w h)
     (let* ([ui (file-dialog-ui d)] [pad (ui-pad)]
            [shown (file-dialog-shown d)]
@@ -518,7 +530,7 @@
                          (cons "Up  Backspace" (lambda ()
                                                  (file-dialog-up! d))))))
 
-  ;; The name, the types, Cancel and the action, in a row from (x, y).
+  ;; Draws the name, the types, Cancel and the action in a row, from (x, y).
   (define (file-dialog-footer d action x y w h)
     (let*-values ([(ui) (file-dialog-ui d)] [(pad gap) (values (ui-pad)
                                                                (ui-gap))]
@@ -577,7 +589,7 @@
   ;;; ------------------------------------------------------------------
   ;;; keys
 
-  ;; With no field focused; true when it acted.
+  ;; Handles a key when no field is focused; returns true when it acted.
   (define (file-dialog-key d key mods)
     (let ([ui (file-dialog-ui d)])
       (cond
@@ -611,7 +623,7 @@
                                                (file-dialog-entry-name e)))
                   #t)))])))
 
-  ;; Typing with no field focused filters.
+  ;; Typing when no field is focused filters.
   (define (file-dialog-text d str)
     (let ([ui (file-dialog-ui d)])
       (file-dialog-filter-set! d (string-append (file-dialog-filter d) str))
@@ -621,13 +633,13 @@
   ;;; ------------------------------------------------------------------
   ;;; the window
 
-  ;; Opens the dialog over parent, which waits on it, its title title and
-  ;; its action's button action; a file picked calls (on-pick path) as
-  ;; parent's handler. opts: 'folder (where it opens: the current
-  ;; directory's by default), 'types (((label ext ...) ...), the first
-  ;; shown; one with no ext shows every file: All files by default),
-  ;; 'picks (files, the default; folders; or any, either), and 'on-cancel
-  ;; (a thunk). => the dialog's window
+  ;; Opens the dialog over parent, which waits on it, with the title title
+  ;; and the label action on its action button. A pick calls (on-pick path)
+  ;; as one of parent's handlers. opts: 'folder (where it opens; the current
+  ;; directory by default), 'types (((label ext ...) ...), the first one
+  ;; shown first; a type with no ext shows every file; All files by
+  ;; default), 'picks (files, the default; folders; or any, for either), and
+  ;; 'on-cancel (a thunk). Returns the dialog's window.
   (define (open-file-dialog parent title action on-pick . opts)
     (let* ([ui (make-ui)]
            [folder (file-dialog-resolve (current-directory)

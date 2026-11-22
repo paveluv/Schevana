@@ -25,7 +25,7 @@
   (library-layer looks)
 
   (define lambda-slant 0.55)   ; the long leg's run for each pixel of drop
-  (define lambda-rule 2)       ; the top rule, under the tab
+  (define lambda-rule 2)       ; the top rule's height, under the tab
   (define lambda-gap 14)       ; between the title and the buttons
 
   (define (lambda-tab-height) (- (title-height) lambda-rule))
@@ -33,15 +33,16 @@
   (define (lambda-button-width) (max 18 (round (* 1.8 (lambda-mark-size)))))
   (define (lambda-pad) (round (* 0.36 (lambda-tab-height))))
 
-  ;; A 1-pixel frame, none at the screen's edges.
+  ;; A 1-pixel frame, with none at the screen's edges (when maximized).
   (define (lambda-insets win)
     (let ([e (if (maximized? win) 0 1)])
       (values e (title-height) e e)))
 
-  ;; Where the title (cut to fit) and the buttons start in the tab:
-  ;; (values title tx bx). The tab's top edge ends after the buttons. A long
-  ;; title is cut a slant short of the right edge, so even then the rule
-  ;; runs on past the tab's foot and the tab still leans.
+  ;; Returns the title (cut to fit) and where it and the buttons start in
+  ;; the tab: (values title tx bx). The tab's top edge ends after the
+  ;; buttons. A long title is cut short of the right edge by room for the
+  ;; slant, so that even then the rule runs on past the tab's foot and the
+  ;; tab still leans.
   (define (lambda-tab win)
     (let* ([tx (+ (lambda-pad) (round (* 0.8 (lambda-mark-size))) 8)]
            [room (- (window-w win) tx lambda-gap (* 3 (lambda-button-width))
@@ -56,8 +57,8 @@
         (map (lambda (kind i) (list kind (+ bx (* i bw)) 0 bw th))
              '(minimize maximize close) '(0 1 2)))))
 
-  ;; The λ, s high from (x, y): a hook, the long leg at the tab's slant, and
-  ;; the short leg from the long one's middle.
+  ;; Draws the λ, s high, from (x, y): a hook, the long leg at the tab's
+  ;; slant, and the short leg from the long leg's middle.
   (define (lambda-draw-mark x y s color)
     (let* ([hx (+ x (* 0.22 s))] [mx (+ hx (* lambda-slant s 0.45))]
            [lw (* 0.18 s)])
@@ -66,15 +67,16 @@
                      color lw)
       (draw-line mx (+ y (* 0.45 s)) (- mx (* 0.33 s)) (+ y s) color lw)))
 
-  ;; A cell leaning like the tab around (cx, cy), 2a wide and 2c high.
+  ;; Fills a cell that leans like the tab, around (cx, cy), 2a wide and 2c
+  ;; high.
   (define (lambda-lean cx cy a c color)
     (let ([d (* lambda-slant c)] [top (- cy c)] [bottom (+ cy c)])
       (fill-polygon (list (cons (- cx a d) top) (cons (- (+ cx a) d) top)
                           (cons (+ cx a d) bottom) (cons (+ (- cx a) d) bottom))
                     color)))
 
-  ;; The glyphs are 2 wide on whole pixels, crisp at 100% and 200% and as
-  ;; heavy as the bold title.
+  ;; The glyphs are 2 pixels wide on whole pixels, so that they are crisp at
+  ;; 100% and 200% and as heavy as the bold title.
   (define (lambda-draw-button kind bx by bw bh ink hover pressed)
     (let* ([cx (+ bx (floor (/ bw 2)))] [cy (+ by (floor (/ bh 2)))]
            [g (round (* 0.16 bw))]
@@ -102,7 +104,8 @@
                              (color-readable-on 'accent)
                              (mix 'title-text-dim 'title-text 0.3))])
       (window-shadow win x (+ y th) w (- h th) 0 focused?)
-      ;; maximized, the tab stands on a strip, not on the windows behind
+      ;; when maximized, the tab stands on a strip, not on the windows
+      ;; behind it
       (when (maximized? win) (fill-box x y w th 'title-bg))
       (fill-box x (+ y th) w lambda-rule tab)
       (stroke-box x (+ y th) w (- h th) tab)
@@ -122,8 +125,8 @@
   ;; The wheel on the tab rolls the window up into it (shades it) and down.
   (at-load
    (define-style lambda "Lambda"
-     ;; square, and so is everything drawn in it (rrect-path!); every common
-     ;; option but the radius
+     ;; square, and so is everything drawn in it (rec-radius); it honors
+     ;; every common option but the radius
      'corner-radius 0
      'options (remq 'corner-radius (map car common-options))
      'title-wheel 'shade

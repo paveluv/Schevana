@@ -1,7 +1,8 @@
-;;; (schevana desktop arrange) — the desktop's commands over the windows, which
-;;; its launcher and keys offer: cycle through them, close the focused one,
-;;; tile them, cascade them. The window manager places a new window itself
-;;; (place-window!); these only rearrange.
+;;; (schevana desktop arrange) — the desktop's commands for arranging the
+;;; windows, which its launcher and keys offer: cycle through the windows,
+;;; close the focused one, tile them, or cascade them. The window manager
+;;; places a new window itself (place-window!); these commands only
+;;; rearrange windows that are already open.
 
 (library (schevana desktop arrange)
   (export

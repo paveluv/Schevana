@@ -1,12 +1,13 @@
 # NVIDIA on Linux: hardware vblank stamps
 
 With NVIDIA's proprietary driver on a Wayland desktop (GNOME's mutter), an
-animation in Schevana, Boids 3D say, can stutter now and then: a refresh
-shows the previous frame again, although Schevana had the next one ready,
-drawn and submitted well in time. Monitor and the Pipeline don't count it as
-late, because it isn't Schevana's: the compositor held the frame back.
+animation in Schevana, such as Boids 3D, can stutter now and then: a
+refresh shows the previous frame again, although Schevana had the next one
+drawn and submitted well in time. Monitor and the Pipeline don't count the
+frame as late, because the delay isn't Schevana's: the compositor held the
+frame back.
 
-The cure is one module option and a reboot:
+The fix is one module option and a reboot:
 
 ```bash
 echo "options nvidia-drm vblank=1" |
@@ -15,7 +16,7 @@ sudo update-initramfs -u
 sudo reboot
 ```
 
-After the reboot, check it took:
+After the reboot, check that it took effect:
 
 ```bash
 cat /sys/module/nvidia_drm/parameters/vblank
@@ -25,17 +26,18 @@ journalctl --user -b | grep -c "Invalid sequence for VSYNC frame info"
 The first should say `Y`, and the second `0`. To undo it, delete the file,
 run `sudo update-initramfs -u` again and reboot.
 
-Measured on Debian 13 (Linux 6.12), NVIDIA 615.71.10 and GNOME Shell 48.7,
-at 60 Hz. NVIDIA ships the option off, and only from its 610 drivers on:
-those to 595 have no vblank support to turn on (`modinfo -p nvidia_drm`
-lists no `vblank`), and nothing cures the stutter there.
+This was measured on Debian 13 (Linux 6.12), NVIDIA 615.71.10 and GNOME
+Shell 48.7, at 60 Hz. NVIDIA ships the option turned off, and only its
+drivers from 610 on have it: those up to 595 have no vblank support to
+turn on (`modinfo -p nvidia_drm` lists no `vblank`), and nothing cures the
+stutter there.
 
 Schevana itself doesn't need the option. It infers the screen's clock from
-the stamps it gets, late ones among them, so it counts each repeated
-refresh and paces its frames the same with or without it
+the stamps it gets, late ones included, so it counts each repeated refresh
+and paces its frames the same way with or without the option
 ([INTERNALS.md](INTERNALS.md)); the Pipeline's River marks each late stamp
 with a pip. What the option removes is the repeats themselves, which are
-the compositor's.
+the compositor's doing.
 
 ## Why
 
@@ -46,8 +48,9 @@ Three parts below Schevana work together to drop a ready frame:
    at the moment the event is sent, not the vblank's time, with sequence 0.
    The event is sent from a deferred worker thread at ordinary priority:
    most stamps are within tens of microseconds of the refresh, but some come
-   0.5 to 9 ms late. Mutter reports these stamps to its clients as when
-   frames were presented, and logs "Invalid sequence for VSYNC frame info".
+   0.5 to 9 ms late. Mutter reports these stamps to its clients as the times
+   the frames were presented, and logs "Invalid sequence for VSYNC frame
+   info".
 2. **NVIDIA's Vulkan driver targets each frame 0.5 ms early.** In FIFO mode
    it attaches a `wp_commit_timer_v1` timestamp to every present: the
    refresh it predicts from the stamp of an earlier frame, less 500 µs.
@@ -55,7 +58,7 @@ Three parts below Schevana work together to drop a ready frame:
 3. **Mutter compares that target strictly.** It applies a timed commit only
    in a frame whose predicted presentation (its newest stamp plus a
    refresh) is not earlier than the target. Nothing is applied on arrival;
-   a held commit waits for the next frame of mutter's.
+   a held commit waits for mutter's next frame.
 
 So when one stamp is about 0.52 ms or more late, the target of a later frame
 lands just past mutter's prediction, and mutter shows the previous frame
@@ -69,7 +72,7 @@ percentile, no frame was held for its target, and one refresh was lost,
 during input, with Schevana's frame on time: most likely a miss of mutter's
 own.
 
-Before the option, about 1 frame in 1,100 was held this way with the
+Without the option, about 1 frame in 1,100 was held this way with the
 Pipeline maximized, more in bursts, and the largest late stamps fell on the
 first refresh after each whole second of the session's clock (gnome-shell's
 garbage collector is the leading suspect). No pacing on the client's side
@@ -86,12 +89,12 @@ timing can only make it later, not earlier.
   interrupts on; this is untested.
 - **Early stamps from an order race.** If the driver finishes a flip before
   handling that vblank's interrupt, the flip carries the previous vblank's
-  time, which shows as pairs of gaps of about 0 and 2 refreshes. Not seen
-  so far.
+  time, which shows as pairs of gaps of about 0 and 2 refreshes. This
+  hasn't been seen so far.
 
 ## Bugs in mutter, for anyone who'd like to fix them
 
-Line numbers are mutter 48.7's.
+Line numbers are from mutter 48.7.
 
 - **The strict commit-timing test.**
   `meta-wayland-transaction.c:312-316` holds a commit whose target is even a
@@ -102,20 +105,20 @@ Line numbers are mutter 48.7's.
   refresh exactly loses a whole refresh to rounding. Upstream main keeps
   the same comparison. A tolerance, say a quarter of a refresh (Mesa's WSI
   snaps targets to the grid within that), would keep the protocol's meaning
-  and drop the stutter.
+  and remove the stutter.
 - **The KMS deadline timer, silently off.** `meta-kms-crtc.c:656` builds the
   GError for a failed `drmWaitVBlank` from `-ret`, which is 1 (EPERM),
   rather than from `errno`. With NVIDIA's `vblank=N` the real error is
   EOPNOTSUPP, but it reads as PERMISSION_DENIED, and the deadline timer is
   quietly marked inhibited (`meta-kms-impl-device.c:1397-1406`). Mutter then
-  commits each composite to KMS as soon as it's submitted, and one that
-  finishes after the vblank flips a refresh later for the whole screen.
+  commits each composite to KMS as soon as it's submitted, and a composite
+  that finishes after the vblank flips a refresh later, for the whole
+  screen.
 - **An assertion around swapchain rebuilds.**
   "meta_wayland_buffer_process_damage: assertion 'buffer->resource'
-  failed", logged twice when a Vulkan
-  swapchain was torn down and built again (a maximize, a resize), without a
-  crash. Commits still queued in mutter when the swapchain's buffers are
-  destroyed are the suspect.
+  failed" was logged twice when a Vulkan swapchain was torn down and built
+  again (a maximize, a resize), without a crash. The suspect is commits
+  still queued in mutter when the swapchain's buffers are destroyed.
 - **A crash.** Two FIFO presents through NVIDIA's Vulkan driver on a
   `wl_surface` that had no role (no `xdg_toplevel`), with the driver's
   `wp_fifo_v1` barriers and `wp_commit_timer_v1` timestamps on them,
@@ -123,6 +126,6 @@ Line numbers are mutter 48.7's.
   client's mistake shouldn't do that. Schevana's windows always have a role;
   this came from a research probe.
 
-And two for NVIDIA: the FIFO driver's fixed 0.5 ms margin is narrower than
-its own `vblank=N` stamps' error, and `VK_EXT_present_timing` reports a
-refresh of 16,666,666 ns where the display's is 16,667,604 ns.
+And two bugs for NVIDIA: the FIFO driver's fixed 0.5 ms margin is narrower
+than the error of its own `vblank=N` stamps, and `VK_EXT_present_timing`
+reports a refresh of 16,666,666 ns where the display's is 16,667,604 ns.

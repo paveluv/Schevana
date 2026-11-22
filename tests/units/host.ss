@@ -1,8 +1,9 @@
 ;;; tests/units/host.ss — a host app's one window ((schevana kits host)):
-;;; frameless, the whole of where windows go, its least size the screen's,
-;;; and quitting when it closes; or, where the desktop draws no frames, in
-;;; its style's frame, whose regions the desktop moves and resizes it by and
-;;; whose actions are the OS window's; the host's look by the platform.
+;;; frameless, filling the whole area where windows go, its least size made
+;;; the screen's, and quitting when it closes. Where the desktop draws no
+;;; frames, it has its style's frame instead: the desktop moves and resizes
+;;; it by the frame's regions, and the frame's actions act on the OS
+;;; window. The host's look follows the platform.
 
 (for-each close-window! (windows))
 
@@ -43,10 +44,11 @@
                   [(platform-windows?) 'windows]
                   [else 'adwaita])))
 
-;; Its own frame (GNOME under Wayland): the regions the desktop takes,
-;; edges and corners first (none while maximized), the frame's buttons the
-;; app's, the rest of the title bar a move; core0 finds what is at a point
-;; by them, in window units.
+;; A window with its own frame (as under GNOME on Wayland): the desktop
+;; takes the frame's regions, edges and corners first (none while
+;; maximized); the frame's buttons belong to the app, and the rest of the
+;; title bar moves the window. core0 finds what is at a point by these
+;; regions, in window units.
 (set-style! 'adwaita)
 (let* ([win (open-window "Own" 'size '(300 . 200) 'pos '(0 . 0))]
        [regions (host-hit-regions win #f)]
@@ -80,7 +82,8 @@
         (check (format "core0 finds them at a point: a corner, an edge, the \
                         title bar, a button, the content ~s" kinds)
                (equal? kinds '(2 9 1 0 0))))))
-  ;; its frame's actions are the OS window's: the window itself stays
+  ;; its frame's actions act on the OS window, so the window itself stays
+  ;; as it is
   (window-set! win 'on-action host-act!)
   (window-action! win 'minimize)
   (window-action! win 'maximize)
@@ -90,9 +93,10 @@
   (close-window! win))
 (set-style! 'mac)
 
-;; Genera's title is its label at the bottom: there the desktop moves the
-;; window. And a drag of a host window's title never moves the window inside
-;; the screen, maximized as it is: the desktop moves the OS window.
+;; Genera's title is its label at the bottom, so the desktop moves the
+;; window from there. A drag of a host window's title never moves the
+;; window within the screen, since it is maximized: the desktop moves the
+;; OS window instead.
 (set-style! 'genera)
 (let* ([win (open-window "Label" 'size '(300 . 200) 'pos '(0 . 0))]
        [label (assq 'title (frame-regions win))]

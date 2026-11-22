@@ -1,7 +1,7 @@
-;;; tests/units/recordings.ss — what's recorded goes into recordings, never
-;;; copied: frozen once recorded and swapped into their list or frame whole,
-;;; retired after the last frame that may show them, and written again only
-;;; once core0 gave that frame back.
+;;; tests/units/recordings.ss — what is recorded goes into recordings and is
+;;; never copied: a recording is frozen once recorded and swapped whole into
+;;; its list or frame, retired after the last frame that may show it, and
+;;; written again only once core0 has given that frame back.
 
 (for-each close-window! (windows))
 (request-frame!)
@@ -24,9 +24,9 @@
                     (- (gpu-frame-number *gpu-frame-last*) 1))
               (rec-free? r))))
 
-;; A list recorded again and again, a frame between: written in turn in its
-;; own two recordings, each frozen whole, the newest one's version its
-;; count.
+;; A list recorded again and again, with a frame in between each time: it
+;; is written in turn into its own two recordings, each frozen whole, and
+;; the newest one's version is its count.
 (let* ([lst (gpu-list-new)]
        [record! (lambda (n)
                   (record-list! lst (lambda ()
@@ -56,8 +56,8 @@
            (and (raises? (lambda () (gpu-list-recs lst)))
                 (= (bytevector-length (gpu-list-recs copy)) (* 6 32))
                 (raises? (lambda () (gpu-list-state copy))))))
-  ;; core0 reads each list's recording once a pass, whatever happens to the
-  ;; list during it
+  ;; core0 reads each list's recording once per pass, whatever happens to
+  ;; the list during the pass
   (let ([was (gpu-list-seen lst)])
     (record! 2)
     (let ([same (gpu-list-seen lst)])
@@ -68,9 +68,9 @@
                   (eq? (gpu-list-seen lst) (gpu-list-recording lst))
                   (not (eq? was (gpu-list-recording lst))))))))
 
-;; A list the world made of its own bytes, drawn ahead of a frame (the
-;; Pipeline's flattened frames): copied as it's handed, so what the world
-;; does to its bytes after can't reach what core0 reads.
+;; A list the world made from its own bytes, drawn ahead of a frame (as the
+;; Pipeline's flattened frames are): it is copied as it is handed over, so
+;; what the world does to its bytes afterwards can't reach what core0 reads.
 (let ([target (gpu-image-make-target 8 8)]
       [recs (make-bytevector 64 7)] [extras (make-bytevector 8 9)])
   (rec-past! target recs 64 extras 8 '())
@@ -96,10 +96,10 @@
            (null? (gpu-frame-earlier *gpu-frame-last*))))
   (gpu-image-release! target))
 
-;; (recordings-poisoned poison? body ...): body, every recording the
-;; recorder takes to write, and every loan it takes to paint, garbage
-;; first while poison? is true, as one used before holds that one's bytes:
-;; the recorder reads only what it wrote.
+;; (recordings-poisoned poison? body ...) runs body. While poison? is true,
+;; every recording the recorder takes to write, and every loan it takes to
+;; paint, is filled with garbage first, as a recording used before still
+;; holds its old bytes: the recorder must read only what it wrote.
 (define-syntax recordings-poisoned
   (syntax-rules ()
     [(_ poison? body ...)
@@ -119,9 +119,10 @@
                         loan))])
          body ...))]))
 
-;; A frame drawn on a target, as the Pipeline's small screen draws it, from
-;; the frozen frame: poisoned or not, the pixels are the same; poisoned, a
-;; recording taken to write is garbage past what's written.
+;; Draws a frame on a target from the frozen frame, as the Pipeline's small
+;; screen does, and returns its pixels and whether the root recording is
+;; garbage past what was written. Poisoned or not, the pixels are the same;
+;; poisoned, a recording taken to write is garbage past what was written.
 (define (recordings-frame-pixels poison?)
   (recordings-poisoned poison?
     (let ([target (gpu-image-make-target 32 32)] [plain record-world!])
@@ -159,7 +160,7 @@
 
 ;;; ------------------------------------------------------------------ writes
 
-;; The spans of the writes being written: (kind id x y n) each.
+;; The spans of the writes being recorded, each as (kind id x y n).
 (define (recordings-spans)
   (let ([r *rec-writes*])
     (if r
@@ -189,7 +190,8 @@
               (raises? (lambda () (gpu-buffer-set! b 7 'red)))
               (raises? (lambda () (gpu-buffer-set! b 8 1)))
               (= (length (recordings-spans)) 2)))
-  ;; past the buffer's size, by the recorder's own call: core0 skips it
+  ;; words outside the buffer, set by the recorder's own call, which
+  ;; doesn't check them: core0 skips them
   (rec-buffer-set! (gpu-buffer-id b) 8 99)
   (rec-buffer-set! (gpu-buffer-id b) -1 99)
   (let ([got (gpu-buffer-read! b)])
@@ -218,8 +220,8 @@
            (gpu-buffer-release! b)
            ok)))
 
-;; Rows of a w-wide image's bytes: each pixel #xff and its row's number,
-;; but the first pixel of a row in skip.
+;; Paints rows y0 up to y1 of a w-wide image's bytes, each pixel with #xff
+;; and its row's number, except the first pixel of row skip.
 (define-worklet (recordings-rows! y0 y1 bytes w skip)
   (do ([y y0 (fx+ y 1)]) ((fx= y y1))
     (do ([x (if (fx= y skip) 1 0) (fx+ x 1)]) ((fx= x w))
@@ -246,7 +248,7 @@
                 (= (pixel-at p 15 5) #xff000005)
                 (= (pixel-at p 5 3) #xff00ff00)
                 (= (pixel-at p 0 6) #xff000000))))
-  ;; a paint each frame: its loans come back with their frames
+  ;; one paint each frame: its loans come back with their frames
   (do ([i 0 (+ i 1)]) ((= i 8))
     (pixmap-rows! pm 0 8 recordings-rows! 16 -1)
     (request-frame!)
@@ -258,7 +260,7 @@
            (and (<= (length loans) 3)
                 (for-all (lambda (l) (cdr (assq 'free l))) (cdr loans))))))
 
-;; Rows y0 .. y1 of a w-wide image's bytes, all of pixel px.
+;; Fills rows y0 up to y1 of a w-wide image's bytes with pixel px.
 (define-worklet (recordings-fill! y0 y1 bytes w px)
   (do ([i (fx* 4 (fx* y0 w)) (fx+ i 4)]) ((fx= i (fx* 4 (fx* y1 w))))
     (bytevector-u32-native-set! bytes i px)))

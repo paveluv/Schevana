@@ -1,8 +1,8 @@
 ;;; tests/units/desktop.ss — the desktop's own behavior (desktop/): the
-;;; launcher by F1, the desktop's right-click menu, F11, the app's icon,
-;;; a taskbar button's window menu, and the desktop entry.
+;;; launcher that F1 opens, the desktop's right-click menu, F11, the app's
+;;; icon, a taskbar button's window menu, and the desktop entry.
 
-;; Life, whose window it opens.
+;; Life, whose window the launcher opens.
 (test-demos! 'life)
 
 (check "F1 opens the launcher; typing narrows it, and Return starts the \
@@ -19,8 +19,8 @@
              (when life (close-window! life))
              (and open? life (not (launcher-open?)) #t)))))
 
-;; A right click on the desktop at (x, y), and the menu's entry title
-;; chosen.
+;; Right-clicks the desktop at (x, y) and chooses the menu's entry named
+;; title.
 (define (desktop-test-launch! x y title)
   (inject! `(mouse-move ,x ,y) `(mouse-down ,x ,y right 1)
            `(mouse-up ,x ,y right))
@@ -70,7 +70,7 @@
            (inject! `(mouse-move ,x ,y) `(mouse-down ,x ,y right 1)
                     `(mouse-up ,x ,y right))
            (steps 2)
-           (test-press! 'down)   ; Bind, Maximize, Minimize
+           (test-press! 'down)   ; from Bind, to Maximize, to Minimize
            (test-press! 'down)
            (steps 1)
            (test-press! 'return)
@@ -80,7 +80,8 @@
              (steps 1)
              ok))))
 
-;; Into a scratch folder: XDG_DATA_HOME is the output folder's.
+;; Install into a scratch folder: XDG_DATA_HOME points into the output
+;; folder.
 (putenv "XDG_DATA_HOME" (string-append out-dir "/xdg"))
 (check "the desktop entry names the window's app id and the icon, and \
         uninstalling removes its files"

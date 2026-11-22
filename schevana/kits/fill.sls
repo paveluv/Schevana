@@ -1,6 +1,7 @@
-;;; (schevana kits fill) — fills shaded by the core's gradients: a box from one
-;;; color to another (the wallpaper, the Mac's title bars), a glow fading out
-;;; from a point (the wallpaper's, the clock's).
+;;; (schevana kits fill) — fills shaded with the core's gradients: a box that
+;;; goes from one color to another (the gradient wallpaper, the Mac style's
+;;; title bars), and a glow that fades out from a point (on the wallpaper and
+;;; the clock).
 
 (library (schevana kits fill)
   (export
@@ -12,7 +13,8 @@
 
   (library-layer kits)
 
-  ;; Linear gradient from c1 to c2; dir is 'vertical or 'horizontal.
+  ;; Fills a box with a linear gradient from c1 to c2. dir is 'vertical (the
+  ;; default) or 'horizontal; radius, if given, rounds the corners.
   (define fill-gradient
     (case-lambda
       [(x y w h c1 c2) (fill-gradient x y w h c1 c2 'vertical 0)]
@@ -24,6 +26,6 @@
                      (linear-gradient 0 y 0 (+ y h) c1 c2))
                  radius)]))
 
-  ;; A radial glow: color at the center fading to transparent at radius r.
+  ;; A radial glow: color at the center, fading to transparent at radius r.
   (define (fill-glow cx cy r color)
     (fill-circle cx cy r (radial-gradient cx cy r color (alpha color 0)))))

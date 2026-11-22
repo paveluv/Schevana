@@ -1,22 +1,23 @@
-;;; (schevana styles genera) — the Genera window style. Symbolics Genera, the
-;;; Lisp Machine system of the 1980s. Programming the User Interface (Genera 7,
-;;; 1986; the same in Genera 8) puts a pane's label "in the lower, left-hand
-;;; corner of the pane (directly inside the border)", inside a 4-pixel white
-;;; margin. Real Genera 8 screens, measured in captures from 1998, 2004 and
-;;; 2024, draw that border 2 pixels thick (the manual's 1 is a bare pane's
-;;; default) and the label in italic, in normal video. No title bar, no buttons
-;;; and no mark of the selected window: Genera never had them (the buttons in
-;;; some pictures belong to the X or Mac window around the whole Genera
-;;; screen). The label strip is what you drag here, and right-clicking it gives
-;;; the window menu; Genera did both from its System menu instead. The research
-;;; is in .work/reports/ ("Symbolics Genera window appearance").
+;;; (schevana styles genera) — the Genera window style. Symbolics Genera
+;;; was the Lisp Machine system of the 1980s. Programming the User
+;;; Interface (Genera 7, 1986; the same in Genera 8) puts a pane's label
+;;; "in the lower, left-hand corner of the pane (directly inside the
+;;; border)", inside a 4-pixel white margin. Real Genera 8 screens, measured
+;;; in captures from 1998, 2004 and 2024, draw that border 2 pixels thick
+;;; (the manual's 1 is a bare pane's default) and the label in italic, in
+;;; normal video. There is no title bar, no buttons and no mark of the
+;;; selected window: Genera never had them (the buttons in some pictures
+;;; belong to the X or Mac window around the whole Genera screen). Here you
+;;; drag the label strip, and right-clicking it gives the window menu;
+;;; Genera did both from its System menu instead. The research is in
+;;; .work/reports/ ("Symbolics Genera window appearance").
 ;;;
 ;;; The screen is Genera's too: no top bar, and at the bottom the who line,
-;;; what the mouse buttons do in reverse video over a line of fields in
-;;; character columns. A window not selected is grayed over; buttons are
-;;; command words, boxed under the pointer and reversed while pressed.
-;;; Its numbers are settings, so a style derived from it changes them (the
-;;; CADR, (schevana styles cadr)).
+;;; with what the mouse buttons do in reverse video over a line of fields
+;;; in character columns. A window that is not selected is grayed over;
+;;; buttons are command words, boxed under the pointer and in inverse video
+;;; while chosen. Its numbers are settings, so a style derived from it
+;;; changes them (the CADR, (schevana styles cadr)).
 
 (library (schevana styles genera)
   (export
@@ -58,9 +59,10 @@
 
   (library-layer looks)
 
-  ;; The label strip: the label's line and 2 (the CADR's label spacing).
-  ;; Its top in the window: under the white margin, directly inside the
-  ;; border (Genera), or under the content (the CADR, its margin below).
+  ;; The label strip is the label's line and 2 pixels (the CADR's label
+  ;; spacing), at least 14. Its top in the window lies under the white
+  ;; margin, directly inside the border (Genera), or right under the
+  ;; content, with the margin below the strip (the CADR).
   (define (genera-label-height)
     (exact (max 14 (round (+ (font-line-height (theme 'genera-label-font))
                              2)))))
@@ -94,8 +96,9 @@
                    (text-fit (window-title win) (- w (* 2 (+ b m))) f)
                    'text f))))
 
-  ;; A window not selected is grayed over, as Genera grays one it is not
-  ;; using: a sparse stipple of ink on clear paper (about 6 %, report:47).
+  ;; A window that is not selected is grayed over, as Genera grays a window
+  ;; it is not using: a sparse stipple of ink on clear paper (about 6 %,
+  ;; report:47).
   (define (genera-draw-over win x y w h focused? hover pressed)
     (unless focused?
       (let-values ([(l t r b) (frame-insets win)])
@@ -103,13 +106,13 @@
 
   ;;; the who line
 
-  ;; Each of its two lines: the code font's line and 2.
+  ;; Each of its two lines is the code font's line and 2 pixels.
   (define (genera-line) (exact (round (+ (font-line-height 'mono) 2))))
 
-  ;; Its fields, at character columns as the CADR's (lispm.md 2.1), in the
-  ;; taskbar's strip, h high: what the mouse buttons do across the top
-  ;; line; below, the selected window, a field that counts the windows, the
-  ;; run state (as the CADR's, after the package) and the status.
+  ;; Its fields, at character columns as on the CADR (lispm.md 2.1), in the
+  ;; taskbar's strip, h high: what the mouse buttons do, across the top
+  ;; line; and below, the selected window, a field that counts the windows,
+  ;; the run state (as on the CADR, after the package) and the status.
   (define (genera-who-line-areas h hint)
     (let ([lh (genera-line)] [y (- (screen-h) h)]
           [cw (font-char-width 'mono)])
@@ -120,8 +123,8 @@
             (list 'status (* 51 cw) (+ y lh) (max 0 (- (screen-w) (* 52 cw)))
                   lh))))
 
-  ;; The who line in its fields (genera-who-line-areas), the mouse
-  ;; documentation, doc, across its top and the status's strings below.
+  ;; The who line in its fields (genera-who-line-areas): the mouse
+  ;; documentation, doc, across its top, and the status's strings below.
   (define (genera-draw-who-line h as open? doc status hint)
     (let* ([lh (genera-line)] [w (screen-w)]
            [y (- (screen-h) h)] [cw (font-char-width 'mono)]
@@ -141,14 +144,14 @@
       (field 'state (genera-who-state))
       (field 'status (string-join (filter string? (map cdr status)) "  "))))
 
-  ;; The run state: Run while the selected window is at work (its 'busy), as
-  ;; the who line tells a process's; else nothing.
+  ;; The run state: Run while the selected window is at work (its 'busy),
+  ;; as the who line showed a process's state; otherwise nothing.
   (define (genera-who-state)
     (if (and *focus* (window-ref *focus* 'busy)) "Run" ""))
 
   ;; The busy mark where the work shows (a REPL's prompt): a terminal's
-  ;; spinner, | / - \ turning in the code font, a character's cell; the
-  ;; mouse over it boxes it, as over anything that tells more.
+  ;; spinner, | / - \ turning in the code font, in one character's cell; the
+  ;; mouse boxes it, as it boxes anything that tells more.
   (define (genera-busy-size)
     (values (font-char-width 'mono) (font-line-height 'mono)))
 
@@ -169,9 +172,10 @@
                       "; ")
          ".")))
 
-  ;; A window not selected is grayed over with this: a sparse stipple of
-  ;; ink on clear paper; a color, which you may change and save. Rows the
-  ;; search leaves out and what lies under a dialog are grayed with it too.
+  ;; A window that is not selected is grayed over with this: a sparse
+  ;; stipple of ink on clear paper. It is a color, which you may change and
+  ;; save. Rows the search leaves out, and what lies under a dialog, are
+  ;; grayed with it too.
   (at-load
    (color-default! 'genera-gray (stipple 'text #f "#..." "...." "...." "....")))
   ;; A scroll bar's elevator: 33 %, diagonal (lispm-apps.md 2.4).
@@ -180,21 +184,22 @@
 
   ;;; ------------------------------------------------------------------
   ;;; the widgets
-  ;;; Each the original's own where it had one, else what its authors would
-  ;;; have made of their parts (.work/style/research/lispm-apps.md part 4):
-  ;;; ink on paper and no color; a 1-pixel box for what the mouse is over,
-  ;;; inverse video for what is chosen, bold for the current value, italic
-  ;;; for a hint ('faint-text-font), an underline for the keyboard's place.
-  ;;; Where the CADR differs, a setting says how ((schevana styles cadr)).
+  ;;; Each widget is the original's own where it had one, and otherwise
+  ;;; what its authors would have made from their parts
+  ;;; (.work/style/research/lispm-apps.md part 4): ink on paper and no
+  ;;; color; a 1-pixel box for what the mouse is over, inverse video for
+  ;;; what is chosen, bold for the current value, italic for a hint
+  ;;; ('faint-text-font), and an underline for the keyboard's place. Where
+  ;;; the CADR differs, a setting says how ((schevana styles cadr)).
 
-  ;; A color that is another's: what a palette gives it, so that every hue
-  ;; is the palette's ink and every ground its paper, as on a screen one bit
-  ;; deep (lispm-apps.md part 1).
+  ;; A color that is another's: whatever the palette gives that one, so
+  ;; that every hue is the palette's ink and every ground its paper, as on a
+  ;; screen one bit deep (lispm-apps.md part 1).
   (define (genera-same key) (theme-rule (theme key)))
 
-  ;; What the mouse is over: a 1-pixel box; the CADR's sticks out a pixel
-  ;; at the top and left, "the right thing for boxing text"
-  ;; (sheet.lisp:2349-2364): genera-hover-nudge.
+  ;; What the mouse is over gets a 1-pixel box; the CADR's sticks out a
+  ;; pixel at the top and left, "the right thing for boxing text"
+  ;; (sheet.lisp:2349-2364), as genera-hover-nudge sets.
   (define (genera-hover x y w h)
     (let ([n (theme 'genera-hover-nudge)])
       (stroke-box (- x n) (- y n) (+ w n) (+ h n) 'text)))
@@ -202,18 +207,19 @@
   ;; A box n pixels thick.
   (define (genera-box x y w h n) (px-bevel x y w h 'text 'text n))
 
-  ;; A text's top in a box h high at y: centered on its line.
+  ;; The top of a text in a box h high at y, so that its line is centered
+  ;; in the box.
   (define (genera-text-y y h font) (+ y (/ (- h (font-line-height font)) 2)))
 
   ;; The keyboard's place: underlined (UG p.2762).
   (define (genera-focus x y w h flags r) (fill-box x (+ y h -1) w 1 'text))
 
   ;; A command word (Peek's, the Inspector's): plain, boxed under the
-  ;; mouse, inverse video while it is the one chosen (a segment). A press
-  ;; shows no more (lispm-notes, answer 10). The default stands out: bold
-  ;; in Genera, the CADR's standout italic. On the CADR a dialog's words
-  ;; are margin choices, a choice box after each, on while it acts
-  ;; (choice.lisp:441-526).
+  ;; mouse, and in inverse video while it is the one chosen (a segment). A
+  ;; press shows nothing more (lispm-notes, answer 10). The default stands
+  ;; out: bold in Genera, and in the CADR's standout italic. On the CADR a
+  ;; dialog's words are margin choices, each followed by a choice box that
+  ;; is on while the word is pressed (choice.lisp:441-526).
   (define (genera-button x y w h flags label glyph)
     (let* ([on? (lambda (f) (memq f flags))]
            [live? (not (on? 'disabled))]
@@ -242,7 +248,7 @@
                           (list (cons 'ink ink)) glyph))])
       (when (on? 'focused) (ui-draw-focus x y w h flags 0))))
 
-  ;; The word and a little room, as wide in either font.
+  ;; The word and a little room, wide enough in either font.
   (define (genera-button-size label glyph)
     (let ([h (ui-control-height)])
       (values (if label
@@ -252,8 +258,9 @@
               h)))
 
   ;; The choice box: a square as tall as the body font's capitals, its
-  ;; frame a quarter of its side on the CADR (genera-choice-heavy), a pixel
-  ;; in Genera, and when on a thick X in it (choice.lisp:441-464).
+  ;; frame a quarter of its side thick on the CADR (genera-choice-heavy) and
+  ;; a pixel in Genera, and, when on, an X in it, thick on the CADR
+  ;; (choice.lisp:441-464).
   (define (genera-choice-side) (round (font-ascent 'ui)))
 
   (define (genera-choice-box x y s on?)
@@ -269,7 +276,7 @@
                         (list (min i (- n 2)) (max 0 (- n 2 i)))
                         (list i (- n 1 i))))))))
 
-  ;; A thing to mark: its name, a space and the box (choice.lisp:505-512),
+  ;; A checkbox: its label, a space and the box (choice.lisp:505-512), all
   ;; boxed under the mouse.
   (define (genera-checkbox x y w h flags label)
     (let* ([s (genera-choice-side)] [sp (font-char-width 'ui)]
@@ -288,9 +295,9 @@
                (genera-choice-side))
             (ui-control-height)))
 
-  ;; An on-off setting as a boolean of the CADR's choose-variable-values:
-  ;; "Name: Yes No", the current one bold (choice.lisp:826-841). A click
-  ;; sets the other, so the mouse boxes that one.
+  ;; An on-off setting, as a boolean in the CADR's choose-variable-values:
+  ;; "Name: Yes No", with the current word bold (choice.lisp:826-841). A
+  ;; click sets the other word, so the mouse boxes that one.
   (define (genera-toggle x y w h flags label)
     (let* ([on? (memq 'checked flags)] [f (theme 'genera-choice-font)]
            [b (theme 'genera-choice-bold)] [sp (font-char-width 'ui)]
@@ -316,8 +323,9 @@
                (text-width "No" (theme 'genera-choice-bold)))
             (ui-control-height)))
 
-  ;; A mode among others, Peek's (peek.lisp:117-148; J-peek): the word,
-  ;; inverse video while it is the current one, boxed under the mouse.
+  ;; A tab, as one of Peek's modes (peek.lisp:117-148; J-peek): the word,
+  ;; in inverse video while it is the current one, and boxed under the
+  ;; mouse.
   (define (genera-tab x y w h flags label)
     (let ([font (theme 'genera-command-font)] [sel? (memq 'selected flags)])
       (cond [sel? (fill-box x y w h 'text)]
@@ -331,9 +339,9 @@
                        0 labels)
             (ui-control-height)))
 
-  ;; A value's place, as an accept-values field's: no box, an underline, a
-  ;; heavier one while it has the keyboard (lispm-notes, answer 4); an area
-  ;; of lines is a pane (ZWEI's), boxed.
+  ;; A value's place, as in an accept-values field: no box, only an
+  ;; underline, heavier while it has the keyboard (lispm-notes, answer 4);
+  ;; an area of lines is a pane (ZWEI's), boxed.
   (define (genera-field x y w h flags)
     ;; a device pixel at least, in Settings' miniatures too
     (let ([n (max (if (memq 'focused flags) 2 1)
@@ -342,8 +350,8 @@
           (genera-box x y w h n)
           (fill-box x (- (+ y h) n) w n 'text))))
 
-  ;; The text 2 pixels in, after a search's glass; an area's scroll bar at
-  ;; its left, as ZWEI's.
+  ;; The text sits 2 pixels in, or after a search's magnifying glass; an
+  ;; area of lines has its scroll bar at its left, as ZWEI's does.
   (define (genera-text-box-areas x y w h flags)
     (let* ([bw (ui-scrollbar-width)]
            [left (cond [(memq 'lines flags) (+ bw 4)]
@@ -367,8 +375,8 @@
 
   ;; A choice, as an accept-values field shows one of a large type: only
   ;; the current value, in bold (UG p.2743-2744; lispm-notes, answer 5),
-  ;; boxed under the mouse; a click gives the menu. A label shown instead
-  ;; of a value is plain, and no value faint.
+  ;; boxed under the mouse; a click opens the menu. A label shown instead
+  ;; of a value is plain, and the placeholder for no value is faint.
   (define (genera-dropdown x y w h flags label)
     (let ([font (if (or (memq 'label flags) (memq 'placeholder flags))
                     'ui
@@ -383,8 +391,9 @@
                  (+ 8 (text-widest labels 'ui-bold)))
             (ui-control-height)))
 
-  ;; A tag as a Zmail keyword, in braces (E&M p.2434); one that can go, a
-  ;; × after it, the mouse's box around the × alone: what a click removes.
+  ;; A tag as a Zmail keyword, in braces (E&M p.2434). A removable one has
+  ;; a × after it, and the mouse's box goes around the × alone, which is
+  ;; what a click removes.
   (define (genera-chip x y w h flags label)
     (let* ([removable? (memq 'removable flags)] [g (ui-small-glyph-size)]
            [room (- w (text-width "{}" 'ui) (if removable? (+ g 4) 0))])
@@ -406,16 +415,17 @@
     (let ([g (ui-small-glyph-size)])
       (list (list 'remove (- (+ x w) g 4) y (+ g 4) h))))
 
-  ;; A record, Genera's output in a border (PUI p.1685, p.1696): a 1-pixel
-  ;; box, 2 pixels while chosen (the CADR's box blinker, sheet.lisp:2365;
-  ;; lispm-notes, answer 3); the mouse's box just outside it.
+  ;; A card is a record, as Genera's output in a border (PUI p.1685,
+  ;; p.1696): a 1-pixel box, 2 pixels while chosen (the CADR's box blinker,
+  ;; sheet.lisp:2365; lispm-notes, answer 3), with the mouse's box just
+  ;; outside it.
   (define (genera-card x y w h flags)
     (genera-box x y w h (if (memq 'selected flags) 2 1))
     (when (memq 'hover flags)
       (stroke-box (- x 2) (- y 2) (+ w 4) (+ h 4) 'text)))
 
   ;; Genera's scroll bar, as measured (lispm-apps.md 2.4; report:35-41):
-  ;; 1-pixel sides, a box as wide as the bar at each end, the elevator
+  ;; 1-pixel sides, a box as wide as the bar at each end, and the elevator
   ;; between them in a 33 % stipple.
   (define (genera-scrollbar-areas x y w h start size)
     (let* ([e (min w (floor (/ h 3)))] [l (- h e e)]
@@ -447,16 +457,16 @@
       (stroke-box (- kx 6) (- cy 5) 12 10 'text)
       (fill-box (- kx 5) (- cy 4) 10 8 'genera-elevator)))
 
-  ;; A progress note's bar: thin, solid, from the left, no track (UG
-  ;; p.2740; J-zmail).
+  ;; A progress note's bar: thin, solid, from the left, with no track
+  ;; (UG p.2740; J-zmail).
   (define (genera-progress x y w h flags frac)
     (when (> frac 0)
       (fill-box x (+ y (floor (/ (- h 2) 2))) (* w (min 1 frac)) 2 'text)))
 
   ;; A column's heading: Peek's plain line (peek.lisp:270-273), or the
-  ;; PUI's italic underlined (genera-heading-underline, PUI p.1886); the
-  ;; sort as the character set's arrow after it, or before it over a right
-  ;; column, which it lines up with.
+  ;; PUI's italic and underlined (genera-heading-underline, PUI p.1886).
+  ;; The sort is the character set's arrow after it, or before it over a
+  ;; right-aligned column, so that the heading lines up with the column.
   (define (genera-table-header x y w h flags label dir)
     (let* ([f (theme 'genera-heading-font)]
            [mark (case dir [(up) "↑"] [(down) "↓"] [else #f])]
@@ -475,15 +485,17 @@
         (fill-box tx (+ ty (font-ascent f) 1) (- end tx) 1 'text))
       (when (memq 'hover flags) (genera-hover x y w h))))
 
-  ;; A row: the mouse's box; chosen, inverse video: its 2-pixel box here,
-  ;; and its inside turned by ui-draw-highlight-over when its cells are
-  ;; drawn (lispm-notes, answer 3).
+  ;; A row is boxed under the mouse. A chosen row is in inverse video: its
+  ;; 2-pixel box is drawn here, and its inside is inverted by
+  ;; ui-draw-highlight-over when its cells are drawn (lispm-notes,
+  ;; answer 3).
   (define (genera-table-row x y w h flags)
     (cond [(memq 'selected flags) (genera-box x y w h 2)]
           [(memq 'hover flags) (genera-hover x y w h)]))
 
   ;; A tree shown by indentation, as FSEdit's (WB Fig. 39); a node's
-  ;; triangle, the MOUSE font's, right when closed and down when open.
+  ;; triangle, from the MOUSE font, points right when closed and down when
+  ;; open.
   (define (genera-tree-row x y w h flags w0 depth)
     (let ([areas (ui-tree-areas x y w0 h depth)]
           [g (round (* 3/4 (ui-glyph-size)))])
@@ -495,12 +507,14 @@
                          (if (memq 'expanded flags) 'down 'right))))
       (ui-draw-dim x y (- (cadr (assq 'cell areas)) x) h flags)))
 
-  ;; Left out (the search's): grayed over, as a window not in use.
+  ;; Rows the search leaves out are grayed over, as a window not in use
+  ;; is.
   (define (genera-dim x y w h flags)
     (when (and (memq 'dim flags) (not (memq 'selected flags)))
       (fill-box x y w h 'genera-gray)))
 
-  ;; Panes: a well boxed, a strip ruled off where it meets the rest.
+  ;; Panes: a well is boxed, and a strip is ruled off where it meets the
+  ;; rest.
   (define (genera-surface x y w h flags)
     (fill-box x y w h 'window-bg)
     (cond [(memq 'well flags) (stroke-box x y w h 'text)]
@@ -509,10 +523,10 @@
           [(memq 'side flags) (fill-box x y 1 h 'text)]
           [(memq 'nav flags) (fill-box (+ x w -1) y 1 h 'text)]))
 
-  ;; A popup: Genera's, a 2-pixel border; the CADR's, 1 pixel and its
-  ;; white (lispm.md 2.8): genera-panel-border.
+  ;; A popup: Genera's has a 2-pixel border, and the CADR's a 1-pixel one
+  ;; with its white margin (lispm.md 2.8), as genera-panel-border sets.
   (define (genera-panel x y w h flags)
-    ;; Genera's shadow: solid under what only the mouse uses, a 50 %
+    ;; Genera's shadow: solid under what only the mouse uses, and a 50 %
     ;; stipple under a dialog (report:51); the CADR had none.
     (when (theme 'genera-shadow)
       (fill-box (+ x 7) (+ y 7) w h
@@ -522,9 +536,10 @@
     (fill-box x y w h 'window-bg)
     (genera-box x y w h (theme 'genera-panel-border)))
 
-  ;; The entry under the mouse in a menu: a 1-pixel box, inverse while a
-  ;; button is held on it; one under the mouse elsewhere, the box; the
-  ;; chosen one, a 2-pixel box that ui-draw-highlight-over fills in.
+  ;; The entry under the mouse in a menu gets a 1-pixel box, inverted while
+  ;; a button is held on it; one under the mouse elsewhere gets the box
+  ;; too; the chosen one gets a 2-pixel box that ui-draw-highlight-over
+  ;; fills in.
   (define (genera-highlight x y w h flags)
     (cond [(and (memq 'outline flags) (memq 'pressed flags))
            (fill-box x y w h 'text)]
@@ -536,14 +551,14 @@
   (define (genera-highlight-over x y w h flags)
     (px-invert (+ x 2) (+ y 2) (- w 4) (- h 4)))
 
-  ;; A light rule (UG p.2909); in a menu a blank cell (sysmen.lisp:277-282):
-  ;; genera-separator-rule.
+  ;; A light rule (UG p.2909), and in a menu a blank cell
+  ;; (sysmen.lisp:277-282), as genera-separator-rule says.
   (define (genera-separator x y w h flags)
     (when (theme 'genera-separator-rule)
       (fill-box x (floor (+ y (/ h 2))) w 1 'text)))
 
-  ;; The fallback for what the who line says: a pop-up message's box
-  ;; (sysmen.lisp:612-628).
+  ;; A tooltip, the fallback for what the who line says: a pop-up
+  ;; message's box (sysmen.lisp:612-628).
   (define (genera-tooltip x y w h flags text)
     (ui-draw-panel x y w h '(tooltip))
     (fold-left (lambda (ty line)
@@ -556,10 +571,10 @@
       (values (+ 12 (min 280 (text-widest lines 'ui-small)))
               (+ 8 (* (length lines) (font-line-height 'ui-small))))))
 
-  ;; A dialog: Genera's accept-values window (UG Fig. 135), the CADR's
-  ;; choose-variable-values (choice.lisp:427-526, :916-922): the title over
-  ;; a rule, the message, and under a rule its buttons as words in equal
-  ;; shares of the width.
+  ;; A dialog, as Genera's accept-values window (UG Fig. 135) and the
+  ;; CADR's choose-variable-values (choice.lisp:427-526, :916-922): the
+  ;; title over a rule, the message, and below a rule its buttons, as words
+  ;; in equal shares of the width.
   (define (genera-dialog-strip) (+ (ui-control-height) 4))
 
   (define (genera-dialog-size title message labels)
@@ -604,17 +619,19 @@
       (fill-box (+ x b) (- (+ y h) b (genera-dialog-strip) 1) (- w b b) 1
                 'text)))
 
-  ;; Under a dialog: the gray over a window not in use (UG p.2804).
+  ;; Under a dialog, the gray that covers a window not in use
+  ;; (UG p.2804).
   (define (genera-scrim x y w h flags) (fill-box x y w h 'genera-gray))
 
   ;; Neither machine had a calendar; dates were typed (UG Fig. 144). Its
   ;; authors would have set a month as a text table (lispm-apps.md 4.16;
-  ;; lispm-notes, answer 9): headed by the weekdays as a column's heading,
-  ;; a day a column three characters wide, its number at the right.
+  ;; lispm-notes, answer 9): headed by the weekdays as columns' headings,
+  ;; each day in a column three characters wide, with its number at the
+  ;; right.
   (define (genera-calendar-cell) (round (* 3 (font-char-width 'ui))))
 
   ;; Under the grid, Previous and Next, then Today and Clear, each in half
-  ;; of the width, which their words (and margin choices' boxes) set.
+  ;; of the width, which their words (and the margin choices' boxes) set.
   (define (genera-calendar-areas x y w h)
     (let* ([cell (genera-calendar-cell)] [b (ui-control-height)]
            [lh (font-line-height 'ui)] [gx (+ x (/ (- w (* 7 cell)) 2))]
@@ -649,8 +666,9 @@
           (when (theme 'genera-heading-underline)
             (fill-box sx (+ ty (font-ascent f) 1) (- end sx) 1 'text))))))
 
-  ;; A day: today bold (the current value's emphasis); chosen, inverse; the
-  ;; keyboard's, underlined; the mouse's, boxed; another month's, faint.
+  ;; A day: today is bold (the current value's emphasis), the chosen day
+  ;; inverse, the keyboard's underlined, the one under the mouse boxed, and
+  ;; another month's days faint.
   (define (genera-day x y w h flags label)
     (let* ([on? (lambda (f) (memq f flags))]
            [f (if (on? 'today) 'ui-bold 'ui)] [lh (font-line-height f)]
@@ -664,9 +682,9 @@
       (when (on? 'cursor)
         (fill-box (+ x 2) (+ ty lh) (- w 4) 1 (if sel? 'window-bg 'text)))))
 
-  ;; The MIT CADR's 5X5, for the names in lozenges, characters 32 to 96
-  ;; (its small letters are its capitals), a font as px-bitmap-text takes
-  ;; one: decoded from MIT System 99's fonts/5x5.qfasl, Copyright (c) 1980
+  ;; The MIT CADR's 5X5 font, for the names in lozenges: characters 32 to
+  ;; 96 (its small letters are its capitals), as px-bitmap-text takes a
+  ;; font. Decoded from MIT System 99's fonts/5x5.qfasl, Copyright (c) 1980
   ;; Massachusetts Institute of Technology, BSD license (see CREDITS.md).
   (define-made genera-5x5
     (list 32 6 5
@@ -736,8 +754,8 @@
         #x3e000000   ; _
         #x204)))     ; `
 
-  ;; The CADR's lozenge: str in capitals of the 5X5 in a box 9 high with
-  ;; pointed ends, 9 + 6 a character wide (shwarm.lisp:675-700, MIT).
+  ;; The CADR's lozenge: str in the 5X5's capitals in a box 9 high with
+  ;; pointed ends, 9 plus 6 per character wide (shwarm.lisp:675-700, MIT).
   (define (genera-lozenge-width str) (+ 9 (* 6 (string-length str))))
 
   (define (genera-lozenge x y str color)
@@ -754,8 +772,8 @@
              'stretch (cons 4 (genera-lozenge-width str)))
     (px-bitmap-text (+ x 4) (+ y 2) (string-upcase str) genera-5x5 color))
 
-  ;; A person: the name, where it is written beside the avatar (so nothing
-  ;; more), or else the initials in a lozenge.
+  ;; A person: nothing where the name is written beside the avatar, or else
+  ;; the initials in a lozenge.
   (define (genera-avatar-size flags name)
     (if (memq 'named flags)
         (values 0 0)
@@ -767,10 +785,10 @@
   ;;; Tasks' marks ((schevana apps tasks)), each in ink: the shapes of Genera's
   ;;; MOUSE font (WB Fig. 14) and the CADR's choice box.
 
-  ;; Priority, four bars, those above it hollow as a choice box off; a
-  ;; bug a filled circle, a feature a filled lozenge, a chore a hollow box;
-  ;; blocked a fat circle with a minus in it; a status none, its word is
-  ;; written beside (lispm-apps.md part 5).
+  ;; Priority is four bars, those above it hollow, as a choice box that is
+  ;; off; a bug is a filled circle, a feature a filled lozenge, and a chore
+  ;; a hollow box; blocked is a fat circle with a minus in it; a status has
+  ;; no mark, since its word is written beside it (lispm-apps.md part 5).
   (define (genera-tasks-mark x y s what value)
     (case what
       [(status) 0]
@@ -793,8 +811,8 @@
        s]
       [else ((world-value 'tasks-draw-mark*) x y s what value)]))
 
-  ;; A due date: bold when it has passed (lispm-notes, answer 8), else
-  ;; plain; "Today" says itself.
+  ;; A due date: bold once it has passed (lispm-notes, answer 8), otherwise
+  ;; plain; "Today" speaks for itself.
   (define (genera-tasks-due x y w label when fnt)
     (let* ([f (get-font fnt)]
            [f (if (eq? when 'past)
@@ -830,11 +848,12 @@
      'ui-busy-size 'genera-busy-size
      'ui-draw-busy 'genera-busy
      'mouse-doc-text 'genera-mouse-doc-text
-     ;; the fonts: what an app shows in the code font (FIX, cptfont), its
-     ;; command words in the sans (JESS), titles in sans bold (SWISS), menus
-     ;; a size up, a pane's heading bold italic (lispm-apps.md part 6)
-     ;; the code font the sans's size, so that an app's text and the command
-     ;; words beside it stand as tall (one family: one x-height)
+     ;; the fonts: what an app shows is in the code font (FIX, cptfont),
+     ;; its command words in the sans (JESS), titles in sans bold (SWISS),
+     ;; menus a size up, and a pane's heading in bold italic
+     ;; (lispm-apps.md part 6); the code font has the sans's size, so that
+     ;; an app's text and the command words beside it stand as tall (one
+     ;; family: one x-height)
      'mono-font-size 13
      'ui (theme-rule (theme 'mono))
      'ui-small (theme-rule (theme 'mono-small))
@@ -851,7 +870,7 @@
      'faint-text-font 'ui-italic-of
      'text-caret 'block
      'text-selection 'underline
-     ;; the sizes: a line of the font and a little
+     ;; the sizes: a line of the font and a little more
      'control-height (theme-rule (round (+ (font-line-height 'ui) 6)))
      'table-header-height (theme-rule (round (+ (font-line-height 'ui) 6)))
      'table-row-height (theme-rule (round (+ (font-line-height 'ui) 6)))
@@ -924,8 +943,8 @@
      'tasks-draw-slot 'genera-tasks-slot
      'repl-paren-mark (stipple 'text #f "#..." "...." "..#." "....")
      'settings-swatch-ring (stipple 'text 'window-bg "#." ".#")
-     ;; a chart's series apart by patterns of ink; a share of its bars in
-     ;; solid ink (the accent's), a bar marked grayed
+     ;; a chart's series told apart by patterns of ink; a share of its bars
+     ;; in solid ink (the accent's), and a marked bar grayed
      'chart-1 (stipple 'text #f "#." "#.")
      'chart-2 (stipple 'text #f "#.." "..." "...")
      'chart-3 (stipple 'text #f "##" "..")
@@ -945,7 +964,7 @@
      'menu-hover 'outline
      'mouse-doc #t
      'scrollbar-side 'left
-     ;; the content clear of it, as beside a pane's margin
+     ;; the content kept clear of the scroll bar, as beside a pane's margin
      'scrollbar-margin 4
      'options '(palette
                 accent

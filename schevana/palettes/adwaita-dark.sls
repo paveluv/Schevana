@@ -1,16 +1,17 @@
-;;; (schevana palettes adwaita-dark) — GNOME's dark style, as libadwaita 1.7.6
-;;; colors it (paths under its src/stylesheet/): the window #222226 (bg-1),
-;;; views #1d1d20 (bg-0), header bars and sidebars #2e2e32, popovers and
-;;; dialogs #36363a, cards white at 8 % over the window, #333337
-;;; (_defaults.scss:40-84). Text is white; dimmed text white at 55 % over the
-;;; window, #9c9c9d (_colors.scss:117); faint, at 40 % (widgets/
-;;; _column-view.scss:28); a border white at 15 % (_colors.scss:1, 77). The
-;;; accent is GNOME's blue, #3584e4, the same in both styles (_colors.scss:7);
-;;; the named colors are GNOME's palette's light tones, which read on the dark
-;;; (_palette.scss:1-45), and the destructive red its #c01c28
-;;; (_defaults.scss:12). The top bar is the Shell's, black (shell
-;;; _colors.scss:24). The desktop is the dark wallpaper's blues, #2e4a7b over
-;;; #06194b (gnome-backgrounds 48's adwaita-d, its average and its darkest).
+;;; (schevana palettes adwaita-dark) — GNOME's dark style, in the colors
+;;; libadwaita 1.7.6 gives it (paths are under its src/stylesheet/). The
+;;; window is #222226 (bg-1), views are #1d1d20 (bg-0), header bars and
+;;; sidebars are #2e2e32, popovers and dialogs #36363a, and cards are white at
+;;; 8 % over the window, #333337 (_defaults.scss:40-84). Text is white; dimmed
+;;; text is white at 55 % over the window, #9c9c9d (_colors.scss:117); faint
+;;; text is white at 40 % (widgets/_column-view.scss:28); a border is white at
+;;; 15 % (_colors.scss:1, 77). The accent is GNOME's blue, #3584e4, the same
+;;; in both styles (_colors.scss:7). The named colors are the light tones of
+;;; GNOME's palette, which stay readable on the dark (_palette.scss:1-45), and
+;;; the destructive red is its #c01c28 (_defaults.scss:12). The top bar is the
+;;; Shell's, black (shell _colors.scss:24). The desktop uses the blues of the
+;;; dark wallpaper, #2e4a7b over #06194b (the average and the darkest color of
+;;; gnome-backgrounds 48's adwaita-d).
 
 (library (schevana palettes adwaita-dark)
   (export)

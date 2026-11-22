@@ -1,7 +1,8 @@
-;;; tests/units/cons.ss — Cons, the idea through everything.
+;;; tests/units/cons.ss — Cons, the style that carries one idea (the
+;;; cons cell) through everything.
 
-;;; Cons, the idea through everything: the parts and flags it reaches
-;;; the widgets by, and its look at a few pixels.
+;;; Cons: the parts and flags by which it reaches the widgets, and its look
+;;; at a few pixels.
 
 (check "Tasks' column and card insets, its column and the link after each \
         card are parts: a style's own insets move the cards, its link is \

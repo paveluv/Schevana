@@ -1,8 +1,8 @@
 ;;; tests/units/pipeline.ss — (schevana kits inspect) reads what the recorder
 ;;; wrote, and the Pipeline shows it.
 
-;; thunk drawn as a frame, and the list that frame leaves; the world's own
-;; recording comes back.
+;; Draws thunk as a frame and returns the list that frame leaves; the
+;; world's own recording is put back.
 (define (pipeline-test-list thunk)
   (let ([plain record-world!])
     (set! record-world! thunk)
@@ -244,9 +244,9 @@
              (inspect-preview-free! image)
              (and (= live #xffff0000) (= kept #xff0000ff))))))
 
-;; The screen is a tree of lists; read, it's one: drawn, the same pixels,
-;; from a window drawing every kind and paint, clipped and rounded, its
-;; frame's shadow, round corners, title.
+;; The screen is a tree of lists; read, it is one list, and drawn, it gives
+;; the same pixels. The window draws every kind and paint, clipped and
+;; rounded, with its frame's shadow, round corners and title.
 (let ([w (open-window "Every kind"
                       'size '(220 . 140) 'pos '(130 . 90)
                       'draw (lambda (win cw ch)
@@ -267,8 +267,8 @@
                               (invert-box 120 80 20 10)
                               (fill-box 150 4 30 20 'accent 6)
                               (stroke-box 150 30 30 20 'text 1 4)))])
-  ;; the top bar's words held, which change once a second: the screen two
-  ;; frames apart is the same
+  ;; the top bar's words, which change once a second, are held, so the
+  ;; screen is the same two frames apart
   (fluid-let ([refresh-status! void])
     (invalidate!)
     (steps 1)
@@ -335,9 +335,9 @@
                [c (keep! (lambda () (invalidate! w)))]
                [bytes (lambda (x)
                         (+ (gpu-list-recs-n x) (gpu-list-extras-n x)))]
-               ;; the bytes of the copies in k not in the frame before, the
-               ;; window's and any other's (the top bar's clock, when its
-               ;; second turns)
+               ;; the bytes of the copies in k that weren't in the frame
+               ;; before: the window's, and any other's (the top bar's
+               ;; clock, when its second turns)
                [new (lambda (k before)
                       (apply + (map bytes
                                     (remp (lambda (x)
@@ -451,7 +451,7 @@
 
 ;;; The frames kept.
 
-;; A box in the color its buffer holds.
+;; A paint that fills a box with the color its buffer holds.
 (define-paint (pipeline-test-paint x y)
   ([colors fx-buffer])
   (fx-ref colors 0))
@@ -498,7 +498,7 @@
               moved on"
              (let ([one (shown la 1)] [none (shown la 0)])
                (and (= one red) (= none #xff000000))))
-      ;; an image gone by now, in a frame kept
+      ;; an image that is gone by now, in a frame kept
       (let ([gone (inspect-preview-image 4 4)])
         (draw! (lambda ()
                  (with-label ("one")
@@ -548,7 +548,7 @@
   (request-frame!)
   (steps 1))
 
-;; Copies made of a list, then nothing keeping them: the kit's caches let
+;; Copies made of a list, then nothing keeps them: the kit's caches let
 ;; them go, though each copy is its own basis.
 (let ([before (hashtable-size inspect-sources)])
   (let ([lst (gpu-list-new)])
@@ -587,10 +587,10 @@
                        (inject! `(mouse-move ,x ,y) `(mouse-down ,x ,y left 1)
                                 `(mouse-up ,x ,y left))
                        (steps 2)))))])
-  ;; the Pipeline reads the frame anew a second after it last did, by the
-  ;; world's clock, and a selection moves with what it reads: held, it
-  ;; reads when a check says (pipeline-look!), not between a press and
-  ;; what's said of it, as a slow step would have it
+  ;; the Pipeline reads the frame again a second after it last did, by the
+  ;; world's clock, and a selection moves with what it reads. With the
+  ;; clock held, it reads only when a check says so (pipeline-look!), not
+  ;; between a press and the check of it, as a slow step would make it do
   (test-clock-hold!)
   (steps 3)
   (pipeline-look! v)
@@ -607,8 +607,8 @@
                 (= (apply + (map (lambda (row) (pipeline-node-count v row))
                                  rows))
                    (caddr group)))))
-  ;; A window below draws one box, then two, as a caret blinks: what the
-  ;; Pipeline draws moves along by a record and back each time.
+  ;; A window below draws one box, then two, the way a caret blinks: what
+  ;; the Pipeline draws moves along by one record and back each time.
   (let* ([boxes 1]
          [below (open-window "Pipeline test boxes" 'size '(120 . 80)
                              'pos '(10 . 10) 'app 'pipeline-test
@@ -706,8 +706,8 @@
         (check "and its stepper steps over the records left out"
                (= (pipeline-view-upto v) first)))
       (press! '(pipeline hold))
-      ;; on again as the checkbox puts it, whose press is the check's
-      ;; above: its row, past the steps, may be scrolled out of view
+      ;; turned on again as the checkbox would (the check above presses
+      ;; it), since its row, past the steps, may be scrolled out of view
       (pipeline-view-off-set! v '())
       (pipeline-view-kept-of-set! v #f)
       (invalidate! w)
@@ -756,7 +756,7 @@
       (pipeline-view-off-set! v '())
       (pipeline-view-kept-of-set! v #f)
       (pipeline-resume! v))
-    ;; what's selected: kept with its drawer, named, cleared, shown
+    ;; what is selected: kept with its drawer, named, cleared and shown
     (let ([before (map (lambda (n) (cons n (pipeline-color-index v n)))
                        (pipeline-span-nodes (pipeline-view-groups v)))])
       (focus-window! below)
@@ -816,7 +816,7 @@
              (and (not (ui-tree-row-expanded? (row-of "Pipeline test boxes")))
                   (ui-tree-row-expanded? (row-of "topbar"))
                   (ui-tree-row-expanded? (row-of "Pipeline")))))
-    ;; the tree as it was: at its top, the topbar closed
+    ;; the tree put back as it was: at its top, with the topbar closed
     (parameterize ([current-window w])
       (ui-tree-expand! ui tree '(topbar 0) #f))
     (pipeline-select! v '(desktop 0))
@@ -850,9 +850,10 @@
            (pipeline-look! v)
            (and (pipeline-view-held? v) (eq? held (pipeline-view-shown v)))))
   (press! '(pipeline hold))
-  ;; the River: a few ticks to go back through, the refresh each draw's
-  ;; frame will show at kept, as the River is drawn from it: compared with
-  ;; that, not the clock, the check holds however long a step takes
+  ;; the River: a few ticks to go back through. The refresh at which each
+  ;; draw's frame will show is kept as the River is drawn from it; compared
+  ;; with that rather than the clock, the check holds however long a step
+  ;; takes
   (let* ([target #f]
          [plain pipeline-river-target]
          [stepped (fluid-let ([pipeline-river-target
@@ -880,7 +881,8 @@
       (check "the ticks over the River stand when they ran, or each over its \
               frame, as the choice in its heading says"
              (and ran? frame? back?)))
-    ;; the River's line where the frames kept end asks only whether they are
+    ;; the River's line where the frames kept end asks only whether frames
+    ;; are kept: drawing it doesn't flatten them all
     (steps 6)
     (let* ([n 0]
            [flat inspect-list-flat!]
@@ -894,7 +896,7 @@
                       many it keeps (~a flattened in 3 steps, ~a kept)"
                      n kept)
              (and (> kept 8) (<= n 6))))
-    ;; its reads a period apart on the clock
+    ;; its reads come a period apart on the clock
     (let ([at (now-ms)] [period pipeline-period-ms])
       (pipeline-view-looked-set! v (- at period 500))
       (pipeline-frame! v w)
@@ -933,8 +935,8 @@
                                   [else (loop (- i 1))])))]
            [i (shown-frame (- *frame-ring-n* 3))]
            [x (x-of (inspect-frame-refresh g i))]
-           ;; as the press finds it: frames coming back after may show at
-           ;; a refresh still this recent
+           ;; the frame's tick as the press finds it: frames that come back
+           ;; afterwards may show at a refresh this recent too
            [at-press (begin
                        ((ui-region-on r) (list 'press x y 'left 1))
                        (pipeline-frame-tick
@@ -1254,7 +1256,7 @@
                   (inspect-list-labels l)
                   (pipeline-span-nodes (inspect-list-labels l)))))))
   (pipeline-view-look-set! v 'picture)
-  ;; slice 4: Course, Inside, Memory
+  ;; Course, Inside and Memory
   (press! '(pipeline course))
   (let* ([c (pipeline-course v)] [items (and c (cadr c))]
          [of (lambda (kind) (filter (lambda (it) (eq? (caddr it) kind))
@@ -1418,8 +1420,9 @@
                   (ui-find ui '(pipeline unpop))
                   (not (ui-find ui '(pipeline viewer)))
                   (eq? (find-window 'pipeline) w)))
-      ;; each frame it's drawn again with the picture drawn last, never left
-      ;; with the other image, the one drawn on, which leaves it out
+      ;; each frame it is drawn again with the picture drawn last, never
+      ;; left with the other image (the one being drawn on), which leaves
+      ;; it out
       (let ([shown (map (lambda (k)
                           (steps 1)
                           (cons (pipeline-view-image v)
@@ -1454,8 +1457,8 @@
     (check "and Bring it back closes it too"
            (and (not (pipeline-view-popped v))
                 (ui-find ui '(pipeline viewer)))))
-  ;; the small screen in the small screen: a flat box if it's left out, in a
-  ;; list read since the selection's outline went
+  ;; the small screen within the small screen: a flat box if it is left
+  ;; out, in a list read since the selection's outline went away
   (pipeline-view-selected-set! v #f)
   (steps 4)
   (pipeline-look! v)
@@ -1525,8 +1528,8 @@
 
 ;;; Recording itself.
 
-;; The bytes thunk allocates, the least of a few calls: one may share its
-;; time with a stray collection's bookkeeping.
+;; Returns the bytes thunk allocates, the least over a few calls, since one
+;; call may share its time with a stray collection's bookkeeping.
 (define (pipeline-test-bytes thunk)
   (thunk)
   (let loop ([i 0] [least #f])
@@ -1597,10 +1600,10 @@
                (loop (+ i 1)))))))
 
 ;; A frame's report, as the screen would write it: taken, sent and its GPU
-;; done a ms apart after its publish, and shown a refresh after it, at
-;; refresh 1000 by the screen's count.
+;; done, a ms apart, after its publish, and shown a refresh after the
+;; publish, at refresh 1000 by the screen's count.
 (let* ([w (pipeline)] [v (window-ref w 'state)] [p (pacer-period)])
-  (test-clock-hold!)   ; no read of the frame but a check's, as above
+  (test-clock-hold!)   ; no read of the frame except a check's, as above
   (request-frame!)
   (steps 1)
   (check "with no word from the screen, refreshes are counted on the clock, \
@@ -1737,8 +1740,8 @@
                         (pipeline-test-has? text "the screen stamped it \
                                                   2.0 ms late")
                         (not (= pip back)))))))
-      ;; the frame before shown at 999, a refresh before; then the
-      ;; screen's word on this one not in yet
+      ;; the frame before was shown at 999, a refresh earlier; then the
+      ;; screen's word on this one is not in yet
       (let* ([m (inspect-frame-ref (- i 1) 6)]
              [at0 (present-at m)]
              [saved (map (lambda (k) (fxvector-ref r (+ at0 k))) (iota 10))]
@@ -1761,7 +1764,8 @@
                           not in yet, the same (~a; ~a)" reported late)
                  (and (= reported (max 1001 soonest))
                       (= late reported)))))
-      ;; this frame on its way, the latch a refresh before 10 ms in
+      ;; this frame still on its way, its latch a refresh before it shows,
+      ;; 10 ms in
       (fluid-let ([*pacer-latch-phase* 10000000])
         (let* ([latch (+ publish 10000000)]
                [before (now-ns)]
@@ -1879,8 +1883,8 @@
            ok)))
 
 ;; The screen's clock's drift (inspect-clock-moves): twenty frames a
-;; refresh apart, reported to core0's own clock, the stamps a ms late from
-;; the third on, as on a screen whose refreshes moved.
+;; refresh apart, reported on core0's own clock, their stamps a ms late
+;; from the third on, as on a screen whose refreshes moved.
 (let* ([w (pipeline)] [v (window-ref w 'state)])
   (do ([k 0 (+ k 1)]) ((= k 24)) (request-frame!) (steps 1))
   (let* ([count 20]

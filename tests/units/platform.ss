@@ -1,9 +1,8 @@
 ;;; tests/units/platform.ss — which platform this is (src/base.ss,
 ;;; (schevana core platform), schevana/core0/platform.sls), as predicates,
 ;;; facts, Monitor's Platform tab and a row for docs/PLATFORMS.md; the
-;;; screen's times read on the clock that fits them; and the trace
-;;; (schevana/core0/trace.sls). Whatever the platform: each check holds
-;;; on any of them.
+;;; screen's times, each read on the clock that fits it; and the trace
+;;; (schevana/core0/trace.sls). Each check holds on any platform.
 
 (define (platform-test-one-of preds)
   (<= (length (filter (lambda (p) (p)) preds)) 1))
@@ -83,12 +82,13 @@
              (and copy (not crashed)
                   (string? text) (string-prefix? "| " text))))))
 
-;; A compositor that says CLOCK_MONOTONIC and stamps on CLOCK_MONOTONIC_RAW
-;; (GNOME's with NVIDIA's): a report's time fits between its frame's
-;; sending and its own coming on one clock or the other. The two a fixed
-;; way apart here, and the report read at a fixed time, not as the
-;; machine's are: a desktop nine hours up has raw 165 ms behind, a laptop
-;; an hour up 35 ms ahead. Both are Linux's and a Mac's numbers alike.
+;; A compositor that says it uses CLOCK_MONOTONIC but stamps times on
+;; CLOCK_MONOTONIC_RAW (GNOME's with NVIDIA's): a report's time fits
+;; between its frame's sending and the report's arrival on one clock or
+;; the other. Here the two clocks are a fixed distance apart and the report
+;; is read at a fixed time, not as the machine's own clocks are: a desktop
+;; up for nine hours had raw 165 ms behind, and a laptop up for an hour had
+;; it 35 ms ahead. The check uses both numbers on Linux and on a Mac alike.
 (check "a report's time is read on the first clock under which its frame \
         shows after it was sent and no later than a refresh after the \
         report comes: the one said, where it fits, a time foretold too; \
@@ -98,8 +98,8 @@
               [shown 7000000000000] [sent (- shown 16000000)]
               [read (+ shown 2000000)]
               [foretold (+ read (quotient refresh 2))]
-              ;; t as it's read, raw apart ns behind the clock said: the
-              ;; time on now-ns's clock, and the clock used
+              ;; reads t with raw apart ns behind the clock said; returns
+              ;; the time on now-ns's clock, and the clock used
               [on (lambda (apart t)
                     (fluid-let ([platform-clock-offset
                                  (lambda (clock) (if (eqv? clock 4) apart 0))]
@@ -115,9 +115,9 @@
               (equal? (on 165000000 (- shown 165000000)) (cons shown 4))
               (equal? (on -35000000 (+ shown 35000000)) (cons shown 4)))))
 
-;; The offset is read from two clocks one after the other, so it's off by
-;; the time between the reads: that, not a bound in ms, which a busy
-;; machine breaks.
+;; The offset is read from two clocks one after the other, so it is off by
+;; the time between the reads. The check allows that time, not a fixed
+;; bound in ms, which a busy machine would break.
 (check "a clock's offset is what to add to its time for now-ns's: read \
         twice, the monotonic clock's and raw's each differ by no more than \
         the reads took, and a thousandth for the clocks' rates"
@@ -161,7 +161,8 @@
                 (string-prefix? "# steps" (line3 a))
                 (equal? (line3 b) "# written as a check")))))
 
-;; No collection while it looks: one stamps a step of core1's (gc).
+;; No collection runs while the check looks, since a collection stamps a
+;; step of core1's (gc).
 (check "core1 stopped past the limit, core0 writes the trace once, saying \
         core1's last step; a step of core1's later, again"
        (let ([whys '()])
@@ -205,7 +206,7 @@
            (and (= n (unbox (vector-ref *core0-trace-rings* 1)))
                 (not (core0-trace-write!))))))
 
-;; CLOCK_MONOTONIC is 1 on Linux alone: elsewhere there's no Wayland.
+;; CLOCK_MONOTONIC is 1 only on Linux; elsewhere there is no Wayland.
 (check "an input's ms on the compositor's clock reads as its time on \
         now-ns's, to the ms, across the clock's 32-bit wrap; one a second \
         ahead fits no clock"
@@ -222,15 +223,15 @@
                       (not (wayland-input-on 1 (modulo (+ ms 2000) 4294967296)
                                              at))))))))
 
-;; A frame's row begun as core0 sends it, at t: none of the screen's word
-;; yet.
+;; Begins frame n's row as core0 does when it sends the frame at t, with no
+;; word from the screen yet.
 (define (platform-test-sent! n t)
   (let ([at (present-at n)])
     (fxvector-set! *present-ring* at n)
     (fxvector-set! *present-ring* (+ at 1) 0)
     (fxvector-set! *present-ring* (+ at 2) t)))
 
-;; CLOCK_UPTIME_RAW, Metal's clock, is 8 on a Mac alone.
+;; CLOCK_UPTIME_RAW, Metal's clock, is 8 only on a Mac.
 (check "Metal's word on a drawable is its frame's report: shown on now-ns's \
         clock at the window's refresh, its refresh counted from the last \
         shown; a time before the frame was sent says nothing; 0 is dropped"
@@ -272,7 +273,7 @@
                   (= -1 (fxvector-ref *mac-waiting*
                                       (* 2 (modulo f mac-waiting-rows)))))))))
 
-;; QOS_CLASS_USER_INTERACTIVE and QOS_CLASS_DEFAULT
+;; #x15 is QOS_CLASS_DEFAULT and #x21 is QOS_CLASS_USER_INTERACTIVE
 (check "on a Mac a thread forked, as core1, starts at the default class \
         and asks for core0's, the user-interactive one; elsewhere no class \
         is known"

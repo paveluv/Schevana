@@ -33,8 +33,9 @@
 
   (define (spine-insets win) (values (spine-width) 0 0 0))
 
-  ;; The buttons, then the rest of the spine as the title, which drags. The
-  ;; left edge and the bottom corner stay free for resizing.
+  ;; The buttons, then the rest of the spine as the title, by which the
+  ;; window is dragged. The left edge and the bottom corner stay free for
+  ;; resizing.
   (define (spine-regions win)
     (let ([s (spine-width)] [c (spine-cell)])
       (list (list 'close 0 4 s c)
@@ -42,7 +43,7 @@
             (list 'maximize 0 (+ 4 c c) s c)
             (list 'title 5 0 (- s 5) (- (window-h win) 14)))))
 
-  ;; (values band ink): the spine's color and the color drawn on it.
+  ;; Returns (values band ink): the spine's color and the color drawn on it.
   (define (spine-colors win focused?)
     (let ([app (app-color (window-app win))])
       (if focused?
@@ -50,7 +51,8 @@
           (let ([band (mix 'title-bg app 0.24)])
             (values band (mix band 'title-text 0.5))))))
 
-  ;; 8 pixels square around (cx, cy), on whole pixels: crisp, on one axis.
+  ;; Draws a glyph 8 pixels square around (cx, cy), on whole pixels so that
+  ;; it is crisp, with every button's glyph on one axis.
   (define (spine-glyph win kind cx cy ink)
     (ui-draw-glyph (- cx 4) (- cy 4) 8 8
                    (cons (cons 'ink ink)
@@ -70,7 +72,7 @@
                          [hot? ink]
                          [else (alpha ink (if focused? 0.7 0.55))]))))
 
-  ;; Two thin rules across the spine, as gilt on a binding.
+  ;; Draws two thin rules across the spine, like gilt on a binding.
   (define (spine-rules x y s ink)
     (fill-box x y (- s 1) 1 ink)
     (fill-box x (+ y 3) (- s 1) 1 ink))
@@ -105,8 +107,8 @@
           (text-draw-centered x (+ tail 6) s c "λ" ink 'title))
         (unless (string=? title "…")   ; a spine too short for any title
           (spine-rules x head s (alpha ink 0.35))
-          ;; turned to read upward, its capitals (about 3/4 of the
-          ;; ascent) centered across the spine
+          ;; the title, turned to read upward, with its capitals (about 3/4
+          ;; of the ascent) centered across the spine
           (with-translation ((- (round (+ cx (* 3/8 a))) a)
                              (round (+ (/ (+ head 4 end) 2)
                                        (/ (text-width title 'title) 2))))

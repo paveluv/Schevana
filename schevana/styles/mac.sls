@@ -1,5 +1,5 @@
-;;; (schevana styles mac) — the Mac window style. Traffic lights on the left,
-;;; glyphs on hover, centered title.
+;;; (schevana styles mac) — the Mac window style: traffic lights on the left,
+;;; which show their glyphs on hover, and a centered title.
 
 (library (schevana styles mac)
   (export
@@ -30,9 +30,9 @@
       (map (lambda (kind cx) (list kind (- cx 9) (- cy 9) 18 18))
            '(close minimize maximize) '(18 38 58))))
 
-  ;; A button's mark as strokes around its circle's center (text centers by
-  ;; its line box, not its ink, and sat low), in opaque ink so that crossing
-  ;; strokes do not darken where they meet.
+  ;; Draws a button's mark as strokes around its circle's center (text is
+  ;; centered by its line box, not its ink, so a text mark sat low), in
+  ;; opaque ink so that crossing strokes don't darken where they meet.
   (define (mac-glyph kind cx cy ink)
     (let ([a 3] [lw 1.5])
       (case kind
@@ -69,8 +69,9 @@
                   '(close minimize maximize))
         (mac-title win x y w th focused?))))
 
-  ;; The title, centered between the buttons and their mirror, after the
-  ;; window's icon if its app gave one, the two centered together.
+  ;; Draws the title, centered between the buttons and their mirror image,
+  ;; after the window's icon if its app gave one; the icon and the title are
+  ;; centered together.
   (define (mac-title win x y w th focused?)
     (let* ([icon (ui-title-icon win)] [s (ui-glyph-size)]
            [room (if icon (+ s 6) 0)]
@@ -90,7 +91,7 @@
 
   (at-load
    (define-style mac "Mac"
-     ;; a list's column lines show, faint, as the Finder's do
+     ;; a list's column lines show faintly, as the Finder's do
      'table-dividers 'always
      ;; a divider's drag widens its column and moves the rest along
      'table-resize 'shift

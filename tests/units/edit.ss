@@ -1,9 +1,10 @@
-;;; tests/units/edit.ss — the edit kit, with no window: editing, rows and their
-;;; lazy layout. Text measures 7 px a character.
+;;; tests/units/edit.ss — the edit kit, with no window: editing, rows and
+;;; their lazy layout. Text measures 7 px per character (m7).
 
-;;; the edit kit, the widget kit and Tasks, pure
-;;; Text editing, rows, dates, flow and table keys, and Tasks' own
-;;; procedures, with no window: text measures 7 px a character.
+;;; the edit kit, and the widget kit and Tasks where they use it, pure
+;;; Text editing and rows, a wrapped label's lines, and Tasks' own
+;;; procedures for its editor and its search, with no window: text
+;;; measures 7 px per character.
 
 (define (m7 s) (* 7 (string-length s)))
 (define (lay-of text width . measure)
@@ -122,8 +123,8 @@
             (equal? (wrap "abc" 3) '((0 . 1) (1 . 2) (2 . 3)))
             (equal? (wrap "hello " 35) '((0 . 6)))))
 
-;; Widths that differ: a space and narrow letters 3, wide ones 11, the
-;; rest 7.
+;; A measure whose widths differ: a space and the narrow letters 3, the
+;; wide ones 11, the rest 7.
 (define (mp s)
   (let loop ([i 0] [w 0])
     (if (= i (string-length s))
@@ -166,7 +167,8 @@
 
 (define (next-random x) (mod (+ (* x 1103515245) 12345) 2147483648))
 
-;; A made-up text of len characters from seed, of the letters in abc.
+;; Returns a made-up text of len characters of the letters in abc, from
+;; seed, and the next seed.
 (define (made-up len seed abc)
   (let fill ([k 0] [x seed] [acc '()])
     (if (= k len)
@@ -176,15 +178,15 @@
                     acc)))))
 
 ;; The rows as a typist breaks them, a character at a time, sharing no
-;; code or search with the kit: a row takes characters while what it
-;; holds fits, minding the last space before which it fit; at one that
-;; does not fit, it breaks after that space (which hangs past the width),
-;; else before the character, keeping one at least. A newline ends a row.
+;; code or search with the kit. A row takes characters while what it holds
+;; fits, remembering the last space it took; at a character that does not
+;; fit, it breaks after that space (which hangs past the width), or else
+;; before the character, keeping at least one. A newline ends a row.
 (define (wrap-by-character text width m)
   (let ([n (string-length text)])
     (define (end? j) (or (= j n) (char=? (string-ref text j) #\newline)))
     (define (fits? s e) (<= (m (substring text s e)) width))
-    (let row ([s 0] [p 0] [rows '()])   ; a row from s, its paragraph's p
+    (let row ([s 0] [p 0] [rows '()])   ; a row from s, its paragraph at p
       (if (and (> s p) (end? s))   ; a break ended the paragraph
           (if (= s n) (reverse rows) (row (+ s 1) (+ s 1) rows))
           (let walk ([j s] [space #f])   ; [s, j) fits
@@ -253,7 +255,7 @@
                                             (next-random seed) "aimw \n")]
                           [(new) (string-append (substring text 0 lo) ins
                                                 (substring text hi n))]
-                          ;; told where, as by an edit, or compared
+                          ;; told where, as by an edit, or left to compare
                           [(lay) (edit-layout-of lay new width #f m
                                                  (and (even? (quotient i 2))
                                                       (list text lo hi)))])
@@ -286,8 +288,8 @@
                      (* 1/10 (edit-layout-count lay))))))))
 
 ;; The worst cases' texts at m7 and 280 px (40 characters a row): one
-;; paragraph of words; no spaces; every row exactly full, so that a
-;; character typed at its start moves a word down each row (a cascade).
+;; paragraph of words; no spaces; and every row exactly full, so that a
+;; character typed at the start moves a word down on each row (a cascade).
 (define (worst-case which n)
   (let ([o (open-output-string)])
     (let loop ([i 0])
@@ -301,10 +303,11 @@
         (loop (+ i 1))))
     (substring (get-output-string o) 0 n)))
 
-;; What a keystroke measures, as a text area 14 rows high does it: the
-;; layout follows the new text, the rows down to the caret's view are
-;; computed (the view follows the caret), and the caret's x. Before it,
-;; the view showed the caret at k: rows to there were computed then.
+;; How many measures a keystroke makes, as a text area 14 rows high makes
+;; them: the layout follows the new text, the rows down to the caret's view
+;; are computed (the view follows the caret), and so is the caret's x.
+;; Before the keystroke the view showed the caret at k, so the rows up to
+;; there were computed then.
 (define (keystroke-measures text k op)
   (let* ([n 0] [count (lambda (s) (set! n (+ n 1)) (m7 s))]
          [lay (lay-of text 280 count)])
@@ -400,19 +403,20 @@
               (lambda (t) (edit-erase (ed t 30000) 30001))
               (lambda (t) (edit-erase (ed t 40 63) 0)))))
 
-;; What an engine counts of a thunk: a tick for each procedure call or
-;; turn of a loop, so a character looked at in a loop is one. A copy
-;; (string-copy!, fxvector-copy) is one call before Chez 10.4.0; from it,
-;; a copy counts by its size, up to a timer period (1,000) for a long one
-;; (its release notes' "Interrupts and Large-Vector Operations").
+;; The ticks an engine counts for a thunk: a tick for each procedure call
+;; or turn of a loop, so a character looked at in a loop costs one. A copy
+;; (string-copy!, fxvector-copy) is one call before Chez 10.4.0; from that
+;; version on, a copy counts by its size, up to a timer period (1,000) for
+;; a long one (its release notes' "Interrupts and Large-Vector
+;; Operations").
 (define (ticks thunk)
   ((make-engine thunk) 1000000000 (lambda (left . r) (- 1000000000 left))
    (lambda (e) +inf.0)))
 
-;; A row's ticks at most. The worst case is 5,527 ticks before Chez
-;; 10.4.0 and 9,424 from it, where a keystroke's copies of the text count
-;; a period each; the bound leaves room for both, and stays under what a
-;; look at every character would count.
+;; The most ticks per row in view. The worst case is 5,527 ticks before
+;; Chez 10.4.0 and 9,424 from it on, where a keystroke's copies of the text
+;; count a period each; the bound leaves room for both, and stays under
+;; what a look at every character would count.
 (define edit-test-row-ticks 600)
 
 (check "a keystroke's text work, in an engine's ticks, is at most 600 a \

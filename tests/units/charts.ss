@@ -6,8 +6,8 @@
 (set-style! 'mac)
 (steps 2)
 
-;; A window whose draw is (draw ui), between the kit's begin and end.
-;; => (values win ui)
+;; Opens a window whose draw calls (draw ui) between the kit's begin and
+;; end. Returns (values win ui).
 (define (chart-test-window draw)
   (let ([ui (make-ui)])
     (values (apply open-window "Charts" 'size '(420 . 240) 'pos '(100 . 100)
@@ -18,7 +18,7 @@
                    (ui-handlers ui))
             ui)))
 
-;; Is any pixel of x y w h in win's content not its ground's?
+;; Whether any pixel of x y w h in win's content differs from its ground.
 (define (chart-test-inked? win x y w h)
   (let-values ([(cx cy cw ch) (content-rect win)])
     (let ([ground (canvas-pixel (+ cx 2) (+ cy 2))])
@@ -29,9 +29,9 @@
                         (iota (exact (ceiling h)))))
               (iota (exact (ceiling w)))))))
 
-;; What a drawing part, replaced by a style, is given: draw's flags and
-;; data as the replacement records them, and whether the plain part
-;; inked x y w h. => (values inked? given)
+;; What a drawing part is given when a style replaces it: draw's flags and
+;; data, as the replacement records them, and whether the plain part inked
+;; x y w h and the replacement did not. Returns (values inked? given).
 (define (chart-test-part key draw x y w h)
   (with-test-styles
    (lambda ()
@@ -196,13 +196,13 @@
                          (= (pixel-at p 52 25) green)
                          (= (pixel-at p 52 20) well)
                          (= (pixel-at p 52 5) well)     ; no strip
-                         (= (pixel-at p 55 40) well))]) ; what's clear of a bar
+                         (= (pixel-at p 55 40) well))]) ; clear of any bar
            (picture-free! p)
            (ui-stream-release! s)
            ok)))
 
-;; Fit, all of a stream's moments go across its width, a bar narrower than a
-;; pixel if it takes that.
+;; Fitted, all of a stream's moments go across its width, with bars
+;; narrower than a pixel if that is what it takes.
 (check "a stream fitted shows every moment from oldest to newest, the oldest \
         at the left"
        (let ([s (ui-stream-new 2048 1 '())])

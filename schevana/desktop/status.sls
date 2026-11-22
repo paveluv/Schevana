@@ -1,6 +1,7 @@
-;;; (schevana desktop status) — status segments: the right side of the top bar
-;;; is a list of (name . thunk); each thunk returns a string (or #f to hide).
-;;; Add your own: (add-status-segment! 'hello (lambda () "hi!"))
+;;; (schevana desktop status) — the status segments on the right side of the
+;;; top bar, a list of (name . thunk); each thunk returns a string, or #f to
+;;; hide its segment. Add your own with
+;;; (add-status-segment! 'hello (lambda () "hi!")).
 
 (library (schevana desktop status)
   (export
@@ -16,7 +17,7 @@
 
   (library-layer desktop)
 
-  ;; the defaults, until you change them (a reload keeps yours)
+  ;; the defaults, until you change them (a reload keeps your changes)
   (define-state *status-segments*
     (list (cons 'procs (lambda () (status-procs)))
           (cons 'busy (lambda () (status-busy)))
@@ -36,8 +37,8 @@
     (refresh-status!)
     (request-frame!))
 
-  ;; What the top bar shows: ((name . string-or-#f) ...), taken once a second,
-  ;; each segment under the watchdog.
+  ;; What the top bar shows, ((name . string-or-#f) ...), read once a second;
+  ;; each segment's thunk runs under the watchdog (safe-call).
   (define-state *status-shown* '())
 
   (define (refresh-status!)
@@ -50,20 +51,21 @@
 
   (define (shown-status-strings) (filter string? (map cdr *status-shown*)))
 
-  (define-state *status-timer?* #f)   ; its timer is set: reloads set no other
+  (define-state *status-timer?* #f)   ; its timer is set: a reload sets no other
   (define-state *status-second* #f)   ; the wall clock's second last shown
 
-  ;; The status taken again, and a frame asked for that shows it.
+  ;; Reads the status again and asks for a frame that shows it.
   (define (status-show!)
     (refresh-status!)
     (request-frame!))
 
-  ;; At the start of each second the status is shown again, the clock's.
-  ;; Frames between, however many something else asks for, show the same:
-  ;; numbers that change every tick, the heap's and the busiest tick's, are
-  ;; read once a second, the busiest that second's. Timers run by the
-  ;; monotonic clock, which may fire this a little before the wall clock's
-  ;; second turns: then it only waits for the turn, showing nothing twice.
+  ;; At the start of each second of the wall clock, the status is read and
+  ;; shown again. The frames in between, however many something else asks
+  ;; for, show the same values: numbers that change every tick (the heap and
+  ;; the busiest tick) are read once a second, and the busiest tick is that
+  ;; second's. Timers run on the monotonic clock, so this may fire a little
+  ;; before the wall clock's second turns; it then only waits for the turn,
+  ;; and nothing is shown twice.
   (define (status-second!)
     (let ([t (current-time)])
       (unless (eqv? (time-second t) *status-second*)
@@ -81,7 +83,8 @@
     (let ([n (length *procs*)])
       (and (> n 0) (format "⚙ ~a running" n))))
 
-  ;; The heap, and the process's resident memory where the system says it.
+  ;; The heap, and the process's resident memory where the system reports
+  ;; it.
   (define (status-memory)
     (let ([heap (/ (bytes-allocated) 1048576.0)]
           [process (platform-process-bytes)])
@@ -89,8 +92,8 @@
           (format "heap ~,1f · process ~,1f MB" heap (/ process 1048576.0))
           (format "heap ~,1f MB" heap))))
 
-  ;; The most a tick took since the bar last looked, a second ago, but its
-  ;; waits: past a period, a tick was late.
+  ;; The longest any tick took, not counting its waits, since the bar last
+  ;; read it a second ago; a tick longer than a period was late.
   (define (status-busy) (format "busiest tick ~,1f ms" (pacer-peak-ms!)))
 
   (define day-names '#("Sun" "Mon" "Tue" "Wed" "Thu" "Fri" "Sat"))

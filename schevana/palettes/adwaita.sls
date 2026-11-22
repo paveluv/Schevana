@@ -1,17 +1,19 @@
-;;; (schevana palettes adwaita) — GNOME's light style, as libadwaita 1.7.6 and
-;;; GNOME Shell 48.7 color it (paths under libadwaita's src/stylesheet/ and,
-;;; marked shell, GNOME Shell's data/theme/gnome-shell-sass/). Its surfaces:
-;;; the window #fafafb (bg-1), views and cards white (bg-0), header bars white,
-;;; sidebars #ebebed (_defaults.scss:40-84). Text is rgb(0 0 6 / 80%), which
-;;; over the window is #323237; dimmed text is that at 55 % (_colors.scss:117),
-;;; faint text the 40 % of a column's heading (widgets/_column-view.scss:28);
-;;; a border is the text at 15 % (_colors.scss:1, 77). The accent is the blue
-;;; GNOME chooses by default, #3584e4 (_colors.scss:7); the named colors are
-;;; GNOME's palette (_palette.scss:1-45), red the destructive red
-;;; (_defaults.scss:12). The top bar is the Shell's, black: the Shell stays
-;;; dark unless the person prefers light (shell _colors.scss:24-25, js/ui/
-;;; sessionMode.js:25). The desktop is GNOME's fallback blues for its
-;;; wallpaper, #5789ca over #023c88 (org.gnome.desktop.background).
+;;; (schevana palettes adwaita) — GNOME's light style, in the colors
+;;; libadwaita 1.7.6 and GNOME Shell 48.7 give it (paths are under
+;;; libadwaita's src/stylesheet/ or, when marked shell, under GNOME Shell's
+;;; data/theme/gnome-shell-sass/). The window is #fafafb (bg-1), views and
+;;; cards are white (bg-0), header bars are white, and sidebars are #ebebed
+;;; (_defaults.scss:40-84). Text is rgb(0 0 6 / 80%), which is #323237 over
+;;; the window; dimmed text is that color at 55 % (_colors.scss:117), and
+;;; faint text is at the 40 % of a column's heading
+;;; (widgets/_column-view.scss:28); a border is the text at 15 %
+;;; (_colors.scss:1, 77). The accent is the blue GNOME chooses by default,
+;;; #3584e4 (_colors.scss:7); the named colors are GNOME's palette
+;;; (_palette.scss:1-45), and red is the destructive red (_defaults.scss:12).
+;;; The top bar is the Shell's, black: the Shell stays dark unless the person
+;;; prefers light (shell _colors.scss:24-25, js/ui/sessionMode.js:25). The
+;;; desktop uses GNOME's fallback blues for its wallpaper, #5789ca over
+;;; #023c88 (org.gnome.desktop.background).
 
 (library (schevana palettes adwaita)
   (export)

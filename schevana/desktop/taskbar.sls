@@ -1,7 +1,8 @@
 ;;; (schevana desktop taskbar) — the bar at the bottom: a button for each
-;;; window (left focuses or minimizes, middle closes, right opens its menu) and
-;;; a hint. A style may make it another bar, with its areas and drawing
-;;; (Genera's who line), handed what they draw as the built-in is.
+;;; window (the left button focuses or minimizes it, the middle one closes it,
+;;; the right one opens its menu) and a hint. A style may make it another kind
+;;; of bar, with its own areas and drawing (Genera's who line); its parts are
+;;; handed what they draw, just as the built-in ones are.
 
 (library (schevana desktop taskbar)
   (export
@@ -29,7 +30,7 @@
   (at-load
    (theme-default! 'taskbar-height-min
                    (theme-rule (exact (round (+ (font-line-height 'ui) 13))))))
-  ;; (in the bars' place, as the bar is drawn)
+  ;; (computed in the bars' place, as the bar is drawn)
   (define (taskbar-height)
     (with-place 'bar
       (lambda () (chrome-height 'taskbar-height 'taskbar-height-min))))
@@ -37,9 +38,9 @@
   (define (taskbar-box)
     (let ([h (taskbar-height)]) (values 0 (- (screen-h) h) (screen-w) h)))
 
-  ;; In a bar h high at the screen's bottom, the hint at the right while the
-  ;; buttons leave it room, and a button for each window, left to right:
-  ;; ((hint x y w h) (window x y w h) ...).
+  ;; Returns the areas of a bar h high at the screen's bottom: the hint at the
+  ;; right, while the buttons leave room for it, and a button for each
+  ;; window, from left to right: ((hint x y w h) (window x y w h) ...).
   (define-part (taskbar-areas h hint)
     (let* ([w (screen-w)] [y0 (- (screen-h) h)]
            [ws (sort (lambda (a b) (< (window-id a) (window-id b))) *windows*)]
@@ -48,8 +49,8 @@
                        (if (zero? n)
                            0
                            (min 210 (/ (- w 16 hint-w (* 6 (- n 1))) n))))]
-           ;; the hint gives way when the buttons would be too narrow for their
-           ;; titles
+           ;; the hint is dropped when the buttons would be too narrow for
+           ;; their titles
            [hint-w (let ([hw (+ 24 (text-width hint 'ui-small))]
                          [want (min 210 (+ 48 (text-widest (map window-title ws)
                                                            'ui)))])
@@ -61,17 +62,17 @@
 
   (define taskbar-hint "F1 apps  ·  Ctrl+Tab switch  ·  right-click desktop")
 
-  ;; Its areas as it draws them, in the bars' place: where the pointer finds
-  ;; what.
+  ;; The bar's areas as it draws them, computed in the bars' place: what the
+  ;; pointer finds where.
   (define (placed-taskbar-areas)
     (with-place 'bar (lambda () (taskbar-areas (taskbar-height) taskbar-hint))))
 
-  ;; The mouse documentation's line, where this bar shows it: where no top
-  ;; bar does (Genera's who line).
+  ;; The mouse documentation's line, when this bar shows it, which it does
+  ;; when there is no top bar (Genera's who line).
   (define (taskbar-doc-line) (and (zero? (topbar-height)) (mouse-doc-line)))
 
-  ;; The bar, drawn in the bars' place by the style's draw-taskbar, called
-  ;; by name, which is handed what it shows.
+  ;; Draws the bar in the bars' place with the style's draw-taskbar, which
+  ;; is called by name and handed what it shows.
   (define (taskbar-draw)
     (with-place 'bar
       (lambda ()
@@ -80,10 +81,11 @@
                                        (launcher-open?) (taskbar-doc-line)
                                        *status-shown* taskbar-hint)))))
 
-  ;; The bar h high, at the screen's bottom, in its areas (taskbar-areas).
-  ;; open?: whether the launcher is open. doc: the mouse documentation's
-  ;; line where this bar shows it (taskbar-doc-line), or #f. status: the
-  ;; status segments, ((name . string or #f) ...). hint: the hint's text.
+  ;; Draws the bar, h high, at the screen's bottom, in its areas
+  ;; (taskbar-areas). open? says whether the launcher is open. doc is the
+  ;; mouse documentation's line when this bar shows it (taskbar-doc-line),
+  ;; or #f. status is the status segments, ((name . string or #f) ...).
+  ;; hint is the hint's text.
   (define-part (draw-taskbar h areas open? doc status hint)
     (let ([w (screen-w)] [y0 (- (screen-h) h)] [lh (font-line-height 'ui)]
           [ha (assq 'hint areas)])
@@ -133,8 +135,9 @@
           [(eq? what 'windows) '((L . "Choose a window"))]
           [else '()]))
 
-  ;; Before each frame, t: where the bar shows the mouse documentation, a
-  ;; change of it asks for the bar; nothing else on it changes by itself.
+  ;; Called before each frame, at time t: when this bar shows the mouse
+  ;; documentation, a change in it asks for the bar to be drawn again;
+  ;; nothing else on the bar changes by itself.
   (define (taskbar-frame t)
     (when (zero? (topbar-height)) (mouse-doc-frame taskbar-box)))
 

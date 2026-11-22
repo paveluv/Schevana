@@ -1,12 +1,12 @@
-;;; tests/chez.ss — a suite's own run of Chez, through /bin/sh: a units
-;;; topic, a forked world, the sources' suite again. It leans on nothing of
-;;; the tree, so a suite loads it before the world, right after it has
-;;; found the tree's root:
+;;; tests/chez.ss — how a suite starts a run of Chez of its own, through
+;;; /bin/sh: a units topic, a forked world, or the sources' suite again. It
+;;; depends on nothing in the tree, so a suite loads it before the world,
+;;; right after it has found the tree's root:
 ;;;
 ;;;   (load (string-append *schevana-root* "/tests/chez.ss"))
 ;;;   (system (test-chez '(("NAME" . "value")) script arg ...))
 
-;; s as one word of /bin/sh's, whatever it holds.
+;; Returns s quoted as one word for /bin/sh, whatever it holds.
 (define (test-sh-word s)
   (let ([o (open-output-string)])
     (put-char o #\')
@@ -16,14 +16,14 @@
     (put-char o #\')
     (get-output-string o)))
 
-;; The loader's variables that macOS drops on the way into /bin/sh: set
-;; here, they're handed on by name.
+;; The dynamic loader's variables, which macOS drops on the way into
+;; /bin/sh: where they are set here, test-chez passes them on by name.
 (define test-loader-variables
   '("DYLD_LIBRARY_PATH" "DYLD_FALLBACK_LIBRARY_PATH"))
 
-;; /bin/sh's command that becomes a run of Chez on script with args, with
-;; env's variables, (name . value), and the loader's set. Chez is "chez"
-;; where Homebrew installs it, else "scheme".
+;; Returns a /bin/sh command that runs Chez on script with args, with
+;; env's variables ((name . value) pairs) and the loader's variables set.
+;; Chez is "chez" where Homebrew installs it, and "scheme" elsewhere.
 (define (test-chez env script . args)
   (format "exec env~{ ~a~} \"$(command -v chez || echo scheme)\" \
            --script~{ ~a~}"
@@ -36,18 +36,19 @@
           (map test-sh-word (cons script args))))
 
 ;;; ------------------------------------------------------------------ at once
-;;; Runs of their own, as many at once as the machine allows: its CPUs
-;;; (those this process may use), less two, and its memory, each run
-;;; taking what its caller says it takes at its peak, out of what the
-;;; system has free (Linux's MemAvailable, within this process's cgroup's
-;;; limit: a container's; half a Mac's memory), less 1 GB for the rest of
-;;; the machine. SCHEVANA_TEST_JOBS says how many instead.
+;;; Separate runs, as many at once as the machine allows. The limit is
+;;; the number of CPUs (those this process may use) less two, and the
+;;; memory: each run takes what its caller says it needs at its peak, out
+;;; of what the system has free (Linux's MemAvailable, within the limit of
+;;; this process's cgroup, such as a container's; half of a Mac's memory),
+;;; less 1 GB for the rest of the machine. SCHEVANA_TEST_JOBS sets the
+;;; number instead.
 
-;; command's exit status, or 137 if it still ran after seconds and was
-;; killed, lest a hang hold up the suite. GNU's timeout isn't everywhere (a
-;; Mac has none), so this is plain sh; command execs, so the process killed
-;; is its own. It looks every 50 ms: a command that ends at once isn't held
-;; a second.
+;; Runs command and returns its exit status, or 137 if it was still
+;; running after seconds and was killed, so that a hang doesn't hold up the
+;; suite. GNU's timeout isn't everywhere (a Mac has none), so this is plain
+;; sh; the command execs, so the process killed is the command itself. It
+;; checks every 50 ms, so a command that ends at once isn't held a second.
 (define (test-system-within seconds command)
   (system
     (format "(~a) & p=$!; i=0; while kill -0 $p 2> /dev/null; do \
@@ -55,14 +56,14 @@
              sleep 0.05; i=$((i + 1)); done; wait $p 2> /dev/null"
             command (* seconds 20))))
 
-;; What /bin/sh's command prints first, read as a datum; #f for none.
+;; Returns the first datum that a /bin/sh command prints, or #f for none.
 (define (test-sh-read command)
   (let* ([p (process command)] [x (read (car p))])
     (close-port (car p))
     (close-port (cadr p))
     (and (not (eof-object? x)) x)))
 
-;; The CPUs this process may use.
+;; The number of CPUs this process may use.
 (define (test-cpus)
   (let ([n (test-sh-read "nproc 2> /dev/null || getconf _NPROCESSORS_ONLN")])
     (if (and (fixnum? n) (> n 0)) n 1)))
@@ -72,15 +73,16 @@
   (and (>= (string-length s) (string-length prefix))
        (string=? (substring s 0 (string-length prefix)) prefix)))
 
-;; A file's first datum, or #f where it can't be read.
+;; Returns a file's first datum, or #f where it can't be read.
 (define (test-file-read path)
   (guard (c [#t #f])
     (and (file-exists? path)
          (let ([x (call-with-input-file path read)])
            (and (not (eof-object? x)) x)))))
 
-;; Linux's memory available, in MB: MemAvailable, and the room under the
-;; limit of this process's cgroup and of each one it is in. #f elsewhere.
+;; Linux's available memory, in MB: MemAvailable, capped by the room left
+;; under the limit of this process's cgroup and of each cgroup above it.
+;; #f on other systems.
 (define (test-linux-free-mb)
   (let ([available
          (guard (c [#t #f])
@@ -118,15 +120,16 @@
                            (min free (quotient (- most now) (* 1024 1024)))
                            free))))))))
 
-;; The memory free for runs, in MB: Linux's, else half a Mac's, else 4 GB.
+;; The memory free for runs, in MB: Linux's, or else half of a Mac's, or
+;; else 4 GB.
 (define (test-free-mb)
   (or (test-linux-free-mb)
       (let ([bytes (test-sh-read "sysctl -n hw.memsize 2> /dev/null")])
         (and (number? bytes) (quotient bytes (* 2 1024 1024))))
       4096))
 
-;; How many runs of mb at their peak go at once; one where Chez has no
-;; threads.
+;; How many runs that each need mb at their peak may go at once; one where
+;; Chez has no threads.
 (define (test-jobs mb)
   (let ([given (string->number (or (getenv "SCHEVANA_TEST_JOBS") ""))])
     (cond
@@ -135,10 +138,10 @@
       [else (max 1 (min (- (test-cpus) 2)
                         (quotient (- (test-free-mb) 1024) mb)))])))
 
-;; Each of commands run as test-system-within runs one, given seconds, as
-;; many at once as jobs. report, if given, has each one's index and status
-;; in order, as soon as it and those before it are done. => the statuses,
-;; in order.
+;; Runs each of commands as test-system-within does, each given seconds,
+;; jobs of them at once. report, if given, is called with each command's
+;; index and status, in order, as soon as it and those before it are done.
+;; Returns the statuses, in order.
 (define (test-system-all jobs seconds commands . report)
   (let* ([v (list->vector commands)] [n (vector-length v)]
          [status (make-vector n #f)] [next 0]
@@ -165,9 +168,10 @@
           (loop (+ i 1)))))
     (vector->list status)))
 
-;; The tree's libraries compiled once into the cache a suite's runs use,
-;; and the launcher's, which the launchers they run use, before the runs
-;; start at once (tests/warm.ss): both at once.
+;; Compiles the tree's libraries once (tests/warm.ss), before a suite's
+;; runs start together: into the cache that the runs use, and into the
+;; launcher's, which the launchers they run use. The two compile at the
+;; same time.
 (define (test-warm!)
   (test-system-all
    2 1800

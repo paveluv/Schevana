@@ -1,10 +1,10 @@
 ;;; tests/units/file-dialog.ss — the desktop's file dialog
-;;; ((schevana desktop file-dialog)), by itself, over a tree of its own in the
-;;; output folder: paths and crumbs, what the list shows, its keys, and a
-;;; file picked or the dialog cancelled.
+;;; ((schevana desktop file-dialog)), tested by itself over a tree of its own
+;;; in the output folder: paths and crumbs, what the list shows, its keys,
+;;; and picking a file or canceling the dialog.
 
-;; out-dir/files: folders a (inner.ss in it) and b, files one.ss,
-;; two.txt and .hidden.ss.
+;; out-dir/files, with the folders a (holding inner.ss) and b, and the
+;; files one.ss, two.txt and .hidden.ss.
 (define file-dialog-test-tree
   (let ([root (file-dialog-resolve (current-directory)
                                    (string-append out-dir "/files"))])
@@ -17,8 +17,9 @@
               '("one.ss" "two.txt" ".hidden.ss" "a/inner.ss"))
     root))
 
-;; A window and the dialog over it, open on the tree, for Scheme files or
-;; all; what it picked and whether it was cancelled, kept in boxes.
+;; Opens a window and the dialog over it, on the tree, for Scheme files or
+;; all files. Returns the window, the dialog's window and state, a box with
+;; what it picked, and a box that counts its cancels.
 (define (file-dialog-test-open)
   (let* ([parent (open-window "Waits" 'size '(300 . 200) 'pos '(40 . 40))]
          [picked (box #f)] [cancelled (box 0)])
@@ -30,7 +31,7 @@
                       (lambda () (set-box! cancelled (+ 1 (unbox cancelled)))))
     (steps 2)
     (let* ([fd (focused-window)] [d (window-ref fd 'state)])
-      ;; the keys are the dialog's with no field focused
+      ;; with no field focused, the keys go to the dialog
       (ui-focus! (file-dialog-ui d) #f)
       (invalidate! fd)
       (steps 1)
@@ -130,8 +131,9 @@
                (close-window! parent)
                (and (equal? named "one.ss") (equal? into "a")))))))
 
-;; What it picks: picking folders, the one selected or named, or with none
-;; the folder shown, a file not; picking either, a file too.
+;; What a dialog picks: one picking folders picks the folder selected or
+;; named, or with none, the folder shown, but never a file; one picking
+;; either picks a file too.
 (check "a dialog picking folders picks the folder selected, or the one shown \
         with none selected, and no file; one picking either picks a file too"
        (let* ([parent (open-window "Waits" 'size '(300 . 200) 'pos '(40 . 40))]

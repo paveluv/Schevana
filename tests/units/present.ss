@@ -1,10 +1,10 @@
-;;; tests/units/present.ss — what the screen says of each frame: its reports
-;;; ((schevana core0 present)), joined to the frames drawn and the input they
-;;; show ((schevana kits inspect)). Headless, nothing reports, so the reports
-;;; here are written as the screen's callbacks would write them.
+;;; tests/units/present.ss — what the screen says about each frame: its
+;;; reports ((schevana core0 present)), joined to the frames drawn and the
+;;; input they show ((schevana kits inspect)). Headless, nothing reports, so
+;;; the test writes the reports as the screen's callbacks would.
 
-;; Frame n's row begun, as core0 sends it at sent: none of the screen's
-;; word yet.
+;; Begins frame n's row as core0 does when it sends the frame at sent, with
+;; no word from the screen yet.
 (define (present-test-sent! n sent)
   (let ([at (present-at n)])
     (do ([k 1 (+ k 1)]) ((= k present-words))
@@ -12,16 +12,17 @@
     (fxvector-set! *present-ring* (+ at 2) sent)
     (fxvector-set! *present-ring* at n)))
 
-;; Frame i's report, as core0 begins it at sent and the screen fills it:
-;; kind (1 shown, 2 dropped), the screen's stamp, GPU done.
+;; Writes the report of frame i (an index of the frames drawn), as core0
+;; begins it at sent and the screen fills it in: kind (1 shown, 2 dropped),
+;; the screen's stamp, and when the GPU was done.
 (define (present-test-report! i sent kind stamp done)
   (let ([n (inspect-frame-ref i 6)])
     (present-test-sent! n sent)
     (fxvector-set! *present-ring* (+ (present-at n) 6) done)
     (present-reported! n kind stamp (core0-frame-ns))))
 
-;; thunk with the screen's clock as at boot: no refresh placed, no report
-;; held.
+;; Runs thunk with the screen's clock as it is at boot: no refresh placed,
+;; and no report held.
 (define (present-test-fresh thunk)
   (fluid-let ([*present-refresh* 0] [*present-refresh-at* 0]
               [*present-late-run* 0] [*present-late-least* 0]
@@ -29,7 +30,8 @@
               [*present-held* -1] [*present-held-last* -1])
     (thunk)))
 
-;; Four frames drawn, the second showing input that came at in.
+;; Draws four frames, the second showing input that came at
+;; present-test-in; present-test-first is the first one's index.
 (define present-test-in 0)
 (define present-test-first
   (let ([first *frame-ring-n*])
@@ -44,8 +46,9 @@
 (let* ([p (core0-frame-ns)]
        [t (+ (now-ns) (* 10 p))]
        [i present-test-first])
-  ;; sent a refresh apart; shown 3 refreshes on, the third a refresh late
-  ;; (its GPU done only after the refresh it missed), the fourth dropped
+  ;; sent a refresh apart and shown 3 refreshes later; the third is a
+  ;; refresh late (its GPU was done only after the refresh it missed), and
+  ;; the fourth is dropped
   (present-test-fresh
    (lambda ()
      (present-test-report! i t 1 (+ t (* 3 p)) (+ t 1000000))
@@ -54,7 +57,7 @@
                            (+ t (* 5 p) 1000000))
      (present-test-report! (+ i 3) (+ t (* 3 p)) 2 0 0)
      (let ([held (inspect-frame-screen (+ i 2))])
-       ;; no report follows: three refreshes on, it stands
+       ;; no report follows, so three refreshes later the late one stands
        (present-held-poll! (+ t (* 9 p)))
        (present-held-poll! (+ t (* 9 p) 1))
        (check "a report that says a refresh was missed says nothing till \
@@ -94,11 +97,12 @@
          (not (core0-frame-report (+ n present-rows) 1))))
 
 ;;; The screen's clock, inferred from the reports' stamps alone
-;;; ((schevana core0 present)): frames by numbers no frame drawn has, each
-;;; sent and reported as the screen's callbacks would.
+;;; ((schevana core0 present)): frames with numbers that no frame drawn has,
+;;; each sent and reported as the screen's callbacks would.
 
-;; Frames from first on: each (sent stamp), or (sent stamp refresh), sent
-;; and reported shown in turn, a refresh p ns long by the screen's word.
+;; Sends frames from first on and reports each shown, in turn. Each is
+;; (sent stamp) or (sent stamp refresh); the refresh is p ns long by the
+;; screen's word unless a frame gives its own.
 (define (present-test-shown! first p frames)
   (for-each (lambda (f k)
               (present-test-sent! (+ first k) (car f))
@@ -106,9 +110,9 @@
                                  (if (pair? (cddr f)) (caddr f) p)))
             frames (iota (length frames))))
 
-;; A flow from first on: frame k sent at t and k refreshes, two before its
-;; own, and stamped late ns after the refresh at (the k of lates' pair);
-;; => what (word frame k) reads of each.
+;; Sends and reports a flow of frames from first on: frame k is sent at t
+;; plus k refreshes less two (two before its own), and stamped late ns
+;; after refresh at, where (at late) is the kth pair of lates.
 (define (present-test-flow first p t lates)
   (present-test-shown!
    first p
@@ -162,8 +166,8 @@
             (present-test-flow f p t `((0 0) (1 0) (2 ,late)))
             (let ([held? (and (eqv? 0 (present-test-word (+ f 2) 1))
                               (= *present-held* (+ f 2)))])
-              ;; a kernel thread sends them in order: the next stamp comes
-              ;; right after the late one
+              ;; a kernel thread sends them in order, so the next stamp
+              ;; comes right after the late one
               (present-test-flow (+ f 3) p t `((2 ,(+ late 2000))))
               (and held?
                    (eqv? 1 (present-test-word (+ f 2) 1))
@@ -194,7 +198,7 @@
         (lambda ()
           (let* ([p (core0-frame-ns)] [t (* 1000 p)] [f 2000041]
                  [late (quotient (* 22 p) 10)])
-            ;; frames 2 and 3 stamped as the stall ends, 2.2 refreshes on
+            ;; frames 2 and 3 are stamped as the stall ends, 2.2 refreshes on
             (present-test-flow f p t `((0 0) (1 0) (2 ,late)
                                        (2 ,(+ late 2000))))
             (let ([held (list *present-held* *present-held-last*)])
@@ -261,7 +265,8 @@
                          (map (lambda (k)
                                 (list (+ k 1) (+ 2000000 (* k 1000))))
                               (iota 9))))
-            ;; frames 1 to 9 stamped 2 ms late and more; then one in time
+            ;; frames 1 to 9 are stamped 2 ms late and more; then one comes
+            ;; in time
             (present-test-flow (+ f 10) p t '((10 0)))
             (and (< (off 7) 100000)
                  (<= 1900000 (off 8) 2010000)
@@ -270,9 +275,10 @@
                  (for-all (lambda (k) (= 1 (present-test-step (+ f k))))
                           (cdr (iota 11))))))))
 
-;; Frames from first on, the first shown at t: each of steps a pair, how
-;; long after the one before the screen stamped it and how long after it
-;; was sent, ns, a refresh p ns by the screen's word.
+;; Sends and reports frames from first on, the first shown at t. Each of
+;; steps is a pair: how long after the frame before the screen stamped
+;; this one, and how long after it was sent, in ns. A refresh is p ns by
+;; the screen's word.
 (define (present-test-steps first p t steps)
   (present-test-shown!
    first p
@@ -307,10 +313,11 @@
                           '(1 2 3 4 5 6 7))
                  (= *present-held* -1))))))
 
-;; A frame after a pause of 20 refreshes whose stamp ran late ns after its
-;; refresh, then two in a flow stamped in time, a refresh p ns: => how far
-;; the clock's time of each of the two is off its refresh's, ns, and their
-;; steps.
+;; Reports a frame after a pause of 20 refreshes, whose stamp ran late ns
+;; after its refresh, then two frames in a flow stamped in time, with a
+;; refresh of p ns. Returns how far the clock's time of each of the two is
+;; off its refresh's, in ns, their steps, and the late frame's word 1 (1
+;; once it is shown).
 (define (present-test-late-after-pause first p late)
   (present-test-fresh
    (lambda ()
@@ -346,18 +353,18 @@
                          (eqv? 1 (list-ref run 4))))
                   runs)))
 
-;; A stream of n frames from first on, a refresh p ns long as the screen
-;; says: each shows a refresh after the one before, one in 53 two (the
-;; compositor held it), is sent two refreshes before it shows, and is
-;; stamped tens of microseconds after its refresh, one in 97 between 0.5
-;; and 9 ms after, none before the stamp before it, as one thread sends
-;; them. With every over 0, a pause of 3 to 40 refreshes comes before each
-;; frame that many on from the last. Core0's step runs before each report.
-;; => (wrong off across): of the frames in a flow, the steps counted
-;; wrong, but the last before a pause's, whose stamp no report after it
-;; can tell from a refresh missed; the most the time by the clock of one
-;; whose frame before was in the flow too is off its refresh's, ns; and
-;; the steps across a pause counted wrong.
+;; Feeds a stream of n frames from first on, with a refresh p ns long as
+;; the screen says. Each frame shows a refresh after the one before (one in
+;; 53 two, as if the compositor held it), is sent two refreshes before it
+;; shows, and is stamped tens of microseconds after its refresh (one in 97
+;; between 0.5 and 9 ms after), never before the stamp before it, as one
+;; thread sends them. With every over 0, a pause of 3 to 40 refreshes comes
+;; before every every-th frame. Core0's step runs before each report.
+;; Returns (wrong off across): the steps counted wrong among the frames in
+;; a flow, except for the last one before a pause, whose stamp no later
+;; report can tell from a refresh missed; the most by which the clock's
+;; time of a frame whose frame before was also in the flow is off its
+;; refresh's, in ns; and the steps across a pause counted wrong.
 (define (present-test-stream first p n every)
   (let ([t (* 1000 p)] [truth (make-vector n 0)] [flow (make-vector n #t)])
     (let feed ([k 0] [tick 0] [sent 0] [before 0])
@@ -467,12 +474,13 @@
            (fxvector-set! r (+ at 1) 1)
            (fxvector-set! r (+ at 2) (+ publish 2000000))
            (fxvector-set! r (+ at 3) (+ publish p))
-           ;; one more, its row another frame's: core0 hasn't sent it
+           ;; one more frame, whose row still holds another frame's, since
+           ;; core0 hasn't sent it
            (request-frame!)
            (steps 1)
            (let ([m (inspect-frame-ref (- *frame-ring-n* 1) 6)])
              (fxvector-set! r (present-at m) (- m present-rows)))
-           ;; stopped at the newest, nothing would be summed
+           ;; a walk that stopped at the newest would sum nothing
            (let-values ([(p50 p99 missed) (inspect-frames-truth 10000)])
              (and p50 (<= p50 p99))))))
 

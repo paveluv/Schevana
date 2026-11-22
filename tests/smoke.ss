@@ -10,8 +10,9 @@
 
 (load (string-append *schevana-root* "/tests/lib.ss"))
 
-;; The screen as it would be drawn now: the same bytes until a frame is asked
-;; for or drawn, so that reading pixel after pixel costs one drawing.
+;; Returns the screen as it would be drawn now. The bytes are kept until a
+;; frame is asked for or drawn, so that reading pixel after pixel costs
+;; only one drawing.
 (define screen-picture-kept #f)
 (define screen-picture-frames -1)
 (define (screen-picture)
@@ -25,7 +26,8 @@
 (define (screen-pixel x y)
   (bytevector-u32-native-ref (screen-picture) (* 4 (+ x (* y *canvas-pw*)))))
 
-;; Typing and keys, as the suite has always said them (tests/lib.ss).
+;; Typing and key presses, under the names the suite has always used
+;; (tests/lib.ss).
 (define type! test-type!)
 (define press! test-press!)
 
@@ -35,8 +37,9 @@
   (map cdr (reverse (repl-lines (repl-of win)))))
 
 ;; Whether pred comes true while the world goes on, for work done
-;; elsewhere (a process, a thread): at most 10 s of the machine's clock, as
-;; long as a slow one may take; done as soon as it's true.
+;; elsewhere (a process, a thread). It waits at most 10 s of the machine's
+;; clock, as long as a slow machine may take, and returns as soon as pred
+;; is true.
 (define (wait-for pred) (and (test-wait 10000 pred) #t))
 
 
@@ -49,11 +52,11 @@
                                (* frac (- (ui-region-w r) 16)))))
               (exact (round (+ cy (ui-region-y r) (/ (ui-region-h r) 2))))))))
 
-;; Wheels a scrolling pane (Settings') until the area id is in view, in
-;; the window's content and on the desktop, clear of its bars, which grow
-;; with the fonts: 41 turns at most as the suite goes, the Theme tab's
-;; length at the biggest fonts, and never more than 200, for an area no
-;; wheel brings there.
+;; Turns the wheel over a scrolling pane (Settings') until the area id is
+;; in view: inside the window's content and on the desktop, clear of the
+;; desktop's bars, which grow with the fonts. The suite needs at most 41
+;; turns (the Theme tab's length at the biggest fonts), and it never turns
+;; more than 200 times, for an area that no wheel brings into view.
 (define (scroll-to-ui! win id)
   (let loop ([n 0])
     (let*-values ([(x y) (ui-point win id 0.5)]
@@ -80,17 +83,17 @@
              `(mouse-up ,x1 ,y left))
     (steps 2)))
 
-;; The demos it drives.
+;; The demos the suite drives.
 (test-demos! 'life 'sketch)
 (schevana-boot! 'headless 1280 800)
-;; From here, a form that raises fails and the next goes on.
+;; From here on, a form that raises fails and the next form goes on.
 (current-eval test-form-eval)
 
 (check "a form outside a check that raises is a failure, said with its \
         place, and the suite goes on; an eval inside a form raises as it \
         would"
        (let* ([before failures]
-              ;; as the loader evaluates a form: this check is one
+              ;; as the loader evaluates a form (this check is one)
               [said (with-output-to-string
                       (lambda ()
                         (fluid-let ([test-form-running #f])
@@ -220,7 +223,7 @@
   (steps 1)
   (check "typing narrows the list"
          (for-all (lambda (n) (string-contains-ci? n "l")) (offered)))
-  ;; the first offered, whichever: the test's world has core0's names too
+  ;; whichever is offered first: the test's world has core0's names too
   (let ([lines (length (repl-lines r))] [choice (car (offered))])
     (press! 'return)
     (steps 1)
@@ -250,7 +253,7 @@
   (check "other procedures show their arity"
          (string=? "Takes 1 argument."
                    (arity-description (procedure-arity-mask car))))
-  ;; Descriptions tell of the code that runs: the text a file had when it
+  ;; Descriptions describe the code that runs: the text a file had when it
   ;; was loaded, a REPL's own definition, or what a value itself tells.
   (let ([f (let ([p (string-append out-dir "/zz-docs.ss")])
              (if (path-absolute? p)
@@ -352,10 +355,10 @@
              (and (string=? sig "(acme math)")
                   (string-contains-ci? doc "double square")
                   (string-contains-ci? doc "acme/math.sls")))))
-  ;; Tab pages through the list; Return or a click on a row accepts.
-  ;; Under the pointer a row shows it takes a click: a box, a hand and
-  ;; the mouse documentation's words; off the list the REPL's own again,
-  ;; and so once the list closes under a still pointer.
+  ;; Tab pages through the list; Return or a click on a row accepts. A row
+  ;; under the pointer shows that it takes a click: a box, a hand and the
+  ;; mouse documentation's words. Off the list the cursor is the REPL's
+  ;; own again, and so it is once the list closes under a still pointer.
   (fresh! "(set-th")
   (press! 'tab)
   (steps 1)
@@ -406,7 +409,8 @@
              [on-desktop? (open-list!)]
              [_ (click! 1200 700)]
              [after-desktop (offered)])
-        ;; as before the clicks: w over the private REPL, the pointer on w
+        ;; back as before the clicks: w over the private REPL, the pointer
+        ;; on w
         (focus-window! p)
         (focus-window! w)
         (let-values ([(x y ww wh) (content-rect w)])
@@ -415,9 +419,9 @@
         (check "a click on another window or on the desktop closes the list"
                (and on-clock? (not after-clock) (not (window-at 1200 700))
                     on-desktop? (not after-desktop))))))
-  ;; With nothing to add, a popup says so, with a sole completion's
-  ;; description; it goes at the next key, which then acts as usual (the
-  ;; list itself: tests/units/complete.ss).
+  ;; With nothing to add, a popup says so, with the sole completion's
+  ;; description; the popup goes at the next key, which then acts as usual
+  ;; (the list itself is tested in tests/units/complete.ss).
   (fresh! "(set-theme-plist!")
   (press! 'tab)
   (steps 1)
@@ -499,7 +503,8 @@
                 (for-all (lambda (p) (= (+ (caddr p) 4) (cadddr p))) pages)
                 (for-all (lambda (p) (= (cadr p) (cadar pages))) pages)
                 (exists (lambda (p) (not (= (car p) (caar pages)))) pages))))
-  ;; A REPL's own handler outlives its library evaluated again and run.
+  ;; A REPL's own handler survives when the REPL's library is evaluated
+  ;; again and run.
   (let ([mine (lambda (win x y button clicks) #f)])
     (hashtable-set! (window-handlers w) 'mouse-down mine)
     (test-reload-library! '(schevana apps repl))
@@ -542,8 +547,9 @@
 (close-window! (focused-window))
 (focus-window! r)
 
-;; A REPL in an environment that is there: a thread's, whose forms run
-;; in its vat; its title names it; once dropped, it evaluates nowhere.
+;; A REPL in an existing environment, here a thread's, whose forms run in
+;; its vat. Its title names the environment, and once the environment is
+;; dropped, the REPL evaluates nowhere.
 (let* ([t (env-fork (env-root) 'thread 'name 'smoke-vat)]
        [w (repl t)] [rr (repl-of w)])
   (define (enter! src) (type! src) (press! 'return) (steps 2))
@@ -745,7 +751,7 @@
     (envs-select! v (env-root))
     (vat-drop-env! lab)
     (steps 2))
-  ;; Share…: the share dialog, Environments waiting on it
+  ;; Share…: the share dialog, with Environments waiting on it
   (eval '(define smoke-share-a 1) *world-env*)
   (eval '(define smoke-share-n 1) *world-env*)
   (eval '(define (smoke-share-n-set! v) (set! smoke-share-n v)) *world-env*)
@@ -758,7 +764,7 @@
     (click-ui! w '(envs share))
     (let* ([pw (focused-window)] [p (picker)])
       (type! "smoke-share")
-      (press! 'escape)   ; the filter lets go
+      (press! 'escape)   ; the filter lets go of the keyboard
       (steps 2)
       (check "Share… opens the share dialog over Environments, which waits \
               on it: the parent's names, filtered as typed"
@@ -813,7 +819,7 @@
     (vat-drop-env! box)
     (invalidate! w)
     (steps 2))
-  ;; Load…: the desktop's file dialog, Environments waiting on it
+  ;; Load…: the desktop's file dialog, with Environments waiting on it
   (let* ([dir (string-append out-dir "/smoke-load")]
          [sub (string-append dir "/sub")]
          [file (string-append dir "/smoke-load.ss")]
@@ -853,7 +859,7 @@
                             (not (envs-view-sheet v)))]
               [tx (+ (window-x w) (quotient (window-w w) 2))]
               [ty (+ (window-y w) 6)])
-          ;; on its title bar, as to move it
+          ;; a press on its title bar, as if to move it
           (inject! `(mouse-move ,tx ,ty) `(mouse-down ,tx ,ty left 1)
                    `(mouse-up ,tx ,ty left))
           (steps 2)
@@ -864,7 +870,7 @@
                       (eq? (focused-window) fd)
                       (eq? (car (windows)) fd)
                       (eq? (cadr (windows)) w)))))
-      ;; its rows, keys and paths: tests/units/file-dialog.ss
+      ;; its rows, keys and paths are tested in tests/units/file-dialog.ss
       (click-ui! fd (row 1))
       (click-ui! fd '(file-dialog pick))
       (check "Load picks it: the dialog closes, Environments goes on, and \
@@ -884,7 +890,7 @@
     (vat-drop-env! lab)
     (invalidate! w)
     (steps 2))
-  ;; the line between the tree and the inspector: a split
+  ;; the line between the tree and the inspector is a split
   ;; (tests/units/ui-split.ss)
   (click-ui! w '(tree row 1))
   (let ([n (vat-pool-size)])
@@ -930,7 +936,7 @@
 
 (png-write-screen (string-append out-dir "/desktop.png"))
 
-;; The launcher by F1, the desktop's menu, F11 and the icon:
+;; The launcher by F1, the desktop's menu, F11 and the icon are tested in
 ;; tests/units/desktop.ss.
 (close-window! c)
 
@@ -944,18 +950,20 @@
 (reset-theme!)
 
 ;; Window styles: the frame, its buttons and their actions come from the style.
-;; The insets Genera's rule gives with today's fonts: its 2-pixel border
-;; and 4-pixel margin on each side, and at the bottom its label strip, the
-;; label font's line and 2, at least 14 ((schevana styles genera)).
+;; The insets that Genera's rule gives with today's fonts: its 2-pixel
+;; border and 4-pixel margin on each side, and at the bottom its label
+;; strip, the label font's line height plus 2, at least 14 ((schevana
+;; styles genera)).
 (define (test-genera-insets)
   (with-style 'genera
     (lambda ()
       (let ([label (font-line-height (theme 'genera-label-font))])
         (list 6 6 6 (+ 6 (max 14 (exact (round (+ label 2))))))))))
 
-;; Medley's: a border of 4, and above it the title strip, at least
-;; Medley's 15 pixels, the title font's line under the ink, or the title
-;; bar's setting less 15 ((schevana styles interlisp)).
+;; Medley's insets: a border of 4, and at the top the title strip plus the
+;; border's 2 pixels of ink. The strip is the largest of Medley's 15
+;; pixels, the title font's line under the ink, and the title bar's
+;; setting less 15 ((schevana styles interlisp)).
 (define (test-interlisp-insets)
   (with-style 'interlisp
     (lambda ()
@@ -1117,8 +1125,8 @@
   (remp (lambda (s) (eq? (style-name s) 'gadgets)) *styles*))
 (set-theme! 'window-style 'mac)
 
-;; A style, theme, wallpaper or app defined again keeps its place and takes
-;; the new definition.
+;; A style, palette, wallpaper or app defined again keeps its place and
+;; takes the new definition.
 (let ([styles0 *styles*] [palettes0 *palettes*] [papers *wallpapers*]
       [apps0 *apps*])
   (define-style genera "Genera, again")
@@ -1147,7 +1155,8 @@
   (set! *apps* apps0)
   (wm-chrome-changed!))
 
-;; a palette is a change to the style chosen; the wallpaper is the style's
+;; a palette is a change to the chosen style; the wallpaper is the style's
+;; own
 (set-theme! 'window-style 'interlisp)
 (set-palette! 'interlisp)
 (style-scene! 'interlisp)
@@ -1160,7 +1169,8 @@
             (begin (set-theme! 'window-style 'mac)
                    (set-palette! 'interlisp)
                    (eq? (theme 'wallpaper) 'gradient))))
-;; A theme saved before Amiga and Workbench were removed still loads.
+;; A saved theme that names a style and a palette no longer defined
+;; (Amiga, Workbench) still loads.
 (reset-theme!)
 (call-with-output-file *theme-file-path*
   (lambda (p)
@@ -1182,8 +1192,8 @@
 (set! *settings-style-directory* (string-append out-dir "/styles"))
 (let ([f (string-append *settings-style-directory* "/my-windows.ss")])
   (when (file-exists? f) (delete-file f)))
-;; A style with its own palette and fonts, and few options: the text size
-;; is not one.
+;; A style with its own palette and fonts, and few options, of which the
+;; text size is not one.
 (define-style test-serif "Test serif"
   'palette 'gruvbox 'ui-font "serif" 'wallpaper 'flat
   'options '(palette accent wallpaper corner-radius))
@@ -1199,7 +1209,8 @@
     (steps 2)))
 (check "settings opens" (and s (not (window-error s))))
 (check "settings is single-instance" (eq? s (settings)))
-;; An old, flat theme file shows as its style, its choices your changes.
+;; An old, flat theme file shows as its style, with its choices as your
+;; changes.
 (call-with-output-file *theme-file-path*
   (lambda (p) (write '((window-style . genera) (accent . #x3366cc)) p))
   'replace)
@@ -1267,8 +1278,8 @@
 (scroll-to-ui! s '(option corner-radius))
 (drag-ui! s '(option corner-radius) 0)
 (png-write-screen (string-append out-dir "/settings-changed.png"))
-;; The text size is on the Fonts tab: pinned, it holds in every style
-;; that honors it, and test-serif does not.
+;; The text size is on the Fonts tab. Pinned, it holds in every style that
+;; honors it, and test-serif doesn't.
 (click-ui! s '(tab fonts))
 (scroll-to-ui! s '(option ui-font-size))
 (drag-ui! s '(option ui-font-size) 0.2)
@@ -1461,9 +1472,10 @@
 (define (next-to t) (cadr (memq (find-task t) *tasks*)))
 (define (shot name) (png-write-screen (format "~a/tasks-~a.png" out-dir name)))
 
-;; Tasks sized by its own measures, not a number one font's widths decide:
-;; wide, from where its details sit beside its view (tasks-wide-width), at
-;; the screen's left; narrow, its least width, which never fits them.
+;; Size Tasks by its own measures, not by a number that one font's widths
+;; decide. Wide (at the screen's left) is the width at which its details
+;; sit beside its view (tasks-wide-width); narrow is its least width, at
+;; which they never fit.
 (define (tasks-wide!)
   (let-values ([(mw mh) (tasks-min-size)])
     (move-window! tw 0 (window-y tw))
@@ -1498,7 +1510,7 @@
        (let ([todo (column-of 'todo)])
          (< 0 (length (filter card-of todo)) (length todo))))
 
-;; n, then typing at once: nothing is lost and the n is not typed.
+;; n, then typing at once: nothing is lost, and the n itself is not typed.
 (type! "n")
 (type! "Fix the toolbar")
 (steps 2)
@@ -1513,8 +1525,9 @@
          (and r (= (ui-region-h r) (cadddr (ui-region-frame r))))))
 (shot "title")
 
-;; Tab to Status; its menu by keys, Priority's by mouse: the dropdowns
-;; reach the task (the dropdown itself: tests/units/ui-dropdown.ss).
+;; Tab to Status, then its menu by keys, and Priority's by mouse: the
+;; dropdowns reach the task (the dropdown itself is tested in
+;; tests/units/ui-dropdown.ss).
 (press! 'tab)
 (steps 1)
 (check "Tab goes from the title to Status" (equal? (focus-id) 'status))
@@ -1539,8 +1552,8 @@
 (check "the assignee is typed, and Return leaves the field"
        (and (equal? (task-assignee nt) "Ada") (not (focus-id))))
 
-;; The due date: a day picked in its calendar is the task's (the date
-;; field itself: tests/units/ui-date-field.ss).
+;; The due date: a day picked in its calendar becomes the task's (the date
+;; field itself is tested in tests/units/ui-date-field.ss).
 (click-ui! tw 'due)
 (shot "calendar")
 (define day20 (let ([d (ui-today)]) (ui-date->day (list (car d) (cadr d) 20))))
@@ -1553,8 +1566,8 @@
 (check "Tab goes from the assignee to the date" (equal? (focus-id) 'due))
 (press! 'escape)
 
-;; Tags: the chip input reaches the task (the chip input itself:
-;; tests/units/ui-chip-input.ss).
+;; Tags: the chip input reaches the task (the chip input itself is tested
+;; in tests/units/ui-chip-input.ss).
 (click-ui! tw '(tags field))
 (type! "perf")
 (press! 'return)
@@ -1610,7 +1623,8 @@
 (check "and removed" (equal? (task-checklist nt) '(("one" . #t))))
 (shot "details")
 
-;; Drag and drop. The new task scrolled To do to its end: back to the top.
+;; Drag and drop. The new task scrolled To do to its end, so scroll it back
+;; to the top.
 (define (column-home! status)
   (let-values ([(x y) (region-center (list 'column status))]
                [(cx cy cw ch) (content-rect tw)])
@@ -1622,8 +1636,8 @@
 (define (column-x status)
   (let ([r (ui-find tui (list 'column status))])
     (+ (ui-region-x r) (/ (ui-region-w r) 2))))
-;; Drags t's card to (x, y) of the content, a step after each of three
-;; moves; Escape before the release when asked.
+;; Drags t's card to (x, y) of the content, with a step after each of
+;; three moves, and presses Escape before the release when asked.
 (define (drag-card! t x y . escape?)
   (let*-values ([(r) (card-of t)]
                 [(x0 y0) (values (+ (ui-region-x r) 20) (+ (ui-region-y r) 10))]
@@ -1671,9 +1685,9 @@
                 (eq? (find-task 12) (car (column-of 'doing)))))))
 
 ;; Another button during a drag: a right press, here in the gap between
-;; two columns, ends it, the card where it was and no menu, and once both
-;; buttons are up nothing is held. With the right button pressed first,
-;; the left one's release still ends a drag.
+;; two columns, ends the drag, leaving the card where it was and opening
+;; no menu, and once both buttons are up nothing is held. With the right
+;; button pressed first, the left one's release still ends a drag.
 (let-values ([(cx cy cw ch) (content-rect tw)])
   (let* ([r (card-of 13)] [order *tasks*] [doing (ui-find tui '(column doing))]
          [x0 (+ cx (ui-region-x r) 20)] [y0 (+ cy (ui-region-y r) 10)]
@@ -1708,7 +1722,8 @@
     (move-task! 13 'todo 14)
     (steps 2)))
 
-;; Board keys: a key reaches the board (its keys: tests/units/tasks.ss).
+;; Board keys: a key reaches the board (its keys are tested in
+;; tests/units/tasks.ss).
 (let-values ([(x y) (region-center (list 'card 13))])
   (tasks-click! x y))
 (check "a click on a card selects it" (eq? (selected) (find-task 13)))
@@ -1801,7 +1816,8 @@
             (eq? (next-to 13) copy)
             (equal? (task-title copy)
                     (string-append (task-title (find-task 13)) " (copy)"))))
-;; Tasks' delete dialog (the dialog itself: tests/units/ui-dialog.ss)
+;; Tasks' delete dialog (the dialog itself is tested in
+;; tests/units/ui-dialog.ss)
 (press! 'delete)
 (steps 2)
 (check "Delete asks first" (ui-find tui '(confirm 1)))
@@ -1829,10 +1845,10 @@
   (delete-task! long)
   (steps 1))
 
-;; What has the keyboard is in view. Enter, a double click and the menu's
-;; Open focus the title of a task whose details are scrolled away; Return
-;; in Add an item, and typing at the end of a long description, follow
-;; the field and its caret; a new card follows its growing title.
+;; Whatever has the keyboard is in view. Enter, a double click and the
+;; menu's Open focus the title of a task whose details are scrolled away;
+;; Return in Add an item keeps the keyboard in the field; a new card stays
+;; in view as its title grows.
 (define (shown? id)   ; drawn whole, not cut by a scroll view
   (let ([r (ui-find tui id)])
     (and r (> (ui-region-h r) 0)
@@ -1868,8 +1884,8 @@
 (for-each (lambda (s) (type! s) (press! 'return))
           '("Item 1" "Item 2" "Item 3" "Item 4" "Item 5"))
 (steps 2)
-;; scrolled into view as they push it down: the kit's
-;; (tests/units/ui-focus.ss)
+;; that the field stays in view as the items push it down is the kit's to
+;; test (tests/units/ui-focus.ss)
 (check "Return in Add an item keeps the keyboard there for the next item"
        (eq? (focus-id) 'new-item))
 (set-task! 7 'checklist (list-head (task-checklist (find-task 7)) 5))
@@ -1884,8 +1900,8 @@
 (steps 2)
 
 ;; Looks: the tag field draws no box inside the chip input's; a disabled
-;; button does not light up under the pointer; a cut title says so, and so
-;; does a cut checklist item with a tooltip.
+;; button does not light up under the pointer; a title cut short says so,
+;; and so does a checklist item cut short, with a tooltip.
 (define (content-pixel x y)
   (let-values ([(cx cy cw ch) (content-rect tw)])
     (screen-pixel (exact (floor (* *scale* (+ cx x))))
@@ -1966,8 +1982,9 @@
 (click-ui! tw 'empty-clear)
 (tasks-reset!)
 
-;; Dependencies. The details: what a task waits for, chips a × removes,
-;; Add's menu of what makes no cycle; what waits for it; a chip selects.
+;; Dependencies. The details show what a task waits for, as chips that a
+;; × removes, with Add's menu of the tasks that make no cycle, and what
+;; waits for it; a click on a chip selects that task.
 (tasks-wide!)
 (tasks-select! tv (find-task 14))
 (invalidate! tw)   ; a selection from here asks for no frame
@@ -1981,7 +1998,7 @@
          (and (string-prefix? "Blocked by TASK-31 Each window" tip)
               (string-contains-ci? tip ", TASK-10 Threads spec")
               (not (tasks-tip (find-task 12) #f))
-              ;; after the title, where the card cuts it
+              ;; on the card it comes after the title, which the card cuts
               (or (not card) (string-suffix? tip (ui-region-tip card))))))
 (click-ui! tw '(blocked-by add))   ; its choices: tasks-blocker-choices
 (type! "fractal")
@@ -1997,9 +2014,9 @@
 (check "a click on a chip selects that task" (eq? (selected) (find-task 22)))
 
 ;; With many tasks, Add's menu shows what fits on the screen, then how many
-;; more, which typing narrows; the task an id typed names comes first. A
-;; choice the REPL made into a cycle while the menu was open is refused,
-;; and a plain toast says so.
+;; more there are, which typing narrows; the task whose id is typed comes
+;; first. A choice that the REPL made into a cycle while the menu was open
+;; is refused, and a plain toast says so.
 (let* ([more (sort (lambda (a b) (< (task-id a) (task-id b)))   ; board order
                    (map (lambda (i) (add-task! (format "Filler ~a" i)))
                         (iota 60)))]
@@ -2050,9 +2067,9 @@
      (tasks-select! tv #f)
      (steps 2))))
 
-;; The Tree: under each task what it waits for; a click selects; a later
-;; row of a shared blocker is a place of its own, and Return goes to its
-;; own row (the tree itself: tests/units/ui-tree.ss).
+;; The Tree: under each task, what it waits for. A click selects; a later
+;; row of a shared blocker is a place of its own, and Return goes to the
+;; task's own row (the tree itself is tested in tests/units/ui-tree.ss).
 (define (tree-rows) (ui-memo tui '(tree rows) '#()))
 (define (tree-nodes) (map ui-tree-row-node (vector->list (tree-rows))))
 (define (tree-shown! node)   ; the wheel brings node's row into view
@@ -2070,7 +2087,7 @@
         (let-values ([(x y) (region-center '(tree body))]
                      [(cx cy cw ch) (content-rect tw)])
           (inject! `(mouse-move ,(+ cx (round x)) ,(+ cy (round y)))
-                   ;; up for one at the top, cut there, or above it
+                   ;; up for a row at the top (cut there) or above it
                    `(wheel 0 ,(if (<= i (apply min shown)) 1 -1)))
           (steps 1)
           (loop (+ n 1)))))))
@@ -2139,12 +2156,12 @@
 (click-ui! tw 'clear)
 
 ;; A row whose twisty hid the selection is selected, and typing in that
-;; task's details keeps it collapsed (the selection's own rules:
-;; tests/units/tasks.ss).
+;; task's details keeps it collapsed (the selection's own rules are tested
+;; in tests/units/tasks.ss).
 (tasks-select! tv (find-task 9))
 (invalidate! tw)
 (steps 2)
-(tree-click! 11 'twisty)   ; it hides the selection, 9: 11 is selected
+(tree-click! 11 'twisty)   ; it hides the selection, 9, so 11 is selected
 (let ([was (task-description (find-task 11))])
   (click-ui! tw 'description)
   (type! "x")
@@ -2199,9 +2216,9 @@
 (set-task! 12 'blocked-by '())
 (tasks-select! tv #f)
 
-;; A reload that changed task's fields (here, as if back from its first
-;; record type) carries the tasks over, an empty blocked-by each, and
-;; Tasks opens again in its place.
+;; A reload that changed task's fields (here, as if coming back from its
+;; first record type) carries the tasks over, each with an empty
+;; blocked-by, and Tasks opens again in its place.
 (let* ([rtd (make-record-type-descriptor
              'task #f 'schevana-task-1 #f #f
              '#((immutable id) (mutable title) (mutable description)
@@ -2272,23 +2289,23 @@
 (set-task! 9 'assignee "Claude")
 (steps 1)
 
-;; A row the toolbar's items fill exactly is one row: the toolbar's
-;; (tests/units/ui-toolbar.ss).
+;; A row that the toolbar's items fill exactly stays one row: that is the
+;; toolbar's to test (tests/units/ui-toolbar.ss).
 (tasks-wide!)
 (steps 2)
 
-;; 100,000 characters: words, then one word as long.
+;; 100,000 characters: words, then one word as long as all of them.
 (define long-text
   (string-append (apply string-append (make-list 5555 "abcdefgh "))
                  (make-string 50005 #\x)))
 
-;; The ms this thread has had of a CPU: a step's work by it is the step's
-;; own, however long a busy machine kept it waiting.
+;; The CPU time this thread has had, in ms: by this measure a step's work
+;; is the step's own, however long a busy machine kept the thread waiting.
 (define (thread-cpu-ms)
   (let ([t (current-time 'time-thread)])
     (+ (* 1000 (time-second t)) (quotient (time-nanosecond t) 1000000))))
 
-;; Takes n steps; => the slowest one's ms of work.
+;; Takes n steps and returns the slowest one's work, in ms.
 (define (slowest-of-steps n)
   (let loop ([i 0] [worst 0])
     (if (= i n)
@@ -2297,11 +2314,11 @@
           (steps 1)
           (loop (+ i 1) (max worst (- (thread-cpu-ms) t0)))))))
 
-;; That pasted into a title, an assignee, a tag and the search: the Board,
-;; the details, the menus, the dialog and the List keep answering, every
-;; step under 300 ms of work (55 at most measured alone, 95 on a busy
-;; machine; a cut that reads the text again for each piece takes seconds),
-;; and Tasks never crashes.
+;; That text pasted into a title, an assignee, a tag and the search: the
+;; Board, the details, the menus, the dialog, the List and the Tree keep
+;; answering, every step under 300 ms of work (55 at most measured alone,
+;; 95 on a busy machine; a cut that reads the text again for each piece
+;; takes seconds), and Tasks never crashes.
 (let ([t (add-task! "Long" 'status 'review)] [slow '()])
   (define (timed label n)
     (let ([ms (slowest-of-steps n)])
@@ -2356,8 +2373,8 @@
                 search: every step of the Board, the details, the menus, \
                 the dialog, the List and the Tree under 300 ms of work, \
                 and Tasks never crashed"
-               ;; the menu: a name of 20 line heights at most, and the
-               ;; menu's own room
+               ;; the menu's width: a name of at most 20 line heights, and
+               ;; the menu's own room
                (and (null? slow) menu? dialog? menu-w
                     (< menu-w (* 24 (font-line-height 'ui)))
                     (= (string-length (task-title t)) 100001)
@@ -2369,9 +2386,9 @@
   (delete-task! t)
   (steps 2))
 
-;; A description: at most 65,536 characters, typed, pasted or set from the
-;; REPL; a long one scrolls by the wheel and its bar, which settles once
-;; idle steps have its rows, and Ctrl+End and Ctrl+Home show its ends.
+;; A description holds at most 65,536 characters, whether typed, pasted or
+;; set from the REPL. A long one has a scroll bar, which settles once idle
+;; steps have computed its rows.
 (define (words n)
   (let ([o (open-output-string)])
     (let loop ([i 0])
@@ -2384,8 +2401,8 @@
 (steps 2)
 (let-values ([(x y) (region-center (list 'card (task-id long-task)))])
   (tasks-click! x y))
-;; its limit, 65,536: Tasks' (tests/units/tasks.ss), its box's 'max the
-;; kit's (tests/units/ui-text-box.ss)
+;; its limit of 65,536 is Tasks' to test (tests/units/tasks.ss), and its
+;; box's 'max the kit's (tests/units/ui-text-box.ss)
 (set-task! long-task 'description (make-string 70000 #\a))
 (steps 1)
 (set-task! long-task 'description (words 65000))
@@ -2400,12 +2417,12 @@
               (edit-layout-done? lay)
               (eq? lay (ui-memo tui '(description rows) #f)))))
 
-;; Its wheel, bar, Page Down, Ctrl+Home and Ctrl+End are a text area's
-;; (tests/units/ui-scroll.ss).
+;; Its wheel, bar, Page Down, Ctrl+Home and Ctrl+End are a text area's,
+;; and are tested with it (tests/units/ui-scroll.ss).
 
 ;; A keystroke's edit says where it changed the text, so its rows follow
 ;; without comparing texts; a change from the REPL compares them.
-(click-ui! tw 'description)   ; the keys below are the description's
+(click-ui! tw 'description)   ; the keys below go to the description
 (define compared 0)
 (define plain-difference edit-difference)
 (set! edit-difference
@@ -2423,8 +2440,8 @@
           the REPL does"
          (and (= typed 0) (> compared 0))))
 
-;; A step that brings any window input runs no scan for a scroll bar, in
-;; no window: the input's frame comes first.
+;; A step that brings input to any window runs no scan for a scroll bar in
+;; any window: the input's frame comes first.
 (let ([slices 0] [plain edit-layout-scan!] [w (repl)])
   (set! edit-layout-scan!
         (lambda args (set! slices (+ slices 1)) (apply plain args)))
@@ -2445,7 +2462,7 @@
 (focus-window! tw)
 (click-ui! tw 'description)
 
-;; The description's editor: tests/units/tasks-editor.ss.
+;; The description's editor is tested in tests/units/tasks-editor.ss.
 (set! edit-difference plain-difference)
 (press! 'escape)
 (tasks-select! tv #f)
@@ -2454,9 +2471,9 @@
 (delete-task! long-task)
 (steps 2)
 
-;; A window titled with 10,000 characters, then (when that was quick, so
-;; that a slow cut fails in seconds) with 100,000: every window style
-;; draws it in under 300 ms of work a frame.
+;; A window titled with 10,000 characters, then (only if that was quick,
+;; so that a slow cut fails within seconds) with 100,000: every window
+;; style draws it in under 300 ms of work per frame.
 (let ([style (theme 'window-style)])
   (define (slow-styles title)
     (let* ([w (open-window title 'size '(300 . 200)
@@ -2495,7 +2512,7 @@
 (set! *toasts* '())
 
 
-;; The profiler and Monitor: tests/units/monitor.ss.
+;; The profiler and Monitor are tested in tests/units/monitor.ss.
 (let ([m (find-window 'monitor)]) (when m (close-window! m)))
 (steps 2)
 
@@ -2521,8 +2538,8 @@
   (set-theme! 'window-style 'mac)
   (close-window! s))
 
-;;; Frames asked for and not: tests/units/windows.ss. What the checks
-;;; below still share:
+;;; Frames asked for and not are tested in tests/units/windows.ss. What
+;;; the checks below still share:
 (for-each close-window! (windows))
 (set! *toasts* '())
 (steps 2)
@@ -2589,8 +2606,8 @@
   (close-window! s))
 
 ;; A drawing procedure redefined at the REPL draws the next frame its
-;; window is drawn in (the REPL invalidates all when it's done); so does the
-;; original, put back.
+;; window is drawn in (the REPL invalidates everything when it is done),
+;; and so does the original once it is put back.
 (let ([w (plain-window "Plain" 300 200)] [orig draw-window] [calls 0])
   (steps 2)
   (set! draw-window (lambda (win) (set! calls (+ calls 1)) (orig win)))
@@ -2691,9 +2708,9 @@
 (set! *styles*
   (remp (lambda (s) (eq? (style-name s) 'broken)) *styles*))
 
-;; Life's cells take a theme change made behind set-theme!'s back, once
-;; asked to draw (set-theme! asks every window). Its bar's height is its
-;; own (tests/reach.ss).
+;; Life's cells take up a theme change made behind set-theme!'s back, once
+;; asked to draw (set-theme! asks every window). The height of Life's bar
+;; is Life's own, reached through test-library (tests/reach.ss).
 (test-library '(demo life) 'lf:)
 (let ([l (lf:life)] [green (theme 'green)] [cyan (theme 'cyan)])
   (window-call l 'key #\space '())   ; paused
@@ -2717,15 +2734,15 @@
   (close-window! l)
   (steps 1))
 
-;;; Live changes: redefining while the world runs (reloading as a
-;;; process: tests/units/reload.ss).
+;;; Live changes: redefining while the world runs (reloading as a process
+;;; is tested in tests/units/reload.ss).
 
 ;; A draw-wallpaper that raises, tried again with every frame, is reported
 ;; once, and the windows are drawn as ever.
 (let ([orig draw-wallpaper] [calls 0] [told 0] [plain notify] [drawn 0]
       [w (plain-window "Over" 100 100)])
   (let ([n (count-draws! w)])
-    ;; an argument short
+    ;; it passes fill-gradient an argument too few
     (set! draw-wallpaper (lambda (w h)
                            (set! calls (+ calls 1))
                            (fill-gradient 0 0 w h #x102030)))
@@ -2748,9 +2765,9 @@
   (set! *toasts* '())
   (steps 1))
 
-;; A window opened under an older kit holds a ui this kit cannot read:
-;; the kit's library evaluated again and run (as a reload does) opens its
-;; app in its place.
+;; A window opened under an older kit holds a ui that this kit cannot
+;; read: when the kit's library is evaluated again and run (as a reload
+;; does), the window's app opens again in its place.
 (for-each (lambda (w) (when (eq? (window-app w) 'clock) (close-window! w)))
           (windows))
 (let ([old (clock)])

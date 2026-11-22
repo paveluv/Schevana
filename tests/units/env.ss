@@ -1,8 +1,8 @@
 ;;; tests/units/env.ss — environments ((schevana services env)) and the confined
 ;;; base.
 
-;;; Environments ((schevana services env)): a child sees what its parent shares,
-;;; live, and changes none of it.
+;;; Environments ((schevana services env)): a child sees what its parent
+;;; shares, live, and can change none of it.
 
 (define units-env-value 1)
 (define (units-env-get) units-env-value)
@@ -381,8 +381,8 @@
               (equal? (map env-name (env-children (env-root)))
                       '(worklets)))))
 
-;;; The confined base ((schevana services env)): what is always safe, for
-;;; sandboxes.
+;;; The confined base ((schevana services env)): what is always safe to give
+;;; a sandbox.
 
 (check "a confined sandbox has what is always safe, and nothing that \
         reaches past its arguments: no files, eval or environments, C, \
@@ -448,14 +448,14 @@
            (env-eval e '(begin (display "a") (newline) (printf "~a" 1)
                                (format #t "b") (write "c" (current-output-port))
                                (define (units-say) (display "!")))))
-         ((env-eval e 'units-say))   ; no evaluation: the log alone
+         ((env-eval e 'units-say))   ; outside an evaluation: the log only
          (let ([ok (and (equal? (env-log e) "a\n1b\"c\"!")
                         (equal? (get-output-string out) "a\n1b\"c\""))])
            (env-drop! e)
            ok)))
 
-;;; The core is sealed in its libraries, and has no environment: what
-;;; the world is given it imports.
+;;; The core is sealed in its libraries and has no environment: the world
+;;; imports what the core gives it.
 
 (check "the core has no environment in the tree; describing a name it \
         gives the world, from \"/\" or from a world namespace, reaches \

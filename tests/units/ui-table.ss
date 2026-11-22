@@ -1,13 +1,14 @@
-;;; tests/units/ui-table.ss — the kit's table ((schevana kits ui)), by itself: a
-;;; row selected, opened and its menu asked for, a heading's press, a
-;;; row's checkbox, and the selected row scrolled into view. Its columns'
-;;; handles and headings' places are behaviors.ss's; its steps by keys
-;;; ui.ss's (ui-table-step).
+;;; tests/units/ui-table.ss — the kit's table ((schevana kits ui)), tested by
+;;; itself: a row selected, opened and asked for its menu, a press on a
+;;; heading, a row's checkbox, and the selected row scrolled into view. Its
+;;; column handles and heading places are tested in behaviors.ss, and its
+;;; steps by keys in ui.ss (ui-table-step).
 
 (define ui-table-test-rows (map (lambda (i) (format "row ~a" i)) (iota 30)))
 
-;; A table of 30 rows of two columns; what was selected, sorted, opened,
-;; its menu asked for and checked, kept in boxes.
+;; A window with a table of 30 rows and two columns. Returns the window and
+;; boxes that hold the row selected, the column sorted, the row opened, the
+;; row whose menu was asked for, and the rows checked.
 (define (ui-table-test-window)
   (let ([selected (box #f)] [sorted (box #f)] [opened (box #f)]
         [menu (box #f)] [checked (box '())])
@@ -61,7 +62,7 @@
        (let-values ([(win selected sorted opened menu checked)
                      (ui-table-test-window)])
          (steps 2)
-         (set-box! selected (list-ref ui-table-test-rows 27))   ; eq?
+         (set-box! selected (list-ref ui-table-test-rows 27))   ; the row, eq?
          (invalidate! win)
          (steps 3)
          (let* ([ui (window-ref win 'ui)]

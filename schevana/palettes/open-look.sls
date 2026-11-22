@@ -1,9 +1,9 @@
-;;; (schevana palettes open-look) — the OPEN LOOK palette. OpenWindows' own
-;;; colors: windows #cccccc with black ink, panes and fields white, the
-;;; workspace #40a0c0 (olwm's resources.c:235-250, XView's cms_pblc.c:232-234).
-;;; bg-2 is BG2, the 3D shade OLGX takes from the window color ((schevana styles
-;;; open-look)); bg-3 is a step past it, for the kits' hovers, which OPEN LOOK
-;;; lacks.
+;;; (schevana palettes open-look) — the OPEN LOOK palette, in OpenWindows' own
+;;; colors: windows are #cccccc with black ink, panes and fields are white,
+;;; and the workspace is #40a0c0 (olwm's resources.c:235-250, XView's
+;;; cms_pblc.c:232-234). bg-2 is BG2, the 3D shade that OLGX derives from the
+;;; window color ((schevana styles open-look)); bg-3 is one step darker, for
+;;; the kits' hover highlights, which OPEN LOOK doesn't have.
 
 (library (schevana palettes open-look)
   (export)

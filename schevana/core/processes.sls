@@ -1,14 +1,15 @@
 ;;; (schevana core processes) — processes and the watchdog, built on Chez
 ;;; Scheme engines.
 ;;;
-;;; Schevana is single-threaded. Long computations become *processes*:
-;;; engines that get a slice of fuel every frame, so an infinite loop in the
-;;; REPL never freezes the world and can be killed with Ctrl+C. A process
-;;; reloading the sources is no exception, but while it loads it holds the
-;;; world still (*reloading*, see system.ss): only it runs, and nothing draws.
+;;; The world runs on one thread, core1. Long computations become
+;;; *processes*: engines that get a slice of fuel every frame, so an infinite
+;;; loop in the REPL never freezes the world and can be killed with Ctrl+C. A
+;;; process reloading the sources is no exception, but while it loads it
+;;; holds the world still (*reloading*, (schevana core sources)): only it
+;;; runs, and nothing draws.
 ;;;
-;;; Every app handler (draw, key, tick, ...) also runs under a fuel budget via
-;;; safe-call: if it loops forever or raises, only that window "crashes".
+;;; Every app handler (draw, key, frame, ...) also runs under a fuel budget
+;;; via safe-call: if it loops forever or raises, only that window "crashes".
 ;;; System code reports its errors as notifications (report-error!).
 
 (library (schevana core processes)
@@ -27,40 +28,43 @@
 
   (library-layer core)
 
-  ;; Whether this is core1, the world's thread: the one that said so
-  ;; (core1-thread!, as the world boots on it); till then, the one that
-  ;; loaded this library. The world's state is core1's alone, and SDL
-  ;; core0's: a worker runs only worklets, where neither can be named.
+  ;; Whether this thread is core1, the world's thread: the one that said so
+  ;; (core1-thread!, as the world boots on it), or until then the one that
+  ;; loaded this library. The world's state belongs to core1 alone, and SDL
+  ;; to core0: a worker runs only worklets, in which neither can be named.
   (define-state *core1-thread-id* (get-thread-id))
   (define (core1-thread?) (fx= (get-thread-id) *core1-thread-id*))
   (define (core1-thread!) (set! *core1-thread-id* (get-thread-id)))
 
-  ;; defvar, not define: a reload must not swap out parameters that running
-  ;; engines are still parameterizing. Thread parameters: another thread's
-  ;; binding is never core1's.
+  ;; States, not plain definitions: a reload must not swap out parameters
+  ;; that running engines are still parameterizing. They are thread
+  ;; parameters, so another thread's binding is never core1's.
   (define-state in-engine? (make-thread-parameter #f))
   (define-state current-proc (make-thread-parameter #f))
 
-  ;; per handler call; roughly 0.1s of pure Scheme
+  ;; fuel per handler call: roughly 0.1s of pure Scheme
   (define handler-fuel 50000000)
   (define slice-fuel 10000)        ; per process slice; roughly 15us
 
   ;; The profiler's hook: #f, or (begin . end), procedures that (schevana
-  ;; services profile) sets while on: (begin key part) opens a span of key (a
-  ;; symbol, or a window's or a process's id) and part (a window handler's kind,
-  ;; or #f; #t for a process's turn); (end outer?) closes the span open
-  ;; innermost, or with outer? true (the step's end) the outermost, and any a
-  ;; raise left open. Five places run their work in with-profile-span: the step,
-  ;; safely, a window's handler (window-call) and drawing (record-world!), and a
-  ;; process's turn (run-procs!). Off, each costs a variable read and a branch;
-  ;; key and part are computed only while the hook is set; nothing is allocated
-  ;; either way, and nothing is kept across the work (a value live across an
-  ;; engine's run costs Chez a copy of the frame).
+  ;; services profile) sets while it is on. (begin key part) opens a span of
+  ;; key (a symbol, or a window's or a process's id) and part (a window
+  ;; handler's kind, or #f; #t for a process's turn). (end outer?) closes the
+  ;; innermost open span, or with outer? true (at the step's end) the
+  ;; outermost, along with any that a raise left open. Six places run their
+  ;; work in with-profile-span: the step, safely, a window's handler
+  ;; (window-call), the drawing of each window (record-windows!, under
+  ;; record-world!), a process's turn (run-procs!) and the waits for the
+  ;; screen (screen-events). While the profiler is off, each costs a
+  ;; variable read and a branch; key and part are computed only while the
+  ;; hook is set. Nothing is allocated either way, and nothing is kept across
+  ;; the work (a value live across an engine's run costs Chez a copy of the
+  ;; frame).
   (define-state *profile-span* #f)
 
-  ;; A span already over, from start to end on now-ns's clock, told to the
-  ;; profiler as if it had been open inside the one open now: core0's waits,
-  ;; which core0 times itself.
+  ;; Tells the profiler of a span already over, from start to end on
+  ;; now-ns's clock, as if it had been open inside the span open now: for
+  ;; core0's waits, which core0 times itself.
   (define (profile-span-past! key part start end)
     (let ([span *profile-span*])
       (when span ((car span) key part start end))))
@@ -115,9 +119,10 @@
   ;;; ------------------------------------------------------------------
   ;;; asked of the loop
   ;;; A frame, and a call after a while: the loop ((schevana core loop))
-  ;;; looks at both each step.
+  ;;; checks for both at each step.
 
-  ;; what the next frame draws: #f, #t (the whole screen) or (x0 y0 x1 y1)
+  ;; whether the next tick draws a frame, #t or #f; request-frame! of a box
+  ;; asks for one only when the box isn't empty
   (define-state *dirty* #t)
 
   (define request-frame!
@@ -125,8 +130,8 @@
       [() (set! *dirty* #t)]
       [(x y w h) (when (and (> w 0) (> h 0)) (set! *dirty* #t))]))
 
-  ;; A frame with everything in it drawn again: each call is a new
-  ;; generation, which what keeps a drawing compares its own with (a
+  ;; A frame with everything in it drawn again. Each call starts a new
+  ;; generation, which whatever keeps a drawing compares its own with (a
   ;; window's lists, (schevana core windows)).
   (define-state *frame-generation* 0)
 
@@ -136,10 +141,11 @@
 
   (define-state *timers* '())     ; (#(due-ms thunk fueled?) ...) by due time
 
-  ;; (after 1000 (lambda () (notify "a second later"))). Linked in place,
-  ;; after those due no later: a vector and a pair, however many are set.
-  ;; One set in an engine (an app's handler, a process, a timer of theirs)
-  ;; runs in one too, with a fuel; the world's own runs as it is.
+  ;; (after 1000 (lambda () (notify "a second later"))). The timer is linked
+  ;; in place, after those due no later, so each costs a vector and a pair,
+  ;; however many are set. One set in an engine (an app's handler, a
+  ;; process, or one of their timers) runs in an engine too, with fuel; one
+  ;; of the world's own runs as it is.
   (define (after ms thunk)
     (let* ([due (+ (now-ms) ms)]
            [t (vector due thunk (in-engine?))]
@@ -152,8 +158,9 @@
                 (ins (cdr ts)))))
       t))
 
-  ;; The timers due, in order. An error in one of the world's own ends the
-  ;; turn's (run-timers! runs under safely); those still due run next turn.
+  ;; Runs the timers that are due, in order. An error in one of the world's
+  ;; own timers ends this turn's run (run-timers! runs under safely); those
+  ;; still due run on the next turn.
   (define (run-timers!)
     (let loop ()
       (when (and (pair? *timers*) (<= (vector-ref (car *timers*) 0) (now-ms)))
@@ -217,7 +224,8 @@
 
   (define-state *procs* '())
   (define-state *next-pid* 1)
-  ;; (proc . file) while that process loads the sources (system.ss)
+  ;; (proc . file) while that process loads the sources ((schevana core
+  ;; sources))
   (define-state *reloading* #f)
 
   ;; (spawn name thunk [on-done]) starts a process. on-done receives
@@ -268,15 +276,16 @@
 
   (define (proc-ready? p) (<= (proc-wake p) (now-ms)))
 
-  ;; While one process reloads the sources only it runs: the others may
-  ;; call half-loaded code.
+  ;; While one process reloads the sources, only it runs, since the others
+  ;; might call half-loaded code.
   (define (proc-may-run? p)
     (and (proc-ready? p) (or (not *reloading*) (eq? p (car *reloading*)))))
 
   (define (procs-ready?) (exists proc-may-run? *procs*))
 
-  ;; Run ready processes until budget-ms has elapsed, round-robin: in its
-  ;; turn each runs slices for its share of the time left, while it may.
+  ;; Runs ready processes round-robin until budget-ms has elapsed: in its
+  ;; turn each one runs slices for its share of the time left, while it may
+  ;; run.
   (define (run-procs! budget-ms)
     (let ([deadline (+ (now-ms) budget-ms)])
       (let loop ()
@@ -284,8 +293,9 @@
           (when (and (pair? ready) (< (now-ms) deadline))
             (for-each
              (lambda (p)
-               ;; the clock read once: a ms turning between two reads would end
-               ;; a lone process's turn a ms short, and give it a second
+               ;; the clock is read once: a ms turning between two reads would
+               ;; end a lone process's turn a ms short and give it a second
+               ;; turn
                (let* ([now (now-ms)]
                       [until (+ now (/ (- deadline now) (length ready)))])
                  (with-profile-span (proc-id p) #t
@@ -296,7 +306,7 @@
              ready)
             (loop))))))
 
-  ;; Give up the CPU for ms milliseconds (only inside a process).
+  ;; Gives up the CPU for ms milliseconds (only inside a process).
   (define (sleep-ms ms)
     (let ([p (current-proc)])
       (unless p
@@ -307,15 +317,15 @@
           (engine-block)
           (when (< (now-ms) until) (loop))))))
 
-  ;; Give up the rest of this slice.
+  ;; Gives up the rest of this slice.
   (define (yield) (when (current-proc) (engine-block)))
 
-  ;; Inside a process, the values something done elsewhere hands a then:
-  ;; (start done) begins it, and it calls (done v ...) later on core1 (a
-  ;; read back from the GPU, a vat's job), or at once. The process waits
-  ;; meanwhile, never run, and core1 goes on: so a REPL's input reads as if
-  ;; the call returned them. Outside a process nothing may wait, and who
-  ;; raises, start never called.
+  ;; Inside a process, returns the values that something done elsewhere
+  ;; hands to a then. (start done) begins that work, which calls (done v
+  ;; ...) later on core1 (a read back from the GPU, a vat's job) or at once.
+  ;; Meanwhile the process waits without being run, and core1 goes on, so a
+  ;; REPL's input reads as if the call had returned the values. Outside a
+  ;; process nothing may wait: it raises as who, and start is never called.
   (define (proc-wait who start)
     (let ([p (current-proc)] [got #f])
       (unless p
@@ -331,14 +341,14 @@
   ;;; worklet environment, where only this is in reach: Scheme's pure core
   ;;; (no I/O, no eval), fixnums, flonums, bitwise operations, bytevectors,
   ;;; fxvectors, flvectors, boxes, raising and catching (but not reading a
-  ;;; condition),
-  ;;; the clock (now-ns), the thread's id and the worklets defined so far.
-  ;;; SDL and the world's state are not: a worklet that names
-  ;;; anything else is refused when it is defined, so all it touches is what
-  ;;; it is handed. Of that, it can open only pairs, vectors and boxes. The
-  ;;; worklets are there as forwarders to the world's own bindings, the
-  ;;; clock as a procedure that calls the world's; a worklet that sets any
-  ;;; top-level name is refused, since that name would be state that
+  ;;; condition), the clock (now-ns), the thread's id and the worklets
+  ;;; defined so far. SDL and the world's state are out of reach: a worklet
+  ;;; that names anything else is refused when it is defined, so all it
+  ;;; touches is what it is handed. Of that, it can look inside plain data
+  ;;; only (pairs, vectors, boxes and the like), never a record. The worklets
+  ;;; are in the environment as forwarders to the world's own bindings, and
+  ;;; the clock as a procedure that calls the world's. A worklet that sets
+  ;;; any top-level name is refused, since that name would be state that
   ;;; worker threads write at once.
   ;;;
   ;;;   (define-worklet (step! grid next lo hi) ...)
@@ -366,9 +376,9 @@
                                   flvector-ref flvector-set! flvector-fill!
                                   get-thread-id))
               #t)])
-      ;; the clock, a procedure of the worklets' own that calls the hook,
-      ;; so a redefinition takes; what the hook expands to (a global under
-      ;; a symbol of its own) is nothing a worklet may name
+      ;; the clock, as a procedure of the worklets' own that calls now-ns,
+      ;; so that a redefinition of now-ns takes effect; the core's binding
+      ;; itself is nothing a worklet may name
       (define-top-level-value 'now-ns (lambda () (now-ns)) e)
       e))
 
@@ -377,8 +387,8 @@
 
   (define (worklet? x) (hashtable-contains? *worklets* x))
 
-  ;; What form refers to at the top level, as expand gives it: (ref . name)
-  ;; or (set . name).
+  ;; Returns what form refers to at the top level, as expand gives it: a
+  ;; list of (ref . name) and (set . name).
   (define (worklet-free-names form env)
     (let walk ([x (expand form env)] [acc '()])
       (let ([op (and (pair? x) (pair? (car x)) (eq? (caar x) '$primitive)
@@ -393,9 +403,10 @@
                        acc))]
           [else (walk (cdr x) (walk (car x) acc))]))))
 
-  ;; form, a lambda, compiled in env as the worklet who. What it names is
-  ;; env's: its own, or what env was given, the clock and the worklets, as
-  ;; forwarders, which a reference names by the binding they reach.
+  ;; Compiles form, a lambda, in env as the worklet who. Every name it uses
+  ;; must be env's: env's own, or what env was given (the clock and the
+  ;; worklets, as forwarders, which a reference names by the binding they
+  ;; reach).
   (define (worklet-compile who form env)
     (let ([names (environment-symbols env)])
       (for-each (lambda (n)
@@ -416,15 +427,17 @@
        (worklet-compile 'worklet '(lambda formals body ...)
                         *worklet-environment*)]))
 
-  ;; (worklet-spread chunk start end worklet arg ...): (worklet lo hi arg
-  ;; ...) over [start, end), in chunks of at least chunk, the crew's threads
-  ;; sharing them once (schevana services crew) sets it; on this one till then.
+  ;; (worklet-spread chunk start end worklet arg ...) calls (worklet lo hi
+  ;; arg ...) over [start, end), in chunks of at least chunk. Once (schevana
+  ;; services crew) sets it, the crew's threads share the chunks; until then
+  ;; they run on this thread.
   (define-hook (worklet-spread chunk start end proc . args)
     (when (< start end) (apply proc start end args)))
 
-  ;; (define-worklet (name . formals) body ...): a worklet, defined where the
-  ;; form is, and forwarded to from the worklet environment before it
-  ;; compiles, so it may recur and the others see it redefined.
+  ;; (define-worklet (name . formals) body ...) defines a worklet where the
+  ;; form is. The worklet environment gets a forwarder to it before it
+  ;; compiles, so that it may call itself and the other worklets see it when
+  ;; it is redefined.
   (define-syntax define-worklet
     (syntax-rules ()
       [(_ (name . formals) body ...)

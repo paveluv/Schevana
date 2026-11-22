@@ -1,6 +1,6 @@
 ;;; (schevana desktop toasts) — how notifications look: a stack of toasts at
-;;; the top right, over everything. The queue and its expiry are the core's
-;;; (notify, *toasts*); clicks go through them.
+;;; the top right, over everything. The core keeps the queue and expires the
+;;; toasts (notify, *toasts*); clicks pass through them.
 
 (library (schevana desktop toasts)
   (export
@@ -15,8 +15,8 @@
 
   (library-layer desktop)
 
-  ;; Where each toast goes: (#(x y w h text color) ...), top to bottom,
-  ;; at the top right of where windows go.
+  ;; Returns where each toast goes, (#(x y w h text color) ...) from top to
+  ;; bottom, at the top right of the area where windows go (desktop-rect).
   (define-part (toast-boxes)
     (let ([h (max 34 (round (+ (font-line-height 'ui) 19)))])
       (let-values ([(dx dy dw dh) (desktop-rect)])
@@ -31,13 +31,13 @@
                                     (vector-ref t 2))
                             acc))))))))
 
-  ;; The toasts, drawn in their place by the style's draw-toasts, called by
-  ;; name, which is handed their boxes.
+  ;; Draws the toasts in their place, 'toast, with the style's draw-toasts,
+  ;; which is called by name and handed their boxes.
   (define (toasts-draw)
     (with-place 'toast
       (lambda () ((world-value 'draw-toasts) (toast-boxes)))))
 
-  ;; The toasts in their boxes (toast-boxes).
+  ;; Draws the toasts in their boxes (from toast-boxes).
   (define-part (draw-toasts boxes)
     (let ([lh (font-line-height 'ui)])
       (for-each (lambda (b)
@@ -49,7 +49,8 @@
                                (vector-ref b 4) 'text 'ui)))
                 boxes)))
 
-  ;; The whole screen while any shows: their frames are whole.
+  ;; The whole screen while any toast shows, so that each frame with toasts
+  ;; is drawn whole.
   (define (toasts-box)
     (if (pair? *toasts*) (values 0 0 (screen-w) (screen-h)) (values 0 0 0 0)))
 

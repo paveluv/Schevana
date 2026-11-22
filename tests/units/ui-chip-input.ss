@@ -1,9 +1,10 @@
-;;; tests/units/ui-chip-input.ss — the kit's chip input ((schevana kits ui)), by
-;;; itself: chips added by Return, a comma or a paste, removed by Backspace
-;;; or a chip's ×, and a suggestion picked by keys.
+;;; tests/units/ui-chip-input.ss — the kit's chip input ((schevana kits ui)),
+;;; tested by itself: Return, a comma or a paste adds chips, Backspace or a
+;;; chip's × removes them, and the keys pick a suggestion.
 
-;; A chip input, its chips and draft kept where its procedures put them;
-;; suggest, if given, as a text field's.
+;; A window with a chip input. Returns the window and boxes that hold its
+;; chips and its draft, as its procedures set them. suggest, if given, works
+;; as a text field's does.
 (define (ui-chip-input-test-window . suggest)
   (let ([chips (box '())] [draft (box "")])
     (values

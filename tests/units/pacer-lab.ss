@@ -1,6 +1,6 @@
 ;;; tests/units/pacer-lab.ss — the pacer lab: its tick-to-screen histogram,
-;;; what it makes of the periods logged, a run (its log at a scratch path,
-;;; its periods ended by hand), and its window.
+;;; what it concludes from the periods logged, a run (with its log at a
+;;; scratch path and its periods ended by hand), and its window.
 
 (check "tick to screen goes in bins of a tenth of a ms; the median and the \
         99th come from them"
@@ -12,8 +12,9 @@
               (= (pacer-lab-quantile h 1.0) 30.05)
               (not (pacer-lab-quantile (pacer-lab-hist) 0.5)))))
 
-;; A period as the log has it: margin-start at start, 10,000 frames, late
-;; ones as the pacer's own, a 99th at p99.
+;; A period as the log records it: pacer-margin-start set to start, 10,000
+;; frames, of which late were late by the pacer's own fault, and a 99th
+;; percentile of p99.
 (define (pacer-lab-test-period start late p99)
   (list 'start 0 'seconds 600 'refresh-ns 16666667
         'knobs (list (cons 'pacer-margin-start start))
@@ -38,7 +39,8 @@
            (and (= (pacer-lab-effect-periods e) 2)
                 (= (pacer-lab-effect-frames e) 20000)
                 (= (pacer-lab-effect-rate e) 1.)
-                ;; late 0 and 2, 1 off each: sqrt(2/1 · 2) / 20000
+                ;; late 0 and 2 are each 1 off the mean:
+               ;; 10000 · sqrt(2/1 · 2) / 20000
                 (< (abs (- (pacer-lab-effect-error e) 1.)) 1e-9)
                 (= (pacer-lab-effect-p99 e) 11.))))
   (check "the fewest late is best, one within two errors of it tied, the \
@@ -48,7 +50,7 @@
               (eq? (pacer-lab-effect-verdict (of 1/4)) 'worse)
               (not (pacer-lab-effect-verdict (of 1/16))))))
 
-;; The log's forms, as read back.
+;; Returns the log's forms, as read back from its file.
 (define (pacer-lab-test-log)
   (call-with-input-file *pacer-lab-log-path*
     (lambda (p)
@@ -72,7 +74,8 @@
                 (not *pacer-margin*)
                 (let ([x (car (pacer-lab-test-log))])
                   (and (eq? (car x) 'pacer-lab-on) (string? (caddr x))))))
-    ;; a period's frames, faked: 500 judged, 3 late of the pacer's own
+    ;; a period's frames, faked: 500 judged, 3 late by the pacer's own fault
+    ;; and 1 by the compositor's
     (set! *pacer-counts* (fxvector 0 0 0))
     (pacer-lab-begin!)
     (set! *pacer-counts* (fxvector 500 3 1))
@@ -100,7 +103,7 @@
                                     (- (length (pacer-lab-test-log)) 1)))
                      'pacer-lab-off)))
     (let ([n (length (pacer-lab-periods))])
-      ;; a line cut short, as a crash leaves it
+      ;; a line cut short, as a crash would leave it
       (call-with-port (open-file-output-port
                        *pacer-lab-log-path*
                        (file-options no-fail no-truncate append)

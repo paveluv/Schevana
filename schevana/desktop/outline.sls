@@ -1,7 +1,7 @@
-;;; (schevana desktop outline) — where a style drags an outline (drag-feedback
-;;; outline), a move or resize shows the window's new place as one, over
-;;; everything, until the release puts the window there: *drag-outline*, the
-;;; window manager's.
+;;; (schevana desktop outline) — the drag outline. Where a style drags an
+;;; outline (drag-feedback outline), a move or resize shows the window's new
+;;; place as an outline, over everything, until the release puts the window
+;;; there. Its rectangle is *drag-outline*, which the window manager keeps.
 
 (library (schevana desktop outline)
   (export
@@ -13,8 +13,8 @@
 
   (library-layer desktop)
 
-  ;; The outline, within its rectangle: a 1-pixel ring of a 50 % stipple of
-  ;; the text and window colors.
+  ;; Draws the outline inside its rectangle: a 1-pixel ring in a 50 % stipple
+  ;; of the text and window colors.
   (define-part (draw-drag-outline x y w h)
     (stroke-box x y w h (stipple 'text 'bg-1 "#." ".#")))
 

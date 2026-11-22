@@ -1,9 +1,10 @@
-;;; tests/units/ui-choices.ss — the kit's slider, segmented choice, checkbox and
-;;; toggle ((schevana kits ui)), by themselves: what a press, a drag and Space
-;;; set, and a slider let go over another window.
+;;; tests/units/ui-choices.ss — the kit's slider, segmented choice, checkbox
+;;; and toggle ((schevana kits ui)), tested by themselves: what a press, a
+;;; drag and Space set, and a slider released over another window.
 
-;; A slider 0 to 100 at x 20, 200 wide; a segmented choice of three; a
-;; checkbox, a disabled one and a toggle: each value kept in a box.
+;; A window with a slider from 0 to 100 at x 20, 200 wide, a segmented
+;; choice of three, a checkbox, a disabled checkbox and a toggle. Returns
+;; the window and a box for each of their values.
 (define (ui-choices-test-window)
   (let ([level (box 50)] [size (box 'm)] [on (box #f)] [off (box #f)]
         [toggled (box #f)])
@@ -25,8 +26,8 @@
        '(400 . 260))
      level size on off toggled)))
 
-;; The slider's point at fraction f of its track, on the screen: its area
-;; reaches 8 past either end.
+;; Returns the screen point at fraction f of the slider's track. The
+;; slider's area reaches 8 past either end of the track.
 (define (ui-choices-test-slider-at win f)
   (test-point win 's 'at (exact (round (+ 8 (* f 200))))))
 
@@ -97,7 +98,7 @@
          (steps 2)
          (test-click! win 'c)
          (let ([pressed (unbox on)])
-           ;; a press gives a Tab stop no keyboard: Tab does
+           ;; a press doesn't give a Tab stop the keyboard (Tab does)
            (ui-focus! (window-ref win 'ui) 'c)
            (invalidate! win)
            (steps 1)

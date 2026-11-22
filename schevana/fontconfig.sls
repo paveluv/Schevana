@@ -1,5 +1,5 @@
-;;; (schevana fontconfig) — fontconfig's bindings: the file that holds a
-;;; family's font, as fontconfig names its calls.
+;;; (schevana fontconfig) — fontconfig's bindings, named as fontconfig
+;;; names its calls, for finding the file that holds a family's font.
 
 (library (schevana fontconfig)
   (export

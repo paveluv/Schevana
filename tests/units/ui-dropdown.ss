@@ -1,12 +1,13 @@
-;;; tests/units/ui-dropdown.ss — the kit's dropdown ((schevana kits ui)), by
-;;; itself: the menu it opens, by a press or by keys, and what a choice
-;;; does.
+;;; tests/units/ui-dropdown.ss — the kit's dropdown ((schevana kits ui)),
+;;; tested by itself: the menu it opens on a press or a key, and what
+;;; choosing an entry does.
 
 (define ui-dropdown-test-choices
   '(("To do" . todo) ("In progress" . doing) ("Review" . review)
     ("Done" . done)))
 
-;; A dropdown of four choices, its value kept where its on-select puts it.
+;; A window with a dropdown of four choices. Returns the window and a box
+;; that holds the value its on-select was last given.
 (define (ui-dropdown-test-window)
   (let ([value (box 'todo)])
     (values

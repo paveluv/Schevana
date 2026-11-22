@@ -1,15 +1,16 @@
 # Rules for changes to Schevana
 
-What every change, and so every pull request, must follow. `README.md`
-explains the system; this file is the rules. Where a rule is checked by a
-test, the test is named.
+These are the rules every change, and so every pull request, must follow.
+`README.md` explains the system; this file holds the rules. Where a test
+checks a rule, the rule names the test.
 
 ## Before every commit
 
-All four suites pass under Chez Scheme 10.4.1, and before every push
-under 10.0.0 too, run from the repository's root, in the library
-edition; and in the hacker edition (`SCHEVANA_HACKER=1`), smoke and the
-units' topics that tell the editions apart, which the runner picks there:
+Run the suites from the repository's root under Chez Scheme 10.4.1, and
+before every push under 10.0.0 too. In the library edition all four
+suites must pass; in the hacker edition (`SCHEVANA_HACKER=1`), smoke and
+the units' topics that tell the two editions apart, which the runner
+picks by itself there:
 
 ```bash
 mkdir -p out
@@ -21,35 +22,36 @@ SCHEVANA_HACKER=1 scheme --script tests/smoke.ss out
 SCHEVANA_HACKER=1 scheme --script tests/units.ss out
 ```
 
-The suites size themselves to the machine: as many runs at once as its
-CPUs and free memory allow (`tests/GUIDE.md`); they pass on a machine of
-8 GB.
+The suites size themselves to the machine: they run as many processes at
+once as its CPUs and free memory allow (`tests/GUIDE.md`), and they pass
+on a machine with 8 GB of memory.
 
-- A test asks nothing of a library: no export, hook, state or name of
-  its own for the test. The test framework reaches what it needs itself:
-  the libraries the suites boot as the tests build them, a sealed
-  layer's every name given and what a test stands in for a hook
-  (`tests/build.ss`), and a demo's own names stripped as the hacker
-  edition strips it (`test-library`, [tests/GUIDE.md](tests/GUIDE.md)).
+- A test asks nothing of a library: no export, hook, state or name that
+  exists only for the test. The test framework reaches what it needs by
+  itself. It builds the libraries the suites boot in its own way
+  (`tests/build.ss`): a library of a sealed layer exports every name it
+  defines, and a definition a test stands in for becomes a hook. A
+  demo's own names it reaches by stripping the library, as the hacker
+  edition does (`test-library`, [tests/GUIDE.md](tests/GUIDE.md)).
 - A change in behavior comes with a test of it, written by the rules in
-  [tests/GUIDE.md](tests/GUIDE.md): where a check goes, what it may touch,
-  and how it holds under both Chez versions, with any font and on any
-  platform (and how to run the suites under the other Chez).
-- A new internal structure isn't finished until an `inspect-…` procedure in
-  `schevana/kits/inspect.sls` reads it: what the Pipeline shows, a REPL and a test can
-  read.
+  [tests/GUIDE.md](tests/GUIDE.md): where a check goes, what it may
+  touch, and how it keeps passing under both Chez versions, with any font
+  and on any platform (and how to run the suites under the other Chez).
+- A new internal structure isn't finished until an `inspect-…` procedure
+  in `schevana/kits/inspect.sls` reads it, so that the Pipeline can show
+  it and a REPL and a test can read it.
 
 ## Simplicity first
 
 Simplicity comes first, speed second.
 - Of two designs, take the simpler one unless the speed gap is large and
   measured.
-- No fast path that is right only while a built-in procedure stays
-  unredefined: anything can be redefined live, so code may not assume what
-  `draw-window`, a style's part or a draw procedure does. Rules the system
-  enforces (a clip, a budget, a check) are fine.
-- Chez's own features (continuations, engines) are welcome where they make
-  the code simpler.
+- No fast path that is right only while a built-in procedure stays as it
+  is: anything can be redefined live, so code may not assume what
+  `draw-window`, a style's part or a draw procedure does. Rules the
+  system enforces (a clip, a budget, a check) are fine.
+- Chez's own features (continuations, engines) are welcome where they
+  make the code simpler.
 
 ## Layers
 
@@ -58,133 +60,143 @@ before it:
 
 | Layer | What goes there |
 |---|---|
-| `desktop` and the demos' launchers | Programs of a few lines at the tree's root, which is where Schevana's libraries are found: each loads `src/launch.ss` and starts its library's main. |
-| `src/` | The top level's own files: `launch.ss` (the tree's libraries, compiled into `.cache/`, or spliced for `--hacker`), `hacker.ss` (the hacker edition: every library spliced into one environment, all its names redefinable), `strip.ss` (a library's own forms at the top level, for the hacker edition and the tests' `test-library`), and `base.ss`: what every environment of the top level has, a copy each, the basics, forwarders, by which an environment gives another its names, and the top level's own forms. Pure: no state, no C. |
-| `schevana/core0/` | Core0, below the core, sealed in its libraries: the GPU's device side, the window and its events, the trace, what differs by platform. A launcher boots it, and core1 on the world's own thread (headless, one thread plays both). The core has of it only its facade, `(schevana core0)`; the recorder, `schevana/recorder/` (the bytes of frames and their writers), has `(schevana core0 for-recorder)`, and the core has of the recorder its facade, `(schevana recorder)`. |
-| `schevana/core/` | The core, sealed in its libraries, `(schevana core <piece>)`: the world (windows, focus, the theme's layers, processes, timers, its side of core0's window and events), core1's side of the GPU layer, drawing and fonts, the pacer, the loop, its registries, the hooks later layers fill, and the caches its own procedures need; making the world's environment, "/", where everything below loads, loading the world's files and reloading (`sources.sls`). The world has of it only its facade, `(schevana core)`, which lists what the world is given. |
-| `schevana/kits/` | Libraries, pure or almost, `(schevana kits <name>)`. |
-| `schevana/services/` | Long-lived state with an API and no surface: the crew of worker threads, the tree of environments and its sandboxes, vats and their jobs, the profiler, the saved look. |
-| `schevana/styles/`, `schevana/palettes/`, `schevana/wallpapers/` | The looks: one definition per library, registered by its definer as the library runs (the registries are the core's: `define-style`, `define-palette`, `define-wallpaper`). |
-| `schevana/desktop/` | The screen's own surfaces and the desktop's behavior: wallpaper, bars, menu, toasts, keys, arranging windows; and its start (`main.sls`, from the command line; `start.sls`, once the world is loaded). |
-| `schevana/apps/` | The desktop's own apps (the REPL, Settings, Tasks, Monitor, Clock, ...), one per library, defined with `define-app`. |
-| `demo/` | The demos, one library each, `(demo <name>)`, on the core's facade: an app the desktop adds when its folder is given (`./desktop demo`: Boids, Life, Springies, ...), some a program too, with a launcher at the root (`./rings-demo`). |
-| `games/` | The games, one library each, `(games <name>)`, on the core's facade: an app a REPL loads by its name (`(import (games fireflies))`, then `(fireflies)`), or the desktop with the folder given (`./desktop games`), a program too with a launcher at the root (`./game-demo`). |
+| `desktop` and the demos' launchers | Short programs at the tree's root, which is where Schevana's libraries are found. Each loads `src/launch.ss` and starts its library's main procedure. |
+| `src/` | The top level's own files. `launch.ss` loads the tree's libraries, compiled into `.cache/`, or spliced for `--hacker`. `hacker.ss` is the hacker edition: every library spliced into one environment, with all its names redefinable. `strip.ss` gives a library's own forms at the top level, for the hacker edition and the tests' `test-library`. `base.ss` is what every environment of the top level has, each its own copy: the basics, the forwarders by which an environment gives another its names, and the top level's own forms. These files are pure: no state, no C. |
+| `schevana/core0/` | Core0, below the core, sealed in its libraries: the GPU's device side, the window and its events, the trace, and what differs by platform. A launcher boots core0, which runs core1 on the world's own thread (headless, one thread plays both). The core sees only core0's facade, `(schevana core0)`. The recorder, `schevana/recorder/` (the bytes of frames and their writers), sees `(schevana core0 for-recorder)`, and the core sees the recorder's facade, `(schevana recorder)`. |
+| `schevana/core/` | The core, sealed in its libraries, `(schevana core <piece>)`: the world (windows, focus, the theme's layers, processes, timers, and its side of core0's window and events), core1's side of the GPU layer, drawing and fonts, the pacer, the loop, its registries, the hooks that later layers fill, and the caches its own procedures need. It also makes the world's environment, "/", where everything after it loads, and loads and reloads the world's files (`sources.sls`). The world sees only the core's facade, `(schevana core)`, which lists what the world is given. |
+| `schevana/kits/` | Libraries that are pure or nearly so, `(schevana kits <name>)`. |
+| `schevana/services/` | Long-lived state with an API and no surface: the crew of worker threads, the tree of environments and its sandboxes, vats and their jobs, the profiler, and the saved look. |
+| `schevana/styles/`, `schevana/palettes/`, `schevana/wallpapers/` | The looks: one definition per library, registered as the library runs (the registries are the core's: `define-style`, `define-palette`, `define-wallpaper`). |
+| `schevana/desktop/` | The screen's own surfaces and the desktop's behavior: the wallpaper, the bars, the menu, toasts, keys and arranging windows; and its start (`main.sls`, from the command line, and `start.sls`, once the world has loaded). |
+| `schevana/apps/` | The desktop's own apps (the REPL, Settings, Tasks, Monitor, Clock, ...), one per library, each defined with `define-app`. |
+| `demo/` | The demos, one library each, `(demo <name>)`, built on the core's facade. Each is an app the desktop adds when it is given the folder (`./desktop demo`: Boids, Life, Springies, ...); some are programs too, with a launcher at the root (`./rings-demo`). |
+| `games/` | The games, one library each, `(games <name>)`, built on the core's facade. A REPL loads one by its name (`(import (games fireflies))`, then `(fireflies)`), or the desktop loads them all when given the folder (`./desktop games`); each is a program too, with a launcher at the root (`./game-demo`). |
 
-- **The boot is a chain**: a launcher boots core0, then core1, which
-  boots the world (`(schevana desktop main)`). A sealed layer gives the next only what its facade
-  exports (`(schevana core0)`, `(schevana recorder)`, `(schevana core)`),
-  a state or a hook it sets as a read-only view; the core's facade gives
-  the hooks later layers fill settable, checked (`define-settable`).
-  Nothing else of a layer's is there to name, and nothing reaches back
-  up. The world has of core0's and the recorder's only what the core
-  gives it again. A new name in a facade is a reviewed change, and
-  `tests/sources.ss` checks that no layer names another's beyond it.
+- **The boot is a chain.** A launcher boots core0, then core1, which
+  boots the world (`(schevana desktop main)`). A sealed layer gives the
+  next layer only what its facade exports (`(schevana core0)`,
+  `(schevana recorder)`, `(schevana core)`); a state or a hook that the
+  layer sets itself comes as a read-only view. The core's facade gives
+  the hooks that later layers fill as settable, with a check
+  (`define-settable`). Nothing else of a layer can be named, and nothing
+  reaches back up. The world sees core0's and the recorder's names only
+  where the core passes them on. A new name in a facade is a reviewed
+  change, and `tests/sources.ss` checks that no layer names another
+  layer's names beyond its facade.
 - **A library of Schevana's declares its layer** first in its body,
   `(library-layer core0)`, or `(library-layer core0 facade)` for a sealed
-  layer's front door, and is held to the layers' order as it compiles
-  (`(schevana base)`): it imports no layer above its own, and of a sealed
-  layer not its own only the facade (`tests/units/boot.ss`; that every
-  library under `schevana/` declares one, `tests/sources.ss`). A demo or
-  a game declares none, as a library from outside needs none.
-- **The core never depends on a later layer.** It reaches them only
-  through registries, parts and settings they fill, and hooks they set:
-  what its facade gives settable (`*profile-span*`, `theme-save!`,
-  `window-gone!`, ...).
+  layer's front door. As it compiles, `(schevana base)` holds it to the
+  layers' order: it imports no layer above its own, and of a sealed layer
+  other than its own only the facade (`tests/units/boot.ss`;
+  `tests/sources.ss` checks that every library under `schevana/`
+  declares one). A demo or a game declares no layer, as a library from
+  outside the tree needs none.
+- **The core never depends on a later layer.** It reaches later layers
+  only through the registries, parts and settings they fill and the hooks
+  they set: what its facade gives as settable (`*profile-span*`,
+  `theme-save!`, `window-gone!`, ...).
 - **The looks sit below the desktop.** A look imports the core's facade,
-  kits and services, never the desktop or an app, so that a program takes
-  a look without the desktop's surfaces, keys and timers (a host app,
-  `(schevana kits host)`). The desktop hands its parts what they draw, as
-  arguments, as the widget kit hands its own: a bar its height, its areas
-  and the status, the menu itself (the menu kit's data), its areas and
-  the entry chosen, the toasts their boxes; a style reads none of the
-  desktop's state.
+  kits and services, never the desktop or an app, so that a program can
+  take a look without the desktop's surfaces, keys and timers (a host
+  app, `(schevana kits host)`). The desktop hands its parts what they
+  draw, as arguments, the way the widget kit hands its own: a bar gets
+  its height, its areas and the status; the menu gets itself (the menu
+  kit's data), its areas and the chosen entry; the toasts get their
+  boxes. A style reads none of the desktop's state.
 - **Core0 sits below the core.** Core0's libraries name nothing of the
-  core above it, and only core0 names SDL: the clock and
-  the CPU count are core0's, which it gives core1. What still crosses is
-  listed in `tests/sources.ss`, and the lists only shrink
+  core above them, and only core0 names SDL: the clock and the CPU count
+  are core0's, and it gives them to core1. What still crosses the line is
+  listed in `tests/sources.ss`, and those lists only shrink
   (`.work/gpu-design.md` 9.5, 9.12).
-- **`src/base.ss` is pure**: it keeps no state and calls no C, so each
-  environment's copy is as good as another (`tests/sources.ss`). What
-  isn't pure is core0's or the core's, and given by a facade.
+- **`src/base.ss` is pure.** It keeps no state and calls no C, so each
+  environment's copy is as good as another's (`tests/sources.ss`).
+  Whatever isn't pure belongs to core0 or the core, and a facade gives it.
 - **What differs by platform lives in the platform files**:
   `schevana/core0/platform.sls` for core0's (a folder,
-  `schevana/core0/platform/`, once it outgrows a file),
-  `schevana/core/platform.sls` for the core's. A stack
-  differs by OS, windowing system, compositor, SDL, GPU API, driver and
-  monitor. Which one this is comes from their predicates and facts alone
+  `schevana/core0/platform/`, once it outgrows one file) and
+  `schevana/core/platform.sls` for the core's. A stack differs by OS,
+  windowing system, compositor, SDL, GPU API, driver and monitor. Code
+  learns which platform it runs on only from their predicates and facts
   (`platform-mac?`, `platform-wayland?`, `platform-vulkan?`,
-  `platform-windowing`; the OS and CPU's in `src/base.ss`), which say
-  which platform this is: what it can do is asked of the thing (a library
-  that loads, a protocol the compositor lists), never assumed, and
-  nothing crashes without it. What the platform says (its clock, its
-  refresh) beats what was measured on one machine, and is checked where
-  it can be. What sits elsewhere today is listed in `docs/PLATFORMS.md`
-  and moves there (`tests/sources.ss`). A change to such a feature
-  updates `docs/PLATFORMS.md`: where it ran, where it should work, what
-  happens without it. Monitor's Platform tab shows it all, and copies a
-  run as a row of it.
-- **The core has a budget**, 39,763 tokens (atoms as read; comments,
-  whitespace and names' lengths are free; a library's exports and
-  imports, which declare, are left out), in `tests/sources.ss`. Don't join lines or
-  shorten names to fit it. Code the core doesn't need moves out to the
-  next layer, kits first; the budget is raised only on purpose.
-- **Only the core calls C.** No SDL, FreeType or fontconfig binding, or
-  `foreign-…` procedure, outside `src/`, and no binding is exported to the
-  world: the core grows a primitive instead (`tests/sources.ss`). Core1
-  binds its own C with `define-foreign`, which core0 gives it.
-- **The GPU layer speaks the world's terms.** Above core0, in the core too,
-  nothing names SDL's GPU, Vulkan, SPIR-V, Metal or MSL, so that another
-  back end or raw Vulkan stays core0's business alone (`tests/sources.ss`;
-  the compiler, `schevana/shader.sls`, writes the back ends' code).
-- **The shader language is the contract.** What a back end can't do doesn't
-  get in: the twin (`schevana/kits/twin.sls`) is a second back end from the start, and
-  `tests/units/shader.ss` holds it and the device together.
-- **A library or a file of the world's folders registers what it
+  `platform-windowing`; the OS's and CPU's in `schevana/base.sls`). What a
+  platform can do is asked of the thing itself (a library that loads, a
+  protocol the compositor lists), never assumed, and nothing crashes
+  when it is missing. What the platform reports (its clock, its refresh)
+  beats what was measured on one machine, and is checked where it can
+  be. What still sits elsewhere is listed in `docs/PLATFORMS.md` and is
+  to move into those files (`tests/sources.ss`). A change to such a
+  feature updates `docs/PLATFORMS.md`: where it ran, where it should
+  work, and what happens without it. Monitor's Platform tab shows all of
+  it, and copies a run as a row of that table.
+- **The core has a budget** of 39,763 tokens (atoms as read; comments,
+  whitespace and the lengths of names are free, and a library's exports
+  and imports, which only declare, are left out), set in
+  `tests/sources.ss`. Don't join lines or shorten names to fit it: move
+  code the core doesn't need out to the next layer, kits first. The
+  budget is raised only on purpose.
+- **Only the core calls C.** No library above the core (kits, services,
+  looks, the desktop, apps, demos, games) binds SDL, FreeType or
+  fontconfig or calls a `foreign-…` procedure, and no binding is
+  exported to the world: when the world needs something of C, the core
+  grows a primitive for it (`tests/sources.ss`). Core1 binds its own C
+  with `define-foreign`, which core0 gives it.
+- **The GPU layer speaks the world's terms.** Above core0, in the core
+  too, nothing names SDL's GPU API, Vulkan, SPIR-V, Metal or MSL, so that
+  another back end, or raw Vulkan, stays core0's business alone
+  (`tests/sources.ss`; the compiler, `schevana/shader.sls`, writes the
+  back ends' code).
+- **The shader language is the contract.** A feature that a back end
+  can't provide doesn't get into the language: the twin
+  (`schevana/kits/twin.sls`) has been a second back end from the start,
+  and `tests/units/shader.ss` holds it and the device to the same
+  results.
+- **A library or file in the world's folders registers what it
   defines** (`tests/sources.ss`). "/" imports each of the world's
-  libraries and runs it, the folders in their order, each folder's
+  libraries and runs it: the folders in their order, and each folder's
   libraries and files in file-name order (`world-entries`).
 
 ## State
 
-- **S1. One owner.** Outside the core, only the file that defines a global
-  sets it; the others call its procedures. The core's hooks, which its
-  facade gives settable, are the exception, and `fluid-let` for a temporary
-  view is not a set (`tests/sources.ss`). The world is given the rest of
-  the core's read-only: a look that isn't on is read with
-  `call-with-theme`.
-- **S2. State by layer.** The world is the core's. A kit keeps no state but
-  caches whose loss changes only speed, and state kept per object its
-  caller holds (a ui, an edit, an owner's completion list). A service keeps
-  long-lived state behind its procedures. The desktop keeps its surfaces'
-  state; an app its own data, per window where it can.
-- **S3. Lifetime.** State that must outlive `(reload!)` is, in a
-  library, a `define-state`, in a file (the user's) a
-  `defvar`; a cache may be a `define` that starts empty. A window's state lives in the
-  window (`window-ref`, `window-set!`), not in a global table.
+- **S1. One owner.** Outside the core, only the file that defines a
+  global sets it; other files call its procedures. The exception is the
+  core's hooks, which its facade gives as settable; a `fluid-let` for a
+  temporary view does not count as setting (`tests/sources.ss`). The
+  world gets the rest of the core's globals read-only; a look that isn't
+  the current one is read with `call-with-theme`.
+- **S2. State by layer.** The world's state belongs to the core. A kit
+  keeps no state except caches whose loss changes only speed, and state
+  kept in an object its caller holds (a ui, an edit, an owner's
+  completion list). A service keeps long-lived state behind its
+  procedures. The desktop keeps its surfaces' state; an app keeps its own
+  data, per window where it can.
+- **S3. Lifetime.** State that must outlive `(reload!)` is a
+  `define-state` in a library, or a `defvar` in a file (the user's); a
+  cache may be a `define` that starts empty. A window's state lives in
+  the window (`window-ref`, `window-set!`), not in a global table.
 - **S4. Threads.** Global state belongs to core1, the world's thread, and
-  only it writes it. The exceptions are a service's own structures that
-  threads share, changed only by `box-cas!` (core1's mail, the crew's
-  loops, a vat's mailbox). A worker runs only worklets (`define-worklet`):
-  procedures compiled where SDL and the world's state are out of
-  reach, which touch only what they are handed; or, in a vat, code
-  compiled in the vat's own sandbox, which its thread alone evaluates in.
-  The crew and the vats refuse to hand them any procedure but worklets,
-  and a vat's results come back to core1 the same way. Don't hand a worker
-  world code by other means (`fork-thread`).
+  only core1 writes it. The exceptions are a service's own structures
+  that threads share, which change only by `box-cas!` (core1's mail, the
+  crew's loops, a vat's mailbox). A worker runs only worklets
+  (`define-worklet`): procedures compiled where SDL and the world's state
+  are out of reach, which touch only what they are handed. In a vat, a
+  worker runs code compiled in the vat's own sandbox, which only the
+  vat's thread evaluates. The crew and the vats refuse any procedure that
+  isn't a worklet, and a vat's results come back to core1 the same way.
+  Don't hand a worker the world's code by other means (`fork-thread`).
 - **S5. Names.** A global is earmuffed and carries its owner's prefix
-  (`*status-segments*`, `*repl-inputs*`). A hook is no state: it is a
+  (`*status-segments*`, `*repl-inputs*`). A hook is not state: it is a
   procedure that may be replaced, defined with `define-hook` and named
-  as a procedure is, with a `!` when it changes state (`window-gone!`,
-  `record-world!`). The file that has what it does sets it
-  (`set-hook!`).
-- **S6. Environments.** Code that makes an environment shares it a list
-  of names (`env-share!`, `env-fork`'s `'share`), each read-only, or
-  through a setter that may refuse. Every name of the world's is a world
-  namespace's alone, which a person asks for at a REPL or in Environments
-  (`tests/sources.ss`). An environment forks only the kinds its own
-  allows (`env-forks`).
+  the way a procedure is, with a `!` when it changes state
+  (`window-gone!`, `record-world!`). The file that provides what the hook
+  does sets it (`set-hook!`).
+- **S6. Environments.** Code that makes an environment shares a list of
+  names with it (`env-share!`, `env-fork`'s `'share`), each read-only or
+  through a setter that may refuse. Sharing every name of the world is a
+  world namespace's alone, which a person asks for at a REPL or in the
+  Environments app (`tests/sources.ss`). An environment forks only the
+  kinds that its own kind allows (`env-forks`).
 - **S7. Libraries.** What a library of the core's makes as it loads is
-  kept in a state (`define-state`, when it is set) or a made value
+  kept in a state (`define-state`, when it is ever set) or a made value
   (`define-made`, when it never is: a buffer, a table, a foreign
   procedure, a fact found out). A plain definition there is a procedure
   or a literal, so no procedure it defines carries anything, and a
@@ -193,39 +205,43 @@ before it:
 
 ## Names
 
-- The world's libraries give "/" their names, one shared namespace (and
-  the hacker edition splices their internals there too), so no plain
-  common word (`part`, `rule`, `item`) names a global, and no two
-  libraries define one name. Qualify a name by its owner or subject:
-  `theme-`, `style-`, `window-`. A demo exports its launcher alone; what
-  it keeps to itself may keep its own words (`pt` in Springies), the
-  hacker edition holding them too, while no other library defines them
-  (`tests/sources.ss`).
-- In `schevana/kits/` and `schevana/services/`, every name starts with its
-  library's: `ui-…` in `(schevana kits ui)`, `profile-…` in `(schevana
-  services profile)`; a record of the library's own name may give `make-x`
-  and `x?` (`tests/sources.ss`). A record whose name is also a
-  procedure's names itself apart (`repl-record`, the REPL's).
-- American spelling everywhere: code, comments, UI text, documents (color,
-  gray, center, neighbor, labeled).
+- The world's libraries give their names to "/", one shared namespace
+  (and the hacker edition splices their internals there too). So no
+  plain common word (`part`, `rule`, `item`) names a global, and no two
+  libraries define the same name. Qualify a name by its owner or subject:
+  `theme-`, `style-`, `window-`. A demo exports only its launcher; the
+  names it keeps to itself may be its own words (`pt` in Springies),
+  which the hacker edition holds too, as long as no other library defines
+  them (`tests/sources.ss`).
+- In `schevana/kits/` and `schevana/services/`, every name starts with
+  its library's name: `ui-…` in `(schevana kits ui)`, `profile-…` in
+  `(schevana services profile)`; a record named after the library may
+  give `make-x` and `x?` (`tests/sources.ss`). A record whose name is also
+  a procedure's name takes a different name (`repl-record`, the REPL's).
+- American spelling everywhere: code, comments, UI text and documents
+  (color, gray, center, neighbor, labeled).
 
 ## Live redefinition
 
-- The world is libraries, which change with their files at a reload. A
-  `define` at "/" makes a name of the world's own, which the world reaches
-  where it calls by name (a hook, a part, a handler, `draw-window`): what
-  may be replaced live is a hook or called by name. The hacker edition
-  (`--hacker`, `src/hacker.ss`) splices every library into "/", where any
-  name may be redefined and every call reaches it.
-- A hook or a registry calls procedures by name, so a redefinition takes
-  effect at the next call: `(lambda () (theme-file-save-soon!))`, not
-  `theme-file-save-soon!` captured as a value.
+- The world is made of libraries, which change with their files at a
+  reload. A `define` at "/" makes a name of the world's own, which the
+  world reaches only where it looks a name up at "/" (`world-value`: a
+  part's procedure, `draw-topbar`, a handler that calls a name); a
+  library's calls to its own names and its imports don't see it. What may
+  be replaced live is a hook that the facade gives as settable, or
+  something called by name. The hacker edition (`--hacker`,
+  `src/hacker.ss`) splices every library into "/", where any name may be
+  redefined and every call reaches the new definition.
+- A hook or a registry calls procedures by name, so that a redefinition
+  takes effect at the next call: write
+  `(lambda () (theme-file-save-soon!))`, not `theme-file-save-soon!`
+  captured as a value.
 - `(reload!)` of the tree into itself must keep working. It evaluates
-  again each library whose file changed, and every library that imports
-  it (`schevana/reload.sls`), imports them again where they were
-  imported ("/" among them), runs the world's libraries and loads its
-  files (the user's); core0's libraries, with all
-  they import, change with a restart (`tests/units/reload.ss`).
+  again each library whose file changed and every library that imports
+  it (`schevana/reload.sls`), imports them again where they were imported
+  ("/" among them), runs the world's libraries and loads its files (the
+  user's). Core0's libraries, and everything they import, change only
+  with a restart (`tests/units/reload.ss`).
 
 ## Drawing and the look
 
@@ -233,35 +249,43 @@ before it:
   desktop, Tasks, Settings and Environments, code that is not a draw
   procedure, a part or a theme default names no color and calls no
   drawing primitive (`tests/sources.ss`).
-- A color is a theme key (`'accent`, `'text-dim`) or a mix of them; a look
-  that differs by style is a part or a setting a style gives, never a test
-  of which style is on.
-- Everything drawn is a record; a form like `with-clip` allocates no closure,
-  and recording whole numbers allocates nothing (`tests/units/pipeline.ss`).
+- A color is a theme key (`'accent`, `'text-dim`) or a mix of them. A
+  look that differs by style is a part or a setting that a style gives,
+  never a test of which style is on.
+- Everything drawn is a record. A form like `with-clip` allocates no
+  closure, and recording whole numbers allocates nothing
+  (`tests/units/pipeline.ss`).
 - **Mimicked styles** (Mac, Windows, Genera, the CADR, Interlisp, OPEN
-  LOOK, Adwaita, GNOME, and in future CDE and Platinum) use the original's
-  widgets.
-  Where the original has none, make what its designers would have made.
-  **Our own styles** (Cons, Curses, Draft, Fold, Halo, Lambda, Reticle,
-  Slab, Spine) are free, as long as they stay coherent.
+  LOOK, Adwaita, GNOME, and in the future CDE and Platinum) use the
+  original's widgets. Where the original has none, make what its
+  designers would have made. **Our own styles** (Cons, Curses, Draft,
+  Fold, Halo, Lambda, Reticle, Slab, Spine) are free, as long as each
+  stays coherent.
 - Sources for mimicked styles:
-  - GPL desktops (NsCDE, ZacOS 9): facts only (sizes, colors, rules), with
-    references; copy no code, pixmaps, icons, fonts or backdrops.
+  - GPL desktops (NsCDE, ZacOS 9): facts only (sizes, colors, rules),
+    with references; copy no code, pixmaps, icons, fonts or backdrops.
   - libadwaita (LGPL) and GNOME Shell (GPL): facts only (sizes, colors,
     radii, alphas, rules), with references as file:line at the tag; copy
     no SCSS, code, icons, images or fonts.
-  - MIT's CADR sources (BSD) and Medley Interlisp (MIT): use, and attribute.
+  - MIT's CADR sources (BSD) and Medley Interlisp (MIT): use them, and
+    attribute them.
   - XView 3.2's OLGX and olwm (Sun's notice) and Sun's glyph fonts
-    (X-style): use, and attribute with their notices (`CREDITS.md`).
-  - Genera's sources: never. Its manuals and screenshots only.
+    (X-style): use them, and attribute them with their notices
+    (`CREDITS.md`).
+  - Genera's sources: never. Use only its manuals and screenshots.
 
 ## Formatting
 
-- Every line of every source is at most 80 characters, counted as Unicode
-  characters (`tests/sources.ss`). Wrap between subforms in the file's own
-  indentation; split a long string with R6RS's backslash-newline.
+- Every line of every source file is at most 80 characters, counted as
+  Unicode characters (`tests/sources.ss`). Wrap between subforms, in the
+  file's own indentation; split a long string with R6RS's
+  backslash-newline.
 - In configurations (a settings or color plist, an option table, a
-  `define-style` or `define-palette` body), one item per line: a key and
-  its value alone on the line.
-- Comments say why, briefly, in the surrounding code's voice. Match the
-  names, idioms and comment density of the file you change.
+  `define-style` or `define-palette` body), put one item per line: a key
+  and its value alone on the line.
+- Comments and documents are in plain English: full sentences, with
+  articles and the usual word order, and "Returns ..." for what a
+  procedure returns. A comment says why, briefly, rather than retelling
+  the code, and states what is true now, with no history of how it got
+  there. Keep the project's terms (core0, core1, "/", a tick, a part, a
+  hook, a worklet) and the names and idioms of the file you change.

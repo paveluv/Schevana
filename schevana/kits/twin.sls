@@ -1,7 +1,7 @@
-;;; (schevana kits twin) — a shader as a Scheme procedure, its tree's second
-;;; back end: slow and exact. Call a shader at the REPL for one pixel and see
-;;; what it gives. Buffers are bytevectors, a texture a procedure of u, v,
-;;; channel and level.
+;;; (schevana kits twin) — a shader as a Scheme procedure: the second back end
+;;; for a shader's tree, slow and exact. Call a shader at the REPL for one
+;;; pixel and see what it returns. Buffers are bytevectors, and a texture is a
+;;; procedure of u, v, channel and level.
 
 (library (schevana kits twin)
   (export
@@ -74,8 +74,9 @@
         [(not) `(not ,a)]
         [else (cons name args)])))
 
-  ;; Forms worked out left to right, as the language has them, and then what k
-  ;; makes of their values: Chez's order for a call's arguments is its own.
+  ;; Returns a form that works out forms from left to right, as the shader
+  ;; language does, and then what k makes of their values. A call can't do
+  ;; it: Chez picks its own order for a call's arguments.
   (define (twin-in-order forms k)
     (let ([names (map (lambda (f) (if (pair? f) (gensym) f)) forms)])
       `(let* ,(filter (lambda (b) (pair? (cadr b))) (map list names forms))
@@ -83,7 +84,7 @@
 
   (define (twin-form t)
     (case (car t)
-      ;; a float as the device has it, 32 bits
+      ;; a float as the device holds it, in 32 bits
       [(const) (let ([v (caddr t)]) (if (flonum? v) (flsingle v) v))]
       [(var) (twin-var (caddr t))]
       [(op)
@@ -135,9 +136,10 @@
 
   (define-made twin-procedures (make-weak-eq-hashtable))
 
-  ;; The shader as a procedure of its coordinates and parameters, hidden
-  ;; uniforms first in a compute shader's: => what it emitted, as a list. A
-  ;; buffer's length is its bytevector's, as the device's is its buffer's.
+  ;; Returns the shader as a procedure of its coordinates and parameters (a
+  ;; compute shader's hidden uniforms come before the parameters), which
+  ;; returns what the shader emitted, as a list. A buffer's length is its
+  ;; bytevector's, as on the device it is its buffer's.
   (define (twin-procedure s)
     (or (hashtable-ref twin-procedures s #f)
         (let* ([stage (shader-stage s)]

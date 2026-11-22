@@ -1,20 +1,20 @@
 ;;; (schevana styles cons) — the Cons window style. The title bar is a
 ;;; box-and-pointer diagram, drawn the way SICP draws a list: the window is
-;;; ("Title" - +). Its first pair holds the title in its car and points to two
-;;; more pairs, whose cars minimize and maximize; the chain ends, as every list
-;;; does, in the nil slash, and clicking that end of the list closes the
-;;; window. Drawn, not painted: outlined cells on the window's own background,
-;;; in accent ink with a bolder stroke while the window has the focus, in faint
-;;; ink when it has not. Under the mouse a cell fills with ink; nil fills red,
-;;; its slash crossed out.
+;;; ("Title" - +). Its first pair holds the title in its car and points to
+;;; two more pairs, whose cars minimize and maximize; the chain ends, as
+;;; every list does, in the nil slash, and clicking that end of the list
+;;; closes the window. It is drawn, not painted: outlined cells on the
+;;; window's own background, in accent ink with a bolder stroke while the
+;;; window has the focus, and in faint ink when it does not. Under the
+;;; mouse a cell fills with ink; nil fills red, with its slash crossed out.
 ;;;
-;;; The idea goes on below the title bar: everything on the screen is
-;;; Lisp data, drawn the same way (the second half of this file). A
-;;; button is a cell with its word in it, a checkbox a cell holding #t
-;;; or #f, a text box a string in quotes, a dropdown a pair whose pointer
-;;; leaves downward; tabs, chips, a column's cards, menus, toasts, the
-;;; taskbar and a dialog are chains ending in nil, and in a dialog, as in
-;;; a window, nil is where you cancel.
+;;; The idea continues below the title bar: everything on the screen is
+;;; Lisp data, drawn the same way (the second half of this file). A button
+;;; is a cell with its word in it, a checkbox is a cell holding #t or #f, a
+;;; text box is a string in quotes, and a dropdown is a pair whose pointer
+;;; leaves downward. Tabs, chips, a column's cards, menus, toasts, the
+;;; taskbar and a dialog are chains ending in nil, and in a dialog, as in a
+;;; window, nil is where you cancel.
 
 (library (schevana styles cons)
   (export
@@ -66,23 +66,25 @@
 
   (library-layer looks)
 
-  ;; A cell is a square the title's line fits in, and an even number of
-  ;; pixels so that the glyphs center: 20 at the default fonts. The chain
-  ;; sits a quarter cell from the left, in the middle of the title bar.
+  ;; A cell is a square that the title's line fits in, an even number of
+  ;; pixels wide so that the glyphs center: 20 at the default fonts. The
+  ;; chain sits a quarter of a cell from the left, in the middle of the
+  ;; title bar.
   (define (cons-line) (exact (round (font-line-height 'title))))
   (define (cons-cell) (* 2 (quotient (+ (cons-line) 6) 2)))
   (define (cons-left) (quotient (cons-cell) 4))
 
-  ;; A pointer's length: 0.7 of a cell, shorter where the window is so
-  ;; narrow that the chain would not fit with a car a cell wide.
+  ;; A pointer's length: 0.7 of a cell, shorter (down to a third of a cell)
+  ;; where the window is so narrow that the chain would not fit with a car
+  ;; a cell wide.
   (define (cons-gap win)
     (let ([c (cons-cell)])
       (max (quotient c 3)
            (min (quotient (* 7 c) 10)
                 (quotient (- (window-w win) (* 2 (cons-left)) (* 6 c)) 2)))))
 
-  ;; The title's car: as wide as the title, at least a cell, and narrow
-  ;; enough to leave room for the rest of the chain.
+  ;; The title's car: as wide as the title and a little more, at least a
+  ;; cell, and narrow enough to leave room for the rest of the chain.
   (define (cons-car-width win)
     (let ([c (cons-cell)])
       (max c (min (exact (ceiling (+ (text-width (window-title win) 'title)
@@ -102,11 +104,11 @@
             (list 'maximize (caddr xs) 0 c th)
             (list 'close (+ (caddr xs) c) 0 c th))))
 
-  ;; A box's lines, lw thick inside it, and every fill below, on whole
-  ;; device pixels (fill-box): a cell is crisp wherever it lies, at any
+  ;; A box's lines, lw thick inside it, and every fill below lie on whole
+  ;; device pixels (fill-box), so a cell is crisp wherever it lies, at any
   ;; scale.
-  ;; A line n thick, but a device pixel at least: in Settings' half-size
-  ;; miniature, too.
+  ;; A line n thick, but at least a device pixel, in Settings' half-size
+  ;; miniature too.
   (define (cons-thin n)
     (max n (/ 1 (draw-scale))))
 
@@ -118,26 +120,27 @@
       (fill-box (+ x w (- n)) (+ y n) n (- h n n) color)))
 
   ;; A pair at x of any height: a car w wide and a cdr cw wide, h high,
-  ;; each maybe tinted. The divider lies in the car, so a cell's car is a
-  ;; square inside.
+  ;; each filled with its tint when it has one. The divider lies inside the
+  ;; car, so that a cell's car is square inside.
   (define (cons-pair-h! x y w h cw ink lw car-tint cdr-tint)
     (when car-tint (fill-box x y w h car-tint))
     (when cdr-tint (fill-box (+ x w) y cw h cdr-tint))
     (cons-ring! x y (+ w cw) h ink lw)
     (fill-box (+ x w (- lw)) y (cons-thin lw) h ink))
 
-  ;; The title's pair: its cdr a square cell, c.
+  ;; The title's pair: its cdr is a square cell, c on a side.
   (define (cons-pair! x y w c ink lw car-tint cdr-tint)
     (cons-pair-h! x y w c c ink lw car-tint cdr-tint))
 
-  ;; The dot's center in a cdr whose inside starts at x, cw wide, and in
-  ;; one at y, h high: on a whole pixel for a 2-pixel stroke, between two
-  ;; for a 1-pixel one, so the lines from it stay crisp.
+  ;; The dot's center in a cdr whose inside starts at x and is cw wide, and
+  ;; in one at y that is h high: on a whole pixel for a 2-pixel stroke, and
+  ;; between two for a 1-pixel one, so that the lines from it stay crisp.
   (define (cons-dot-x x cw lw) (+ x (/ (- cw lw) 2)))
   (define (cons-dot-y y h lw) (+ y (quotient (- h lw) 2) (/ lw 2)))
 
-  ;; From the dot at (dx, my), an arrow right to x1 (the next cell's
-  ;; edge); the dot a tenth of a cell, the head a third.
+  ;; The dot at (dx, my) and an arrow from it right to x1 (the next cell's
+  ;; edge). The dot's radius is a tenth of a cell, the head a third of a
+  ;; cell long.
   (define (cons-right! dx my x1 c ink lw)
     (let ([head (quotient c 3)] [half (quotient c 6)] [ly (- my (/ lw 2))])
       (fill-circle dx my (+ (/ c 10) (/ lw 2)) ink)
@@ -146,7 +149,7 @@
                           (cons (- x1 head) (+ my half)))
                     ink)))
 
-  ;; From the dot at (dx, my), an arrow down to y1.
+  ;; The dot at (dx, my) and an arrow from it down to y1.
   (define (cons-down! dx my y1 c ink lw)
     (let ([head (quotient c 3)] [half (quotient c 6)] [lx (- dx (/ lw 2))])
       (fill-circle dx my (+ (/ c 10) (/ lw 2)) ink)
@@ -160,7 +163,8 @@
   (define (cons-pointer! x x1 y c ink lw)
     (cons-right! (cons-dot-x x c lw) (cons-dot-y y c lw) x1 c ink lw))
 
-  ;; - or + in the cell at x, 2 pixels thick like the bold title's strokes.
+  ;; - or + in the cell at x, 2 pixels thick like the bold title's
+  ;; strokes.
   (define (cons-sign! x y c plus? color lw)
     (let* ([i (- c lw lw)] [g (* 2 (quotient c 5))]
            [o (+ lw (quotient (- i g) 2))] [m (+ lw (quotient (- i 2) 2))])
@@ -168,15 +172,16 @@
       (when plus? (fill-box (+ x m) (+ y o) 2 g color))))
 
   ;; nil: the slash across the cdr whose inside starts at x, crossed out in
-  ;; the color cross. Clipped to the inside, so the box's lines stay clean.
+  ;; the color cross when one is given. It is clipped to the inside, so that
+  ;; the box's lines stay clean.
   (define (cons-nil! x y c ink lw cross)
     (let ([w (- c lw)] [h (- c lw lw)] [y (+ y lw)])
       (with-clip (x y w h)
         (draw-line x (+ y h) (+ x w) y (or cross ink) lw)
         (when cross (draw-line x y (+ x w) (+ y h) cross lw)))))
 
-  ;; nil in a cdr cw wide and h high: the slash across a square of its
-  ;; width in its middle.
+  ;; nil in a cdr cw wide and h high: the slash across a square of the
+  ;; cdr's width, in its middle.
   (define (cons-nil-h! x y cw h ink lw cross)
     (cons-nil! x (+ y (quotient (- h cw) 2)) cw ink lw cross))
 
@@ -222,17 +227,19 @@
 
   ;;; ------------------------------------------------------------------
   ;;; the rest of the screen: Lisp data, drawn as the title is
-  ;;; Cells are outlined boxes on the background, in the plain ink; what is
+  ;;; Cells are outlined boxes on the background, in the plain ink. What is
   ;;; focused, chosen or the default has the bold stroke in accent ink, as
-  ;;; a focused window's chain; what is disabled, a hint or elsewhere is
-  ;;; faint. A cell fills with its ink under the mouse, its word in the
-  ;;; paper; pressed, at alpha 0.6, as the title's. Literals look like
-  ;;; literals, in the code font: #t and #f, strings in quotes, the empty
-  ;;; list as (). The chain reads where it reads best (tabs, chips, a
-  ;;; column's cards, menus, toasts, the taskbar, a dialog); the rest are
-  ;;; plain cells, so the diagram is not all arrows.
+  ;;; a focused window's chain does; what is disabled, a hint, or elsewhere
+  ;;; is faint. A cell fills with its ink under the mouse, its word then in
+  ;;; the paper's color, and at alpha 0.6 while pressed, as the title's
+  ;;; cells do. Literals look like literals, in the code font: #t and #f,
+  ;;; strings in quotes, the empty list as (). The chain is drawn where it
+  ;;; reads best (tabs, chips, a column's cards, menus, toasts, the taskbar,
+  ;;; a dialog); the rest are plain cells, so that the diagram is not all
+  ;;; arrows.
 
-  ;; The plain ink, a color of its own: dim text, which you may change.
+  ;; The plain ink is a color of its own, dim text by default, which you
+  ;; may change.
   (at-load
    (color-default! 'cons-ink (theme-rule (theme 'text-dim))))
 
@@ -244,33 +251,34 @@
   ;;   a = 0.7 c (14): between two things a pointer links (cards, chips,
   ;;       tabs, menu entries, toasts), as in the title bar;
   ;;   the pad, 2 g: a window's or a dialog's own margin.
-  ;; A scroll bar is a thumb g wide with g between it and the edge it is
-  ;; against; what scrolls keeps g clear of it (scrollbar-margin), and it
-  ;; keeps g from the ends of its view. Things touch only where the
-  ;; diagram says so: a pointer meets its cell, a cdr shares its car's edge.
+  ;; A scroll bar is a thumb g wide, with g between it and the edge it lies
+  ;; against; what scrolls keeps g clear of it (scrollbar-margin), and the
+  ;; thumb keeps g from the ends of its view. Things touch only where the
+  ;; diagram says so: a pointer meets its cell, and a cdr shares its car's
+  ;; edge.
   (define (cons-space) (* 2 (round (* 3/20 (cons-cell)))))
   (define (cons-arrow) (* 2 (round (* 7/20 (cons-cell)))))
-  ;; A cdr is a square where its pair is a square (the title's, a menu's,
-  ;; a chip's); in a control as tall as a button (a tab, a dropdown) it is
-  ;; a slot as wide as a pointer is long, so that a toolbar of them stays a
-  ;; row.
+  ;; A cdr is square in the title's pairs, a menu's and a chip's; in a
+  ;; control as tall as a button (a tab, a dropdown) it is a slot as wide
+  ;; as a pointer is long, so that a toolbar of them stays a row.
   (define (cons-slot) (cons-arrow))
 
   ;; A cell's fill by its state: its ink under the mouse, at 0.6 while
-  ;; pressed; none otherwise.
+  ;; pressed, and none otherwise.
   (define (cons-tint-of flags ink)
     (cond [(memq 'pressed flags) (alpha ink 0.6)]
           [(memq 'hover flags) ink]
           [else #f]))
 
-  ;; A box n pixels thick, and the bold stroke of what is focused.
+  ;; The focus: the bold stroke, a box 2 pixels thick in accent ink.
   (define (cons-focus x y w h flags r) (cons-ring! x y w h 'accent 2))
 
-  ;; A button is a cell with its word, or its glyph, in it: the default
-  ;; one (primary), and every one in a dialog's chain (cons-chain, the
-  ;; dialog place), in the bold accent stroke; danger in red ink; a quiet
-  ;; one faint, filling with the plain ink under the mouse; disabled, faint
-  ;; and still.
+  ;; A button is a cell with its word, or its glyph, in it. The default
+  ;; one (primary), a focused one, and every one in a dialog's chain
+  ;; (cons-chain, set by the dialog place) have the bold accent stroke; a
+  ;; dangerous one has red ink; a quiet one is faint and fills with the
+  ;; plain ink under the mouse; a disabled one is faint and does not
+  ;; respond to the mouse.
   (define (cons-button x y w h flags label glyph)
     (let* ([on? (lambda (f) (memq f flags))]
            [live? (not (on? 'disabled))]
@@ -301,17 +309,17 @@
       (when label
         (draw-text (+ x0 gw) (+ y (/ (- h lh) 2)) label fg 'ui))))
 
-  ;; A glyph alone (a +, a ×) is a button a cell square, a word the
-  ;; kit's width.
+  ;; A button with a glyph alone (a +, a ×) is a cell square; one with a
+  ;; word is as wide as the kit makes it.
   (define (cons-button-size label glyph)
     (if label
         (ui-button-size* label glyph)
         (let ([c (cons-cell)]) (values c c))))
 
   ;; A boolean is a cell holding #t or #f, in the code font: a checkbox is
-  ;; one, and so is a toggle. #t in accent ink, #f dim; the cell as high as
-  ;; the kit's box, as wide as the literal and a little; focused, bold.
-  ;; Returns the cell's width.
+  ;; one, and so is a toggle. #t is in accent ink and #f dim; the cell is as
+  ;; high as the kit's box and a little wider than the literal, and bold
+  ;; when focused. cons-bool! returns the cell's width.
   (define (cons-bool-width) (round (+ 8 (text-width "#f" 'mono))))
 
   (define (cons-bool! x y h flags on?)
@@ -328,7 +336,7 @@
                           'mono)
       bw))
 
-  ;; A thing to mark: the boolean, then its name, dim once it is #t (a
+  ;; A checkbox: the boolean, then its label, dim once it is #t (a
   ;; checklist's done items).
   (define (cons-checkbox x y w h flags label)
     (let ([bw (cons-bool! x y h flags (memq 'checked flags))]
@@ -342,7 +350,8 @@
     (values (+ (cons-bool-width) (cons-space) (text-width label 'ui))
             (ui-control-height)))
 
-  ;; "Show done": the same boolean, its name plain whatever it is.
+  ;; A toggle ("Show done"): the same boolean, its label plain whatever
+  ;; its value.
   (define (cons-toggle x y w h flags label)
     (let ([bw (cons-bool! x y h flags (memq 'checked flags))]
           [lh (font-line-height 'ui)])
@@ -350,10 +359,11 @@
         (draw-text (+ x bw (cons-space)) (+ y (/ (- h lh) 2))
                    (text-fit label (- w bw (cons-space)) 'ui) 'text 'ui))))
 
-  ;; Tabs are a list of symbols, [Board|•]→[List|•]→[Tree|/]: each a pair,
-  ;; its car the word, its cdr a pointer to the next; the last one's (the
-  ;; kit says which) holds nil. The current one's car is filled; the chain
-  ;; stays in the plain ink, bold while a tab has the keyboard.
+  ;; Tabs are a list of symbols, [Board|•]→[List|•]→[Tree|/]: each tab is a
+  ;; pair whose car is the word and whose cdr points to the next; the last
+  ;; one's cdr (the kit says which tab is last) holds nil. The current
+  ;; tab's car is filled; the chain stays in the plain ink, and is bold in
+  ;; accent ink while a tab has the keyboard.
   (define (cons-tab-car label) (+ (* 2 (cons-space)) (text-width label 'ui)))
 
   (define (cons-tab x y w h flags label)
@@ -370,8 +380,8 @@
           (cons-right! (cons-dot-x (+ x cw) c lw) (cons-dot-y y h lw) (+ x w)
                        (cons-cell) ink lw))))
 
-  ;; Each tab is its car, its cdr and its pointer; as high as a control,
-  ;; so that a row of them stands with the buttons.
+  ;; Each tab is its car, its cdr and its pointer, as high as a control, so
+  ;; that a row of them lines up with the buttons.
   (define (cons-tabs-size labels)
     (values (fold-left (lambda (acc l)
                          (+ acc (cons-tab-car l) (cons-slot) (cons-arrow)))
@@ -379,12 +389,12 @@
             (ui-control-height)))
 
   ;; A text box holds a literal, and its marks frame the box: the opening
-  ;; one at its top-left corner, the closing one at its bottom-right, in
-  ;; faint ink, for a field, an area of lines (clear of its scroll bar) and
-  ;; a box of chips alike. A string is in quotes; a box of chips (chips)
-  ;; holds a list, in parens, the field for its next element inside it.
-  ;; The focused box has the bold stroke. A search box shows its glass
-  ;; instead of marks.
+  ;; mark at its top-left corner and the closing one at its bottom-right,
+  ;; in faint ink, for a field, an area of lines (clear of its scroll bar)
+  ;; and a box of chips alike. A string is in quotes; a box of chips
+  ;; (chips) holds a list, in parens, with the field for its next element
+  ;; inside it. The focused box has the bold stroke. A search box shows its
+  ;; magnifying glass instead of marks.
   (define (cons-mark-width) (text-width "\"" 'mono))
 
   (define (cons-field x y w h flags)
@@ -402,7 +412,7 @@
         (draw-text (- (+ x w) g bw (text-width close 'mono))
                    (+ (- (+ y h) g lh) dy) close 'text-faint 'mono))))
 
-  ;; The marks g from the box's edges, and the text half a g past them
+  ;; The marks sit g from the box's edges, and the text half a g past them
   ;; (a mark's glyph has little room of its own); in a box of lines the
   ;; closing mark keeps g clear of the scroll bar, which lies along the
   ;; box's right edge.
@@ -411,7 +421,7 @@
 
   (define (cons-text-box-areas x y w h flags)
     (let* ([bw (ui-scrollbar-width)] [g (cons-space)] [m (cons-mark-room)]
-           ;; inside another box's marks (a chip input's field), none
+           ;; no room inside another box's marks (a chip input's field)
            [left (cond [(memq 'search flags) (+ (ui-glyph-size) g g)]
                        [(memq 'inner flags) 0]
                        [else m])]
@@ -425,9 +435,10 @@
             (list 'bar (- (+ x w) bw) y bw h))))
 
   ;; A dropdown is a pair whose car holds the current value and whose
-  ;; cdr's pointer leaves it downward: that is the arrow. Open, its cdr
-  ;; fills, the menu below continuing the chain; a filter in use (set) is
-  ;; bold accent; no value, a faint placeholder.
+  ;; cdr's pointer leaves it downward: that pointer is the arrow. While the
+  ;; dropdown is open, its cdr fills and the menu below continues the
+  ;; chain; a filter in use (set) is bold accent; with no value, it shows a
+  ;; faint placeholder.
   (define (cons-dropdown x y w h flags label)
     (let* ([c (cons-slot)] [cw (- w c)] [on? (lambda (f) (memq f flags))]
            [bold? (or (on? 'set) (on? 'open) (on? 'focused))]
@@ -446,49 +457,53 @@
                   (- (+ y h) lw 2) (cons-cell) (if (on? 'open) 'window-bg ink)
                   lw)))
 
-  ;; The value, g in, and the cdr.
+  ;; The widest value, g in from each side, and the cdr; at most ten lines
+  ;; wide.
   (define (cons-dropdown-size labels)
     (values (min (* 10 (font-line-height 'ui))
                  (+ (* 2 (cons-space)) (cons-slot) (text-widest labels 'ui)))
             (ui-control-height)))
 
   ;; A tag is a symbol in a list: small chained cells, [perf|•]→[render|/],
-  ;; a cdr a square of the chip's height. Every flow of chips (a card's, a
-  ;; row's, the chip input's) leaves 4 between two, which the pointer
-  ;; crosses to touch the next cell. A removable one keeps its × in its
-  ;; car, after the label; the last one (the kit says) holds nil, and one
-  ;; whose next is on the next row points there round the row's end.
+  ;; each cdr a square of the chip's height. Every flow of chips (a card's,
+  ;; a row's, the chip input's) leaves 4 pixels between two chips, which
+  ;; the pointer crosses to touch the next cell. A removable chip keeps its
+  ;; × in its car, after the label; the last one (the kit says which) holds
+  ;; nil, and one whose next chip is on the next row points there around
+  ;; the row's end.
   (define cons-chip-gap 4)
 
   (define (cons-chip-height) (round (+ (font-line-height 'ui-small) 8)))
 
-  ;; A removable chip's ×: a small square, the glyph and a little room,
-  ;; half a g after the label and half a g from the car's end.
+  ;; A removable chip's ×: a small square holding the glyph and a little
+  ;; room, half a g after the label and half a g from the car's end.
   (define (cons-chip-x-side) (+ (round (ui-small-glyph-size)) 4))
 
   (define (cons-chip-car label removable?)
     (+ (* 2 (cons-space)) (text-width label 'ui-small)
        (if removable? (cons-chip-x-side) 0)))
 
-  ;; The × square of a chip at x y, h high, its car cw wide.
+  ;; The × square, (values x y side), of a chip at x y that is h high and
+  ;; whose car is cw wide.
   (define (cons-chip-x-box x y cw h)
     (let ([s (cons-chip-x-side)])
       (values (- (+ x cw) (quotient (cons-space) 2) s)
               (+ y (floor (/ (- h s) 2))) s)))
 
-  ;; A chip w wide, h high: its car's width, all of w when it is cut short
-  ;; of its cdr (a chip cut to its row), and whether it is.
+  ;; For a chip w wide and h high: its car's width, which is all of w when
+  ;; the chip is cut short of its cdr (a chip cut to fit its row), and
+  ;; whether it is.
   (define (cons-chip-car-width w h removable?)
     (let ([cw (- w h (cons-arrow) (- cons-chip-gap))])
       (if (< cw (+ 8 (if removable? (cons-chip-x-side) 0)))
           (values w #t)
           (values cw #f))))
 
-  ;; A removable chip's × is in its car, after the label: a chip stays a
-  ;; pair. Under the mouse (the kit's flags are the ×'s) a square behind
-  ;; the × alone fills red, as a window's nil does, the × in the paper's
-  ;; color, at 0.6 while pressed; the car stays as it is. A chip that is
-  ;; not removable fills under the mouse.
+  ;; A removable chip's × is in its car, after the label, so the chip stays
+  ;; a pair. Under the mouse (the kit's flags are the ×'s), only a square
+  ;; behind the × fills red, as a window's nil does, with the × in the
+  ;; paper's color, at 0.6 while pressed; the car stays as it is. A chip
+  ;; that is not removable fills under the mouse.
   (define (cons-chip x y w h flags label)
     (let*-values ([(removable?) (memq 'removable flags)]
                   [(cw cut?) (cons-chip-car-width w h removable?)]
@@ -522,16 +537,17 @@
                          (cadr next) (caddr next) h 'cons-ink)]
             [else (cons-right! dx my (+ x w cons-chip-gap) h 'cons-ink 1)])))))
 
-  ;; The value of the flag (key . value) in flags, which mix symbols and
-  ;; such pairs, or #f.
+  ;; The flag (key . value) in flags, which mix symbols and such pairs, or
+  ;; #f.
   (define (cons-flag flags key)
     (find (lambda (f) (and (pair? f) (eq? (car f) key))) flags))
 
   ;; A pointer from the dot at (dx, my) in a row's last cdr to the first
   ;; pair of the next row, at (nx, ny), h high, as SICP draws a wrapped
   ;; list: out to the right to xr, down to midway between the rows (the
-  ;; row's bottom at bottom), back left past the pair, and into it from
-  ;; the left, at its middle. 1 pixel thick, as the chips' pointers.
+  ;; row's bottom is at bottom), back left past the pair, and into it from
+  ;; the left, at its middle. It is 1 pixel thick, as the chips' pointers
+  ;; are.
   (define (cons-bend! dx my xr bottom nx ny h ink)
     (let* ([head (quotient h 3)] [half (quotient h 6)]
            [ym (floor (/ (+ bottom ny) 2))] [xl (- nx head 3)]
@@ -552,15 +568,15 @@
                  (- cons-chip-gap))
               h)))
 
-  ;; The × and a little room around it.
+  ;; The remove area: the × and a little room around it.
   (define (cons-chip-areas x y w h)
     (let*-values ([(cw cut?) (cons-chip-car-width w h #t)]
                   [(bx by bs) (cons-chip-x-box x y cw h)])
       (list (list 'remove (- bx 2) (- by 2) (+ bs 4) (+ bs 4)))))
 
-  ;; The chips start half a g after the opening paren, as text does; the
-  ;; kit's rows otherwise, the chips cons-chip-gap apart, which each one's
-  ;; pointer crosses.
+  ;; The chips start half a g after the opening paren, as text does, and
+  ;; otherwise flow in the kit's rows, cons-chip-gap apart, a gap that each
+  ;; chip's pointer crosses.
   (define (cons-chip-input-areas x y w chips)
     (let*-values ([(pad ch) (values cons-chip-gap (ui-control-height))]
                   [(in) (cons-mark-room)]
@@ -585,17 +601,17 @@
                 (list (list 'field (car f) (cdr f) (- (+ x w) pad (car f))
                             ch))))))
 
-  ;; A card (a task, a style) is a box: the chosen or dragged one in the
-  ;; bold stroke; under the mouse, a faint fill.
+  ;; A card (a task, a style) is a box: the chosen or dragged one has the
+  ;; bold stroke, and the one under the mouse a faint fill.
   (define (cons-card x y w h flags)
     (let ([bold? (or (memq 'selected flags) (memq 'floating flags))])
       (when (memq 'hover flags) (fill-box x y w h (alpha 'cons-ink 0.08)))
       (cons-ring! x y w h (if bold? 'accent 'cons-ink) (if bold? 2 1))))
 
-  ;; A scroll bar is a 1-pixel track; its thumb a cell, filling under the
-  ;; mouse. Its region is the thumb and g beyond it, so that against an
-  ;; edge (a well's, a window's) the thumb keeps g from it; the track
-  ;; keeps g from the ends of the view.
+  ;; A scroll bar is a 1-pixel track, and its thumb a cell that fills under
+  ;; the mouse. Its region is the thumb and g beyond it, so that against an
+  ;; edge (a well's, a window's) the thumb keeps g from that edge; the
+  ;; track keeps g from the ends of the view.
   (define (cons-scrollbar-areas x y w h start size)
     (let* ([g (cons-space)] [tw (max 1 (- w g))] [l (max 0 (- h g g))]
            [th (min l (max (* 2 (font-line-height 'ui)) (* size l)))])
@@ -611,7 +627,7 @@
       (fill-box x (cadr t) tw (cadddr t) (if hot? 'cons-ink 'window-bg))
       (cons-ring! x (cadr t) tw (cadddr t) 'cons-ink 1)))
 
-  ;; A slider is a line, filled in accent up to its value; its knob a
+  ;; A slider is a line, filled in accent up to its value; its knob is a
   ;; small cell, bold under the mouse. A painted track (Settings' colors)
   ;; is a band under the knob.
   (define (cons-slider x y w h flags frac paint)
@@ -625,19 +641,21 @@
       (cons-ring! (- kx 4) (- cy 7) 8 14 (if hot? 'accent 'cons-ink)
                    (if hot? 2 1))))
 
-  ;; Progress is a cell filling with ink by the fraction; green when done.
+  ;; Progress is a cell that fills with accent ink by the fraction, and
+  ;; green when done.
   (define (cons-progress x y w h flags frac)
     (when (> frac 0)
       (fill-box x y (* w (min 1 frac)) h (if (>= frac 1) 'green 'accent)))
     (cons-ring! x y w h 'cons-ink 1))
 
-  ;; A column's heading, faint, its words underlined; the sort as a
-  ;; pointer head; the words where a table's text is (ui-table-cell-inset).
+  ;; A column's heading: faint, its words underlined, and the sort shown as
+  ;; a pointer head; the words sit where a table's text does
+  ;; (ui-table-cell-inset).
   (define (cons-table-header x y w h flags label dir)
     (let* ([sh (font-line-height 'ui-small)] [g (ui-small-glyph-size)]
            [in (* 2 (cons-space))]
            [s (text-fit label (max 0 (- w (* 3 (cons-space)) g)) 'ui-small)]
-           ;; over a right column, its numbers' edge
+           ;; over a right-aligned column, at its numbers' edge
            [right? (memq 'right flags)]
            [tx (if right? (- (+ x w) in (text-width s 'ui-small)) (+ x in))]
            [ty (+ y (/ (- h sh) 2))]
@@ -651,9 +669,9 @@
                        '((ink . cons-ink))
                        dir))))
 
-  ;; Rows are the list's elements, a faint line under each, g in from the
-  ;; table's left: the chosen one in the bold stroke, the mouse's with a
-  ;; faint fill.
+  ;; Rows are the list's elements, with a faint line under each, g in from
+  ;; the table's left: the chosen row has the bold stroke, and the one
+  ;; under the mouse a faint fill.
   (define (cons-table-row x y w h flags)
     (let* ([g (cons-space)] [x (+ x g)] [w (- w g)])
       (cond [(memq 'selected flags) (cons-ring! x y w h 'accent 2)]
@@ -661,8 +679,8 @@
       (fill-box x (- (+ y h) 1) w 1 (alpha 'text-faint 0.5))))
 
   ;; A tree is nested lists; a node's twisty is the pointer: a dot and an
-  ;; arrow right while its children are hidden past it, down when they
-  ;; show. Dimmed rows faint, as the kit dims them.
+  ;; arrow pointing right while its children are hidden past it, and down
+  ;; when they show. Dimmed rows are faint, as the kit dims them.
   (define (cons-tree-row x y w h flags w0 depth)
     (let ([areas (ui-tree-areas x y w0 h depth)] [c (cons-cell)]
           [g (ui-glyph-size)])
@@ -676,8 +694,8 @@
       (ui-draw-dim x y (- (cadr (assq 'cell areas)) x) h flags)))
 
   ;; Panes: a well is a faint box (the kit's views keep clear of it,
-  ;; surface-well-ring), the rest the window's own background, a strip
-  ;; ruled off where it meets the rest.
+  ;; surface-well-ring); the others have the window's own background, a
+  ;; strip ruled off where it meets the rest.
   (define (cons-surface x y w h flags)
     (cond
       [(memq 'well flags) (cons-ring! x y w h 'text-faint 1)]
@@ -689,9 +707,10 @@
              [(memq 'footer flags) (fill-box x y w 1 'window-border)]
              [(memq 'side flags) (fill-box x y 1 h 'window-border)])]))
 
-  ;; A popup is an outlined box on the window's background, nothing under
-  ;; it (drawn, not painted): a dialog's in the focused window's border, a
-  ;; tooltip's faint, a menu's and a toast's in the plain ink.
+  ;; A popup is an outlined box on the window's background with nothing
+  ;; under it (drawn, not painted): a dialog's in the focused window's
+  ;; border color, a tooltip's faint, and a menu's and a toast's in the
+  ;; plain ink.
   (define (cons-panel x y w h flags)
     (fill-box x y w h 'window-bg)
     (cons-ring! x y w h
@@ -699,9 +718,9 @@
                        [(memq 'tooltip flags) 'text-faint]
                        [else 'cons-ink])))
 
-  ;; The chosen entry of a list (Settings', the completion's): the bold
-  ;; stroke; the mouse's, a plain box; a menu's by outline, as the kit
-  ;; says, inverted while pressed.
+  ;; The chosen entry of a list (Settings', the completion's) has the bold
+  ;; stroke, and the one under the mouse a plain box; a menu's entry,
+  ;; outlined as the kit asks, is inverted while pressed.
   (define (cons-highlight x y w h flags)
     (cond [(memq 'hover flags) (cons-ring! x y w h 'cons-ink 1)]
           [(not (memq 'outline flags)) (cons-ring! x y w h 'accent 2)]
@@ -736,10 +755,10 @@
 
   ;; A dialog is a window-shaped list, ("Delete TASK-16?" Cancel Delete): a
   ;; chain of cells across a title strip, as a window's, in the bold
-  ;; accent; each button's cell is a car of the chain (cons-chain, the
-  ;; dialog place), the last one's cdr holds nil, and clicking that end of
-  ;; the list cancels, as closing a window does (the kit's dismiss area).
-  ;; The message is in the box below the strip.
+  ;; accent. Each button's cell is a car of the chain (cons-chain, set by
+  ;; the dialog place), the last one's cdr holds nil, and clicking that end
+  ;; of the list cancels, as closing a window does (the kit's dismiss
+  ;; area). The message is in the box below the strip.
   (define (cons-dialog-car label) (+ (* 2 (cons-space)) (text-width label 'ui)))
 
   ;; The chain after the title's car: its cdr, then each button's pointer,
@@ -761,8 +780,8 @@
                         pad)))))
 
   ;; ((title x y w h) (message ..) (button x y w h) ... (dismiss x y w h)):
-  ;; the chain across the strip from the left, the title's car taking what
-  ;; the buttons leave; the dismiss area is the last cdr.
+  ;; the chain runs across the strip from the left, the title's car taking
+  ;; the room the buttons leave; the dismiss area is the last cdr.
   (define (cons-dialog-areas x y w h labels)
     (let* ([c (cons-cell)] [a (cons-arrow)] [th (title-height)]
            [left (cons-left)] [cy (+ y (quotient (- th c) 2))]
@@ -779,8 +798,9 @@
               (loop (cdr ls) (+ bx a bw c)
                     (cons (list 'button (+ bx a) cy bw c) acc)))))))
 
-  ;; flags: (labels . the buttons'), and the dismiss area's state: nil
-  ;; fills red under the mouse, its slash crossed out, as the title's.
+  ;; flags hold (labels . the buttons' labels) and the dismiss area's
+  ;; state: nil fills red under the mouse, with its slash crossed out, as
+  ;; in a window's title bar.
   (define (cons-dialog x y w h flags title message)
     (let* ([c (cons-cell)] [th (title-height)] [lw 2] [ink 'accent]
            [labels (let ([l (cons-flag flags 'labels)]) (if l (cdr l) '()))]
@@ -795,8 +815,8 @@
       (cons-pair! (car t) cy tw c ink lw #f #f)
       (draw-text (+ (car t) (floor (/ (- tw (text-width s 'title)) 2)))
                  (cons-title-y cy c) s 'title-text 'title)
-      ;; from each cdr a pointer to the next car, whose cell its button
-      ;; draws, and that car's cdr; the last cdr nil
+      ;; from each cdr, a pointer to the next car (whose cell its button
+      ;; draws) and that car's cdr; the last cdr holds nil
       (let loop ([cx (+ (car t) tw)] [cars cars])
         (if (null? cars)
             (begin
@@ -812,11 +832,12 @@
                    (+ ly (font-line-height 'ui)))
                  (cadr m) (ui-dialog-lines message (caddr m)))))
 
-  ;; Under a dialog: the window faintly veiled.
+  ;; Under a dialog, the window is faintly veiled.
   (define (cons-scrim x y w h flags) (fill-box x y w h (alpha 'bg-0 0.4)))
 
-  ;; A day is a cell: the chosen one filled, today bold, the keyboard's
-  ;; bold in ink, another month's faint, the mouse's filled with ink.
+  ;; A day is a cell: the chosen one is filled, today is bold accent, the
+  ;; keyboard's day is bold in its ink, another month's days are faint, and
+  ;; the one under the mouse fills with its ink.
   (define (cons-day x y w h flags label)
     (let* ([on? (lambda (f) (memq f flags))] [s (- (min w h) (cons-space))]
            [cx (+ x (/ (- w s) 2))] [cy (+ y (/ (- h s) 2))]
@@ -841,34 +862,34 @@
 
   ;;; Tasks' board: a column is a list of cards.
 
-  ;; The pointer between two cards is the room between them.
-  ;; The cards g from the well's sides and from its heading, the + g from
-  ;; the heading's end; between two cards, a pointer.
+  ;; The cards sit g from the well's sides and from its heading, and the +
+  ;; g from the heading's end; the room between two cards is a pointer.
   (define (cons-tasks-column-insets)
     (let ([g (cons-space)]) (values g g (cons-arrow) g)))
 
-  ;; A heading a cell high, g above and below it: the + cell sits g inside
-  ;; the well's corner.
+  ;; A heading is a cell high, with g above and below it, so that the +
+  ;; cell sits g inside the well's corner.
   (define (cons-tasks-column-header-height) (+ (cons-cell) (* 2 (cons-space))))
 
-  ;; A card's cdr stands at its right, a cell wide; past it the room the
+  ;; A card's cdr stands at its right, a cell wide; past it is the room the
   ;; scroll bar keeps (its margin g, its thumb, and g to the well's edge).
   (define (cons-tasks-card-insets)
     (let ([g (cons-space)])
       (values (max g (ui-scrollbar-inset 'left))
               (+ (cons-cell) (max g (ui-scrollbar-inset 'right))))))
 
-  ;; Inside a card everything is g from its edges; a table's text g inside
-  ;; its row's box, which is g inside the table.
+  ;; Inside a card everything is g from its edges; a table's text is g
+  ;; inside its row's box, which is g inside the table.
   (define (cons-tasks-card-pad) (cons-space))
   (define (cons-table-cell-inset) (* 2 (cons-space)))
 
-  ;; The details' margin, the pad.
+  ;; The details' margin is the pad.
   (define (cons-tasks-details-pad) (* 2 (cons-space)))
 
-  ;; Each card's cdr beside it, sharing its edge; from the dot in it a
-  ;; pointer down to the next card's, the last one's holding nil; a chosen
-  ;; or dragged card's in the bold stroke, as its box.
+  ;; Each card's cdr stands beside it, sharing its edge; from the dot in it
+  ;; a pointer goes down to the next card, and the last card's cdr holds
+  ;; nil. A chosen or dragged card's cdr has the bold stroke, as its box
+  ;; does.
   (define (cons-tasks-link x y w h flags gap last?)
     (let* ([c (cons-cell)]
            [bold? (or (memq 'selected flags) (memq 'floating flags))]
@@ -879,8 +900,8 @@
           (cons-down! (cons-dot-x (+ x w) c lw) (cons-dot-y y h lw) (+ y h gap)
                       c ink lw))))
 
-  ;; A column's well and heading: its status dot g in, its name and its
-  ;; count g apart; empty, it shows ().
+  ;; A column's well and heading: its status dot g in, then its name and
+  ;; its count, g apart; an empty column shows ().
   (define (cons-tasks-column x y w h flags status label count)
     (let* ([hh ((theme-part 'tasks-column-header-height))] [g (cons-space)]
            [m ((world-value 'tasks-mark-size))] [lh (font-line-height 'ui-bold)]
@@ -912,14 +933,15 @@
     (cons-dashes! x y w h 'accent)
     (cons-dashes! (+ x w -1) y (+ (cons-cell) 1) h 'accent))
 
-  ;;; The desktop layer: menus, the bars, toasts, the wallpaper, each part
-  ;;; handed what it draws.
+  ;;; The desktop layer: menus, the bars, toasts and the wallpaper, each
+  ;;; part handed what it draws.
 
-  ;; A menu is a list drawn vertically: each entry a pair, its car the
-  ;; entry and its cdr a cell at the right whose pointer goes down to the
-  ;; next pair; the last one's holds nil; a separator is a longer pointer.
-  ;; An entry's row is its pair and the gap below it (menu-item-height);
-  ;; the filter's field, when it has one, is above.
+  ;; A menu is a list drawn vertically: each entry is a pair whose car is
+  ;; the entry and whose cdr, a cell at the right, points down to the next
+  ;; pair; the last one's cdr holds nil, and a separator is a longer
+  ;; pointer. An entry's row is its pair and the gap below it
+  ;; (menu-item-height); the filter's field, when the menu has one, is
+  ;; above the entries.
   (define (cons-menu-areas m)
     (let* ([es (menu-entries m)] [c (cons-cell)] [ih (theme 'menu-item-height)]
            [sh (theme 'menu-separator-height)] [pad (theme 'menu-pad)]
@@ -950,8 +972,9 @@
                                         x ey w eh)
                                   (loop (cdr es) (+ i 1) (+ ey eh))))))))))
 
-  ;; The entry under the mouse, or the keys', fills with ink; while a
-  ;; button is held on it, at 0.6; blinking, in its on phases (on).
+  ;; The entry under the mouse, or the one the keys chose, fills with ink,
+  ;; at 0.6 while a button is held on it; a blinking entry fills in its on
+  ;; phases (on).
   (define (cons-draw-menu m areas on flags)
     (let* ([es (list->vector (menu-entries m))] [font (theme 'menu-font)]
            [lh (font-line-height font)] [c (cons-cell)]
@@ -1013,8 +1036,8 @@
   ;; ((L . "Select") (R . "Task menu")).
   (define (cons-mouse-doc-text doc) (format "~s" doc))
 
-  ;; The top bar as the built-in one, and after the title the mouse
-  ;; documentation, faint, in what room the status leaves.
+  ;; The top bar as the built-in one draws it, with the mouse documentation
+  ;; after the title, faint, in the room the status leaves.
   (define (cons-draw-topbar h areas open? doc status)
     (let* ([w (screen-w)] [ty (/ (- h (font-line-height 'ui)) 2)]
            [gap (max 11 (round (* 0.6 (font-line-height 'ui))))]
@@ -1058,9 +1081,10 @@
                      'panel-dim 'mono-small)))))
 
   ;; The taskbar's windows are a list, [Tasks|•]→[REPL|•]→[Clock|/]: each
-  ;; window's area its pair and its pointer; a car as wide as its title and
-  ;; a little, at most 160, narrower when the chain would not fit. The hint,
-  ;; a comment, at the right while the chain leaves it room.
+  ;; window's area is its pair and its pointer, with a car as wide as its
+  ;; title and a little more, at most 160, and narrower when the chain
+  ;; would not fit. The hint, a comment, sits at the right while the chain
+  ;; leaves it room.
   (define (cons-taskbar-areas h hint)
     (let* ([w (screen-w)] [y0 (- (screen-h) h)]
            [ws (sort (lambda (a b) (< (window-id a) (window-id b))) *windows*)]
@@ -1086,8 +1110,9 @@
                     (cons (list (car ws) x y0 (+ (car cars) c a) h)
                           (loop (cdr ws) (cdr cars) (+ x (car cars) c a))))))))
 
-  ;; The focused window's car filled with the panel's accent, a minimized
-  ;; one faint, the mouse's filled with the plain ink.
+  ;; The focused window's car fills with the panel's accent, a minimized
+  ;; window's is faint, and the one under the mouse fills with the plain
+  ;; ink.
   (define (cons-draw-taskbar h areas open? doc status hint)
     (let* ([w (screen-w)] [y0 (- (screen-h) h)]
            [c (cons-cell)] [a (cons-arrow)] [cy (+ y0 (quotient (- h c) 2))]
@@ -1122,8 +1147,9 @@
            (car as))
           (loop (cdr as))))))
 
-  ;; Toasts are a list at the top right: each a pair, its car the text, the
-  ;; dot in its cdr the notification's color, its pointer down to the next.
+  ;; Toasts are a list at the top right: each toast is a pair whose car
+  ;; holds the text and whose cdr's dot, in the notification's color,
+  ;; points down to the next.
   (define (cons-toast-boxes)
     (let ([c (cons-cell)] [a (cons-arrow)]
           [h (max (cons-cell) (round (+ (font-line-height 'ui) 10)))])
@@ -1158,8 +1184,8 @@
                   (fill-circle dx my (+ (/ c 10) 1/2) (vector-ref b 5))))
             (loop (cdr bs)))))))
 
-  ;; The desktop: the wallpaper, and on it, faint, the world as data:
-  ;; (λ "S C H E V A N A"), a chain of two cells ending in nil.
+  ;; The desktop: the wallpaper, and on it, faint, the world as data,
+  ;; (λ "S C H E V A N A"): a chain of two cells ending in nil.
   (define (cons-draw-wallpaper w h)
     (fill-wallpaper 0 0 w h (theme 'wallpaper) 'desktop-top 'desktop-bottom)
     (let* ([ink (alpha 'watermark 0.08)] [lw 2]
@@ -1178,8 +1204,8 @@
 
   (at-load
    (define-style cons "Cons"
-     ;; square, and so is everything drawn in it (rrect-path!); every common
-     ;; option but the radius
+     ;; square, and so is everything drawn in it (rec-radius); it has
+     ;; every common option except the radius
      'corner-radius 0
      'options (remq 'corner-radius (map car common-options))
      'frame-regions 'cons-regions
@@ -1191,8 +1217,9 @@
      ;; drawn, not painted: cards and panels on the window's own background
      'bg-2 (theme-rule (theme 'bg-1))
      'surface-well-ring 1
-     ;; the spacing (above): g between neighbors, the pad a window's margin,
-     ;; a scroll bar a thumb g wide and g to its edge, g clear of content
+     ;; the spacing (see above): g between neighbors, the pad as a window's
+     ;; margin, a scroll bar a thumb g wide and g from its edge, g clear of
+     ;; content
      'gap (theme-rule (cons-space))
      'pad (theme-rule (* 2 (cons-space)))
      'scrollbar-width (theme-rule (* 2 (cons-space)))
@@ -1207,7 +1234,8 @@
      'draw-taskbar 'cons-draw-taskbar
      'toast-boxes 'cons-toast-boxes
      'draw-toasts 'cons-draw-toasts
-     ;; the menus: a pair a cell high, a pointer to the next, g inside
+     ;; the menus: each entry a pair a cell high and a pointer to the
+     ;; next, g inside the menu
      'menu-areas 'cons-menu-areas
      'draw-menu 'cons-draw-menu
      'menu-item-height (theme-rule (+ (cons-cell) (cons-arrow)))

@@ -1,4 +1,5 @@
-;;; tests/bench.ss — what a frame costs on the render ladder's four scenes.
+;;; tests/bench.ss — measures what a frame costs in the render ladder's
+;;; four scenes.
 ;;;
 ;;;   scheme --script tests/bench.ss [output-dir [frames]]
 ;;;
@@ -8,35 +9,36 @@
 ;;;         Clock, Life and Monitor, overlapping
 ;;;   S30   30 Life windows, cascaded
 ;;;   S30M  S30 under a maximized REPL
-;;; A fake clock moves 81 ms a step, so every Life window steps, and asks
-;;; for a frame, at every step. Everything runs on core1, on lavapipe,
-;;; whose work on its own threads core1 only hands over.
-;;; Each scene: 10 steps to warm up, then frames (default 100) measured, each
-;;; one step:
+;;; A fake clock moves 81 ms per step, so every Life window steps, and
+;;; asks for a frame, at every step. Everything runs on core1 and renders
+;;; on lavapipe, which does its work on threads of its own: core1 only
+;;; hands the work over.
+;;; Each scene gets 10 steps to warm up, then measures frames (100 by
+;;; default), one step each:
 ;;;   core1   core1's CPU time (median): events, ticks, recording
 ;;;           the frame, sending it
-;;;   wall    the step's time, steps back to back (median, and 90th
+;;;   wall    the step's time, with steps back to back (median, and 90th
 ;;;           percentile)
 ;;;   upload  the bytes of the list sent (mean)
 ;;;   GCs     collections (mean)
-;;; Also a keystroke in S5's REPL (the clock still: the frame shows the
-;;; new character), an idle step (30 paused Life windows, the clock
-;;; standing still), a theme change on S30 (it paints the wallpaper
-;;; again), the clock's second with no window and a keystroke in a REPL
-;;; alone (each step one of them, at 100% and 200%, and at 200% on a
-;;; 1920 × 1080 screen, a 4K one), Tasks maximized on that screen (an idle
-;;; step, a keystroke in a title, two in one step, a card dragged), a
+;;; It also measures a keystroke in S5's REPL (with the clock still, the
+;;; frame shows the new character); an idle step (30 paused Life windows,
+;;; the clock standing still); a theme change on S30 (which paints the
+;;; wallpaper again); the clock's second with no window, and a keystroke
+;;; in a REPL alone (each step one of them, at 100% and 200%, and at 200%
+;;; on a 1920 × 1080 screen, a 4K one); Tasks maximized on that screen (an
+;;; idle step, a keystroke in a title, two in one step, a card dragged); a
 ;;; keystroke in a long text's worst cases there, in the details and in
-;;; the description's editor, maximized, the Tree there with the seed and
-;;; with 2,000 tasks more in chains, a busy process's share of core1
-;;; while S30T animates at 200%, and the profiler's cost: a step
-;;; with profiling on and off (printed, not bounded), then the crew: Life
-;;; at one pixel a cell, maximized on that screen, and Boids at 150, 450,
-;;; 2,000 and 5,000, on one thread and more (printed, not bounded). Fails
+;;; the description's editor, maximized; the Tree there, with the seed and
+;;; with 2,000 more tasks in chains; a busy process's share of core1 while
+;;; S30T animates at 200%; the profiler's cost, a step with profiling on
+;;; and off (printed, not bounded); and then the crew: Life at one pixel
+;;; per cell, maximized on that screen, and Boids at 150, 450, 2,000 and
+;;; 5,000, on one thread and more (printed, not bounded). It fails
 ;;; (exit 1) unless every measured step drew a frame, an idle step takes
-;;; under 0.2 ms and sends nothing (with Tasks open too), a keystroke in
-;;; a long text keeps within its budget, a step of the Tree with 2,000
-;;; tasks within 1.5 times one with the seed, and the busy process and the
+;;; under 0.2 ms and sends nothing (with Tasks open too), a keystroke in a
+;;; long text keeps within its budget, a step of the Tree with 2,000 tasks
+;;; stays within 1.5 times one with the seed, and the busy process and the
 ;;; animation both go on.
 
 (define *schevana-root*
@@ -54,7 +56,7 @@
 (define fake-ms 1000000)
 (set! now-ms (lambda () fake-ms))
 (random-seed 4242)
-;; Life, whose windows it times.
+;; Life, whose windows the bench times.
 (test-demos! 'life)
 (schevana-boot! 'headless 1280 800)
 
@@ -71,9 +73,9 @@
                 (min (- (length xs) 1) (exact (floor (* p (length xs))))))))
 
 ;;; ------------------------------------------------------------------
-;;; what goes up
+;;; what is uploaded
 
-;; The bytes of the lists frames have sent.
+;; The bytes of the lists that frames have sent.
 (define *upload-bytes* 0)
 (define plain-present rec-present!)
 (set! rec-present!
@@ -90,7 +92,7 @@
     (set! fake-ms (+ fake-ms ms))
     (test-step!)))
 
-;; Status segments that never change.
+;; Sets status segments that never change.
 (define (fixed-status!)
   (set! *status-segments* '())
   (add-status-segment! 'a (lambda () "12.3 ms/tick"))
@@ -180,7 +182,8 @@
 ;;; ------------------------------------------------------------------
 ;;; the ladder
 
-;; One scene at one scale: a property list of what it measured.
+;; Runs one scene at one scale; returns a property list of what it
+;; measured.
 (define (run-scene name pct)
   (set-theme! 'scale pct)
   (steps 2 17)
@@ -228,16 +231,16 @@
 ;;; ------------------------------------------------------------------
 ;;; idle steps and theme changes
 
-;; Steps with 30 paused Life windows and the clock standing still: the
-;; ones that draw no frame (all but the once-a-second one).
+;; Measures steps with 30 paused Life windows and the clock standing
+;; still: the ones that draw no frame (all but the once-a-second one).
 (define (idle-steps pct)
   (set-theme! 'scale pct)
   (scene! 'S30)
   (for-each (lambda (w) (window-call w 'key #\space '())) (windows))
   (quiet-steps))
 
-;; 3000 steps with nothing happening: the median of those that draw no
-;; frame, and the bytes they uploaded.
+;; Runs 3000 steps with nothing happening; returns the median time of
+;; those that draw no frame, and the bytes they uploaded.
 (define (quiet-steps)
   (steps 3 0)
   (let loop ([i 0] [times '()] [uploaded 0])
@@ -251,8 +254,9 @@
                       (+ uploaded (- *upload-bytes* u))))))
         (values (median times) uploaded))))
 
-;; A theme change and the step after it, which paints the wallpaper's new
-;; picture and draws the frame: (values wall core1), medians.
+;; Measures a theme change and the step after it, which paints the
+;; wallpaper's new picture and draws the frame. Returns (values wall
+;; core1), medians.
 (define (theme-change-ms pct)
   (set-theme! 'scale pct)
   (scene! 'S30)
@@ -271,8 +275,9 @@
                 (cons (- (wall-ms) w0) walls)
                 (cons (- (core1-ms) m0) mains))))))
 
-;; A key typed into S5's REPL, the clock standing still: the step that
-;; handles it draws the frame that shows it. (values wall core1) medians.
+;; Measures a key typed into S5's REPL, with the clock standing still:
+;; the step that handles it draws the frame that shows it. Returns
+;; (values wall core1), medians.
 (define (keystroke-ms pct)
   (set-theme! 'scale pct)
   (scene! 'S5)
@@ -312,7 +317,7 @@
 ;;; ------------------------------------------------------------------
 ;;; the clock's second and a keystroke, on a quiet desktop
 
-;; The headless screen, w × h logical pixels at pct.
+;; Makes the headless screen w × h logical pixels at pct.
 (define (screen! w h pct)
   (set! *headless-size* (cons w h))
   (set-theme! 'scale pct)
@@ -321,9 +326,9 @@
     (wm-screen-resized!))
   (steps 2 17))
 
-;; Steps that each draw the frame of one thing that changed (change!
-;; makes it change): (values core1 wall upload), the medians of core1's
-;; and the step's ms and the mean bytes uploaded.
+;; Runs steps that each draw the frame of one thing that changed (change!
+;; makes it change). Returns (values core1 wall upload): the medians of
+;; core1's ms and the step's ms, and the mean bytes uploaded.
 (define (frame-steps change!)
   (steps 3 0)
   (let ([u0 *upload-bytes*])
@@ -351,7 +356,7 @@
                    (set! second (+ second 1))
                    (status-show!)))))
 
-;; A REPL alone, where it opens, typed into.
+;; A REPL alone, where it opens, with keys typed into it.
 (define (lone-keystrokes)
   (clear-world!)
   (fixed-status!)
@@ -373,9 +378,10 @@
 
 ;;; ------------------------------------------------------------------
 ;;; Tasks, maximized on a 1920 × 1080 screen at 200%
-;;; With nothing focused it asks for no frame. A keystroke in a task's
-;;; title, two in one step (the second lays the window out again first)
-;;; and a card dragged a step a move each draw the whole window.
+;;; With nothing focused, Tasks asks for no frame. A keystroke in a
+;;; task's title, two in one step (the second lays the window out again
+;;; first), and a card dragged by one move per step each draw the whole
+;;; window.
 
 (define (tasks-bench)
   (screen! 1920 1080 200)
@@ -383,7 +389,7 @@
   (fixed-status!)
   (tasks-reset!)
   (let* ([win (tasks)] [ui (window-ref win 'ui)])
-    (define (at id)   ; region id's middle on screen
+    (define (at id)   ; the middle of region id on the screen
       (let ([r (ui-find ui id)])
         (let-values ([(cx cy cw ch) (content-rect win)])
           (list (exact (floor (+ cx (ui-region-x r) (/ (ui-region-w r) 2))))
@@ -433,17 +439,18 @@
 
 ;;; ------------------------------------------------------------------
 ;;; the Tree, in Tasks maximized on a 1920 × 1080 screen at 200%
-;;; With the seed, and with 2,000 tasks more in 40 chains of 50 (each
-;;; waits for the one before it, and every fifth also for its neighbor in
-;;; the chain before: blockers shared), every node expanded: steps that
-;;; each move the selection a row (Down, then Up), collapse or expand a
-;;; chain (Space), or wheel the rows (down, then up), each drawing the
-;;; window. The rows drawn are the rows in view; what grows with the tasks
-;;; is walking the expanded nodes and Tasks' own passes over the tasks
-;;; (its filters, the tree's shape): a step must stay within 1.5 times
-;;; the seed's (the least of three rounds each).
+;;; With the seed, and with 2,000 more tasks in 40 chains of 50 (each
+;;; waits for the one before it, and every fifth also waits for its
+;;; neighbor in the chain before, so blockers are shared), with every node
+;;; expanded: steps that each move the selection a row (Down, then Up),
+;;; collapse or expand a chain (Space), or wheel the rows (down, then up),
+;;; each drawing the window. Only the rows in view are drawn; what grows
+;;; with the tasks is walking the expanded nodes and Tasks' own passes
+;;; over the tasks (its filters, the tree's shape). A step must stay
+;;; within 1.5 times the seed's (the least of three rounds each).
 
-;; The seed and 2,000 tasks in chains after it; => the first chain's top.
+;; Makes the seed and 2,000 tasks in chains after it; returns the first
+;; chain's top.
 (define (chained-tasks!)
   (tasks-reset!)
   (let ([base *tasks-next-id*] [now (tasks-now)])
@@ -465,7 +472,7 @@
     (tasks-changed!)
     (find-task (+ base 49))))
 
-;; => (key space wheel rows): the median core1 ms of each kind of
+;; Returns (key space wheel rows): the median core1 ms of each kind of
 ;; step, and the rows the tree showed.
 (define (tree-steps chained?)
   (screen! 1920 1080 200)
@@ -504,8 +511,8 @@
 
 (define tree-rounds 3)
 
-;; ((seed key space wheel rows) (chained key space wheel rows)): each
-;; kind's least of the rounds.
+;; ((seed key space wheel rows) (chained key space wheel rows)): the
+;; least of the rounds for each kind.
 (define tree-results
   (let ([rounds (map (lambda (i) (list (tree-steps #f) (tree-steps #t)))
                      (iota tree-rounds))])
@@ -530,21 +537,22 @@
 
 ;;; ------------------------------------------------------------------
 ;;; a long text, in Tasks maximized on a 1920 × 1080 screen at 200%
-;;; A description of 65,535 characters under a title as long, in each
-;;; worst case: one paragraph of words; no spaces at all (broken by
-;;; character); every row exactly full, so that a key typed at its start
-;;; moves a word down every row (a cascade). Keystrokes, each in a step of
-;;; its own, as in the details and as in the editor maximized: typing (and
-;;; Backspace) at the start, the middle and the end, Delete, everything
-;;; selected and deleted. Each against the same in an empty text, in the
-;;; same window: a keystroke's text work depends on the rows in view, so
-;;; it costs what the empty one does, plus drawing the rows of text it
-;;; shows. A jump far ahead, Ctrl+End or a paste of the whole text,
-;;; computes the rows up to its target once (printed, with a looser
-;;; budget). Every case is measured in three rounds, each round all of
-;;; them, and keeps its least: a load on the machine that slows a round
-;;; leaves the others. The budgets are what it may cost over the empty
-;;; text's, in ms: a frame costs too little now for a ratio to mean much.
+;;; A description of 65,535 characters, under a title just as long, in
+;;; each worst case: one paragraph of words; no spaces at all (broken by
+;;; character); and every row exactly full, so that a key typed at the
+;;; start moves a word down on every row (a cascade). Keystrokes, each in
+;;; a step of its own, in the details and in the editor maximized: typing
+;;; (and Backspace) at the start, the middle and the end, Delete, and
+;;; everything selected and deleted. Each is compared with the same in an
+;;; empty text, in the same window: a keystroke's text work depends on the
+;;; rows in view, so it costs what the empty one does, plus drawing the
+;;; rows of text it shows. A jump far ahead, Ctrl+End or a paste of the
+;;; whole text, computes the rows up to its target once (printed, with a
+;;; looser budget). Every case is measured in three rounds, each round
+;;; running all of them, and keeps its least: a load on the machine that
+;;; slows one round leaves the others alone. The budgets are what a case
+;;; may cost over the empty text's, in ms: a frame costs too little for a
+;;; ratio to mean much.
 
 (define (long-text which n width)
   (let ([o (open-output-string)]
@@ -569,8 +577,9 @@
                          (grow (string-append r "x"))
                          (loop i (put! (string-append r " ") len) ""))))]))))))
 
-;; Steps, each handling the next of keys (event lists, in turn): the
-;; median core1 ms of the steps at each place in the turn.
+;; Runs steps, each handling the next of keys (event lists, taken in
+;; turn); returns the median core1 ms of the steps at each place in the
+;; turn.
 (define (key-turns keys turns)
   (steps 2 0)
   (let loop ([i 0] [times (map (lambda (k) '()) keys)])
@@ -596,9 +605,10 @@
   (let* ([win (tasks)] [v (window-ref win 'state)] [tui (window-ref win 'ui)]
          [title (long-text 'words 65535 1000)]
          [t (add-task! title 'status 'review)]
-         [texts (make-hashtable equal-hash equal?)])   ; made once a case
-    ;; the text, its caret at k, in the details or the editor: its window
-    ;; and ui, the text's id, and its width
+         [texts (make-hashtable equal-hash equal?)])   ; each made once
+    ;; show! shows text, its caret at k, in the details or the editor, and
+    ;; returns the window, its ui and the text's id; width is the text's
+    ;; width there
     (define (show! where text k)
       (tasks-close-editor! v)
       (set-task! t 'description text)
@@ -649,7 +659,8 @@
                              (test-step!)
                              (- (core1-ms) m0)))
                          (iota 5)))])
-        ;; typing, Delete, everything selected and deleted; jumps
+        ;; the worst keystroke (typing, Delete, everything selected and
+        ;; deleted), and the worst jump (Ctrl+End, the paste)
         (list where which (max typing delete (car all) (cadr all))
               (max jump (caddr all)))))
     (maximize-window! win)
@@ -684,14 +695,14 @@
 ;;; ------------------------------------------------------------------
 ;;; a busy process
 
-;; A REPL evaluation that computes (a loop counting) while S30T animates,
-;; steps back to back as with a window: its loops a second, as a share of
-;; what it gets with the Life windows paused, and the frames a second
-;; meanwhile. The frames are drawn on core1, between the
-;; process's slices. run-procs!' 10 ms budget needs a clock that moves:
-;; the fake one goes on with real time, plus 81 ms a step, so every Life
-;; window steps at every step.
-(define (busy-run pct animate? ms)   ; (values loops a second, frames a second)
+;; A REPL evaluation that computes (a counting loop) while S30T animates,
+;; with steps back to back as with a window: its loops per second, taken
+;; as a share of what it gets with the Life windows paused, and the frames
+;; per second meanwhile. The frames are drawn on core1, between the
+;; process's slices. The 10 ms budget of run-procs! needs a clock that
+;; moves, so the fake one goes on with real time, plus 81 ms per step, so
+;; that every Life window steps at every step.
+(define (busy-run pct animate? ms)   ; (values loops per s, frames per s)
   (set-theme! 'scale pct)
   (scene! 'S30T)
   (unless animate?
@@ -722,9 +733,9 @@
 ;;; ------------------------------------------------------------------
 ;;; the profiler's cost
 ;;; A step with profiling on and off, in turns of 20 steps, 10 turns
-;;; each: S30T animating (core1's ms, medians), an idle step
-;;; (30 paused Life windows), and a busy process with Life paused (its
-;;; loops a second, 1 s each way, twice).
+;;; each way: S30T animating (core1's ms, medians), an idle step (30
+;;; paused Life windows), and a busy process with Life paused (its loops
+;;; per second, 1 s each way, twice).
 
 (define profile-cost-was (profile-on?))
 
@@ -784,15 +795,17 @@
   (printf "~a ~a\n" (if ok "ok  " "FAIL") name))
 
 ;;; ------------------------------------------------------------------
-;;; the crew: Life at one pixel a cell, Boids at its largest
+;;; the crew: Life at one pixel per cell, Boids at its largest
 
-;; Their own names, lf:life-speeds and bo:boids-step-on (tests/reach.ss).
+;; The libraries' own names, such as lf:life-speeds and bo:boids-step-on
+;; (tests/reach.ss).
 (test-library '(demo life) 'lf:)
 (test-library '(demo boids) 'bo:)
 
-;; Steps of Life, maximized on a 1920 × 1080 screen at 200% (a 4K one), one
-;; pixel a cell, a generation every tick, its controls hidden; of them, the
-;; tick's ms and the rest's (its frame and upload).
+;; Runs n steps of Life on `workers` crew threads, maximized on a
+;; 1920 × 1080 screen at 200% (a 4K one), at one pixel per cell and a
+;; generation every frame, with its controls hidden. Returns the tick's ms
+;; per step and the rest's (its frame and upload).
 (define (life-extreme workers n)
   (clear-world!)
   (crew-size-set! workers)

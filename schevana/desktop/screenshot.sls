@@ -1,5 +1,5 @@
-;;; (schevana desktop screenshot) — the screen as a PNG in the home folder
-;;; (F12, and the launcher's Screenshot).
+;;; (schevana desktop screenshot) — saves the screen as a PNG in the home
+;;; folder (F12, and the launcher's Screenshot entry).
 
 (library (schevana desktop screenshot)
   (export
@@ -11,7 +11,8 @@
 
   (library-layer desktop)
 
-  ;; The screen, as a PNG in the home folder, and a toast saying where.
+  ;; Saves the screen as a PNG in the home folder and shows a toast saying
+  ;; where.
   (define (save-screenshot!)
     (png-write-screen-then (next-screenshot-path)
                            (lambda (path) (notify (format "Saved ~a" path)))))

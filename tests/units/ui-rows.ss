@@ -1,10 +1,10 @@
 ;;; tests/units/ui-rows.ss — the kit's boxed lists, status page, banner and
-;;; linked buttons ((schevana kits ui)), by themselves: where they lay out
-;;; what they hold, and what a press on them does; and the flags the kit
-;;; gives a segmented choice's pieces and a row of tabs.
+;;; linked buttons ((schevana kits ui)), tested by themselves: where they
+;;; lay out what they hold and what a press on them does; and the flags the
+;;; kit gives the pieces of a segmented choice and of a row of tabs.
 
 ;; The rows of a group: an action row, a switch row, a check row, an entry
-;; row and a row that does nothing, the values in boxes.
+;; row and a row that does nothing, with their values in boxes.
 (define (ui-rows-test-rows ui wifi agree server opened)
   (list (list "Proxy" "Manual" 0 #f
               'on-press (lambda () (set-box! opened (+ (unbox opened) 1)))
@@ -20,7 +20,9 @@
 (define ui-rows-test-heading
   '(title "Network" description "How this machine connects to others"))
 
-;; The group, 300 wide at (20, 20), its bottom kept.
+;; A window with the group, 300 wide at (20, 20). Returns the window, the
+;; boxes of the rows' values, and boxes with the group's bottom and the
+;; window's ui.
 (define (ui-rows-test-window)
   (let ([wifi (box #f)] [agree (box #f)] [server (box "")] [opened (box 0)]
         [bottom (box #f)] [ui-of (box #f)])
@@ -192,8 +194,9 @@
            (close-window! win)
            (equal? r '(b #t #t #t)))))
 
-;; The flags each piece is drawn with: a stand-in for part, recording them
-;; by label as thunk draws in a picture.
+;; Returns the flags each piece is drawn with, by label, as (draw ui) draws
+;; in a picture: a stand-in for the part ('button for ui-draw-button, else
+;; ui-draw-tab) records them.
 (define (ui-rows-test-flags part draw)
   (let ([seen '()] [win (open-window "Flags" 'size '(400 . 100))])
     (let ([record (lambda (x y w h flags label . more)

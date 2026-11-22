@@ -1,4 +1,4 @@
-;;; tests/units/clock.ss — Clock: its face moves on by a timer at each
+;;; tests/units/clock.ss — Clock: a timer moves its face on at each
 ;;; second, and stops with its window.
 
 (let* ([before (length *timers*)]

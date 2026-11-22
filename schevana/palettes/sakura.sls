@@ -1,6 +1,6 @@
-;;; (schevana palettes sakura) — the Sakura palette. Cherry blossom: pale pink
-;;; paper, plum ink, a deep pink accent and wisteria beside it; the desktop
-;;; blossoms over a spring sky.
+;;; (schevana palettes sakura) — the Sakura palette: cherry blossom. Pale pink
+;;; paper and plum ink, with a deep pink accent and wisteria as the second
+;;; accent; the desktop is blossom pink over a spring sky.
 
 (library (schevana palettes sakura)
   (export)

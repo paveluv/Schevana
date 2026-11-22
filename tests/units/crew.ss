@@ -2,8 +2,8 @@
 
 ;;; The crew ((schevana services crew)).
 
-;; About us µs of work, without allocating; the thread's id noted in ids
-;; (a box of a list) the first time.
+;; Does about us µs of work without allocating, and notes the thread's id
+;; in ids (a box holding a list) the first time.
 (define-worklet (crew-test-busy us ids)
   (let ([id (get-thread-id)])
     (let note ()
@@ -17,14 +17,15 @@
   (let loop ()
     (let ([v (unbox b)]) (unless (box-cas! b v (+ v n)) (loop)))))
 
-;; Each index of [lo, hi) counted in counts, after us µs.
+;; Counts each index of [lo, hi) in counts, after us µs of work.
 (define-worklet (crew-test-count lo hi counts us ids)
   (crew-test-busy us ids)
   (do ([i lo (fx+ i 1)]) ((fx= i hi))
     (bytevector-u8-set! counts i (fx+ 1 (bytevector-u8-ref counts i)))))
 
-;; As crew-test-count, but no call ends till the caller and a worker have both
-;; taken part, however slow a thread is to wake; at most 10 s.
+;; Like crew-test-count, but no call ends until the caller and a worker
+;; have both taken part, however slow a thread is to wake; it waits 10 s at
+;; most.
 (define-worklet (crew-test-together lo hi counts core1 ids)
   (crew-test-count lo hi counts 0 ids)
   (let ([until (+ (now-ns) 10000000000)])
@@ -87,7 +88,7 @@
 (check "a call that raises: the calls not started never start, those \
         running finish, and the caller raises its condition"
        ;; so many that the rest can't all start while the thread that raises
-       ;; waits its turn on a busy machine: a second of calls and more
+       ;; waits for its turn on a busy machine: more than a second of calls
        (let* ([started (box 0)] [finished (box 0)]
               [c (guard (c [#t c])
                    (crew-for* 10 0 100000 crew-test-fail started finished)
@@ -98,8 +99,8 @@
               (< (unbox started) 10000)
               (= (unbox finished) (- (unbox started) 1)))))
 
-;; Forever, but on core1: a millisecond there, so that the
-;; workers, however slow to wake, get some of the calls.
+;; Runs forever, except on core1, where it takes a millisecond, so that
+;; the workers, however slow to wake, get some of the calls.
 (define-worklet (crew-test-runaway lo hi core1)
   (if (fx= (get-thread-id) core1)
       (crew-test-busy 1000 (box '()))
@@ -118,7 +119,8 @@
                  (and c (condition? c) (condition->string c)))
          (crew-for* 1 0 64 crew-test-together (make-bytevector 64 0)
                     (get-thread-id) ids)
-         ;; at its budget, not after it: how long past it is the machine's
+         ;; raised once its budget is up, not before; how long past the
+         ;; budget depends on the machine
          (and c (string-contains-ci? (condition-message c) "time budget")
               (>= ms test-crew-budget)
               (< ms 10000)
@@ -145,8 +147,8 @@
          (printf "  ~a collections\n" (- (collections) n0))
          (= (unbox sum) (* 20 64 20000))))
 
-;; Noted in ids, then done only once the world has stepped more than 3
-;; times (stepped counts them), or after 10 s.
+;; Notes the thread in ids, then ends only once the world has stepped more
+;; than 3 times (stepped counts them), or after 10 s.
 (define-worklet (crew-test-after-steps lo hi stepped ids)
   (crew-test-busy 0 ids)
   (let ([until (+ (now-ns) 10000000000)])
@@ -173,16 +175,16 @@
          (and done (> steps0 3) (pair? (unbox ids))
               (not (memv (get-thread-id) (unbox ids))))))
 
-;;; What the crew costs, itself: nothing a call, nothing idle.
+;;; What the crew itself costs: nothing per call, nothing while idle.
 
 (define-worklet (crew-test-nothing lo hi) (void))
 (define-worklet (crew-test-six lo hi a b c d e f) (void))
 
-;; The least of a few runs: any one may share its time with a collection,
-;; whose copying the counters count. Workers going back to idle count too, as
-;; they are scheduled, a thread's memory by the chunk of 48 KB, however few
-;; calls ran. So the limit is what the calls would show: 20,000 of them
-;; consing once each take 320 KB.
+;; The least of a few runs, since any one may share its time with a
+;; collection, whose copying the counters count. Workers going back to idle
+;; count too, as they are scheduled: a thread's memory counts by the 48 KB
+;; chunk, however few calls ran. So the limit is set by what the calls
+;; would show: 20,000 of them, consing once each, would take 320 KB.
 (let ([size (crew-size)])
   (crew-size-set! (max 2 size))
   (let* ([least-bytes

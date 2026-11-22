@@ -1,4 +1,4 @@
-;;; (schevana wallpapers flat) — the top color alone.
+;;; (schevana wallpapers flat) — the top color alone, with no gradient.
 
 (library (schevana wallpapers flat)
   (export)

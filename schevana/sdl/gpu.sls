@@ -1,6 +1,6 @@
 ;;; (schevana sdl gpu) — SDL3's bindings for the GPU, and for the plain
-;;; memory handed to it. Only (schevana core0 gpu) uses these: above it no SDL
-;;; name for the GPU appears.
+;;; memory handed to it. Only core0 uses these, (schevana core0 gpu) almost
+;;; alone: above core0, no SDL name for the GPU appears.
 
 (library (schevana sdl gpu)
   (export
@@ -33,7 +33,7 @@
   ;; SDL3, loaded before a binding to it is made.
   (at-load sdl-library)
 
-  ;; Plain memory, from Scheme's to SDL's and back.
+  ;; Copies plain memory, from Scheme's to SDL's and back.
   (define-foreign sdl-memcpy "SDL_memcpy" (uptr uptr size_t) uptr)
 
   (define-foreign sdl-create-gpu-device "SDL_CreateGPUDevice"
@@ -74,8 +74,8 @@
     (uptr uptr) void)
   (define-foreign sdl-acquire-gpu-commands "SDL_AcquireGPUCommandBuffer"
     (uptr) uptr)
-  ;; The screen holds it as long as it likes: collect-safe, as every call
-  ;; that may block is (tests/sources.ss).
+  ;; The screen may hold this call as long as it likes, so it is
+  ;; collect-safe, as every call that may block is (tests/sources.ss).
   (define-foreign/collect-safe sdl-acquire-swapchain
     "SDL_AcquireGPUSwapchainTexture" (uptr uptr uptr uptr uptr) bool)
   (define-foreign sdl-begin-copy-pass "SDL_BeginGPUCopyPass" (uptr) uptr)
@@ -127,10 +127,9 @@
     (uptr bool uptr unsigned-32) bool)
   (define-foreign sdl-query-gpu-fence "SDL_QueryGPUFence" (uptr uptr) bool)
   (define-foreign sdl-release-gpu-fence "SDL_ReleaseGPUFence" (uptr uptr) void)
-  ;; a window's properties: its Wayland display and surface, or its Cocoa
-  ;; window and the tag of the view SDL draws to, for their reports
+  ;; the name of the device's driver
   (define-foreign sdl-gpu-driver "SDL_GetGPUDeviceDriver" (uptr) string)
-  ;; what the platform is: SDL's version, its video driver (#f before its start)
+  ;; how a window's frames are presented, and waiting for the device
   (define-foreign sdl-window-supports-present-mode
     "SDL_WindowSupportsGPUPresentMode" (uptr uptr int) bool)
   (define-foreign/collect-safe sdl-set-frames-in-flight

@@ -1,6 +1,7 @@
-;;; (schevana palettes tokyo-night) — the Tokyo Night palette: the built-in
-;;; one, base-colors in (schevana core theme), so that the world has its colors
-;;; even with no theme files. Its other colors derive as every palette's do.
+;;; (schevana palettes tokyo-night) — the Tokyo Night palette, the built-in
+;;; one. Its colors are base-colors in (schevana core theme), so the world has
+;;; colors even with no theme files, and this palette gives none of its own.
+;;; Its other colors are derived from those, as they are for every palette.
 
 (library (schevana palettes tokyo-night)
   (export)

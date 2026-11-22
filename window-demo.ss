@@ -1,20 +1,21 @@
-;;; window-demo.ss — a checklist, an app of the host's desktop made
-;;; of Schevana's widget kit: a plain program, no library of its own. Its
-;;; one window is a window of GNOME's (or a Mac's), its look the host's own,
-;;; light or dark as the desktop prefers ((schevana kits host)). Its title
-;;; bar is the host's, or under GNOME its own header bar, with no shadow and
-;;; square corners: SDL 3.2's Vulkan swapchain is always opaque. SDL 3.4
-;;; gives a transparent window an alpha swapchain; once we move to it, the
-;;; window gets GNOME's shadow (on subsurfaces under it) and rounded
-;;; corners. Run with the tree as Chez's library folder, from the libraries'
-;;; sources, or as window-demo.sh does, with them compiled into a
-;;; cache:
+;;; window-demo.ss — a checklist: an app on the host's desktop, built
+;;; with Schevana's widget kit as a plain program with no library of its
+;;; own. Its one window is a GNOME window (or a Mac one) with the host's
+;;; own look, light or dark as the desktop prefers ((schevana kits host)).
+;;; The title bar is the host's; under GNOME the app draws its own header
+;;; bar, with no shadow and square corners, because SDL 3.2's Vulkan
+;;; swapchain is always opaque. SDL 3.4 gives a transparent window an alpha
+;;; swapchain; once we move to it, the window gets GNOME's shadow (on
+;;; subsurfaces under it) and rounded corners. Run it with the tree as
+;;; Chez's library folder, from the libraries' sources, or as
+;;; window-demo.sh does, with the libraries compiled into a cache:
 ;;;
 ;;;   CHEZSCHEMELIBDIRS=. scheme-script window-demo.ss
-;;;   ... --headless     a frame, read back and told
-;;;   ... --fork         the screen on a thread of its own
-;;;   ... --style NAME   one of Schevana's styles in place of the host's look
-;;;                      (genera, cons, open-look, ...), host-main's option
+;;;   ... --headless     draws a frame, reads it back and reports it
+;;;   ... --fork         runs the screen on a thread of its own
+;;;   ... --style NAME   uses one of Schevana's styles in place of the
+;;;                      host's look (genera, cons, open-look, ...);
+;;;                      an option of host-main's
 
 (import (chezscheme)
         (schevana core)
@@ -23,11 +24,12 @@
 
 (define args (cdr (command-line)))
 
-;; Whether text is only spaces.
+;; Whether text holds nothing but whitespace.
 (define (blank? text) (for-all char-whitespace? (string->list text)))
 
-;; The checklist's window: what's to do, each item (text . done?), checked
-;; off, filtered, added to and cleared.
+;; Opens the checklist's window and returns it. Each item is
+;; (text . done?); the user checks items off, filters them, adds new ones
+;; and clears the done ones.
 (define (checklist-open)
   (let ([ui (make-ui)]
         [items (list (cons "Water the plants" #f)
@@ -79,8 +81,8 @@
                                     "Checked items show here"
                                     "Add an item above")
                                 'compact #t)
-                ;; the items, a boxed list, scrolled when it's longer than
-                ;; its place
+                ;; the items, as a boxed list that scrolls when it is
+                ;; taller than its space
                 (ui-scroll ui 'list 0 top w (- foot top gap)
                   (lambda (y)
                     (ui-rows ui 'items pad (+ y gap) inner
@@ -100,8 +102,8 @@
         (ui-end! ui w h))
       (ui-handlers ui))))
 
-;; An item's row of the boxed list: a check box before its text, and a
-;; flat round button at its end that removes it.
+;; Returns an item's row for the boxed list: a check box before its
+;; text, and a flat round button at the row's end that removes the item.
 (define (checklist-row ui item remove!)
   (let* ([ch (ui-control-height)]
          [row (ui-check-row ui (list 'item item) (car item) (cdr item)
@@ -116,7 +118,8 @@
                         'tip "Remove"))
            (cddddr row))))
 
-;; The pixel at (x, y) of bytes, the screen's, as (r g b).
+;; Returns the pixel at (x, y) of bytes (the screen's pixels) as
+;; (r g b).
 (define (pixel bytes x y)
   (let ([at (* 4 (+ x (* y *canvas-pw*)))])
     (list (bytevector-u8-ref bytes (+ at 2))
@@ -126,7 +129,7 @@
 (host-main "org.schevana.Checklist" 360 520 args
   (lambda ()
     (let ([win (checklist-open)])
-      ;; headless: what was drawn, read back, then quit
+      ;; headless: read back what was drawn, report it, then quit
       (when (member "--headless" args)
         (after 200
           (lambda ()

@@ -1,15 +1,16 @@
 #!/usr/bin/env scheme-script
-;;; desktop — Schevana's desktop: a world of windows, apps and
-;;; styles on the core, from (schevana desktop main).
+;;; desktop — starts Schevana's desktop, a world of windows, apps and
+;;; styles on top of the core, from (schevana desktop main).
 ;;;
 ;;;   ./desktop [--size WxH] [--fullscreen] [--headless] [--fork]
 ;;;                      [--hacker] [--eval EXPR]... [FOLDER]...
 ;;;   ./desktop --install-desktop | --uninstall-desktop
 ;;;
-;;; --hacker is the hacker edition: every library's names, internals too,
-;;; to see and redefine live. A FOLDER joins the library search and loads
-;;; with the world: demo adds the demos' apps. --eval expressions
-;;; run after boot, e.g.
+;;; --hacker runs the hacker edition, where every library's names, its
+;;; internals included, can be seen and redefined live. Each FOLDER is
+;;; added to the library search and loads with the world: `demo` adds the
+;;; demos' apps. Each --eval expression runs once the world has loaded,
+;;; for example
 ;;;
 ;;;   --eval '(after 2000 (lambda () (png-write-screen-then "s.png" \
 ;;;                                    (lambda (p) (quit!)))))'

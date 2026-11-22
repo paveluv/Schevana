@@ -1,6 +1,6 @@
-;;; (schevana palettes crayons) — the Crayons palette. A kindergarten's box of
-;;; crayons on cream paper: the hues are the crayons, the bars a chalkboard,
-;;; the desktop a sky over grass.
+;;; (schevana palettes crayons) — the Crayons palette: a kindergarten's box of
+;;; crayons on cream paper. The hues are the crayons, the bars are a
+;;; chalkboard, and the desktop is a sky over grass.
 
 (library (schevana palettes crayons)
   (export)

@@ -1,16 +1,16 @@
-;;; (schevana kits host) — a program whose one window is an app of the
-;;; host's desktop, as GNOME's or a Mac's own are: the window is the screen's
-;;; whole, its title the one the desktop shows, its least size the screen's,
-;;; it has an app id of its own, and the look is the host's (Adwaita on
+;;; (schevana kits host) — a program whose one window is an app of the host's
+;;; desktop, as GNOME's own apps or a Mac's are. The window fills the screen,
+;;; its title is the one the desktop shows, its least size is the screen's,
+;;; it has an app id of its own, and its look is the host's (Adwaita on
 ;;; Linux, Mac on a Mac, Windows on Windows), light or dark as the desktop
-;;; prefers when the look has a dark palette; or, as the command line asks
-;;; (--style NAME), any of Schevana's styles. Only that look's libraries
-;;; load (look-load!). Its title bar is the host's,
-;;; the window having no frame of Schevana's; or, where the desktop draws
-;;; none (GNOME under Wayland), its style's, as GNOME's own apps draw their
-;;; header bars: the desktop moves and resizes it by the regions the core
-;;; is told (screen-hit-regions!), and its buttons and menu act on it.
-;;; Closing the window, Ctrl+Q or Ctrl+W, quits.
+;;; prefers when the look has a dark palette; or, when the command line asks
+;;; for one (--style NAME), any of Schevana's styles. Only that look's
+;;; libraries load (look-load!). The title bar is the host's, and the window
+;;; has no frame of Schevana's; or, where the desktop draws none (GNOME under
+;;; Wayland), the title bar is the style's, as GNOME's own apps draw their
+;;; header bars: the desktop moves and resizes the window by the regions the
+;;; core is told (screen-hit-regions!), and the frame's buttons and menu act
+;;; on it. Closing the window, Ctrl+Q or Ctrl+W quits.
 ;;;
 ;;;   (host-main "org.example.Notes" 360 480 (command-line-arguments)
 ;;;     (lambda () (open-window "Notes" ...)))
@@ -36,17 +36,18 @@
 
   (library-layer kits)
 
-  ;; The look of this host's own apps, by the platform's predicates: Adwaita,
-  ;; GNOME's, where no other is known to be the desktop's.
+  ;; Returns the look of this host's own apps, found by the platform's
+  ;; predicates: Adwaita (GNOME's) where no other is known to be the
+  ;; desktop's.
   (define (host-look)
     (cond [(platform-mac?) 'mac]
           [(platform-windows?) 'windows]
           [else 'adwaita]))
 
-  ;; win as the host's app: all of the screen; frameless where the host
-  ;; draws its title bar, else in its style's frame, which acts on the OS
-  ;; window and moves and resizes it; its title and least size (its
-  ;; content's, 'min-size) the screen's; closing it quits.
+  ;; Makes win the host's app. It fills the screen: frameless where the host
+  ;; draws its title bar, or else in its style's frame, which acts on the OS
+  ;; window and moves and resizes it. Its title and least size (its
+  ;; content's, 'min-size) become the screen's, and closing it quits.
   (define (host-window! win)
     (let ([own? (screen-own-frame?)] [hs (window-handlers win)])
       (unless own? (window-set! win 'frameless #t))
@@ -58,7 +59,7 @@
                         (lambda (w) (when close (close w)) (quit!))))
       (when own?
         (window-set! win 'on-action host-act!)
-        ;; the regions again whenever the frame may have changed: the
+        ;; tell the regions again whenever the frame may have changed: the
         ;; window's size (the screen's), the style, maximized or not
         (let ([resize (hashtable-ref hs 'resize #f)])
           (hashtable-set! hs 'resize
@@ -71,10 +72,10 @@
       (bind-key! '(ctrl #\w) (lambda () (close-window! win)))
       win))
 
-  ;; A frame's actions on the OS window: maximize (or restore), minimize, the
-  ;; desktop's own window menu where the pointer is; close as any window's.
-  ;; A drag of its title never moves the window inside the screen: the
-  ;; desktop moves the OS window by it.
+  ;; Does a frame's actions on the OS window: maximize (or restore),
+  ;; minimize, and the desktop's own window menu at the pointer; close works
+  ;; as for any window. A drag of the title never moves the window within
+  ;; the screen: the desktop moves the OS window instead.
   (define (host-act! win action)
     (case action
       [(maximize)
@@ -85,17 +86,18 @@
       [(shade depth move) #t]
       [else #f]))
 
-  ;; How far in from the window's edge a press resizes it, and from a
-  ;; corner both ways, logical pixels: inside the window, as SDL's window
-  ;; has no margin outside it, where GNOME's own apps have theirs.
+  ;; How far in from the window's edge a press resizes it, and how far from
+  ;; a corner both ways, in logical pixels. Both are inside the window:
+  ;; SDL's window has no margin outside it, where GNOME's own apps have
+  ;; theirs.
   (define host-edge 5)
   (define host-corner 14)
 
-  ;; The regions of win, a host app's own frame, as the desktop is to take
-  ;; them (screen-hit-regions!): its edges and corners resize it unless
-  ;; maximized?; its frame's title areas, wherever the style puts them
-  ;; (Genera's label at the bottom), move it, its buttons are its own; and
-  ;; so does the rest of its top, as in any window.
+  ;; Returns the regions of win, a host app with its own frame, as the
+  ;; desktop takes them (screen-hit-regions!). Its edges and corners resize
+  ;; it unless maximized?; its frame's title areas move it, wherever the
+  ;; style puts them (Genera's label at the bottom), and its buttons are its
+  ;; own. The rest of its top moves it too, as in any window.
   (define (host-hit-regions win maximized?)
     (let-values ([(l t r b) (frame-insets win)])
       (let ([x (window-x win)] [y (window-y win)]
@@ -120,12 +122,12 @@
                      (frame-regions win))
          (list (list 'move x y w t))))))
 
-  ;; Runs a host app: its app id (the desktop matches it to a desktop entry,
-  ;; reverse-DNS by custom), a screen w × h logical pixels, and (open), which
-  ;; opens the app's window and returns it. args are the command line's:
-  ;; --headless, no window; --fork, the screen's thread apart
-  ;; from the world's; --style NAME, a style of Schevana's in place of the
-  ;; host's look.
+  ;; Runs a host app, given its app id (the desktop matches it to a desktop
+  ;; entry; by custom it is reverse-DNS), a screen of w × h logical pixels,
+  ;; and open, a thunk that opens the app's window and returns it. args are
+  ;; the command line's: --headless for no window; --fork for the screen's
+  ;; thread apart from the world's, even headless; --style NAME for a style
+  ;; of Schevana's in place of the host's look.
   (define (host-main app-id w h args open)
     (let* ([headless? (member "--headless" args)]
            [style (let ([s (member "--style" args)])
@@ -137,7 +139,7 @@
       (unless headless?
         (screen-set-app-id! app-id)
         (screen-own-frame! #t))
-      ;; no least size of Schevana's own till the window gives its
+      ;; no least size of Schevana's own until the window gives its own
       (screen-set-least! 0 0)
       (schevana-main (if headless? 'headless 'sdl) w h #f
         (lambda ()

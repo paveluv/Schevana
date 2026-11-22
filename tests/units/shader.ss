@@ -1,9 +1,10 @@
 ;;; tests/units/shader.ss — the shader language's contract: every operation
-;;; gives the same on the device and on the twin ((schevana kits twin)),
-;;; whatever the driver; what's outside the language is refused at expansion. A
-;;; paint colors its box, in its clip, and needs nothing recorded to change.
+;;; gives the same result on the device and on the twin ((schevana kits
+;;; twin)), whatever the driver, and what is outside the language is refused
+;;; at expansion. A paint colors its box within its clip, and a change to
+;;; its buffer shows with nothing recorded again.
 
-;; A buffer holding words.
+;; Makes a buffer holding words.
 (define (shader-test-buffer words)
   (let ([b (make-gpu-buffer (length words))])
     (for-each (lambda (v i) (gpu-buffer-set! b i v))
@@ -13,7 +14,7 @@
 ;; Word i of a buffer's bytes read back.
 (define (shader-test-word bytes i) (bytevector-s32-native-ref bytes (* 4 i)))
 
-;; every operation; one per cell, chosen by the cell's number
+;; every operation, one per cell, chosen by the cell's number
 (define shader-test-ops
   '((fx+ v w) (fx- v w) (fx* v w) (fxquotient v w) (fxmod v w)
     (fxand v w) (fxior v w) (fxxor v w) (fxsll v w) (fxsrl v w) (fxsra v w)
@@ -165,7 +166,8 @@
                                                (fixnum->flonum x)))))))])
          (and (memv 2 math) (not (memv 1 math)))))
 
-;; Stores worked out left to right: each to a word a later one overwrites.
+;; Stores are worked out left to right: each goes to a word that a later
+;; one overwrites.
 (define-compute-shader (shader-test-order x y) ([out fx-buffer write])
   (define (put k v) (fx-set! out k v) 0)
   (fx-set! out 3 (fx+ (put 0 1) (put 0 2) (put 0 3) (put 0 4)))
@@ -388,13 +390,15 @@
                                       (unless (fx= x 0) (fx-set! out x 2)))))
           "if (")))
 
-;;; What shaders share: constants and helpers, gone by the tree too.
+;;; What shaders share: constants and helpers, which are gone by the time
+;;; of the tree too.
 
 (define-shader-constant shader-test-seven 7)
 
 (define-shader-helpers shader-test-helpers
   (define (shader-test-more n) (fx+ n shader-test-seven))
-  ;; id is the shader's, and k whatever's in scope where it's taken
+  ;; id is the shader's, and k is whatever is in scope where the helper is
+  ;; used
   (define (shader-test-scoped) (fx+ id k)))
 
 (define (shader-test-forms . forms)
@@ -687,9 +691,9 @@
                          (shader-test-fragment
                           (color '(texture-ref tex 0 0 id))))))))
 
-;; Metal's fast math would take (a + b) - a for b, and contract a product and
-;; a sum. Other drivers may do as they like: the language promises its
-;; floats no more than this, and Metal alone has a switch for it.
+;; Metal's fast math would take (a + b) - a to be b, and contract a product
+;; and a sum. Other drivers may do as they like: the language promises its
+;; floats no more than this, and only Metal has a switch for it.
 (when (eq? shader-target 'msl)
   (let* ([ops '((fl+ a b) (fl- a b) (fl* a b) (fl/ a b) (fl+ (fl* a b) c)
                 (fl- (fl+ a b) a) (flfloor a) (flceiling a) (flround a)
@@ -729,9 +733,9 @@
     (gpu-buffer-release! in)
     (gpu-buffer-release! out)))
 
-;; Out of a buffer, either end: a read reads its last word and a write is left
-;; out, on any device, so that a shader an app hands the GPU reaches nothing
-;; else.
+;; Outside a buffer, at either end, a read reads its last word and a write
+;; is left out, on any device, so that a shader an app hands the GPU
+;; reaches nothing else.
 (let* ([s (eval '(let ()
                    (define-compute-shader (shader-test-outside x y)
                      ([in fx-buffer] [out fx-buffer write])
@@ -758,7 +762,8 @@
   (gpu-buffer-release! in)
   (gpu-buffer-release! out))
 
-;; With the frame: what a compute run writes, a paint drawn after shows.
+;; With the frame: a paint drawn after a compute run shows what the run
+;; wrote.
 (check "a compute asked for with the next frame runs ahead of its drawing, so \
         that a paint shows what it wrote; the runs wait in order, and a buffer \
         let go takes those that name it"
@@ -790,10 +795,10 @@
                   (for-all (lambda (x) (= (pixel-at p x 0) #xff00ff00))
                            (iota 4)))))))
 
-;; What a device can't show: a read outside a buffer may well give what's
-;; there by chance, and a write outside lands where nothing reads it back. So
-;; the tree: each read's index is held to the last word, and each write is
-;; under a compare.
+;; What a device can't show: a read outside a buffer may well give what
+;; happens to be there, and a write outside lands where nothing reads it
+;; back. So the check reads the tree: each read's index is held to the last
+;; word, and each write is under a compare.
 (check "every read of a buffer is at an index held to its last word, and \
         every write is under a compare: the world's shaders and an app's"
        (let ([writer (eval '(let ()
@@ -897,7 +902,8 @@
                                            (shader-params s)
                                            (shader-source s)))))))
 
-;; With no definitions of its own: the world's helpers are every paint's.
+;; A paint with no definitions of its own: the world's helpers are every
+;; paint's.
 (define-paint (shader-test-helped x y)
   ()
   (if (fl> (mixed 0.0 (clamp01 4.0) (fl/ (fixnum->flonum x) 10.0)) 0.45)
@@ -977,8 +983,8 @@
               (= (pixel-at img 8 8) #xff102030))))
 
 ;; A compute run asked for soon goes with the frame its turn makes, or, with
-;; none, on its own at the turn's end: one stepped on a timer, its window
-;; unseen, isn't kept waiting for a frame.
+;; no frame, on its own at the turn's end, so one stepped on a timer while
+;; its window is unseen isn't kept waiting for a frame.
 (define-compute-shader (shader-test-mark x y)
   ([out fx-buffer write] [k fixnum])
   (fx-set! out x k))
@@ -997,10 +1003,11 @@
              ok))))
 
 ;; Every shader the world and these checks made, written as SPIR-V on any
-;; platform, to SPIR-V's own checker (spirv-tools): what the suites can't
-;; see, a module lavapipe takes and another driver may do anything with. A
-;; Mac writes it too, so a change made there is checked for Vulkan; where
-;; shaders are SPIR-V, what's checked is the code that runs.
+;; platform and given to SPIR-V's own checker (spirv-tools). It catches
+;; what the suites can't see: a module that lavapipe takes but another
+;; driver may do anything with. A Mac writes the SPIR-V too, so a change
+;; made there is checked for Vulkan; where shaders are SPIR-V, what is
+;; checked is the code that runs.
 (check "every shader, written as SPIR-V on any platform, is a valid module \
         for Vulkan 1.0, and where shaders are SPIR-V it is the code that runs"
        (let ([shaders

@@ -1,8 +1,9 @@
-;;; (schevana core platform) — what differs by platform, of the core's: which
-;;; platform this is, as predicates and facts (the OS and CPU are
-;;; src/base.ss's, the rest core0's word in *core0-platform*), and what core1
-;;; reads of the system that each system says its own way. Each is #f where the
-;;; system doesn't say. docs/PLATFORMS.md says where each has run.
+;;; (schevana core platform) — the core's part of what differs by platform:
+;;; which platform this is, as predicates and facts (the OS and CPU come from
+;;; (schevana base), the rest from core0's *core0-platform*), and what core1
+;;; reads of the system where each system answers in its own way. Each
+;;; reading is #f where the system doesn't say. docs/PLATFORMS.md says where
+;;; each has run.
 
 (library (schevana core platform)
   (export
@@ -16,13 +17,14 @@
 
   (library-layer core)
 
-  ;; One of core0's facts of the platform ((schevana core0 platform)), or #f:
-  ;; windowing, gpu-api, gpu-device, sdl, system, kernel, desktop, reports.
+  ;; Returns one of core0's facts about the platform ((schevana core0
+  ;; platform)), or #f. The keys are windowing, gpu-api, gpu-device, sdl,
+  ;; system, kernel, desktop and reports.
   (define (platform-fact key)
     (let ([f (assq key *core0-platform*)]) (and f (cdr f))))
 
-  ;; The windowing system: 'wayland, 'x11, 'cocoa, 'win32, 'offscreen, or 'none
-  ;; before SDL's start.
+  ;; The windowing system: 'wayland, 'x11, 'cocoa, 'win32 or 'offscreen, or
+  ;; 'none before SDL starts.
   (define (platform-windowing) (platform-fact 'windowing))
   (define (platform-wayland?) (eq? (platform-windowing) 'wayland))
   (define (platform-x11?) (eq? (platform-windowing) 'x11))
@@ -30,13 +32,14 @@
   (define (platform-win32?) (eq? (platform-windowing) 'win32))
   (define (platform-offscreen?) (eq? (platform-windowing) 'offscreen))
 
-  ;; The GPU's API, as SDL drives it: 'vulkan, 'metal, 'direct3d12.
+  ;; The GPU API that SDL drives: 'vulkan, 'metal or 'direct3d12, or #f with
+  ;; no renderer.
   (define (platform-gpu-api) (platform-fact 'gpu-api))
   (define (platform-vulkan?) (eq? (platform-gpu-api) 'vulkan))
   (define (platform-metal?) (eq? (platform-gpu-api) 'metal))
   (define (platform-direct3d12?) (eq? (platform-gpu-api) 'direct3d12))
 
-  ;; The predicates by name, each with what it says now: for whoever lists
+  ;; Returns each predicate's name with its value now, for whoever lists
   ;; which platform this is.
   (define (platform-predicates)
     `((platform-linux? . ,(platform-linux?))
@@ -56,8 +59,8 @@
   ;;; ------------------------------------------------------------------
   ;;; what core1 reads of the system
 
-  ;; A Mac's: the resident size of a process, from proc_pid_rusage's
-  ;; rusage_info_v0, which holds it after a 16-byte id and six counts.
+  ;; On a Mac, proc_pid_rusage gives the resident size of a process: its
+  ;; rusage_info_v0 holds it after a 16-byte id and six counts.
   (define-made platform-pid-rusage
     (guard (c [#t #f])
       (foreign-procedure "proc_pid_rusage" (int int uptr) int)))
@@ -66,9 +69,9 @@
   (define-made platform-getloadavg
     (guard (c [#t #f]) (foreign-procedure "getloadavg" (uptr int) int)))
 
-  ;; The process's memory in RAM, bytes: the heap, and what SDL and the
-  ;; drivers hold outside it, which neither reports; #f where the system
-  ;; doesn't say.
+  ;; Returns the process's memory in RAM, in bytes: the heap and also what
+  ;; SDL and the drivers hold outside it (neither of them reports it).
+  ;; Returns #f where the system doesn't say.
   (define (platform-process-bytes)
     (cond
       [(file-exists? "/proc/self/status")
@@ -92,8 +95,8 @@
            b))]
       [else #f]))
 
-  ;; The machine's load over the last 1, 5 and 15 minutes, as "0.52 0.48
-  ;; 0.40"; #f where the system doesn't say.
+  ;; Returns the machine's load over the last 1, 5 and 15 minutes as a
+  ;; string like "0.52 0.48 0.40", or #f where the system doesn't say.
   (define (platform-machine-load)
     (and platform-getloadavg
          (let ([p (foreign-alloc 24)])
@@ -106,16 +109,16 @@
                (foreign-free p)
                load)))))
 
-  ;; The monotonic clock in ns, a fixnum: what the profiler times with,
-  ;; read from core0's ((schevana core0 mail)).
+  ;; The monotonic clock in ns, as a fixnum, read from core0's clock
+  ;; ((schevana core0 mail)). The profiler times with it.
   (define (now-ns) (core0-clock-ns))
 
-  ;; The same clock in ms: what apps and timers go by.
+  ;; The same clock in ms, which apps and timers go by.
   (define (now-ms) (quotient (core0-clock-ns) 1000000))
 
-  ;; The CPU time this thread has had, in ns: a number, read into memory
-  ;; kept for it, so that reading it allocates nothing. The clock's number is
-  ;; the system's.
+  ;; The CPU time this thread has used, in ns. The clock is read into memory
+  ;; kept for it, so that a reading allocates nothing. The clock's number
+  ;; (CLOCK_THREAD_CPUTIME_ID) differs by system.
   (define-made thread-cpu-clock
     (if (platform-mac?) 16 3))
   (define-made thread-cpu-time (foreign-alloc 16))   ; a timespec
@@ -125,11 +128,12 @@
        (foreign-ref 'long thread-cpu-time 8)))
 
   ;;; ------------------------------------------------------------------
-  ;;; the pacer here
+  ;;; the pacer on this platform
 
-  ;; How fast the pacer's margin fades, seconds, or 0: never; the default
-  ;; of its pacer-margin-fade setting. A Mac's fades in a minute, as its
-  ;; pacer was measured with (WindowServer). Elsewhere it stays: under Mutter
-  ;; a margin that fades sends a frame late now and then, finding out
-  ;; whether the compositor would take frames later again.
+  ;; How fast the pacer's margin fades, in seconds, or 0 for never: the
+  ;; default of the pacer-margin-fade setting. On a Mac it fades in a
+  ;; minute, as the pacer was measured there (under WindowServer). Elsewhere
+  ;; it stays: under Mutter a fading margin sends a frame late now and then,
+  ;; each time it finds out whether the compositor would take frames later
+  ;; again.
   (define-made platform-pacer-margin-fade (if (platform-mac?) 60 0)))

@@ -1,6 +1,6 @@
-;;; (schevana palettes sunset) — the Sunset palette. Dusk: purple sky over an
-;;; orange horizon, the desktop a sunset from top to bottom, warm ink on the
-;;; night's violet.
+;;; (schevana palettes sunset) — the Sunset palette: dusk, a purple sky over an
+;;; orange horizon. The desktop is a sunset from top to bottom, and the text
+;;; is a warm ink on the violet of the night.
 
 (library (schevana palettes sunset)
   (export)

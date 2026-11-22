@@ -1,17 +1,18 @@
-;;; strip.ss — a library's own forms in their top-level sense, for a
-;;; library's body stripped to the top level: the hacker edition's, every
-;;; library spliced into one environment (src/hacker.ss), and a test's, a
-;;; library stripped into one of its own (test-library, tests/reach.ss).
-;;; Loaded after src/base.ss, whose define-hook and define-state are the
-;;; top level's too.
+;;; strip.ss — a library's own forms, with the meaning they have at the
+;;; top level, for a library's body stripped to the top level. The hacker
+;;; edition uses them when it splices every library into one environment
+;;; (src/hacker.ss), and a test when it strips a library into an
+;;; environment of its own (test-library, tests/reach.ss). This file is
+;;; loaded after src/base.ss: base.ss's define-hook stays, and the
+;;; define-state here replaces base.ss's.
 ;;;
-;;; A state is a variable kept as its file loads again (a defvar), a made
-;;; value and a hook are definitions, a view and a checked setter are
-;;; nothing (the name is already the thing), and a layer's declaration
-;;; checks nothing: what holds a library to its layer is the library
-;;; edition's. Each is a definition where the library has one, so that a
-;;; name a library uses before it defines it is one name at the top level
-;;; too.
+;;; A state is a variable that keeps its value when its file loads again
+;;; (as a defvar does); a made value and a hook are plain definitions; a
+;;; view and a checked setter expand to nothing (the name is already the
+;;; thing); and a layer's declaration checks nothing, since holding a
+;;; library to its layer is the library edition's job. Each form is a
+;;; definition where the library's form is one, so that a name the library
+;;; uses before it defines it is one name at the top level too.
 
 (define-syntax define-state
   (syntax-rules ()

@@ -1,13 +1,14 @@
 ;;; tests/units/ui-scroll.ss — the kit's scroll view and scroll bar
-;;; ((schevana kits ui)), by themselves, and a text area's own scrolling: the
-;;; wheel, the bar pressed and dragged, Page Down, Ctrl+End and Ctrl+Home.
-;;; Which side the bar is on, and when it shows, are behaviors.ss's.
+;;; ((schevana kits ui)), tested by themselves, and a text area's own
+;;; scrolling: the wheel, the bar pressed and dragged, Page Down, Ctrl+End
+;;; and Ctrl+Home. Which side the bar is on, and when it shows, are tested
+;;; in behaviors.ss.
 
 (define ui-scroll-test-text
   (apply string-append (map (lambda (i) (format "line ~a\n" i)) (iota 59))))
 
-;; A view 200 high over 1,000 of content, and a text area of 60 lines, 8
-;; of them high, by the font.
+;; A window with a view 200 high over 1,000 of content, and a text area of
+;; 60 lines that is 8 lines high in the current font.
 (define (ui-scroll-test-window)
   (test-kit-window "Scroll"
     (lambda (ui w h)
@@ -58,12 +59,12 @@
                         [(cx cy cw ch) (content-rect win)])
              (let* ([r (test-region ui '(v bar))]
                     [y1 (- (+ cy (ui-region-y r) (ui-region-h r)) 2)])
-               ;; near its bottom: as far as the view goes
+               ;; a press near the bar's bottom: as far as the view goes
                (inject! `(mouse-move ,x ,y1) `(mouse-down ,x ,y1 left 1)
                         `(mouse-up ,x ,y1 left))
                (steps 2)
                (let ([pressed (ui-scroll-test-off win)])
-                 ;; the thumb, now at the bottom, dragged to the top
+                 ;; drag the thumb, now at the bottom, to the top
                  (inject! `(mouse-down ,x ,y1 left 1)
                           `(mouse-move ,x ,(- y1 400))
                           `(mouse-up ,x ,(- y1 400) left))

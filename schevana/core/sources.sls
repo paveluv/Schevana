@@ -1,8 +1,8 @@
 ;;; (schevana core sources) — the world's files, loaded into "/" at boot
-;;; and at every (reload!), with the user's, and "/" itself: core1's boot
-;;; makes it, importing the core's facade, (schevana core), and loads the
-;;; world into it. The texts of what loaded are kept, for what describes a
-;;; name.
+;;; and at every (reload!), with the user's files, and "/" itself: core1's
+;;; boot makes "/", importing the core's facade, (schevana core), and loads
+;;; the world into it. The texts of what was loaded are kept, for whatever
+;;; describes a name.
 
 (library (schevana core sources)
   (export
@@ -25,22 +25,24 @@
 
   (library-layer core)
 
-  ;; "/", the world's, once core1 has made it. Lookups by name go here, not
-  ;; to (interaction-environment), which a private REPL rebinds.
+  ;; "/", the world's environment, once core1 has made it. Lookups by name
+  ;; go here, not to (interaction-environment), which a private REPL
+  ;; rebinds.
   (define-state *world-env* #f)
 
-  ;; What the command line asked (desktop-options, (schevana desktop
+  ;; What the command line asked for (desktop-options, (schevana desktop
   ;; main)), handed down as core1 boots.
   (define-state *schevana-options* '())
 
-  ;; Whether this is the hacker edition (src/hacker.ss): every library
-  ;; spliced at the top level, "/" itself.
+  ;; Whether this is the hacker edition (src/hacker.ss), where every library
+  ;; is spliced into the top level, which is "/" itself.
   (define (schevana-hacker?)
     (let ([o (assq 'hacker *schevana-options*)]) (and o (cdr o))))
 
-  ;; For a name "/" has as a macro (a view of the core's, a state or a
-  ;; hook), what reads it there: compiled once, kept till the world loads
-  ;; again (load-world!), as a reload may make the core's anew.
+  ;; For a name that "/" has as a macro (a view of the core's, a state or a
+  ;; hook), a procedure that reads it there. Each is compiled once and kept
+  ;; until the world loads again (load-world!), since a reload may make the
+  ;; core's names anew.
   (define-made *world-readers* (make-eq-hashtable))
 
   (define (world-reader name)
@@ -49,9 +51,9 @@
           (hashtable-set! *world-readers* name read)
           read)))
 
-  ;; name's value as the world has it: "/"'s own, or what "/" imports of
-  ;; the core. What calls a procedure by its name, so that a redefinition
-  ;; takes at the next call, looks it up so.
+  ;; Returns name's value as the world has it: "/"'s own, or what "/"
+  ;; imports from the core. Code that calls a procedure by its name, so that
+  ;; a redefinition takes effect at the next call, looks it up this way.
   (set-hook! (world-value name)
     (cond
       [(not *world-env*)
@@ -62,8 +64,8 @@
   ;; The names the core gives the world: its facade's.
   (define (core1-exported) (library-exports '(schevana core)))
 
-  ;; The user's init file, ~/.schevana.ss, loaded into the world after it
-  ;; booted (desktop-start!).
+  ;; The user's init file, ~/.schevana.ss, loaded into the world after the
+  ;; world has booted (desktop-start!).
   (define-made user-init-file
     (format "~a/.schevana.ss" (or (getenv "HOME") ".")))
 
@@ -71,8 +73,8 @@
     (when (file-exists? user-init-file)
       (safely 'init (lambda () (load-file! user-init-file)))))
 
-  ;; The folders after the core, in load order: the layers' (library-layer,
-  ;; (schevana base)), the looks before the desktop.
+  ;; The folders after the core, in load order, which is the layers' order
+  ;; (library-layer, (schevana base)): the looks before the desktop.
   (define source-folders
     '("kits" "services" "styles" "palettes" "wallpapers" "desktop" "apps"))
 
@@ -85,18 +87,18 @@
     (if (path-absolute? f) f (string-append *schevana-root* "/" f)))
 
   ;;; ---- what loads
-  ;;; The world loads folders, at boot and at every (reload!), each read
-  ;;; again each time, recursively, its libraries (.sls) and files (.ss) in
-  ;;; file-name order. Schevana's own come first: the tree's folders in the
-  ;;; layers' order and, once the desktop turns them on, the user's
-  ;;; folders; then the folders of the library search that
+  ;;; The world loads folders at boot and at every (reload!). Each folder is
+  ;;; read again each time, recursively, and its libraries (.sls) and files
+  ;;; (.ss) load in file-name order. Schevana's own come first: the tree's
+  ;;; folders in the layers' order and, once the desktop turns them on, the
+  ;;; user's folders. Then come the folders of the library search that
   ;;; auto-load (auto-load!, the desktop's command line, Settings' Paths),
   ;;; in the order they were turned on.
 
   ;; The library search's folders that auto-load, in full.
   (define-state *auto-loads* '())
 
-  ;; The user's folders, of source-folders' names, in ~/.schevana.d.
+  ;; The user's folders, named as in source-folders, in ~/.schevana.d.
   (define (user-folders)
     (map (lambda (f) (path-full (string-append user-directory "/" f)))
          source-folders))
@@ -111,7 +113,7 @@
 
   ;; folder, in full (path-full), joins the library search if it isn't
   ;; there (add-library-directory!) and auto-loads; with a world, what it
-  ;; holds loads now. => those that auto-load
+  ;; holds loads now. Returns the folders that auto-load.
   (define (auto-load! folder)
     (let ([p (path-full folder)])
       (when (and (file-exists? p) (not (file-directory? p)))
@@ -122,17 +124,18 @@
         (when *world-env* (load-sources! (auto-load-entries p))))
       *auto-loads*))
 
-  ;; folder no longer auto-loads, from the next (reload!) or boot; it
-  ;; stays in the library search, and what it loaded stays. Only one turned
-  ;; on may be turned off. => those that auto-load
+  ;; folder no longer auto-loads, from the next (reload!) or boot on; it
+  ;; stays in the library search, and what it loaded stays. Only a folder
+  ;; turned on by auto-load! can be turned off. Returns the folders that
+  ;; auto-load.
   (define (auto-load-forget! folder)
     (set! *auto-loads* (remove (path-full folder) *auto-loads*))
     *auto-loads*)
 
-  ;; What path holds, in load order: a library by its name, a file by its
-  ;; path (relative to the tree, inside it); a folder's, recursively, in
-  ;; file-name order, names starting with a dot (editors' lock files) left
-  ;; out; nothing for what isn't there.
+  ;; Returns what path holds, in load order: a library by its name, a file
+  ;; by its path (relative to the tree when inside it). A folder's entries
+  ;; come recursively, in file-name order, leaving out names that start with
+  ;; a dot (editors' lock files). A path that isn't there gives nothing.
   (define (auto-load-entries path)
     (cond
       [(file-directory? path)
@@ -147,23 +150,25 @@
        (list (tree-relative path))]
       [else '()]))
 
-  ;; f relative to the tree when inside it, else as it is; f and the tree
-  ;; in full.
+  ;; Returns f relative to the tree when it is inside it, else f as it is;
+  ;; f and the tree are in full.
   (define (tree-relative f)
     (let ([root (string-append (path-full *schevana-root*) "/")])
       (if (string-prefix? root f)
           (substring f (string-length root) (string-length f))
           f)))
 
-  ;; The layer each library auto-loaded declares ((library-layer layer),
-  ;; first in its body), by its name: what tells an app's library, which a
-  ;; desktop loads after the screen shows, from a kit's or a look's.
+  ;; The layer that each auto-loaded library declares ((library-layer
+  ;; layer), first in its body), by the library's name. It tells an app's
+  ;; library, which a desktop loads after the screen shows, from a kit's or
+  ;; a look's.
   (define-made *auto-load-layers* (make-hashtable equal-hash equal?))
   (define (auto-load-layer name) (hashtable-ref *auto-load-layers* name #f))
 
-  ;; The name of the library in file, as its first form says, the folder
-  ;; it is found from by that name added to the library search, and the
-  ;; layer it declares kept (auto-load-layer); #f if it holds none.
+  ;; Returns the name of the library in file, as its first form says, or #f
+  ;; if file holds none. It also adds to the library search the folder from
+  ;; which that name finds the file, and keeps the layer the library
+  ;; declares (auto-load-layer).
   (define (auto-load-library file)
     (let* ([head (library-head-in file)] [name (and head (car head))])
       (when name
@@ -173,9 +178,9 @@
            (if (= n 0) dir (up (path-parent dir) (- n 1))))))
       name))
 
-  ;; The layer the library in file declares, or #f: its library-layer
-  ;; form, first in its body, or later ((schevana base)'s follows what
-  ;; makes the form).
+  ;; Returns the layer that the library in file declares, or #f: its
+  ;; library-layer form, first in its body or later ((schevana base)'s comes
+  ;; after the definitions that make the form).
   (define (library-file-layer file)
     (let ([head (library-head-in file)])
       (and head
@@ -186,11 +191,11 @@
                                 (pair? (cdr form)) (cadr form)))
                          (cddddr (call-with-input-file file read))))))))
 
-  ;; A library's name and the layer it declares, (name . layer), its layer
-  ;; #f where its body begins with none; read no further than that: the
-  ;; comments and #! lines before its first form skipped, then its
-  ;; "(library", its name, its export and import forms and the next. #f
-  ;; for a file that holds no library.
+  ;; Returns a library's name and the layer it declares, (name . layer),
+  ;; with layer #f when its body doesn't begin with one. It reads no further
+  ;; than that: past the comments and #! lines before the first form, then
+  ;; "(library", the name, the export and import forms and the next form.
+  ;; Returns #f for a file that holds no library.
   (define (library-head-in file)
     (guard (c [#t #f])
       (call-with-input-file file
@@ -221,8 +226,8 @@
   ;; The world's files, in load order.
   (define (folder-files) (filter string? (world-entries)))
 
-  ;; The world's own files, in load order: a copy of the basics, then the
-  ;; folders.
+  ;; The world's own files, in load order: a copy of the basics (in the
+  ;; library edition), then the folders' files.
   (define (world-sources)
     (if (schevana-hacker?) (folder-files) (cons "src/base.ss" (folder-files))))
 
@@ -231,10 +236,10 @@
   (define (source-files) (world-sources))
 
   ;; The text of every source as it was loaded (or, from a REPL, evaluated),
-  ;; by its name: a file's path, or what the REPL calls its input. What reads
-  ;; the sources (the REPL's descriptions) reads these, not the files as they
-  ;; are now, so that it tells of the code that runs. (serial . text), the
-  ;; serial counting the texts kept.
+  ;; by its name: a file's path, or what the REPL calls its input. Whatever
+  ;; reads the sources (the REPL's descriptions) reads these, not the files
+  ;; as they are now, so that it describes the code that runs. Each is
+  ;; (serial . text), where the serial counts the texts kept.
   (define-state *source-texts* (make-hashtable string-hash string=?))
   (define-state *source-serial* 0)
 
@@ -249,10 +254,10 @@
     (keep-source-text! path (file-text path))
     (load path))
 
-  ;; A world's source: a file, by its path, or one of the world's
-  ;; libraries, by its name, imported into "/" (once: a reload of a library
-  ;; imports it again there) and run, so that what it registers (an app, a
-  ;; style, a surface) is registered.
+  ;; Loads one of the world's sources: a file, by its path, or one of the
+  ;; world's libraries, by its name, which is imported into "/" (once: a
+  ;; reload of a library imports it again there) and run, so that what it
+  ;; registers (an app, a style, a surface) is registered.
   (define (load-source f)
     (if (pair? f)
         (begin
@@ -262,12 +267,12 @@
           (invoke-library f))
         (load-file! (source-path f))))
 
-  ;; Loads files into the world (from a private REPL too), or into env.
-  ;; Run as a process (the launcher's "Reload
-  ;; sources", (reload!) in a REPL), it names itself and the file in
-  ;; *reloading* until it ends, so the world holds still meanwhile
-  ;; (schevana-step!), yet it is still preempted and Ctrl+C kills it. Not
-  ;; with dynamic-wind: an engine runs its exits at every preemption.
+  ;; Loads files into the world (from a private REPL too), or into env. Run
+  ;; as a process (the launcher's "Reload sources", or (reload!) in a REPL),
+  ;; it names itself and the file in *reloading* until it ends, so that the
+  ;; world holds still meanwhile (schevana-step!); yet it is still
+  ;; preempted, and Ctrl+C kills it. It doesn't use dynamic-wind, because
+  ;; an engine runs its exits at every preemption.
   (define (load-sources! files . env)
     (let* ([p (current-proc)]
            [outer? (and p (not (and *reloading* (eq? (car *reloading*) p))))])
@@ -283,10 +288,10 @@
                     files)
           (when outer? (set! *reloading* #f))))))
 
-  ;; The user's folders, after the built-in ones (desktop-start!, before
-  ;; the saved theme, which may name a user's style or palette). One entry
-  ;; at a time, so that one which raises is named in its toast and the rest
-  ;; still load.
+  ;; Loads the user's folders, after the built-in ones (desktop-start!,
+  ;; before the saved theme, which may name a user's style or palette). It
+  ;; loads one entry at a time, so that one that raises is named in its
+  ;; toast and the rest still load.
   (define (load-user-folders!)
     (set! *user-folders?* #t)
     (add-library-directory! user-library-directory)
@@ -296,14 +301,16 @@
                     (safely f (lambda () (load-sources! (list f))))))
               (apply append (map auto-load-entries (user-folders)))))
 
-  ;;; What of the world loads after the screen shows (core1-boot!'s later?:
-  ;;; the desktop's apps): one entry a quiet step, a step that drew no frame
-  ;;; and wants none, so that the first frame waits for none of them and no
-  ;;; frame for one; while frames flow, one a second anyway. One asked for
-  ;;; before its turn loads at once (world-load-now!).
+  ;;; The parts of the world that load after the screen shows (core1-boot!'s
+  ;;; later?: the desktop's apps) load one entry per quiet step, a step that
+  ;;; drew no frame and wants none, so that the first frame waits for none
+  ;;; of them and no frame waits for one; while frames flow, one loads each
+  ;;; second anyway. An entry asked for before its turn loads at once
+  ;;; (world-load-now!).
 
   ;; The entries waiting, in load order; whether the world was booted with
-  ;; some to wait (the user's apps wait too, then); when one last loaded.
+  ;; some waiting (then the user's apps wait too); and when an entry last
+  ;; loaded.
   (define-state *world-later* '())
   (define-state *world-later?* #f)
   (define-state *world-later-ms* 0)
@@ -314,8 +321,8 @@
     (and (string? f)
          (equal? (path-last (path-parent (source-path f))) "apps")))
 
-  ;; entry (a library's name or a file's path) loaded now if it waits:
-  ;; => whether it did.
+  ;; Loads entry (a library's name or a file's path) now if it waits.
+  ;; Returns whether it did.
   (define (world-load-now! entry)
     (and (member entry *world-later*)
          (begin
@@ -324,11 +331,11 @@
            (safely entry (lambda () (load-sources! (list entry))))
            #t)))
 
-  ;; What runs once all of the world has loaded, the entries that waited
-  ;; too, in order: at once if none waits. Code that names what a waiting
-  ;; library gives (the user's init file, a command line's expressions)
-  ;; runs here: a name evaluated at "/" before a library is imported there
-  ;; stays a name of "/"'s own.
+  ;; Thunks to run, in order, once all of the world has loaded, the entries
+  ;; that waited too; a thunk runs at once if none waits. Code that names
+  ;; what a waiting library gives (the user's init file, a command line's
+  ;; expressions) runs here, because a name evaluated at "/" before a
+  ;; library is imported there stays a name of "/"'s own.
   (define-state *world-loaded-thunks* '())
 
   (define (world-after-load! thunk)
@@ -357,11 +364,11 @@
                    (eq? (cadr name) 'core0)))
             (library-list)))
 
-  ;; Re-read every source file: the libraries whose files changed, and those
-  ;; that import them (reload-libraries!), which imports them again where
-  ;; they were imported ("/" the core's facade); then the world's files into
-  ;; "/". Code changes take effect; state declared with defvar or
-  ;; define-state (windows, theme, processes...) survives.
+  ;; Re-reads every source file: the libraries whose files changed and
+  ;; those that import them (reload-libraries!), which imports them again
+  ;; where they were imported ("/" imports the core's facade); then the
+  ;; world's files into "/". Code changes take effect; state declared with
+  ;; defvar or define-state (windows, theme, processes...) survives.
   (define (reload!)
     (source-libraries-keep!
      (if (schevana-hacker?)
@@ -380,16 +387,17 @@
   ;; (auto-loads): a library by its name, a file by its path.
   (define (world-entries) (apply append (map auto-load-entries (auto-loads))))
 
-  ;; The world's libraries "/" imports (as a reload imports them again), so
-  ;; that one new since is imported at the next.
+  ;; The world's libraries that "/" imports (a reload imports them again),
+  ;; so that a library new since the last load is imported at the next one.
   (define-state *world-imported* '())
 
-  ;; The world's sources into "/" (core1-boot!, reload!): in the library
-  ;; edition the basics first, a copy of "/"'s own. The folders may import
-  ;; the libraries shipped in the tree; each loaded by then is seen as it
-  ;; reads, for the next reload to tell a change (reload-mark!), and its
-  ;; text kept, as a file's is, for what describes a name. The entries
-  ;; later? holds wait (*world-later*); none do at a reload.
+  ;; Loads the world's sources into "/" (core1-boot!, reload!): in the
+  ;; library edition, the basics first, a copy of "/"'s own. The folders may
+  ;; import the libraries shipped in the tree; each one loaded by then is
+  ;; marked as it reads now, so that the next reload can tell a change
+  ;; (reload-mark!), and its text is kept, as a file's is, for whatever
+  ;; describes a name. The entries that later? picks wait (*world-later*);
+  ;; none wait at a reload.
   (define (load-world! . later?)
     (hashtable-clear! *world-readers*)
     (add-library-directory! *schevana-root*)
@@ -404,8 +412,9 @@
     (reload-mark!)
     (source-libraries-keep! (library-list)))
 
-  ;; The texts of the libraries named that are read from a file, those
-  ;; that changed: a text kept again is read again by what describes names.
+  ;; Keeps the texts of the named libraries that are read from a file, for
+  ;; those that changed: a text kept again is read again by whatever
+  ;; describes names.
   (define (source-libraries-keep! names)
     (for-each (lambda (name)
                 (let ([file (reload-source name)])
@@ -416,14 +425,14 @@
                         (keep-source-text! file text))))))
               names))
 
-  ;; A program's "/", where what calls by name finds it (a part's built-in,
-  ;; the procedures a style names, world-value): Chez's names, the core's
-  ;; facade and the world's libraries the program has loaded, a kit, a
-  ;; look, a demo, a game, as "/" has them on the desktop; and each of
-  ;; those run, as the desktop runs them, so that what it registers (a
-  ;; style, a palette) is registered though the program named none of it.
-  ;; Made once, as the program runs (schevana-main); a world booted
-  ;; (core1-boot!) is its own.
+  ;; Makes a program's "/", where code that calls by name finds what it
+  ;; calls (a part's built-in, the procedures a style names, world-value).
+  ;; It holds Chez's names, the core's facade and the world's libraries that
+  ;; the program has loaded (a kit, a look, a demo, a game), as "/" has them
+  ;; on the desktop. The looks among them are run, as the desktop runs
+  ;; them, so that what they register (a style, a palette) is registered
+  ;; though the program named none of it. It is made once, as the program
+  ;; runs (schevana-main); a world booted by core1-boot! has its own.
   (define (program-world!)
     (unless *world-env*
       (let ([world (copy-environment (scheme-environment) #t)]
@@ -441,12 +450,12 @@
                             (memq (cadr name) '(styles palettes wallpapers)))
                           names)))))
 
-  ;; A look of the tree's by its name, as a program asks for one (a host
-  ;; app): the style's library loaded and run, then the palettes it names
-  ;; (its palette, its dark one, or the default), and nothing else of the
-  ;; looks. Into "/" when there is one, as the world's libraries go; before,
-  ;; the program's "/" takes them as it is made (program-world!). => name,
-  ;; or #f when the tree has no such style.
+  ;; Loads a look of the tree's by its name, as a program asks for one (a
+  ;; host app): the style's library is loaded and run, then the palettes it
+  ;; names (its palette, its dark one, or the default), and nothing else of
+  ;; the looks. They go into "/" when there is one, as the world's libraries
+  ;; do; before that, the program's "/" takes them as it is made
+  ;; (program-world!). Returns name, or #f when the tree has no such style.
   (define (look-load! name)
     (and (look-file? "styles" name)
          (begin
@@ -470,12 +479,13 @@
         (begin (environment name) (invoke-library name))))
 
   ;; Makes "/", which imports what the core gives the world (its facade,
-  ;; again at each reload of a library it stands on), and loads the
-  ;; world's files into it (load-world!); in the hacker edition, "/" is
-  ;; where every library was spliced, this thread's environment. "/" is
-  ;; then this thread's, where what evaluates by name, a load among it,
-  ;; evaluates. On core1's thread, which it says is core1's. The entries
-  ;; later? holds, if given, load after the screen shows. => "/".
+  ;; imported again at each reload of a library it stands on), and loads the
+  ;; world's files into it (load-world!). In the hacker edition, "/" is the
+  ;; environment where every library was spliced, this thread's. "/" then
+  ;; becomes this thread's interaction environment, where whatever
+  ;; evaluates by name (a load, say) evaluates. It runs on core1's thread
+  ;; and marks that thread as core1's. The entries that later? picks, if
+  ;; given, load after the screen shows. Returns "/".
   (define (core1-boot! options . later?)
     (core1-thread!)
     (set! *schevana-options* options)

@@ -1,14 +1,14 @@
-;;; (schevana apps debug-repl) — what talks to the world from outside, in plain
-;;; sight.
+;;; (schevana apps debug-repl) — a way to talk to the world from outside, in
+;;; plain sight.
 ;;;
 ;;; While its window is open, a local socket takes Scheme to evaluate in the
 ;;; world, from a debugger or an agent, and the window shows every request and
-;;; every answer as they come. Nobody types here: it's for watching, and it
-;;; must be open for the socket to exist at all. Closing it closes the socket,
-;;; and stops whatever was running.
+;;; every answer as they come. Nobody types here: the window is for watching,
+;;; and it must be open for the socket to exist at all. Closing it closes the
+;;; socket and stops whatever was running.
 ;;;
-;;; One connection, one request: send the forms as text and stop writing; the
-;;; answer comes back as one datum, and the connection closes:
+;;; Each connection carries one request: send the forms as text and stop
+;;; writing; the answer comes back as one datum, and the connection closes:
 ;;;
 ;;;   (ok "what it printed" ("a value, as text" ...) ms)
 ;;;   (error "what went wrong" "what it printed" ms)
@@ -17,10 +17,10 @@
 ;;;   printf '(+ 1 2)' | nc -UN $XDG_RUNTIME_DIR/schevana-debug.sock
 ;;;
 ;;; A request runs as a process, so a long one, or one that never ends, doesn't
-;;; hold the world up. It runs in the world, with all the power that gives:
-;;; only the user who owns the socket can reach it. main.ss sets where it
-;;; listens (debug-repl-path!); with no path there's no socket until one
-;;; is set.
+;;; hold up the world. It runs in the world, with all the power that gives, so
+;;; only the user who owns the socket can reach it. The desktop's start sets
+;;; where it listens (debug-repl-path!); with no path, there is no socket
+;;; until one is set.
 
 (library (schevana apps debug-repl)
   (export
@@ -58,21 +58,22 @@
 
   (library-layer apps)
 
-  ;; Its record's name is its own: debug-repl is the app's.
+  ;; The record has a name of its own, since debug-repl is the app's name.
   (define-record-type (debug-repl-record make-debug-repl debug-repl?)
     (nongenerative schevana-debug-repl)
     (fields
      (immutable transcript debug-repl-transcript)
-     ;; its socket, or #f
+     ;; the socket it listens on, or #f
      (mutable listening debug-repl-listening debug-repl-listening-set!)
-     ;; where that is
+     ;; that socket's path
      (mutable path debug-repl-path debug-repl-path-set!)
      ;; the connections being served, oldest first
      (mutable clients debug-repl-clients debug-repl-clients-set!)))
 
-  ;; A connection: its socket, the request so far (a bytevector port and how to
-  ;; get what it holds, how much), when it came, its process while that runs,
-  ;; and its answer as bytes and how much of that has gone.
+  ;; A connection: its socket; the request so far (a bytevector port, the
+  ;; procedure that gets what it holds, and how many bytes it holds); when it
+  ;; came; its process while that runs; and its answer as bytes, with how
+  ;; many of them have been sent.
   (define-record-type debug-repl-client
     (nongenerative schevana-debug-repl-client)
     (fields fd port get
@@ -85,28 +86,31 @@
   (define-state *debug-repl-path* #f)
   (define (debug-repl-path! path) (set! *debug-repl-path* path))
 
-  ;; Where a session listens: a folder only this user can read, if there is one.
+  ;; Returns where a session listens: in a folder only this user can read
+  ;; ($XDG_RUNTIME_DIR), if there is one.
   (define (debug-repl-default-path)
     (format "~a/schevana-debug.sock"
             (or (getenv "XDG_RUNTIME_DIR") (getenv "TMPDIR") (getenv "HOME")
                 ".")))
 
-  ;; A desktop session listens where the user's runtime folder has it; a
-  ;; world whose desktop never starts, nowhere.
+  ;; A desktop session listens at the default path; a world whose desktop
+  ;; never starts listens nowhere.
   (at-load
    (desktop-at-start! (lambda () (debug-repl-path! (debug-repl-default-path)))))
 
-  (define-state debug-repl-limit-ms 10000)   ; a request's time, running
-  (define debug-repl-read-ms 5000)     ; a request's time, arriving
-  (define debug-repl-most-bytes 1048576)   ; a request's size, and a text's
-  (define debug-repl-most-lines 200)   ; of a text, in the window
+  (define-state debug-repl-limit-ms 10000)   ; how long a request may run
+  (define debug-repl-read-ms 5000)     ; how long a request may take to arrive
+  (define debug-repl-most-bytes 1048576)   ; most bytes of a request or a text
+  (define debug-repl-most-lines 200)   ; the most lines of a text shown
   (define debug-repl-most-clients 8)
-  ;; How often it looks for requests and answers them, ms: about a refresh.
+  ;; How often, in ms, it looks for requests and answers them: about once a
+  ;; refresh.
   (define debug-repl-serve-ms 16)
   (define debug-repl-buffer-bytes 4096)
   (define-state *debug-repl-buffer* (make-bytevector debug-repl-buffer-bytes))
 
-  ;; text into the transcript, its long tail left out: the answer has it all.
+  ;; Adds text to the transcript, leaving out a long tail: the answer has all
+  ;; of it.
   (define (debug-repl-show! d style text)
     (let* ([lines (string-split text #\newline)] [n (length lines)]
            [t (debug-repl-transcript d)])
@@ -120,7 +124,7 @@
                                              (- n debug-repl-most-lines))))
           (transcript-add! t style text))))
 
-  ;; The request's forms as the transcript shows them, each line after its
+  ;; Shows the request's forms in the transcript, each line after its
   ;; prompt.
   (define (debug-repl-show-request! d text)
     (let ([lines (string-split text #\newline)])
@@ -136,13 +140,14 @@
         (string-append (substring text 0 debug-repl-most-bytes) "...")
         text))
 
-  ;; The client's answer: what it says, shown and on its way.
+  ;; Sets the client's answer, datum written as bytes, ready to be sent; the
+  ;; client no longer has a process.
   (define (debug-repl-answer! d c datum)
     (debug-repl-client-answer-set!
      c (string->utf8 (with-output-to-string (lambda () (write datum)))))
     (debug-repl-client-proc-set! c #f))
 
-  ;; The request has all come: it runs.
+  ;; Runs the request, once all of it has arrived.
   (define (debug-repl-start! d c)
     (let* ([text (utf8->string ((debug-repl-client-get c)))]
            [out (open-output-string)] [started (now-ms)] [vals '()])
@@ -190,7 +195,8 @@
                      (debug-repl-answer! d c
                                          (list 'ok printed results ms))])))))))
 
-  ;; A step of a connection's: reading, running or answering. => is it still on?
+  ;; Takes one step of a connection: reading, running or answering. Returns
+  ;; whether the connection stays open.
   (define (debug-repl-serve-client! d c)
     (let ([fd (debug-repl-client-fd c)])
       (cond
@@ -228,7 +234,6 @@
               (debug-repl-client-size-set! c (+ n (debug-repl-client-size c)))
               #t]))])))
 
-  ;; A tick's work: a new client, and a step of each.
   ;; Serves again after debug-repl-serve-ms, while it listens.
   (define (debug-repl-serve-soon! d win)
     (after debug-repl-serve-ms
@@ -237,6 +242,8 @@
                (debug-repl-serve! d win)
                (debug-repl-serve-soon! d win)))))
 
+  ;; One round of work: a new client, if one is waiting, and a step of each
+  ;; client.
   (define (debug-repl-serve! d win)
     (let ([fd (debug-repl-listening d)])
       (when fd
@@ -258,7 +265,7 @@
           (unless (= count (transcript-count (debug-repl-transcript d)))
             (invalidate! win))))))
 
-  ;; It listens at the path set, and says so.
+  ;; Listens at the path that is set, and says so in the transcript.
   (define (debug-repl-listen! d)
     (let ([t (debug-repl-transcript d)] [path *debug-repl-path*])
       (transcript-add! t 'banner "Debug REPL: what talks to the world from \
@@ -271,7 +278,8 @@
           (transcript-add! t 'info "; no socket: no path is set \
                                     (debug-repl-path!)"))))
 
-  ;; Everything stops with the window.
+  ;; Everything stops with the window: the requests that run, the
+  ;; connections and the socket.
   (define (debug-repl-close! d)
     (for-each (lambda (c)
                 (when (debug-repl-client-proc c)
@@ -300,7 +308,7 @@
                    (transcript-scroll-set!
                     t (max 0 (+ (transcript-scroll t) (* 3 dy)))))
                  (invalidate! win))
-        ;; served seen or not, every few ms, until it's closed
+        ;; served every few ms, seen or not, until the window closes
         'open (lambda (win) (debug-repl-serve-soon! d win))
         'close (lambda (win) (debug-repl-close! d))
         'state d)))

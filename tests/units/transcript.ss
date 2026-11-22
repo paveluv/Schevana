@@ -1,4 +1,5 @@
-;;; tests/units/transcript.ss — lines that only grow, as a REPL shows them.
+;;; tests/units/transcript.ss — a transcript: lines that are only ever added
+;;; to, as a REPL shows them.
 
 (test-focus (schevana kits transcript))
 

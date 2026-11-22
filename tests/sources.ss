@@ -1,23 +1,27 @@
-;;; tests/sources.ss — guards against the one global world's collisions.
+;;; tests/sources.ss — checks of the sources themselves, which guard the
+;;; world's one shared namespace against collisions and the layers against
+;;; crossings.
 ;;;
 ;;;   scheme --script tests/sources.ss
 ;;;
 ;;; Every line of every source file fits in 80 columns; no top-level name
-;;; is defined in two files; src/ stays within its size budget; outside
-;;; src/ nothing calls C; only a world namespace shares the whole world
+;;; is defined in two files; the core stays within its budget of tokens;
+;;; outside src/ and the core nothing calls C; each layer names only what
+;;; the layer below gives it; only a world namespace shares the whole world
 ;;; with an environment; every file in a folder registers what it defines
-;;; (a kit's names keep its prefix; desktop/, like src/, defines plain
-;;; names); a style sets only settings that exist (built in, its options'
-;;; or its own); in the kits, the desktop layer, Tasks, Settings and
-;;; Environments only the drawing procedures draw or name a color, and the
-;;; edit kit never does; and only styles call a part's built-in body.
-;;; Fast: it loads the world but does not boot it.
+;;; (a kit's or a service's names start with its prefix; desktop/ defines
+;;; plain names); a style sets only settings that exist (built in, its
+;;; options' or its own); in the kits, the services, the desktop layer,
+;;; Tasks, Settings, Environments and the Pipeline only the drawing
+;;; procedures draw or name a color, and the edit kit never does; and only
+;;; styles call a part's built-in body. The suite is fast: it loads the
+;;; world but does not boot it.
 
 (define *schevana-root*
   (let ([dir (path-parent (path-parent (car (command-line))))])
     (if (string=? dir "") "." dir)))
 
-;; A run of Chez through /bin/sh (test-chez), for this file run again.
+;; Runs of Chez through /bin/sh (test-chez), for running this file again.
 (load (string-append *schevana-root* "/tests/chez.ss"))
 (load (string-append *schevana-root* "/tests/lib.ss"))
 
@@ -26,15 +30,15 @@
   (for-each (lambda (p) (printf "  ~a\n" p)) problems)
   (null? problems))
 
-;; Its lines, as wc -l counts them.
+;; A file's lines, as wc -l counts them.
 (define (file-lines f)
   (let ([ls (reverse
              (string-split (call-with-input-file (source-path f) get-string-all)
                            #\newline))])
     (reverse (if (and (pair? ls) (string=? (car ls) "")) (cdr ls) ls))))
 
-;; A file's forms; a library's file's, those of its body: what it exports
-;; and imports declares.
+;; Returns a file's forms; for a library's file, the forms of its body,
+;; since its exports and imports only declare.
 (define (file-forms f)
   (let ([forms (call-with-input-file (source-path f)
                  (lambda (p)
@@ -48,26 +52,26 @@
         (cddddr (car forms))
         forms)))
 
-;; "(schevana styles mac)" -> "styles", "mac"
+;; "schevana/styles/mac.sls" -> "schevana" (the first folder), "mac"
 (define (file-folder f) (path-first f))
 (define (file-stem f) (path-root (path-last f)))
 
 ;;; ------------------------------------------------------------------
 ;;; 80 columns
 
-;; The sources directly in folder.
+;; The .ss files directly in folder.
 (define (test-files folder)
   (map (lambda (f) (string-append folder "/" f))
        (filter (lambda (f) (string=? (path-extension f) "ss"))
                (sort string<? (directory-list (source-path folder))))))
 
-;; The libraries below the world (schevana/): core0's, the recorder's and
-;; the core's code is all in them, sealed. The world's files are
-;; (source-files).
+;; The libraries below the world (under schevana/): all of core0's, the
+;; recorder's and the core's code is in them, sealed. The world's own
+;; files are (source-files).
 (define library-files test-core-libraries)
 
 ;; Every library in the tree: under schevana/, the core's and those above
-;; it, the demos', under demo/, and the games', under games/.
+;; it; under demo/, the demos'; and under games/, the games'.
 (define all-library-files
   (apply append
          (map (lambda (top)
@@ -84,9 +88,9 @@
                                     (directory-list (source-path dir)))))))
               '("schevana" "demo" "games"))))
 
-;; Each of Schevana's, under schevana/, declares its layer first
-;; (library-layer, (schevana base)), which holds its imports to the
-;; layers' order as it compiles; a demo or a game, as any library from
+;; Each of Schevana's libraries, under schevana/, declares its layer first
+;; (library-layer, from (schevana base)), which holds its imports to the
+;; layers' order as it compiles; a demo or a game, like any library from
 ;; outside, needs none.
 (check "every library of Schevana's declares its layer first"
        (none? (filter-map
@@ -99,8 +103,8 @@
                (filter (lambda (f) (string-prefix? "schevana/" f))
                        all-library-files))))
 
-;; Those of a layer's own, sealed: its folder of schevana/, and its
-;; facade beside it.
+;; A sealed layer's own libraries: its folder under schevana/, and its
+;; facade beside the folder.
 (define (layer-libraries folder)
   (filter (lambda (f)
             (or (string-prefix? (string-append "schevana/" folder "/") f)
@@ -134,9 +138,9 @@
 ;;; ------------------------------------------------------------------
 ;;; one name, one file
 
-;; What a top-level form defines: ((kind . name) ...). Plain definitions
-;; are of kind name; each definer's registry is a kind of its own, so a
-;; style and a theme may share a name (Genera's do).
+;; Returns what a top-level form defines: ((kind . name) ...). Plain
+;; definitions are of kind name; each definer's registry is a kind of its
+;; own, so a style and a palette may share a name (Genera's do).
 (define (defined form)
   (define (record-names spec fields)
     (let* ([type (if (pair? spec) (car spec) spec)]
@@ -218,19 +222,20 @@
 
 ;;; ------------------------------------------------------------------
 ;;; the core's size
-;;; In tokens: the atoms the reader sees (symbols, numbers, strings,
-;;; characters, booleans). Comments, whitespace, line breaks, parentheses
-;;; and the length of a name are free, so the count moves only with the
-;;; code itself: less of it, or some of it moved to a later layer.
+;;; Counted in tokens: the atoms the reader sees (symbols, numbers,
+;;; strings, characters, booleans). Comments, whitespace, line breaks,
+;;; parentheses and the length of a name are free, so the count moves only
+;;; with the code itself: less of it, or some of it moved to a later layer.
 
-;; Raise it deliberately: the core is what the desktop needs to boot and
-;; run; everything else belongs in a folder. The core is the libraries
-;; below the world (schevana/). What declares is left out, sized by
-;; what's given, each a reviewed change: a library's exports and imports
-;; (file-forms).
+;; Raise it only on purpose: the core is what the desktop needs to boot
+;; and run, and everything else belongs in a later layer. The core is the
+;; libraries below the world (under schevana/). What only declares is
+;; left out: a library's exports and imports (file-forms), whose size
+;; follows from what the library gives, and a change to either is
+;; reviewed anyway.
 (define src-budget 39763)
 
-;; The tokens of a datum as read; a list's end is none.
+;; The number of tokens in a datum as read; a list's end counts as none.
 (define (tokens x)
   (cond [(pair? x) (+ (tokens (car x))
                       (if (null? (cdr x)) 0 (tokens (cdr x))))]
@@ -259,10 +264,10 @@
 ;;; one owner
 ;;; Outside the core, only the file that defines a global sets it; the
 ;;; others call its procedures. The core's hooks are the exception: they
-;;; are there for a later layer to set. fluid-let (a view for a while) is
+;;; are there for a later layer to set. A fluid-let (a temporary view) is
 ;;; not a set.
 
-;; What the core's facade gives settable (define-settable).
+;; The hooks that the core's facade gives settable (define-settable).
 (define core-hooks
   (filter-map (lambda (x)
                 (and (pair? x) (eq? (car x) 'define-settable) (cadr x)))
@@ -278,7 +283,7 @@
                              [else #f]))))
               (file-forms f)))
 
-;; What x sets with set!, its data left out.
+;; The names that x sets with set!, leaving out its quoted data.
 (define (set-targets x)
   (cond [(not (pair? x)) '()]
         [(eq? (car x) 'quote) '()]
@@ -312,10 +317,12 @@
 ;;; ------------------------------------------------------------------
 ;;; only the core calls C
 ;;; One of the core's roles is to keep C away from the rest: outside src/
-;;; and the core's libraries no file names a binding of (schevana ffi)'s,
-;;; (schevana sdl)'s three, (schevana freetype)'s or (schevana fontconfig)'s, a
-;;; foreign-… procedure, an ftype form or load-shared-object. The tests
-;;; may: they inspect what is drawn and stand in for SDL.
+;;; and the core's libraries, no file names a binding from (schevana ffi),
+;;; from the three SDL libraries ((schevana sdl system), (schevana sdl
+;;; window), (schevana sdl gpu)), from (schevana freetype) or from
+;;; (schevana fontconfig), nor a foreign-… procedure, an ftype form or
+;;; load-shared-object. The tests may: they inspect what is drawn and stand
+;;; in for SDL.
 
 (define ffi-names
   (map cdr (append (definitions "schevana/ffi.sls")
@@ -346,11 +353,11 @@
   (remp (lambda (f) (member (file-folder f) '("src" "schevana")))
         world-files))
 
-;; The GPU layer speaks the world's terms: above it, in the core too, nothing
-;; names SDL's windowless half, Vulkan, SPIR-V, Metal or MSL, so that another
-;; back end, or raw Vulkan, is the GPU layer's business alone. Core0 keeps
-;; SDL, the clock and the CPU count among it. Which platform this is, its
-;; GPU's API among it, is named only where it's said,
+;; The GPU layer speaks the world's terms: above it, in the core too,
+;; nothing names SDL, Vulkan, SPIR-V, Metal or MSL, so that another back
+;; end, or raw Vulkan, is the GPU layer's business alone. Core0 keeps SDL,
+;; along with the clock and the CPU count. Which platform this is,
+;; including its GPU's API, is named only where it is decided, in
 ;; (schevana core platform).
 (define above-gpu-files
   (remp (lambda (f)
@@ -399,13 +406,14 @@
 
 ;;; ------------------------------------------------------------------
 ;;; which platform this is, said in one place
-;;; Which OS, windowing system or desktop this is, and where the system
-;;; keeps what it says of itself, are read only in the platform files
-;;; (AGENTS.md); the rest asks their predicates and facts. Monitor's
-;;; Platform tab shows Chez's machine type as it is.
+;;; Which OS, windowing system or desktop this is, and the places where
+;;; the system keeps what it says about itself, are read only in the
+;;; platform files (AGENTS.md); the rest of the code asks their predicates
+;;; and facts. Monitor's Platform tab shows Chez's machine type as it is,
+;;; so the inspect kit is among the files.
 
-;; and (schevana sdl window), which binds SDL's video driver for core0's to
-;; read
+;; (schevana sdl window) is among them too: it binds SDL's call for the
+;; video driver, for core0's platform file to read
 (define platform-files
   '("schevana/base.sls" "schevana/core/platform.sls"
     "schevana/sdl/window.sls"
@@ -439,13 +447,15 @@
 
 ;;; ------------------------------------------------------------------
 ;;; the chain: core0, the recorder, core1, the world
-;;; Each layer is given what the one below gives it (its facade), and
-;;; names nothing else of that one's, nor of those it gave again; core0
-;;; names nothing of the core above it, which it boots by name. A library
-;;; can't reach past a facade anyway, held to its layer as it compiles;
-;;; these say where, before a boot finds it.
+;;; Each layer is given what the layer below gives it (its facade), and
+;;; names nothing else of that layer's, nor of the layers under it whose
+;;; names the facade gives again; core0 names nothing of the core above
+;;; it, which a launcher boots. A library can't reach past a facade
+;;; anyway, since it is held to its layer as it compiles; these checks say
+;;; where it tries, before a boot finds out.
 
-;; The names each layer defines; base.ss's are every environment's own.
+;; The names that a layer's files define; src/base.ss's are left out,
+;; being every environment's own.
 (define (layer-names files)
   (map cdr (apply append (map definitions (remove "src/base.ss" files)))))
 
@@ -457,9 +467,10 @@
 (define core0-names (layer-names core0-chain-files))
 (define recorder-names (layer-names recorder-chain-files))
 
-;; Core1's: what its libraries define, and what they export, their
-;; macros' too (a layout's fields); not Chez's, nor base.ss's, nor the
-;; libraries' below the layers, which any layer may import.
+;; Core1's names: what its libraries define and what they export,
+;; including the names their macros make (a layout's fields); not Chez's,
+;; nor src/base.ss's, nor those of the libraries below the layers, which
+;; any layer may import.
 (define core1-names
   (let* ([chez (scheme-environment)]
          [sealed (append core0-chain-files recorder-chain-files
@@ -481,8 +492,8 @@
                                          read))))
                               core1-chain-files))))))
 
-;; The world's own files: the basics, the folders, and the libraries above
-;; the core (the desktop's start).
+;; The world's own files: the basics, the folders' files, and every
+;; library above the core (the desktop's start among them).
 (define world-own-files
   (append (source-files)
           (remp (lambda (f) (member f library-files)) all-library-files)))
@@ -507,8 +518,8 @@
           [else acc]))
   (code x '()))
 
-;; What files name as code of names, but given and their own: "f names s"
-;; each.
+;; Returns what files name as code out of names, except what is given and
+;; what they define themselves, each as "f names s".
 (define (names-beyond files names given)
   (let ([own (apply append (map (lambda (f) (map cdr (definitions f)))
                                 files))])
@@ -526,8 +537,8 @@
                                        (file-forms f)))))))
                 files))))
 
-;; What core0 names of the core above it: nothing, as a launcher boots both
-;; (src/launch.ss).
+;; What core0 names of the core above it: nothing, since a launcher boots
+;; both (src/launch.ss).
 (define core0-reaches-up '())
 
 (check "core0 names nothing of the recorder's or core1's"
@@ -553,9 +564,10 @@
                             (library-exports '(schevana core)))))
 
 ;; In a library, a hook made as it loads (define-hook, set-hook!) names
-;; nothing the library defines after it: Chez would check each such
-;; reference at every call, and the check's flag goes into closures made
-;; as the world runs, which then allocate (tests/units/allocation.ss).
+;; nothing that the library defines after it: Chez would check each such
+;; reference at every call, and the check's flag would go into closures
+;; made as the world runs, which would then allocate
+;; (tests/units/allocation.ss).
 (define (hook-faults f)
   (let loop ([forms (file-forms f)] [acc '()])
     (if (null? forms)
@@ -580,7 +592,8 @@
 (check "in a library, no hook names what the library defines after it"
        (none? (apply append (map hook-faults all-library-files))))
 
-;; The docs name what's given for a person at a REPL, which no file may.
+;; The docs name what the core gives for a person to use at a REPL, which
+;; no file of the world's may name.
 (define doc-texts
   (map (lambda (f) (call-with-input-file (source-path f) get-string-all))
        (cons "README.md"
@@ -604,8 +617,9 @@
                                          doc-texts)))
                            (library-exports '(schevana core)))))))
 
-;; base.ss is every environment's, a copy each: so it keeps no state, and
-;; calls no C. Nor does the library the basics are.
+;; src/base.ss belongs to every environment, a copy each, so it keeps no
+;; state and calls no C. Neither does (schevana base), the basics'
+;; library.
 (check "src/base.ss and (schevana base) are pure: no defvar, no set! of \
         their own names, no C"
        (let ([forms (append (file-forms "src/base.ss")
@@ -623,14 +637,15 @@
                  (map (lambda (s) (format "names ~a" s))
                       (filter reaches-c? (reverse (symbols-in forms))))))))
 
-;; The SDL the core above core0 still calls: none since the window went down
-;; to core0; kept for what a later change may have to list.
+;; The SDL calls that the core above core0 still makes: none. The list
+;; stays for what a later change may have to list.
 (define core-sdl-left '())
 
-;; SDL's calls that may block: the screen's hold, the event poll (SDL's
-;; handlers inside it took 65 ms over a window's change), waits for the
-;; GPU. Each is collect-safe, so that a core0 held in one stalls no
-;; collection another thread needs (.work/gpu-design.md 9.6).
+;; SDL's calls that may block: getting and handing back the screen's
+;; image, the event poll (SDL's handlers inside it took 65 ms over a
+;; window's change), and the waits for the GPU. Each is collect-safe, so
+;; that a core0 held in one stalls no collection that another thread needs
+;; (.work/gpu-design.md 9.6).
 (define sdl-blocking
   '("SDL_AcquireGPUSwapchainTexture"
     "SDL_SubmitGPUCommandBuffer"
@@ -674,10 +689,11 @@
 
 ;;; ------------------------------------------------------------------
 ;;; sharing the whole world
-;;; Code shares a list of names with an environment it makes; every name
-;;; of the world's, followed, is a world namespace's, which a person asks
-;;; for on purpose (a REPL's, the Environments app's fork). So only the
-;;; kind does ((schevana services env)).
+;;; Code that makes an environment shares a list of names with it. Every
+;;; name of the world's, kept in step with the world, is a world
+;;; namespace's alone, which a person asks for on purpose (a REPL's, or a
+;;; fork in the Environments app). So only that kind shares the whole
+;;; world ((schevana services env)).
 
 (check "only a world namespace shares the whole world with an environment"
        (none? (filter-map
@@ -689,14 +705,15 @@
 
 ;;; ------------------------------------------------------------------
 ;;; memory order between threads
-;;; box-cas! orders no memory (Chez's guide), and ARM keeps no order of its
-;;; own: another thread may see what was written before a box-cas! only
-;;; after it. So a procedure that hands data to another thread fences with
-;;; a release before its box-cas!, and the one that takes the data with an
-;;; acquire after; a flag, or a count that hands nothing over, needs
-;;; neither. Every procedure that calls box-cas! or fences is listed with
-;;; its fences, so a new one is a reviewed change; and as box-cas! may fail
-;;; on ARM with nothing in its way, each tries again until it lands.
+;;; box-cas! orders no memory (Chez's guide), and ARM keeps no order of
+;;; its own: another thread may see the writes made before a box-cas! only
+;;; after it sees the box-cas! itself. So a procedure that hands data to
+;;; another thread fences with a release before its box-cas!, and the
+;;; procedure that takes the data fences with an acquire after its own; a
+;;; flag, or a count that hands nothing over, needs neither. Every
+;;; procedure that calls box-cas! or fences is listed with its fences, so a
+;;; new one is a reviewed change; and since box-cas! may fail on ARM with
+;;; nothing in its way, each one tries again until it succeeds.
 
 (define thread-fences
   '((post-core1! memory-order-release)
@@ -732,7 +749,8 @@
 
 (define thread-fence-names '(memory-order-acquire memory-order-release))
 
-;; f's procedures that call box-cas! or fence, each as the table lists one.
+;; f's procedures that call box-cas! or fence, each in the form the table
+;; lists one: (name fence ...).
 (define (file-thread-fences f)
   (filter-map
    (lambda (x)
@@ -763,15 +781,16 @@
 ;;; folders
 
 ;; Each file in styles/, palettes/ and wallpapers/ defines one of its kind,
-;; named after the file; each in apps/ at least the app named after it.
-;; desktop/ has no kind and no prefix: its files define plain names.
+;; named after the file; each file in apps/ defines at least the app named
+;; after it. desktop/ has no kind and no prefix: its files define plain
+;; names.
 (define folder-kinds
   '(("styles" . style) ("palettes" . palette) ("wallpapers" . wallpaper)
     ("apps" . app)))
 
 (define world-symbols (environment-symbols (interaction-environment)))
 
-;; d is registered: a name in the world, an app, a style ...
+;; Whether d is registered: a name in the world, an app, a style ...
 (define (registered? d)
   (case (car d)
     [(name) (and (memq (cdr d) world-symbols) #t)]
@@ -782,9 +801,9 @@
     [(surface) (and (find-surface (cdr d)) #t)]
     [(strip) (and (assq (cdr d) *strips*) #t)]))
 
-;; The world's sources as files, in load order, of its own folders: a
-;; library's file for its name. What else auto-loads (the demos) is not
-;; held to the folders' rules.
+;; The world's sources from its own folders, as files, in load order, a
+;; library given by its file. What else loads with the world (the demos)
+;; is not held to the folders' rules.
 (define (world-entry-files)
   (filter-map (lambda (e)
                 (cond [(string? e) e]
@@ -793,7 +812,7 @@
                       [else #f]))
               (world-entries)))
 
-;; The folder a world's source is of: kits for (schevana kits x) and for
+;; The folder that a world's source belongs to: kits for
 ;; schevana/kits/x.sls.
 (define (world-folder f)
   (if (string-prefix? "schevana/" f)
@@ -812,9 +831,9 @@
      (cond
        [(equal? (world-folder f) "desktop") '()]
        [(not kind)
-        ;; a kit: its names start with its own (ui-, make-ui-state,
-        ;; *complete-open*), or are its record's of the same name (edit,
-        ;; make-edit, edit?)
+        ;; a kit or a service: its names start with its own name (ui-,
+        ;; make-ui-state, *complete-open*), or are those of its record of
+        ;; the same name (edit, make-edit, edit?)
         (filter-map
          (lambda (d)
            (let* ([s (symbol->string (cdr d))]
@@ -839,8 +858,8 @@
                (string-join source-folders ", "))
        (none? (apply append (map folder-problems (world-entry-files)))))
 
-;; What the files define, in load order, of one kind: of everything that
-;; loads with the world, the demos too.
+;; What the files of everything that loads with the world, the demos too,
+;; define of one kind, in load order.
 (define (defined-in-files kind)
   (map cdr (filter (lambda (d) (eq? (car d) kind))
                    (apply append
@@ -854,8 +873,9 @@
                                           e))
                                     (world-entries)))))))
 
-;; An app registers as its library runs, after any it imports (the Debug
-;; REPL's runs the REPL's): the launcher lists them by their titles.
+;; An app registers as its library runs, after any library it imports
+;; (the Debug REPL's library runs the REPL's first), so the apps are
+;; compared in any order: the launcher lists them by their titles anyway.
 (check "styles, palettes and wallpapers are listed in file-name order, \
         and every app is"
        (let ([sorted (lambda (l)
@@ -870,8 +890,8 @@
 ;;; ------------------------------------------------------------------
 ;;; styles' settings
 
-;; A style sets built-in keys, keys its options declare, and its own,
-;; named after it or a parent: so a misspelled key fails here.
+;; A style sets built-in keys, keys its options declare, and keys of its
+;; own, named after it or a parent, so a misspelled key fails here.
 (define (style-key-problems s)
   (let* ([chain (style-chain (style-name s))]
          [declared (map car (filter pair? (chain-ref chain 'options '())))]
@@ -890,16 +910,17 @@
 
 ;;; ------------------------------------------------------------------
 ;;; the seam
-;;; In the kits, the desktop layer, Tasks, Settings and Environments only
-;;; the drawing procedures draw or choose a color: parts (define-part),
-;;; procedures named like a drawing primitive (draw-…, fill-…) or
-;;; ui-draw-…, complete-draw-…, tasks-draw-…, settings-draw-… and
-;;; envs-draw-…, and the settings they give (theme-default!: a style may
-;;; give its own). No other top-level form calls a drawing primitive or
-;;; quotes a theme color key ('text, also an event's name, aside), so a
-;;; style restyles all they draw. The edit kit never draws. And outside
-;;; styles/ nothing calls a part's built-in body (name*): a style's own
-;;; part would be passed by.
+;;; In the kits, the services, the desktop layer, Tasks, Settings,
+;;; Environments and the Pipeline only the drawing procedures draw or
+;;; choose a color: parts (define-part), procedures named like a drawing
+;;; primitive (draw-…, fill-…) or ui-draw-…, complete-draw-…,
+;;; tasks-draw-…, settings-draw-…, envs-draw-…, pipeline-draw-…,
+;;; text-draw-… and transcript-draw-…, and the defaults they give
+;;; (theme-default!, color-default!: a style may give its own). No other
+;;; top-level form calls a drawing primitive or quotes a theme color key
+;;; (except 'text, which is also an event's name), so a style restyles all
+;;; they draw. The edit kit never draws. And outside styles/ nothing calls
+;;; a part's built-in body (name*): a style's own part would be passed by.
 
 (define seam-files
   (append (filter (lambda (f) (member (world-folder f)
@@ -908,7 +929,8 @@
           '("schevana/apps/tasks.sls" "schevana/apps/settings.sls"
             "schevana/apps/envs.sls" "schevana/apps/pipeline.sls")))
 
-;; The parts: the keys whose built-in is name*, a body of their own.
+;; The parts: the theme keys whose built-in value is name*, a body of
+;; their own.
 (define parts
   (filter (lambda (k)
             (let ([v (theme-default k)])
@@ -917,9 +939,9 @@
 (define built-ins
   (map (lambda (k) (string->symbol (format "~a*" k))) parts))
 
-;; What paints or chooses paint. Calling a part is what other code does
-;; (a style's own then draws); finding where the device's pixels lie is not
-;; painting.
+;; Whether s paints or chooses paint. Calling a part is what other code
+;; does (a style's own part then draws); finding where the device's pixels
+;; lie (draw-scale) is not painting.
 (define (drawing-primitive? s)
   (and (not (memq s parts))
        (not (memq s '(draw-scale)))
@@ -927,8 +949,8 @@
                    '("fill-" "stroke-" "draw-" "px-"))
            (and (memq s '(invert-box add-box pixmap-draw)) #t))))
 
-;; What a form does that only a drawing procedure may: ((draws . name)
-;; (color . key) ...).
+;; Returns what a form does that only a drawing procedure may do:
+;; ((draws . name) (color . key) ...).
 (define (seam-problems form)
   (define (quoted x)
     (cond [(and (symbol? x) (memq x color-keys) (not (eq? x 'text)))
@@ -973,7 +995,8 @@
              (memq (car form) '(define-part theme-default! color-default!))
              #t))))
 
-;; A file's forms, those a library runs as it loads (at-load) among them.
+;; A file's forms, including those a library runs as it loads (inside
+;; at-load).
 (define (seam-forms f)
   (let loop ([forms (file-forms f)])
     (apply append
@@ -1033,8 +1056,9 @@
 (check "the tests never load ~/.schevana.d"
        (and (not *user-folders?*) (not (exists path-absolute? (source-files)))))
 
-;; This file run again with SCHEVANA_CHECK set, as the units' runner runs a
-;; topic, so that a Mac's loader path reaches it: its exit status.
+;; Runs this file again with SCHEVANA_CHECK set to text, as the units'
+;; runner runs a topic (through test-chez, so that a Mac's loader path
+;; reaches it), and returns its exit status.
 (define (sources-run-checking text)
   (system (string-append
            (test-chez (list (cons "SCHEVANA_CHECK" text))

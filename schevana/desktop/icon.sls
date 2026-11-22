@@ -1,6 +1,7 @@
-;;; (schevana desktop icon) — the app icon: core0's window's icon in the
-;;; taskbar or dock, the wallpaper's λ on the desktop gradient, in the current
-;;; theme. Redefine draw-app-icon and call (update-app-icon!) to change it.
+;;; (schevana desktop icon) — the app icon, which core0's window shows in the
+;;; system's taskbar or dock: the wallpaper's λ on the desktop gradient, in the
+;;; current theme. To change it, redefine draw-app-icon and call
+;;; (update-app-icon!).
 
 (library (schevana desktop icon)
   (export
@@ -36,8 +37,8 @@
   ;;; Desktops like GNOME don't use the icon a window sets: they show the
   ;;; icon of the app's .desktop file, which they match to the window by its
   ;;; app id (core0-app-id; the class under X11). (install-desktop-entry!)
-  ;;; writes that file and the icon under ~/.local/share;
-  ;;; ./desktop --install-desktop does the same.
+  ;;; writes that file and the icon under ~/.local/share (or
+  ;;; $XDG_DATA_HOME); ./desktop --install-desktop does the same.
 
   (define (desktop-data-home)
     (or (getenv "XDG_DATA_HOME")
@@ -45,7 +46,7 @@
 
   (define (desktop-entry-files)
     (let ([data (desktop-data-home)])
-      ;; named after the app id, which Wayland desktops look it up by
+      ;; named after the app id, by which Wayland desktops look it up
       (values (string-append data "/applications/" core0-app-id ".desktop")
               (string-append data "/icons/hicolor/256x256/apps/schevana.png"))))
 
@@ -54,11 +55,11 @@
       (make-directories! (path-parent path))
       (mkdir path)))
 
-  ;; The app icon as a PNG file, size pixels square.
+  ;; Writes the app icon to path as a PNG file, size pixels square.
   (define (write-app-icon! path size)
     (png-write-drawing path size size (lambda () (draw-app-icon size))))
 
-  ;; Returns the files it wrote.
+  ;; Writes the .desktop file and the icon, and returns the files it wrote.
   (define (install-desktop-entry!)
     (let-values ([(entry icon) (desktop-entry-files)])
       (let* ([root (cond [(path-absolute? *schevana-root*) *schevana-root*]
@@ -95,16 +96,18 @@
       (list entry icon)))
 
   (define-state *icon-update-pending* #f)
-  ;; the theme the icon follows
+  ;; the theme version the icon follows
   (define-state *icon-version* *theme-version*)
 
-  ;; At the desktop's tick: a newer theme repaints the icon, soon after.
+  ;; Called before each of the desktop's frames: when the theme has changed,
+  ;; the icon is repainted soon after.
   (define (icon-follow-theme!)
     (unless (eqv? *icon-version* *theme-version*)
       (set! *icon-version* *theme-version*)
       (update-app-icon-soon!)))
 
-  ;; Follow theme changes, once things settle.
+  ;; Repaints the icon 500 ms from now, once theme changes settle: a quick
+  ;; run of changes repaints it only once.
   (define (update-app-icon-soon!)
     (unless *icon-update-pending*
       (set! *icon-update-pending* #t)

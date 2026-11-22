@@ -1,6 +1,6 @@
 ;;; (schevana kits app) — the apps the core registers (define-app), as the
-;;; desktop shows them: launching one by name, and the color a name gets (the
-;;; taskbar's, a style's icon), from the theme's app-colors.
+;;; desktop uses them: it launches one by name, and gives each app's name a
+;;; color from the theme's app-colors (for the taskbar, or a style's icon).
 
 (library (schevana kits app)
   (export
@@ -16,14 +16,14 @@
     (let ([a (find (lambda (a) (eq? (app-name a) name)) *apps*)])
       (if a ((app-launch a)) (errorf 'app-launch! "no app named ~s" name))))
 
-  ;; The colors app-color picks from, a style's to change.
+  ;; The colors app-color picks from; a style may change them.
   (at-load
    (theme-default! 'app-colors
                    '(accent accent-2 green orange cyan red yellow teal
                             magenta)))
 
-  ;; mod n at every step: the same color as at the end, but a long name's
-  ;; hash never grows.
+  ;; Taking mod n at every step gives the same color as taking it once at
+  ;; the end, but the hash of a long name never grows.
   (define (app-color name)
     (let* ([s (symbol->string (or name 'unknown))] [cs (theme 'app-colors)]
            [n (length cs)])

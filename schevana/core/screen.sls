@@ -1,7 +1,7 @@
-;;; (schevana core screen) — the world's side of core0's window, the one it
-;;; lives in: its scale and canvas, full screen, its icon, and core0's events
-;;; as the world reads them. The window itself, SDL's, is core0's ((schevana
-;;; core0 window)).
+;;; (schevana core screen) — the world's side of core0's window, the one the
+;;; world lives in: its scale and canvas, full screen, its icon, and core0's
+;;; events as the world reads them. The window itself, SDL's, belongs to
+;;; core0 ((schevana core0 window)).
 ;;;
 ;;; Core0's events are translated into plain Scheme lists:
 ;;;   (mouse-move x y) (mouse-down x y button clicks) (mouse-up x y button)
@@ -26,19 +26,20 @@
 
   (library-layer core)
 
-  ;; told of every event core0 sends, by its number, whether it means anything
-  ;; to the world or not ((schevana services profile) sets it); till then
-  ;; nothing
+  ;; Told of every event core0 sends, by its number, whether it means
+  ;; anything to the world or not. (schevana services profile) sets it;
+  ;; until then it does nothing.
   (define-hook (screen-event-seen! type) (void))
-  (define-state *screen-fullscreen* #f)   ; what headless mode pretends
+  (define-state *screen-fullscreen* #f)   ; full screen, as headless pretends
   ;; the scale chosen (the setting's, or else the desktop's) that the canvas
-  ;; was made at: physical pixels per logical pixel, exact
+  ;; was made at: physical pixels per logical pixel, as an exact number
   (define-state *screen-chosen-scale* 1)
   ;; physical pixels per SDL window unit (2 on a Retina Mac)
   (define-state *pixel-ratio* 1)
   ;; the minimum size SDL last passed on to the window, or #f
   (define-state *screen-min-size* #f)
-  ;; the least the window may be dragged to, logical pixels (w . h)
+  ;; the smallest size the window may be dragged to, (w . h) in logical
+  ;; pixels
   (define-state *screen-least* '(640 . 400))
   (define-state *headless-size* '(1280 . 800))
 
@@ -53,37 +54,41 @@
     (let ([p (theme 'scale)])
       (if (and (fixnum? p) (> p 0)) (/ (clamp p 50 400) 100) (system-scale))))
 
-  ;; What the desktop asks for, to the percent: SDL's display scale for the
-  ;; window, the pixel ratio (2 on macOS and Wayland at 200%) times the
-  ;; desktop's own scale (under X11 Xft.dpi, 96 being 100%, which SDL reads
-  ;; once, as it starts). 0 is SDL's failure.
+  ;; The scale the desktop asks for, rounded to the percent: SDL's display
+  ;; scale for the window, which is the pixel ratio (2 on macOS and on
+  ;; Wayland at 200%) times the desktop's own scale (under X11, Xft.dpi, with
+  ;; 96 as 100%, which SDL reads once, as it starts). SDL gives 0 when it
+  ;; fails, and the scale is then 1.
   (define (system-scale)
     (let ([s (core0-window-scale)])
       (if (> s 0) (/ (exact (round (* 100 s))) 100) 1)))
 
   (define (system-scale-percent) (exact (round (* 100 (system-scale)))))
 
-  ;; SDL window units (mouse positions, fractional in SDL3) to logical
-  ;; pixels.
+  ;; Converts SDL window units (mouse positions, fractional in SDL3) to
+  ;; logical pixels.
   (define (screen-units->world v)
     (floor (/ (* (exact v) *pixel-ratio*) *screen-chosen-scale*)))
 
-  ;; The screen has another size or scale: what is on it is laid out again
-  ;; ((schevana core windows) sets it); till then nothing.
+  ;; Called when the screen has a new size or scale, to lay out again what
+  ;; is on it. (schevana core windows) sets it; until then it does nothing.
   (define-hook (wm-screen-resized!) (void))
 
-  ;; After the 'scale setting changed: lay the world out again at the new scale.
+  ;; After the 'scale setting changes, lays the world out again at the new
+  ;; scale.
   (define (screen-rescale!)
     (when (screen-sync-size!)
       (wm-screen-resized!)))
 
-  ;; Core0's window's size in window units for a w × h logical world drawn
-  ;; at scale, with ratio physical pixels per window unit.
+  ;; Returns the size of core0's window, in window units, for a w × h
+  ;; logical world drawn at scale, with ratio physical pixels per window
+  ;; unit.
   (define (screen-window-size w h scale ratio)
     (values (exact (round (/ (* w scale) ratio)))
             (exact (round (/ (* h scale) ratio)))))
 
-  ;; fullscreen?: start full screen instead of in a w × h window.
+  ;; Opens the screen in mode 'headless or 'sdl. With fullscreen? true it
+  ;; starts full screen instead of in a w × h window.
   (define (screen-init! mode w h . fullscreen?)
     (set! *screen-fullscreen* (and (pair? fullscreen?) (car fullscreen?)))
     (set! *screen-min-size* #f)
@@ -95,10 +100,10 @@
        (canvas-create! w h *screen-chosen-scale*)]
       [(sdl)
        ;; w × h are logical pixels. How many physical pixels a window unit
-       ;; holds, and the desktop's scale, are known once the window is there,
-       ;; so it opens hidden, a unit per logical pixel, and is sized and
-       ;; centered before it is shown. Core0 with a thread of its own opened
-       ;; it already, at the desktop's scale.
+       ;; holds, and the desktop's scale, are known only once the window
+       ;; exists, so it opens hidden at one unit per logical pixel, and is
+       ;; sized and centered before it is shown. Core0 with a thread of its
+       ;; own has opened it already, at the desktop's scale.
        (unless (core0-forked?) (core0-window-open! w h *screen-fullscreen*))
        (let*-values ([(uw uh pw ph) (screen-read-sizes)]
                      [(nw nh)
@@ -107,7 +112,7 @@
            (core0-window-resize! nw nh)))
        (unless (core0-forked?) (core0-window-show!))
        (screen-sync-size!)
-       ;; what it posted (the least size) goes to the window
+       ;; what it posted (the minimum size) goes to the window
        (unless (core0-forked?) (core0-step!))]
       [else (errorf 'screen-init! "unknown mode ~s" mode)]))
 
@@ -121,9 +126,9 @@
   (define (fullscreen?)
     (if (eq? *core0-mode* 'sdl) (core0-window-fullscreen?) *screen-fullscreen*))
 
-  ;; Full screen at the desktop's own resolution (SDL3's default full-screen
-  ;; mode): the world just gets a bigger canvas (core0 sends a resize
-  ;; event).
+  ;; Full screen is at the desktop's own resolution (SDL3's default
+  ;; full-screen mode): the world just gets a bigger canvas (core0 sends a
+  ;; resize event).
   (define (set-fullscreen! on?)
     (when (eq? *core0-mode* 'sdl) (core0-window-fullscreen! on?))
     (set! *screen-fullscreen* (and on? #t))
@@ -133,10 +138,11 @@
 
   ;;; ---------------------------------------------------------------- icon
 
-  ;; Core0's window's icon, which the desktop's taskbar or dock shows (under
-  ;; X11, and Wayland compositors with the xdg-toplevel-icon protocol; GNOME
-  ;; takes icons from .desktop files instead, and SDL's call fails there).
-  ;; draw is called on a clear size × size image.
+  ;; Sets the icon of core0's window, which the desktop's taskbar or dock
+  ;; shows (under X11, and under Wayland compositors with the
+  ;; xdg-toplevel-icon protocol; GNOME takes icons from .desktop files
+  ;; instead, and SDL's call fails there). draw is called on a clear
+  ;; size × size image.
   (define (screen-set-icon! size draw)
     (when (eq? *core0-mode* 'sdl)
       (drawing->bytes-then size size 1 (lambda () (draw size)) #t
@@ -144,7 +150,8 @@
                              (unpremultiply! bytes)
                              (core0-window-icon! size bytes)))))
 
-  ;; Pixels premultiplied, as images keep them, made straight.
+  ;; Turns premultiplied pixels, as images keep them, into straight ones, in
+  ;; place.
   (define (unpremultiply! bytes)
     (do ([i 0 (+ i 4)]) ((>= i (bytevector-length bytes)))
       (let ([a (bytevector-u8-ref bytes (+ i 3))])
@@ -157,8 +164,8 @@
                                          (fxquotient a 2))
                                     a))))))))
 
-  ;; The window's size in window units and in physical pixels, (values w h pw
-  ;; ph); sets *pixel-ratio* from them.
+  ;; Returns the window's size in window units and in physical pixels, as
+  ;; (values w h pw ph), and sets *pixel-ratio* from them.
   (define (screen-read-sizes)
     (let-values ([(w h pw ph) (core0-window-sizes)])
       (set! *pixel-ratio* (/ pw (max w 1)))
@@ -190,10 +197,10 @@
       [else #f]))
 
   ;; Core0's window may not shrink below *screen-least*, in logical pixels.
-  ;; SDL is told only when that changes: each call also sets the window's
-  ;; size again (a request to the window manager, mid-drag). In full screen
-  ;; SDL may not pass it on (under X11 it does not), so it is told again
-  ;; after.
+  ;; SDL is told only when that changes, because each call also sets the
+  ;; window's size again (a request to the window manager, in the middle of
+  ;; a drag). In full screen SDL may not pass it on (under X11 it does not),
+  ;; so it is told again afterwards.
   (define (screen-least-tell!)
     (let* ([unit (lambda (n)
                    (exact (ceiling (/ (* n *screen-chosen-scale*)
@@ -203,38 +210,41 @@
         (core0-window-minimum! (car m) (cdr m))
         (set! *screen-min-size* (and (not (fullscreen?)) m)))))
 
-  ;; The least the window may be dragged to, w × h logical pixels: a
-  ;; program's own (a host app's, its one window's least).
+  ;; Sets the smallest size the window may be dragged to, w × h logical
+  ;; pixels. A program sets its own (a host app, for its one window).
   (define (screen-set-least! w h)
     (set! *screen-least* (cons w h))
     (when (eq? *core0-mode* 'sdl) (screen-least-tell!)))
 
   ;;; ---------------------------------------------------------------- the host
 
-  ;; The window's title, which the desktop shows (its title bar, the
+  ;; Sets the window's title, which the desktop shows (in its title bar, the
   ;; switcher, the dock).
   (define (screen-set-title! title) (core0-window-title! title))
 
-  ;; Who the window is to the desktop, which matches it to a desktop entry
-  ;; by it (core0-app-id): a program's own, before its window opens.
+  ;; Sets who the window is to the desktop, which matches the window to a
+  ;; desktop entry by this id (core0-app-id). A program sets its own before
+  ;; its window opens.
   (define (screen-set-app-id! id) (core0-app-id! id))
 
-  ;; The desktop's preference: 'light, 'dark, or #f where it says none
+  ;; The desktop's preference: 'light, 'dark, or #f where it gives none
   ;; (headless, or a desktop that doesn't tell). A change rebuilds the theme
   ;; (screen-event->world), whose palette may follow it ((schevana core
   ;; theme), 'palette-dark).
   (define (screen-system-theme) (core0-system-theme))
 
   ;; A frame of the program's own where the desktop draws none (a host
-  ;; app's header bar, under GNOME): asked before the window opens
-  ;; (screen-own-frame!); whether it is so, once it has (screen-own-frame?).
+  ;; app's header bar, under GNOME). It is asked for before the window opens
+  ;; (screen-own-frame!); screen-own-frame? says whether it is so once the
+  ;; window has opened.
   (define (screen-own-frame! on?) (core0-own-frame! on?))
   (define (screen-own-frame?) (core0-own-frame?))
 
-  ;; What of the window the desktop moves or resizes it by, a frame of the
-  ;; program's own: ((kind x y w h) ...), logical pixels, the first that
-  ;; holds a point winning; kind one of screen-hit-kinds (normal, the
-  ;; program's own). Told to core0 when it changes.
+  ;; The parts of the window by which the desktop moves or resizes it, when
+  ;; the program draws its own frame: ((kind x y w h) ...) in logical
+  ;; pixels, where the first region that holds a point wins. kind is one of
+  ;; screen-hit-kinds (normal means the point is the program's own). Core0
+  ;; is told when the regions change.
   (define screen-hit-kinds
     '(normal move resize-tl resize-t resize-tr resize-r resize-br resize-b
       resize-bl resize-l))
@@ -252,12 +262,12 @@
                             (map screen-units (cdr r))))
                     regions))))))
 
-  ;; Logical pixels to the window's units.
+  ;; Converts logical pixels to the window's units.
   (define (screen-units v)
     (exact (round (/ (* v *screen-chosen-scale*) *pixel-ratio*))))
 
-  ;; The window maximized, restored or minimized, or the desktop's menu for
-  ;; it shown at (x, y), logical pixels.
+  ;; Maximizes, restores or minimizes the window, or shows the desktop's
+  ;; menu for it at (x, y) in logical pixels.
   (define (screen-window-action! action . at)
     (apply core0-window-action! action (map screen-units at)))
 
@@ -265,9 +275,11 @@
 
   ;;; ---------------------------------------------------------------- events
 
-  ;; An event of core0's as the world's: positions in logical pixels; a
-  ;; change of the window's size, the world laid out again, (resize w h), or
-  ;; #f when nothing changed.
+  ;; Returns an event of core0's as the world's, with positions in logical
+  ;; pixels. A change of the window's size becomes (resize w h), for which
+  ;; the world is laid out again, or #f when nothing changed; a change of
+  ;; the desktop's light or dark preference rebuilds the theme and becomes
+  ;; #f.
   (define (screen-event->world e)
     (case (car e)
       [(mouse-move mouse-down mouse-up)
@@ -278,19 +290,20 @@
       [(system-theme-changed) (theme-changed!) #f]
       [else e]))
 
-  ;; Steps core0, which drains its events into the world's inbox: on one
-  ;; thread, headless, there is nothing to wait for. Or, core0 on a thread
-  ;; of its own, waits up to wait-ms till it's woken: with a frame of core1's
-  ;; waiting for core0, a wait for the screen, which holds core0 meanwhile;
-  ;; or, ticks keeping to the compositor's latches, for the next latch.
-  ;; Then the inbox: core0's events, each told to screen-event-seen!, as
-  ;; the world's.
+  ;; Returns core0's events as the world's, after telling
+  ;; screen-event-seen! of each one. With one thread for both, it first
+  ;; steps core0, which drains its events into the world's inbox, and there
+  ;; is nothing to wait for. With core0 on a thread of its own, it first
+  ;; waits up to wait-ms until it is woken: while a frame of core1's waits
+  ;; for core0, this is a wait for the screen, which holds core0 meanwhile;
+  ;; while ticks keep to the compositor's latches, it waits for the next
+  ;; latch.
   (define (screen-events wait-ms)
     (core0-trace! 20 wait-ms)
     (cond [(not (core0-forked?)) (core0-step!)]
           [(gpu-frame-waiting?)
            (with-profile-span 'vsync-wait 'acquire (core0-world-wait! wait-ms))]
-          ;; till the next latch: the screen's, though input wakes it
+          ;; until the next latch, the screen's, though input wakes it
           [(and (pacer-wanted?) (pacer-on-latch?))
            (with-profile-span 'vsync-wait 'latch (core0-world-wait! wait-ms))]
           [else (core0-world-wait! wait-ms)])

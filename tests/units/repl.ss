@@ -1,7 +1,7 @@
 ;;; tests/units/repl.ss — the REPL asks for frames only while it has
-;;; something to show: an evaluation's output and busy mark; its caret
+;;; something to show (an evaluation's output and its busy mark); its caret
 ;;; blinks by a timer, and its title follows its environment. Tab always
-;;; completes: it never inserts space, wherever the cursor is.
+;;; completes: it never inserts a space, wherever the cursor is.
 
 (for-each close-window! (windows))
 
@@ -41,8 +41,8 @@
   (close-window! win))
 
 ;; Tab with nothing typed offers every name, as an empty name would, and
-;; right after a paren only what can head a form; with a name it extends
-;; it, takes a sole match, or says there is none.
+;; right after a paren only what can head a form. After a name, it extends
+;; the name, takes the only match, or says there is none.
 (let* ([win (repl 'private)]
        [r (window-ref win 'state)]
        [tab! (lambda (text)
@@ -119,8 +119,9 @@
   (complete-close! r)
   (close-window! win))
 
-;; "/": a define of a name the core gives the world is said once, as it's
-;; evaluated, to be the world's own; one of the world's own is not.
+;; At "/", a define of a name the core gives the world gets a note, once,
+;; as it is evaluated, that the name becomes the world's own (except in the
+;; hacker edition); a define of one of the world's own names gets none.
 (let* ([win (repl "/")]
        [r (window-ref win 'state)]
        [notes (lambda ()
@@ -163,7 +164,7 @@
                 (string-contains-ci? waiting "Backspace")))))
 
 ;; The root REPL's greeting shows how to load an app by its name, and the
-;; line it shows does it: the game under games/ opens its window.
+;; line it shows works: it opens the window of the game under games/.
 (let* ([win (repl 'root)] [r (window-ref win 'state)]
        [line "(import (games fireflies)) (fireflies)"])
   (repl-run! r win line)

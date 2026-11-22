@@ -1,7 +1,8 @@
-;;; (schevana apps pacer-lab) — the pacer lab's face ((schevana services
-;;; pacer-lab)): the switch, the period under way, and what the periods logged
-;;; say of each of the pacer's choices, a row a value. It tunes the world, so it
-;;; runs there, asking for nothing.
+;;; (schevana apps pacer-lab) — the window of the pacer lab ((schevana
+;;; services pacer-lab)). It shows the switch, the period under way, and one
+;;; row for each value of each of the pacer's choices, with what the logged
+;;; periods say about it. It tunes the world's own pacer, so it runs in the
+;;; world.
 
 (library (schevana apps pacer-lab)
   (export
@@ -26,7 +27,8 @@
 
   (library-layer apps)
 
-  ;; A value as the table shows it, the setting in effect marked.
+  ;; A value as the table shows it, marked when it is the one the settings
+  ;; give.
   (define (pacer-lab-value-text knob value)
     (if (equal? value (theme knob))
         (format "~a (setting)" value)
@@ -60,7 +62,7 @@
       [(p99) (pacer-lab-number (pacer-lab-effect-p99 e) 1)]
       [else (pacer-lab-verdict-text (pacer-lab-effect-verdict e))]))
 
-  ;; The period under way, a line.
+  ;; One line about the period under way (or that the lab is off).
   (define (pacer-lab-now-text)
     (let ([n (pacer-lab-now)])
       (if n
@@ -84,7 +86,7 @@
               (apply + (map (lambda (p) (plist-ref p 'frames 0)) ps))
               *pacer-lab-log-path*)))
 
-  ;; The effects, worked out again only when a period has been logged.
+  ;; The effects, computed again only when a new period has been logged.
   (define (pacer-lab-effects-of ui)
     (let ([n (length (pacer-lab-periods))])
       (if (equal? (ui-memo ui '(pacer-lab count) #f) n)
@@ -128,7 +130,8 @@
 
   (define-app (pacer-lab) "Pacer Lab"
     (let ([ui (make-ui)] [open? #t])
-      ;; the period's progress, a second at a time, until the window closes
+      ;; redraws once a second, to show the period's progress, until the
+      ;; window closes
       (define (next-second! win)
         (after 1000 (lambda ()
                       (when open?

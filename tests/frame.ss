@@ -1,43 +1,49 @@
-;;; tests/frame.ss — frames: whenever something changes the screen, a frame is
-;;; asked for, and it shows what the world draws now.
+;;; tests/frame.ss — frames: whenever something changes the screen, a
+;;; frame is asked for, and that frame shows what the world draws now.
 ;;;
 ;;;   scheme --script tests/frame.ss [output-dir]
 ;;;
-;;; The reference is the world drawn now into an image, which is the same
-;;; recording a frame sends to the screen; a frame is drawn whole, so what is
-;;; tested is that nothing changes without asking.
+;;; The reference is the world drawn now into an image, from the same
+;;; recording that a frame sends to the screen. A frame is drawn whole, so
+;;; what the suite tests is that nothing changes without asking for a frame.
 ;;;   identity      once the frames asked for are drawn, the screen is the
 ;;;                 reference, bit for bit: S30T, S30, S5, a translucent
-;;;                 window, every style, a menu and a toast, at 100, 125,
-;;;                 150, 200 and 300% (Monitor's content masked: it shows
-;;;                 the heap)
-;;;   asking        every way the screen changes (the clock's second, a
-;;;                 window, a covered one, hover, dragging, resizing, moving,
-;;;                 a process) leaves the reference at 100, 150 and 200%
-;;;   the window    the swapchain's path, on an offscreen window
+;;;                 window, four styles, a menu and a toast, at 100, 125,
+;;;                 150, 200 and 300% (Monitor's content is masked, since
+;;;                 it shows the heap)
+;;;   asking        after every way the screen changes (the clock's second,
+;;;                 a window, a covered one, hover, dragging, resizing,
+;;;                 moving, a process), the screen is the reference at 100,
+;;;                 150 and 200%
+;;;   bleed         a window is drawn clipped to its extent, in every style
+;;;   the window    frames go through the swapchain, on an offscreen window
 ;;;   processes     a process, switched out anywhere, rescales and calls
-;;;                 (render-frame!) while core1's loop draws: frames stay whole
+;;;                 (render-frame!) while core1's loop draws, and frames stay
+;;;                 whole
 ;;;   raising       a window's draw that raises crashes the window; a window-
 ;;;                 bleed that raises is reported, and frames and input go on
-;;;   redefinition  draw-window, draw-taskbar and a style, redefined: the
-;;;                 next frame shows them; a REPL evaluation asks for a frame
-;;;                 as it ends
+;;;   redefinition  when draw-window, draw-taskbar and a style are
+;;;                 redefined, the next frame shows them; a REPL evaluation
+;;;                 asks for a frame when it ends
+;;;   wallpaper     a theme change or a redefined wallpaper shows on the next
+;;;                 frame
 ;;;   Life          each generation of 30 Life windows shows on the next frame
-;;;   the kit       in a window of widgets alone: typing, the caret's
-;;;                 blink, hover, a tooltip, the wheel, a menu, the
-;;;                 calendar and the dialog leave the reference at 100, 150
-;;;                 and 200%; unfocused, or with the dialog over a field
-;;;                 that had the keyboard, the window asks for no frame
-;;;   Tasks         a card selected, a drag across columns, the wheel, a
-;;;                 REPL change and the narrow page leave the reference;
-;;;                 the Tree's hover, twisties, keys, wheel, later rows,
-;;;                 dimmed rows, links and Add menu too
+;;;   the kit       in a window that holds only widgets, after typing, the
+;;;                 caret's blink, hover, a tooltip, the wheel, a menu, the
+;;;                 calendar and the dialog, the screen is the reference at
+;;;                 100, 150 and 200%; unfocused, or with the dialog over a
+;;;                 field that had the keyboard, the window asks for no frame
+;;;   Tasks         after a card is selected, a drag across columns, the
+;;;                 wheel, a REPL change and the narrow page, the screen is
+;;;                 the reference; the same for the Tree's hover, twisties,
+;;;                 keys, wheel, later rows, dimmed rows, chips and Add menu
 ;;;   a long text   a description's scroll bar shows an estimate until idle
 ;;;                 steps have computed its rows; the step that finishes
 ;;;                 draws it again, and the screen is the reference
 ;;;
-;;; output-dir receives the scratch theme file and a screenshot of a
-;;; failure.
+;;; output-dir receives a folder for each part (frame-1, frame-2, ...), with
+;;; what the part printed (said.txt), its scratch theme file and
+;;; screenshots of its first three failures.
 
 (define *schevana-root*
   (let ([dir (path-parent (path-parent (car (command-line))))])
@@ -46,11 +52,12 @@
 (load (string-append *schevana-root* "/tests/chez.ss"))
 
 ;;; ------------------------------------------------------------------ parts
-;;; The suite runs in parts at once, each in a process and a world of its
-;;; own, as many as the machine allows (test-jobs): a part is sections and,
-;;; of those drawn at several scales, the scales it draws. It runs the
-;;; suite's definitions and its own sections' forms, in order (frame-eval).
-;;; What each part says is printed in the parts' order.
+;;; The suite runs in parts at the same time, each in a process and a
+;;; world of its own, as many at once as the machine allows (test-jobs). A
+;;; part is a list of sections and, for the sections drawn at several
+;;; scales, the scales it draws. It runs the suite's definitions and its
+;;; own sections' forms, in order (frame-eval). What each part prints is
+;;; printed in the parts' order.
 
 (define frame-parts
   '(((identity) 100 125 150) ((identity) 200) ((identity) 300)
@@ -58,10 +65,11 @@
     ((kit tasks)) ((tree))
     ((processes raising text redefinition wallpaper life window))))
 
-;; What a part takes at its peak, MB (measured: 1.3 GB at most).
+;; The memory a part takes at its peak, in MB (measured: 1.3 GB at most).
 (define frame-part-mb 2000)
 
-;; This run's part, from SCHEVANA_FRAME_PART; #f for the suite's own run.
+;; This run's part, read from SCHEVANA_FRAME_PART; #f for the suite's own
+;; run, which starts the parts.
 (define frame-part
   (let ([s (getenv "SCHEVANA_FRAME_PART")])
     (and s (not (string=? s "")) (read (open-input-string s)))))
@@ -102,21 +110,23 @@
 
 (load (string-append *schevana-root* "/tests/lib.ss"))
 
-;; The sections whose forms run, as each begins: those of this part.
+;; Marks where a section begins: its forms run only if this part has it.
 (define frame-section-on? #t)
 (define (frame-section name)
   (set! frame-section-on? (and (memq name (car frame-part)) #t)))
 
-;; Of scales, those this part draws: all, if it names none.
+;; Returns those of scales that this part draws: all of them, if it names
+;; none.
 (define (frame-scales scales)
   (if (null? (cdr frame-part))
       scales
       (filter (lambda (s) (memv s (cdr frame-part))) scales)))
 
-;; eval*, but for the forms of the sections this part doesn't run, which
-;; are left: a form the file has, named by a symbol, but a definition.
-;; What else comes this way is the expander's, a macro's transformer to
-;; make ("noexpand" ...), and goes through.
+;; Returns eval*, except that it skips the forms of the sections this part
+;; doesn't run: a form of the file that starts with a symbol and is not a
+;; definition (or a frame-section). Anything else that comes this way is
+;; the expander's (a macro's transformer to make, ("noexpand" ...)) and
+;; goes through.
 (define (frame-eval eval*)
   (lambda (x . env)
     (let ([d (if (annotation? x) (annotation-stripped x) x)])
@@ -127,19 +137,20 @@
                                         define-record-type frame-section))))
         (apply eval* x env)))))
 
-;; The test's clock held (tests/lib.ss), so that Life steps when a check
-;; says. Checks that need time to pass go back to the machine's.
+;; Hold the test's clock (tests/lib.ss), so that Life steps only when a
+;; check says so. Checks that need time to pass go back to the machine's
+;; clock.
 (test-clock-hold! 1000000)
 (random-seed 4242)
-;; Life, whose windows the scenes are of.
+;; Life, whose windows make up the scenes.
 (test-demos! 'life)
 (schevana-boot! 'headless 1280 800)
-;; From here, a form that raises fails and the next goes on, and a form of
-;; a section this part doesn't run is left.
+;; From here on, a form that raises fails and the next form goes on, and a
+;; form of a section this part doesn't run is skipped.
 (current-eval (frame-eval test-form-eval))
 
-;; Steps while a frame is asked for (at most 20): then the canvas shows
-;; the world as it is.
+;; Steps while a frame is asked for (at most 20 steps), so that the canvas
+;; then shows the world as it is.
 (define (settle)
   (let loop ([n 0])
     (when (and (< n 20) *dirty*)
@@ -152,7 +163,7 @@
   (fields bytes w h))
 (define (picture-free! p) (void))
 
-;; What the last frame left on the screen.
+;; Returns what the last frame left on the screen.
 (define (screen-picture)
   (let* ([r *renderer*]
          [w (renderer-target-w r)]
@@ -160,11 +171,12 @@
          [cb (sdl-acquire-gpu-commands (renderer-device r))])
     (make-picture (gpu-read-texture! r cb (renderer-target r) w h) w h)))
 
-;; The frame the world draws now, straight into an image.
+;; Returns the frame the world draws now, drawn straight into an image.
 (define (reference)
   (make-picture (screen-bytes) *canvas-pw* *canvas-ph*))
 
-;; Monitor's content in device pixels, (x0 y0 x1 y1), or #f.
+;; Returns Monitor's content in device pixels, (x0 y0 x1 y1), or #f when
+;; Monitor isn't shown.
 (define (monitor-mask)
   (let ([m (find-window 'monitor)])
     (and m (visible? m)
@@ -202,8 +214,9 @@
 
 (define shots 0)
 
-;; Does the canvas equal the reference? label is printed with a count
-;; when it does not.
+;; Whether the screen equals the reference. When it doesn't, label is
+;; printed with the count of pixels that differ, and the first three
+;; failures are saved as screenshots.
 (define (shows-reference? label)
   (let* ([ref (reference)] [n (differing (screen-picture) ref (monitor-mask))])
     (unless (= n 0)
@@ -244,8 +257,9 @@
                 (input . "(set-theme! 'accent #xff9e64)")))
     r))
 
-;; S30T: 30 Life windows tiled; S30: cascaded; S5: a REPL, Settings, Clock,
-;; Life and Monitor, overlapping, the REPL on top.
+;; The scenes: S30T is 30 Life windows tiled; S30 is the same, cascaded;
+;; S5 is a REPL, Settings, Clock, Life and Monitor, overlapping, with the
+;; REPL on top.
 (define (scene! name)
   (test-clear-world!)
   (random-seed 4242)
@@ -319,7 +333,7 @@
 (set-theme! 'scale 100)
 (scene! 'S5)
 (pause-lifes!)
-;; they change by themselves
+;; Clock and Monitor change by themselves
 (for-each (lambda (app) (close-window! (find-window app))) '(clock monitor))
 (steps 2)
 (let ([n0 *frames-drawn*])
@@ -333,13 +347,13 @@
 
 ;;; ------------------------------------------------------------------
 ;;; asking
-;;; Every way the screen changes, at 100, 150 and 200%, odd logical
-;;; coordinates giving fractional device ones: after each step the screen
-;;; is the reference.
+;;; Every way the screen changes, at 100, 150 and 200%, with odd logical
+;;; coordinates that give fractional device ones: after each step the
+;;; screen is the reference.
 (frame-section 'asking)
 
-;; Styles that glow 5 pixels past their frame: glow-5 says so with 'bleed,
-;; glow does not, as one typed at the REPL might not.
+;; Styles that glow 5 pixels past their frame: glow-5 says so with
+;; 'frame-bleed, and glow does not, as a style typed at the REPL might not.
 (define styles-before-glow *styles*)
 (define (glow-under win x y w h focused? hover pressed)
   (fill-box (- x 5) (- y 5) (+ w 10) (+ h 10) #xff00ff)
@@ -348,7 +362,7 @@
   'frame-under glow-under)
 (define-style glow "Glow" 'frame-under glow-under)
 
-;; Does win ask for a frame while four steps of ms pass?
+;; Whether win asks for a frame during four steps of ms each.
 (define (asks-while-waiting? win ms)
   (let ([plain invalidate!] [asked #f])
     (set! invalidate! (lambda args
@@ -360,7 +374,8 @@
     (set! invalidate! plain)
     asked))
 
-;; Where a style's button of that kind is, on screen.
+;; Returns the point on screen at the middle of win's style button of that
+;; kind.
 (define (button-point win kind)
   (let ([b (assq kind (frame-regions win))])
     (list (+ (window-x win) (cadr b) (quotient (cadddr b) 2))
@@ -379,7 +394,7 @@
               'draw (lambda (win w h) (fill-box 151 101 141 91 a-ink)))]
          [b (open-window "B" 'size '(301 . 201) 'pos '(401 . 251)
               'draw (lambda (win w h) (fill-box 21 21 61 41 b-ink)))]
-         ;; alone
+         ;; c stands alone
          [c (open-window "C" 'size '(201 . 151) 'pos '(901 . 401)
               'draw (lambda (win w h)
                       (fill-box 0 0 w h c-ink)
@@ -398,7 +413,8 @@
       (step! label))
     (set! *status-segments* '())
     (add-status-segment! 'tick (lambda () (format "tick ~a" tick)))
-    ;; new whenever asked, as the heap's size and the frame time are
+    ;; a segment that changes whenever it is asked, as the heap's size and
+    ;; the frame time do
     (add-status-segment! 'asked (lambda () (set! asked (+ asked 1))
                                   (format "asked ~a" asked)))
     (steps 2)
@@ -431,16 +447,17 @@
     (drag! 'drag (+ (window-x a) 150) (+ (window-y a) 10) 37 23)
     (drag! 'resize (+ (window-x a) (window-w a) -3)
            (+ (window-y a) (window-h a) -3) -29 17)
-    ;; one that draws nothing past its frame, moved away from where it
-    ;; leaves half pixels at 150%
+    ;; a window that draws nothing past its frame (no shadow), moved away
+    ;; from a place where it leaves half pixels at 150%
     (set-theme! 'shadow 0)
     (steps 1)
     (move-window! c 1001 451)
     (step! 'moved)
     (set-theme! 'shadow (theme-default 'shadow))
     ;; A process asks for areas around e, far from b and c, while core1
-    ;; changes b and c by turns, compared at each step: none of core1's
-    ;; areas may be lost, though the process is switched out anywhere.
+    ;; changes b and c in turn, and the screen is compared at each step:
+    ;; none of core1's areas may be lost, wherever the process is switched
+    ;; out.
     (let* ([e (open-window "E" 'size '(81 . 61) 'pos '(41 . 601))]
            [p (spawn "asks"
                 (lambda ()
@@ -463,9 +480,9 @@
       (close-window! e))
     (try! 'process-killed)
     ;; A process moves, resizes and restyles d (to a style that reaches
-    ;; less far), switched out right after each area it asks for until
-    ;; core1 has drawn a frame (a timer may do that), then stays alive: d
-    ;; leaves nothing behind.
+    ;; less far). It is switched out right after each area it asks for,
+    ;; until core1 has drawn a frame (a timer may do that), and then stays
+    ;; alive: d must leave nothing behind.
     (set-theme! 'shadow 0)
     (let ([d (open-window "D" 'size '(121 . 81) 'pos '(61 . 81)
                           'window-style 'glow-5)]
@@ -506,11 +523,12 @@
 (for-each damage-paths (frame-scales '(100 150 200)))
 
 ;;; ------------------------------------------------------------------ bleed
-;;; A window is drawn clipped to its extent. Every style, glow-5 and glow
-;;; (whose glow is clipped away) leave the reference when moved, resized
-;;; and hovered, at 100 and 150%, and glow-5's glow shows. Drawn alone and
-;;; unclipped, every registered style but glow keeps to its extent, focused
-;;; or not, as set up here and with the theme's defaults.
+;;; A window is drawn clipped to its extent. In every style, glow-5 and
+;;; glow among them (glow's glow is clipped away), the screen is the
+;;; reference after the window is moved, resized and hovered, at 100 and
+;;; 150%, and glow-5's glow shows. Drawn alone and unclipped, every
+;;; registered style but glow keeps within its extent, focused or not,
+;;; both with the shadow set up here and with the theme's defaults.
 (frame-section 'bleed)
 
 ;; How many pixels win, drawn alone and unclipped, puts outside its extent.
@@ -599,11 +617,13 @@
 (frame-section 'processes)
 
 ;; A process (a REPL evaluation is one) is an engine, switched out at any
-;; call where interrupts are on, while core1's loop draws on, here on the
-;; real clock. At 200% it rescales and calls (render-frame!), which in a
-;; process only asks for a frame. Besides its time running out, it is
-;; switched out for a step now and then. No error may come, every frame is
-;; core1's loop's (one a step at most), and the frame is the reference.
+;; call where interrupts are on, while core1's loop goes on drawing, here
+;; on the real clock. Starting at 200%, it rescales (between 150 and 200%)
+;; and calls (render-frame!), which in a process only asks for a frame.
+;; Besides being switched out when its time runs out, it is switched out
+;; for a step now and then. No error may come, every frame must be drawn
+;; by core1's loop (at most one per step), and the frame must be the
+;; reference.
 (set-theme! 'scale 200)
 (scene! 'S5)
 (let* ([acts (make-vector 5 0)] [switches 0] [errors 0] [n0 *frames-drawn*]
@@ -628,8 +648,8 @@
                        [(3) (render-frame!)]
                        [else (switch-point!)]))
                    (loop))))])
-      ;; steps cost little with no frame asked for: until the process is
-      ;; seen to have done enough
+      ;; steps cost little when no frame is asked for, so step until the
+      ;; process has done enough (or 20 s have passed)
       (let loop ()
         (when (and (< (- (test-real-now-ms) t0) 20000)
                    (or (<= switches 50) (<= (vector-ref acts 3) 100)))
@@ -652,8 +672,8 @@
 ;;; ------------------------------------------------------------------ raising
 (frame-section 'raising)
 
-;; Draws that raise: a window's (it crashes) and the whole frame's (nothing
-;; is drawn or uploaded, and the next frame is whole).
+;; Draws that raise: a window's draw (the window crashes) and the whole
+;; frame's (nothing is drawn or uploaded, and the next frame is whole).
 (let ([w (open-window "Crashy" 'size '(300 . 160) 'pos '(400 . 300)
                       'draw (lambda (win cw ch) (car '())))])
   (let ([crashed (matches-reference? 'crashed-window)])
@@ -673,9 +693,9 @@
                (and crashed (window-error w) (not shown?)
                     (matches-reference? 'after-raise)))))))
 
-;; A window-bleed with a mistake, as typed at the REPL: it is reported,
-;; every window covers the whole screen meanwhile, and frames and input go
-;; on, so that it can be fixed.
+;; A window-bleed with a mistake in it, as one typed at the REPL might
+;; have: it is reported, every window covers the whole screen in the
+;; meantime, and frames and input go on, so that it can be fixed.
 (let* ([keys 0] [plain window-bleed] [frames *frames-drawn*]
        [w (open-window "Keys" 'size '(200 . 100) 'pos '(300 . 200)
                        'key (lambda (win key mods) (set! keys (+ keys 1))))])
@@ -700,13 +720,13 @@
                   (matches-reference? 'bleed-fixed))))))
 
 ;;; ------------------------------------------------------------------ the kit
-;;; The widget kit changes the screen on input and by itself, in a window
-;;; of widgets alone: typing into a field and a wrapping area, the caret's
-;;; blink, hover and a tooltip, the wheel (rows scrolled under a still
-;;; pointer), a dropdown's menu, the calendar, the dialog. After each step
-;;; the screen is the reference, at 100, 150 and 200%; unfocused, or with
-;;; the dialog over a field that had the keyboard (no caret blinks under
-;;; it), the window asks for none.
+;;; The widget kit changes the screen on input and by itself, here in a
+;;; window that holds only widgets: typing into a field and into a
+;;; wrapping area, the caret's blink, hover and a tooltip, the wheel (rows
+;;; scrolled under a still pointer), a dropdown's menu, the calendar and
+;;; the dialog. After each step the screen is the reference, at 100, 150
+;;; and 200%. Unfocused, or with the dialog over a field that had the
+;;; keyboard (so no caret blinks under it), the window asks for no frame.
 (frame-section 'kit)
 
 (define (kit-scene pct)
@@ -750,7 +770,7 @@
     (define (try! label)
       (unless (matches-reference? (list pct label))
         (set! bad (cons label bad))))
-    (define (outside)   ; on the desktop, right of the window
+    (define (outside)   ; a point on the desktop, right of the window
       (values (+ (window-x w) (window-w w) 60) (+ (window-y w) 40)))
     (define (move! label id)
       (let-values ([(x y) (test-point w id)]) (inject! `(mouse-move ,x ,y)))
@@ -781,7 +801,7 @@
     (try! 'blink-on)
     (click! 'area 'notes)
     (type! 'wrapped " Words that wrap across the rows of the area, and more.")
-    ;; unfocused, the caret goes and no frame shows the window
+    ;; unfocused, the window loses its caret and asks for no frame
     (let-values ([(x y) (outside)])
       (inject! `(mouse-move ,x ,y) `(mouse-down ,x ,y left 1)
                `(mouse-up ,x ,y left)))
@@ -816,7 +836,7 @@
     (unless (string-suffix? " and more" (unbox title))
       (set! bad (cons 'not-typed bad)))
     ;; the dialog over a focused field: the field lets go of the keyboard,
-    ;; so no caret blinks under the scrim and no frame shows the window
+    ;; so no caret blinks under the scrim and the window asks for no frame
     (click! 'field-again 'title)
     (click! 'dialog-over-field 'delete)
     (when (asks-while-waiting? w 530)
@@ -837,14 +857,14 @@
 (set-theme! 'scale 100)
 
 ;;; ------------------------------------------------------------------ Tasks
-;;; What is Tasks' own to show: a card selected, a drag across columns,
-;;; the wheel on a column, a change from the REPL, the narrow page. After
-;;; each step the screen is the reference, at 100, 150 and 200%. (What
-;;; its widgets show is the kit's scene.)
+;;; What Tasks itself shows: a card selected, a drag across columns, the
+;;; wheel on a column and on the details, a change from the REPL, the
+;;; narrow page. After each step the screen is the reference, at 100, 150
+;;; and 200%. (The kit's scene covers what its widgets show.)
 (frame-section 'tasks)
 
-;; Tasks sized by its own measures, at the screen's left: wide, from where
-;; its details sit beside its view; narrow, its least width.
+;; Size Tasks by its own measures. Wide (at the screen's left) is the width
+;; at which its details sit beside its view; narrow is its least width.
 (define (frame-tasks-wide! w)
   (let-values ([(mw mh) (tasks-min-size)])
     (resize-window! w (max mw (tasks-wide-width (window-ref w 'state)))
@@ -936,8 +956,8 @@
 ;;; and expands, keys that move the selection and expand, the wheel (rows
 ;;; moved under a still pointer), a later row picked and Return going to
 ;;; its task's own row, a search dimming rows, a chip in the details, the
-;;; Add menu, the narrow page. After each step the screen is the
-;;; reference, at 100, 150 and 200%.
+;;; Add menu, a change from the REPL, the narrow page. After each step the
+;;; screen is the reference, at 100, 150 and 200%.
 (frame-section 'tree)
 
 (define (tree-scene pct)
@@ -1034,12 +1054,12 @@
 
 ;;; ------------------------------------------------------------------
 ;;; a long text
-;;; A description whose first rows are long and the rest short: its first
-;;; frame shows its scroll bar from the characters per row seen so far,
-;;; far from the true count. Idle steps compute the rest of its rows, and
-;;; the one that finishes draws the window again: the screen is then the
-;;; reference, its bar where the whole count puts it. Were that frame not
-;;; asked for, the estimate would stay on the screen.
+;;; A description whose first rows are long and the rest short. Its first
+;;; frame places its scroll bar from the characters per row seen so far,
+;;; an estimate far from the true count. Idle steps compute the rest of its
+;;; rows, and the step that finishes draws the window again: the screen is
+;;; then the reference, with the bar where the whole count puts it. If that
+;;; frame were not asked for, the estimate would stay on the screen.
 (frame-section 'text)
 
 (define (scan-scene pct)
@@ -1081,12 +1101,12 @@
 (set-theme! 'scale 100)
 (tasks-reset!)
 
-;; The description's editor scrolled to its top, its caret at the end,
-;; then maximized: its first draw at the new width takes the bar's total
-;; from the rows in view, and only then does the caret's row bring the
-;; rows to the end. The bar so drawn shows the estimate, so an idle step
-;; must draw it again, though no rows are left to compute; were that
-;; frame not asked for, the estimate would stay on the screen.
+;; The description's editor, scrolled to its top with its caret at the
+;; end, then maximized. Its first draw at the new width takes the bar's
+;; total from the rows in view, and only then does the caret's row make
+;; the layout reach the end. The bar drawn then shows the estimate, so an
+;; idle step must draw it again, though no rows are left to compute; if
+;; that frame were not asked for, the estimate would stay on the screen.
 
 (define (caret-scene pct)
   (set-theme! 'scale pct)
@@ -1194,11 +1214,11 @@
 ;;; ------------------------------------------------------------------ wallpaper
 (frame-section 'wallpaper)
 
-;; no window there
+;; a point with no window on it
 (define (desktop-pixel) (pixel-of (screen-picture) 20 (quotient (screen-h) 2)))
 
-;; The wallpaper is drawn with each frame: a theme change, through set-theme!
-;; or behind its back, shows on the next one.
+;; The wallpaper is drawn with each frame: a theme change, made through
+;; set-theme! or behind its back, shows on the next frame.
 (set-theme! 'scale 200)
 (test-clear-world!)
 (steps 2)
@@ -1257,8 +1277,8 @@
 ;;; ------------------------------------------------------------------ Life
 (frame-section 'life)
 
-;; Each Life window steps a generation (its pixmap's rows painted), twice:
-;; each next frame shows it.
+;; Each Life window steps a generation (painting its pixmap's rows),
+;; twice, and each time the next frame shows it.
 (set-theme! 'scale 200)
 (scene! 'S30T)
 (pause-lifes!)
@@ -1279,9 +1299,10 @@
 ;;; ---------------------------------------------------------------- the window
 (frame-section 'window)
 
-;; The swapchain's path: SDL's offscreen video driver has a surface lavapipe
-;; can show. A Mac's has none for Metal, whose window stays hidden, so that
-;; nothing opens. A frame is shown when the swapchain has an image free.
+;; The swapchain's path: SDL's offscreen video driver has a surface that
+;; lavapipe can show. A Mac's driver has none for Metal, so there the
+;; window stays hidden and nothing opens on screen. A frame is shown when
+;; the swapchain has an image free.
 (let ([window (sdl-create-window
                "Schevana" 640 400
                (if gpu-windowless-video 0 SDL_WINDOW_HIDDEN))])
@@ -1294,14 +1315,14 @@
       (check (format "on a window, frames go through the swapchain (~a of 10 \
                       shown)" shown)
              (> shown 0))))
-  ;; each frame's report begun as it's sent, and its GPU work seen done at
-  ;; a later step of core0's; the offscreen driver says nothing of the
-  ;; screen
+  ;; each frame's report is begun as the frame is sent, and its GPU work
+  ;; is seen done at a later step of core0's; the offscreen driver says
+  ;; nothing about the screen
   (let ([n *frame-ring-n*])
     (do ([i 0 (+ i 1)]) ((= i 6))
       (request-frame!)
       (steps 1))
-    ;; one shown, with steps after it
+    ;; a frame that was shown, with steps after it
     (let* ([i (let find ([i (- *frame-ring-n* 3)])
                 (if (or (< i n) (eqv? (inspect-frame-ref i 5) 1))
                     i

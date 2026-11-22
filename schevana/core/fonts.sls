@@ -1,14 +1,14 @@
 ;;; (schevana core fonts) — fonts, from FreeType directly, and the glyph atlas.
 ;;;
 ;;; Layout doesn't depend on the scale. When a face is first used, every
-;;; character's unhinted advance and ink go into a table, so what a draw
-;;; asks about text is arithmetic on read-only tables: no device, no context,
-;;; any thread. Text wraps the same at every scale, and changing the scale
-;;; measures nothing again.
+;;; character's unhinted advance and ink go into a table, so whatever a draw
+;;; asks about text is arithmetic on read-only tables: no device, no
+;;; context, any thread. Text wraps the same at every scale, and changing the
+;;; scale measures nothing again.
 ;;;
 ;;; A glyph is drawn once for each size and quarter-pixel phase used, on
-;;; first use, into one atlas (FreeType takes about 1 µs). A record holds its
-;;; number, and a table on the GPU maps that to its place.
+;;; first use, into one atlas (FreeType takes about 1 µs). A record holds the
+;;; glyph's number, and a table on the GPU maps that to its place.
 
 (library (schevana core fonts)
   (export
@@ -34,8 +34,9 @@
   (define-made font-page-count (fx+ 1 (fxsrl #x10FFFF 8)))
 
   ;;; ---------------------------------------------------------------- faces
-  ;;; FreeType's structs as far as what's read, laid out by Chez by the
-  ;;; platform's C rules: FreeType's positions are C longs, whatever size.
+  ;;; FreeType's structs, as far as they are read, laid out by Chez by the
+  ;;; platform's C rules: FreeType's positions are C longs, whatever their
+  ;;; size.
 
   (define-ftype ft-metrics
     (struct [width long] [height long] [left long] [top long] [advance long]
@@ -69,21 +70,21 @@
     (ftype-ref ft-face (glyph) (make-ftype-pointer ft-face handle)))
 
   ;;; A face's table: for each character, in font units, its advance and its
-  ;;; ink's left, top (above the baseline), width and height. A page holds 256
-  ;;; characters; -1 is a character the face hasn't.
+  ;;; ink's left, top (above the baseline), width and height. A page holds
+  ;;; 256 characters; -1 marks a character the face doesn't have.
 
   (define-record-type font-file
     (nongenerative schevana-font-file-1)
     (fields path handle upem ascender descender height fixed? pages notdef
             (mutable size)))     ; the size FreeType is set to, in 1/64 pixels
 
-  ;; At a REPL, the face's file, not its tables.
+  ;; At a REPL, a face prints as its file, not its tables.
   (at-load
    (record-writer (record-type-descriptor font-file)
      (lambda (ff p wr) (fprintf p "#<font-file ~s>" (font-file-path ff)))))
 
-  ;; What FreeType and fontconfig take or give through a pointer, one at a
-  ;; time: a place for it, a pointer made once.
+  ;; A place for what FreeType and fontconfig take or give through a
+  ;; pointer, one at a time, with a pointer to it made once.
   (define-ftype ft-scratch
     (union [pointer void*] [int int] [glyph unsigned-32]
            [vector (struct [x long] [y long])]))
@@ -96,7 +97,8 @@
       (ftype-ref ft-scratch (pointer) ft-scratch*)))
   (define-state *font-files* (make-hashtable string-hash string=?))
 
-  ;; FreeType's version and fontconfig's, as "2.13.3": (values ft fc).
+  ;; Returns FreeType's version and fontconfig's, each as "2.13.3": (values
+  ;; ft fc).
   (define (font-library-versions)
     (let ([p (foreign-alloc 12)])
       (ft-library-version *ft-library* p (+ p 4) (+ p 8))
@@ -114,10 +116,10 @@
   (define-made ft-load-target-mono (ash 2 16))
   (define ft-face-flag-fixed-width 4)
 
-  ;; Where fontconfig finds this family: (file . index in it).
-  ;; What a Mac asks for by the generic names, which there give a monospace with
-  ;; no λ and a sans-serif taller than the layouts here are made for: DejaVu, as
-  ;; on Linux, or where it isn't installed the nearest the system has.
+  ;; What a Mac asks for by the generic names, which there give a monospace
+  ;; with no λ and a sans-serif taller than the layouts here are made for:
+  ;; DejaVu, as on Linux, or where it isn't installed, the nearest font the
+  ;; system has.
   (define-made font-generic-families
     (if (platform-mac?)
         '(("sans-serif" . "DejaVu Sans,Lucida Grande")
@@ -125,6 +127,7 @@
           ("monospace" . "DejaVu Sans Mono,Menlo"))
         '()))
 
+  ;; Returns where fontconfig finds this family: (file . index in it).
   (define (font-file-match family slant weight)
     (let* ([own (assoc family font-generic-families)]
            [name (format "~a:slant=~a:weight=~a" (if own (cdr own) family)
@@ -179,7 +182,7 @@
                                        p))])
                       (metrics! page (fxand c 255))))
                   (loop (ft-get-next-char h c *ft-scratch*))))
-              ;; what a character the face hasn't draws: its .notdef
+              ;; what a character the face doesn't have draws: its .notdef
               (let ([notdef (make-fxvector 5 0)])
                 (when (zero? (ft-load-char h 0 ft-load-no-scale))
                   (fxvector-set! notdef 0
@@ -199,8 +202,8 @@
 
   ;;; ---------------------------------------------------------------- fonts
   ;;; A font is a setting: the theme's roles ('ui, 'mono, 'title, ...) are
-  ;;; rules, in gfx.ss, that make one with font, and get-font of a role reads
-  ;;; the theme.
+  ;;; rules, in (schevana core theme), that make one with font, and get-font
+  ;;; of a role reads the theme.
 
   (define-record-type (font-type make-font font?)
     (nongenerative schevana-font-4)
@@ -214,7 +217,8 @@
             (mutable pitch font-pitch font-pitch-set!)
             (mutable sized font-sized font-sized-set!)))
 
-  ;; At a REPL, what makes the font, not its caches: #<font "monospace" 14>.
+  ;; At a REPL, a font prints as what makes it, not its caches:
+  ;; #<font "monospace" 14>.
   (at-load
    (record-writer (record-type-descriptor font-type)
      (lambda (f p wr)
@@ -229,9 +233,10 @@
                  (if bold? 'bold 'normal)
                  size #f #f (and (memq 'crisp opts) #t) 0 #f '())))
 
-  ;; (font family size . opts), opts bold, italic and crisp (not
-  ;; antialiased: Platinum's text): one record for each, so that every theme
-  ;; asking for it shares its metrics and what is laid out in it.
+  ;; (font family size . opts), where opts are bold, italic and crisp (not
+  ;; antialiased, for text like Platinum's), returns one record for each
+  ;; spec, so that every theme asking for it shares its metrics and what is
+  ;; laid out in it.
   (define-state *font-specs* (make-hashtable equal-hash equal?))
   (define (font family size . opts)
     (let ([spec (cons* family size opts)])
@@ -240,7 +245,8 @@
             (hashtable-set! *font-specs* spec f)
             f))))
 
-  ;; A font, or a theme key whose value is one ('ui, 'mono-bold, ...).
+  ;; Returns f if it is a font, or else the font that the theme key f holds
+  ;; ('ui, 'mono-bold, ...).
   (define (get-font f) (if (font? f) f (theme f)))
 
   ;; The face of a font, opened on first use.
@@ -251,8 +257,8 @@
                                     (font-weight f)))])
           (font-file-cache-set! f ff)
           (font-size256-set! f (exact (round (* 256 (font-size f)))))
-          ;; a fixed-pitch face's columns stay even: a whole logical pixel a
-          ;; character, as are a crisp font's
+          ;; a fixed-pitch face's columns stay even: each character takes
+          ;; whole logical pixels, as a crisp font's characters do
           (when (or (font-file-fixed? ff) (font-crisp? f))
             (font-pitch-set!
              f (and (font-file-fixed? ff)
@@ -274,8 +280,8 @@
                              (font-file-upem ff))])
           (if (font-crisp? f) (fx* 256 (fxsra (fx+ a 128) 8)) a))))
 
-  ;; #(ascent descent height char-width), whole logical pixels but for the
-  ;; last.
+  ;; Returns #(ascent descent height char-width): the first three in exact
+  ;; whole logical pixels, the last a flonum, rounded up.
   (define (font-metrics f)
     (let ([f (get-font f)])
       (or (font-cache f)
@@ -308,18 +314,19 @@
                (loop (fx+ i 1)
                      (fx+ w (font-advance f ff (char->integer
                                                 (string-ref str i)))))
-               ;; whole logical pixels, up: layout's unit, and boxes stay crisp
+               ;; rounded up to whole logical pixels, layout's unit, so that
+               ;; boxes stay crisp
                (flceiling (fl/ (fixnum->flonum w) 256.0)))))]))
 
   ;;; ---------------------------------------------------------------- atlas
-  ;;; One texture of coverage, filled by shelves. Its rows' table holds, for a
-  ;;; glyph's number: u v w h left top, in device pixels.
+  ;;; One texture of coverage, filled shelf by shelf. Its table of rows
+  ;;; holds, for each glyph's number, u v w h left top, in device pixels.
 
   ;; character is for readers: no shader needs it
   (define-shader-layout glyph-row glyphs (u v w h left top character))
   (define-state *glyph-table*
     (make-immobile-bytevector (* 4 glyph-row-words 4096) 0))
-  ;; numbers from 1: 0 is a glyph not made yet
+  ;; glyph numbers start at 1: 0 is a glyph not made yet
   (define-state *glyph-count* 1)
   (define-state *glyph-table-dirty?* #t)
   (define-state *atlas-x* 0)
@@ -328,7 +335,8 @@
   (define-state *atlas-pieces* '())      ; ((u v w h bytes) ...) on their way up
   (define-state *atlas-full?* #f)
 
-  ;; A place for w × h coverage bytes, on their way to the atlas: (u . v).
+  ;; Returns a place, (u . v), for w × h coverage bytes on their way to the
+  ;; atlas; (0 . 0) once the atlas is full.
   (define (atlas-place! w h bytes)
     (when (> (+ *atlas-x* w 1) gpu-atlas-side)
       (set! *atlas-x* 0)
@@ -342,7 +350,8 @@
           (set! *atlas-pieces* (cons (list u v w h bytes) *atlas-pieces*))
           (cons u v))))
 
-  ;; The atlas filled up: everything is made again as it's next drawn.
+  ;; Empties the atlas once it has filled up: every glyph is made again as
+  ;; it is next drawn.
   (define (atlas-flush!)
     (set! *atlas-full?* #f)
     (set! *atlas-x* 0)
@@ -378,13 +387,14 @@
       (put! glyph-row-character char))
     (set! *glyph-table-dirty?* #t))
 
-  ;; Whether the glyph has this row: for clipping before a record is written.
+  ;; Returns word k of glyph n's row, read for clipping before a record is
+  ;; written.
   (define (glyph-row-ref n k)
     (bytevector-s32-native-ref *glyph-table* (* 4 (+ (* glyph-row-words n) k))))
 
-  ;; The pages of a font at a scale, num/den device pixels a logical pixel:
-  ;; for each character, four glyph numbers by quarter-pixel phase; 0, not made
-  ;; yet; -1, no ink.
+  ;; Returns the pages of a font at a scale of num/den device pixels per
+  ;; logical pixel: for each character, four glyph numbers, one per
+  ;; quarter-pixel phase, where 0 means not made yet and -1 means no ink.
   (define (font-glyph-pages f num den)
     (let ([key (fx+ (fx* num 65536) den)] [sized (font-sized f)])
       (if (and (pair? sized) (fx= (caar sized) key))
@@ -398,7 +408,8 @@
                   (font-sized-set! f (cons (cons key pages) sized))
                   pages))))))
 
-  ;; The glyph's number at this phase, made if it must be; -1 if it has no ink.
+  ;; Returns the glyph's number at this phase, making the glyph if it must,
+  ;; or -1 if it has no ink.
   (define (font-glyph f pages num den c phase)
     (let* ([n (fxsrl c 8)]
            [page (or (vector-ref pages n)
@@ -413,7 +424,8 @@
             g)
           g)))
 
-  ;; FreeType's glyph, drawn at its phase, into the atlas.
+  ;; Draws FreeType's glyph at its phase into the atlas. Returns its number,
+  ;; or -1 if it has no ink.
   (define (font-glyph-make f num den c phase)
     (let* ([ff (font-ready f)]
            [h (font-file-handle ff)]
@@ -447,7 +459,7 @@
                       (do ([x 0 (+ x 1)]) ((= x width))
                         (bytevector-u8-set!
                          bytes (+ to x)
-                         (if (= mode 1)      ; a bit a pixel, for crisp fonts
+                         (if (= mode 1)      ; a bit per pixel, crisp fonts
                              (if (logbit? (- 7 (modulo x 8))
                                           (foreign-ref 'unsigned-8 from
                                                        (quotient x 8)))

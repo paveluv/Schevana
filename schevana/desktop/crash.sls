@@ -1,7 +1,7 @@
 ;;; (schevana desktop crash) — what a crashed window shows in place of its
-;;; content: the handler that raised, the condition, and how to go on. The
+;;; content: the handler that raised, the condition, and how to recover. The
 ;;; window manager calls the part draw-crash-panel inside the window's
-;;; content.
+;;; content area.
 
 (library (schevana desktop crash)
   (export
@@ -30,7 +30,8 @@
                      "Click to retry.  Fix it live: (window-on! win 'draw ...)"
                      'text-faint 'ui-small)))))
 
-  ;; Character-wrapped text for monospace fonts; returns the y after the text.
+  ;; Draws str wrapped by characters (for monospace fonts) within w by h;
+  ;; returns the y below the last line drawn.
   (define (draw-wrapped-text x y w h str color font)
     (let* ([cw (font-char-width font)] [lh (+ 2 (font-line-height font))]
            [cols (max 1 (exact (floor (/ w cw))))]

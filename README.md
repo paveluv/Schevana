@@ -10,8 +10,10 @@ redefine it and break it from a REPL that runs inside the world it changes.
 
 The only C code involved is SDL3 (the window, input and the GPU),
 FreeType and fontconfig (fonts), all called through Chez's FFI. There is no
-build step: the whole world compiles from source in about 0.8 s at
-startup, and again at each `(reload!)`.
+build step: the first start compiles Schevana's libraries into the tree's
+`.cache/`, and later starts load them from there. A `(reload!)` evaluates
+again only the libraries whose files changed, with those that import
+them, and loads the world's plain files (yours among them) again.
 
 ## Running
 
@@ -50,23 +52,39 @@ platform are in [docs/INSTALL.md](docs/INSTALL.md).
 | drag title, edges, corner; double-click title | move, resize, maximize |
 | right-click title or taskbar button | window menu (incl. "Bind to `$w`") |
 
+## Two editions
+
+The same libraries run in one of two editions:
+
+- The **library edition**, the default, loads Schevana's libraries
+  compiled into `.cache/`, so the world loads quickly (about 0.2 s here),
+  and it keeps each library's internals to itself: an app sees what the
+  core's facade and the kits export. It is the edition for writing apps.
+- The **hacker edition** (`./desktop --hacker`) splices every library
+  into "/" from its source at each start, so it loads more slowly (about
+  1.7 s), but it exposes every name, internals included, to see and
+  redefine live: the full redefinability Schevana had before v2. Its heap
+  is slightly smaller too (89 MB live after a collection, against 97 MB).
+
 ## The REPL
 
 Ctrl+Shift+R or `(repl)` opens one. Enter evaluates a complete form, and
-Shift+Enter adds a line; Up and Down walk the history, Tab completes, and
-Ctrl+C stops what's running. What you type runs as a Schevana process
-(backed by a Chez engine), so the desktop goes on meanwhile.
+Shift+Enter adds a line; Up and Down move through the history, Tab
+completes, and Ctrl+C stops what's running. What you type runs as a
+Schevana process (backed by a Chez engine), so the desktop keeps running
+meanwhile.
 
-Every example in [docs/](docs/) works as it is: copy it from your browser
-or editor and paste it into a REPL with Ctrl+V, which reads the system
-clipboard, taking a page's examples in order. (I'll add copying from a
-REPL to the system clipboard soon.) A test runs them all
-(`tests/units/docs.ss`). The kinds of REPL, and what a `define` does in
-each, are in [docs/REPL.md](docs/REPL.md).
+Every example in [docs/](docs/) works as written on a desktop started
+with the demos (`./desktop demo`). Copy it from your browser or editor
+and paste it into a REPL with Ctrl+V, which reads the system clipboard;
+take a page's examples in the order the page gives them. (I'll add
+copying from a REPL to the system clipboard soon.) A test runs them all,
+each page in such a world (`tests/units/docs.ss`). The kinds of REPL, and
+what a `define` does in each, are in [docs/REPL.md](docs/REPL.md).
 
 ## The guide
 
-A programmer's guide, taught at the REPL, in reading order:
+A programmer's guide, with examples to try at the REPL, in reading order:
 
 - [Installing and running](docs/INSTALL.md): what it needs, its options,
   the files it keeps
@@ -99,10 +117,13 @@ scheme --script tests/smoke.ss out
 scheme --script tests/units.ss out
 scheme --script tests/frame.ss out
 scheme --script tests/sources.ss
+SCHEVANA_HACKER=1 scheme --script tests/smoke.ss out
+SCHEVANA_HACKER=1 scheme --script tests/units.ss out
 ```
 
-What each suite covers, how to run one check, how to write a test, and
-the bench are in [tests/GUIDE.md](tests/GUIDE.md).
+In the hacker edition the units' runner runs only the topics that tell
+the two editions apart. What each suite covers, how to run one check,
+how to write a test, and the bench are in [tests/GUIDE.md](tests/GUIDE.md).
 
 ## Conventions
 
@@ -115,19 +136,14 @@ the bench are in [tests/GUIDE.md](tests/GUIDE.md).
 What Schevana takes from others, and under which terms, is in
 [CREDITS.md](CREDITS.md).
 
-## Known gaps, and after v1
+## Known gaps, and after v2
 
-- Every start and `(reload!)` compiles the whole tree again, about 0.8 s.
 - The REPL has no selection or copy, though Ctrl+V pastes from outside,
   and there's no text editor app yet.
-- Windows and their state vanish on exit: only the look is kept.
+- Windows and their state are lost on exit: only the look is kept.
 - It runs on Linux and on a Mac; I haven't tried Windows yet.
 
-After v1, I plan to turn the apps' sandboxes and grants into a module
-system of Schevana's own, built on environments: a module imports and
-exports names, and a grant is a module's environment, imported. Kits and
-probably themes will become modules too, installable from third parties;
-an app will be able to span several files; and modules will be compiled
-ahead, for a faster start. And I'll make the profiler, which now sees
-only how long the collector ran, profile it properly: what allocates, by
-window, process and procedure, and what each collection costs.
+After v2, I plan to make the profiler profile memory properly. It now
+sees how long the collector ran and how much was allocated in all, but
+not what allocates, by window, process and procedure, or what each
+collection costs.

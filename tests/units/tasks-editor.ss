@@ -1,8 +1,8 @@
 ;;; tests/units/tasks-editor.ss — the editor of a task's description
-;;; ((schevana apps tasks)): a window of its own, opened by the button by the
-;;; Description label or by Ctrl+E in it, modal to Tasks; Save (Ctrl+S)
-;;; and Cancel (Escape, asking first when there are changes); closed in
-;;; any way, Tasks goes on.
+;;; ((schevana apps tasks)): a window of its own, modal to Tasks, opened by
+;;; the button next to the Description label or by Ctrl+E in the
+;;; description; Save (Ctrl+S) and Cancel (Escape, which asks first when
+;;; there are changes); however it closes, Tasks goes on.
 
 (tasks-reset!)
 (define tasks-editor-test-text
@@ -11,8 +11,8 @@
   (add-task! "A long description" 'status 'review
              'description tasks-editor-test-text))
 
-;; Tasks, wide (its details beside its view), the task selected: its
-;; window. Opened anew by the checks that close it.
+;; Opens Tasks wide (its details beside its view) with the task selected,
+;; and returns its window.
 (define (tasks-editor-test-tasks)
   (let* ([w (tasks)] [v (window-ref w 'state)])
     (let-values ([(mw mh) (tasks-min-size)])
@@ -35,7 +35,8 @@
 (define (tasks-editor-test-waiting?)
   (and (ui-find (tasks-editor-test-ui) '(ui modal-child)) #t))
 
-;; The editor opened from the code, its caret at 0; a step or two.
+;; Opens the editor from code with its caret at 0, runs two steps, and
+;; returns the editor's window.
 (define (tasks-editor-test-open!)
   (let ([ed (tasks-open-editor! (tasks-editor-test-view)
                                 tasks-editor-test-task 0)])
@@ -72,7 +73,8 @@
          (steps 1)
          (let ([focused (and (eq? ed (focused-window)) (eq? ed (car (windows)))
                              (eq? w (cadr (windows))))])
-           ;; handed to it, as a style that keeps no dialog above would
+           ;; input handed to Tasks itself, as it would be under a style
+           ;; that keeps no dialog above its window
            (window-call w 'text "n")
            (window-call w 'key 'delete '())
            (steps 2)

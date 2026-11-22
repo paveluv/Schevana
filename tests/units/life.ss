@@ -1,10 +1,11 @@
-;;; tests/units/life.ss — Life: its kernels and its grid against a plain
-;;; reference, its controls, the crew.
+;;; tests/units/life.ss — Life: its kernels and its grid checked against a
+;;; plain reference, its controls, and the crew.
 
-;; Life's own names, lf:life-step-rows! and the rest (tests/reach.ss).
+;; Life's own names, each with the prefix lf: (lf:life-step-rows! and the
+;; rest; tests/reach.ss).
 (test-library '(demo life) 'lf:)
 
-;; The next generation on a torus, the obvious way: the reference.
+;; The reference: the next generation on a torus, computed the obvious way.
 (define (life-reference grid cols rows)
   (let ([next (make-bytevector (* cols rows) 0)])
     (define (at x y)
@@ -20,7 +21,7 @@
                                   1
                                   0)))))))
 
-;; A grid from lines of text, # for a live cell.
+;; Makes a grid from lines of text, with # for a live cell.
 (define (life-grid . lines)
   (let* ([cols (string-length (car lines))]
          [g (make-bytevector (* cols (length lines)) 0)])
@@ -46,7 +47,7 @@
                              (* cols (mod (+ (quotient i cols) dy) rows)))
                           (bytevector-u8-ref grid i)))))
 
-;; k generations by the kernel, checking every generation against the
+;; Runs k generations by the kernel, checking every generation against the
 ;; reference and every pixel against its cell.
 (define (life-kernel-ok? grid cols rows k)
   (let ([row-px (lf:life-row-pixels rows)]
@@ -65,7 +66,7 @@
                           (iota (* cols rows)))
                  (loop (+ i 1) next)))))))
 
-;; k generations by the kernel alone.
+;; Runs k generations by the kernel alone, and returns the last grid.
 (define (life-kernel-run grid cols rows k)
   (let ([row-px (lf:life-row-pixels rows)]
         [pix (make-bytevector (* 4 cols rows) 0)])
@@ -126,13 +127,14 @@
     (do ([i 0 (fx+ i 1)]) ((fx= i 20))
       (lf:life-step-rows! 0 44 pix g next row-px dead 72 44))
     (let ([b (- (bytes-total) b0)])
-      ;; an 8-argument + made each generation allocate about 300 KB
+      ;; an 8-argument + would make each generation allocate about 300 KB
       (check (format "Life's kernel allocates nothing (~a bytes in 20 \
                       generations at 72 × 44)" b)
              (< b 1024)))))
 
-;; Life's draw handler into a pw × ph image at scale s, and what it gave
-;; draw-life-cells: (pixels cols rows cell ox oy).
+;; Runs Life's draw handler into an image of win's content at scale s.
+;; Returns the image and what the handler gave draw-life-cells: (pixels
+;; cols rows cell ox oy).
 (define (life-drawn win s)
   (let-values ([(cw ch) (window-content-size win)])
     (let* ([seen #f]
@@ -147,7 +149,8 @@
                           win cw ch))))])
       (values a seen))))
 
-;; The live cells a window shows: those whose pixel is not bg-0's.
+;; Returns the live cells a window shows, as a grid: those whose pixel is
+;; not bg-0's.
 (define (life-shown win)
   (let-values ([(a seen) (life-drawn win 1)])
     (picture-free! a)
@@ -161,7 +164,7 @@
            seen)))
 
 (let ([win (lf:life)])
-  (window-call win 'key #\space '())   ; paused
+  (window-call win 'key #\space '())   ; pauses it
   (let ([shown (life-shown win)])
     (window-call win 'key #\n '())
     (check "Life's n key shows the next generation"
@@ -169,9 +172,9 @@
                 (equal? (life-shown win) (life-reference shown 72 44)))))
   (close-window! win))
 
-;; Life's draw handler into an image, next to the cells drawn the old way:
-;; bg-0 everywhere, each live cell a rectangle. Compared above the status
-;; bar.
+;; Whether Life's draw handler, run into an image, matches the cells drawn
+;; the plain way (bg-0 everywhere, and a rectangle for each live cell),
+;; compared above the status bar.
 (define (life-matches-rects? s content-w content-h)
   (canvas-create! 1280 800 s)
   (let ([win (lf:life)])
@@ -214,8 +217,8 @@
 
 ;;; Its controls and the crew.
 
-;; What Life's status line says at a draw: (generation running? cols rows
-;; rate).
+;; Returns what Life's status line is given at a draw: (generation running?
+;; cols rows rate).
 (define (life-status win)
   (let ([seen #f] [real lf:life-status-text])
     (fluid-let ([lf:life-status-text (lambda args
@@ -230,7 +233,8 @@
 (define (life-size win)
   (let ([st (life-status win)]) (list (caddr st) (cadddr st))))
 
-;; A press at frac of the track of win's slider id, as the mouse does it.
+;; Presses at fraction frac of the track of win's slider id, as the mouse
+;; would.
 (define (life-slide! win id frac)
   (let ([r (ui-find (window-ref win 'ui) id)])
     (let ([x (+ (ui-region-x r) 8 (* frac (- (ui-region-w r) 16)))]
@@ -241,7 +245,7 @@
 (define (life-paused!)
   (let ([win (lf:life)])
     (window-call win 'key #\space '())
-    (life-size win)   ; a first draw: the panel's widgets are there
+    (life-size win)   ; a first draw, so the panel's widgets exist
     win))
 
 (define (life-speed! win label)
@@ -309,8 +313,9 @@
                (and (equal? size '(92 54)) kept? (> new 50)
                     (equal? again before)))))))
 
-;; Life maximized at the first stop of its cell size, its controls hidden,
-;; at scale s: the grid has the screen's own pixels, each cell one of them.
+;; Whether Life, maximized at the first stop of its cell size with its
+;; controls hidden, at scale s, draws its grid in the screen's own pixels,
+;; one pixel for each cell.
 (define (life-one-to-one? s)
   (canvas-create! 1280 800 s)
   (let ([win (life-paused!)])
@@ -349,7 +354,7 @@
        (let ([win (lf:life)] [frame! (lambda (win) (window-call win 'frame 0))])
          (life-size win)
          (fluid-let ([now-ms (let ([t (now-ms)]) (lambda () t))])
-           (frame! win)   ; maybe a generation: it was long ago
+           (frame! win)   ; may run a generation, as the last was long ago
            (let* ([frames (lambda (k)
                             (let ([g0 (life-generation win)])
                               (do ([i 0 (+ i 1)]) ((= i k))

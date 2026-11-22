@@ -1,14 +1,15 @@
-;;; tests/fork/run.ss — what tests/units/fork.ss has a forked world do:
-;;; loaded by ./desktop's --eval on core1, its own thread, core0 on
-;;; the process's first. It writes what it saw, as a datum, to the file
-;;; *fork-out* names, then quits.
+;;; tests/fork/run.ss — what tests/units/fork.ss has a forked world do.
+;;; ./desktop's --eval loads it on core1, which runs on its own thread,
+;;; with core0 on the process's first. It writes what it saw, as a datum,
+;;; to the file that *fork-out* names, then quits.
 
 (define (fork-raises? thunk) (guard (c [#t #t]) (thunk) #f))
 
-;; A window that animates: each frame's t and when it came, newest first,
-;; as it asks for the next. The run is timed after its first 5, which wait
-;; for the world's pipelines, and on a first run for Mesa's shaders, and
-;; ends by its frames, 40 more, however long a busy machine takes for them.
+;; A window that animates, keeping each frame's t and the time it came
+;; (newest first) as it asks for the next. The run is timed after its
+;; first 5 frames, which wait for the world's pipelines (and, on a first
+;; run, for Mesa's shaders). It ends by a count of frames, 46 in all, not
+;; by time, however long a busy machine takes for them.
 (define fork-frames '())
 (open-window "Animates" 'size '(120 . 80)
              'open window-frame-soon!
@@ -19,8 +20,8 @@
                       (invalidate! win))
              'draw (lambda (win w h) (fill-box 0 0 w h 'accent)))
 
-;; A compute run, and what it wrote read back by a then, as a REPL's would
-;; be: core1 never waits for it.
+;; A compute run, and what it wrote read back through a callback
+;; (gpu-buffer-read-then!), as a REPL's would be: core1 never waits for it.
 (define-compute-shader (fork-squares x y) ([out fx-buffer write])
   (fx-set! out x (fx* x x)))
 (define fork-read #f)
@@ -32,8 +33,8 @@
         (map (lambda (i) (bytevector-s32-native-ref bytes (* 4 i)))
              (iota 4))))))
 
-;; The same as a REPL's input asks it, in a process: gpu-compute! and
-;; gpu-buffer-read! wait there, core1 going on.
+;; The same, as a REPL's input asks for it, in a process: gpu-compute!
+;; and gpu-buffer-read! wait there while core1 goes on.
 (define fork-waited #f)
 (spawn "fork-wait"
        (lambda ()
@@ -44,20 +45,21 @@
                (map (lambda (i) (bytevector-s32-native-ref bytes (* 4 i)))
                     (iota 4)))))))
 
-;; The ticks kept whose phases don't add up to their time, as Monitor's and
-;; the Pipeline's bars stack them.
+;; Returns how many of the ticks kept have phases that don't add up to
+;; the tick's time, as Monitor's and the Pipeline's bars stack them.
 (define (fork-unsummed)
   (length (remp (lambda (seq)
                   (= (profile-tick-ns seq 'ns)
                      (apply + (map cdr (profile-tick-phases seq)))))
                 (profile-ticks))))
 
-;; The frames timed, oldest first.
+;; The timed frames, oldest first.
 (define (fork-timed) (list-tail (reverse fork-frames) 5))
 
-;; Of the gaps between the timed frames' t, those that aren't whole
-;; periods, to the 0.5 ms: one where core1 kept up, more where it came
-;; late for a refresh. Past four, core1 was away, and t starts anew.
+;; Returns how many gaps between the timed frames' t are not a whole
+;; number of periods, to within 0.5 ms. A gap is one period where core1
+;; kept up, and more where it was late for a refresh. A gap of more than
+;; four periods doesn't count: core1 was away, and t starts anew.
 (define (fork-uneven)
   (let ([p (core0-frame-ns)])
     (let count ([fs (fork-timed)] [k 0])
@@ -71,15 +73,16 @@
                        k
                        (+ k 1))))))))
 
-;; The refreshes between the first and the last timed frame, by the clock.
+;; The number of refreshes between the first and the last timed frame, by
+;; the clock.
 (define (fork-refreshes)
   (let ([fs (fork-timed)])
     (exact (round (/ (- (cdar fork-frames) (cdar fs)) (core0-frame-ns))))))
 
 (define (fork-done!)
   (let ([seen
-         ;; core0's, which the world isn't given: read where the core has
-         ;; it, core0's facade
+         ;; core0-forked? is core0's, which the world isn't given: it is
+         ;; read where the core has it, in core0's facade
          (list (cons 'forked
                      ((eval 'core0-forked? (environment '(schevana core0)))))
                (cons 'core1 (core1-thread?))

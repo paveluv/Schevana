@@ -4,8 +4,8 @@
 ;;; button: you fold the page away. The title is written at the sheet's top
 ;;; left, and minimize and maximize are two quiet marks beside the fold. The
 ;;; focused sheet is folded down to its content and its back is the accent,
-;;; like origami paper; the others recede, folded less, their backs a shade off
-;;; the paper.
+;;; like origami paper; the others recede: they are folded less, and their
+;;; backs are a shade off the paper.
 
 (library (schevana styles fold)
   (export
@@ -26,11 +26,12 @@
   (define fold-mark 9)      ; the marks' size: odd, so they have a middle
 
   ;; The dog-ear's square, which closes the window, is as tall as the top
-  ;; strip. The marks are a gap apart, and a gap from it.
+  ;; strip. The marks are a gap apart, and a gap away from it.
   (define (fold-gap) (round (* 2/5 (title-height))))
 
   ;; How deep the corner is folded: down to the content on the focused
-  ;; sheet or while it is the button in use, less on the others.
+  ;; sheet, or while the dog-ear is the button in use, and less on the
+  ;; others.
   (define (fold-depth focused? close?)
     (if (or focused? close?)
         (title-height)
@@ -48,20 +49,22 @@
             (list 'maximize x 0 c th)
             (list 'minimize (- x c) 0 c th))))
 
-  ;; (values baseline middle): where the title stands so that the middle of
-  ;; its capitals is the middle of the top strip under its 1-pixel edge.
+  ;; Returns (values baseline middle): where the title stands so that the
+  ;; middle of its capitals is the middle of the top strip below its
+  ;; 1-pixel edge.
   (define (fold-baseline y th)
     (let*-values ([(l top w h) (text-ink "H" 'title)]
                   [(cap) (- top)]
                   [(base) (+ y (/ (+ th 1) 2) (/ cap 2))])
       (values base (- base (/ cap 2)))))
 
-  ;; A polygon with a 1-pixel edge: outer in edge, inner (1 pixel in) in fill.
+  ;; A polygon with a 1-pixel edge: outer filled with edge, then inner (1
+  ;; pixel in) with fill.
   (define (fold-shape! outer inner edge fill)
     (fill-polygon outer edge)
     (fill-polygon inner fill))
 
-  ;; The sheet, its corner cut f deep and its sides b thick.
+  ;; The sheet, with its corner cut f deep and its edges b thick.
   (define (fold-sheet! x y w h f b edge paper)
     (let ([r (+ x w)] [d (- (sqrt 2) 1)] [bottom (+ y h (- b))])
       (fold-shape! (list (cons x y) (cons (- r f) y) (cons r (+ y f))
@@ -94,7 +97,8 @@
                                 [close? 'button-close]
                                 [focused? 'accent]
                                 [else #f])])
-      ;; from the content down, so that the cut corner stays clear
+      ;; the shadow from the content down, so that the cut corner stays
+      ;; clear
       (window-shadow win x (+ y th) w (- h th) 0 focused?)
       (when (maximized? win)   ; the desk, not a sliver of a window behind
         (fill-box (+ x w (- f)) y f f 'desktop-top))
@@ -133,8 +137,8 @@
   ;; A double click on the title folds the sheet up to it (shades it).
   (at-load
    (define-style fold "Fold"
-     ;; square, and so is everything drawn in it (rrect-path!); every common
-     ;; option but the radius
+     ;; square, and so is everything drawn in it (rec-radius); it has
+     ;; every common option except the radius
      'corner-radius 0
      'options (remq 'corner-radius (map car common-options))
      'title-double-click 'shade

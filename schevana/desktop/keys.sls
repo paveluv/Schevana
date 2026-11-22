@@ -1,6 +1,6 @@
-;;; (schevana desktop keys) — the desktop's default key bindings, installed
-;;; once a session when this file first loads: a reload does not undo your
-;;; unbind-key!.
+;;; (schevana desktop keys) — the desktop's default key bindings. They are
+;;; installed once per session, when this file first loads, so a reload does
+;;; not undo an unbind-key! you made.
 
 (library (schevana desktop keys)
   (export
@@ -36,8 +36,8 @@
                   (bind-key! (car b) (cdr b))))
               default-global-keys))
 
-  ;; A world that already has bindings (one reloaded from before this file,
-  ;; which installed them at boot) has its keys.
+  ;; A world that already has bindings when this state is made (a world from
+  ;; before this file, which installed its keys at boot) keeps its keys.
   (define-state *default-keys-installed?* (pair? *global-keys*))
   (at-load
    (unless *default-keys-installed?*

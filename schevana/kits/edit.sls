@@ -1,12 +1,12 @@
-;;; (schevana kits edit) — text editing, pure: no window, no ui object, no
+;;; (schevana kits edit) — text editing, pure: no window, no ui object and no
 ;;; screen.
 ;;;
-;;; What a text field, a text area or an editor needs: an edit (the text,
-;;; the caret and the selection, and where the text last changed), what
-;;; the editing keys do to it, and the text's rows, wrapped at a width,
-;;; computed only as far as they are asked for and remembered. Measuring
-;;; is a procedure passed in, (lambda (str) width), so editing needs no
-;;; font. The widget kit's text boxes are built on it, and so is Tasks'
+;;; This is what a text field, a text area or an editor needs: an edit (the
+;;; text, the caret and the selection, and where the text last changed),
+;;; what the editing keys do to it, and the text's rows, wrapped at a width,
+;;; computed only as far as they are asked for, and remembered. Measuring is
+;;; a procedure passed in, (lambda (str) width), so editing needs no font.
+;;; The widget kit's text boxes are built on it, and so is Tasks'
 ;;; description editor; an Editor app would add undo, find and files on
 ;;; top.
 ;;;
@@ -46,10 +46,10 @@
   (define-record-type edit
     (nongenerative schevana-edit-1)
     (fields text caret anchor
-            goal       ; the x Up/Down keep, or #f
+            goal       ; the x that Up and Down keep, or #f
             change))   ; (before lo hi): text is before with [lo, hi)
-                       ; replaced, so that what follows before (its layout)
-                       ; need not compare them; kept by caret moves; or #f
+                       ; replaced, so that a layout of before need not
+                       ; compare the texts; caret moves keep it; or #f
 
   (define (edit-at text i)
     (let ([i (clamp i 0 (string-length text))]) (make-edit text i i #f #f)))
@@ -63,8 +63,8 @@
   (define (edit-selection e)
     (let-values ([(lo hi) (edit-range e)]) (substring (edit-text e) lo hi)))
 
-  ;; t with [lo, hi) replaced by str, copied once; t itself when nothing
-  ;; changes, so a caller sees that with eq?.
+  ;; Returns t with [lo, hi) replaced by str, copied once; or t itself when
+  ;; nothing changes, so that a caller can tell with eq?.
   (define (edit-splice t lo hi str)
     (let ([n (string-length t)] [k (string-length str)])
       (if (and (= lo hi) (= k 0))
@@ -75,15 +75,15 @@
             (string-copy! t hi new (+ lo k) (- n hi))
             new))))
 
-  ;; e's text with [lo, hi) replaced by str, the caret at c; the edit says
-  ;; what changed, or keeps e's word on it when nothing did.
+  ;; Returns an edit of e's text with [lo, hi) replaced by str and the caret
+  ;; at c. Its change says what changed, or is e's own when nothing did.
   (define (edit-replace e lo hi str c)
     (let* ([t (edit-text e)] [new (edit-splice t lo hi str)])
       (make-edit new c c #f (if (eq? new t) (edit-change e) (list t lo hi)))))
 
-  ;; The selection replaced by str, the caret after it. With most (a number,
-  ;; or #f for none), the text keeps to most characters: typing stops there,
-  ;; and a paste is cut to fit.
+  ;; Replaces the selection with str and puts the caret after it. With most
+  ;; (a number, or #f for no limit), the text stays within most characters:
+  ;; typing stops there, and a paste is cut to fit.
   (define (edit-insert e str . most)
     (let*-values ([(lo hi) (edit-range e)]
                   [(t) (edit-text e)]
@@ -96,7 +96,8 @@
                              str)])
       (edit-replace e lo hi str (+ lo (string-length str)))))
 
-  ;; The selection deleted; with none, [caret, to) either way.
+  ;; Deletes the selection; with none, deletes from the caret to to, in
+  ;; either direction.
   (define (edit-erase e to)
     (let*-values ([(n) (string-length (edit-text e))]
                   [(lo hi) (edit-range e)]
@@ -116,7 +117,7 @@
       (make-edit (edit-text e) (clamp to 0 n) (clamp from 0 n) #f
                  (edit-change e))))
 
-  ;; Letters, digits, - and _: Lisp names are words.
+  ;; Letters, digits, - and _ are word characters, so Lisp names are words.
   (define (edit-word-char? c)
     (or (char-alphabetic? c) (char-numeric? c) (memv c '(#\- #\_))))
 
@@ -135,8 +136,8 @@
               [in-word? i]
               [else (loop (+ i 1) #f)]))))
 
-  ;; The run of characters that pred accepts around index j (pred accepts
-  ;; j's): (values lo hi).
+  ;; Returns (values lo hi), the run of characters around index j that pred
+  ;; accepts (pred accepts the one at j).
   (define (edit-run text j pred)
     (let ([n (string-length text)])
       (values (let loop ([i j])
@@ -147,9 +148,9 @@
                 (if (and (< i n) (pred (string-ref text i))) (loop (+ i 1))
                     i)))))
 
-  ;; A double click at i: the word touching i (the character after i first,
-  ;; then the one before), else the run of spaces there, else the character
-  ;; after i.
+  ;; Returns (values lo hi) for a double click at i: the word touching i (by
+  ;; the character after i first, then the one before), or else the run of
+  ;; spaces there, or else the character after i.
   (define (edit-word-bounds text i)
     (let* ([n (string-length text)]
            [after (and (< i n) (string-ref text i))]
@@ -164,7 +165,8 @@
             [after (values i (+ i 1))]
             [else (values i i)])))
 
-  ;; A triple click at i: the line between newlines.
+  ;; Returns (values lo hi) for a triple click at i: the line between
+  ;; newlines.
   (define (edit-line-bounds text i)
     (let ([n (string-length text)])
       (values (let loop ([j i])
@@ -177,10 +179,11 @@
                     (loop (+ j 1))
                     j)))))
 
-  ;; Text made insertable: a tab becomes a space, so pasted words stay apart;
-  ;; other control characters but newline go, and without newlines?,
-  ;; newlines become spaces. Text that is clean already is returned as it
-  ;; is, so a caller sees with eq? that nothing changed.
+  ;; Returns str made insertable: a tab becomes a space, so pasted words stay
+  ;; apart; other control characters (and DEL) are dropped, except newline,
+  ;; and without newlines?, newlines become spaces. Text that is already
+  ;; clean is returned as it is, so a caller can tell with eq? that nothing
+  ;; changed.
   (define (edit-clean str newlines?)
     (define (keep c)
       (cond [(char=? c #\newline) (if newlines? c #\space)]
@@ -203,41 +206,42 @@
             (get-output-string o)))))
 
   ;;; ---------------------------------------------------------------- rows
-  ;;; A newline ends a row; a paragraph breaks after the last space that
-  ;;; fits, which stays on its row (a soft break), or between characters
-  ;;; inside a word wider than the width. A space at a paragraph's end hangs
-  ;;; past the width rather than start a row. A layout computes rows from
-  ;;; the top only as far as they are asked for, and keeps them with the
-  ;;; text, width and font they belong to: what a draw costs depends on the
-  ;;; rows it shows, not on the text's length. After an edit, the rows past
-  ;;; it are those of the text before, moved: they are taken back, not
-  ;;; computed again, once a row starts where one of them did.
+  ;;; A newline ends a row. A paragraph breaks after the last space that
+  ;;; fits, and the space stays on its row (a soft break); inside a word
+  ;;; wider than the width, it breaks between characters. A space at a
+  ;;; paragraph's end hangs past the width rather than start a row. A layout
+  ;;; computes rows from the top only as far as they are asked for, and
+  ;;; keeps them with the text, width and font they belong to, so what a
+  ;;; draw costs depends on the rows it shows, not on the text's length.
+  ;;; After an edit, the rows past it are the rows of the text before,
+  ;;; moved: once a row starts where one of them did, they are taken back,
+  ;;; not computed again.
 
   (define-record-type edit-layout
     (nongenerative schevana-edit-layout-1)
     (fields (mutable text)
-            width              ; where rows wrap; #f: only at newlines
+            width              ; where rows wrap; #f wraps only at newlines
             key                ; what else a measure depends on (the font)
             (mutable measure)  ; (lambda (str) width)
-            (mutable starts)   ; fxvector: each row's start, then the next's
-                               ; (past the text's end after the last row)
-            (mutable count)    ; the rows computed
-            (mutable done?)    ; they reach the text's end
-            (mutable guess)    ; characters in the last row wrapped, where
+            (mutable starts)   ; fxvector: each row's start, then the next
+                               ; row's (past the text's end after the last)
+            (mutable count)    ; how many rows are computed
+            (mutable done?)    ; whether they reach the text's end
+            (mutable guess)    ; the length of the last row wrapped, where
                                ; the next row's search starts
-            (mutable old)))    ; (starts last hi delta): the rows before
+            (mutable old)))    ; (starts last hi delta): the rows from before
                                ; the last change, to take back, or #f
 
-  ;; text's layout at width (#f: no wrapping) in the font that key names
-  ;; (any value, compared with equal?), measured by measure. It is old's (a
-  ;; layout, or #f) when they agree on the width and key: a changed text
-  ;; keeps old's rows before its first change but two. A word shortened or
-  ;; split there may now fit on the row before, and on the one before that
-  ;; when the row between holds only what the first could not (a word
-  ;; broken by character after a narrow space). change is an edit's (before
-  ;; lo hi), or #f: when before is old's text, where the text changed is
-  ;; known, and the texts are not compared (only a text changed from
-  ;; elsewhere, such as the REPL, is).
+  ;; Returns text's layout at width (#f for no wrapping) in the font that
+  ;; key names (any value, compared with equal?), measured by measure. When
+  ;; old (a layout, or #f) agrees on the width and key, the layout is old
+  ;; itself, and a changed text keeps old's rows up to two rows before the
+  ;; row of its first change. A word shortened or split there may now fit
+  ;; on the row before, and on the row before that when the row between
+  ;; holds only what the first could not (a word broken by character after
+  ;; a narrow space). change is an edit's (before lo hi), or #f. When before
+  ;; is old's text, where the text changed is known and the texts are not
+  ;; compared (only a text changed from elsewhere, such as by the REPL, is).
   (define (edit-layout-of old text width key measure change)
     (cond
       [(and old (eqv? width (edit-layout-width old))
@@ -255,8 +259,8 @@
       [else (make-edit-layout text width key measure (make-fxvector 64 0) 0 #f
                               0 #f)]))
 
-  ;; How b differs from a: (values lo hi), b being a with [lo, hi) replaced,
-  ;; the start and end they share left out.
+  ;; Returns how b differs from a, as (values lo hi): b is a with [lo, hi)
+  ;; replaced, leaving out the start and the end they share.
   (define (edit-difference a b)
     (let* ([na (string-length a)] [nb (string-length b)] [n (min na nb)]
            [lo (let loop ([i 0])
@@ -269,7 +273,8 @@
             (loop (+ k 1))
             (values lo (- na k))))))
 
-  ;; The last r in [0, last] whose start is at most i (starts[0] is 0).
+  ;; Returns the last r in [0, last] whose start is at most i (starts[0] is
+  ;; 0).
   (define (edit-search starts last i)
     (let loop ([lo 0] [hi last])   ; the answer is in [lo, hi]
       (if (>= lo hi)
@@ -278,13 +283,14 @@
             (if (<= (fxvector-ref starts m) i) (loop m hi)
                 (loop lo (- m 1)))))))
 
-  ;; The text changed: [lo, hi) of it replaced, its length changed by
-  ;; delta. Forgets the rows from two before the row of lo on, and keeps
-  ;; the text's rows as they were (a copy of their starts, the vector going
-  ;; on with the new ones), for recall to take back those from hi on. Rows
-  ;; kept from before an earlier change, not all taken back yet (typing
-  ;; between idle steps), stay instead when they serve this change from
-  ;; its end on, and further than the rows computed now.
+  ;; Tells lay that its text changed: [lo, hi) of it was replaced, and its
+  ;; length changed by delta. Forgets the rows from two before the row of lo
+  ;; on, and keeps the text's rows as they were (a copy of their starts,
+  ;; while the vector goes on with the new ones), so that recall can take
+  ;; back those from hi on. Rows kept from before an earlier change and not
+  ;; all taken back yet (typing between idle steps) stay instead, when they
+  ;; serve this change from its end on and reach further than the rows
+  ;; computed now.
   (define (edit-layout-cut! lay lo hi delta)
     (let* ([c (edit-layout-count lay)] [starts (edit-layout-starts lay)]
            [r (edit-search starts c lo)]
@@ -300,10 +306,11 @@
       (edit-layout-count-set! lay (min c (max 0 (- r 2))))
       (edit-layout-done?-set! lay #f)))
 
-  ;; Where the row after a row from s starts, when a row of the text before
-  ;; the change started at s (moved by it) at or past the change's end: the
-  ;; texts agree from there on, and so do their rows. Else #f; past the
-  ;; last row kept, they are let go.
+  ;; Returns where the row after a row from s starts, when a row of the text
+  ;; before the change started at s (moved by the change) at or past the
+  ;; change's end: from there on the texts agree, and so do their rows.
+  ;; Else returns #f; once s is past the last row kept, the kept rows are
+  ;; let go.
   (define (edit-layout-recall lay s)
     (let ([old (edit-layout-old lay)])
       (and old
@@ -317,11 +324,12 @@
                        (and (< j last) (= (fxvector-ref starts j) t)
                             (+ (fxvector-ref starts (+ j 1)) delta)))])))))
 
-  ;; The last i in [a, b] for which ok? holds, ok? holding up to a point and
-  ;; never after it; a - 1 if none. Probed from i0 outward by doubling
-  ;; steps, then halving: about two probes when i0 is next to it.
+  ;; Returns the last i in [a, b] for which ok? holds, where ok? holds up to
+  ;; a point and never after it; a - 1 if it holds for none. It probes from
+  ;; i0 outward by doubling steps, then halves: about two probes when i0 is
+  ;; next to the answer.
   (define (edit-last ok? a b i0)
-    (define (halve lo hi)   ; ok? lo (or lo is a - 1), not hi
+    (define (halve lo hi)   ; ok? holds for lo (or lo is a - 1), not for hi
       (if (<= (- hi lo) 1)
           lo
           (let ([m (quotient (+ lo hi) 2)])
@@ -341,14 +349,15 @@
                         [(ok? j) (halve j hi)]
                         [else (down j (* step 2))])))))))
 
-  ;; Where the row from s ends, inside a paragraph (s is not at a newline):
-  ;; (values e end?). end?: e is the paragraph's end, the rest fitting, or
-  ;; its last character not fitting either. Else e is after the last space
-  ;; that fits, or inside a word that does not. The candidates (the spaces,
-  ;; then the paragraph's end) are looked for only within twice g past s,
-  ;; g the last row's length, and probed from the one near g: about two
-  ;; measures for a row of words, and nothing scanned or measured much past
-  ;; the row (a row longer than that looks again, twice as far).
+  ;; Returns where the row from s ends, inside a paragraph (s is not at a
+  ;; newline), as (values e end?). end? is true when e is the paragraph's
+  ;; end: the rest fits, or its last character does not fit either.
+  ;; Otherwise e is after the last space that fits, or inside a word that
+  ;; does not fit. The candidates (the spaces, then the paragraph's end) are
+  ;; looked for only up to twice g past s, where g is the last row's length,
+  ;; and are probed from the one near g: about two measures for a row of
+  ;; words, and nothing is scanned or measured much past the row (a longer
+  ;; row looks again, twice as far).
   (define (edit-row-end text s width measure g)
     (let ([n (string-length text)])
       (define (fits? x) (<= (measure (substring text s x)) width))
@@ -362,7 +371,7 @@
               [(and (< i b) (not (char=? (string-ref text i) #\newline)))
                (scan (+ i 1) spaces)]
               [else
-               (let* ([q (and (or (= i n) (< i b)) i)]   ; #f: b is no end
+               (let* ([q (and (or (= i n) (< i b)) i)]   ; #f: the end is past b
                       [cs (list->vector (reverse (cons i spaces)))]
                       [m (vector-length cs)]
                       [i0 (let loop ([j 0])
@@ -374,7 +383,7 @@
                                     0 (- m 1) i0)])
                  (cond
                    [(and (= j (- m 1)) q) (values q #t)]
-                   [(= j (- m 1)) (retry (* 2 (- b s)))]   ; it goes on
+                   [(= j (- m 1)) (retry (* 2 (- b s)))]   ; it goes past b
                    [(>= j 0)
                     (let ([e (+ (vector-ref cs j) 1)])
                       (values e (eqv? e q)))]
@@ -384,7 +393,7 @@
                                              (- (vector-ref cs 0) 1) (+ s g)))])
                       (values e (eqv? e q)))]))]))))))
 
-  ;; The first newline at or after s, or the text's end.
+  ;; Returns the first newline at or after s, or the text's end.
   (define (edit-paragraph-end text s)
     (let ([n (string-length text)])
       (let loop ([i s])
@@ -392,8 +401,8 @@
             i
             (loop (+ i 1))))))
 
-  ;; Computes the next row, or takes it back (recall). Its end is the next
-  ;; row's start, past the text's end after the last row.
+  ;; Computes the next row, or takes it back (recall). Its end is kept as
+  ;; the next row's start, which is past the text's end after the last row.
   (define (edit-layout-step! lay)
     (let* ([text (edit-layout-text lay)] [n (string-length text)]
            [c (edit-layout-count lay)] [starts (edit-layout-starts lay)]
@@ -426,17 +435,18 @@
         (edit-layout-done?-set! lay #t)
         (edit-layout-old-set! lay #f))))
 
-  ;; Computes rows until row r is computed, or the text's end.
+  ;; Computes rows until row r is computed, or to the text's end.
   (define (edit-layout-extend! lay r)
     (let loop ()
       (unless (or (< r (edit-layout-count lay)) (edit-layout-done? lay))
         (edit-layout-step! lay)
         (loop))))
 
-  ;; Computes rows for about ms milliseconds, or to the text's end; true
-  ;; once the rows reach it. Timed, not counted: a row costs from a
-  ;; fraction of a microsecond (taken back) to tens of them (measured, in a
-  ;; long line), so no count of rows keeps a slice near a millisecond.
+  ;; Computes rows for about ms milliseconds, or to the text's end, and
+  ;; returns true once the rows reach it. It is timed, not counted: a row
+  ;; costs from a fraction of a microsecond (taken back) to tens of
+  ;; microseconds (measured, in a long line), so no count of rows keeps a
+  ;; slice near a millisecond.
   (define (edit-layout-scan! lay ms)
     (let ([t0 (current-time 'time-monotonic)])
       (let loop ()
@@ -447,8 +457,8 @@
                #f]
               [else (edit-layout-step! lay) (loop)]))))
 
-  ;; The text's rows: their count once computed to the end, else an
-  ;; estimate from the characters per row so far.
+  ;; Returns how many rows the text has: their count once computed to the
+  ;; end, or else an estimate from the characters per row so far.
   (define (edit-layout-total lay)
     (let ([c (edit-layout-count lay)])
       (if (edit-layout-done? lay)
@@ -458,8 +468,9 @@
             (max (+ c 1)
                  (+ c (exact (ceiling (/ (* (- n seen) c) (max 1 seen))))))))))
 
-  ;; Row r's start and end (its newline, or where the next row starts), and
-  ;; whether it ends at a soft break; computed first if need be.
+  ;; Returns row r's start and end (its newline, or where the next row
+  ;; starts), and whether it ends at a soft break, computing the row first
+  ;; if need be.
   (define (edit-row* lay r)
     (edit-layout-extend! lay r)
     (let* ([text (edit-layout-text lay)] [n (string-length text)]
@@ -470,18 +481,19 @@
              (values s (- next 1) #f)]
             [else (values s next #t)])))
 
-  ;; Row r's start and end, as (values start end).
+  ;; Returns row r's start and end, as (values start end).
   (define (edit-row lay r)
     (let-values ([(s e soft?) (edit-row* lay r)]) (values s e)))
 
-  ;; The last caret index of row r: a soft row stops before its trailing
-  ;; space (or last character).
+  ;; Returns the last caret index of row r: a row that ends at a soft break
+  ;; stops before its trailing space (or last character).
   (define (edit-row-last lay r)
     (let-values ([(s e soft?) (edit-row* lay r)])
       (if soft? (max s (- e 1)) e)))
 
-  ;; The row of index i: the last whose start is at most i (a caret at a
-  ;; soft break shows on the next row). Rows are computed as far as i.
+  ;; Returns the row of index i: the last row whose start is at most i (so a
+  ;; caret at a soft break shows on the next row). Rows are computed as far
+  ;; as i.
   (define (edit-row-at lay i)
     (let loop ()
       (unless (or (edit-layout-done? lay)
@@ -497,8 +509,9 @@
       ((edit-layout-measure lay)
        (substring (edit-layout-text lay) s (max s (min i e))))))
 
-  ;; The index in row r nearest x: past half a character goes after it.
-  ;; Found by halving, so a long row takes log n measures, not n.
+  ;; Returns the index in row r nearest x: an x past the middle of a
+  ;; character goes after it. It is found by halving, so a long row takes
+  ;; log n measures, not n.
   (define (edit-index-at lay r x)
     (let*-values ([(s e) (edit-row lay r)]
                   [(text measure) (values (edit-layout-text lay)
@@ -510,9 +523,9 @@
                 [(< x (/ (+ (w j) (w (+ j 1))) 2)) (loop lo j)]
                 [else (loop (+ j 1) hi)])))))
 
-  ;; n rows down (up when negative), keeping the goal x; from the first row
-  ;; up goes to 0, from the last down to the end, and past them a page goes
-  ;; to that row.
+  ;; Moves the caret n rows down (up when n is negative), keeping the goal
+  ;; x. Up from the first row goes to 0 and down from the last row to the
+  ;; end; a page that would go past them stops at that row.
   (define (edit-vertical e lay n extend?)
     (let* ([t (edit-text e)] [c (edit-caret e)] [r (edit-row-at lay c)]
            [goal (or (edit-goal e) (edit-caret-x lay c))]
@@ -526,9 +539,10 @@
                          [else (edit-index-at lay (min target last) goal)])))])
       (make-edit t to (if extend? (edit-anchor e) to) goal (edit-change e))))
 
-  ;; The edit after an editing key, or #f for any other (Return, Escape,
-  ;; Tab, printable keys, whose text comes as 'text, and the clipboard's).
-  ;; lay: the text's layout; page: how many rows Page Up and Down move.
+  ;; Returns the edit after an editing key, or #f for any other key (Return,
+  ;; Escape, Tab, the printable keys, whose text comes as 'text, and the
+  ;; clipboard's keys). lay is the text's layout; page is how many rows Page
+  ;; Up and Page Down move.
   (define (edit-key e key mods lay page)
     (let* ([t (edit-text e)] [c (edit-caret e)]
            [shift? (and (memq 'shift mods) #t)]
@@ -562,8 +576,8 @@
           [(#\a) (and (equal? mods '(ctrl)) (edit-all t))]
           [else #f]))))
 
-  ;; text's rows at width as a vector of (start . end): for a label, made
-  ;; at once.
+  ;; Returns text's rows at width as a vector of (start . end), all made at
+  ;; once (for a label).
   (define (edit-wrap text width measure)
     (let ([lay (edit-layout-of #f text width #f measure #f)])
       (edit-layout-extend! lay (string-length text))

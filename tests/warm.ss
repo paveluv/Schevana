@@ -1,8 +1,9 @@
-;;; tests/warm.ss — the tree's libraries compiled into a cache, once,
-;;; before a suite starts its runs at once, each of which would compile
-;;; them itself: the launcher's cache (src/launch.ss), which the launchers
-;;; a test runs use, or with "tests" the tests' build's (tests/build.ss),
-;;; which the suites use. The hacker edition compiles none to a file.
+;;; tests/warm.ss — compiles the tree's libraries into a cache once, before
+;;; a suite starts its runs side by side, since each run would otherwise
+;;; compile them itself. Without arguments it fills the launcher's cache
+;;; (src/launch.ss), which the launchers that a test runs use; with "tests"
+;;; it fills the cache of the tests' build (tests/build.ss), which the
+;;; suites use. The hacker edition compiles nothing to a file.
 ;;;
 ;;;   scheme --script tests/warm.ss [tests]
 
@@ -13,7 +14,8 @@
 (load (string-append *schevana-root* "/src/launch.ss"))
 (load (string-append *schevana-root* "/tests/build.ss"))
 
-;; The world's libraries and the demos', by their files.
+;; The names of the world's libraries, the demos' and the game's, taken
+;; from their files.
 (define (warm-world-libraries)
   (apply append
          (map (lambda (dir name)
