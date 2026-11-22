@@ -4,10 +4,7 @@
 (library (demo sketch)
   (export sketch)
   (import (chezscheme)
-          (only (schevana base) library-layer)
           (schevana core))
-
-  (library-layer apps)
 
   (define sketch-palette '(text red orange yellow green teal accent accent-2))
 

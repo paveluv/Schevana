@@ -38,10 +38,10 @@ them, recursively: any library, a kit, a style, a palette or an app
 (`(third-party my-kit)`), by the name its first form gives (the folder
 it is found from by that name joins the library search), and a file
 (`.ss`) by its path. Each is read again at every `(reload!)`: a file
-added since loads. On the desktop the apps wait for the screen,
-Schevana's and yours alike, a library by the layer it declares
-(`(library-layer apps)`), a file in a folder named `apps`; the rest
-loads first. Paths are kept in full (`path-full`). From the command
+added since loads. On the desktop the apps wait for the screen: a
+library that declares the apps' layer (`(library-layer apps)`, as
+Schevana's do), a file in a folder named `apps`; the rest, a library
+that declares no layer among it, loads first. Paths are kept in full (`path-full`). From the command
 line, `./desktop ~/my-apps`; in Settings, Paths, which shows
 the library search by rank, each folder with a switch for whether it
 auto-loads, a row to add one (it doesn't auto-load until switched on),

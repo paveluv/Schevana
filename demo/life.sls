@@ -11,15 +11,12 @@
 (library (demo life)
   (export life)
   (import (chezscheme)
-          (only (schevana base) library-layer)
           (schevana core)
           (schevana kits text)
           (schevana kits ui)
           (schevana services crew)
           (schevana kits pixmap)
           (only (schevana kits color) color->pixel))
-
-  (library-layer apps)
 
   (define (life-bar-height)
     (max 26 (round (+ (font-line-height 'ui-small) 13))))

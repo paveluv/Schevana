@@ -13,10 +13,7 @@
 (library (games fireflies)
   (export fireflies-main fireflies)
   (import (chezscheme)
-          (only (schevana base) library-layer)
           (schevana core))
-
-  (library-layer apps)
 
   ;; The jar's radius, and how near a bug's middle comes to touch it.
   (define fireflies-jar-r 24)

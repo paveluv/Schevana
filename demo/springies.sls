@@ -21,12 +21,9 @@
 (library (demo springies)
   (export springies)
   (import (chezscheme)
-          (only (schevana base) library-layer)
           (schevana core)
           (schevana kits text)
           (schevana kits ui))
-
-  (library-layer apps)
 
   ;;; ------------------------------------------------------------------ points
 

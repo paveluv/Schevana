@@ -13,10 +13,7 @@
 (library (demo rings)
   (export rings-main rings)
   (import (chezscheme)
-          (only (schevana base) library-layer)
           (schevana core))
-
-  (library-layer apps)
 
   ;;; ------------------------------------------------------------------ paints
   ;;; Each paint gets its tile's size, w × h device pixels, and t, seconds

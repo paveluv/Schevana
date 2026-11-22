@@ -24,13 +24,10 @@
 (library (demo boids)
   (export boids)
   (import (chezscheme)
-          (only (schevana base) library-layer)
           (schevana core)
           (schevana kits text)
           (schevana kits ui)
           (schevana services crew))
-
-  (library-layer apps)
 
   ;;; ------------------------------------------------------------------ boids
 

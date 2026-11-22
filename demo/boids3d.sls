@@ -25,12 +25,10 @@
 (library (demo boids3d)
   (export boids3d)
   (import (chezscheme)
-          (only (schevana base) library-layer define-state)
+          (only (schevana base) define-state)
           (schevana core)
           (schevana kits text)
           (schevana kits ui))
-
-  (library-layer apps)
 
   ;;; ------------------------------------------------------------------ rules
 

@@ -79,12 +79,13 @@ before it:
   up. The world has of core0's and the recorder's only what the core
   gives it again. A new name in a facade is a reviewed change, and
   `tests/sources.ss` checks that no layer names another's beyond it.
-- **A library declares its layer** first in its body, `(library-layer
-  core0)`, or `(library-layer core0 facade)` for a sealed layer's front
-  door, and is held to the layers' order as it compiles (`(schevana
-  base)`): it imports no layer above its own, and of a sealed layer not
-  its own only the facade (`tests/units/boot.ss`; that every library
-  declares one, `tests/sources.ss`).
+- **A library of Schevana's declares its layer** first in its body,
+  `(library-layer core0)`, or `(library-layer core0 facade)` for a sealed
+  layer's front door, and is held to the layers' order as it compiles
+  (`(schevana base)`): it imports no layer above its own, and of a sealed
+  layer not its own only the facade (`tests/units/boot.ss`; that every
+  library under `schevana/` declares one, `tests/sources.ss`). A demo or
+  a game declares none, as a library from outside needs none.
 - **The core never depends on a later layer.** It reaches them only
   through registries, parts and settings they fill, and hooks they set:
   what its facade gives settable (`*profile-span*`, `theme-save!`,

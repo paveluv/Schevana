@@ -84,9 +84,11 @@
                                     (directory-list (source-path dir)))))))
               '("schevana" "demo" "games"))))
 
-;; Each declares its layer first (library-layer, (schevana base)), which
-;; holds its imports to the layers' order as it compiles.
-(check "every library in the tree declares its layer first"
+;; Each of Schevana's, under schevana/, declares its layer first
+;; (library-layer, (schevana base)), which holds its imports to the
+;; layers' order as it compiles; a demo or a game, as any library from
+;; outside, needs none.
+(check "every library of Schevana's declares its layer first"
        (none? (filter-map
                (lambda (f)
                  (let ([body (file-forms f)])
@@ -94,7 +96,8 @@
                                   (eq? (caar body) 'library-layer)))
                         (not (equal? f "schevana/base.sls"))
                         (format "~a declares no layer first" f))))
-               all-library-files)))
+               (filter (lambda (f) (string-prefix? "schevana/" f))
+                       all-library-files))))
 
 ;; Those of a layer's own, sealed: its folder of schevana/, and its
 ;; facade beside it.
