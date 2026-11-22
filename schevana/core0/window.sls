@@ -389,8 +389,8 @@
 
   ;;; ------------------------------------------------------------------ events
 
-  (define sdl-special-keys
-    '((13 . return) (8 . backspace) (9 . tab) (27 . escape) (127 . delete)
+  (define-made sdl-special-keys
+    `((13 . return) (8 . backspace) (9 . tab) (27 . escape) (127 . delete)
       (#x4000004F . right) (#x40000050 . left)
       (#x40000051 . down) (#x40000052 . up)
       (#x4000004A . home) (#x4000004D . end)

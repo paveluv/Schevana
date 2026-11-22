@@ -36,6 +36,14 @@
               (equal? (wheel 0.4 0.4 -0.4 -0.4 -0.4)
                       '(#f #f #f #f (wheel 0 -1))))))
 
+(check "SDL3's key codes for F1 to F12 decode as the keys f1 to f12"
+       (and (equal? (decode-event SDL_EVENT_KEY_DOWN
+                                  '(unsigned-32 28 #x4000003A))
+                    '(key-down f1 ()))
+            (equal? (decode-event SDL_EVENT_KEY_DOWN
+                                  '(unsigned-32 28 #x40000045))
+                    '(key-down f12 ()))))
+
 ;;; Core0's SDL code, run against a stand-in for SDL: every SDL call that
 ;;; (schevana sdl window) binds, except those for plain memory and the GPU,
 ;;; is a hook, and each is set to its stand-in here (a call with no
