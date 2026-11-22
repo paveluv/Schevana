@@ -1,5 +1,5 @@
-;;; (schevana socket) — local sockets, for programs that talk to the
-;;; world from outside (the Debug REPL): a Unix socket at a path only this
+;;; (schevana socket) — local sockets, the world's end of a talk with a
+;;; program outside it (the Debug REPL): a Unix socket at a path only this
 ;;; user can reach. Nothing here waits: a read or a write asks poll first
 ;;; and does no more than can go at once. A socket is its file descriptor.
 
@@ -17,8 +17,6 @@
   (define-foreign c-bind "bind" (int uptr unsigned-32) int)
   (define-foreign c-listen "listen" (int int) int)
   (define-foreign c-accept "accept" (int uptr uptr) int)
-  (define-foreign c-connect "connect" (int uptr unsigned-32) int)
-  (define-foreign c-shutdown "shutdown" (int int) int)
   (define-foreign c-recv "recv" (int u8* size_t int) ssize_t)
   (define-foreign c-send "send" (int u8* size_t int) ssize_t)
   (define-foreign c-poll "poll" (uptr unsigned-long int) int)
@@ -78,15 +76,6 @@
         (errorf 'socket-listen "can't listen at ~a" path))
       fd))
 
-  ;; Returns a socket connected to path, or #f.
-  (define (socket-connect path)
-    (let* ([length (socket-address! path)] [fd (c-socket 1 1 0)])
-      (if (and (>= fd 0)
-               (zero? (c-connect fd (ftype-pointer-address socket-sockaddr*)
-                                 length)))
-          fd
-          (begin (when (>= fd 0) (c-close fd)) #f))))
-
   ;; Whether events (poll's: 1 for in, 4 for out) would go at once, or the
   ;; socket has ended.
   (define (socket-ready? fd events)
@@ -120,9 +109,5 @@
             (bytevector-copy! bytes at *socket-chunk* 0 n)
             (let ([sent (c-send fd *socket-chunk* n 0)])
               (and (> sent 0) (loop (+ at sent) (- left 1))))))))
-
-  ;; Says that no more will be written to fd, so the other end reads to
-  ;; the end.
-  (define (socket-end-writing fd) (c-shutdown fd 1))
 
   (define (socket-close fd) (c-close fd)))

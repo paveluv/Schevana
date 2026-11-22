@@ -4,17 +4,44 @@
 
 (define debug-repl-test-path (string-append out-dir "/debug.sock"))
 
+;; A client's end, as a program outside the world opens it: returns a
+;; socket connected to path (its sockaddr_un has a length byte before the
+;; family on a Mac), or #f.
+(define debug-repl-test-connect
+  (let ([c-socket (foreign-procedure "socket" (int int int) int)]
+        [c-connect (foreign-procedure "connect" (int uptr unsigned-32) int)]
+        [address (foreign-alloc 110)])
+    (lambda (path)
+      (let* ([bytes (string->utf8 path)] [n (bytevector-length bytes)]
+             [fd (c-socket 1 1 0)])   ; AF_UNIX, SOCK_STREAM
+        (if (platform-mac?)
+            (begin (foreign-set! 'unsigned-8 address 0 (+ n 3))
+                   (foreign-set! 'unsigned-8 address 1 1))
+            (foreign-set! 'unsigned-16 address 0 1))
+        (do ([i 0 (+ i 1)]) ((= i n))
+          (foreign-set! 'unsigned-8 address (+ i 2)
+                        (bytevector-u8-ref bytes i)))
+        (foreign-set! 'unsigned-8 address (+ n 2) 0)
+        (if (and (>= fd 0) (zero? (c-connect fd address (+ n 3))))
+            fd
+            (begin (when (>= fd 0) (socket-close fd)) #f))))))
+
+;; Says that the client writes no more, so the world reads to the end.
+(define debug-repl-test-end-writing
+  (let ([c-shutdown (foreign-procedure "shutdown" (int int) int)])
+    (lambda (fd) (c-shutdown fd 1))))
+
 ;; Sends text as a client would, and steps until the answer has come.
 ;; Returns the answer as a datum.
 (define (debug-repl-test-ask text)
-  (let ([fd (socket-connect debug-repl-test-path)]
+  (let ([fd (debug-repl-test-connect debug-repl-test-path)]
         [bytes (string->utf8 text)]
         [buffer (make-bytevector 4096)])
     (let-values ([(port get) (open-bytevector-output-port)])
       (let send ([at 0])
         (let ([next (socket-write fd bytes at)])
           (unless (= next (bytevector-length bytes)) (send next))))
-      (socket-end-writing fd)
+      (debug-repl-test-end-writing fd)
       ;; it serves from a timer, so the answer is waited for by the clock
       (let wait ([until (+ (now-ms) 5000)])
         (when (> (now-ms) until)
@@ -87,10 +114,10 @@
                 (memq 'info styles)
                 (not (window-error win)))))
   (check "a client gone before its answer costs nothing but itself"
-         (let ([fd (socket-connect debug-repl-test-path)]
+         (let ([fd (debug-repl-test-connect debug-repl-test-path)]
                [bytes (string->utf8 "(+ 1 1)")])
            (socket-write fd bytes 0)
-           (socket-end-writing fd)
+           (debug-repl-test-end-writing fd)
            (socket-close fd)
            ;; it serves from a timer and answers from a process, so this is
            ;; waited for by the clock, as an answer is, not by a count of
@@ -105,6 +132,6 @@
            (close-window! win)
            (steps 1)
            (and (not (file-exists? debug-repl-test-path))
-                (not (socket-connect debug-repl-test-path))))))
+                (not (debug-repl-test-connect debug-repl-test-path))))))
 
 (debug-repl-path! #f)

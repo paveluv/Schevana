@@ -17,15 +17,14 @@
 (define main-env (interaction-environment))
 
 ;; An environment with the core's libraries whole, internals included, for
-;; the tests to look into, along with the desktop's start and the sockets'
-;; library (for a client's end); the world has only what the core's facade
-;; gives. A library is imported here again when a reload evaluates it again
-;; (reload-import!).
+;; the tests to look into, along with the desktop's start; the world has
+;; only what the core's facade gives. A library is imported here again when
+;; a reload evaluates it again (reload-import!).
 (define core-env
   (if test-hacker? main-env (copy-environment (scheme-environment) #t)))
 (unless test-hacker?
   (for-each (lambda (lib) (reload-import! core-env lib))
-            '((schevana tree) (schevana socket) (schevana core platform)
+            '((schevana tree) (schevana core platform)
               (schevana core theme-table)
               (schevana core processes) (schevana core gpu)
               (schevana core fonts) (schevana core draw) (schevana core pacer)
