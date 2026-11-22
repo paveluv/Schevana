@@ -2014,17 +2014,15 @@
 (check "a click on a chip selects that task" (eq? (selected) (find-task 22)))
 
 ;; With many tasks, Add's menu shows what fits on the screen, then how many
-;; more there are, which typing narrows; the task whose id is typed comes
-;; first. A choice that the REPL made into a cycle while the menu was open
-;; is refused, and a plain toast says so.
+;; more there are, which typing narrows (the order of what it offers is
+;; tested in tests/units/tasks.ss). A choice that the REPL made into a
+;; cycle while the menu was open is refused, and a plain toast says so.
 (let* ([more (sort (lambda (a b) (< (task-id a) (task-id b)))   ; board order
                    (map (lambda (i) (add-task! (format "Filler ~a" i)))
                         (iota 60)))]
-       [last (car (last-pair more))]
        [labels (lambda () (map car (filter pair? (menu-entries *menu*))))]
        [red? (lambda ()
                (exists (lambda (x) (eq? (vector-ref x 2) 'red)) *toasts*))])
-  (set-task! (car more) 'title (format "About ~a" (task-label last)))
   (test-finally
    (lambda ()
      (tasks-select! tv (find-task 14))
