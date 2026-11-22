@@ -625,6 +625,14 @@
                (and (equal? ink (list i i i))
                     (equal? shaded (list i p i))))))))
 
+(check "Adwaita's column view heading is a button's: at least 24 high, and \
+        3 above and below"
+       (with-style 'adwaita
+         (lambda ()
+           (let ([caption (round (font-line-height 'ui-small-bold))]
+                 [h (theme 'table-header-height)])
+             (if (<= caption 24) (= h 30) (= h (+ 6 caption)))))))
+
 (check "GNOME's wallpaper draws a gone one as the wallpaper it falls back \
         to, its circles too, as the built-in wallpaper does"
        (let ([at (lambda (name)

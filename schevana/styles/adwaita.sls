@@ -1400,11 +1400,12 @@
      'scrollbar-width 16
      'scrollbar-show 'hover
      'surface-well-ring 1
-     ;; a column view's heading: a caption and 3 above and below; a cell:
-     ;; its text and 8 above and below (widgets/_column-view.scss:12-20,
-     ;; 72-79)
-     'table-header-height (theme-rule (round (+ 8 (font-line-height
-                                                   'ui-small-bold))))
+     ;; a column view's heading: a button, at least 24 high
+     ;; (widgets/_buttons.scss:20), with its caption set solid and 3 above
+     ;; and below; a cell: its text and 8 above and below
+     ;; (widgets/_column-view.scss:12-20, 72-79)
+     'table-header-height
+     (theme-rule (+ 6 (max 24 (round (font-line-height 'ui-small-bold)))))
      'table-row-height (theme-rule (round (+ 16 (font-line-height 'ui))))
      'table-dividers 'handle
      'label-section-font 'ui-bold
