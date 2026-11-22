@@ -61,10 +61,10 @@
        (filter (lambda (f) (string=? (path-extension f) "ss"))
                (sort string<? (directory-list (source-path folder))))))
 
-;; The libraries below the world (schevana/), main.ss's list: core0's,
-;; the recorder's and the core's code is all in them, sealed. The world's
-;; files are (source-files).
-(define library-files *schevana-libraries*)
+;; The libraries below the world (schevana/): core0's, the recorder's and
+;; the core's code is all in them, sealed. The world's files are
+;; (source-files).
+(define library-files test-core-libraries)
 
 ;; Every library under schevana/, the ones the core is built of and
 ;; those that still include a layer's files.
@@ -104,7 +104,8 @@
           (test-files "tests")
           (test-files "tests/units")
           (test-files "tests/fork")
-          '("main.ss" "world.ss")
+          test-launchers
+          '("src/launch.ss" "src/hacker.ss" "src/build.ss")
           (test-files "schevana-demo")))
 
 (define (long-lines f)
@@ -175,19 +176,13 @@
 
 ;; Names defined in two files on purpose: ((kind . name) reason) ...
 (define defined-twice
-  '(((name . now-ns) "core0's clock and core1's, each in its own \
-                      environment, so a test fakes core1's alone")
-    ((name . define-hook) "a library's keeps the procedure as a state; \
+  '(((name . define-hook) "a library's keeps the procedure as a state; \
                            the top level's, where any procedure may be \
                            replaced, is a definition like another")
     ((name . define-state) "a library's keeps the value in a global of \
-                            Chez's; the top level's is a definition")
-    ((name . *schevana-root*) "main.ss finds the tree, and so its \
-                               libraries, before any of them loads; a \
-                               library asks (schevana tree)")))
+                            Chez's; the top level's is a definition")))
 
-(define world-files
-  (append library-files (source-files) '("main.ss")))
+(define world-files (append all-library-files (source-files)))
 
 ;; An app in a sandbox (services/grant.ss): what its file defines is the
 ;; sandbox's, but for the app itself, so it collides with nothing.
@@ -348,7 +343,7 @@
 
 (define outside-src
   (remp (lambda (f) (member (file-folder f) '("src" "schevana")))
-        (append world-files '("world.ss"))))
+        world-files))
 
 ;; The GPU layer speaks the world's terms: above it, in the core too, nothing
 ;; names SDL's windowless half, Vulkan, SPIR-V, Metal or MSL, so that another
@@ -370,7 +365,7 @@
                       "schevana/core0/window.sls"
                       "schevana/core/fonts.sls"
                       "schevana/core/platform.sls")))
-        (append world-files '("world.ss"))))
+        world-files))
 
 (define (names-a-back-end? s)
   (let ([name (symbol->string s)])
@@ -439,8 +434,7 @@
                                                  (strings-in
                                                   (file-forms f))))))
                           (remp (lambda (f) (member f platform-files))
-                                (append world-files
-                                        '("world.ss")))))))
+                                world-files)))))
 
 ;;; ------------------------------------------------------------------
 ;;; the chain: core0, the recorder, core1, the world
@@ -479,10 +473,18 @@
             (or (gensym? s) (memq s base)
                 (top-level-bound? s chez) (top-level-syntax? s chez)))
           (append (layer-names core1-chain-files)
-                  (environment-symbols core-env)))))
+                  (apply append
+                         (map (lambda (f)
+                                (library-exports
+                                 (cadr (call-with-input-file (source-path f)
+                                         read))))
+                              core1-chain-files))))))
 
-;; The world's own files: the basics, the folders, world.ss.
-(define world-own-files (append (source-files) '("world.ss")))
+;; The world's own files: the basics, the folders, and the libraries above
+;; the core (the desktop's start).
+(define world-own-files
+  (append (source-files)
+          (remp (lambda (f) (member f library-files)) all-library-files)))
 
 ;; The symbols x names as code, each once: what's quoted is data, and in a
 ;; quasiquote only what's unquoted is code.
@@ -523,18 +525,14 @@
                                        (file-forms f)))))))
                 files))))
 
-;; What core0 names of the core above it as code: nothing, as it boots
-;; core1 by its library's name and core1-boot!'s, data (main.ss).
+;; What core0 names of the core above it: nothing, as a launcher boots both
+;; (src/launch.ss).
 (define core0-reaches-up '())
 
-;; main.ss's own names are core0's too: it loads core0 where it defines
-;; them.
-(check "core0 names nothing of the recorder's or core1's but what it boots \
-        them by"
-       (none? (names-beyond (cons "main.ss" core0-chain-files)
+(check "core0 names nothing of the recorder's or core1's"
+       (none? (names-beyond core0-chain-files
                             (append recorder-names core1-names)
-                            (append core0-reaches-up
-                                    (map cdr (definitions "main.ss"))))))
+                            core0-reaches-up)))
 
 (check "the recorder names nothing of core0's but what core0 gives it"
        (none? (names-beyond recorder-chain-files core0-names
@@ -671,8 +669,7 @@
                                            (reverse (symbols-in
                                                      (file-forms f))))))
                             (remp (lambda (f) (member f core0-chain-files))
-                                  (append world-files
-                                          '("world.ss"))))))))
+                                  world-files))))))
 
 ;;; ------------------------------------------------------------------
 ;;; sharing the whole world
@@ -750,7 +747,7 @@
         fences"
        (let ([found (apply append
                            (map file-thread-fences
-                                (append world-files '("world.ss"))))])
+                                world-files))])
          (none? (append
                  (filter-map (lambda (p)
                                (and (not (member p thread-fences))
@@ -1060,21 +1057,6 @@
 
 (check "the tests never load ~/.schevana.d"
        (and (not *user-folders?*) (not (exists path-absolute? (source-files)))))
-
-;; Chez reads a script a form at a time, so a run has to end by exiting:
-;; world.ss may have been edited during it, and what's read next would be
-;; nonsense.
-(let ()
-  (define (run-then-exit? x)
-    (and (pair? x)
-         (or (and (equal? (car x) '(schevana-run!))
-                  (pair? (cdr x))
-                  (equal? (cadr x) '(schevana-end!)))
-             (run-then-exit? (car x))
-             (run-then-exit? (cdr x)))))
-  (check "world.ss ends the process when its run ends, reading no more of \
-          itself"
-         (exists run-then-exit? (file-forms "world.ss"))))
 
 ;; This file run again with SCHEVANA_CHECK set, as the units' runner runs a
 ;; topic, so that a Mac's loader path reaches it: its exit status.

@@ -34,7 +34,7 @@ brew install chezscheme sdl3 freetype fontconfig
 Then, with no build step:
 
 ```bash
-./schevana
+./schevana-desktop
 ```
 
 The options, the files it reads and writes, and the details for each

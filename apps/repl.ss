@@ -292,12 +292,14 @@
 ;; A define in the world of a name the core gives it makes the world's
 ;; own, which the core never calls: said once, as it's evaluated, since
 ;; what was meant is likely a redefinition, which is the core's library's
-;; to make, edited and reloaded.
+;; to make, edited and reloaded. Not in the hacker edition, where the
+;; define is that redefinition.
 (define (repl-note-core! r form)
   (let ([name (and (pair? form) (memq (car form) '(define defvar))
                    (pair? (cdr form))
                    (let ([h (cadr form)]) (if (pair? h) (car h) h)))])
     (when (and (symbol? name) (eq? (env-kind (repl-env r)) 'root)
+               (not (cdr (or (assq 'hacker *schevana-options*) '(#f . #f))))
                (not (top-level-bound? name *world-env*))
                (memq name (core1-exported)))
       (repl-add! r 'info

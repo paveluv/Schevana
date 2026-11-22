@@ -133,8 +133,10 @@
     (repl-note-core! r '(define (units-repl-own) 1))
     (repl-note-core! r '(+ 1 2))
     (check "a define in \"/\" of a core name says it's the world's own, \
-            and to edit the core's library; one of the world's says nothing"
-           (and (= after-core 1) (= (notes) 1))))
+            and to edit the core's library, but in the hacker edition, where \
+            it is the core's; one of the world's says nothing"
+           (let ([n (if test-hacker? 0 1)])
+             (and (= after-core n) (= (notes) n)))))
   (close-window! win))
 
 (check "every kind of REPL says its keys as it opens, and a running form's \

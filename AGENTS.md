@@ -7,7 +7,8 @@ test, the test is named.
 ## Before every commit
 
 All four suites pass under Chez Scheme 10.4.1, and before every push
-under 10.0.0 too, run from the repository's root:
+under 10.0.0 too, run from the repository's root, in the library edition
+and in the hacker edition (`SCHEVANA_HACKER=1` before each):
 
 ```bash
 mkdir -p out
@@ -44,8 +45,9 @@ before it:
 
 | Layer | What goes there |
 |---|---|
-| `src/base.ss` | What every environment of the top level has, a copy each: the basics, forwarders, by which an environment gives another its names, and the top level's own forms. Pure: no state, no C. |
-| `schevana/core0/` | Core0, below the core, sealed in its libraries: the GPU's device side, the window and its events, the trace, what differs by platform. `main.ss` imports them and boots it, and it boots core1, the world's own thread (headless, one thread plays both). The core has of it only its facade, `(schevana core0)`; the recorder, `schevana/recorder/` (the bytes of frames and their writers), has `(schevana core0 for-recorder)`, and the core has of the recorder its facade, `(schevana recorder)`. |
+| `schevana-desktop` and the demos' launchers | Programs of a few lines at the tree's root, which is where Schevana's libraries are found: each loads `src/launch.ss` and starts its library's main. |
+| `src/` | The top level's own files: `launch.ss` (the tree's libraries, compiled into `.cache/`, or spliced for `--hacker`), `hacker.ss` (the hacker edition: every library spliced into one environment, all its names redefinable), and `base.ss`: what every environment of the top level has, a copy each, the basics, forwarders, by which an environment gives another its names, and the top level's own forms. Pure: no state, no C. |
+| `schevana/core0/` | Core0, below the core, sealed in its libraries: the GPU's device side, the window and its events, the trace, what differs by platform. A launcher boots it, and core1 on the world's own thread (headless, one thread plays both). The core has of it only its facade, `(schevana core0)`; the recorder, `schevana/recorder/` (the bytes of frames and their writers), has `(schevana core0 for-recorder)`, and the core has of the recorder its facade, `(schevana recorder)`. |
 | `schevana/core/` | The core, sealed in its libraries, `(schevana core <piece>)`: the world (windows, focus, the theme's layers, processes, timers, its side of core0's window and events), core1's side of the GPU layer, drawing and fonts, the pacer, the loop, its registries, the hooks later layers fill, and the caches its own procedures need; making the world's environment, "/", where everything below loads, loading the world's files and reloading (`sources.sls`). The world has of it only its facade, `(schevana core)`, which lists what the world is given. |
 | `kits/` | Libraries, pure or almost. |
 | `services/` | Long-lived state with an API and no surface: the crew of worker threads, the tree of environments, the apps' sandboxes and what they are allowed, vats and their jobs, the profiler, the saved look. |
@@ -54,8 +56,8 @@ before it:
 | `apps/` | One app per file, defined with `define-app`; one whose first form is `app-requests` runs in a sandbox of its own (`services/grant.ss`). |
 | `schevana-demo/` | Programs on the core's libraries (`schevana/`), one per file: each imports what it needs and runs (`scheme --libdirs . --program schevana-demo/game.ss`). |
 
-- **The boot is a chain**: `main.ss` boots core0, core0 boots core1, core1
-  boots the world. A sealed layer gives the next only what its facade
+- **The boot is a chain**: a launcher boots core0, then core1, which
+  boots the world (`(schevana desktop main)`). A sealed layer gives the next only what its facade
   exports (`(schevana core0)`, `(schevana recorder)`, `(schevana core)`),
   a state or a hook it sets as a read-only view; the core's facade gives
   the hooks later layers fill settable, checked (`define-settable`).
@@ -73,9 +75,8 @@ before it:
   through registries, parts and settings they fill, and hooks they set:
   what its facade gives settable (`*profile-span*`, `theme-save!`,
   `window-gone!`, `app-load!`, ...).
-- **Core0 sits below the core.** Core0's libraries and `main.ss` name
-  nothing of the core above it (core1's boot is named as data), and only
-  core0 names SDL: the clock and
+- **Core0 sits below the core.** Core0's libraries name nothing of the
+  core above it, and only core0 names SDL: the clock and
   the CPU count are core0's, which it gives core1. What still crosses is
   listed in `tests/sources.ss`, and the lists only shrink
   (`.work/gpu-design.md` 9.5, 9.12).

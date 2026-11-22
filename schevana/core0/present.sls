@@ -1,7 +1,7 @@
 ;;; (schevana core0 present) — what became of each frame core0 presents, by the
 ;;; screen's own reports where the platform gives them ((schevana core0
 ;;; platform)). For each frame: when core0 sent it; the refresh it showed at,
-;;; by number, and when that refresh came, on now-ns's clock, with the
+;;; by number, and when that refresh came, on core0-now-ns's clock, with the
 ;;; refresh's length, or that the compositor dropped it; and when core0 first
 ;;; saw its GPU work done. Where the screen says nothing (X11, headless) only
 ;;; the GPU's times are kept.
@@ -31,14 +31,14 @@
 
   (define present-rows 8192)
   (define present-words 12)
-  ;; A row: the frame's number; its kind (0 sent, 1 shown, 2 dropped); when
-  ;; it was sent (now-ns); when the refresh it showed at came, by the
-  ;; screen's clock (now-ns); the refresh (ns); that refresh's number; when
-  ;; its GPU work was seen done (now-ns; 0, not yet); when core0 took it
-  ;; from core1, and when its acquire of a swapchain image began and
-  ;; returned (now-ns); the screen's own stamp of its showing (now-ns; 0,
+  ;; A row: the frame's number; its kind (0 sent, 1 shown, 2 dropped); when it
+  ;; was sent (core0-now-ns); when the refresh it showed at came, by the
+  ;; screen's clock (core0-now-ns); the refresh (ns); that refresh's number;
+  ;; when its GPU work was seen done (core0-now-ns; 0, not yet); when core0 took
+  ;; it from core1, and when its acquire of a swapchain image began and returned
+  ;; (core0-now-ns); the screen's own stamp of its showing (core0-now-ns; 0,
   ;; none); and the last look that found its GPU work not done yet
-  ;; (now-ns; 0, none): seen done tells only when core0 looked, which an
+  ;; (core0-now-ns; 0, none): seen done tells only when core0 looked, which an
   ;; acquire the screen holds puts off; this, that the work was still going.
   (define-state *present-ring* (make-fxvector (* present-rows present-words) 0))
 
@@ -47,9 +47,9 @@
   (define-state *present-taken* 0)
   (define-state *present-acquiring* 0)
   (define-state *present-acquired* 0)
-  (define (present-taken!) (set! *present-taken* (now-ns)))
-  (define (present-acquiring!) (set! *present-acquiring* (now-ns)))
-  (define (present-acquired!) (set! *present-acquired* (now-ns)))
+  (define (present-taken!) (set! *present-taken* (core0-now-ns)))
+  (define (present-acquiring!) (set! *present-acquiring* (core0-now-ns)))
+  (define (present-acquired!) (set! *present-acquired* (core0-now-ns)))
 
   (define (present-at frame) (fx* present-words (fxmodulo frame present-rows)))
 
@@ -65,7 +65,7 @@
   (define (present-sent! frame)
     (let ([r *present-ring*] [at (present-at frame)])
       (fxvector-set! r (fx+ at 1) 0)
-      (fxvector-set! r (fx+ at 2) (now-ns))
+      (fxvector-set! r (fx+ at 2) (core0-now-ns))
       (do ([k 3 (fx+ k 1)]) ((fx= k 7))
         (fxvector-set! r (fx+ at k) 0))
       (fxvector-set! r (fx+ at 7) *present-taken*)
@@ -77,7 +77,7 @@
       (fxvector-set! r at frame)))
 
   ;; The screen's word on frame: dropped (kind 2), or shown (1) at stamp
-  ;; (now-ns), a refresh refresh ns long by the screen's word (0, none: it
+  ;; (core0-now-ns), a refresh refresh ns long by the screen's word (0, none: it
   ;; keeps no steady refresh, or doesn't say).
   (define (present-reported! frame kind stamp refresh)
     (let ([at (present-at frame)])
@@ -112,8 +112,8 @@
   ;;; where the driver counts nothing (Mutter over NVIDIA's).
 
   ;; The newest refresh a report placed, by number, and when it came by the
-  ;; screen's clock (now-ns; 0, none yet); the reports that came later than
-  ;; the clock since one agreed with it, and the least by how much.
+  ;; screen's clock (core0-now-ns; 0, none yet); the reports that came later
+  ;; than the clock since one agreed with it, and the least by how much.
   (define-state *present-refresh* 0)
   (define-state *present-refresh-at* 0)
   (define-state *present-late-run* 0)
@@ -300,7 +300,7 @@
   ;; The fences signaled since the last look: their frames' GPU times. And
   ;; the reports held too long (present-held-poll!).
   (define (present-poll!)
-    (present-held-poll! (now-ns))
+    (present-held-poll! (core0-now-ns))
     (when *renderer*
       (let ([dev (renderer-device *renderer*)] [fs *present-fences*])
         (do ([i 0 (fx+ i 1)]) ((fx= i present-fence-slots))
@@ -311,7 +311,7 @@
                      [done? (sdl-query-gpu-fence dev fence)])
                 (when (fx= (fxvector-ref *present-ring* at) frame)
                   (fxvector-set! *present-ring* (fx+ at (if done? 6 11))
-                                 (now-ns)))
+                                 (core0-now-ns)))
                 (when done?
                   (core0-trace! 12 frame)
                   (sdl-release-gpu-fence dev fence)

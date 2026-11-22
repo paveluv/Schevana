@@ -25,7 +25,7 @@
     (system (format "rm -rf '~a' && mkdir -p '~a' && cp -r~{ '~a'~} '~a'"
                     dir dir
                     (map (lambda (f) (string-append *schevana-root* "/" f))
-                         (cons* "main.ss" "src" source-folders))
+                         (cons "src" source-folders))
                     dir))
     ;; the last file to load into the world: an app in a sandbox would run
     ;; the form there
@@ -220,6 +220,13 @@
   (set! *toasts* '())
   (steps 1))
 
+;; The edition's reload of the libraries: the library edition's, or the
+;; hacker edition's, which splices them again (src/hacker.ss).
+(define (test-reload-libraries! held)
+  (if test-hacker?
+      ((eval 'hacker-reload-libraries!) held)
+      (reload-libraries! held)))
+
 ;;; Libraries reloaded in place (reload-libraries!, which reload! runs
 ;;; first): one whose file changed is evaluated again, then each that
 ;;; imports it, and an environment that imported them imports them again.
@@ -264,10 +271,10 @@
     (in-e '(begin (ura-bump!) (ura-bump!)))
     (let* ([before (in-e '(urb-val))]
            [made (in-e 'ura-made)]
-           [none (reload-libraries! held)])
+           [none (test-reload-libraries! held)])
       (write! "a" (a 'new))
       (write! "c" (c 'changed))
-      (let ([order (reload-libraries! held)])
+      (let ([order (test-reload-libraries! held)])
         (check "a library whose file changed is evaluated again, then the \
                 one that imports it; the environment that imported them \
                 has the new ones, the state as it was, the made value made \

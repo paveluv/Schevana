@@ -1,11 +1,13 @@
-;;; tests/units/boot.ss — the boot's chain: main.ss boots core0, whose
-;;; code is sealed in its libraries; core0 boots core1, the core sealed in
-;;; its own, which imports what core0 and the recorder give it, their
-;;; facades; core1 makes "/", which imports what the core gives it, its
-;;; facade, (schevana core).
+;;; tests/units/boot.ss — the boot's chain: a launcher starts core0, whose
+;;; code is sealed in its libraries, and core1, the core sealed in its own,
+;;; which imports what core0 and the recorder give it, their facades; core1
+;;; makes "/", which imports what the core gives it, its facade, (schevana
+;;; core). In the hacker edition, every library spliced into one
+;;; environment, "/" itself, nothing sealed.
 
 ;; What the core is given: the facades, imported as the core's libraries
 ;; import them.
+(unless test-hacker?
 (let ([given (environment '(chezscheme) '(schevana core0)
                           '(schevana recorder))])
   (define (in-core form) (eval form given))
@@ -34,10 +36,11 @@
               (not (named? 'gpu-list-recording-set!))
               (not (named? 'make-gpu-list))
               (not (named? 'gpu-frame-root-set!))
-              (not (named? 'gpu-frame-earlier-set!)))))
+              (not (named? 'gpu-frame-earlier-set!))))))
 
 ;; A "/" made as core1 makes it, importing the core's facade: the tests'
 ;; own has its names settable (tests/reach.ss).
+(unless test-hacker?
 (let ([world (let ([w (copy-environment (scheme-environment) #t)])
                (eval '(import (schevana core)) w)
                w)])
@@ -68,39 +71,72 @@
                 (eq? (in-world `(fluid-let ([window-gone! ',mine])
                                   window-gone!))
                      mine)
-                (eq? (eval 'window-gone! core-env) real)))))
+                (eq? (eval 'window-gone! core-env) real))))))
 
-;; main.ss reads the command line before anything loads, each option once,
-;; in its defaults' order; a word it doesn't know prints the usage.
-(fluid-let ([main-usage (lambda () 'usage)])
-  (check "main.ss reads the command line once: what's asked over the \
-          defaults, in their order, and the usage for a word it doesn't know"
-         (and (equal? (main-options '())
-                      main-defaults)
-              (equal? (main-options '("--headless" "--size" "400x300"
-                                      "--eval" "1" "--fork" "--eval" "2"))
-                      '((mode . headless)
-                        (size 400 . 300)
-                        (full-screen? . #f)
-                        (fork? . #t)
-                        (desktop . #f)
-                        (evals "1" "2")))
-              (eq? (main-options '("--size" "400")) 'usage)
-              (eq? (main-options '("--size")) 'usage)
-              (eq? (main-options '("--frobnicate")) 'usage)
-              (equal? *main-options* (main-options '("--headless")))
-              (equal? *schevana-options* *main-options*)))
-  (check "a window, or --fork, boots on two threads; installing the \
-          desktop entry on one"
-         (and (main-fork? (main-options '()))
-              (main-fork? (main-options '("--headless" "--fork")))
-              (not (main-fork? (main-options '("--headless"))))
-              (not (main-fork? (main-options '("--install-desktop")))))))
+;; In the hacker edition every library's names are here, internals too, and
+;; a redefinition takes at the core's next call, as a world of top-level
+;; files has it. Evaluated there only: the library edition refuses the
+;; set! as it expands.
+(when test-hacker?
+  (check "in the hacker edition every library's internals are names of the \
+          world's, and the core's own calls reach a redefinition"
+         (eval '(and (for-all top-level-bound?
+                              '(compute-rule! sdl-get-ticks-ns rec-take!
+                                gpu-frame! *sdl-window* theme-busy
+                                desktop-options))
+                     (let ([real theme])
+                       (dynamic-wind
+                         (lambda ()
+                           (set! theme
+                             (lambda (key)
+                               (if (eq? key 'units-hacker-part) cdr
+                                   (real key)))))
+                         (lambda ()
+                           (eq? (theme-part 'units-hacker-part) cdr))
+                         (lambda () (set! theme real))))))))
 
-(check "the world runs in an environment of its own, made by core1"
+;; The desktop reads the command line before the world loads, each option
+;; once, in its defaults' order; a word it doesn't know prints the usage.
+(let ([defaults (if test-hacker?
+                    (map (lambda (d)
+                           (if (eq? (car d) 'hacker) '(hacker . #t) d))
+                         desktop-defaults)
+                    desktop-defaults)])
+  (fluid-let ([desktop-usage (lambda () 'usage)])
+    (check "the desktop reads the command line once: what's asked over the \
+            defaults, in their order, and the usage for a word it doesn't \
+            know"
+           (and (equal? (desktop-options '()) defaults)
+                (equal? (desktop-options '("--headless" "--size" "400x300"
+                                           "--eval" "1" "--fork" "--demo"
+                                           "--eval" "2" "--hacker"))
+                        '((mode . headless)
+                          (size 400 . 300)
+                          (full-screen? . #f)
+                          (fork? . #t)
+                          (desktop . #f)
+                          (hacker . #t)
+                          (demo . #t)
+                          (evals "1" "2")))
+                (eq? (desktop-options '("--size" "400")) 'usage)
+                (eq? (desktop-options '("--size")) 'usage)
+                (eq? (desktop-options '("--frobnicate")) 'usage)
+                (equal? *schevana-options* (desktop-options '("--headless")))))
+    (check "a window, or --fork, boots on two threads; installing the \
+            desktop entry on one"
+           (and (desktop-fork? (desktop-options '()))
+                (desktop-fork? (desktop-options '("--headless" "--fork")))
+                (not (desktop-fork? (desktop-options '("--headless"))))
+                (not (desktop-fork?
+                      (desktop-options '("--install-desktop"))))))))
+
+(check "the world runs in an environment of its own, made by core1; in the \
+        hacker edition, the one every library was spliced into"
        (and (eq? *world-env* world-env)
-            (not (eq? *world-env* main-env))
-            (not (eq? *world-env* core-env))))
+            (if test-hacker?
+                (eq? *world-env* main-env)
+                (and (not (eq? *world-env* main-env))
+                     (not (eq? *world-env* core-env))))))
 
 ;;; Core0's step: jobs posted (each a procedure and its arguments) run at
 ;;; its next step, in order; the events it pumps wait in the world's inbox
@@ -268,10 +304,12 @@
                    ((exit-handler) 1)
                    'went-on))))))
 
-;;; A library is held to its layer as it compiles (library-layer, in
-;;; (schevana base)): one that imports a layer above its own, or a piece of
-;;; a sealed layer not its own, is refused; one that imports its own layer
-;;; or below loads. Libraries of the test's own, in a folder of out/.
+;;; In the library edition a library is held to its layer as it compiles
+;;; (library-layer, in (schevana base)): one that imports a layer above its
+;;; own, or a piece of a sealed layer not its own, is refused; one that
+;;; imports its own layer or below loads. Libraries of the test's own, in a
+;;; folder of out/.
+(unless test-hacker?
 (let* ([dir (string-append out-dir "/library-layers")]
        [write! (lambda (name layer imports)
                  (call-with-output-file
@@ -309,4 +347,4 @@
            (and (not (loads? 'above))
                 (not (loads? 'inside))
                 (loads? 'through)
-                (loads? 'beside)))))
+                (loads? 'beside))))))

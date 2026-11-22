@@ -77,7 +77,7 @@
     *input-step?* post-core1! schevana-run! quit! schevana-end! uptime-ms
     load-user-init! user-directory schevana-boot! collector-declining?
     source-path source-files *source-texts* keep-source-text! load-file!
-    load-user-folders! reload!
+    load-user-folders! reload! core1-run core1-boot!
     ;; (schevana core theme): the theme, styles, palettes and parts
     *theme-version* *style-name* *style-changes* *theme-overrides*
     *scale-setting* default-theme color-keys common-options theme-default
@@ -207,7 +207,7 @@
                 set-fullscreen! toggle-fullscreen! screen-set-icon!)
           (only (schevana core loop) post-core1! schevana-run! quit!
                 schevana-end! uptime-ms user-directory schevana-boot!
-                collector-declining? loop-main)
+                collector-declining? core1-run loop-main)
           (only (schevana core theme) common-options theme-default
                 define-palette palettes palette-title palette-colors style
                 style-name style-title style-settings define-style find-style
@@ -238,7 +238,7 @@
                 window-frame-soon! window-hover draw-window*)
           (only (schevana core sources) core1-exported load-user-init!
                 source-path source-files keep-source-text! load-file!
-                load-user-folders! reload!)
+                load-user-folders! reload! core1-boot!)
           (prefix (only (schevana tree) *schevana-root*) core:)
           (prefix (only (schevana core platform) platform-process-bytes now-ns
                         now-ms) core:)

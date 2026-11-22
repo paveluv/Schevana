@@ -64,7 +64,7 @@
           (let ([at (fx* 4 (fxmodulo (fx- n 1) core0-trace-rows))])
             (memory-order-acquire)
             (when (eqv? (fxvector-ref v at) (fx- n 1))
-              (let ([since (- (now-ns) (fxvector-ref v (fx+ at 2)))])
+              (let ([since (- (core0-now-ns) (fxvector-ref v (fx+ at 2)))])
                 (when (> since core0-trace-stall-ns)
                   (set! *core0-trace-stalled* n)
                   (core0-trace-write!
@@ -93,7 +93,7 @@
                 [rows (sort (lambda (a b) (< (cadr a) (cadr b)))
                             (append (core0-trace-rows-of 0 'core0)
                                     (core0-trace-rows-of 2 'core1)))]
-                [t0 (if (pair? rows) (cadr (car rows)) (now-ns))])
+                [t0 (if (pair? rows) (cadr (car rows)) (core0-now-ns))])
            (unless (file-directory? *core0-trace-dir*)
              (mkdir *core0-trace-dir*))
            (call-with-output-file path

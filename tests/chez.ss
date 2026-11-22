@@ -23,7 +23,7 @@
 
 ;; /bin/sh's command that becomes a run of Chez on script with args, with
 ;; env's variables, (name . value), and the loader's set. Chez is "chez"
-;; where Homebrew installs it, as in ./schevana, else "scheme".
+;; where Homebrew installs it, else "scheme".
 (define (test-chez env script . args)
   (format "exec env~{ ~a~} \"$(command -v chez || echo scheme)\" \
            --script~{ ~a~}"

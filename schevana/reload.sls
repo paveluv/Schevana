@@ -58,8 +58,12 @@
   ;; The library names, Chez's form of each (versions dropped).
   (define (reload-name ref) (filter symbol? ref))
 
+  ;; What name imports: asked of what Chez keeps to expand with, which a
+  ;; library loaded compiled has before it runs (or one that never runs,
+  ;; giving others' names as its own).
   (define (reload-requires name)
-    (map reload-name (library-requirements name)))
+    (map reload-name
+         (library-requirements name (library-requirements-options import))))
 
   ;; names, and all they import.
   (define (reload-closure names)

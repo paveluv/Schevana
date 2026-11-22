@@ -2,8 +2,10 @@
 
 Schevana needs Chez Scheme 10, SDL 3.2 or later, FreeType and fontconfig
 (usually installed already on a Linux desktop), and a GPU API: Vulkan on
-Linux, Metal on a Mac. There is no build step: `./schevana` compiles the
-world from source as it starts.
+Linux, Metal on a Mac. There is no build step: `./schevana-desktop`
+compiles Schevana's libraries the first time it starts, into the tree's
+`.cache/`, and loads them from there after, until one's file changes; the
+world's own files load from source.
 
 What has run where, and which features differ by platform, is in
 [PLATFORMS.md](PLATFORMS.md).
@@ -22,7 +24,7 @@ tests run on it, and it takes over when no GPU can open. The tests need
 `spirv-tools` too ([TESTING.md](TESTING.md)).
 
 SDL chooses between Wayland and X11 by itself; `SDL_VIDEO_DRIVER=x11
-./schevana` (or `wayland`) chooses for it. With NVIDIA's driver on
+./schevana-desktop` (or `wayland`) chooses for it. With NVIDIA's driver on
 Wayland, set the one module option in
 [LINUX_NVIDIA_TUNING.md](LINUX_NVIDIA_TUNING.md), or the compositor now
 and then shows a frame again although the next was ready.
@@ -44,9 +46,11 @@ Grande and Menlo, not what fontconfig would choose:
 brew install --cask font-dejavu
 ```
 
-Homebrew's Chez Scheme is the command `chez`, not `scheme`. `./schevana`
-runs whichever of the two it finds, and finds Homebrew's libraries in
-`/opt/homebrew/lib` (Apple silicon) or `/usr/local/lib` (Intel).
+Homebrew's Chez Scheme is the command `chez`, not `scheme`; the launchers
+run under `scheme-script`, which it installs too. Schevana finds
+Homebrew's libraries in `/opt/homebrew/lib` (Apple silicon) or
+`/usr/local/lib` (Intel) by itself (`(schevana ffi)`), with no loader
+variable set.
 
 The tests need `spirv-tools` too ([TESTING.md](TESTING.md)): they write
 the shaders as Linux's SPIR-V and check it, so a change made on a Mac is
@@ -59,11 +63,11 @@ brew install spirv-tools
 ## Running
 
 ```bash
-./schevana
+./schevana-desktop
 ```
 
 ```bash
-./schevana --size 1600x1000 --eval '(life)'
+./schevana-desktop --size 1600x1000 --eval '(life)'
 ```
 
 | Option | What it does |
@@ -73,6 +77,8 @@ brew install spirv-tools
 | `--eval EXPR` | evaluates `EXPR` in the world once it's up; may repeat |
 | `--headless` | no window: the world runs offscreen, as in the tests |
 | `--fork` | core1 on a thread of its own even when headless |
+| `--hacker` | the hacker edition: every library's names, internals too, in the world, to see and redefine live ([INTERNALS.md](INTERNALS.md)) |
+| `--demo` | the demos' apps too (`schevana-demo/`) |
 | `--install-desktop` | installs a `.desktop` file, for the icon (below) |
 | `--uninstall-desktop` | removes it |
 
@@ -94,5 +100,5 @@ GNOME and similar desktops take app icons from `.desktop` files instead,
 so install one once; it goes under `~/.local/share`:
 
 ```bash
-./schevana --install-desktop
+./schevana-desktop --install-desktop
 ```

@@ -7,12 +7,14 @@ pieces work.
 ## The tree
 
 ```
-main.ss        boots core0, then core1
-world.ss       the world's boot, in "/": the user's settings, the first
-               windows
+schevana-desktop  the desktop's launcher; the demos' are beside it
+src/launch.ss  what a launcher loads: the tree's libraries, compiled into
+               .cache/, or spliced (src/hacker.ss), then its library's
+               main
 src/base.ss    what every environment of the top level has, a copy each:
                pure, no state, no C; forwarders, by which an environment
                gives another its names
+src/hacker.ss  the hacker edition: every library spliced at the top level
 schevana/      the libraries below the world, each declaring its layer:
   base         the basics; the layers and their check; states, made
                values, hooks and views
@@ -46,6 +48,8 @@ schevana/      the libraries below the world, each declaring its layer:
     windows      windows, z-order, focus, hit testing, dragging,
                  dispatch; the registries of surfaces and strips
     sources      "/", the world's files, loading them and reload!
+  desktop/     the desktop's libraries: main, its start from the command
+               line
 kits/          libraries, pure or almost: ui, edit, text, color, px, ...
 services/      long-lived state behind procedures: crew, env, grant,
                profile, theme-file, vat
@@ -57,7 +61,12 @@ schevana-demo/ programs on the core's libraries, one a file
 
 ## The boot chain
 
-`main.ss` boots core0, core0 boots core1, and core1 boots the world.
+A launcher at the tree's root (`schevana-desktop`) loads `src/launch.ss`,
+which finds the libraries in the tree (each compiled once into `.cache/`,
+a folder there for each Chez version and machine) and calls the main of
+the launcher's library, `(schevana desktop main)`: core0 boots, then core1
+on the world's thread (`core1-run`), which loads the world (`core1-boot!`)
+and starts it (`desktop-start!`, `desktop/start.ss`).
 Core0, the recorder and the core are sealed in their libraries, and each
 layer has of the one below only what its facade gives: the core imports
 `(schevana core0)` and `(schevana recorder)`, the world `(schevana
@@ -85,6 +94,16 @@ order:
 
 Only the core calls C. No binding reaches "/", and `tests/sources.ss`
 checks that no folder names one, nor anything of the core's it isn't given.
+
+The hacker edition (`--hacker`) seals nothing: `src/hacker.ss` gives the
+`library` form a top-level sense, so that every library, Schevana's and
+anyone's, is spliced into one environment, "/", its internals with it,
+from its source. Every name is there to see and redefine, and the core's
+own calls reach a redefinition at the next call. A state is a variable,
+a view or a checked setter is the name itself, and what imports a library
+elsewhere gets its names forwarded there. `(reload!)` splices again each
+library whose file changed, and what imports it. The suites pass in both
+editions (`SCHEVANA_HACKER=1`, [TESTING.md](TESTING.md)).
 
 A program stands on the core alone (`schevana-demo/`): it imports the core's
 facade, or the pieces it needs, and runs with `schevana-main`, which boots

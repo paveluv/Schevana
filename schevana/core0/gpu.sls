@@ -731,8 +731,8 @@
             (mutable runs) (mutable version) (mutable until) (mutable next)))
 
   ;; A list kept to be shown by another: its recording, and the labels the
-  ;; recorder gave it; when it was last recorded (now-ns) and in how many ns,
-  ;; for kits/inspect.ss. Its id, a handle's, names its GPU buffers in
+  ;; recorder gave it; when it was last recorded (core0-now-ns) and in how many
+  ;; ns, for kits/inspect.ss. Its id, a handle's, names its GPU buffers in
   ;; *gpu-lists*; #f for a copy that's never shown (kits/inspect.ss).
   (define-record-type gpu-list
     (nongenerative schevana-gpu-list-3)
@@ -1455,10 +1455,10 @@
   ;; With no window, core0 on a thread of its own holds each frame till the
   ;; next refresh of a screen of its own, at the window's rate, as a screen
   ;; holds the acquire: the screen of a forked run's tests. Its refreshes
-  ;; fall on whole periods of now-ns's clock.
+  ;; fall on whole periods of core0-now-ns's clock.
   (define (gpu-headless-hold!)
     (let ([p (core0-frame-ns)])
-      (sleep (make-time 'time-duration (- p (mod (now-ns) p)) 0))))
+      (sleep (make-time 'time-duration (- p (mod (core0-now-ns) p)) 0))))
 
   ;; One frame: uploads, then the runs, to the window or the target. => #t if
   ;; it reached the screen; #f if the window had no room for it yet (a frame

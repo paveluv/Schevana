@@ -12,8 +12,33 @@
 
   (library-layer foundation)
 
+  ;; Where a Mac is also asked for a library by its bare name: what
+  ;; DYLD_FALLBACK_LIBRARY_PATH lists, then the package managers' folders
+  ;; (Homebrew's on Apple silicon and on Intel, MacPorts'). The loader
+  ;; itself looks only in /usr/local/lib and /usr/lib, and the variable,
+  ;; set outside, doesn't reach a process started through /usr/bin/env or
+  ;; /bin/sh: macOS drops it on the way.
+  (define (ffi-mac-folders)
+    (append (let ([v (getenv "DYLD_FALLBACK_LIBRARY_PATH")])
+              (if v (remp (lambda (d) (string=? d "")) (string-split v #\:))
+                  '()))
+            '("/opt/homebrew/lib" "/usr/local/lib" "/opt/local/lib")))
+
+  ;; The first of names, a library's file names on the platforms, that
+  ;; loads: each as it is, then, on a Mac, a bare one in each folder.
   (define (load-first-library names)
-    (let loop ([ns names])
+    (let loop ([ns (if (platform-mac?)
+                       (append names
+                               (apply append
+                                      (map (lambda (d)
+                                             (map (lambda (n)
+                                                    (string-append d "/" n))
+                                                  (remp (lambda (n)
+                                                          (string-contains-ci?
+                                                           n "/"))
+                                                        names)))
+                                           (ffi-mac-folders))))
+                       names)])
       (cond
         [(null? ns)
          (errorf 'load-first-library "could not load any of ~s" names)]

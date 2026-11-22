@@ -124,7 +124,21 @@
 ;; keep busy misses refreshes, so these run after them, by themselves.
 (define units-alone '("fork"))
 
+;; The tree's libraries compiled into the cache here, once, before the
+;; topics start at once, each of which would compile them itself
+;; (src/launch.ss). The hacker edition compiles none to a file.
+(define (units-cache-warm!)
+  (load (string-append *schevana-root* "/src/launch.ss"))
+  (unless (schevana-hacker? '())
+    (schevana-libraries! (schevana-launch-root *schevana-root*) #f)
+    (for-each (lambda (lib)
+                (eval `(import ,lib) (copy-environment (scheme-environment))))
+              '((schevana core) (schevana core sources)
+                (schevana desktop main) (schevana core0 for-recorder)
+                (schevana recorder bytes) (schevana socket)))))
+
 (unless (= (length units-asked) 1)
+  (units-cache-warm!)
   (let* ([topics (if (null? units-asked) (units-topics) units-asked)]
          [alone (filter (lambda (t) (member t units-alone)) topics)]
          [failed (append (units-run-all

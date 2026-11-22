@@ -42,15 +42,16 @@ They run headless and never open a real window. They need `spirv-val`
 shaders' topic writes every shader as SPIR-V, on a Mac too, and checks it,
 since a module lavapipe takes may still be one another driver rejects. On
 Linux they need lavapipe (`mesa-vulkan-drivers`). On a Mac type `chez` for
-`scheme`, and on Apple silicon put
-`DYLD_FALLBACK_LIBRARY_PATH=/opt/homebrew/lib` before it; the tests run on
-Metal there, with no Dock icon and no window shown.
+`scheme`; the tests run on Metal there, with no Dock icon and no window
+shown. Homebrew's libraries are found where it keeps them (`(schevana
+ffi)`), with no loader variable set.
 
 ## Running less while working
 
-The whole suites take minutes; one check takes seconds. While a check is
-being written or fixed, run what it needs, and the whole suites, under
-both Chez versions, before the commit (`AGENTS.md`).
+The whole suites take a minute or two; one check takes seconds. While a
+check is being written or fixed, run what it needs, and the whole suites
+in both editions before the commit, under both Chez versions before the
+push (`AGENTS.md`).
 
 - `tests/sources.ss` alone takes seconds, and a units topic runs alone:
   `scheme --script tests/units.ss out tasks`.
@@ -62,6 +63,14 @@ both Chez versions, before the commit (`AGENTS.md`).
 ```bash
 SCHEVANA_CHECK="a card's tags" scheme --script tests/units.ss out tasks
 SCHEVANA_CHECK="Shift+Tab up onto a title" scheme --script tests/smoke.ss out
+```
+
+- `SCHEVANA_HACKER=1` runs any suite in the hacker edition (`--hacker`):
+  every library spliced into the world, from its source. A check that
+  holds of one edition alone says so (`test-hacker?`).
+
+```bash
+SCHEVANA_HACKER=1 scheme --script tests/units.ss out
 ```
 
 ## A check
@@ -251,7 +260,7 @@ monitor, CPU and Chez (`AGENTS.md`, "Layers"). A check holds on each.
 - A check that runs Chez again runs it by `test-chez` (`tests/chez.ss`),
   never by a command line of its own: macOS drops the loader's variables
   (`DYLD_FALLBACK_LIBRARY_PATH`) on the way into `/bin/sh`, and `test-chez`
-  hands them on.
+  hands on any a person set.
 - What's drawn is compared with what the same machine draws, as the frame
   suite does, never with pixels stored from one rasterizer.
 - A bound in time is for the bench (`tests/bench.ss`), not a suite: a

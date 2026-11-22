@@ -1,7 +1,7 @@
 ;;; tests/units/fork.ss — the world on a thread of its own, core0 on the
 ;;; process's first, as with a window, but headless (--fork): a run of
-;;; main.ss in a process of its own, HOME a scratch folder, which reports
-;;; what it saw (tests/fork/run.ss).
+;;; schevana-desktop in a process of its own, HOME a scratch folder, which
+;;; reports what it saw (tests/fork/run.ss).
 
 (let* ([home (string-append out-dir "/fork-home")]
        [out (string-append out-dir "/fork-seen.ss")]
@@ -13,7 +13,7 @@
           (units-system-within 120
             (string-append
               (test-chez (list (cons "HOME" home))
-                         (string-append *schevana-root* "/main.ss")
+                         (string-append *schevana-root* "/schevana-desktop")
                          "--headless" "--fork" "--size" "400x300"
                          "--eval" (format "(define *fork-out* ~s)" out)
                          "--eval" (format "(load ~s)" run))

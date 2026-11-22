@@ -7,7 +7,7 @@
 
 (library (schevana core0 mail)
   (export
-    core0-clock-ns now-ns *core0-jobs* core0-put! core0-take! core0-post!
+    core0-clock-ns core0-now-ns *core0-jobs* core0-put! core0-take! core0-post!
     *core0-forked* core0-forked? *core0-world-mutex* *core0-ready*
     *core0-woken* core0-world-wake! core0-world-wait! core0-ms core0-wake!
     *core0-facts* core0-frame-ns core0-display *core0-input-ns*
@@ -23,7 +23,7 @@
   ;; own, so a test fakes the world's without moving the one core0 times the
   ;; screen by.
   (define (core0-clock-ns) (sdl-get-ticks-ns))
-  (define-hook (now-ns) (sdl-get-ticks-ns))
+  (define-hook (core0-now-ns) (sdl-get-ticks-ns))
 
   ;; The jobs posted, newest first, each (procedure arg ...): core0's own
   ;; code posts them, and its step applies each.
@@ -95,7 +95,8 @@
   (define (core0-frame-ns) (vector-ref *core0-facts* 6))
   (define (core0-display) (vector-ref *core0-facts* 7))
 
-  ;; When the oldest input not yet taken came (now-ns; 0, none), three ways:
+  ;; When the oldest input not yet taken came (core0-now-ns; 0, none), three
+  ;; ways:
   ;; by SDL's stamp; when core0's pump first saw it; by the compositor's own
   ;; time where core0 reads it ((schevana core0 platform)). Core0's pump sets
   ;; them, the world takes them with the events, both by box-cas!.

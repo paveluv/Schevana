@@ -394,7 +394,7 @@
   ;; The queue drained, with no wait: (values events types first), the
   ;; events as sdl-event->list gives them, every event's number in order,
   ;; whether it means anything or not, and when SDL took the first that came
-  ;; from the keyboard or the mouse (now-ns; 0, none).
+  ;; from the keyboard or the mouse (core0-now-ns; 0, none).
   (define-hook (core0-window-pump)
     (if (eq? *core0-mode* 'sdl)
         (let ([buf *sdl-event*])
@@ -502,7 +502,7 @@
   ;; turn, which begins just in time for the screen, finds the newest.
   (define core0-idle-ms 4)
   (define (core0-idle-ms-now)
-    (if (< (- (now-ns) *present-taken*) 100000000) 1 core0-idle-ms))
+    (if (< (- (core0-now-ns) *present-taken*) 100000000) 1 core0-idle-ms))
 
   ;; Core0's loop, on its own thread: its steps till core1 quits.
   (define (core0-loop!)
@@ -640,9 +640,9 @@
   ;; pump that held core0 past 2 ms is traced, µs, with its events' types.
   ;; => whether any came.
   (define (core0-events-pumped!)
-    (let*-values ([(t0) (now-ns)]
+    (let*-values ([(t0) (core0-now-ns)]
                   [(events types first) (core0-window-pump)]
-                  [(took) (- (now-ns) t0)])
+                  [(took) (- (core0-now-ns) t0)])
       (when (> took 2000000)
         (core0-trace! 13 (quotient took 1000))
         (for-each (lambda (type) (core0-trace! 14 type)) types))
@@ -651,7 +651,7 @@
       (platform-reports-pump!)
       (unless (eqv? first 0)
         (core0-input-set! *core0-input-ns* first)
-        (core0-input-set! *core0-input-pumped* (now-ns)))
+        (core0-input-set! *core0-input-pumped* (core0-now-ns)))
       (unless (null? types)
         (core0-trace! 9 (length types))
         (core0-facts-refresh! #t)

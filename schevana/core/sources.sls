@@ -6,7 +6,8 @@
 
 (library (schevana core sources)
   (export
-    *world-env* *schevana-options* core1-boot! core1-exported
+    *world-env* *schevana-options* schevana-hacker? core1-boot!
+    core1-exported
     user-init-file load-user-init! source-folders *user-folders?*
     source-path folder-sources folder-files world-sources source-files
     *source-texts* keep-source-text! file-text load-file! app-load!
@@ -28,9 +29,14 @@
   ;; to (interaction-environment), which a private REPL rebinds.
   (define-state *world-env* #f)
 
-  ;; What the command line asked (main.ss's main-options), handed down as
-  ;; core1 boots.
+  ;; What the command line asked (desktop-options, (schevana desktop
+  ;; main)), handed down as core1 boots.
   (define-state *schevana-options* '())
+
+  ;; Whether this is the hacker edition (src/hacker.ss): every library
+  ;; spliced at the top level, "/" itself.
+  (define (schevana-hacker?)
+    (let ([o (assq 'hacker *schevana-options*)]) (and o (cdr o))))
 
   ;; For a name "/" has as a macro (a view of the core's, a state or a
   ;; hook), what reads it there: compiled once, kept till the world loads
@@ -57,7 +63,7 @@
   (define (core1-exported) (library-exports '(schevana core)))
 
   ;; The user's init file, ~/.schevana.ss, loaded into the world after it
-  ;; booted (world.ss).
+  ;; booted (desktop-start!).
   (define-made user-init-file
     (format "~a/.schevana.ss" (or (getenv "HOME") ".")))
 
@@ -69,8 +75,8 @@
   (define source-folders
     '("kits" "services" "desktop" "styles" "palettes" "wallpapers" "apps"))
 
-  ;; main.ss turns this on: a real session loads the user's folders too, at
-  ;; boot and at every (reload!). The tests never do.
+  ;; The desktop turns this on: a real session loads the user's folders
+  ;; too, at boot and at every (reload!). The tests never do.
   (define-state *user-folders?* #f)
 
   ;; A file name relative to the tree, or an absolute one (the user's).
@@ -104,7 +110,8 @@
 
   ;; The world's own files, in load order: a copy of the basics, then the
   ;; folders.
-  (define (world-sources) (cons "src/base.ss" (folder-files)))
+  (define (world-sources)
+    (if (schevana-hacker?) (folder-files) (cons "src/base.ss" (folder-files))))
 
   ;; Every source file, in load order: the world's, since the core's are
   ;; libraries. The REPL's docs and the tests read this list.
@@ -163,9 +170,10 @@
                     files (iota (length files)))
           (when outer? (set! *reloading* #f))))))
 
-  ;; The user's folders, after the built-in ones (main.ss, before the saved
-  ;; theme, which may name a user's style or palette). One file at a time, so
-  ;; that one which raises is named in its toast and the rest still load.
+  ;; The user's folders, after the built-in ones (desktop-start!, before
+  ;; the saved theme, which may name a user's style or palette). One file at
+  ;; a time, so that one which raises is named in its toast and the rest
+  ;; still load.
   (define (load-user-folders!)
     (set! *user-folders?* #t)
     (add-library-directory! user-library-directory)
@@ -187,7 +195,11 @@
   ;; "/". Code changes take effect; state declared with defvar or
   ;; define-state (windows, theme, processes...) survives.
   (define (reload!)
-    (source-libraries-keep! (reload-libraries! (source-held-libraries)))
+    (source-libraries-keep!
+     (if (schevana-hacker?)
+         ((eval 'hacker-reload-libraries! *world-env*)
+          (source-held-libraries))
+         (reload-libraries! (source-held-libraries))))
     (load-world!)
     (request-redraw!)
     (collector-settle!)
@@ -218,15 +230,18 @@
 
   ;; Makes "/", which imports what the core gives the world (its facade,
   ;; again at each reload of a library it stands on), and loads the
-  ;; world's files into it (load-world!), then script (world.ss), if any,
-  ;; which goes on there. On core1's thread, which it says is core1's.
-  (define (core1-boot! options script)
+  ;; world's files into it (load-world!); in the hacker edition, "/" is
+  ;; where every library was spliced, this thread's environment. "/" is
+  ;; then this thread's, where what evaluates by name, a load among it,
+  ;; evaluates. On core1's thread, which it says is core1's. => "/".
+  (define (core1-boot! options)
     (core1-thread!)
     (set! *schevana-options* options)
-    (let ([world (copy-environment (scheme-environment) #t)])
+    (let ([world (if (schevana-hacker?)
+                     (interaction-environment)
+                     (copy-environment (scheme-environment) #t))])
       (set! *world-env* world)
-      (reload-import! world '(schevana core))
+      (unless (schevana-hacker?) (reload-import! world '(schevana core)))
+      (interaction-environment world)
       (load-world!)
-      (when script
-        (interaction-environment world)
-        (load (source-path script))))))
+      world)))

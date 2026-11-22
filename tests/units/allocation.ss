@@ -195,6 +195,6 @@
                                          (format "~s: ~a carries ~a" name p
                                                  (carries v))))))
                            (procedures-defined (cddddr form)))))
-                      (top-level-value '*schevana-libraries* main-env)))])
+                      test-core-libraries))])
            (for-each (lambda (f) (printf "  ~a\n" f)) found)
            (null? found))))

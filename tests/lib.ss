@@ -2,13 +2,50 @@
 ;;; tree's root (*schevana-root*): the world loaded but not booted, the
 ;;; tests' reach into the core (tests/reach.ss), the scratch files, the
 ;;; checks and the verdict. Each suite boots the world itself, as it needs.
+;;; The library edition's, or with SCHEVANA_HACKER set the hacker
+;;; edition's (src/hacker.ss), where the tests have every name already.
 ;;;
 ;;;   (load (string-append *schevana-root* "/tests/lib.ss"))
 ;;;   ... checks ...
 ;;;   (test-verdict!)
 
-(load (string-append *schevana-root* "/main.ss"))
-(load (string-append *schevana-root* "/tests/reach.ss"))
+;; The world, loaded but not booted, and the tests' reach.
+(load (string-append *schevana-root* "/tests/boot.ss"))
+
+;; The launchers at the tree's root, schevana-desktop and the demos', each
+;; a program of a few lines (src/launch.ss).
+(define test-launchers
+  (filter (lambda (f)
+            (and (string-prefix? "schevana-" f)
+                 (not (file-directory? (string-append *schevana-root* "/" f)))))
+          (sort string<? (directory-list *schevana-root*))))
+
+;; The libraries below the world, under schevana/: core0's, the
+;; recorder's and the core's, and those they stand on, by the layer each
+;; declares, in file-name order; each a path from the tree's root.
+(define test-core-libraries
+  (let walk ([dir "schevana"])
+    (apply append
+           (map (lambda (f)
+                  (let* ([path (string-append dir "/" f)]
+                         [full (string-append *schevana-root* "/" path)])
+                    (cond
+                      [(file-directory? full) (walk path)]
+                      [(and (string=? (path-extension f) "sls")
+                            (let ([decl (assq 'library-layer
+                                              (filter pair?
+                                                      (cddddr
+                                                       (call-with-input-file
+                                                         full read))))])
+                              (and decl
+                                   (memq (cadr decl)
+                                         '(foundation core0 recorder
+                                           core)))))
+                       (list path)]
+                      [else '()])))
+                (sort string<?
+                      (directory-list
+                       (string-append *schevana-root* "/" dir)))))))
 
 ;; Where a run writes: its first argument, else here.
 (define out-dir

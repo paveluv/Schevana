@@ -177,13 +177,13 @@
           (desktop . ,(getenv "XDG_CURRENT_DESKTOP"))
           (reports . ,(platform-reports))))))
 
-  ;; ns to add to a time on clock (a POSIX clock's number) for now-ns's, read
-  ;; at each report: two clocks may drift apart by a few ms an hour.
+  ;; ns to add to a time on clock (a POSIX clock's number) for core0-now-ns's,
+  ;; read at each report: two clocks may drift apart by a few ms an hour.
   (define-state *platform-timespec* (foreign-alloc 16))
   (define-hook (platform-clock-offset clock)
     (let ([ts *platform-timespec*])
       (c-clock-gettime clock ts)
-      (- (now-ns)
+      (- (core0-now-ns)
          (+ (* 1000000000 (foreign-ref 'long ts 0)) (foreign-ref 'long ts 8)))))
 
   ;; Linux's clocks by number.
@@ -358,15 +358,15 @@
       (set! *wayland-used* clock))
     (uptr uptr unsigned-32))
 
-  ;; Whether time t on clock falls, on now-ns's, from low to ahead ns after
-  ;; now; the first of said and Linux's clocks on which it does, or #f. Now
-  ;; is read after the clock's offset: a time gone by never reads as one to
+  ;; Whether time t on clock falls, on core0-now-ns's, from low to ahead ns
+  ;; after now; the first of said and Linux's clocks on which it does, or #f.
+  ;; Now is read after the clock's offset: a time gone by never reads as one to
   ;; come, however long core0 waited between the offset's two reads. Numbers
   ;; alone: no allocation a report or an input.
   (define (platform-fits? t clock low ahead)
     (and clock
          (let ([at (+ t (platform-clock-offset clock))])
-           (<= low at (+ (now-ns) ahead)))))
+           (<= low at (+ (core0-now-ns) ahead)))))
   (define (platform-fitting t said low ahead)
     (cond [(platform-fits? t said low ahead) said]
           [(platform-fits? t 4 low ahead) 4]
@@ -375,7 +375,7 @@
           [(platform-fits? t 0 low ahead) 0]
           [else #f]))
 
-  ;; A report's time t, on now-ns's clock, its refresh as the screen says
+  ;; A report's time t, on core0-now-ns's clock, its refresh as the screen says
   ;; (ns; 0, none). A frame shows after it's sent, and its report comes after
   ;; it showed, or up to a refresh before where a compositor foretells the
   ;; time: a compositor whose times break that on the clock it says (GNOME's
@@ -392,19 +392,19 @@
             (core0-platform-read!))))
       (+ t (platform-clock-offset *wayland-used*))))
 
-  ;; An input's time, its event's ms on the compositor's clock (which wraps
-  ;; at 32 bits), as core0 reads the event at now-ns at: on the clock under
-  ;; which it came within the last second, to the ms. Into the oldest not
-  ;; yet taken (core0-input-set!).
+  ;; An input's time, its event's ms on the compositor's clock (which wraps at
+  ;; 32 bits), as core0 reads the event at core0-now-ns at: on the clock under
+  ;; which it came within the last second, to the ms. Into the oldest not yet
+  ;; taken (core0-input-set!).
   (define (wayland-input! ms)
-    (let* ([at (now-ns)]
+    (let* ([at (core0-now-ns)]
            [t (or (wayland-input-on *wayland-input-clock* ms at)
                   (wayland-input-on 1 ms at)
                   (wayland-input-on 4 ms at)
                   (wayland-input-on 7 ms at))])
       (when t (core0-input-set! *core0-input-wl* t))))
 
-  ;; ms, read on clock and kept as the clock it fits, on now-ns's; or #f.
+  ;; ms, read on clock and kept as the clock it fits, on core0-now-ns's; or #f.
   (define (wayland-input-on clock ms at)
     (and clock
          (let* ([off (platform-clock-offset clock)]
@@ -741,8 +741,8 @@
       (set! *mac-drawable* -1)))
 
   ;; Frame's word from Metal: t, when it was shown in Apple's host time, or 0
-  ;; for never. A time is taken on now-ns's clock when its frame shows after
-  ;; it was sent, and within a second; else the report says nothing. Metal
+  ;; for never. A time is taken on core0-now-ns's clock when its frame shows
+  ;; after it was sent, and within a second; else the report says nothing. Metal
   ;; says no refresh, and the display may vary its own: the refreshes are
   ;; counted at the window's rate, each time as it is (present-shown!).
   (define (mac-reported! frame t)

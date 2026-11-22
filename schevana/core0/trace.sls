@@ -40,7 +40,7 @@
              [at (fx* 4 (fxmodulo n core0-trace-rows))])
         (fxvector-set! v at -1)
         (fxvector-set! v (fx+ at 1) code)
-        (fxvector-set! v (fx+ at 2) (now-ns))
+        (fxvector-set! v (fx+ at 2) (core0-now-ns))
         (fxvector-set! v (fx+ at 3) a)
         (memory-order-release)
         (fxvector-set! v at n)
