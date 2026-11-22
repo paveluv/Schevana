@@ -72,7 +72,8 @@
     ui-draw-radio* ui-tabs ui-draw-tab ui-draw-tab* ui-tabs-size ui-tabs-size*
     ui-label-font ui-label-text ui-draw-label ui-draw-label* ui-label-size
     ui-label-size* ui-label-lines ui-wrap-lines ui-draw-surface
-    ui-draw-surface* ui-surface-well-ring ui-text-box-top ui-text-box-areas
+    ui-draw-surface* ui-surface-well-ring ui-text-y ui-text-y* ui-text-box-top
+    ui-text-box-areas
     ui-text-box-areas* ui-text-box-inset ui-text-box-insets ui-text-box-size
     ui-text-box-size* ui-text-layout ui-text-area-size ui-text-area-size*
     ui-text-field ui-text-area ui-text-edit ui-text-box ui-draw-text-box
@@ -1817,6 +1818,11 @@
    (theme-default! 'surface-well-ring 0))
   (define (ui-surface-well-ring) (theme 'surface-well-ring))
 
+  ;; draw-text's y for a line of text in font whose box's top is top. The
+  ;; core sets the baseline its whole ascent down; a style may set it where
+  ;; its original does (Adwaita: GTK's, the ascent unrounded).
+  (define-part (ui-text-y top font) top)
+
   ;;; ------------------------------------------------------------------
   ;;; text field and text area: one box, a row or wrapped rows
 
@@ -2158,7 +2164,7 @@
       (with-clip ((if (> dx 0) tx (- tx 2)) ty (+ tw (if (> dx 0) 2 4)) th)
         (if (memq 'placeholder flags)
             (when placeholder
-              (draw-text tx ty (text-fit placeholder tw font)
+              (draw-text tx (ui-text-y ty font) (text-fit placeholder tw font)
                          (theme 'text-placeholder-color) font))
             ;; only the rows in view
             (let loop ([r (max 0 (- (exact (floor (/ dy lh))) 1))])
@@ -2179,7 +2185,7 @@
                                         'selection))))
                       ;; unfocused at its start, the last row in view says
                       ;; that more follows
-                      (draw-text rx ry
+                      (draw-text rx (ui-text-y ry font)
                                  (if (and (not focused?) (= dy 0)
                                           (or (< (+ r 1)
                                                  (edit-layout-count lay))
@@ -3652,7 +3658,10 @@
                                              0))
                                0.5)])
                     (draw-line px ly (+ px pw) ly 'chart-rule)
-                    (draw-text (+ x 6) (- ly (/ (font-line-height 'ui-small) 2))
+                    (draw-text (+ x 6)
+                               (ui-text-y (- ly (/ (font-line-height 'ui-small)
+                                                   2))
+                                          'ui-small)
                                (cdr r) 'text-faint 'ui-small)))
                 (filter car rules))))
 
@@ -3942,7 +3951,8 @@
                                top rules)
       (fold-left (lambda (ly strip)
                    (when (car strip)
-                     (draw-text (+ x 6) ly (car strip) 'text-faint 'ui-small))
+                     (draw-text (+ x 6) (ui-text-y ly 'ui-small) (car strip)
+                                'text-faint 'ui-small))
                    (+ ly lane-h))
                  py strips)))
 
@@ -4035,8 +4045,9 @@
                          (begin
                            (fill-box lx (+ y (/ (- h lh) 2) 2) (- lh 4) (- lh 4)
                                      (car k))
-                           (draw-text (+ lx lh) (+ y (/ (- h lh) 2)) (cdr k)
-                                      'text-dim 'ui-small)
+                           (draw-text (+ lx lh)
+                                      (ui-text-y (+ y (/ (- h lh) 2)) 'ui-small)
+                                      (cdr k) 'text-dim 'ui-small)
                            (+ lx kw 12)))))
                  x keys)))
 
@@ -4671,8 +4682,8 @@
   ;; text wrapped at w, each line centered in x..x+w, from y down.
   (define (ui-draw-centered-lines x y w text color font)
     (fold-left (lambda (ly line)
-                 (draw-text (+ x (/ (- w (text-width line font)) 2)) ly line
-                            color font)
+                 (draw-text (+ x (/ (- w (text-width line font)) 2))
+                            (ui-text-y ly font) line color font)
                  (+ ly (font-line-height font)))
                y (ui-label-lines text w font)))
 

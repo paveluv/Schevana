@@ -4,13 +4,13 @@
 
 (library (schevana kits text)
   (export
-    text-ink text-shorten text-widest text-draw-centered text-within text-fit
-    text-wrap)
+    text-ink text-face-extent text-shorten text-widest text-draw-centered
+    text-within text-fit text-wrap)
   (import (chezscheme)
           (only (schevana base) library-layer string-split)
-          (only (schevana core) draw-text font font-advance font-file-pages
-                font-file-upem font-line-height font-ready font-size get-font
-                text-width))
+          (only (schevana core) draw-text font font-advance font-file-ascender
+                font-file-descender font-file-pages font-file-upem
+                font-line-height font-ready font-size get-font text-width))
 
   (library-layer kits)
 
@@ -45,6 +45,15 @@
                           (max x1 (+ ax (* w scale)))
                           (if y0 (min y0 ay) ay)
                           (max y1 (+ ay (* h scale)))))))))))
+
+  ;; font's ascent and descent as its face has them, in logical pixels,
+  ;; unrounded (the core's font-ascent and font-descent are whole):
+  ;; (values ascent descent).
+  (define (text-face-extent font)
+    (let* ([f (get-font font)] [ff (font-ready f)]
+           [scale (/ (font-size f) (font-file-upem ff))])
+      (values (* scale (font-file-ascender ff))
+              (* scale (- (font-file-descender ff))))))
 
   ;; s at most n characters, its last an ellipsis when it's cut.
   (define (text-shorten s n)

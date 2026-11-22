@@ -12,7 +12,8 @@
 
 (library (schevana core fonts)
   (export
-    font-file-upem font-file-pages font-library-versions font-file-match
+    font-file-upem font-file-ascender font-file-descender font-file-pages
+    font-library-versions font-file-match
     font-family font-slant font-weight font-size font-crisp? font-sized
     make-font* *font-specs* font get-font font-advance font-metrics font-ascent
     font-descent font-line-height font-char-width font-ready text-width

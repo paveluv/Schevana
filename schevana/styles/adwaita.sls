@@ -46,20 +46,22 @@
     adwaita-rows-spacing adwaita-row-height adwaita-row-areas
     adwaita-rows-radius adwaita-rows adwaita-row adwaita-status-title-font
     adwaita-status-page-areas adwaita-status-page adwaita-banner-height
-    adwaita-banner)
+    adwaita-banner adwaita-text-y adwaita-text-height adwaita-text-top
+    adwaita-text adwaita-text-in adwaita-center adwaita-text-centered
+    adwaita-lines)
   (import (chezscheme)
           (only (schevana base) at-load clamp filter-map library-layer
                 string-suffix?)
           (only (schevana core) *focus* *hover* *toasts* *windows* alpha
                 color-default! color-rgba define-style desktop-rect
                 draw-polyline draw-shadow draw-text fill-box fill-circle
-                font-line-height linear-gradient maximized? mix pi rgb
-                screen-h screen-w stroke-box stroke-circle text-width theme
+                font-ascent font-line-height linear-gradient maximized? mix pi
+                rgb screen-h screen-w stroke-box stroke-circle text-width theme
                 theme-default! theme-font-rule theme-rule visible? window-app
                 window-bg window-id window-shadow window-title window-w
                 window? with-clip with-place draw-line)
           (only (schevana kits app) app-color)
-          (only (schevana kits text) text-draw-centered text-fit text-widest)
+          (only (schevana kits text) text-face-extent text-fit text-widest)
           (only (schevana kits ui) ui-button-radius ui-calendar-areas
                 ui-chip-areas ui-control-height ui-dialog-areas ui-dialog-lines
                 ui-draw-glyph ui-draw-panel ui-frame-glyph ui-glyph-size
@@ -285,6 +287,50 @@
                     (adwaita-window-button win x y reg focused? hover pressed))
                   (adwaita-regions win)))))
 
+  ;;; Text as GTK sets a label (gtk/gtklabel.c:1388-1405 at 4.18.6): its
+  ;;; box is the font's ascent and descent, rounded out to whole pixels
+  ;;; (pango_layout_get_pixel_extents), placed at a whole pixel in what
+  ;;; the label is given, centered and floored; its baseline is the ascent
+  ;;; below the box's top, unrounded, as GTK's own font rendering hints no
+  ;;; metrics (gtk/gtkwidget.c, update_pango_context).
+
+  ;; draw-text's y for text whose box's top is top (the ui-text-y part).
+  (define (adwaita-text-y top font)
+    (let-values ([(ascent descent) (text-face-extent font)])
+      (+ top (- ascent (font-ascent font)))))
+
+  ;; A label's height in font.
+  (define (adwaita-text-height font)
+    (let-values ([(ascent descent) (text-face-extent font)])
+      (ceiling (+ ascent descent))))
+
+  ;; The top of a label in font centered down the box y h.
+  (define (adwaita-text-top y h font)
+    (+ y (floor (/ (- h (adwaita-text-height font)) 2))))
+
+  ;; Where something w2 wide starts, centered across x w.
+  (define (adwaita-center x w w2) (+ x (floor (/ (- w w2) 2))))
+
+  ;; s with its box's top at top: what draw-text returns.
+  (define (adwaita-text x top s ink font)
+    (draw-text x (adwaita-text-y top font) s ink font))
+
+  ;; s at x, centered down the box y h.
+  (define (adwaita-text-in x y h s ink font)
+    (adwaita-text x (adwaita-text-top y h font) s ink font))
+
+  ;; s centered in the box x y w h.
+  (define (adwaita-text-centered x y w h s ink font)
+    (adwaita-text-in (adwaita-center x w (text-width s font)) y h s ink font))
+
+  ;; A wrapped label's lines from top, each at (at line), a line apart (as
+  ;; the kit measures them): the top after the last.
+  (define (adwaita-lines at top lines ink font)
+    (fold-left (lambda (top line)
+                 (adwaita-text (at line) top line ink font)
+                 (+ top (font-line-height font)))
+               top lines))
+
   ;; The title, bold, in the bar's middle, clear of the buttons either side
   ;; as GTK centers it (widgets/_header-bar.scss:199-205), after the
   ;; window's icon if its app gave one; an unfocused window's at half
@@ -296,10 +342,11 @@
            [iw (if icon (+ s 6) 0)]
            [t (text-fit (window-title win) (max 0 (- w side side iw)) 'title)]
            [tw (text-width t 'title)]
-           [tx (+ x (/ (- w tw iw) 2))])
-      (when icon (icon tx (+ y (/ (- hh s) 2)) s (if focused? '() '(dim))))
-      (text-draw-centered (+ tx iw) y tw hh t
-                          (if focused? 'title-text 'title-text-dim) 'title)))
+           [tx (adwaita-center x w (+ tw iw))])
+      (when icon
+        (icon tx (adwaita-center y hh s) s (if focused? '() '(dim))))
+      (adwaita-text-in (+ tx iw) y hh t
+                       (if focused? 'title-text 'title-text-dim) 'title)))
 
   ;; A window button: a 24-pixel circle of the text at 10 %, 15 % under
   ;; the pointer, 30 % pressed, its glyph in it (widgets/_header-bar.scss:
@@ -374,12 +421,12 @@
     (let* ([g (ui-glyph-size)] [gw (cond [(not glyph) 0] [label (+ g 6)]
                                          [else g])]
            [label (and label (text-fit label (max 0 (- w 18 gw)) 'ui-bold))]
-           [x0 (+ x (/ (- w gw (if label (text-width label 'ui-bold) 0)) 2))])
+           [lw (if label (text-width label 'ui-bold) 0)]
+           [x0 (adwaita-center x w (+ gw lw))])
       (when glyph
-        (ui-draw-glyph x0 (+ y (/ (- h g) 2)) g g (list (cons 'ink ink)) glyph))
-      (when label
-        (draw-text (+ x0 gw) (+ y (/ (- h (font-line-height 'ui-bold)) 2))
-                   label ink 'ui-bold))))
+        (ui-draw-glyph x0 (adwaita-center y h g) g g (list (cons 'ink ink))
+                       glyph))
+      (when label (adwaita-text-in (+ x0 gw) y h label ink 'ui-bold))))
 
   ;; A button (widgets/_buttons.scss): the text at 10 % behind its label,
   ;; 15 % under the pointer, 30 % pressed and pressed in (selected), 35 and
@@ -502,9 +549,9 @@
   (define (adwaita-check-label x y w h flags label)
     (let ([lh (font-line-height 'ui)] [by (+ y (floor (/ (- h 20) 2)))])
       (when label
-        (draw-text (+ x 24) (+ y (/ (- h lh) 2))
-                   (text-fit label (max 0 (- w 24)) 'ui)
-                   (if (memq 'disabled flags) (alpha 'text 0.5) 'text) 'ui))
+        (adwaita-text-in (+ x 24) y h (text-fit label (max 0 (- w 24)) 'ui)
+                         (if (memq 'disabled flags) (alpha 'text 0.5) 'text)
+                         'ui))
       (when (memq 'focused flags)
         (adwaita-ring (- x 4) (- by 4)
                       (+ 28 (if label (+ 4 (text-width label 'ui)) 0)) 28 9))))
@@ -546,7 +593,7 @@
   ;; _checks.scss:75-79); the label, an icon before it, a hint under it.
   (define (adwaita-radio x y w h flags label hint icon)
     (let* ([lh (font-line-height 'ui)] [g (ui-glyph-size)]
-           [ly (if hint (+ y 4) (+ y (/ (- h lh) 2)))]
+           [ly (if hint (+ y 4) (adwaita-text-top y h 'ui))]
            [by (+ ly (floor (/ (- lh 20) 2)))]
            [off? (memq 'disabled flags)]
            [ink (lambda (c) (if off? (alpha c 0.5) c))]
@@ -555,14 +602,12 @@
       (when (memq 'checked flags)
         (fill-circle (+ x 10) (+ by 10) 4 (ink #xffffff)))
       (when icon (icon (+ x 24) (+ ly (/ (- lh g) 2)) g flags))
-      (draw-text tx ly (text-fit label (max 0 (- (+ x w) tx)) 'ui) (ink 'text)
-                 'ui)
+      (adwaita-text tx ly (text-fit label (max 0 (- (+ x w) tx)) 'ui)
+                    (ink 'text) 'ui)
       (when hint
-        (fold-left (lambda (hy line)
-                     (draw-text tx hy line (ink 'text-dim) 'ui-small)
-                     (+ hy (font-line-height 'ui-small)))
-                   (+ ly lh 2)
-                   (ui-label-lines hint (max 0 (- (+ x w) tx)) 'ui-small)))
+        (adwaita-lines (lambda (line) tx) (+ ly lh 2)
+                       (ui-label-lines hint (max 0 (- (+ x w) tx)) 'ui-small)
+                       (ink 'text-dim) 'ui-small))
       (when (memq 'focused flags)
         (adwaita-ring (- x 4) (- by 4)
                       (+ 28 4 (text-width label 'ui)) 28 9))))
@@ -592,8 +637,8 @@
       (fill-circle kx ky 10
                    (if (or checked? hover? pressed?) #xffffff 'adwaita-slider))
       (when label
-        (draw-text x (+ y (/ (- h (font-line-height 'ui)) 2))
-                   (text-fit label (max 0 (- w 46 12)) 'ui) 'text 'ui))
+        (adwaita-text-in x y h (text-fit label (max 0 (- w 46 12)) 'ui)
+                         'text 'ui))
       (when (on? 'focused) (adwaita-ring-outside tx ty 46 26 13))))
 
   (define (adwaita-toggle-size label)
@@ -668,14 +713,13 @@
            [at (lambda (s)
                  (cond [(memq 'right flags) (- (+ x w) (text-width s font))]
                        [(memq 'center flags)
-                        (+ x (/ (- w (text-width s font)) 2))]
+                        (adwaita-center x w (text-width s font))]
                        [else x]))])
       (if (memq 'wrap flags)
-          (fold-left (lambda (y line) (draw-text (at line) y line color font)
-                       (+ y lh))
-                     y (ui-label-lines text w font))
+          (adwaita-lines at y (ui-label-lines text w font) color font)
           (let ([s (text-fit text w font)])
-            (draw-text (at s) (+ y (max 0 (/ (- h lh) 2))) s color font)
+            (adwaita-text (at s) (max y (adwaita-text-top y h font)) s color
+                          font)
             (+ y (max h lh))))))
 
   ;; Surfaces: a page the window's color; a toolbar or a footer a top or a
@@ -745,14 +789,14 @@
                                    [(on? 'hover) 0.15]
                                    [else 0.1]))
                 9)
-      (draw-text (+ x 9) (+ y (/ (- h lh) 2))
-                 (text-fit label (max 0 (- w 9 6 g 9)) 'ui-bold)
-                 (cond [(on? 'set) 'adwaita-link]
-                       [(on? 'placeholder) 'text-dim]
-                       [else 'text])
-                 'ui-bold)
-      (ui-draw-glyph (- (+ x w) 9 g) (+ y (/ (- h g) 2)) g g '((ink . text))
-                     'chevron-down)
+      (adwaita-text-in (+ x 9) y h
+                       (text-fit label (max 0 (- w 9 6 g 9)) 'ui-bold)
+                       (cond [(on? 'set) 'adwaita-link]
+                             [(on? 'placeholder) 'text-dim]
+                             [else 'text])
+                       'ui-bold)
+      (ui-draw-glyph (- (+ x w) 9 g) (adwaita-center y h g) g g
+                     '((ink . text)) 'chevron-down)
       (when (on? 'focused) (adwaita-ring x y w h 9))))
 
   (define (adwaita-dropdown-size labels)
@@ -781,10 +825,10 @@
       (fill-box x y w h (alpha 'text 0.1) (/ h 2))
       (fill-circle (+ x 13) (+ y (/ h 2)) 3
                    (app-color (string->symbol label)))
-      (draw-text (+ x 22) (+ y (/ (- h sh) 2))
-                 (text-fit label (max 0 (- w 32 (if rem? (+ g 4) 0)))
-                           'ui-small)
-                 'text 'ui-small)
+      (adwaita-text-in (+ x 22) y h
+                       (text-fit label (max 0 (- w 32 (if rem? (+ g 4) 0)))
+                                 'ui-small)
+                       'text 'ui-small)
       (when rem?
         (let* ([a (cdr (assq 'remove (ui-chip-areas x y w h)))]
                [cx (+ (car a) (/ (caddr a) 2))] [cy (+ y (/ h 2))])
@@ -855,10 +899,10 @@
                                  0.4))]
            [right? (memq 'right flags)]
            [tx (if right? (- (+ x w) in (text-width s f)) (+ x in))]
-           [end (draw-text tx (+ y (/ (- h (font-line-height f)) 2)) s ink f)])
+           [end (adwaita-text-in tx y h s ink f)])
       (when dir
-        (ui-draw-glyph (if right? (- tx 6 g) (+ end 6)) (+ y (/ (- h g) 2)) g g
-                       (list (cons 'ink ink))
+        (ui-draw-glyph (if right? (- tx 6 g) (+ end 6)) (adwaita-center y h g)
+                       g g (list (cons 'ink ink))
                        (if (eq? dir 'up) 'chevron-up 'chevron-down)))))
 
   ;; A row: chosen, the accent at 25 % (32 % under the pointer); under the
@@ -936,10 +980,8 @@
 
   (define (adwaita-tooltip x y w h flags text)
     (ui-draw-panel x y w h '(tooltip))
-    (fold-left (lambda (ty line)
-                 (draw-text (+ x 10) ty line #xffffff 'ui)
-                 (+ ty (font-line-height 'ui)))
-               (+ y 6) (adwaita-tooltip-lines text)))
+    (adwaita-lines (lambda (line) (+ x 10)) (+ y 6)
+                   (adwaita-tooltip-lines text) #xffffff 'ui))
 
   ;; An alert (AdwAlertDialog: widgets/_message-dialog.scss, adw-alert-
   ;; dialog.c): 300 to 372 wide (175-178), wider when its buttons need it,
@@ -987,14 +1029,12 @@
       (draw-shadow x y w h 18 16)
       (fill-box x y w h 'adwaita-dialog 18)
       (stroke-box x y w h (alpha #xffffff 0.07) 1 18)
-      (text-draw-centered (car t) (cadr t) (caddr t) (cadddr t)
-                          (text-fit title (caddr t) 'heading) 'text 'heading)
-      (fold-left (lambda (ly line)
-                   (draw-text (+ (car m) (/ (- (caddr m) (text-width line 'ui))
-                                            2))
-                              ly line 'text 'ui)
-                   (+ ly lh))
-                 (cadr m) (ui-dialog-lines message (caddr m)))))
+      (adwaita-text-centered (car t) (cadr t) (caddr t) (cadddr t)
+                             (text-fit title (caddr t) 'heading) 'text 'heading)
+      (adwaita-lines (lambda (line)
+                       (adwaita-center (car m) (caddr m)
+                                       (text-width line 'ui)))
+                     (cadr m) (ui-dialog-lines message (caddr m)) 'text 'ui)))
 
   ;; Under a dialog, the shade at twice its alpha (widgets/_dialogs.scss:
   ;; 72-74).
@@ -1007,11 +1047,11 @@
            [t (cdr (assq 'title areas))] [wk (cdr (assq 'week areas))]
            [cell (/ (caddr wk) 7)])
       (ui-draw-panel x y w h '())
-      (apply text-draw-centered (append t (list title 'text 'ui-bold)))
+      (apply adwaita-text-centered (append t (list title 'text 'ui-bold)))
       (do ([i 0 (+ i 1)]) ((= i 7))
-        (text-draw-centered (+ (car wk) (* i cell)) (cadr wk) cell (cadddr wk)
-                            (string (string-ref "MTWTFSS" i)) 'text-dim
-                            'ui-small))))
+        (adwaita-text-centered (+ (car wk) (* i cell)) (cadr wk) cell
+                               (cadddr wk) (string (string-ref "MTWTFSS" i))
+                               'text-dim 'ui-small))))
 
   ;; A day (widgets/_calendar.scss:21-56): chosen, the accent, its number
   ;; white, 9 round; today, a line 2 high of the border color under it;
@@ -1024,8 +1064,8 @@
       (when (and (on? 'today) (not (on? 'selected)))
         (fill-box (+ cx 4) (+ cy s -2) (- s 8) 2 (alpha 'text 0.15)))
       (when (on? 'cursor) (adwaita-ring cx cy s s 9))
-      (text-draw-centered x y w h label
-                          (cond [(on? 'selected) #xffffff]
+      (adwaita-text-centered x y w h label
+                             (cond [(on? 'selected) #xffffff]
                                 [(on? 'outside) (alpha 'text 0.3)]
                                 [else 'text])
                           'ui)))
@@ -1063,7 +1103,8 @@
     (let ([c (vector-ref adwaita-avatar-colors (adwaita-avatar-index name))])
       (fill-box x y w w (linear-gradient 0 y 0 (+ y w) (cadr c) (caddr c))
                 (/ w 2))
-      (text-draw-centered x y w w (ui-initials name) (car c) 'ui-small-bold)))
+      (adwaita-text-centered x y w w (ui-initials name) (car c)
+                             'ui-small-bold)))
 
   ;; The spinner (AdwSpinner: adw-spinner-paintable.c:18-35, 288-374): a
   ;; ring of the text at 15 % and an arc of it, round at its ends, going
@@ -1093,9 +1134,9 @@
       (cond [(on? 'selected)
              (fill-box rx y rw h (alpha 'text (if (on? 'hover) 0.13 0.1)) 9)]
             [(on? 'hover) (fill-box rx y rw h (alpha 'text 0.07) 9)])
-      (when icon (icon ix (+ y (/ (- h g) 2)) g flags))
-      (draw-text lx (+ y (/ (- h lh) 2))
-                 (text-fit label (max 0 (- (+ rx rw) lx 8)) 'ui) 'text 'ui)
+      (when icon (icon ix (adwaita-center y h g) g flags))
+      (adwaita-text-in lx y h (text-fit label (max 0 (- (+ rx rw) lx 8)) 'ui)
+                       'text 'ui)
       (when (on? 'focused) (adwaita-ring rx y rw h 9))))
 
   ;; Whether a view is live, a pill as a toggle group's (widgets/
@@ -1105,7 +1146,7 @@
   (define (adwaita-live-badge x y w h flags label)
     (let* ([on? (lambda (f) (memq f flags))] [live? (on? 'checked)]
            [lh (font-line-height 'ui-small)] [m (ui-live-badge-mark)]
-           [ty (+ y (/ (- h lh) 2))] [my (+ y (/ (- h m) 2))]
+           [ty (adwaita-text-top y h 'ui-small)] [my (adwaita-center y h m)]
            [tx (+ x 8 m 6)]
            [back (if live? 0 (text-width ui-live-badge-back 'ui-small))]
            [label (text-fit label (max 0 (- (+ x w) tx back 10)) 'ui-small)])
@@ -1117,18 +1158,18 @@
           (let ([bw (max 1 (quotient m 3))])
             (fill-box (+ x 8) my bw m 'text-dim)
             (fill-box (+ x 8 (- m bw)) my bw m 'text-dim)))
-      (draw-text tx ty label 'text 'ui-small)
+      (adwaita-text tx ty label 'text 'ui-small)
       (unless live?
-        (draw-text (+ tx (text-width label 'ui-small)) ty ui-live-badge-back
-                   'adwaita-link 'ui-small))
+        (adwaita-text (+ tx (text-width label 'ui-small)) ty
+                      ui-live-badge-back 'adwaita-link 'ui-small))
       (when (on? 'focused) (adwaita-ring x y w h (/ h 2)))))
 
   ;; A suggestion is a menu item (widgets/_menus.scss:130-144).
   (define (adwaita-suggestion x y w h flags label)
     (let ([on? (or (memq 'selected flags) (memq 'hover flags))])
       (when on? (fill-box x y w h (alpha 'text 0.1) 9))
-      (draw-text (+ x 12) (+ y (/ (- h (font-line-height 'ui)) 2))
-                 (text-fit label (max 0 (- w 24)) 'ui) 'text 'ui)))
+      (adwaita-text-in (+ x 12) y h (text-fit label (max 0 (- w 24)) 'ui)
+                       'text 'ui)))
 
   ;; The line between two panes, where a drag moves it: under the pointer a
   ;; line of the text at 30 %, dragged the accent's (a paned's handle,
@@ -1178,8 +1219,8 @@
   ;; focused, the ring a pixel in.
   (define (adwaita-row x y w h flags title subtitle tx tw)
     (let* ([on? (lambda (f) (memq f flags))]
-           [lh (font-line-height 'ui)] [sh (font-line-height 'ui-small)]
-           [th (if subtitle (+ lh 3 sh) lh)] [ty (+ y (/ (- h th) 2))]
+           [lh (adwaita-text-height 'ui)] [sh (adwaita-text-height 'ui-small)]
+           [th (if subtitle (+ lh 3 sh) lh)] [ty (adwaita-center y h th)]
            [ink (lambda (c) (if (on? 'disabled) (alpha c 0.5) c))])
       (cond [(on? 'selected) (fill-box x y w h (alpha 'accent 0.25))]
             [(and (on? 'activatable) (on? 'pressed))
@@ -1189,10 +1230,10 @@
       (unless (on? 'last)
         (fill-box x (+ y h -1) w 1 'adwaita-card-shade))
       (when title
-        (draw-text tx ty (text-fit title tw 'ui) (ink 'text) 'ui))
+        (adwaita-text tx ty (text-fit title tw 'ui) (ink 'text) 'ui))
       (when subtitle
-        (draw-text tx (+ ty lh 3) (text-fit subtitle tw 'ui-small)
-                   (ink 'text-dim) 'ui-small))
+        (adwaita-text tx (+ ty lh 3) (text-fit subtitle tw 'ui-small)
+                      (ink 'text-dim) 'ui-small))
       (when (on? 'focused)
         (adwaita-ring (+ x 1) (+ y 1) (- w 2) (- h 2) 11))))
 
@@ -1244,20 +1285,15 @@
       (if (procedure? glyph)
           (glyph (car g) (cadr g) s '(dim))
           (ui-draw-glyph (car g) (cadr g) s s '((ink . text-dim)) glyph))
-      (fold-left (lambda (ly line)
-                   (draw-text (+ (car t) (/ (- (caddr t) (text-width line tf))
-                                            2))
-                              ly line 'text tf)
-                   (+ ly (font-line-height tf)))
-                 (cadr t) (ui-label-lines title (caddr t) tf))
+      (adwaita-lines (lambda (line)
+                       (adwaita-center (car t) (caddr t) (text-width line tf)))
+                     (cadr t) (ui-label-lines title (caddr t) tf) 'text tf)
       (when description
-        (fold-left (lambda (ly line)
-                     (draw-text (+ (car d) (/ (- (caddr d)
-                                                 (text-width line 'ui))
-                                              2))
-                                ly line 'text 'ui)
-                     (+ ly (font-line-height 'ui)))
-                   (cadr d) (ui-label-lines description (caddr d) 'ui)))))
+        (adwaita-lines (lambda (line)
+                         (adwaita-center (car d) (caddr d)
+                                         (text-width line 'ui)))
+                       (cadr d) (ui-label-lines description (caddr d) 'ui)
+                       'text 'ui))))
 
   ;; A banner (AdwBanner: widgets/_toolbars.scss:235-254): its button 6
   ;; inside it, so it is a control and 12 high; #7d7d83 mixed 30 % into the
@@ -1267,8 +1303,8 @@
   (define (adwaita-banner x y w h flags title label)
     (let ([t (cdr (assq 'title (ui-banner-areas x y w h title label)))])
       (fill-box x y w h (mix 'bg-1 #x7d7d83 0.3))
-      (draw-text (car t) (+ y (/ (- h (font-line-height 'ui-bold)) 2))
-                 (text-fit title (caddr t) 'ui-bold) 'text 'ui-bold)))
+      (adwaita-text-in (car t) y h (text-fit title (caddr t) 'ui-bold) 'text
+                       'ui-bold)))
 
   ;;; ------------------------------------------------------------------
 
@@ -1358,6 +1394,7 @@
      'ui-draw-tab 'adwaita-tab
      'ui-tabs-size 'adwaita-tabs-size
      'ui-draw-label 'adwaita-label
+     'ui-text-y 'adwaita-text-y
      'ui-draw-surface 'adwaita-surface
      'ui-text-box-areas 'adwaita-text-box-areas
      'ui-draw-suggestion 'adwaita-suggestion

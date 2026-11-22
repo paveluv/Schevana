@@ -1105,6 +1105,33 @@
                                            0.15))
                   (adwaita-test-near? (cadddr ps) 'window-bg))))))
 
+(check "Adwaita sets a label as GTK does: its box the face's ascent and \
+        descent rounded up, centered at a whole pixel, floored, the \
+        baseline the unrounded ascent below its top; the kit's text the \
+        same, where another style keeps the core's whole ascent"
+       (let ([at '()])
+         (with-style 'adwaita
+           (lambda ()
+             (let ([real draw-text] [h (ui-control-height)])
+               (fluid-let ([draw-text (lambda (x y s . rest)
+                                        (set! at (cons (list s x y) at))
+                                        (apply real x y s rest))])
+                 (image 120 60 1
+                        (lambda () (ui-draw-button 10 10 81 h '() "Go" #f))))
+               (let-values ([(a d) (text-face-extent 'ui-bold)])
+                 (let ([top (+ 10 (floor (/ (- h (ceiling (+ a d))) 2)))])
+                   (and (equal? (assoc "Go" at)
+                                (list "Go"
+                                      (+ 10 (floor (/ (- 81 (text-width
+                                                             "Go" 'ui-bold))
+                                                      2)))
+                                      (+ top (- a (font-ascent 'ui-bold)))))
+                        (let-values ([(a d) (text-face-extent 'ui)])
+                          (= (ui-text-y 8 'ui)
+                             (+ 8 (- a (font-ascent 'ui)))))
+                        (with-style 'mac
+                          (lambda () (= (ui-text-y 8 'ui) 8)))))))))))
+
 (check "an Adwaita check box is 20 square, a ring of the text at 15 % \
         empty, the accent checked"
        (with-style 'adwaita

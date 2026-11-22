@@ -37,7 +37,8 @@
     gpu-buffer-set! gpu-buffer-release! gpu-buffer-read! *gpu-computes*
     gpu-compute-soon! gpu-buffer-read-then! gpu-compute!
     ;; (schevana core fonts): fonts and text
-    font-file-upem font-file-pages font-library-versions make-font*
+    font-file-upem font-file-ascender font-file-descender font-file-pages
+    font-library-versions make-font*
     *font-specs* font get-font font-advance font-ascent font-descent
     font-line-height font-char-width font-ready text-width *glyph-count*
     *atlas-y* *atlas-row* glyph-row-ref font-family font-size font-sized
@@ -191,7 +192,8 @@
                 gpu-image-release! gpu-atlas-image gpu-list-new make-gpu-buffer
                 gpu-buffer-set! gpu-buffer-release! gpu-buffer-read!
                 gpu-compute-soon! gpu-buffer-read-then! gpu-compute!)
-          (only (schevana core fonts) font-file-upem font-file-pages
+          (only (schevana core fonts) font-file-upem font-file-ascender
+                font-file-descender font-file-pages
                 font-library-versions make-font* font get-font font-advance
                 font-ascent font-descent font-line-height font-char-width
                 font-ready glyph-row-ref font-family font-size font-sized
