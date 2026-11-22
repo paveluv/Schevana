@@ -7,7 +7,8 @@
 ;;; block. A block fenced "```scheme no-run" is shown, not run: one that
 ;;; never ends, or that waits for a person. A page's run keeps the tests'
 ;;; names and reach out of "/" (tests/reach.ss), so that an example finds
-;;; only what a REPL there finds: what the world gives.
+;;; only what a REPL there finds: what the world gives. The names of
+;;; Schevana's that a page's prose writes as code are held to the same.
 
 ;; Returns page's blocks to run, each (line . text), where line is the
 ;; line its code starts on.
@@ -102,12 +103,83 @@
 ;; (./desktop demo), as its examples expect.
 (when docs-page (auto-load! (string-append *schevana-root* "/demo")))
 
+(define (docs-backquote text i)
+  (let loop ([k i])
+    (cond [(>= k (string-length text)) #f]
+          [(char=? (string-ref text k) #\`) k]
+          [else (loop (+ k 1))])))
+
+;; Returns what page's prose writes as code, between backquotes, outside
+;; its fenced blocks.
+(define (docs-prose-code page)
+  (let ([text (call-with-input-file (string-append *schevana-root* "/" page)
+                get-string-all)])
+    (let loop ([i 0] [in-block? #f] [acc '()])
+      (let ([j (docs-backquote text i)])
+        (cond
+          [(not j) (reverse acc)]
+          [(and (<= (+ j 3) (string-length text))
+                (string=? (substring text j (+ j 3)) "```"))
+           (loop (+ j 3) (not in-block?) acc)]
+          [in-block? (loop (+ j 1) #t acc)]
+          [else
+           (let ([e (docs-backquote text (+ j 1))])
+             (if e
+                 (loop (+ e 1) #f (cons (substring text (+ j 1) e) acc))
+                 (reverse acc)))])))))
+
+;; Returns the name that code shows, a call's head or, unless calls-only?,
+;; a name alone; or #f.
+(define (docs-code-name code calls-only?)
+  (let ([x (guard (c [#t #f]) (read (open-string-input-port code)))])
+    (cond [(and (pair? x) (symbol? (car x))) (car x)]
+          [(and (symbol? x) (not calls-only?)) x]
+          [else #f])))
+
+;; The names of Schevana's that the docs mention although "/" lacks them,
+;; on purpose: a hook that a library calls by its own name, a shader's
+;; name, and how a list of the core's shows another.
+(define docs-unreached-names '(draw-window gfx-vertex show-list))
+
+;; Returns the names of Schevana's that page's prose shows and "/" lacks:
+;; names that the core's or core0's libraries define. Of the pages that
+;; describe the core's insides and where each platform's code lives, only
+;; the calls count, which are what a person types.
+(define (docs-names-missing page)
+  (let ([world (make-eq-hashtable)] [schevana (make-eq-hashtable)])
+    (for-each (lambda (n) (hashtable-set! world n #t))
+              (environment-symbols world-env))
+    (for-each (lambda (n) (hashtable-set! schevana n #t))
+              (append (environment-symbols core-env)
+                      (environment-symbols main-env)))
+    (let loop ([names (filter-map
+                       (lambda (code)
+                         (docs-code-name code
+                                         (member page '("docs/INTERNALS.md"
+                                                        "docs/PLATFORMS.md"))))
+                       (docs-prose-code page))]
+               [acc '()])
+      (cond [(null? names) (reverse acc)]
+            [(and (hashtable-ref schevana (car names) #f)
+                  (not (hashtable-ref world (car names) #f))
+                  (not (memq (car names) docs-unreached-names))
+                  (not (memq (car names) acc)))
+             (loop (cdr names) (cons (car names) acc))]
+            [else (loop (cdr names) acc)]))))
+
 (if docs-page
-    (for-each (lambda (b)
-                (check (format "~a, line ~a: its example runs as it reads"
-                               docs-page (car b))
-                       (docs-run! (cdr b))))
-              (docs-blocks docs-page))
+    (begin
+      (for-each (lambda (b)
+                  (check (format "~a, line ~a: its example runs as it reads"
+                                 docs-page (car b))
+                         (docs-run! (cdr b))))
+                (docs-blocks docs-page))
+      (let ([missing (docs-names-missing docs-page)])
+        (check (format "~a: every name of Schevana's that its prose shows is \
+                        one that \"/\" has, as a REPL there finds it \
+                        (lacking: ~s)"
+                       docs-page missing)
+               (null? missing))))
     ;; Run by itself, this topic runs the pages at once, as many as the
     ;; machine allows, each in a folder of its own, and shows what each
     ;; printed after it, in order. (The units' runner runs each page as a

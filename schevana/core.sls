@@ -111,7 +111,8 @@
     desktop-rect app app-name app-title app-launch *apps*
     define-app apps open-window detached-window new-window-position
     cascade-reset! place-window! windows focused-window visible? maximized?
-    find-window window-ref window-set! window-bg in-window-theme window-setting
+    find-window window-ref window-set! window-on! window-bg in-window-theme
+    window-setting
     frame-insets frame-regions frame-radius frame-bleed content-rect
     window-content-size window-local window-call window-crash!
     window-modal-child focus-window! close-window! minimize-window!
@@ -124,13 +125,13 @@
     ;; (schevana shader): the shader language
     *shader-constants* *shader-helpers* *shader-fields* define-shader-layout
     define-shader-constant define-shader-helpers shader-type shader-tree
-    define-compute-shader
+    define-compute-shader shader-code shader-price
     ;; (schevana socket): sockets
     socket-listen socket-accept socket-read socket-write socket-close
     ;; (schevana reload): what a reload of the libraries keeps
     reload-facts
     ;; Passed on from core0 ((schevana core0)): what Monitor, the Pipeline
-    ;; and the inspect kit read, the clipboard and the cursor
+    ;; and the inspect kit read, the clipboard, the cursor and the trace
     core0-app-id gpu-atlas-side core0-flag-names core0-event-name gpu-show-run?
     gpu-run-gone? shader shader-name shader-stage shader-coords shader-params
     shader-source shader-words gpu-list-id gpu-list-labels gpu-list-recorded
@@ -139,6 +140,7 @@
     core0-hidden? core0-flags core0-error-text core0-step-state
     core0-frame-report core0-window-sizes core0-window-scale clipboard-get
     core0-set-cursor! clipboard-set! core0-refresh-ns! platform-cpu-count
+    core0-trace-dump!
     ;; Passed on from the recorder ((schevana recorder)): what the Pipeline
     ;; reads of a list, and what the pixmap kit writes into an image with
     rec-count rec-last-sizes rec-last-copy! rec-last-runs rec-list-copy
@@ -163,7 +165,8 @@
                 *shader-fields* define-shader-layout define-shader-constant
                 define-shader-helpers shader-type shader-tree
                 define-compute-shader shader shader-name shader-stage
-                shader-coords shader-params shader-source shader-words)
+                shader-coords shader-params shader-source shader-words
+                shader-code shader-price)
           (only (schevana socket) socket-listen socket-accept socket-read
                 socket-write socket-close)
           (only (schevana reload) reload-facts)
@@ -175,7 +178,7 @@
                 core0-hidden? core0-flags core0-error-text core0-step-state
                 core0-frame-report core0-window-sizes core0-window-scale
                 clipboard-get core0-set-cursor! clipboard-set! core0-refresh-ns!
-                platform-cpu-count)
+                platform-cpu-count core0-trace-dump!)
           (only (schevana recorder) rec-count rec-last-sizes rec-last-copy!
                 rec-last-runs rec-list-copy gpu-list-recs-n gpu-list-extras-n
                 gpu-list-runs gpu-list-version gpu-list-recs gpu-list-extras
@@ -255,7 +258,8 @@
                 define-strip desktop-rect app app-name app-title app-launch
                 define-app apps open-window detached-window
                 cascade-reset! place-window! windows focused-window visible?
-                maximized? find-window window-ref window-set! window-bg
+                maximized? find-window window-ref window-set! window-on!
+                window-bg
                 in-window-theme window-setting frame-insets frame-regions
                 frame-radius frame-bleed content-rect window-content-size
                 window-local window-call window-crash! window-modal-child
