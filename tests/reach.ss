@@ -32,6 +32,16 @@
               (schevana core sources) (schevana desktop main))))
 (define world-env (eval '*world-env* core-env))
 
+;; Where the tests go on, and their reach: "/" itself; but for a docs
+;; page's run (tests/units/docs.ss), whose examples run at "/" as typed at
+;; a REPL there, which has only what the world gives it: the tests go on
+;; in a copy of "/" made as the world loaded, their names and reach in it
+;; alone.
+(define test-env
+  (if (and (not test-hacker?) (getenv "SCHEVANA_DOCS_PAGE"))
+      (copy-environment world-env #t)
+      world-env))
+
 ;; The recorder's library whole, its internals with it, which the tests
 ;; look into; the core has only its facade's.
 (unless test-hacker? (eval '(import (schevana recorder bytes)) main-env))
@@ -129,20 +139,20 @@
                   (string->symbol (string-append (symbol->string prefix)
                                                  (symbol->string n)))
                   (reach-forwarder (datum->syntax anchor n))
-                  world-env))
+                  test-env))
               (apply append (map test-defined-names body)))))
 
-;; Each name of the two's, in "/", from the first of the core's and the
-;; tests' that has it, a state or a hook (a macro) as a variable is, to be
-;; set (by its names: top-level-syntax? says so of any name). What the
-;; facade gives of core0's, a view, comes from the tests', which has the
-;; state itself. A name "/" had already stays as it is but for what the
-;; facade gives, which becomes settable.
+;; Each name of the two's, in "/" (test-env), from the first of the core's
+;; and the tests' that has it, a state or a hook (a macro) as a variable
+;; is, to be set (by its names: top-level-syntax? says so of any name).
+;; What the facade gives of core0's, a view, comes from the tests', which
+;; has the state itself. A name "/" had already stays as it is but for
+;; what the facade gives, which becomes settable.
 (unless test-hacker?
   (let ([had (make-eq-hashtable)]
         [envs (list core-env main-env)])
     (for-each (lambda (n) (hashtable-set! had n #t))
-              (environment-symbols world-env))
+              (environment-symbols test-env))
     (for-each (lambda (n) (hashtable-delete! had n))
               (library-exports '(schevana core)))
     (for-each
@@ -150,12 +160,13 @@
        (let ([anchor (environment-anchor e)])
          (for-each
           (lambda (n)
-            (unless (or (gensym? n) (reach-given? n) (hashtable-ref had n #f))
+            (unless (or (gensym? n) (reach-given? n)
+                        (hashtable-ref had n #f))
               (hashtable-set! had n #t)
               (define-top-level-syntax n
                 (reach-forwarder (datum->syntax anchor n))
-                world-env)))
+                test-env)))
           (environment-symbols e))))
      envs)))
 
-(interaction-environment world-env)
+(interaction-environment test-env)

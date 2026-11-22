@@ -17,7 +17,8 @@
     frame-turn-soon! pacer-wanted? pacer-frame-ns pacer-period pacer-start
     pacer-on-latch? pacer-trial! pacer-margin wm-tick! pacer-tick!
     pacer-procs-ms pacer-wait-ms record-world! record-safely render-frame!
-    render-frames-back! render-answers! screen-bytes screen-bytes-then)
+    render-frames-back! render-answers! screen-bytes screen-bytes-then
+    pacer-rate!)
   (import (chezscheme)
           (schevana base)
           (schevana core0)

@@ -5,7 +5,9 @@
 ;;; as what it returns; an error, in a form, in what it left to run later
 ;;; (a timer, a then) or in a window's handler, fails its block. A block
 ;;; fenced "```scheme no-run" is shown, not run: one that never ends, or
-;;; waits for a person.
+;;; waits for a person. A page's run keeps the tests' names and reach out
+;;; of "/" (tests/reach.ss), so that an example finds only what a REPL
+;;; there finds: what the world gives.
 
 ;; page's blocks to run, each (line . text), line where its code starts.
 (define (docs-blocks page)

@@ -68,8 +68,8 @@
     *pacer-lead* *pacer-counts* *pacer-aimed* *pacer-floor* *pacer-latch-phase*
     *pacer-depth* *pacer-made* *pacer-late-run* *pacer-late-chain*
     *pacer-gpu-taught* *pacer-between?* pacer-busy-ms pacer-peak-ms! pacer-rate
-    pacer-ticks pacer-period pacer-start pacer-trial! pacer-margin screen-bytes
-    screen-bytes-then
+    pacer-rate! pacer-ticks pacer-period pacer-start pacer-trial! pacer-margin
+    screen-bytes screen-bytes-then
     ;; (schevana core screen): the screen core0 shows, and what the host's
     ;; desktop knows it by
     system-scale-percent fullscreen? set-fullscreen! toggle-fullscreen!
@@ -79,7 +79,7 @@
     ;; (schevana core loop) and (schevana core sources): the step, boot,
     ;; sources and reload
     *input-step?* post-core1! schevana-run! quit! schevana-end! uptime-ms
-    load-user-init! user-directory schevana-boot! collector-declining?
+    load-user-init! user-directory schevana-boot! collector-declining? inject!
     source-files *source-texts* keep-source-text! load-file!
     load-user-folders! reload! core1-run core1-boot! look-load!
     world-load-now! *world-later* auto-load! auto-load-forget! auto-loads
@@ -106,7 +106,8 @@
     *windows* *focus* *drag-outline*
     *hover* *mouse-x* *mouse-y* *mouse-button* drag current-window invalidate!
     window-shadow window-extent screen-w screen-h screen-scale point-in?
-    surface surface-doc define-surface find-surface surface-call define-strip
+    surface surface-doc define-surface find-surface surface-call surfaces
+    define-strip
     desktop-rect app app-name app-title app-launch *apps*
     define-app apps open-window detached-window new-window-position
     cascade-reset! place-window! windows focused-window visible? maximized?
@@ -114,10 +115,11 @@
     frame-insets frame-regions frame-radius frame-bleed content-rect
     window-content-size window-local window-call window-crash!
     window-modal-child focus-window! close-window! minimize-window!
-    set-geometry! move-window! resize-window! restore-window! toggle-maximize!
-    window-action! shaded? unshade-window! toggle-shade! window-at screen-at
-    resize-kinds
-    window-region *global-keys* bind-key! window-frame-soon! window-hover
+    maximize-window! set-geometry! move-window! resize-window!
+    restore-window! toggle-maximize! window-action! shaded? unshade-window!
+    toggle-shade! window-at screen-at resize-kinds
+    window-region *global-keys* bind-key! unbind-key! window-frame-soon!
+    window-hover
     draw-window*
     ;; (schevana shader): the shader language
     *shader-constants* *shader-helpers* *shader-fields* define-shader-layout
@@ -219,8 +221,9 @@
                 clip-row-ry0 clip-row-ry1 clip-row-words clip-row-x0 clip-row-x1
                 clip-row-y0 clip-row-y1)
           (only (schevana core pacer) frame-ring-rows frame-ring-words
-                pacer-busy-ms pacer-peak-ms! pacer-rate pacer-ticks pacer-start
-                pacer-trial! pacer-margin screen-bytes screen-bytes-then)
+                pacer-busy-ms pacer-peak-ms! pacer-rate pacer-rate! pacer-ticks
+                pacer-start pacer-trial! pacer-margin screen-bytes
+                screen-bytes-then)
           (only (schevana core screen) system-scale-percent fullscreen?
                 set-fullscreen! toggle-fullscreen! screen-set-icon!
                 screen-set-title! screen-set-app-id! screen-set-least!
@@ -230,7 +233,7 @@
           (only (schevana core loop) post-core1! schevana-run! quit!
                 schevana-end! uptime-ms user-directory schevana-boot!
                 collector-declining? core1-run loop-main path-full
-                add-library-directory!)
+                add-library-directory! inject!)
           (only (schevana core theme) common-options theme-default
                 define-palette palettes palette-title palette-colors
                 define-wallpaper wallpapers wallpaper-shown fill-wallpaper style
@@ -248,7 +251,7 @@
                 window-min-w window-min-h window-handlers window-props
                 window-error drag window-shadow
                 window-extent screen-w screen-h screen-scale point-in? surface
-                surface-doc define-surface find-surface surface-call
+                surface-doc define-surface find-surface surface-call surfaces
                 define-strip desktop-rect app app-name app-title app-launch
                 define-app apps open-window detached-window
                 cascade-reset! place-window! windows focused-window visible?
@@ -256,10 +259,11 @@
                 in-window-theme window-setting frame-insets frame-regions
                 frame-radius frame-bleed content-rect window-content-size
                 window-local window-call window-crash! window-modal-child
-                focus-window! close-window! minimize-window! set-geometry!
+                focus-window! close-window! minimize-window! maximize-window!
+                set-geometry!
                 move-window! resize-window! restore-window! toggle-maximize!
                 window-action! shaded? unshade-window! toggle-shade! window-at
-                screen-at resize-kinds window-region bind-key!
+                screen-at resize-kinds window-region bind-key! unbind-key!
                 window-frame-soon! window-hover draw-window*)
           (only (schevana core sources) core1-exported load-user-init!
                 source-files keep-source-text! load-file!

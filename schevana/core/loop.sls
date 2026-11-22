@@ -6,7 +6,8 @@
     *input-step?* post-core1! wm-event! loop-stepped! reload-ended!
     schevana-run! quit! schevana-end! uptime-ms user-directory
     user-library-directory path-full add-library-directory! schevana-boot!
-    collector-declining? collector-settle! core1-run loop-main)
+    collector-declining? collector-settle! core1-run loop-main
+    inject!)
   (import (chezscheme)
           (schevana base)
           (schevana core0)
