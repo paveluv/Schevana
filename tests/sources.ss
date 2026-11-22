@@ -103,6 +103,37 @@
                (filter (lambda (f) (string-prefix? "schevana/" f))
                        all-library-files))))
 
+;; Returns the names of the record types that forms define with no
+;; nongenerative clause, wherever in forms they are (but in quoted data
+;; and syntax templates).
+(define (generative-records forms)
+  (let walk ([xs forms] [acc '()])
+    (fold-left
+     (lambda (acc x)
+       (cond
+         [(not (and (pair? x) (list? x))) acc]
+         [(memq (car x) '(quote quasiquote syntax quasisyntax)) acc]
+         [(and (eq? (car x) 'define-record-type) (pair? (cdr x)))
+          (if (exists (lambda (c)
+                        (and (pair? c) (eq? (car c) 'nongenerative)))
+                      (cddr x))
+              acc
+              (cons (if (pair? (cadr x)) (caadr x) (cadr x)) acc))]
+         [else (walk x acc)]))
+     acc xs)))
+
+;; A record type outlives a reload of its library only when it is
+;; nongenerative (docs/INTERNALS.md): one made anew would not recognize
+;; the records made before.
+(check "every record type of the tree's libraries is nongenerative"
+       (none? (apply append
+                     (map (lambda (f)
+                            (map (lambda (name)
+                                   (format "~a: ~a is not nongenerative"
+                                           f name))
+                                 (generative-records (file-forms f))))
+                          all-library-files))))
+
 ;; A sealed layer's own libraries: its folder under schevana/, and its
 ;; facade beside the folder.
 (define (layer-libraries folder)

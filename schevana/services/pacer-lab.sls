@@ -63,6 +63,7 @@
   ;; the knobs' values, the pacer's counts at its start, its tick-to-screen
   ;; histogram, and the frame ring's next row to measure.
   (define-record-type pacer-lab-trial
+    (nongenerative schevana-pacer-lab-trial)
     (fields began-ms began-s knobs counts hist (mutable measured)))
 
   ;;; ---------------------------------------------------------- histogram
@@ -278,6 +279,7 @@
   ;; for a ratio: misses come in bursts, so a count's own error (Poisson's)
   ;; would claim too much. The error is #f with fewer than two periods.
   (define-record-type pacer-lab-effect
+    (nongenerative schevana-pacer-lab-effect)
     (fields knob value periods frames own theirs rate error p50 p99
             (mutable verdict)))
 

@@ -3774,6 +3774,7 @@
 
   ;; The record has a name of its own, since ui-stream names the widget.
   (define-record-type (ui-stream-record make-ui-stream ui-stream?)
+    (nongenerative schevana-ui-stream)
     (fields (immutable rows ui-stream-rows)
             (immutable columns ui-stream-columns)
             (immutable strips ui-stream-strips)

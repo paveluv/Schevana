@@ -862,6 +862,7 @@
   ;; unchanged since the frame before keeps the same copy. A frame is
   ;; flattened when it is asked for, and the last few flattened are kept.
   (define-record-type inspect-history
+    (nongenerative schevana-inspect-history)
     (fields slots (mutable newest) (mutable flat)))
 
   (define (inspect-history-new n)

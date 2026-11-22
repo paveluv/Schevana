@@ -210,6 +210,7 @@
   (library-layer apps)
 
   (define-record-type pipeline-view
+    (nongenerative schevana-pipeline-view)
     (fields ui history river
             ticks                ; the River's tick breakdown, over its frames
             (mutable stage)      ; lists, who, course, inside, memory, latency
