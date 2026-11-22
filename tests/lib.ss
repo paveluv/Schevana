@@ -151,11 +151,37 @@
     (map (lambda (j) (bytevector-s32-native-ref bytes (* 4 (+ at j))))
          (iota (ui-stream-words s)))))
 
+;; How a test steps the world (tests/GUIDE.md). Core1's loop paces its
+;; steps (schevana-step!): one ticks only when a tick is wanted and due
+;; (pacer-start), after a wait for it, and its processes run till the next
+;; tick's frame must be drawn (pacer-procs-ms). A test steps the world
+;; itself, each step a tick and no wait, as a screen ready for every frame
+;; at once would have it: a test's step asks for a tick, as input does,
+;; and the pacer's two decisions are the test's for the step, its tick due
+;; now, and its processes 10 ms, the most the pacer gives, for the next
+;; tick comes when the test steps again. Set for the step and put back
+;; after it, not by fluid-let: a process first run in the step would keep
+;; its dynamic-wind, and wind them in again at every turn.
+(define (test-tick-due) 0)
+(define (test-procs-ms) 10)
+
+;; One step of the world's, a tick (but while a reload holds it), after
+;; waiting for the screen's events up to wait-ms, else none. What it stood
+;; in for goes back, unless a reload in the step defined it anew.
+(define (test-step! . wait-ms)
+  (let ([start pacer-start] [procs-ms pacer-procs-ms])
+    (frame-turn-soon!)
+    (set! pacer-start test-tick-due)
+    (set! pacer-procs-ms test-procs-ms)
+    (schevana-step! (if (pair? wait-ms) (car wait-ms) 0))
+    (when (eq? pacer-start test-tick-due) (set! pacer-start start))
+    (when (eq? pacer-procs-ms test-procs-ms) (set! pacer-procs-ms procs-ms))))
+
 ;; The world's loop, n times, each after the held clock moves on ms.
 (define (steps n . ms)
   (do ([i 0 (+ i 1)]) ((= i n))
     (when (pair? ms) (test-clock-advance! (car ms)))
-    (schevana-step! 0)))
+    (test-step!)))
 
 ;; pred's first true value as the world goes on, a step each 5 ms, for up
 ;; to ms of the clock, held or the machine's; #f if it never is.
@@ -168,7 +194,7 @@
         (let loop ()
           (or (pred)
               (and (< (now-ms) until)
-                   (begin (schevana-step! 5) (loop))))))))
+                   (begin (test-step! 5) (loop))))))))
 
 ;; Text typed and a key pressed, as the screen would send them; not
 ;; stepped.

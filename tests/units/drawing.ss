@@ -36,7 +36,7 @@
         asked once a change; a mode it doesn't offer, or that the swapchain \
         refuses, leaves it as it is, and with no window there's none to change"
        (let ([asked '()] [answer #t])
-         (define (frame!) (request-frame!) (schevana-step! 0))
+         (define (frame!) (request-frame!) (test-step!))
          (define (choose! mode)
            (override! 'present-mode mode)
            (frame!)

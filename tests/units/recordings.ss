@@ -210,7 +210,7 @@
        (let ([b (make-gpu-buffer 1)])
          (fluid-let ([*dirty* #f] [*timers* '()])
            (gpu-buffer-set! b 0 5)
-           (schevana-step! 0))
+           (test-step!))
          (let ([ok (and (not (rec-writes-pending?))
                         (pair? (inspect-recordings 'writes))
                         (= (bytevector-s32-native-ref (gpu-buffer-read! b) 0)

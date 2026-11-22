@@ -93,8 +93,9 @@ SCHEVANA_HACKER=1 scheme --script tests/units.ss out life
 
 A topic is a file in `tests/units/`, loaded into a world booted headless.
 `tests/units.ss` gives it `check`, which runs an expression and reports
-it, and helpers more than one topic uses: `(steps n)` runs the world's
-loop `n` times, `(raises? thunk)` says whether a call raises, and
+it, and helpers more than one topic uses: `(steps n)` runs `n` of the
+world's steps, each a tick (see "How a test steps time" below),
+`(raises? thunk)` says whether a call raises, and
 `shown-picture`, `image` and `max-diff` compare what was drawn.
 
 ```scheme
@@ -195,6 +196,36 @@ it, the test framework finds itself:
   world takes go through, and look after each check too, since a check
   that never steps the world never lets it (`tests/lib.ss`); else their
   garbage would pile up.
+
+## How a test steps time
+
+Core1's loop paces its steps, `(schevana-step! wait-ms)`: a step ticks
+only when a tick is wanted and due (`pacer-start`), after waiting for
+it, and its processes run till the next tick's frame must be drawn
+(`pacer-procs-ms`). The library has no other step. A test steps the world
+itself, with `test-step!` (`tests/lib.ss`), which `steps` and `test-wait`
+run:
+
+- Each test's step is a tick, with no wait, as a screen ready for every
+  frame at once would have it. It asks for a tick, as input does
+  (`frame-turn-soon!`), and stands in for the pacer's two decisions for
+  the step alone (`pacer-start`, `pacer-procs-ms`, in `test-stand-ins`):
+  its tick is due now, and its processes run 10 ms, the most the pacer
+  gives them, for the next tick comes when the test steps again. While a
+  reload holds the world no step ticks, core1's or a test's.
+- A tick's `t` (a window's `'frame`, a surface's) is the pacer's: when
+  that tick's frame shows, a period after the last one's. Stepped back
+  to back, the world moves a period a step, ahead of the machine's
+  clock; once that clock has passed `t` by three periods (a pause), `t`
+  is a period after the tick again. What rides frames (Boids, Springies,
+  Fireflies) moves by its steps, not by the time a run takes.
+- The test's clock is `now-ms`, by which timers, tooltips and carets
+  go: `test-clock-hold!` holds it, `(steps n ms)` and
+  `test-clock-advance!` move it. `now-ns` stays the machine's: the pacer
+  and the profiler go by it. So a held clock holds what goes by time,
+  not frames.
+- A check of the pacer runs core1's own step, `schevana-step!`, on a
+  fake clock of its own (`tests/units/pacer.ss`).
 
 ## Every run alike
 

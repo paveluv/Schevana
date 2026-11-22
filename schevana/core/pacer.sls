@@ -37,11 +37,10 @@
   ;; and once a frame of its has reached the screen by vsync, the screen
   ;; sets the pace instead (pacer-start). Its rate: screen (a tick a refresh
   ;; of the screen's) or ticks a second; when the next tick may come on the
-  ;; grid (now-ns); the ticks so far, and when the last began (now-ms).
+  ;; grid (now-ns); and the ticks so far.
   (define-state *pacer-rate* 'screen)
   (define-state *pacer-due* 0)
   (define-state *pacer-ticks* 0)
-  (define-state *pacer-tick-ms* 0)
   (define-state *pacer-waits* 0)   ; this step's waits, ns
   ;; the work of the steps since the last tick, ns
   (define-state *pacer-work* 0)
@@ -101,8 +100,7 @@
   (define-state *pacer-late-run* 0)
   (define-state *pacer-late-seen* 0)
   (define-state *pacer-late-chain* 0)
-  ;; this step is paced and came between ticks: the profiler sums it into
-  ;; the next tick
+  ;; this step came between ticks: the profiler sums it into the next tick
   (define-state *pacer-between?* #f)
 
   ;; the last frame's time: its work, not its wait for the screen
@@ -135,9 +133,8 @@
   (define-state *frame-input-wl* 0)
 
   (define (frame-number-set! n) (set! *frame-number* n))
-  ;; The tick began at now (now-ns), or, unpaced, its ms: the pacer's read.
-  (define (frame-ticked! now)
-    (set! *frame-tick-ns* (or now (* *pacer-tick-ms* 1000000))))
+  ;; The tick began at now (now-ns).
+  (define (frame-ticked! now) (set! *frame-tick-ns* now))
 
   ;; Input came (now-ns; 0, none), by SDL's stamp, core0's pump and the
   ;; compositor: the next frame shows it, if no older input waits.
@@ -235,7 +232,6 @@
     (set! *pacer-due* 0))
   (define (pacer-rate) *pacer-rate*)
   (define (pacer-ticks) *pacer-ticks*)
-  (define (pacer-tick-ms) *pacer-tick-ms*)
 
   ;; A tick asked for: windows' frames and the surfaces' look at what
   ;; changed, and a frame if something asked for one (*dirty*).
@@ -243,8 +239,7 @@
   (define (pacer-wanted?) (or *pacer-wanted?* *dirty*))
 
   ;; When the frame the last tick made should show, ns, the t of a window's
-  ;; 'frame: a period after the last one's, a few after the tick; unpaced,
-  ;; the tick's own ms, the one read of the clock it makes.
+  ;; 'frame: a period after the last one's, a few after the tick.
   (define (pacer-frame-ns) *pacer-frame-ns*)
 
   ;; How many periods after its tick t sits while frames flow; they show
@@ -558,31 +553,28 @@
   ;; then nothing.
   (define-hook (wm-tick!) (void))
 
-  ;; A tick: the frames windows asked for and the surfaces' (wm-tick!), then
-  ;; a frame if one is asked for. Paced (now, the ns it began, else #f), the
-  ;; next may come a period after this one was due, or, when that is past
-  ;; already (this one held for core0, or the first after a quiet spell), a
-  ;; period from now; never past two: ticks that came early, a period on each,
+  ;; A tick, begun at now (now-ns): the frames windows asked for and the
+  ;; surfaces' (wm-tick!), then a frame if one is asked for. The next may
+  ;; come a period after this one was due, or, when that is past already
+  ;; (this one held for core0, or the first after a quiet spell), a period
+  ;; from now; never past two: ticks that came early, a period on each,
   ;; would put it off without end, and the world with it.
   (define (pacer-tick! now)
     (set! *pacer-aimed* (if (pacer-on-latch?) (pacer-aim) 0))
     (set! *pacer-planned*
-      (if (> *pacer-aimed* 0) (- *pacer-aimed* *pacer-lead*) (or now 0)))
-    (when now
-      (set! *pacer-began* now)
-      (let ([next (+ *pacer-due* (pacer-period))])
-        (set! *pacer-due*
-          (if (> next now)
-              (min next (+ now (* 2 (pacer-period))))
-              (+ now (pacer-period))))))
+      (if (> *pacer-aimed* 0) (- *pacer-aimed* *pacer-lead*) now))
+    (set! *pacer-began* now)
+    (let ([next (+ *pacer-due* (pacer-period))])
+      (set! *pacer-due*
+        (if (> next now)
+            (min next (+ now (* 2 (pacer-period))))
+            (+ now (pacer-period)))))
     (set! *pacer-wanted?* #f)
     ;; a tick that sent the screen nothing leaves it nothing to pace by
     (unless *pacer-drew?* (set! *pacer-shown?* #f))
     (set! *pacer-drew?* #f)
     (set! *pacer-ticks* (+ *pacer-ticks* 1))
-    (set! *pacer-tick-ms* (now-ms))
-    (set! *pacer-frame-ns*
-      (if now (pacer-next-frame-ns now) (* *pacer-tick-ms* 1000000)))
+    (set! *pacer-frame-ns* (pacer-next-frame-ns now))
     (safely 'tick wm-tick!))
 
   ;; Core0, on a thread of its own, gave back a frame that reached the screen

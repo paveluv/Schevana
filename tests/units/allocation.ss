@@ -55,14 +55,14 @@
   (allocation-on-clock
    (lambda ()
      (before)
-     (schevana-step! 0)
+     (test-step!)
      (let loop ([i 0] [least #f])
        (if (= i 20)
            least
            (begin
              (before)
              (let ([a (allocation-now)])
-               (schevana-step! 0)
+               (test-step!)
                (let ([d (- (allocation-now) a)])
                  (loop (+ i 1) (if least (min least d) d))))))))))
 

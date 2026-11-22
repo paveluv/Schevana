@@ -988,7 +988,7 @@
          ;; no timer's frame (the status clock's) to take it
          (fluid-let ([*dirty* #f] [*timers* '()])
            (gpu-compute-soon! shader-test-mark 8 1 out 41)
-           (schevana-step! 0))
+           (test-step!))
          (let ([sent (null? *gpu-computes*)] [got (gpu-buffer-read! out)])
            (let ([ok (and sent (= *frames-drawn* frames)
                           (for-all (lambda (i) (= 41 (shader-test-word got i)))

@@ -106,19 +106,18 @@
   ;; One turn of the world, and what it took but its waits. Kept with
   ;; profiling off too, at a few clock reads a step: it says whether a user
   ;; of the desktop will see a tick missed.
-  (define (schevana-step! wait-ms . paced)
+  (define (schevana-step! wait-ms)
     (let ([start (now-ns)])
       (set! *pacer-waits* 0)
-      (schevana-turn! wait-ms paced)
+      (schevana-turn! wait-ms)
       (pacer-step-done! (- (now-ns) start))))
 
   ;; One turn of the world: events, mail (post-core1!), timers, a tick,
-  ;; processes, and on a tick a frame if something asked for one. Paced
-  ;; (core1's loop's), it ticks only when a tick is wanted (pacer-wanted?) and
-  ;; due, and its processes run until the frame must be drawn for the next
-  ;; tick; else it always ticks, and its processes run 10 ms. The
-  ;; profiler sums the steps between ticks into the next tick.
-  (define (schevana-turn! wait-ms paced)
+  ;; processes, and on a tick a frame if something asked for one. It ticks
+  ;; only when a tick is wanted (pacer-wanted?) and due, and its processes
+  ;; run until the frame must be drawn for the next tick. The profiler sums
+  ;; the steps between ticks into the next tick.
+  (define (schevana-turn! wait-ms)
     (with-profile-span 'step #f
       (let* ([hold? (reload-holding?)]
              [evs (append (if hold? '() (reverse *held-events*))
@@ -154,10 +153,9 @@
                     ;; fast frames flow
                     (when (pair? *gpu-reads*)
                       (safely 'readback gpu-reads-send!))
-                    (let ([now (and (pair? paced) (now-ns))])
-                      (and (or (not now)
-                               (and (pacer-wanted?) (>= now (pacer-start))
-                                    (not (gpu-frame-waiting?))))
+                    (let ([now (now-ns)])
+                      (and (pacer-wanted?) (>= now (pacer-start))
+                           (not (gpu-frame-waiting?))
                            (begin
                              (core0-trace! 22 0)
                              (collector-hold!)
@@ -166,13 +164,11 @@
                              #t)))))])
         ;; a step leads up to a tick only while one is wanted; one in a quiet
         ;; spell is its own, as a tick nothing asked for once was
-        (set! *pacer-between?*
-              (and (pair? paced) (not ticked?) (pacer-wanted?)))
+        (set! *pacer-between?* (and (not ticked?) (pacer-wanted?)))
         (unless (or ticked? (pacer-wanted?) *collector-after*)
           (collector-tick!))
         (loop-stepped! (not (or ticked? (pacer-wanted?))))
-        (safely 'procs
-                (lambda () (run-procs! (if (null? paced) 10 (pacer-procs-ms)))))
+        (safely 'procs (lambda () (run-procs! (pacer-procs-ms))))
         ;; a frame a tick at most
         ;; a tick nothing asked a frame of goes on with no guard
         ;; a frame drawn may have moved what's under a still pointer: the next
@@ -199,7 +195,7 @@
     (set! *running* #t)
     (let loop ()
       (when *running*
-        (schevana-step! (pacer-wait-ms) #t)
+        (schevana-step! (pacer-wait-ms))
         (loop)))
     (screen-shutdown!))
 

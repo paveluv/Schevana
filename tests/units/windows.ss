@@ -73,15 +73,19 @@
   (steps 2)
   (check "a window that didn't ask gets no 'frame"
          (null? frames))
-  (let ([before (now-ns)] [asked (window-ref win 'wm-asked 0)])
+  (let ([asked (window-ref win 'wm-asked 0)])
     (window-frame-soon! win)
     (check "asking for a frame doesn't draw the window again"
            (= asked (window-ref win 'wm-asked 0)))
-    (steps 2)
-    (check "one that asked gets one, its t when the frame shows (unpaced, \
-            the tick's now, to the ms)"
+    (steps 1)
+    (check "one that asked gets one at the next tick, its t when that \
+            tick's frame shows, the pacer's, not before the tick"
            (and (= (length frames) 1)
-                (<= (- before 1000000) (car frames) (now-ns)))))
+                (= (car frames) (pacer-frame-ns))
+                (>= (car frames) *pacer-began*)))
+    (steps 1)
+    (check "and no more"
+           (= (length frames) 1)))
   (set! again? #t)
   (window-frame-soon! win)
   (steps 3)
@@ -165,7 +169,7 @@
 ;; Whether one step drew a frame.
 (define (windows-step-drew?)
   (let ([n *frames-drawn*])
-    (schevana-step! 0)
+    (test-step!)
     (> *frames-drawn* n)))
 
 ;; A counter of win's draws.

@@ -70,10 +70,11 @@
          (let ([off (and (not (profile-on?)) (not *profile-span*)
                          (equal? before (profile-ticks))
                          (> *frames-drawn* frames)
-                         ;; a step's, only the pacer's, four; and a frame
-                         ;; drawn times itself for the frame ring: its
-                         ;; start, its publish, what it took
-                         (<= reads (+ (* 5 4)
+                         ;; a step's, only the pacer's, five: its start
+                         ;; and end, the wait's two, and when it ticked;
+                         ;; and a frame drawn times itself for the frame
+                         ;; ring: its start, its publish, what it took
+                         (<= reads (+ (* 5 5)
                                       (* 3 (- *frames-drawn* frames))))
                          (eq? (collect-request-handler)
                               *profile-plain-collect*))])
@@ -444,7 +445,7 @@
          (define (run! seconds)   ; 100 ms a step
            (do ([i 0 (+ i 1)]) ((= i (* 10 seconds)))
              (set! fake (+ fake (expt 10 8)))
-             (schevana-step! 0)))
+             (test-step!)))
          (define (within? seconds)   ; the ticks kept span that, a second more
            (let ([ss (profile-ticks)])
              (and (pair? ss)
@@ -513,7 +514,7 @@
          (define (run! seconds)   ; 500 ms a step
            (do ([i 0 (+ i 1)]) ((= i (* 2 seconds)))
              (set! fake (+ fake 500000000))
-             (schevana-step! 0)))
+             (test-step!)))
          (define (rows)
            (map ui-tree-row-node
                 (vector->list (ui-memo ui '(consumers rows) '#()))))

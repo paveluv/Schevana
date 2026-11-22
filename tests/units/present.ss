@@ -450,8 +450,7 @@
            (and (= (inspect-frame-at i 'sdl) (- t 3000000))
                 (= (inspect-frame-at i 'pumped) (- t 2000000))
                 (= (inspect-frame-at i 'wl) (- t 4000000))
-                ;; unpaced, a tick's time is the pacer's ms
-                (<= (- t 1000000) (inspect-frame-at i 'tick)
+                (<= t (inspect-frame-at i 'tick)
                     (inspect-frame-at i 'draw)
                     (inspect-frame-at i 'publish))))))
 

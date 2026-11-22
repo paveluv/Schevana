@@ -5,9 +5,9 @@
 ;;;
 ;;; The unit is a tick: the steps of core1's loop (schevana-step!) from the
 ;;; one after a tick's to the next tick's, the steps between ticks (input
-;;; handled as it comes) summed into the tick they lead up to; a step not
-;;; paced ticks, a tick of its own. In it each span (a phase of
-;;; core1's loop, a window's handler or drawing, a surface's draw or
+;;; handled as it comes) summed into the tick they lead up to; a step in a
+;;; quiet spell, no tick wanted, is one of its own. In it each span (a phase
+;;; of core1's loop, a window's handler or drawing, a surface's draw or
 ;;; tick, a process's turn, the collector) keeps its self time: its time
 ;;; less the spans inside it, so that the parts add up to the tick; two
 ;;; are waits, input-wait the steps' own (mostly the wait for core0's
@@ -116,9 +116,9 @@
   (define-state *profile-tick-seconds* 30)
   (define-state *profile-minutes* 10)
 
-  ;; At most so many ticks a second are kept (back to back, unpaced
-  ;; steps tick thousands a second), so many seconds of ticks and minutes
-  ;; of seconds at the most, and so many ticks' uses in all.
+  ;; At most so many ticks a second are kept (a screen of 240 Hz ticks 240
+  ;; times), so many seconds of ticks and minutes of seconds at the most,
+  ;; and so many ticks' uses in all.
   (define profile-tick-rate 100)
   (define profile-most-tick-seconds 120)
   (define profile-most-minutes 60)

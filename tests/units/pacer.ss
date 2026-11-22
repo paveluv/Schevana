@@ -73,7 +73,7 @@
       ;; 100 ms to settle (the first frame has no drawing time to go by)
       (let ([settled (+ t 100000000)])
         (let loop ()
-          (when (< t settled) (schevana-step! (pacer-wait-ms) #t) (loop))))
+          (when (< t settled) (schevana-step! (pacer-wait-ms)) (loop))))
       (set! ticks '())
       (set! frames 0)
       (set! slices 0)
@@ -86,7 +86,7 @@
             (when (and key-at (>= t key-at))
               (inject! '(key-down #\a ()))
               (set! key-at #f))
-            (schevana-step! (pacer-wait-ms) #t)
+            (schevana-step! (pacer-wait-ms))
             (set! stepped (+ stepped 1))
             (loop))))
       (when p (kill! p))
@@ -285,7 +285,7 @@
                                            (if mailbox? 'mailbox 'vsync))
                                      *gpu-facts*)])
         (let loop ()
-          (when (< t end) (schevana-step! (pacer-wait-ms) #t) (loop))))
+          (when (< t end) (schevana-step! (pacer-wait-ms)) (loop))))
       (close-window! mover))
     (set! now-ns real-ns)
     (set! now-ms real-ms)
@@ -507,7 +507,7 @@
                   [*pacer-frame-ns* 0]
                   [*gpu-facts* (cons '(present-mode . vsync) *gpu-facts*)])
         (let loop ()
-          (when (< t end) (schevana-step! (pacer-wait-ms) #t) (loop))))
+          (when (< t end) (schevana-step! (pacer-wait-ms)) (loop))))
       (close-window! mover))
     (set! now-ns real-ns)
     (set! now-ms real-ms)
@@ -584,20 +584,20 @@
                             (pacer-test-on-fake-clock
                              (lambda ()
                                (pacer-test-advance! 100)
-                               (schevana-step! 0 'paced))))))])
+                               (schevana-step! 0))))))])
            (and (= (profile-tick-phase-ms seq 'vsync-wait) 7)
                 (zero? (profile-tick-phase-ms seq 'render))
                 (zero? *frame-ms*))))
   (check "steps between ticks sum into the tick they lead up to"
          (pacer-test-on-fake-clock
           (lambda ()
-            (schevana-step! 0 'paced)     ; a tick: the next is a period off
+            (schevana-step! 0)     ; a tick: the next is a period off
             (fluid-let ([pacer-test-wait 0])
               (inject! '(key-down #\a ()))
-              (schevana-step! 0 'paced)   ; between ticks: the key's 2 ms
+              (schevana-step! 0)   ; between ticks: the key's 2 ms
               (let ([between? *pacer-between?*] [before (pacer-busy-ms)])
                 (pacer-test-advance! 100)
-                (schevana-step! 0 'paced) ; a tick: its 3 ms, and the 2
+                (schevana-step! 0) ; a tick: its 3 ms, and the 2
                 (and between? (= before 3.0) (= (pacer-busy-ms) 5.0)))))))
   (check "the peak is the most any tick took since it was last asked, and the \
           top bar shows it"
@@ -624,7 +624,7 @@
        [ticks-in (lambda (n)   ; the ticks of n steps of core1's loop
                    (let ([before (pacer-ticks)])
                      (do ([i 0 (+ i 1)]) ((= i n))
-                       (schevana-step! (pacer-wait-ms) #t))
+                       (schevana-step! (pacer-wait-ms)))
                      (- (pacer-ticks) before)))])
   (fluid-let ([*timers* '()]
               [now-ns (lambda () t)]
@@ -740,9 +740,8 @@
                      [*pacer-latch-phase* 0] [*pacer-aimed* 0]
                      [*pacer-began* (- t 3000000)] [*pacer-shown?* #t]
                      [*pacer-due* (- t (quotient r 2))] [*pacer-floor* 0]
-                     [*pacer-ticks* 0] [*pacer-tick-ms* 0]
-                     [*pacer-frame-ns* 0] [*pacer-wanted?* #f]
-                     [*pacer-drew?* #t] [wm-tick! void])
+                     [*pacer-ticks* 0] [*pacer-frame-ns* 0]
+                     [*pacer-wanted?* #f] [*pacer-drew?* #t] [wm-tick! void])
            (pacer-tick! t)
            (let ([paced? (and *pacer-shown?* (pacer-on-latch?)
                               (= *pacer-aimed* (+ latch r))
@@ -758,9 +757,8 @@
         come early, a period on each, never put it off"
        (let* ([r (pacer-period)] [t (now-ns)])
          (fluid-let ([*pacer-due* (+ t (* 600 r))] [*pacer-began* 0]
-                     [*pacer-ticks* 0] [*pacer-tick-ms* 0]
-                     [*pacer-frame-ns* 0] [*pacer-wanted?* #f]
-                     [*pacer-drew?* #f] [wm-tick! void])
+                     [*pacer-ticks* 0] [*pacer-frame-ns* 0]
+                     [*pacer-wanted?* #f] [*pacer-drew?* #f] [wm-tick! void])
            (pacer-tick! t)
            (let ([far (= *pacer-due* (+ t (* 2 r)))])
              (for-each (lambda (k) (pacer-tick! (+ t (* k (quotient r 3)))))
@@ -778,7 +776,7 @@
                                   [*pacer-drew?* #f] [*pacer-due* 0]
                                   [*pacer-shown?* #f])
                         (invalidate!)
-                        (schevana-step! 0 #t)
+                        (schevana-step! 0)
                         *pacer-drew?*))])
          (and (not (drew? #t)) (drew? #f))))
 
