@@ -30,6 +30,11 @@
 (eval '(define later-counted '()) *world-env*)
 (define (later-loads) (eval 'later-counted *world-env*))
 
+;; The world's clock held for these steps, so that a second after the last
+;; is the test's to say: two steps a busy machine takes over a second for
+;; would load one early. Let go after, as the topic's other checks go by
+;; the machine's.
+(test-clock-hold!)
 (let ([a (later-file "a")] [b (later-file "b")])
   (fluid-let ([*world-later* (list a b)] [*world-later-ms* (now-ms)])
     (steps 2)
@@ -49,6 +54,7 @@
                       (equal? now '(b a))
                       (not again)
                       (null? *world-later*))))))))
+(test-clock-release!)
 
 ;; A folder of any libraries: a kit and a look load first, as Schevana's
 ;; do, an app's library waits; one that declares no layer loads first.
