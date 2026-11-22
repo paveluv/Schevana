@@ -103,7 +103,7 @@
               [on (lambda (apart t)
                     (fluid-let ([platform-clock-offset
                                  (lambda (clock) (if (eqv? clock 4) apart 0))]
-                                [core0-now-ns (lambda () read)]
+                                [core0-clock-ns (lambda () read)]
                                 [*wayland-clock* 1] [*wayland-used* 1]
                                 [core0-platform-read! void])
                       (let ([ns (wayland-shown-ns frame t refresh)])

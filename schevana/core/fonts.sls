@@ -13,15 +13,13 @@
 (library (schevana core fonts)
   (export
     font-file-upem font-file-ascender font-file-descender font-file-pages
-    font-library-versions font-file-match
-    font-family font-slant font-weight font-size font-crisp? font-sized
-    make-font* *font-specs* font get-font font-advance font-metrics font-ascent
-    font-descent font-line-height font-char-width font-ready text-width
-    glyph-row-words glyph-row-u glyph-row-v glyph-row-w glyph-row-h
-    glyph-row-left glyph-row-top glyph-row-character *glyph-table*
-    *glyph-count* *glyph-table-dirty?* *atlas-y* *atlas-row* *atlas-pieces*
-    atlas-place! *stipple-tiles* glyph-row-set! glyph-row-ref font-glyph-pages
-    font-glyph)
+    font-library-versions font-family font-weight font-size font-crisp?
+    font-sized make-font* *font-specs* font get-font font-advance font-ascent
+    font-line-height font-char-width font-ready text-width glyph-row-words
+    glyph-row-u glyph-row-v glyph-row-w glyph-row-h glyph-row-left glyph-row-top
+    glyph-row-character *glyph-table* *glyph-count* *glyph-table-dirty?*
+    *atlas-y* *atlas-row* *atlas-pieces* atlas-place! *stipple-tiles*
+    glyph-row-ref font-glyph-pages font-glyph)
   (import (chezscheme)
           (schevana base)
           (schevana ffi)
@@ -300,7 +298,7 @@
   (define (font-ready f)
     (or (font-file-cache f) (font-file-of f)))
 
-  (define-hook text-width
+  (define text-width
     (case-lambda
       [(str) (text-width str 'ui)]
       [(str font)

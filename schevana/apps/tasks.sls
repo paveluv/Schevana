@@ -695,7 +695,7 @@
   ;; first. => (values roots homes order): the roots' ids; an eqv hashtable
   ;; from each id to the id of the task it shows its own under (#f for a
   ;; root); and every id, depth first.
-  (define-hook (tasks-forest ts)
+  (define (tasks-forest ts)
     (let ([by-id (tasks-id-table ts)] [waited (make-eqv-hashtable)]
           [homes (make-eqv-hashtable)] [order '()])
       (define (visit! id parent)
@@ -1683,7 +1683,7 @@
   ;; under which task its own row is: where; said shorter, or not at all,
   ;; rather than leave the title less than half the room (or less than its
   ;; whole width). flags as a cell's.
-  (define-hook (tasks-draw-node x y w h flags t where)
+  (define (tasks-draw-node x y w h flags t where)
     (let* ([lh (font-line-height 'ui)] [sh (font-line-height 'ui-small)]
            [m (tasks-mark-size)] [in (ui-table-cell-inset)] [px (+ x in)]
            [right (- (+ x w) in)] [ty (+ y (/ (- h lh) 2))]

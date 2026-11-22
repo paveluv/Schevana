@@ -270,13 +270,6 @@
                  (boids-steering rules))
       next))
 
-  ;; Three boids close together, for the tests and the REPL:
-  ;; (boids-step boids-demo boids-default-rules)
-  (define boids-demo
-    (flvector 0.0 0.0 1.0 0.0
-              1.0 1.0 0.0 1.0
-              2.0 0.0 1.0 1.0))
-
   ;;; ------------------------------------------------------------------ screen
 
   ;; Leaving one edge of a w × h screen brings a boid back on the opposite

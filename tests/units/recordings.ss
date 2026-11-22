@@ -96,11 +96,34 @@
            (null? (gpu-frame-earlier *gpu-frame-last*))))
   (gpu-image-release! target))
 
+;; (recordings-poisoned poison? body ...): body, every recording the
+;; recorder takes to write, and every loan it takes to paint, garbage
+;; first while poison? is true, as one used before holds that one's bytes:
+;; the recorder reads only what it wrote.
+(define-syntax recordings-poisoned
+  (syntax-rules ()
+    [(_ poison? body ...)
+     (let ([take rec-take!] [take-loan rec-loan-take!])
+       (fluid-let ([rec-take!
+                    (lambda (head)
+                      (let ([r (take head)])
+                        (when poison?
+                          (bytevector-fill! (gpu-recording-recs r) #xa5)
+                          (bytevector-fill! (gpu-recording-extras r) #xa5))
+                        r))]
+                   [rec-loan-take!
+                    (lambda (image)
+                      (let ([loan (take-loan image)])
+                        (when poison?
+                          (bytevector-fill! (gpu-recording-recs loan) #xa5))
+                        loan))])
+         body ...))]))
+
 ;; A frame drawn on a target, as the Pipeline's small screen draws it, from
 ;; the frozen frame: poisoned or not, the pixels are the same; poisoned, a
 ;; recording taken to write is garbage past what's written.
 (define (recordings-frame-pixels poison?)
-  (fluid-let ([*rec-poison?* poison?])
+  (recordings-poisoned poison?
     (let ([target (gpu-image-make-target 32 32)] [plain record-world!])
       (set! record-world!
         (lambda ()
@@ -260,7 +283,7 @@
                   (= (pixel-at p 0 3) #xff00ff00))))))
 
 (define (recordings-skipped-pixel poison?)
-  (fluid-let ([*rec-poison?* poison?])
+  (recordings-poisoned poison?
     (let ([pm (make-pixmap 4 4 #xffffff)])
       (pixmap-rows! pm 0 4 recordings-rows! 4 2)
       (pixel-at (pixmap-picture pm) 0 2))))

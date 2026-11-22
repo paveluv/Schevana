@@ -6,7 +6,7 @@
 ;;; The unit is a tick: the steps of core1's loop (schevana-step!) from the
 ;;; one after a tick's to the next tick's, the steps between ticks (input
 ;;; handled as it comes) summed into the tick they lead up to; a step not
-;;; paced (a test's) ticks, a tick of its own. In it each span (a phase of
+;;; paced ticks, a tick of its own. In it each span (a phase of
 ;;; core1's loop, a window's handler or drawing, a surface's draw or
 ;;; tick, a process's turn, the collector) keeps its self time: its time
 ;;; less the spans inside it, so that the parts add up to the tick; two
@@ -116,7 +116,7 @@
   (define-state *profile-tick-seconds* 30)
   (define-state *profile-minutes* 10)
 
-  ;; At most so many ticks a second are kept (back to back, the tests'
+  ;; At most so many ticks a second are kept (back to back, unpaced
   ;; steps tick thousands a second), so many seconds of ticks and minutes
   ;; of seconds at the most, and so many ticks' uses in all.
   (define profile-tick-rate 100)
@@ -365,7 +365,7 @@
   (define (profile-ms ns) (/ ns 1e6))
 
   ;; What this thread has run so far, by its CPU clock: ns.
-  (define-hook (profile-thread-cpu) (thread-cpu-ns))
+  (define (profile-thread-cpu) (thread-cpu-ns))
 
   ;;; ---------------------------------------------------------------- spans
 
@@ -636,7 +636,7 @@
 
   ;; The tick's slot in the ring: its fields and phases, its uses into the
   ;; uses' ring and the second's table, and by subject into the second's.
-  (define-hook (profile-tick-done! now ns)
+  (define (profile-tick-done! now ns)
     (let* ([r *profile-ticks-ring*] [names profile-tick-fields]
            [seq (fx+ *profile-tick-newest* 1)] [slot (profile-slot-of r seq)]
            [sr *profile-seconds-ring*] [sn profile-second-fields]

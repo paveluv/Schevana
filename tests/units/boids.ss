@@ -7,6 +7,12 @@
 ;; Boids' own names, bo:boids-step and the rest (tests/reach.ss).
 (test-library '(schevana-demo boids) 'bo:)
 
+;; Three boids close together: x, y, and the heading's dx, dy.
+(define three-boids
+  (flvector 0.0 0.0 1.0 0.0
+            1.0 1.0 0.0 1.0
+            2.0 0.0 1.0 1.0))
+
 (check "Boids' steering is a worklet; its rules window is no app's, the \
         flock's own"
        (let* ([win (bo:boids)]
@@ -131,17 +137,17 @@
 
 ;; To the last digit, so any change to the rules shows. They are the Niva
 ;; version's numbers: the same flonum operations, in the same order.
-(check "Boids: the demo's first step is the Niva version's"
+(check "Boids: three boids' first step is the Niva version's"
        (equal? (flvector->list
-                (bo:boids-step bo:boids-demo bo:boids-default-rules))
+                (bo:boids-step three-boids bo:boids-default-rules))
                '(0.9869999999999999 0.054 0.9869999999999999 0.054
                  1.0 2.002 0.0 1.002
                  3.003 0.999 1.003 0.999)))
 
 (check "Boids: a step leaves the flock it steps as it was"
-       (let ([before (flvector->list bo:boids-demo)])
-         (bo:boids-step bo:boids-demo bo:boids-default-rules)
-         (equal? (flvector->list bo:boids-demo) before)))
+       (let ([before (flvector->list three-boids)])
+         (bo:boids-step three-boids bo:boids-default-rules)
+         (equal? (flvector->list three-boids) before)))
 
 (check "Boids: a boid is not its own neighbor"
        (equal? (flvector->list
@@ -233,13 +239,13 @@
              (< b 4096)))))
 
 (check "Boids: resizing a flock keeps the boids already there"
-       (let ([fewer (bo:boids-resize bo:boids-demo 2 100 100)]
-             [more (bo:boids-resize bo:boids-demo 5 100 100)]
+       (let ([fewer (bo:boids-resize three-boids 2 100 100)]
+             [more (bo:boids-resize three-boids 5 100 100)]
              [first-numbers (lambda (f n) (list-head (flvector->list f) n))])
          (and (= (bo:boids-size fewer) 2) (= (bo:boids-size more) 5)
-              (equal? (flvector->list fewer) (first-numbers bo:boids-demo 8))
-              (equal? (first-numbers more 12) (flvector->list bo:boids-demo))
-              (eq? (bo:boids-resize bo:boids-demo 3 100 100) bo:boids-demo))))
+              (equal? (flvector->list fewer) (first-numbers three-boids 8))
+              (equal? (first-numbers more 12) (flvector->list three-boids))
+              (eq? (bo:boids-resize three-boids 3 100 100) three-boids))))
 
 ;; 50 frames of 150 boids.
 (check "Boids: a frame keeps every boid on screen, within the speed limits"

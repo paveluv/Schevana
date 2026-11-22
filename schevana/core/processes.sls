@@ -13,15 +13,14 @@
 
 (library (schevana core processes)
   (export
-    core1-thread? core1-thread! in-engine? current-proc handler-fuel
-    *profile-span* profile-span-past!
+    core1-thread? core1-thread! in-engine? current-proc *profile-span*
     with-profile-span make-timeout-condition safe-call safely *dirty*
-    request-frame! *frame-generation* request-redraw! *timers* after
-    run-timers! *toasts* notify *last-error* report-error! proc proc? proc-id
-    proc-name proc-state proc-ticks proc-started proc-wake *procs* *reloading*
-    spawn procs find-proc kill! proc-ready? procs-ready? run-procs! sleep-ms
-    yield proc-wait worklet-base-environment *worklet-environment* worklet?
-    worklet-compile worklet worklet-spread define-worklet)
+    request-frame! *frame-generation* request-redraw! *timers* after run-timers!
+    *toasts* notify *last-error* report-error! proc proc? proc-id proc-name
+    proc-state proc-ticks proc-started proc-wake *procs* *reloading* spawn procs
+    find-proc kill! procs-ready? run-procs! sleep-ms proc-wait
+    worklet-base-environment *worklet-environment* worklet? worklet
+    worklet-spread define-worklet)
   (import (chezscheme)
           (schevana base)
           (schevana core platform))
@@ -121,7 +120,7 @@
   ;; what the next frame draws: #f, #t (the whole screen) or (x0 y0 x1 y1)
   (define-state *dirty* #t)
 
-  (define-hook request-frame!
+  (define request-frame!
     (case-lambda
       [() (set! *dirty* #t)]
       [(x y w h) (when (and (> w 0) (> h 0)) (set! *dirty* #t))]))
@@ -178,7 +177,7 @@
         (set! *toasts* (filter (lambda (t) (>= (vector-ref t 0) now)) *toasts*))
         (request-frame!))))
 
-  (define-hook notify
+  (define notify
     (case-lambda
       [(msg) (notify msg 'accent)]
       [(msg color)
@@ -195,7 +194,7 @@
   (define-state *last-error* (cons "" 0))
 
   ;; System-level errors become a red notification (and a line on stderr).
-  (define-hook (report-error! who c)
+  (define (report-error! who c)
     (let ([msg (format "~a: ~a" who (condition->string c))])
       (unless (and (string=? msg (car *last-error*))
                    (< (- (now-ms) (cdr *last-error*)) 5000))

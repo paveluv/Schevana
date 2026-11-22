@@ -5,7 +5,7 @@
 ;;; the caret and the selection, and where the text last changed), what
 ;;; the editing keys do to it, and the text's rows, wrapped at a width,
 ;;; computed only as far as they are asked for and remembered. Measuring
-;;; is a procedure passed in, (lambda (str) width), so the tests need no
+;;; is a procedure passed in, (lambda (str) width), so editing needs no
 ;;; font. The widget kit's text boxes are built on it, and so is Tasks'
 ;;; description editor; an Editor app would add undo, find and files on
 ;;; top.
@@ -257,7 +257,7 @@
 
   ;; How b differs from a: (values lo hi), b being a with [lo, hi) replaced,
   ;; the start and end they share left out.
-  (define-hook (edit-difference a b)
+  (define (edit-difference a b)
     (let* ([na (string-length a)] [nb (string-length b)] [n (min na nb)]
            [lo (let loop ([i 0])
                  (if (and (< i n) (char=? (string-ref a i) (string-ref b i)))
@@ -437,7 +437,7 @@
   ;; once the rows reach it. Timed, not counted: a row costs from a
   ;; fraction of a microsecond (taken back) to tens of them (measured, in a
   ;; long line), so no count of rows keeps a slice near a millisecond.
-  (define-hook (edit-layout-scan! lay ms)
+  (define (edit-layout-scan! lay ms)
     (let ([t0 (current-time 'time-monotonic)])
       (let loop ()
         (cond [(edit-layout-done? lay) #t]

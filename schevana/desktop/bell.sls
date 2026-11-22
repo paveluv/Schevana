@@ -35,7 +35,7 @@
       (apply request-frame! (cdr *bell*))
       (set! *bell* #f)))
 
-  (define-hook (bell)
+  (define (bell)
     (let ([area (case (theme 'bell)
                   [(screen) (list 0 0 (screen-w) (screen-h))]
                   [(window) (and *focus* (call-with-values

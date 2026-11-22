@@ -44,8 +44,8 @@
                (and (fixnum? w) (fixnum? h) (> w 0) (> h 0) (cons w h)))]
             [else (loop (+ i 1))])))
 
-  ;; A hook, so that a test hears the usage without the exit.
-  (define-hook (desktop-usage)
+  ;; How to run it, on stderr; and the run stops.
+  (define (desktop-usage)
     (fprintf (current-error-port)
              "usage: schevana-desktop [--size WxH] [--fullscreen] \
               [--headless] [--fork]\n                        \

@@ -28,15 +28,14 @@
 (library (schevana shader)
   (export
     ;; what a compiled shader is, and this machine's back end
-    shader make-shader shader? shader-name shader-stage shader-coords
-    shader-params shader-source shader-code shader-price shader-target
-    shader-entry shader-group-x shader-uniforms shader-words
+    shader make-shader shader-name shader-stage shader-coords shader-params
+    shader-source shader-code shader-price shader-target shader-entry
+    shader-group-x shader-uniforms shader-words
     ;; what shaders share by name: constants, helpers, layouts
     *shader-constants* define-shader-constant *shader-helpers*
     define-shader-helpers *shader-fields* define-shader-layout
     ;; the compiler, front to back
-    shader-type shader-lower shader-spirv msl-const shader-msl shader-compile
-    shader-tree
+    shader-type shader-tree
     ;; a shader, defined
     shader-make define-compute-shader define-vertex-shader
     define-fragment-shader)

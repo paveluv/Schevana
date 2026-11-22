@@ -186,6 +186,14 @@
   (when test-clock-stuck? (set! test-clock-ms (+ test-clock-ms 1)))
   test-clock-ms)
 
+;; What a stream's rows hold of moment seq (the widget kit's), read back
+;; from the GPU now: its words.
+(define (test-stream-row s seq)
+  (let ([at (* (ui-stream-words s) (modulo seq (ui-stream-rows s)))]
+        [bytes (gpu-buffer-read! (ui-stream-buffer s))])
+    (map (lambda (j) (bytevector-s32-native-ref bytes (* 4 (+ at j))))
+         (iota (ui-stream-words s)))))
+
 ;; The world's loop, n times, each after the held clock moves on ms.
 (define (steps n . ms)
   (do ([i 0 (+ i 1)]) ((= i n))

@@ -6,19 +6,12 @@
 
 (library (schevana core sources)
   (export
-    *world-env* *schevana-options* schevana-hacker? core1-boot!
-    core1-exported
-    user-init-file load-user-init! source-folders *user-folders?*
-    source-path folder-files world-sources source-files *auto-loads*
-    auto-loads auto-load! auto-load-forget! auto-load-entries auto-load-layer
-    library-file-layer
-    world-app-file? world-after-load!
-    *source-texts* keep-source-text! file-text load-file!
-    load-source load-sources!
-    load-user-folders! source-held-libraries reload! world-libraries
-    world-entries load-world! program-world! look-load! *world-later*
-    *world-later-ms* world-load-now!
-    source-libraries-keep!)
+    *world-env* *schevana-options* schevana-hacker? core1-boot! core1-exported
+    load-user-init! source-files *auto-loads* auto-loads auto-load!
+    auto-load-forget! auto-load-entries auto-load-layer library-file-layer
+    world-app-file? world-after-load! *source-texts* keep-source-text!
+    load-file! load-user-folders! reload! program-world! look-load!
+    *world-later* world-load-now!)
   (import (chezscheme)
           (schevana base)
           (schevana tree)
@@ -84,7 +77,7 @@
     '("kits" "services" "styles" "palettes" "wallpapers" "desktop" "apps"))
 
   ;; The desktop turns this on: a real session loads the user's folders
-  ;; too, at boot and at every (reload!). The tests never do.
+  ;; too, at boot and at every (reload!).
   (define-state *user-folders?* #f)
 
   ;; A file name relative to the tree, or an absolute one (the user's).
@@ -234,7 +227,7 @@
     (if (schevana-hacker?) (folder-files) (cons "src/base.ss" (folder-files))))
 
   ;; Every source file, in load order: the world's, since the core's are
-  ;; libraries. The REPL's docs and the tests read this list.
+  ;; libraries. The REPL's docs read this list.
   (define (source-files) (world-sources))
 
   ;; The text of every source as it was loaded (or, from a REPL, evaluated),

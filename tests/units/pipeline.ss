@@ -867,7 +867,7 @@
                     at: the frames are kept, each refresh's row its bar's \
                     parts and the screen's word (~a, its frame's ~a)"
                    k target)
-           (let ([row (and (ui-stream-buffer river) (ui-stream-row river k))])
+           (let ([row (and (ui-stream-buffer river) (test-stream-row river k))])
              (and row (> (inspect-history-count history) 3)
                   (= (length row) (+ (length pipeline-draw-river-parts) 1))
                   (eqv? k (and target (- target 1))))))
@@ -1015,7 +1015,7 @@
                 (eq? (pipeline-view-kept-of v) l)
                 (eq? (pipeline-view-tape-of v) (pipeline-view-kept v))
                 (= (ui-stream-sent tape) (- n 1))
-                (let ([row (ui-stream-row tape 0)])
+                (let ([row (test-stream-row tape 0)])
                   ;; record 0, the desktop's: as big as the screen
                   (and (> (car row) 1500)
                        (> (cadr row) who-base)
@@ -1579,7 +1579,7 @@
                         (ui-stream-send! ring newest newest
                                          (monitor-tick-word (pacer-period)))
                         (ui-stream-sent ring))]
-                [row (list-head (ui-stream-row ring newest)
+                [row (list-head (test-stream-row ring newest)
                                 (length monitor-phases))]
                 [want (map (lambda (j)
                              (quotient (monitor-tick-phase-ns newest j) 1000))

@@ -773,7 +773,7 @@
 
   ;; l as a root's records and extras, bytes long, its runs and labels,
   ;; flattened, its row and frame number those given.
-  (define-hook (inspect-list-flat! l recs recs-n extras extras-n runs labels row
+  (define (inspect-list-flat! l recs recs-n extras extras-n runs labels row
                               frame)
     (let ([need (inspect-flat-size recs-n extras-n runs)]
           [fit! (lambda (slot n)
@@ -1444,7 +1444,7 @@
   ;; (left-out spans) gives: ((first . count) ...) in order, spans the frame's
   ;; labels' spans, as inspect-list-labels has them. Without left-out, none
   ;; are. The frame is read, flattened, into a list kept for it.
-  (define-hook inspect-preview!
+  (define inspect-preview!
     (case-lambda
       [(image count) (inspect-preview! image count #f)]
       [(image count left-out)

@@ -23,7 +23,8 @@
 
   ;; What runs as the desktop starts, after the user's folders and before the
   ;; saved theme, the first first: an app's thunk of what its session needs
-  ;; (desktop-at-start!), which a test's world, never started, doesn't run.
+  ;; (desktop-at-start!), which a world whose desktop never starts doesn't
+  ;; run.
   (define-state *desktop-start-thunks* '())
 
   (define (desktop-at-start! thunk)

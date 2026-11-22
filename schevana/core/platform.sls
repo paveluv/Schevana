@@ -6,9 +6,7 @@
 
 (library (schevana core platform)
   (export
-    platform-fact platform-windowing platform-wayland? platform-x11?
-    platform-cocoa? platform-win32? platform-offscreen? platform-gpu-api
-    platform-vulkan? platform-metal? platform-direct3d12? platform-predicates
+    platform-fact platform-windowing platform-gpu-api platform-predicates
     platform-process-bytes platform-machine-load now-ns now-ms thread-cpu-ns
     platform-pacer-margin-fade)
   (import (chezscheme)
@@ -71,7 +69,7 @@
   ;; The process's memory in RAM, bytes: the heap, and what SDL and the
   ;; drivers hold outside it, which neither reports; #f where the system
   ;; doesn't say.
-  (define-hook (platform-process-bytes)
+  (define (platform-process-bytes)
     (cond
       [(file-exists? "/proc/self/status")
        (guard (c [#t #f])
@@ -108,14 +106,12 @@
                (foreign-free p)
                load)))))
 
-  ;; The monotonic clock in ns, a fixnum: what the profiler times with.
-  ;; Core1's own, read from core0's ((schevana core0 mail)), so a test fakes it
-  ;; without moving core0's.
-  (define-hook (now-ns) (core0-clock-ns))
+  ;; The monotonic clock in ns, a fixnum: what the profiler times with,
+  ;; read from core0's ((schevana core0 mail)).
+  (define (now-ns) (core0-clock-ns))
 
-  ;; The same clock in ms: what apps and timers go by. It reads the clock
-  ;; itself, so a test can fake either without moving the other.
-  (define-hook (now-ms) (quotient (core0-clock-ns) 1000000))
+  ;; The same clock in ms: what apps and timers go by.
+  (define (now-ms) (quotient (core0-clock-ns) 1000000))
 
   ;; The CPU time this thread has had, in ns: a number, read into memory
   ;; kept for it, so that reading it allocates nothing. The clock's number is

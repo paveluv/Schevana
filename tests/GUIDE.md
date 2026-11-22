@@ -129,11 +129,24 @@ level above tests only what it adds, trusting the levels below.
 ## What a test asks of a library
 
 Nothing. A library is written for what it does, never for its tests: no
-export, hook or name of its own for them. What a test needs of it, the
-test framework finds itself:
+export, hook, state or name of its own for them. What a test needs of
+it, the test framework finds itself:
 
-- A library's own names: `(test-library '(schevana-demo springies)
-  'sp:)` (`tests/reach.ss`) strips the library, as the hacker edition
+- The libraries the suites boot, in the library edition, as
+  `tests/build.ss` builds them: each expanded as it compiles, into a
+  cache of the build's own, and as a reload evaluates it again. A
+  library of a sealed layer (core0's, the recorder's, the core's, and
+  the foundation below them), but a facade, gives the tests every name
+  it defines, which they have by the name itself (`*pacer-margin*`,
+  `gpu-frame!`). A definition the tests stand in for, listed in
+  `test-stand-ins`, is a hook there, so that a `fluid-let` or a `set!`
+  of it reaches every call (`now-ms`, `bell`, SDL's calls); the
+  definition itself is compiled as the library has it. A test that
+  stands in for another adds it to the list. In the hacker edition
+  every name is at the top level already, to set as any other.
+- A library the world doesn't boot, a demo's own names: `(test-library
+  '(schevana-demo springies) 'sp:)` (`tests/reach.ss`) strips the
+  library, as the hacker edition
   strips every library, its body evaluated again at the top level of an
   environment of its own (in the hacker edition, as it is), and gives
   the test each name it defines under the prefix: `sp:pt+`,

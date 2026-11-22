@@ -31,7 +31,7 @@
   (define-state *core0-trace-thread* #f)   ; core0's thread id
 
   ;; Step code with a, now, on this thread's ring.
-  (define-hook (core0-trace! code a)
+  (define (core0-trace! code a)
     (when *core0-trace-dir*
       (let* ([k (if (eqv? (get-thread-id) *core0-trace-thread*) 0 2)]
              [v (vector-ref *core0-trace-rings* k)]
@@ -40,7 +40,7 @@
              [at (fx* 4 (fxmodulo n core0-trace-rows))])
         (fxvector-set! v at -1)
         (fxvector-set! v (fx+ at 1) code)
-        (fxvector-set! v (fx+ at 2) (core0-now-ns))
+        (fxvector-set! v (fx+ at 2) (core0-clock-ns))
         (fxvector-set! v (fx+ at 3) a)
         (memory-order-release)
         (fxvector-set! v at n)

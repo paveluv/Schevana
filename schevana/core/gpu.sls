@@ -8,13 +8,12 @@
 
 (library (schevana core gpu)
   (export
-    *gpu-jobs* gpu-ask! *gpu-bytes-made* *gpu-held-gone* gpu-held-sweep!
-    gpu-image-make gpu-image-make-target gpu-image-release! gpu-atlas-image
-    gpu-list-new gpu-list-release! make-gpu-buffer gpu-buffer-set!
-    gpu-buffer-release! gpu-buffer-read! *gpu-reads* gpu-buffer-read-then!
-    gpu-reads-send! gpu-make-call gpu-compute! *gpu-computes* gpu-compute-soon!
-    gpu-take-asks! gpu-asks-pending? gpu-computes-send! *gpu-frame-last*
-    gpu-frame-free! gpu-publish)
+    gpu-ask! *gpu-bytes-made* *gpu-held-gone* gpu-held-sweep! gpu-image-make
+    gpu-image-make-target gpu-image-release! gpu-atlas-image gpu-list-new
+    gpu-list-release! make-gpu-buffer gpu-buffer-set! gpu-buffer-release!
+    gpu-buffer-read! *gpu-reads* gpu-buffer-read-then! gpu-reads-send!
+    gpu-make-call gpu-compute! *gpu-computes* gpu-compute-soon! gpu-take-asks!
+    gpu-asks-pending? gpu-computes-send! gpu-frame-free! gpu-publish)
   (import (chezscheme)
           (schevana base)
           (schevana shader)

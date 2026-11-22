@@ -58,7 +58,7 @@
       [(let ([x (car forms)])
          (and (pair? x)
               (memq (car x)
-                    '(define-sdl-hook define-sdl-hook/collect-safe))
+                    '(define-foreign define-foreign/collect-safe))
               (string-prefix? "SDL_" (caddr x))
               ;; plain memory and the GPU's: kept
               (not (member (caddr x) '("SDL_memcmp" "SDL_memcpy")))

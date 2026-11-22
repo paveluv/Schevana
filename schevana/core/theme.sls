@@ -20,18 +20,16 @@
 (library (schevana core theme)
   (export
     *theme-version* theme-save! *style-name* *style-changes* *theme-overrides*
-    *scale-setting* base-colors derived-colors default-theme color-keys
-    common-options theme-default *palettes* define-palette palettes
-    palette-title palette-colors *wallpapers* register-wallpaper!
-    define-wallpaper wallpapers wallpaper-shown fill-wallpaper style
-    style-name style-title style-settings
-    *styles* register-style! define-style find-style styles current-style
-    define-part color-default! theme-default! style-theme with-style with-place
-    style-changes-of style-chain chain-ref meta-keys honored? resolve-theme
-    compute-rules! wm-chrome-changed! theme-font-rule chrome-height
-    title-height frame-over* change-layers! theme-layers-set! set-changes!
-    set-style! set-theme! reset-style! override! theme-overrides set-scale!
-    set-theme-plist! set-palette! set-accent! reset-theme!)
+    *scale-setting* default-theme color-keys common-options theme-default
+    *palettes* define-palette palettes palette-title palette-colors *wallpapers*
+    define-wallpaper wallpapers wallpaper-shown fill-wallpaper style style-name
+    style-title style-settings *styles* define-style find-style styles
+    current-style define-part color-default! theme-default! style-theme
+    with-style with-place style-changes-of style-chain chain-ref honored?
+    resolve-theme wm-chrome-changed! theme-font-rule chrome-height title-height
+    frame-over* change-layers! theme-layers-set! set-style! set-theme!
+    reset-style! override! theme-overrides set-scale! set-palette! set-accent!
+    reset-theme!)
   (import (chezscheme)
           (schevana base)
           (schevana core theme-table)
@@ -268,9 +266,10 @@
   ;; whose built-in setting is name*; a style replaces it by setting the key.
   ;; The built-in is given by its name, which the theme looks up at each
   ;; call (world-value), so that a redefinition in the world takes at the
-  ;; next. name is a hook, which a test may stand in for: defined by the
-  ;; define-hook where the part is, a definition like any at the top level,
-  ;; where a name used before it is defined is a variable's.
+  ;; next. name is a hook, so that the part may be replaced live, set as a
+  ;; state is: defined by the define-hook where the part is, a definition
+  ;; like any at the top level, where a name used before it is defined is a
+  ;; variable's.
   (define-syntax define-part
     (lambda (x)
       ;; name*, made where name is: the keyword may be a forwarder's, from

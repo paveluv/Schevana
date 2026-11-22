@@ -7,19 +7,15 @@
 
 (library (schevana core pacer)
   (export
-    *pacer-due* *pacer-ticks* *pacer-tick-ms* *pacer-waits* *pacer-began*
-    *pacer-frame-ns* *pacer-wanted?* *pacer-shown?* *pacer-drew?* *pacer-latch*
-    *pacer-lead* *pacer-margin* *pacer-counts* *pacer-aimed* *pacer-planned*
-    *pacer-floor* *pacer-judged* *pacer-latch-phase* *pacer-depth* *pacer-made*
-    *pacer-gpu-taught* *pacer-late-run* *pacer-late-seen* *pacer-late-chain*
-    *pacer-between?* *frame-ms* *frames-drawn* *frame-back* frame-ring-rows
-    frame-ring-words *frame-ring* *frame-ring-n* *frame-number* frame-ticked!
-    frame-input-came! frame-input-drop! frame-ring-set! pacer-waited!
-    pacer-held! pacer-step-done! pacer-busy-ms pacer-peak-ms! pacer-rate!
-    pacer-rate pacer-ticks frame-turn-soon! pacer-wanted? pacer-frame-ns
-    pacer-period pacer-start pacer-on-latch? pacer-latch! pacer-trial!
-    pacer-seconds pacer-margin pacer-relearn! pacer-behind! pacer-made!
-    pacer-refresh-seen pacer-need! wm-tick! pacer-tick! pacer-frame-back!
+    *pacer-due* *pacer-waits* *pacer-frame-ns* *pacer-shown?* *pacer-latch*
+    *pacer-lead* *pacer-counts* *pacer-aimed* *pacer-floor* *pacer-latch-phase*
+    *pacer-depth* *pacer-made* *pacer-gpu-taught* *pacer-late-run*
+    *pacer-late-chain* *pacer-between?* *frame-ms* *frames-drawn* *frame-back*
+    frame-ring-rows frame-ring-words *frame-ring* *frame-ring-n* *frame-number*
+    frame-ticked! frame-input-came! frame-input-drop! pacer-waited!
+    pacer-step-done! pacer-busy-ms pacer-peak-ms! pacer-rate pacer-ticks
+    frame-turn-soon! pacer-wanted? pacer-frame-ns pacer-period pacer-start
+    pacer-on-latch? pacer-trial! pacer-margin wm-tick! pacer-tick!
     pacer-procs-ms pacer-wait-ms record-world! record-safely render-frame!
     render-frames-back! render-answers! screen-bytes screen-bytes-then)
   (import (chezscheme)
@@ -247,8 +243,8 @@
   (define (pacer-wanted?) (or *pacer-wanted?* *dirty*))
 
   ;; When the frame the last tick made should show, ns, the t of a window's
-  ;; 'frame: a period after the last one's, a few after the tick; unpaced (a
-  ;; test's), the tick's own ms, the one read of the clock it makes.
+  ;; 'frame: a period after the last one's, a few after the tick; unpaced,
+  ;; the tick's own ms, the one read of the clock it makes.
   (define (pacer-frame-ns) *pacer-frame-ns*)
 
   ;; How many periods after its tick t sits while frames flow; they show
@@ -280,7 +276,7 @@
   ;; is ready for; and less than the 0.1 ms a tick's t may move, so that
   ;; with no screen to hold the ticks t keeps to the clock. Or a fixed
   ;; rate's.
-  (define-hook (pacer-period)
+  (define (pacer-period)
     (if (eq? *pacer-rate* 'screen)
         (let ([p (core0-frame-ns)]) (- p (quotient p 500)))
         (quotient 1000000000 *pacer-rate*)))
@@ -685,7 +681,7 @@
   ;; The frames core0 gave back: each told to the pacer, and marked in its row
   ;; as having reached the screen or not; counted if it did, else one asked
   ;; again. Then what core0 read back, handed to its then.
-  (define-hook (render-frames-back!)
+  (define (render-frames-back!)
     (for-each (lambda (f)
                 (let ([shown? (gpu-frame-shown? f)])
                   (set! *frame-back* (gpu-frame-number f))
@@ -700,7 +696,7 @@
     (render-answers!))
 
   ;; The screen as it would be drawn now: its pixels, row after row,
-  ;; premultiplied BGRA. What tests and screenshots see; screen-bytes-then
+  ;; premultiplied BGRA. What screenshots see; screen-bytes-then
   ;; hands them to then on core1, nothing waiting.
   (define (screen-bytes)
     (drawing->bytes *canvas-pw* *canvas-ph* *canvas-ratio* record-world! #f))

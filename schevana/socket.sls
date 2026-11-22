@@ -5,8 +5,7 @@
 
 (library (schevana socket)
   (export
-    socket-listen socket-connect socket-accept socket-read socket-write
-    socket-end-writing socket-close)
+    socket-listen socket-accept socket-read socket-write socket-close)
   (import (chezscheme)
           (schevana base)
           (schevana ffi))

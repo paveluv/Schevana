@@ -5,26 +5,20 @@
 ;;;
 ;;; *core0-mode* says what core0 runs, 'none before it starts:
 ;;; 'sdl      : a real resizable window, on the GPU
-;;; 'headless : no window at all, on the CPU's Vulkan driver (for tests and
-;;;             screenshots)
+;;; 'headless : no window at all, on the CPU's Vulkan driver
 
 (library (schevana core0 window)
   (export
-    *core0-mode* *sdl-window* *sdl-event* *core0-clipboard* core0-app-id
-    core0-app-id! core0-window-title! core0-system-theme core0-own-frame!
-    core0-own-frame? core0-hit core0-window-hit-regions! core0-window-action!
-    core0-window-maximized? core0-window-headless!
-    core0-window-open! core0-window-show! core0-window-close!
-    core0-window-sizes core0-window-resize! core0-resize-now!
-    core0-window-minimum! core0-window-scale
-    core0-window-fullscreen? core0-window-fullscreen! core0-window-icon!
-    core0-flags core0-flag-names core0-error-text core0-event-name
-    core0-hidden? sdl-event->list *wheel-rest* core0-window-pump
-    core0-input-ns-take! core0-set-cursor! clipboard-get clipboard-set!
-    *core0-inbox* *core0-job-failed* core0-post-submit! core0-post-reads!
-    core0-quit! core0-loop! core0-window-start! core0-fork-loop! core0-run!
-    *core0-sleeping* core0-sleep-release! core0-sleep! gpu-present-published!
-    core0-step! core0-events-pumped! core0-window-events core0-facts-refresh!
+    *core0-mode* core0-app-id core0-app-id! core0-window-title!
+    core0-system-theme core0-own-frame! core0-own-frame?
+    core0-window-hit-regions! core0-window-action! core0-window-maximized?
+    core0-window-headless! core0-window-open! core0-window-show!
+    core0-window-close! core0-window-sizes core0-window-resize!
+    core0-window-minimum! core0-window-scale core0-window-fullscreen?
+    core0-window-fullscreen! core0-window-icon! core0-flags core0-flag-names
+    core0-error-text core0-event-name core0-hidden? core0-input-ns-take!
+    core0-set-cursor! clipboard-get clipboard-set! core0-post-submit!
+    core0-post-reads! core0-quit! core0-run! core0-step! core0-window-events
     core0-step-state)
   (import (chezscheme)
           (schevana base)
@@ -378,7 +372,7 @@
 
   ;; Hidden, minimized or covered, the window shows nothing: no frames,
   ;; which wait until it shows.
-  (define-hook (core0-hidden?)
+  (define (core0-hidden?)
     ;; SDL_WINDOW_OCCLUDED, _HIDDEN and _MINIMIZED
     (and (eq? *core0-mode* 'sdl) (logtest (core0-flags) #x4c)))
 
@@ -493,8 +487,8 @@
   ;; The queue drained, with no wait: (values events types first), the
   ;; events as sdl-event->list gives them, every event's number in order,
   ;; whether it means anything or not, and when SDL took the first that came
-  ;; from the keyboard or the mouse (core0-now-ns; 0, none).
-  (define-hook (core0-window-pump)
+  ;; from the keyboard or the mouse (core0-clock-ns; 0, none).
+  (define (core0-window-pump)
     (if (eq? *core0-mode* 'sdl)
         (let ([buf *sdl-event*])
           (let loop ([more? (sdl-poll-event buf)] [acc '()] [types '()]
@@ -601,7 +595,7 @@
   ;; turn, which begins just in time for the screen, finds the newest.
   (define core0-idle-ms 4)
   (define (core0-idle-ms-now)
-    (if (< (- (core0-now-ns) *present-taken*) 100000000) 1 core0-idle-ms))
+    (if (< (- (core0-clock-ns) *present-taken*) 100000000) 1 core0-idle-ms))
 
   ;; Core0's loop, on its own thread: its steps till core1 quits.
   (define (core0-loop!)
@@ -620,7 +614,7 @@
   ;; own, in two steps. The first: with a window (mode sdl), core0 opens it,
   ;; w × h logical pixels at the desktop's scale, or full screen, and shows
   ;; it, which the desktop maps with the world's first frame; with none
-  ;; (headless, for the tests), its GPU draws to a target.
+  ;; (headless), its GPU draws to a target.
   (define (core0-window-start! mode w h full?)
     (if (eq? mode 'headless)
         (core0-window-headless!)
@@ -735,9 +729,9 @@
   ;; pump that held core0 past 2 ms is traced, µs, with its events' types.
   ;; => whether any came.
   (define (core0-events-pumped!)
-    (let*-values ([(t0) (core0-now-ns)]
+    (let*-values ([(t0) (core0-clock-ns)]
                   [(events types first) (core0-window-pump)]
-                  [(took) (- (core0-now-ns) t0)])
+                  [(took) (- (core0-clock-ns) t0)])
       (when (> took 2000000)
         (core0-trace! 13 (quotient took 1000))
         (for-each (lambda (type) (core0-trace! 14 type)) types))
@@ -746,7 +740,7 @@
       (platform-reports-pump!)
       (unless (eqv? first 0)
         (core0-input-set! *core0-input-ns* first)
-        (core0-input-set! *core0-input-pumped* (core0-now-ns)))
+        (core0-input-set! *core0-input-pumped* (core0-clock-ns)))
       (unless (null? types)
         (core0-trace! 9 (length types))
         (core0-facts-refresh! #t)
@@ -768,7 +762,7 @@
   ;; The facts read again: the flags and sizes each step, and made again when
   ;; they changed; the scale, the display and the last error too after
   ;; events or jobs (all?), as they change only with those.
-  (define-hook (core0-facts-refresh! all?)
+  (define (core0-facts-refresh! all?)
     (when (eq? *core0-mode* 'sdl)
       (let*-values ([(f) (sdl-get-window-flags *sdl-window*)]
                     [(w h) (core0-size-from sdl-get-window-size)]

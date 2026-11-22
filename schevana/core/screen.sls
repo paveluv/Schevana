@@ -11,14 +11,11 @@
 
 (library (schevana core screen)
   (export
-    screen-event-seen! *screen-fullscreen* *screen-chosen-scale* *pixel-ratio*
-    *screen-min-size* *headless-size* system-scale-percent screen-units->world
-    wm-screen-resized! screen-rescale! screen-window-size screen-init!
-    screen-shutdown! fullscreen? set-fullscreen! toggle-fullscreen!
+    screen-event-seen! system-scale-percent wm-screen-resized! screen-rescale!
+    screen-init! screen-shutdown! fullscreen? set-fullscreen! toggle-fullscreen!
     screen-set-icon! screen-set-title! screen-set-app-id! *screen-least*
     screen-set-least! screen-system-theme screen-own-frame! screen-own-frame?
-    screen-hit-kinds screen-hit-regions! *screen-hit-regions*
-    screen-window-action! screen-maximized? screen-events screen-event->world)
+    screen-hit-regions! screen-window-action! screen-maximized? screen-events)
   (import (chezscheme)
           (schevana base)
           (schevana core0)
@@ -288,7 +285,7 @@
   ;; or, ticks keeping to the compositor's latches, for the next latch.
   ;; Then the inbox: core0's events, each told to screen-event-seen!, as
   ;; the world's.
-  (define-hook (screen-events wait-ms)
+  (define (screen-events wait-ms)
     (core0-trace! 20 wait-ms)
     (cond [(not (core0-forked?)) (core0-step!)]
           [(gpu-frame-waiting?)

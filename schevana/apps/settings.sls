@@ -281,8 +281,8 @@
   ;;; saving a style
 
   ;; Where Save as new style writes: the user's styles folder, which loads
-  ;; at every boot. The tests point it at their output folder.
-  (define-state *settings-style-directory*
+  ;; at every boot.
+  (define-made *settings-style-directory*
     (string-append user-directory "/styles"))
 
   ;; A new style's name from its title: "My Genera" -> my-genera, "1984"

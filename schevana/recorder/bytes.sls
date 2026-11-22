@@ -20,15 +20,14 @@
 
 (library (schevana recorder bytes)
   (export
-    *rec-now* *rec-root* *rec-poison?* rec-count rec-extra-at rec-write!
-    rec-extra! rec-extra-u32! rec-extra-ref rec-free? rec-take!
+    rec-count rec-extra-at rec-write! rec-extra! rec-extra-u32! rec-extra-ref
     rec-bytes-begin! rec-into-list! rec-freeze! rec-earlier-add! rec-lend!
-    *rec-writes* rec-writes-pending? rec-buffer-set! rec-pixel-set!
-    rec-image-rows! rec-compute-now! rec-buffer-read! rec-buffer-read-then!
-    rec-submit-computes! rec-list-new gpu-list-recs-n gpu-list-extras-n
-    gpu-list-runs gpu-list-version rec-list-copy gpu-list-recs gpu-list-extras
-    rec-recordings rec-last-sizes rec-last-runs rec-last-copy!
-    rec-drawing->bytes rec-bytes-copies)
+    rec-writes-pending? rec-buffer-set! rec-pixel-set! rec-image-rows!
+    rec-compute-now! rec-buffer-read! rec-buffer-read-then! rec-submit-computes!
+    rec-list-new gpu-list-recs-n gpu-list-extras-n gpu-list-runs
+    gpu-list-version rec-list-copy gpu-list-recs gpu-list-extras rec-recordings
+    rec-last-sizes rec-last-runs rec-last-copy! rec-drawing->bytes
+    rec-bytes-copies)
   (import (chezscheme)
           (schevana base)
           (schevana core0 for-recorder))
@@ -46,8 +45,6 @@
   (define-state *rec-root* #f)
   (define-state *rec-root-next* #f)  ; the root's being written, or #f
   (define-state *rec-published* 0)   ; frames lent so far, the last one's number
-
-  (define-state *rec-poison?* #f)    ; tests: a recording taken is garbage first
 
   (define (rec-count) (fxquotient (gpu-recording-recs-n *rec-now*) 32))
   (define (rec-extra-at) (fxsrl (gpu-recording-extras-n *rec-now*) 2))
@@ -146,9 +143,6 @@
   ;; one of those chained after it that's free, or a new one; empty.
   (define (rec-take! head)
     (let ([r (or (rec-take-free! head) (rec-make head))])
-      (when *rec-poison?*
-        (bytevector-fill! (gpu-recording-recs r) #xa5)
-        (bytevector-fill! (gpu-recording-extras r) #xa5))
       (gpu-recording-recs-n-set! r 0)
       (gpu-recording-extras-n-set! r 4)
       (gpu-recording-runs-set! r '())
@@ -318,7 +312,6 @@
                      (rec-loan-make (make-immobile-bytevector
                                      (* 4 (gpu-image-w image)
                                         (gpu-image-h image)))))])
-      (when *rec-poison?* (bytevector-fill! (gpu-recording-recs loan) #xa5))
       (set! *rec-loan-stamp* (fx+ *rec-loan-stamp* 1))
       (gpu-recording-version-set! loan *rec-loan-stamp*)
       (gpu-recording-until-set! loan #f)

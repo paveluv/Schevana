@@ -18,10 +18,12 @@ scheme --script tests/frame.ss out
 scheme --script tests/sources.ss
 ```
 
-- A test asks nothing of a library: no export, hook or name of its own
-  for the test. The test framework reaches what it needs itself, a
-  library's own names stripped as the hacker edition strips it
-  (`test-library`, [tests/GUIDE.md](tests/GUIDE.md)).
+- A test asks nothing of a library: no export, hook, state or name of
+  its own for the test. The test framework reaches what it needs itself:
+  the libraries the suites boot as the tests build them, a sealed
+  layer's every name given and what a test stands in for a hook
+  (`tests/build.ss`), and a demo's own names stripped as the hacker
+  edition strips it (`test-library`, [tests/GUIDE.md](tests/GUIDE.md)).
 - A change in behavior comes with a test of it, written by the rules in
   [tests/GUIDE.md](tests/GUIDE.md): where a check goes, what it may touch,
   and how it holds under both Chez versions, with any font and on any

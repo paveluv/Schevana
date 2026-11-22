@@ -3,17 +3,10 @@
 
 (library (schevana core loop)
   (export
-    *input-step?* post-core1! run-core1-mail! inject! wm-event! loop-stepped!
-    reload-ended!
-    reload-holding? schevana-step! schevana-run! *running* quit! schevana-end!
-    uptime-ms
-    user-directory user-library-directory path-full add-library-directory!
-    schevana-boot!
-    collector-young-quiet collector-old-quiet *collector-pass*
-    *collector-holding?* *collector-check-ms* *collector-input-ms*
-    *collector-old-kept* collector-collect! collector-declining?
-    collector-after-sent! collector-pass! collector-old collector-grown
-    collector-settle! collector-tick! core1-run loop-main)
+    *input-step?* post-core1! wm-event! loop-stepped! reload-ended!
+    schevana-run! quit! schevana-end! uptime-ms user-directory
+    user-library-directory path-full add-library-directory! schevana-boot!
+    collector-declining? collector-settle! core1-run loop-main)
   (import (chezscheme)
           (schevana base)
           (schevana core0)
@@ -123,7 +116,7 @@
   ;; processes, and on a tick a frame if something asked for one. Paced
   ;; (core1's loop's), it ticks only when a tick is wanted (pacer-wanted?) and
   ;; due, and its processes run until the frame must be drawn for the next
-  ;; tick; else (a test's) it always ticks, and its processes run 10 ms. The
+  ;; tick; else it always ticks, and its processes run 10 ms. The
   ;; profiler sums the steps between ticks into the next tick.
   (define (schevana-turn! wait-ms paced)
     (with-profile-span 'step #f
@@ -379,8 +372,7 @@
   ;; thunk on core1, the world's thread. With a window, core0 opens it
   ;; first (w × h, or full screen) and keeps this thread, the process's
   ;; first, for the screen, and the world runs on its own; headless, one
-  ;; thread plays both, unless fork? asks for the two with no window (a
-  ;; test's).
+  ;; thread plays both, unless fork? asks for the two with no window.
   (define (core1-run mode w h full? fork? thunk)
     (define (run) (core1-thread!) (thunk))
     (if (or (eq? mode 'sdl) fork?)

@@ -84,7 +84,7 @@
                (set! held (* 8671932088 1000))))
            (let ([seq (profile-newest-tick)])
              (ui-stream-send! ring seq seq (monitor-tick-word (pacer-period)))
-             (let ([row (list-head (ui-stream-row ring seq)
+             (let ([row (list-head (test-stream-row ring seq)
                                    (length monitor-phases))])
                (steps 3)
                (let ([crashed (window-error m)])

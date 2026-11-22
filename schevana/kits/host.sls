@@ -123,7 +123,7 @@
   ;; Runs a host app: its app id (the desktop matches it to a desktop entry,
   ;; reverse-DNS by custom), a screen w × h logical pixels, and (open), which
   ;; opens the app's window and returns it. args are the command line's:
-  ;; --headless, no window (for tests); --fork, the screen's thread apart
+  ;; --headless, no window; --fork, the screen's thread apart
   ;; from the world's; --style NAME, a style of Schevana's in place of the
   ;; host's look.
   (define (host-main app-id w h args open)

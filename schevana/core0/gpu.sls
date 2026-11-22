@@ -12,12 +12,10 @@
 
 (library (schevana core0 gpu)
   (export
-    gpu-atlas-side gpu-format-bgra8 gpu-usage-sampler gpu-usage-target
-    gpu-windowless-kind gpu-windowless-video gpu-make-texture gpu-open!
-    gpu-idle! *gpu-frames-in-flight* gpu-claim-window! *gpu-objects*
-    *gpu-answers* gpu-take-answers! gpu-send-writes! make-gpu-image gpu-image?
-    gpu-image-id gpu-image-w gpu-image-h gpu-image-levels gpu-image-loans
-    gpu-image-loans-set! gpu-image-gone?-set! gpu-image-texture
+    gpu-atlas-side gpu-usage-sampler gpu-usage-target gpu-windowless-kind
+    gpu-windowless-video gpu-open! gpu-idle! gpu-claim-window! gpu-take-answers!
+    make-gpu-image gpu-image? gpu-image-id gpu-image-w gpu-image-h
+    gpu-image-levels gpu-image-loans gpu-image-loans-set! gpu-image-gone?-set!
     make-gpu-buffer* gpu-buffer-id gpu-buffer-size gpu-buffer-gone?-set!
     make-gpu-call gpu-call? gpu-call-shader make-gpu-recording gpu-recording?
     gpu-recording-recs gpu-recording-recs-set! gpu-recording-recs-n
@@ -28,18 +26,15 @@
     gpu-recording-next-set! make-gpu-list gpu-list-id gpu-list-recording
     gpu-list-recording-set! gpu-list-labels gpu-list-labels-set!
     gpu-list-recorded gpu-list-recorded-set! gpu-list-took gpu-list-took-set!
-    *gpu-lists* gpu-list-state *gpu-pass* gpu-list-seen gpu-show-run?
-    gpu-run-gone? gpu-run-drawable? gpu-compute-now! gpu-submit-computes!
-    gpu-reads-now! gpu-buffer-download! gpu-present-modes *gpu-present-mode*
-    *gpu-facts* gpu-facts-refresh! gpu-frame-root gpu-frame-root-set!
-    gpu-frame-number gpu-frame-number-set! gpu-frame-table-set!
-    gpu-frame-table-n-set! gpu-frame-pieces-set! gpu-frame-jobs-set!
-    gpu-frame-writes gpu-frame-writes-set! gpu-frame-computes-set!
-    gpu-frame-mode-set! gpu-frame-in-flight-set! gpu-frame-earlier
-    gpu-frame-earlier-set! gpu-frame-shown? gpu-frame-shown?-set!
-    gpu-frame-make *gpu-frame-back* *gpu-published* *gpu-given-back*
-    gpu-publish! gpu-frame-waiting? gpu-frames-back! gpu-present! gpu-frame!
-    gpu-drawing->bytes gpu-read-texture!)
+    gpu-show-run? gpu-run-gone? gpu-compute-now! gpu-submit-computes!
+    gpu-reads-now! gpu-buffer-download! *gpu-facts* gpu-frame-root
+    gpu-frame-root-set! gpu-frame-number gpu-frame-number-set!
+    gpu-frame-table-set! gpu-frame-table-n-set! gpu-frame-pieces-set!
+    gpu-frame-jobs-set! gpu-frame-writes-set! gpu-frame-computes-set!
+    gpu-frame-mode-set! gpu-frame-in-flight-set! gpu-frame-earlier-set!
+    gpu-frame-shown? gpu-frame-shown?-set! gpu-frame-make *gpu-frame-back*
+    *gpu-published* *gpu-given-back* gpu-publish! gpu-frame-waiting?
+    gpu-frames-back! gpu-present! gpu-drawing->bytes)
   (import (chezscheme)
           (schevana base)
           (schevana ffi)
@@ -279,7 +274,7 @@
 
   ;; Waits till the device has done all it was sent, if one is open: before
   ;; the window goes, and before the process ends.
-  (define-hook (gpu-idle!)
+  (define (gpu-idle!)
     (when *renderer* (sdl-wait-gpu-idle (renderer-device *renderer*))))
 
   ;; Every exit waits for the GPU first, whoever calls it: the world's quit,
@@ -722,9 +717,10 @@
             (mutable runs) (mutable version) (mutable until) (mutable next)))
 
   ;; A list kept to be shown by another: its recording, and the labels the
-  ;; recorder gave it; when it was last recorded (core0-now-ns) and in how many
-  ;; ns, for (schevana kits inspect). Its id, a handle's, names its GPU buffers
-  ;; in *gpu-lists*; #f for a copy that's never shown ((schevana kits inspect)).
+  ;; recorder gave it; when it was last recorded (core0-clock-ns) and in how
+  ;; many ns, for (schevana kits inspect). Its id, a handle's, names its GPU
+  ;; buffers in *gpu-lists*; #f for a copy that's never shown
+  ;; ((schevana kits inspect)).
   (define-record-type gpu-list
     (nongenerative schevana-gpu-list-3)
     (fields id (mutable recording) (mutable labels) (mutable recorded)
@@ -1279,7 +1275,7 @@
   (define gpu-present-codes '((vsync . 0) (immediate . 1) (mailbox . 2)))
   (define gpu-composition-sdr 0)   ; the one a claim gives: colors stay the same
 
-  (define-hook (gpu-present-modes)
+  (define (gpu-present-modes)
     (let ([r *renderer*])
       (if (eqv? 0 (renderer-sdl-window r))
           '()
@@ -1345,7 +1341,7 @@
 
   ;; The window this renderer draws to from now on. The count goes
   ;; first: on a claimed window, setting it builds the swapchain again.
-  (define-hook (gpu-claim-window! sdl-window)
+  (define (gpu-claim-window! sdl-window)
     (sdl-set-frames-in-flight (renderer-device *renderer*)
                               *gpu-frames-in-flight*)
     (unless (sdl-claim-window (renderer-device *renderer*) sdl-window)
@@ -1419,7 +1415,7 @@
             [(not (box-cas! *gpu-published* #f f)) (loop)]))
     (core0-wake!))
 
-  (define-hook (gpu-frame-waiting?) (and (unbox *gpu-published*) #t))
+  (define (gpu-frame-waiting?) (and (unbox *gpu-published*) #t))
 
   ;; The frames core0 gave back since core1 last took them, oldest first.
   (define (gpu-frames-back!) (core0-take! *gpu-given-back*))
@@ -1445,11 +1441,11 @@
 
   ;; With no window, core0 on a thread of its own holds each frame till the
   ;; next refresh of a screen of its own, at the window's rate, as a screen
-  ;; holds the acquire: the screen of a forked run's tests. Its refreshes
-  ;; fall on whole periods of core0-now-ns's clock.
+  ;; holds the acquire. Its refreshes fall on whole periods of
+  ;; core0-clock-ns's clock.
   (define (gpu-headless-hold!)
     (let ([p (core0-frame-ns)])
-      (sleep (make-time 'time-duration (- p (mod (core0-now-ns) p)) 0))))
+      (sleep (make-time 'time-duration (- p (mod (core0-clock-ns) p)) 0))))
 
   ;; One frame: uploads, then the runs, to the window or the target. => #t if
   ;; it reached the screen; #f if the window had no room for it yet (a frame
@@ -1529,7 +1525,7 @@
       (sdl-submit-gpu cb)))
 
   ;; The same, drawn to a new texture w × h and read back: its pixels, row
-  ;; after row, premultiplied BGRA. What tests, screenshots and icons see;
+  ;; after row, premultiplied BGRA. What screenshots and icons see;
   ;; jobs, writes and computes, what core1 asked of the GPU since, go first.
   (define (gpu-drawing->bytes jobs writes computes recs recs-n extras extras-n
                              table table-n atlas-pieces runs w h clear?)

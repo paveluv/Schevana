@@ -17,7 +17,7 @@
 
   (library-layer looks)
 
-  (define-hook (draw-resize-grip x y)
+  (define (draw-resize-grip x y)
     (for-each (lambda (d)
                 (draw-line (- x d) (- y 3) (- x 3) (- y d) (alpha 'text 0.18)
                            1))

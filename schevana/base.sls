@@ -276,10 +276,10 @@
   ;; (define-hook (name . formals) body ...), or (define-hook name
   ;; procedure): a procedure that may be replaced, under its own name. The
   ;; piece that has what it does sets it (set-hook!), where the one that
-  ;; calls it sits below; a test puts its own there for a while. Called by
-  ;; its name, set by set!, as a state is; made again as the library is
-  ;; evaluated again, and set again by the piece that sets it, which
-  ;; imports it and so is evaluated again after it.
+  ;; calls it sits below. Called by its name, set by set!, as a state is;
+  ;; made again as the library is evaluated again, and set again by the
+  ;; piece that sets it, which imports it and so is evaluated again after
+  ;; it.
   (define-syntax define-hook
     (lambda (x)
       (syntax-case x ()

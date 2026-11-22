@@ -9,13 +9,8 @@
   (export
     platform-cpu-count *core0-platform* core0-platform-read!
     platform-report-ask! platform-reports-start! platform-reports-pump!
-    platform-clock-offset *wayland-clock* *wayland-used* *wayland-input-clock*
-    wayland-shown-ns wayland-input! wayland-input-on
-    platform-wayland-globals platform-desktop-frameless? platform-sdl-wayland?
-    platform-thread-interactive! platform-thread-class
-    mac-rows *mac-shown*
-    mac-presented! *mac-drawable* mac-waiting-rows *mac-waiting* mac-ask!
-    mac-pump! mac-reported!)
+    platform-desktop-frameless? platform-sdl-wayland?
+    platform-thread-interactive!)
   (import (chezscheme)
           (schevana base)
           (schevana ffi)
@@ -163,7 +158,7 @@
        (list 'metal-presented-handler 'uptime-raw 'uptime-raw '())]
       [else #f]))
 
-  (define-hook (core0-platform-read!)
+  (define (core0-platform-read!)
     (let ([video (sdl-get-current-video-driver)])
       (set! *core0-platform*
         `((windowing
@@ -179,13 +174,13 @@
           (desktop . ,(getenv "XDG_CURRENT_DESKTOP"))
           (reports . ,(platform-reports))))))
 
-  ;; ns to add to a time on clock (a POSIX clock's number) for core0-now-ns's,
+  ;; ns to add to a time on clock (a POSIX clock's number) for core0-clock-ns's,
   ;; read at each report: two clocks may drift apart by a few ms an hour.
   (define-state *platform-timespec* (foreign-alloc 16))
-  (define-hook (platform-clock-offset clock)
+  (define (platform-clock-offset clock)
     (let ([ts *platform-timespec*])
       (c-clock-gettime clock ts)
-      (- (core0-now-ns)
+      (- (core0-clock-ns)
          (+ (* 1000000000 (foreign-ref 'long ts 0)) (foreign-ref 'long ts 8)))))
 
   ;; Linux's clocks by number.
@@ -366,7 +361,7 @@
       (set! *wayland-used* clock))
     (uptr uptr unsigned-32))
 
-  ;; Whether time t on clock falls, on core0-now-ns's, from low to ahead ns
+  ;; Whether time t on clock falls, on core0-clock-ns's, from low to ahead ns
   ;; after now; the first of said and Linux's clocks on which it does, or #f.
   ;; Now is read after the clock's offset: a time gone by never reads as one to
   ;; come, however long core0 waited between the offset's two reads. Numbers
@@ -374,7 +369,7 @@
   (define (platform-fits? t clock low ahead)
     (and clock
          (let ([at (+ t (platform-clock-offset clock))])
-           (<= low at (+ (core0-now-ns) ahead)))))
+           (<= low at (+ (core0-clock-ns) ahead)))))
   (define (platform-fitting t said low ahead)
     (cond [(platform-fits? t said low ahead) said]
           [(platform-fits? t 4 low ahead) 4]
@@ -383,13 +378,13 @@
           [(platform-fits? t 0 low ahead) 0]
           [else #f]))
 
-  ;; A report's time t, on core0-now-ns's clock, its refresh as the screen says
-  ;; (ns; 0, none). A frame shows after it's sent, and its report comes after
-  ;; it showed, or up to a refresh before where a compositor foretells the
+  ;; A report's time t, on core0-clock-ns's clock, its refresh as the screen
+  ;; says (ns; 0, none). A frame shows after it's sent, and its report comes
+  ;; after it showed, or up to a refresh before where a compositor foretells the
   ;; time: a compositor whose times break that on the clock it says (GNOME's
-  ;; with NVIDIA's vblank stamps, on CLOCK_MONOTONIC_RAW, which runs behind
-  ;; the monotonic clock on one machine and ahead of it on another) is read
-  ;; on the first of Linux's clocks that fits.
+  ;; with NVIDIA's vblank stamps, on CLOCK_MONOTONIC_RAW, which runs behind the
+  ;; monotonic clock on one machine and ahead of it on another) is read on the
+  ;; first of Linux's clocks that fits.
   (define (wayland-shown-ns frame t refresh)
     (let ([low (- (fxvector-ref *present-ring* (fx+ (present-at frame) 2))
                   1000000)])
@@ -401,18 +396,19 @@
       (+ t (platform-clock-offset *wayland-used*))))
 
   ;; An input's time, its event's ms on the compositor's clock (which wraps at
-  ;; 32 bits), as core0 reads the event at core0-now-ns at: on the clock under
+  ;; 32 bits), as core0 reads the event at core0-clock-ns at: on the clock under
   ;; which it came within the last second, to the ms. Into the oldest not yet
   ;; taken (core0-input-set!).
   (define (wayland-input! ms)
-    (let* ([at (core0-now-ns)]
+    (let* ([at (core0-clock-ns)]
            [t (or (wayland-input-on *wayland-input-clock* ms at)
                   (wayland-input-on 1 ms at)
                   (wayland-input-on 4 ms at)
                   (wayland-input-on 7 ms at))])
       (when t (core0-input-set! *core0-input-wl* t))))
 
-  ;; ms, read on clock and kept as the clock it fits, on core0-now-ns's; or #f.
+  ;; ms, read on clock and kept as the clock it fits, on core0-clock-ns's; or
+  ;; #f.
   (define (wayland-input-on clock ms at)
     (and clock
          (let* ([off (platform-clock-offset clock)]
@@ -795,7 +791,7 @@
       (set! *mac-drawable* -1)))
 
   ;; Frame's word from Metal: t, when it was shown in Apple's host time, or 0
-  ;; for never. A time is taken on core0-now-ns's clock when its frame shows
+  ;; for never. A time is taken on core0-clock-ns's clock when its frame shows
   ;; after it was sent, and within a second; else the report says nothing. Metal
   ;; says no refresh, and the display may vary its own: the refreshes are
   ;; counted at the window's rate, each time as it is (present-shown!).
@@ -822,7 +818,7 @@
                 (fxvector-set! w i -1))))))))
 
   ;; The reports come since the last look, without waiting.
-  (define-hook (platform-reports-pump!)
+  (define (platform-reports-pump!)
     (unless (eqv? *wayland-queue* 0)
       (with-interrupts-disabled
        (wayland-dispatch *wayland-display* *wayland-queue*)))

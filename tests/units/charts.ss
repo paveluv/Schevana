@@ -315,7 +315,7 @@
                 [none (sent 0 1)]
                 [one (sent 0 2)]
                 [most (sent 0 100)]
-                [row (ui-stream-row s 100)]
+                [row (test-stream-row s 100)]
                 [behind (sent 5 6)]
                 [at (ui-stream-sent s)])
            (ui-stream-release! s)

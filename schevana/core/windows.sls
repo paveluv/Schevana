@@ -29,26 +29,20 @@
     window-x-set! window-y window-y-set! window-w window-w-set! window-h
     window-h-set! window-state window-state-set! window-restore-set!
     window-min-w window-min-h window-handlers window-props window-error
-    *windows* *focus* *drag*
-    *drag-outline* *hover* *mouse-x* *mouse-y* *mouse-button* *cascade* drag
-    current-window window-gone! invalidate! window-shadow window-shadow-reach
-    window-bleed window-extent screen-w screen-h screen-scale point-in? surface
-    surface-name surface-doc *surfaces* define-surface find-surface surfaces
-    surface-call *strips* define-strip desktop-rect app app-name app-title
-    app-launch *apps* current-app register-app! define-app apps open-window
-    detached-window new-window-position cascade-reset! place-window! windows
-    focused-window visible? maximized? find-window window-ref window-set!
-    window-on! window-bg in-window-theme window-setting frame-insets
-    frame-regions frame-radius frame-bleed content-rect window-content-size
-    window-local window-call window-crash! window-modal-child window-owner
-    window-owned window-root focus-window! raise-window! close-window!
-    minimize-window! set-geometry! move-window! resize-window! depth-window!
-    maximize-window! restore-window! toggle-maximize! window-action! shaded?
-    shade-window! unshade-window! toggle-shade! window-at screen-at resize-kinds
-    window-region region-cursor wm-mouse-move wm-mouse-down wm-mouse-up
-    *global-keys* bind-key! unbind-key! window-frame-soon! draw-window
-    window-hover
-    draw-window*)
+    *windows* *focus* *drag-outline* *hover* *mouse-x* *mouse-y* *mouse-button*
+    drag current-window window-gone! invalidate! window-shadow window-extent
+    screen-w screen-h screen-scale point-in? surface surface-doc define-surface
+    find-surface surface-call define-strip desktop-rect app app-name app-title
+    app-launch *apps* define-app apps open-window detached-window
+    new-window-position cascade-reset! place-window! windows focused-window
+    visible? maximized? find-window window-ref window-set! window-on! window-bg
+    in-window-theme window-setting frame-insets frame-regions frame-radius
+    frame-bleed content-rect window-content-size window-local window-call
+    window-crash! window-modal-child focus-window! close-window!
+    minimize-window! set-geometry! move-window! resize-window! restore-window!
+    toggle-maximize! window-action! shaded? unshade-window! toggle-shade!
+    window-at screen-at resize-kinds window-region *global-keys* bind-key!
+    window-frame-soon! draw-window window-hover draw-window*)
   (import (chezscheme)
           (schevana base)
           (schevana core0)
@@ -427,7 +421,7 @@
   ;; or one a preview draws) or not seen (minimized) asks for no frame: a
   ;; timer it left behind, or one an app steps on unseen, draws nothing; one
   ;; brought back is drawn as it comes.
-  (define-hook invalidate!
+  (define invalidate!
     (case-lambda
       [() (request-redraw!)]
       [(win) (when win
@@ -443,7 +437,7 @@
   (define (window-bleed-here win)
     (max 0 (window-shadow-reach win) (frame-bleed win)))
 
-  (define-hook (window-bleed win)
+  (define (window-bleed win)
     (if (eq? (window-theme win) *theme*)
         (window-bleed-here win)
         (in-window-theme win (lambda () (window-bleed-here win)))))

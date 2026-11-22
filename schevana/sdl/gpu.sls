@@ -135,10 +135,8 @@
     "SDL_WindowSupportsGPUPresentMode" (uptr uptr int) bool)
   (define-foreign/collect-safe sdl-set-frames-in-flight
     "SDL_SetGPUAllowedFramesInFlight" (uptr unsigned-32) bool)
-  ;; A hook: a test answers for the swapchain (tests/units/drawing.ss).
-  (define-foreign/collect-safe sdl-swapchain-parameters-set
+  (define-foreign/collect-safe sdl-set-swapchain-parameters
     "SDL_SetGPUSwapchainParameters" (uptr uptr int int) bool)
-  (define-hook sdl-set-swapchain-parameters sdl-swapchain-parameters-set)
   (define-foreign/collect-safe sdl-wait-gpu-idle "SDL_WaitForGPUIdle"
     (uptr) bool)
   (define-made gpu-copy-in

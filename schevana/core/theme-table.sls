@@ -7,9 +7,8 @@
 (library (schevana core theme-table)
   (export
     *theme* *main-theme* theme-rule? theme-rule theme-unset call-with-theme
-    theme compute-rule! theme-keys world-value theme-part plist-has?
-    plist-remove *theme-table-defaults* theme-table-default! *pacer-trial*
-    pacer-knob)
+    theme theme-keys world-value theme-part plist-has? plist-remove
+    *theme-table-defaults* theme-table-default! *pacer-trial* pacer-knob)
   (import (chezscheme)
           (schevana base))
 

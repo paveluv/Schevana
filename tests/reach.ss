@@ -45,6 +45,33 @@
        [_ (identifier? x) id]
        [(_ . rest) #`(#,id . rest)]))))
 
+;; Whether n is a name the tests' build gives (tests/build.ss): test:name.
+(define (reach-given? n)
+  (let ([s (symbol->string n)])
+    (and (> (string-length s) 5) (string=? (substring s 0 5) "test:"))))
+
+;; What the build gives of the libraries imported into env, each under
+;; the name itself, where env has none of its own: what a library of a
+;; sealed layer keeps to itself.
+(define (reach-given! env)
+  (let ([anchor (environment-anchor env)] [had (make-eq-hashtable)]
+        [names (environment-symbols env)])
+    (for-each (lambda (n) (hashtable-set! had n #t)) names)
+    (for-each
+     (lambda (n)
+       (when (reach-given? n)
+         (let* ([s (symbol->string n)]
+                [bare (string->symbol (substring s 5 (string-length s)))])
+           (unless (hashtable-ref had bare #f)
+             (hashtable-set! had bare #t)
+             (define-top-level-syntax bare
+               (reach-forwarder (datum->syntax anchor n))
+               env)))))
+     names)))
+(unless test-hacker?
+  (reach-given! main-env)
+  (reach-given! core-env))
+
 ;;; ------------------------------------------------------------------
 ;;; a library's own names
 ;;; A test asks nothing of a library: no export, hook or name of its own
@@ -65,43 +92,6 @@
 ;;; own: its calls to its procedures go by the top level. Stripped again,
 ;;; it is another of the library: its state its own, its app the one the
 ;;; launcher opens.
-
-;; The names a body form of a library defines: a record type's too, by
-;; R6RS's rules for the names it makes.
-(define (test-library-defined form)
-  (define (name+ . parts)
-    (string->symbol
-     (apply string-append
-            (map (lambda (x) (if (symbol? x) (symbol->string x) x)) parts))))
-  (define (record-names spec clauses)
-    (let ([name (if (pair? spec) (car spec) spec)]
-          [fields (let ([f (assq 'fields clauses)]) (if f (cdr f) '()))])
-      (append
-       (list name)
-       (if (pair? spec) (cdr spec) (list (name+ "make-" name) (name+ name "?")))
-       (apply append
-              (map (lambda (f)
-                     (cond [(symbol? f) (list (name+ name "-" f))]
-                           [(pair? (cddr f)) (cddr f)]
-                           [(eq? (car f) 'mutable)
-                            (list (name+ name "-" (cadr f))
-                                  (name+ name "-" (cadr f) "-set!"))]
-                           [else (list (name+ name "-" (cadr f)))]))
-                   fields)))))
-  (if (not (pair? form))
-      '()
-      (case (car form)
-        [(begin) (apply append (map test-library-defined (cdr form)))]
-        [(define-record-type) (record-names (cadr form) (cddr form))]
-        [(define define-syntax define-state define-made define-hook
-          define-worklet define-compute-shader define-paint define-app
-          define-part)
-         (let ([n (let first ([x (cadr form)])
-                    (if (pair? x) (first (car x)) x))])
-           (if (eq? (car form) 'define-part)
-               (list n (name+ n "*"))
-               (list n)))]
-        [else '()])))
 
 ;; The source of library name: the first folder of the library search
 ;; that holds it.
@@ -138,7 +128,7 @@
                                                  (symbol->string n)))
                   (reach-forwarder (datum->syntax anchor n))
                   world-env))
-              (apply append (map test-library-defined body)))))
+              (apply append (map test-defined-names body)))))
 
 ;; Each name of the two's, in "/", from the first of the core's and the
 ;; tests' that has it, a state or a hook (a macro) as a variable is, to be
@@ -158,7 +148,7 @@
        (let ([anchor (environment-anchor e)])
          (for-each
           (lambda (n)
-            (unless (or (gensym? n) (hashtable-ref had n #f))
+            (unless (or (gensym? n) (reach-given? n) (hashtable-ref had n #f))
               (hashtable-set! had n #t)
               (define-top-level-syntax n
                 (reach-forwarder (datum->syntax anchor n))

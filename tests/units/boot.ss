@@ -17,8 +17,7 @@
           sets as a view"
          (and (eq? (in-core 'gpu-publish!) gpu-publish!)
               (eq? (in-core '*gpu-facts*) *gpu-facts*)
-              (eq? (in-core 'core0-clock-ns) (top-level-value 'core0-clock-ns
-                                                              main-env))
+              (eq? (in-core 'core0-clock-ns) (eval 'core0-clock-ns main-env))
               (not (named? 'gpu-frame!))
               (not (named? '*sdl-window*))
               (not (named? 'sdl-get-ticks-ns))

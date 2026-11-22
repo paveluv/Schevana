@@ -5,10 +5,13 @@
 ;;;
 ;;;   (load (string-append *schevana-root* "/tests/boot.ss"))
 
-;; The tree's libraries, as a launcher has them (src/launch.ss).
+;; The tree's libraries, as a launcher has them (src/launch.ss), and in
+;; the library edition as the tests build them (tests/build.ss).
 (load (string-append *schevana-root* "/src/launch.ss"))
+(load (string-append *schevana-root* "/tests/build.ss"))
 (define test-hacker? (schevana-hacker? '()))
 (schevana-libraries! (schevana-launch-root *schevana-root*) test-hacker?)
+(unless test-hacker? (test-build! (schevana-launch-root *schevana-root*)))
 
 ;; The basics, a copy of the tests' own (the hacker edition's are here
 ;; already, the libraries' forms' top-level sense with them).

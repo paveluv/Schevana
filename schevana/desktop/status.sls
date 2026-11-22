@@ -40,7 +40,7 @@
   ;; each segment under the watchdog.
   (define-state *status-shown* '())
 
-  (define-hook (refresh-status!)
+  (define (refresh-status!)
     (set! *status-shown*
       (map (lambda (s)
              (cons (car s)

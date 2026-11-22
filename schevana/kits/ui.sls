@@ -28,7 +28,7 @@
 ;;;
 ;;; Keyboard focus: one focused widget per ui. A click focuses what takes
 ;;; typing; Tab and Shift+Tab go through every widget in draw order; Escape
-;;; leaves. Text editing is pure ((schevana kits edit)), so the tests need no
+;;; leaves. Text editing is pure ((schevana kits edit)): it needs no
 ;;; window.
 
 (library (schevana kits ui)
@@ -109,7 +109,7 @@
     ui-stream-buffer ui-stream-buffer-set! ui-stream-palette
     ui-stream-palette-set! ui-stream-sent ui-stream-sent-set! ui-stream-new
     ui-stream-most ui-stream-words ui-stream-colors ui-stream-restart!
-    ui-stream-resend! ui-stream-release! ui-stream-send! ui-stream-row
+    ui-stream-resend! ui-stream-release! ui-stream-send!
     ui-stream-stack-words ui-stream-stack-column ui-stream-stack-color
     ui-stream-bars ui-stream-lane ui-stream-lane* ui-stream-room
     ui-stream-areas ui-stream-areas* ui-stream-count ui-stream-layout
@@ -2978,7 +2978,7 @@
   ;; The rows shown: each root and, under each expanded node, its children,
   ;; depth first. children: (lambda (node) ...) a list, empty for a leaf;
   ;; expanded?: (lambda (node) ...). Pure. => a vector of ui-tree-row
-  (define-hook (ui-tree-rows roots children expanded?)
+  (define (ui-tree-rows roots children expanded?)
     (let ([acc '()] [n 0])
       (let walk ([nodes roots] [depth 0] [parent #f])
         (for-each (lambda (node)
@@ -3753,14 +3753,6 @@
                (cond [(< j columns) (max 0 (min ui-stream-most v))]
                      [(eqv? v 0) 0]
                      [else (+ v (list-ref bases (- j columns)))]))))))))
-
-  ;; What the rows hold of a moment, read back from the GPU now, for a
-  ;; test: its words.
-  (define (ui-stream-row s seq)
-    (let ([at (* (ui-stream-words s) (modulo seq (ui-stream-rows s)))]
-          [bytes (gpu-buffer-read! (ui-stream-buffer s))])
-      (map (lambda (j) (bytevector-s32-native-ref bytes (* 4 (+ at j))))
-           (iota (ui-stream-words s)))))
 
   ;; From the right, a bar a moment; up each, its columns as the palette stacks
   ;; them; over them, the strips.

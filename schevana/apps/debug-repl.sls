@@ -19,8 +19,8 @@
 ;;; A request runs as a process, so a long one, or one that never ends, doesn't
 ;;; hold the world up. It runs in the world, with all the power that gives:
 ;;; only the user who owns the socket can reach it. main.ss sets where it
-;;; listens (debug-repl-path!); with no path, as in the tests, there's no
-;;; socket until one is set.
+;;; listens (debug-repl-path!); with no path there's no socket until one
+;;; is set.
 
 (library (schevana apps debug-repl)
   (export
@@ -92,7 +92,7 @@
                 ".")))
 
   ;; A desktop session listens where the user's runtime folder has it; a
-  ;; test's world, never started, nowhere.
+  ;; world whose desktop never starts, nowhere.
   (at-load
    (desktop-at-start! (lambda () (debug-repl-path! (debug-repl-default-path)))))
 
