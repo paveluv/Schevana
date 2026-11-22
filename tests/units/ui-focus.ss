@@ -55,10 +55,10 @@
            (let* ([at (lambda (key . mods)
                         (apply ui-focus-test-press! key mods)
                         (ui-focused ui))]
-                  [next (at 'tab)] [last (at 'tab)] [wrapped (at 'tab)]
+                  [last (at 'tab)] [wrapped (at 'tab)] [after (at 'tab)]
                   [back (at 'tab 'shift)] [around (at 'tab 'shift)])
              (close-window! win)
-             (equal? (list next last wrapped back around)
+             (equal? (list last wrapped after back around)
                      '((f 4) (f 0) (f 1) (f 0) (f 4)))))))
 
 (check "Tab and Shift+Tab bring the field they reach in a scroll view into \
