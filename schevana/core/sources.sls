@@ -369,13 +369,23 @@
   ;; where they were imported ("/" imports the core's facade); then the
   ;; world's files into "/". Code changes take effect; state declared with
   ;; defvar or define-state (windows, theme, processes...) survives.
+  ;; Run as a process, a reload holds the world still from its start, while
+  ;; it evaluates the libraries again too, until the world's files are
+  ;; loaded (load-sources! names each file in *reloading* as it goes).
   (define (reload!)
-    (source-libraries-keep!
-     (if (schevana-hacker?)
-         ((eval 'hacker-reload-libraries! *world-env*)
-          (source-held-libraries))
-         (reload-libraries! (source-held-libraries))))
-    (load-world!)
+    (let ([p (current-proc)])
+      (when p (set! *reloading* (cons p "the libraries")))
+      (guard (c [p (reload-ended! (format "Reload failed in ~a: ~a"
+                                          (cdr *reloading*)
+                                          (condition->string c)))
+                   (raise c)])
+        (source-libraries-keep!
+         (if (schevana-hacker?)
+             ((eval 'hacker-reload-libraries! *world-env*)
+              (source-held-libraries))
+             (reload-libraries! (source-held-libraries))))
+        (load-world!))
+      (when p (set! *reloading* #f)))
     (request-redraw!)
     (collector-settle!)
     (notify "Sources reloaded" 'green))

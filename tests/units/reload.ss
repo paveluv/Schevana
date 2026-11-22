@@ -108,6 +108,31 @@
   (set! *toasts* '())
   (steps 1))
 
+;; The hold starts with the reload: while it evaluates the tree's
+;; libraries again, before it loads the world's files, nothing else runs.
+;; The hacker edition evaluates them with hacker-reload-libraries!.
+(let* ([plain (if test-hacker? hacker-reload-libraries! reload-libraries!)]
+       [held 'unset]
+       [stand-in! (lambda (p)
+                    (if test-hacker?
+                        (set! hacker-reload-libraries! p)
+                        (set! reload-libraries! p)))])
+  (stand-in!
+   (lambda args
+     (set! held (and *reloading* (eq? (car *reloading*) (current-proc)) #t))
+     (apply plain args)))
+  (let ([p (spawn "reload" reload!)])
+    (let loop ([n 0])
+      (when (and (memq p (procs)) (< n 3000))
+        (test-step!)
+        (loop (+ n 1)))))
+  (stand-in! plain)
+  (set! *toasts* '())
+  (steps 1)
+  (check "a reload run as a process holds the world still while it \
+          evaluates the libraries again, before the world's files"
+         (and (eq? held #t) (not *reloading*))))
+
 ;; A source whose top level loops: the world does not freeze (its steps go
 ;; on while the reload is alive; the longest step is printed, not bounded,
 ;; since how long a step may take is for the bench to measure), Ctrl+C
