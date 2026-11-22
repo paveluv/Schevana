@@ -742,23 +742,22 @@
     [(kind)
      (if (eq? value 'chore)
          (begin (stroke-box (+ x 2) (+ y 2) (- s 4) (- s 4) 'text) s)
-         (tasks-draw-mark* x y s what value))]
+         ((world-value 'tasks-draw-mark*) x y s what value))]
     [(blocked)
      (stroke-circle (+ x (/ s 2)) (+ y (/ s 2)) (- (* s 0.45) 1) 'text 2)
      (fill-box (+ x (round (* s 0.3))) (+ y (floor (- (/ s 2) 1)))
                (- s (* 2 (round (* s 0.3)))) 2 'text)
      s]
-    [else (tasks-draw-mark* x y s what value)]))
+    [else ((world-value 'tasks-draw-mark*) x y s what value)]))
 
 ;; A due date: bold when it has passed (lispm-notes, answer 8), else
 ;; plain; "Today" says itself.
-(define (genera-tasks-due x y w t today fnt)
+(define (genera-tasks-due x y w label when fnt)
   (let* ([f (get-font fnt)]
-         [f (if (tasks-overdue? t today)
+         [f (if (eq? when 'past)
                 (font (font-family f) (font-size f) 'bold)
                 f)])
-    (draw-text x y (text-fit (tasks-due-label (task-due t) today) w f) 'text
-               f)))
+    (draw-text x y (text-fit label w f) 'text f)))
 
 ;; Where a dragged card would land: a box over the gray.
 (define (genera-tasks-slot x y w h)

@@ -66,21 +66,27 @@
 ;; (source-files).
 (define library-files test-core-libraries)
 
-;; Every library under schevana/, the ones the core is built of and
-;; those that still include a layer's files.
+;; Every library in the tree: under schevana/, the core's and those above
+;; it, and the demos', under schevana-demo/.
 (define all-library-files
-  (let walk ([dir "schevana"])
-    (apply append
-           (map (lambda (f)
-                  (let ([path (string-append dir "/" f)])
-                    (cond [(file-directory? (source-path path)) (walk path)]
-                          [(string=? (path-extension f) "sls") (list path)]
-                          [else '()])))
-                (sort string<? (directory-list (source-path dir)))))))
+  (apply append
+         (map (lambda (top)
+                (let walk ([dir top])
+                  (apply append
+                         (map (lambda (f)
+                                (let ([path (string-append dir "/" f)])
+                                  (cond [(file-directory? (source-path path))
+                                         (walk path)]
+                                        [(string=? (path-extension f) "sls")
+                                         (list path)]
+                                        [else '()])))
+                              (sort string<?
+                                    (directory-list (source-path dir)))))))
+              '("schevana" "schevana-demo"))))
 
 ;; Each declares its layer first (library-layer, (schevana base)), which
 ;; holds its imports to the layers' order as it compiles.
-(check "every library under schevana/ declares its layer first"
+(check "every library in the tree declares its layer first"
        (none? (filter-map
                (lambda (f)
                  (let ([body (file-forms f)])
@@ -99,14 +105,13 @@
           library-files))
 
 (define line-files
-  (append library-files
+  (append all-library-files
           (source-files)
           (test-files "tests")
           (test-files "tests/units")
           (test-files "tests/fork")
           test-launchers
-          '("src/launch.ss" "src/hacker.ss" "src/build.ss")
-          (test-files "schevana-demo")))
+          '("src/launch.ss" "src/hacker.ss" "src/build.ss")))
 
 (define (long-lines f)
   (let loop ([ls (file-lines f)] [n 1] [acc '()])
@@ -408,7 +413,7 @@
 (define platform-files
   '("schevana/base.sls" "schevana/core/platform.sls"
     "schevana/sdl/window.sls"
-    "schevana/core0/platform.sls" "kits/inspect.ss"))
+    "schevana/core0/platform.sls" "schevana/kits/inspect.sls"))
 
 ;; The strings in x.
 (define (strings-in x)
@@ -925,7 +930,8 @@
   (code form))
 
 (define (form-name form)
-  (and (pair? form) (memq (car form) '(define defvar)) (pair? (cdr form))
+  (and (pair? form) (memq (car form) '(define defvar define-hook))
+       (pair? (cdr form))
        (if (pair? (cadr form)) (caadr form) (cadr form))))
 
 (define (drawing-form? form)

@@ -12,21 +12,11 @@
     ((f11) . ,(lambda () (toggle-fullscreen!)))
     ((f12) . ,(lambda () (save-screenshot!)))))
 
-;; The screen, as a PNG in the home folder, and a toast saying where.
-(define (save-screenshot!)
-  (png-write-screen-then (next-screenshot-path)
-                         (lambda (path) (notify (format "Saved ~a" path)))))
-
 (define (install-default-keys!)
   (for-each (lambda (b)
               (unless (assoc (car b) *global-keys*)
                 (bind-key! (car b) (cdr b))))
             default-global-keys))
-
-(define (next-screenshot-path)
-  (let loop ([i 1])
-    (let ([p (format "~a/schevana-~a.png" (or (getenv "HOME") ".") i)])
-      (if (file-exists? p) (loop (+ i 1)) p))))
 
 ;; A world that already has bindings (one reloaded from before this file,
 ;; which installed them at boot) has its keys.

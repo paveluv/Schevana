@@ -223,7 +223,9 @@
   ;; whose built-in setting is name*; a style replaces it by setting the key.
   ;; The built-in is given by its name, which the theme looks up at each
   ;; call (world-value), so that a redefinition in the world takes at the
-  ;; next.
+  ;; next. name is a hook, which a test may stand in for: defined by the
+  ;; define-hook where the part is, a definition like any at the top level,
+  ;; where a name used before it is defined is a variable's.
   (define-syntax define-part
     (lambda (x)
       ;; name*, made where name is: the keyword may be a forwarder's, from
@@ -233,16 +235,18 @@
                        (string->symbol (format "~a*" (syntax->datum name)))))
       (syntax-case x ()
         [(k (name formal ...) body ...)
-         (with-syntax ([built-in (star #'name)])
+         (with-syntax ([built-in (star #'name)]
+                       [define-hook (datum->syntax #'name 'define-hook)])
            #'(begin
                (define (built-in formal ...) body ...)
-               (define (name formal ...) ((theme-part 'name) formal ...))
+               (define-hook (name formal ...) ((theme-part 'name) formal ...))
                (at-load (theme-default! 'name 'built-in))))]
         [(k (name formal ... . rest) body ...)
-         (with-syntax ([built-in (star #'name)])
+         (with-syntax ([built-in (star #'name)]
+                       [define-hook (datum->syntax #'name 'define-hook)])
            #'(begin
                (define (built-in formal ... . rest) body ...)
-               (define (name formal ... . rest)
+               (define-hook (name formal ... . rest)
                  (apply (theme-part 'name) formal ... rest))
                (at-load (theme-default! 'name 'built-in))))])))
 

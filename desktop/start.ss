@@ -3,6 +3,14 @@
 ;;; the window or the headless target, the first windows, then the run till
 ;;; it quits. What the command line asked is *schevana-options*.
 
+;; What runs as the desktop starts, after the user's folders and before the
+;; saved theme, the first first: an app's thunk of what its session needs
+;; (desktop-at-start!), which a test's world, never started, doesn't run.
+(defvar *desktop-start-thunks* '())
+
+(define (desktop-at-start! thunk)
+  (set! *desktop-start-thunks* (append *desktop-start-thunks* (list thunk))))
+
 (define (desktop-start!)
   (define (option key) (cdr (assq key *schevana-options*)))
   ;; ~/.schevana.d's kits, desktop, styles, palettes, wallpapers and apps,
@@ -11,8 +19,7 @@
   (load-user-folders!)
   ;; What you allowed apps in sandboxes (services/grant.ss).
   (grant-file-load!)
-  ;; Where the Debug REPL listens, while it's open (apps/debug-repl.ss).
-  (debug-repl-path! (debug-repl-default-path))
+  (for-each (lambda (thunk) (thunk)) *desktop-start-thunks*)
   ;; A checkout's private folder, if it has one, keeps every late tick, for
   ;; whoever is looking into them.
   (let ([dir (string-append *schevana-root* "/.work")])

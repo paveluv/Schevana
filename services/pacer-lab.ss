@@ -18,7 +18,7 @@
     (pacer-margin-fade 0 60)
     (frames-in-flight 2 3)))
 
-(define pacer-lab-period-ms 600000)
+(defvar pacer-lab-period-ms 600000)
 
 (defvar *pacer-lab-log-path*
   (string-append user-directory "/pacer-lab.ss"))

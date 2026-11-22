@@ -36,7 +36,7 @@
 ;;; bytes, and an idle worker nothing.
 
 (define crew-fuel 20000)          ; timer ticks between a worker's looks
-(define crew-core1-ms 100)         ; how long core1 waits for a region
+(defvar crew-core1-ms 100)         ; how long core1 waits for a region
 ;; made once: a wait allocates nothing
 (define crew-idle-wait (make-time 'time-duration 50000000 0))   ; at most
 (define crew-nap (make-time 'time-duration 20000 0))            ; a waiter's

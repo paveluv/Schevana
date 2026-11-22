@@ -12,7 +12,8 @@
     source-path folder-sources folder-files world-sources source-files
     *source-texts* keep-source-text! file-text load-file! app-load!
     load-source load-sources!
-    load-user-folders! source-held-libraries reload! load-world!
+    load-user-folders! source-held-libraries reload! world-libraries
+    load-world!
     source-libraries-keep!)
   (import (chezscheme)
           (schevana base)
@@ -209,9 +210,41 @@
   ;; import the libraries shipped in lib/; each loaded by then is seen as it
   ;; reads, for the next reload to tell a change (reload-mark!), and its
   ;; text kept, as a file's is, for what describes a name.
+  ;; The world's libraries, (schevana <folder> <name>), the folders in
+  ;; their order, each's in file-name order: those of the tree's
+  ;; schevana/<folder>/ for each of source-folders.
+  (define (world-libraries)
+    (apply append
+           (map (lambda (folder)
+                  (let ([dir (string-append *schevana-root* "/schevana/"
+                                            folder)])
+                    (if (file-directory? dir)
+                        (map (lambda (f)
+                               (list 'schevana (string->symbol folder)
+                                     (string->symbol (path-root f))))
+                             (sort string<?
+                                   (filter (lambda (f)
+                                             (string-suffix? ".sls" f))
+                                           (directory-list dir))))
+                        '())))
+                source-folders)))
+
+  ;; The world's libraries "/" imports (as a reload imports them again), so
+  ;; that one new since is imported at the next.
+  (define-state *world-imported* '())
+
+  ;; Each of the world's libraries imported into "/" and run, in order, so
+  ;; that what it registers (an app, a style, a surface) is registered;
+  ;; then the world's files.
   (define (load-world!)
     (hashtable-clear! *world-readers*)
     (add-library-directory! *schevana-root*)
+    (for-each (lambda (lib)
+                (unless (member lib *world-imported*)
+                  (reload-import! *world-env* lib)
+                  (set! *world-imported* (cons lib *world-imported*)))
+                (invoke-library lib))
+              (world-libraries))
     (load-sources! (world-sources))
     (reload-mark!)
     (source-libraries-keep! (library-list)))

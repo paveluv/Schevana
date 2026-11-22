@@ -724,7 +724,7 @@
         '())))
 
 ;; Goes back to the frame on the screen at refresh k.
-(define (pipeline-pick-refresh! v g k)
+(define-hook (pipeline-pick-refresh! v g k)
   (let* ([i (pipeline-river-frame-at g k)]
          [seq (and i (pipeline-frame-tick i))])
     (when seq (pipeline-pick! v seq))))
@@ -742,7 +742,7 @@
 ;; the next refresh. So the River moves a column a frame while the screen
 ;; takes them so, the screen's late word no matter, and a frame that comes
 ;; late moves it with the jump it makes.
-(define (pipeline-river-target g)
+(define-hook (pipeline-river-target g)
   (let ([next (+ (inspect-refresh-of g (now-ns)) 1)])
     (let loop ([i (- *frame-ring-n* 1)] [ahead 1] [n 0])
       (if (or (= n 64) (not (inspect-frame-ref i 6)))

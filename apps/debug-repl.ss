@@ -49,7 +49,11 @@
           (or (getenv "XDG_RUNTIME_DIR") (getenv "TMPDIR") (getenv "HOME")
               ".")))
 
-(define debug-repl-limit-ms 10000)   ; a request's time, running
+;; A desktop session listens where the user's runtime folder has it; a
+;; test's world, never started, nowhere.
+(desktop-at-start! (lambda () (debug-repl-path! (debug-repl-default-path))))
+
+(defvar debug-repl-limit-ms 10000)   ; a request's time, running
 (define debug-repl-read-ms 5000)     ; a request's time, arriving
 (define debug-repl-most-bytes 1048576)   ; a request's size, and a text's
 (define debug-repl-most-lines 200)   ; of a text, in the window

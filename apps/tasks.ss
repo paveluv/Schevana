@@ -463,14 +463,15 @@
     [(1) "Tomorrow"]
     [(-1) "Yesterday"]
     [else (if (= (car due) (car today))
-              (format "~a ~a" (vector-ref month-names (- (cadr due) 1))
+              (format "~a ~a" (vector-ref ui-month-names (- (cadr due) 1))
                       (caddr due))
               (ui-date-label due))]))
 
 ;; "Oct 31, 14:02", local time.
 (define (tasks-time-label secs)
   (let ([d (time-utc->date (make-time 'time-utc 0 secs))])
-    (format "~a ~a, ~2,'0d:~2,'0d" (vector-ref month-names (- (date-month d) 1))
+    (format "~a ~a, ~2,'0d:~2,'0d"
+            (vector-ref ui-month-names (- (date-month d) 1))
             (date-day d) (date-hour d) (date-minute d))))
 
 ;;; ------------------------------------------------------------------
@@ -572,7 +573,7 @@
 ;; first. => (values roots homes order): the roots' ids; an eqv hashtable
 ;; from each id to the id of the task it shows its own under (#f for a
 ;; root); and every id, depth first.
-(define (tasks-forest ts)
+(define-hook (tasks-forest ts)
   (let ([by-id (tasks-id-table ts)] [waited (make-eqv-hashtable)]
         [homes (make-eqv-hashtable)] [order '()])
     (define (visit! id parent)
@@ -875,7 +876,7 @@
    'tasks-reset! 'description
    (case what
      [(readme) (file "README.md")]
-     [(kit-source) (file "kits/ui.ss")]
+     [(kit-source) (file "schevana/kits/ui.sls")]
      [(changelog)
       (let loop ([k 1] [acc '()] [n 0])
         (if (>= n tasks-description-max)
@@ -883,7 +884,7 @@
             (let ([r (round-of k)])
               (loop (+ k 1) (cons r acc) (+ n (string-length r))))))]
      [(blob)   ; enough of the kit's bytes for the most characters
-      (let* ([bv (string->utf8 (file "kits/ui.ss"))]
+      (let* ([bv (string->utf8 (file "schevana/kits/ui.sls"))]
              [n (min (bytevector-length bv) (* 3/4 tasks-description-max))]
              [cut (make-bytevector n)])
         (bytevector-copy! bv 0 cut 0 n)
@@ -1367,15 +1368,23 @@
                             [else 'text])
              'ui))
 
-;; t's due date at (x, y), cut to w: red when overdue, orange today.
-(define-part (tasks-draw-due x y w t today font)
-  (draw-text x y (text-fit (tasks-due-label (task-due t) today) w font)
-             (cond [(tasks-overdue? t today) 'red]
-                   [(and (equal? (task-due t) today)
-                         (not (eq? (task-status t) 'done)))
-                    'orange]
-                   [else 'text-faint])
+;; A due date's label at (x, y), cut to w, when it is past or today (else
+;; #f): red when past, orange today. A style draws it as it likes, given
+;; nothing of a task's but this.
+(define-part (tasks-draw-due x y w label when font)
+  (draw-text x y (text-fit label w font)
+             (case when [(past) 'red] [(today) 'orange] [else 'text-faint])
              font))
+
+;; t's due date at (x, y), cut to w, by the part.
+(define (tasks-draw-due-of x y w t today font)
+  (tasks-draw-due x y w (tasks-due-label (task-due t) today)
+                  (cond [(tasks-overdue? t today) 'past]
+                        [(and (equal? (task-due t) today)
+                              (not (eq? (task-status t) 'done)))
+                         'today]
+                        [else #f])
+                  font))
 
 ;; flags: hover, selected, floating (being dragged), blocked.
 (define (tasks-draw-card x y w h flags t today)
@@ -1438,9 +1447,9 @@
              [lx (- right bar-w 6 (text-width label 'ui-small))]
              [check-x (- lx sh 2)])   ; the checklist's left, when it shows
         (when (task-due t)
-          (tasks-draw-due (+ x p) fy
-                          (- (if (> n 0) (- check-x 6) right) x p)
-                          t today 'ui-small))
+          (tasks-draw-due-of (+ x p) fy
+                             (- (if (> n 0) (- check-x 6) right) x p)
+                             t today 'ui-small))
         (when (> n 0)
           (ui-draw-glyph check-x fy sh sh '(quiet) 'check)
           (draw-text lx fy label 'text-faint 'ui-small)
@@ -1530,7 +1539,7 @@
                (text (if (> aw 0) (+ px aw 8) px) who 'text-dim))
              (text px "—" 'text-faint)))]
       [(due)
-       (when (task-due t) (tasks-draw-due px ty cw t today 'ui))]
+       (when (task-due t) (tasks-draw-due-of px ty cw t today 'ui))]
       [(updated)
        (draw-text px (+ y (/ (- h sh) 2)) (tasks-time-label (task-updated t))
                   'text-faint 'ui-small)])
@@ -1541,7 +1550,7 @@
 ;; under which task its own row is: where; said shorter, or not at all,
 ;; rather than leave the title less than half the room (or less than its
 ;; whole width). flags as a cell's.
-(define (tasks-draw-node x y w h flags t where)
+(define-hook (tasks-draw-node x y w h flags t where)
   (let* ([lh (font-line-height 'ui)] [sh (font-line-height 'ui-small)]
          [m (tasks-mark-size)] [in (ui-table-cell-inset)] [px (+ x in)]
          [right (- (+ x w) in)] [ty (+ y (/ (- h lh) 2))]

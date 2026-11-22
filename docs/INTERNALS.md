@@ -105,10 +105,13 @@ elsewhere gets its names forwarded there. `(reload!)` splices again each
 library whose file changed, and what imports it. The suites pass in both
 editions (`SCHEVANA_HACKER=1`, [TESTING.md](TESTING.md)).
 
-A program stands on the core alone (`schevana-demo/`): it imports the core's
-facade, or the pieces it needs, and runs with `schevana-main`, which boots
-the screen, calls a thunk that opens what the program shows, and runs the
-world till it quits:
+A program stands on the core alone (`schevana-demo/`, each with a
+launcher at the root): it imports the core's facade and runs with
+`schevana-main`, which boots the screen, calls a thunk that opens what
+the program shows, and runs the world till it quits. One with no windows
+fills the hooks the windows layer would, what a frame draws
+(`record-world!`), where an event goes (`wm-event!`) and what a tick does
+(`wm-tick!`), as `(schevana-demo rings)` does:
 
 ```scheme no-run
 (import (chezscheme) (schevana core))

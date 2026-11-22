@@ -138,7 +138,13 @@
     window-gone!
     app-load!
     screen-event-seen!
-    worklet-spread)
+    worklet-spread
+    ;; And those the windows layer fills, which a program without it fills
+    ;; itself (schevana-demo rings): what a frame draws, where an event
+    ;; goes, what a tick does.
+    record-world!
+    wm-event!
+    wm-tick!)
   (import (chezscheme)
           (only (schevana base) library-layer define-view define-settable)
           (only (schevana shader) *shader-constants* *shader-helpers*
@@ -261,9 +267,9 @@
                         *pacer-aimed* *pacer-floor* *pacer-latch-phase*
                         *pacer-depth* *pacer-made* *pacer-late-run*
                         *pacer-late-chain* *pacer-gpu-taught* *pacer-between?*
-                        pacer-period) core:)
+                        pacer-period wm-tick! record-world!) core:)
           (prefix (only (schevana core screen) screen-event-seen!) core:)
-          (prefix (only (schevana core loop) *input-step?*) core:)
+          (prefix (only (schevana core loop) *input-step?* wm-event!) core:)
           (prefix (only (schevana core theme) *theme-version* *style-name*
                         *style-changes* *theme-overrides* *scale-setting*
                         default-theme color-keys *palettes* *styles*
@@ -375,4 +381,12 @@
   (define-settable window-gone! core:window-gone!
     procedure?)
   (define-settable app-load! core:app-load!
+    procedure?)
+
+  ;; And those the windows layer fills, for a program that has none.
+  (define-settable record-world! core:record-world!
+    procedure?)
+  (define-settable wm-event! core:wm-event!
+    procedure?)
+  (define-settable wm-tick! core:wm-tick!
     procedure?))

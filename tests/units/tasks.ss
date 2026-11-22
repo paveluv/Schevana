@@ -218,7 +218,8 @@
               (= 65536 (string-length (text 'kit-source)))
               (= 65536 (string-length paragraph) (string-length blob))
               (not (has? paragraph #\newline)) (not (has? blob #\space))
-              (string-prefix? "Ozs7IGtpdHMvdWkuc3M" blob)   ; ";;; kits/ui.ss"
+              ;; ";;; (schevana k", the kit's first bytes
+              (string-prefix? "Ozs7IChzY2hldmFuYSBr" blob)
               (equal? blob (text 'blob)) (equal? gone paragraph)
               (for-all (lambda (id)
                          (<= (string-length (task-description (find-task id)))

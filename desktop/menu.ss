@@ -364,7 +364,9 @@
 (define (toggle-launcher!)
   (if (launcher-open?)
       (close-menu!)
-      (open-launcher! 6 (+ 2 (topbar-height)))))
+      ;; just under the strips at the screen's top (the top bar)
+      (let-values ([(l t w h) (desktop-rect)])
+        (open-launcher! 6 (+ 2 t)))))
 
 ;; A window's menu: a right click on its title or a press on a frame's
 ;; menu button (the window manager calls the part), or a right click on
@@ -394,3 +396,9 @@
   (or (and (assq 'shade (frame-regions win)) #t)
       (eq? (window-setting win 'title-double-click) 'shade)
       (eq? (window-setting win 'title-wheel) 'shade)))
+
+;; ui's menus are this one (kits/ui.ss): what opens them, and the tag of
+;; the one open.
+(set-hook! (ui-menu-open! x y entries . opts)
+  (apply open-menu! x y entries opts))
+(set-hook! (ui-menu-open-tag) (and *menu* (menu-tag *menu*)))

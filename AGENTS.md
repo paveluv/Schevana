@@ -54,7 +54,7 @@ before it:
 | `desktop/` | The screen's own surfaces and the desktop's behavior: wallpaper, bars, menu, toasts, keys, arranging windows. |
 | `styles/`, `palettes/`, `wallpapers/` | One definition per file, registered by its definer. |
 | `apps/` | One app per file, defined with `define-app`; one whose first form is `app-requests` runs in a sandbox of its own (`services/grant.ss`). |
-| `schevana-demo/` | Programs on the core's libraries (`schevana/`), one per file: each imports what it needs and runs (`scheme --libdirs . --program schevana-demo/game.ss`). |
+| `schevana-demo/` | The demos, one library each, `(schevana-demo <name>)`, on the core's facade: a program with a launcher at the root (`./schevana-game-demo`), and an app the desktop's `--demo` adds. |
 
 - **The boot is a chain**: a launcher boots core0, then core1, which
   boots the world (`(schevana desktop main)`). A sealed layer gives the next only what its facade

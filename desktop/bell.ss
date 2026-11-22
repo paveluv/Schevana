@@ -6,7 +6,7 @@
 
 (defvar *bell* #f)   ; (end-ms x y w h) while the flash shows
 
-(define (bell)
+(define-hook (bell)
   (let ([area (case (theme 'bell)
                 [(screen) (list 0 0 (screen-w) (screen-h))]
                 [(window) (and *focus* (call-with-values

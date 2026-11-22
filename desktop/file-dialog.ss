@@ -119,9 +119,9 @@
                 (= (date-day d) (date-day n)))
            (format "~2,'0d:~2,'0d" (date-hour d) (date-minute d))]
           [(= (date-year d) (date-year n))
-           (format "~a ~a" (vector-ref month-names (- (date-month d) 1))
+           (format "~a ~a" (vector-ref ui-month-names (- (date-month d) 1))
                    (date-day d))]
-          [else (format "~a ~a, ~a" (vector-ref month-names
+          [else (format "~a ~a, ~a" (vector-ref ui-month-names
                                                 (- (date-month d) 1))
                         (date-day d) (date-year d))])))
 

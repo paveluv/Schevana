@@ -829,11 +829,12 @@
 ;; A column's well and heading: its status dot g in, its name and its
 ;; count g apart; empty, it shows ().
 (define (cons-tasks-column x y w h flags status label count)
-  (let* ([hh (tasks-column-header-height)] [g (cons-space)]
-         [m (tasks-mark-size)] [lh (font-line-height 'ui-bold)]
+  (let* ([hh ((theme-part 'tasks-column-header-height))] [g (cons-space)]
+         [m ((world-value 'tasks-mark-size))] [lh (font-line-height 'ui-bold)]
          [sh (font-line-height 'ui-small)])
     (ui-draw-surface x y w h '(well))
-    (let* ([dw (tasks-draw-mark (+ x g) (+ y (/ (- hh m) 2)) m 'status status)]
+    (let* ([dw ((theme-part 'tasks-draw-mark) (+ x g) (+ y (/ (- hh m) 2)) m
+                'status status)]
            [end (draw-text (if (> dw 0) (+ x g m g) (+ x g))
                            (+ y (/ (- hh lh) 2)) label 'text 'ui-bold)])
       (draw-text (+ end g) (+ y (/ (- hh sh) 2)) (number->string count)

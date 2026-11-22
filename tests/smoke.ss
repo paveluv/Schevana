@@ -2834,7 +2834,8 @@
   (steps 1))
 
 ;; A window opened under an older kit holds a ui this kit cannot read:
-;; loading the kit again (as a reload does) opens its app in its place.
+;; the kit's library evaluated again and run (as a reload does) opens its
+;; app in its place.
 (for-each (lambda (w) (when (eq? (window-app w) 'clock) (close-window! w)))
           (windows))
 (let ([old (clock)])
@@ -2842,7 +2843,8 @@
   (hashtable-set! (window-props old) 'ui 'an-older-kits-ui)
   (let ([x (window-x old)] [y (window-y old)]
         [w (window-w old)] [h (window-h old)])
-    (load-sources! '("kits/ui.ss"))
+    (load (source-path "schevana/kits/ui.sls"))
+    (invoke-library '(schevana kits ui))
     (steps 2)
     (let ([new (find-window 'clock)])
       (check "reloading the kit reopens a window of an older kit's ui in its \

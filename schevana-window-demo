@@ -1,0 +1,13 @@
+#!/usr/bin/env scheme-script
+;;; schevana-window-demo — a program on the core alone: a surface the
+;;; screen's size and a window over it, no desktop ((schevana-demo
+;;; window)).
+;;;
+;;;   ./schevana-window-demo [--headless [--fork]]
+
+(import (chezscheme))
+
+(let ([root (path-parent (car (command-line)))])
+  (load (string-append (if (string=? root "") "." root) "/src/launch.ss"))
+  ((eval 'schevana-launch) root '(schevana-demo window) 'window-demo-main
+   (command-line-arguments)))

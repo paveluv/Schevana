@@ -198,13 +198,18 @@
     (set! *toasts* '())
     (steps 1)))
 
-;; (reload!) in a world REPL reloads the world, not the REPL: a file of the
-;; world's (kits/ui.ss) defines its procedures again.
-(let ([p (repl 'world)] [old ui-button])
+;; (reload!) in a world REPL reloads the world, not the REPL: its toast
+;; says it did.
+(let ([p (repl 'world)])
+  (set! *toasts* '())
   (steps 2)
   (test-type! "(reload!)")
   (test-press! 'return)
-  (let ([reloaded? (test-wait 10000 (lambda () (not (eq? ui-button old))))])
+  (let ([reloaded?
+         (test-wait 10000
+           (lambda ()
+             (exists (lambda (t) (equal? (vector-ref t 1) "Sources reloaded"))
+                     *toasts*)))])
     (test-wait 10000 (lambda () (not (repl-proc (window-ref p 'state)))))
     ;; the REPL's own: the world's styles must not see it
     (test-type! "(define (title-height) 99)")

@@ -286,7 +286,7 @@
 (define (profile-ms ns) (/ ns 1e6))
 
 ;; What this thread has run so far, by its CPU clock: ns.
-(define (profile-thread-cpu) (thread-cpu-ns))
+(define-hook (profile-thread-cpu) (thread-cpu-ns))
 
 ;;; ------------------------------------------------------------------ spans
 
@@ -404,7 +404,7 @@
 
 ;; The tick's slot in the ring: its fields and phases, its uses into the
 ;; uses' ring and the second's table, and by subject into the second's.
-(define (profile-tick-done! now ns)
+(define-hook (profile-tick-done! now ns)
   (let* ([r *profile-ticks-ring*] [names profile-tick-fields]
          [seq (fx+ *profile-tick-newest* 1)] [slot (profile-slot-of r seq)]
          [sr *profile-seconds-ring*] [sn profile-second-fields]

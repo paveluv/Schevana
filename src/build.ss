@@ -1,22 +1,31 @@
-;;; src/build.ss — compiles a program on the stack, and the libraries it
-;;; imports, into out/lib: the libraries each to its own file, and the
-;;; program with them all as one.
+;;; src/build.ss — a library's main as a program of its own, compiled with
+;;; the libraries it imports into out/lib: the libraries each to its own
+;;; file, and the program with them all as one, which runs with no tree.
 ;;;
-;;;   scheme --script src/build.ss schevana-demo/game.ss
-;;;   scheme --program out/lib/game.so
+;;;   scheme --script src/build.ss schevana-demo game game-main
+;;;   scheme --program out/lib/game.so --headless
 ;;;
-;;; From the tree's root. A program runs from source too, compiled as it
-;;; loads: scheme --libdirs . --program schevana-demo/game.ss
+;;; From the tree's root: the library's name, its parts, then its main,
+;;; which is handed the program's command line's arguments.
 
-(let* ([program (car (command-line-arguments))]
-       [name (path-root (path-last program))]
+(let* ([args (command-line-arguments)]
+       [library (map string->symbol (reverse (cdr (reverse args))))]
+       [main (string->symbol (car (last-pair args)))]
+       [name (symbol->string (car (last-pair library)))]
        [out (lambda (extension) (format "out/lib/~a.~a" name extension))])
   (library-directories '(("." . "out/lib")))
   (compile-imported-libraries #t)
   (generate-wpo-files #t)
   (for-each (lambda (dir) (unless (file-directory? dir) (mkdir dir)))
             '("out" "out/lib"))
-  (compile-program program (out "program.so"))
+  (call-with-output-file (out "ss")
+    (lambda (p)
+      (write `(import (chezscheme) ,library) p)
+      (newline p)
+      (write `(,main (command-line-arguments)) p)
+      (newline p))
+    'replace)
+  (compile-program (out "ss") (out "program.so"))
   ;; The libraries stay visible to (environment ...), which a REPL's
   ;; environment is made with.
   (let ([missing (compile-whole-program (out "program.wpo") (out "so") #t)])

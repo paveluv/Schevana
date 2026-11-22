@@ -27,7 +27,7 @@
 ;; each segment under the watchdog.
 (defvar *status-shown* '())
 
-(define (refresh-status!)
+(define-hook (refresh-status!)
   (set! *status-shown*
     (map (lambda (s)
            (cons (car s)
@@ -80,12 +80,10 @@
 (define (status-busy) (format "busiest tick ~,1f ms" (pacer-peak-ms!)))
 
 (define day-names '#("Sun" "Mon" "Tue" "Wed" "Thu" "Fri" "Sat"))
-(define month-names
-  '#("Jan" "Feb" "Mar" "Apr" "May" "Jun" "Jul" "Aug" "Sep" "Oct" "Nov" "Dec"))
 
 (define (status-clock)
   (let ([d (current-date)])
     (format "~a ~a ~a   ~2,'0d:~2,'0d:~2,'0d"
             (vector-ref day-names (date-week-day d)) (date-day d)
-            (vector-ref month-names (- (date-month d) 1))
+            (vector-ref ui-month-names (- (date-month d) 1))
             (date-hour d) (date-minute d) (date-second d))))

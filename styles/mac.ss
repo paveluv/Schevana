@@ -1,7 +1,7 @@
 ;;; styles/mac.ss — the Mac window style.
 ;;; Traffic lights on the left, glyphs on hover, centered title.
 
-(define (draw-resize-grip x y)
+(define-hook (draw-resize-grip x y)
   (for-each (lambda (d)
               (draw-line (- x d) (- y 3) (- x 3) (- y d) (alpha 'text 0.18) 1))
             '(7 11)))
