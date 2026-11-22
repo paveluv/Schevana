@@ -129,3 +129,40 @@
                (close-window! fd)
                (close-window! parent)
                (and (equal? named "one.ss") (equal? into "a")))))))
+
+;; What it picks: picking folders, the one selected or named, or with none
+;; the folder shown, a file not; picking either, a file too.
+(check "a dialog picking folders picks the folder selected, or the one shown \
+        with none selected, and no file; one picking either picks a file too"
+       (let* ([parent (open-window "Waits" 'size '(300 . 200) 'pos '(40 . 40))]
+              [open (lambda (picks)
+                      (open-file-dialog parent "Add" "Add" (lambda (p) #f)
+                                        'folder file-dialog-test-tree
+                                        'picks picks)
+                      (steps 2)
+                      (let ([fd (focused-window)])
+                        (values fd (window-ref fd 'state))))]
+              [select (lambda (d name)
+                        (file-dialog-selected-set!
+                         d (find (lambda (e)
+                                   (equal? (file-dialog-entry-name e) name))
+                                 (file-dialog-shown d))))])
+         (let-values ([(fd d) (open 'folders)])
+           (let ([none (file-dialog-choice d)])
+             (select d "a")
+             (let ([folder (file-dialog-choice d)])
+               (select d "one.ss")
+               (let ([file (file-dialog-choice d)])
+                 (close-window! fd)
+                 (let-values ([(fd2 d2) (open 'any)])
+                   (select d2 "one.ss")
+                   (let ([any-file (file-dialog-choice d2)])
+                     (close-window! fd2)
+                     (close-window! parent)
+                     (and (equal? none file-dialog-test-tree)
+                          (equal? folder (file-dialog-join
+                                          file-dialog-test-tree "a"))
+                          (not file)
+                          (equal? any-file (file-dialog-join
+                                            file-dialog-test-tree
+                                            "one.ss")))))))))))

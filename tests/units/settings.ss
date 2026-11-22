@@ -119,3 +119,37 @@
        (and (eq? (settings-style-name "My Genera") 'my-genera)
             (eq? (settings-style-name "  CDE: Broica II ") 'cde-broica-ii)
             (not (settings-style-name " - "))))
+
+;; Settings' Paths tab: the library search by rank, what auto-loads, and a
+;; path added there, picked in the file dialog, joins both when Auto-load
+;; is ticked.
+(let ([dir (string-append out-dir "/paths-tab")])
+  (system (format "rm -rf '~a' && mkdir -p '~a'" dir dir))
+  (for-each close-window! (windows))
+  (app-launch! 'settings)
+  (steps 2)
+  (let ([win (find-window 'settings)] [added *auto-loads*])
+    (settings-st-tab-set! (window-ref win 'state) 'paths)
+    (invalidate! win)
+    (steps 2)
+    (test-click! win 'path-auto)
+    (test-click! win 'path-add)
+    (steps 2)
+    ;; the dialog, over Settings: the folder named, then Add
+    (let* ([fd (focused-window)] [d (window-ref fd 'state)])
+      (file-dialog-name-set! d (path-full dir))
+      (invalidate! fd)
+      (steps 1)
+      (test-click! fd '(file-dialog pick))
+      (steps 2))
+    (check (format "the Paths tab adds a folder to the library search and, \
+                    asked, to what auto-loads ~s" (auto-loads))
+           (and (not (window-error win))
+                (member (path-full dir) (auto-loads))
+                (not (member (path-full dir) added))
+                (exists (lambda (d)
+                          (equal? (path-full (if (pair? d) (car d) d))
+                                  (path-full dir)))
+                        (library-directories))))
+    (auto-load-forget! dir)
+    (close-window! win)))

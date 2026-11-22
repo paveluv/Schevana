@@ -7,7 +7,8 @@
     reload-ended!
     reload-holding? schevana-step! schevana-run! *running* quit! schevana-end!
     uptime-ms
-    user-directory user-library-directory add-library-directory! schevana-boot!
+    user-directory user-library-directory path-full add-library-directory!
+    schevana-boot!
     collector-young-quiet collector-old-quiet *collector-pass*
     *collector-holding?* *collector-check-ms* *collector-input-ms*
     *collector-old-kept* collector-collect! collector-declining?
@@ -231,14 +232,32 @@
   ;; (import (acme math)) also finds acme/math.sls here.
   (define-made user-library-directory (string-append user-directory "/lib"))
 
-  ;; Make import search dir before Chez's own library directories. It need
-  ;; not exist yet.
+  ;; path in full, as a path is kept once given: ~ the home folder, a
+  ;; relative one from the current folder, its . and .. resolved, no slash
+  ;; at its end.
+  (define (path-full path)
+    (let* ([p (cond [(string-prefix? "~/" path)
+                     (string-append (or (getenv "HOME") "")
+                                    (substring path 1 (string-length path)))]
+                    [(path-absolute? path) path]
+                    [else (string-append (current-directory) "/" path)])]
+           [parts (let loop ([ps (string-split p #\/)] [acc '()])
+                    (cond [(null? ps) (reverse acc)]
+                          [(member (car ps) '("" ".")) (loop (cdr ps) acc)]
+                          [(equal? (car ps) "..")
+                           (loop (cdr ps) (if (pair? acc) (cdr acc) acc))]
+                          [else (loop (cdr ps) (cons (car ps) acc))]))])
+      (if (null? parts)
+          "/"
+          (apply string-append (map (lambda (s) (string-append "/" s))
+                                    parts)))))
+
+  ;; Make import search dir, in full, before Chez's own library
+  ;; directories. It need not exist yet.
   (define (add-library-directory! dir)
-    (let ([dir (if (string-prefix? "~/" dir)
-                   (string-append (or (getenv "HOME") "")
-                                  (substring dir 1 (string-length dir)))
-                   dir)])
-      (unless (exists (lambda (e) (equal? (if (pair? e) (car e) e) dir))
+    (let ([dir (path-full dir)])
+      (unless (exists (lambda (e) (equal? (path-full (if (pair? e) (car e) e))
+                                          dir))
                       (library-directories))
         (library-directories (cons (cons dir dir) (library-directories))))
       dir))

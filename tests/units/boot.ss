@@ -104,20 +104,21 @@
                     desktop-defaults)])
   (fluid-let ([desktop-usage (lambda () 'usage)])
     (check "the desktop reads the command line once: what's asked over the \
-            defaults, in their order, and the usage for a word it doesn't \
-            know"
+            defaults, in their order, a word that is no option a path to \
+            load, and the usage for an option it doesn't know"
            (and (equal? (desktop-options '()) defaults)
                 (equal? (desktop-options '("--headless" "--size" "400x300"
-                                           "--eval" "1" "--fork" "--demo"
-                                           "--eval" "2" "--hacker"))
+                                           "--eval" "1" "--fork" "demos"
+                                           "--eval" "2" "--hacker"
+                                           "/tmp/more.ss"))
                         '((mode . headless)
                           (size 400 . 300)
                           (full-screen? . #f)
                           (fork? . #t)
                           (desktop . #f)
                           (hacker . #t)
-                          (demo . #t)
-                          (evals "1" "2")))
+                          (evals "1" "2")
+                          (auto-loads "demos" "/tmp/more.ss")))
                 (eq? (desktop-options '("--size" "400")) 'usage)
                 (eq? (desktop-options '("--size")) 'usage)
                 (eq? (desktop-options '("--frobnicate")) 'usage)

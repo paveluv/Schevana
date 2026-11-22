@@ -78,14 +78,14 @@ brew install spirv-tools
 | `--headless` | no window: the world runs offscreen, as in the tests |
 | `--fork` | core1 on a thread of its own even when headless |
 | `--hacker` | the hacker edition: every library's names, internals too, in the world, to see and redefine live ([INTERNALS.md](INTERNALS.md)) |
-| `--demo` | the demos' apps too (`schevana-demo/`) |
+| `PATH`... | files and folders to load with the world, folders recursively, at boot and at each `(reload!)`, after the screen shows (`./schevana-desktop schevana-demo` adds the demos' apps) |
 | `--install-desktop` | installs a `.desktop` file, for the icon (below) |
 | `--uninstall-desktop` | removes it |
 
 The demos are programs on the core, with no desktop, each with a
 launcher beside `schevana-desktop`; `--headless` draws a frame and tells
-what it read back. On the desktop, `--demo` adds the game and the rings
-as apps. The checklist is a plain script, no library of its own:
+what it read back. On the desktop, `./schevana-desktop schevana-demo`
+adds the game and the rings as apps. The checklist is a plain script, no library of its own:
 `schevana-window-demo.ss` imports what it needs and opens its window, and
 `schevana-window-demo.sh` runs it with the tree as Chez's library folder,
 Chez compiling each library into the launchers' cache as it's imported.

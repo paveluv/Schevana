@@ -1,11 +1,13 @@
 ;;; (schevana desktop file-dialog) — the desktop's file dialog: a window that
-;;; picks a file for the window that asked, which waits on it (ui-open-modal).
+;;; picks a file, a folder, or either, for the window that asked, which
+;;; waits on it (ui-open-modal).
 ;;;
 ;;;   (open-file-dialog parent "Load into /lab" "Load"
 ;;;                     (lambda (path) ...)
 ;;;                     'folder "~/code"
 ;;;                     'types '(("Scheme files" "ss" "sls" "scm")
 ;;;                              ("All files")))
+;;;   (open-file-dialog parent "Add a path" "Add" add! 'picks 'any)
 ;;;
 ;;; Across the top, Back, Forward and Up, the folder as crumbs (Home for
 ;;; your home) and a filter. Left, places (Home, Schevana's tree, your
@@ -21,7 +23,8 @@
 (library (schevana desktop file-dialog)
   (export
     file-dialog make-file-dialog file-dialog? file-dialog-parent
-    file-dialog-on-pick file-dialog-on-cancel file-dialog-types file-dialog-ui
+    file-dialog-on-pick file-dialog-on-cancel file-dialog-types
+    file-dialog-picks file-dialog-ui
     file-dialog-folder file-dialog-folder-set! file-dialog-back
     file-dialog-back-set! file-dialog-forward file-dialog-forward-set!
     file-dialog-selected file-dialog-selected-set! file-dialog-name
@@ -37,7 +40,7 @@
     file-dialog-crumbs file-dialog-size-label file-dialog-date-label
     file-dialog-size file-dialog-read file-dialog-entries file-dialog-shown
     file-dialog-go! file-dialog-show! file-dialog-back! file-dialog-forward!
-    file-dialog-up! file-dialog-target file-dialog-file file-dialog-open!
+    file-dialog-up! file-dialog-target file-dialog-choice file-dialog-open!
     file-dialog-pick! file-dialog-cancel! file-dialog-closed!
     file-dialog-choices draw-file-dialog-icon draw-file-dialog-icon*
     draw-file-dialog-name draw-file-dialog-name* file-dialog-toolbar
@@ -63,8 +66,10 @@
   (library-layer desktop)
 
   (define-record-type file-dialog
-    (nongenerative schevana-file-dialog-1)
-    (fields parent on-pick on-cancel types ui
+    (nongenerative schevana-file-dialog-2)
+    (fields parent on-pick on-cancel types
+            picks                ; files, folders or any: what it may pick
+            ui
             (mutable folder)
             (mutable back)       ; the folders before, the newest first
             (mutable forward)    ; and after, as Back left them
@@ -288,19 +293,26 @@
             [e (file-dialog-entry-path e)]
             [else #f])))
 
-  ;; The file to pick: the target, when it is a file that is there.
-  (define (file-dialog-file d)
-    (let ([p (file-dialog-target d)])
-      (and p (file-exists? p) (not (file-directory? p)) p)))
+  ;; What the action picks, as the dialog picks files, folders or any: the
+  ;; target, a file that is there or a folder; with none named or selected,
+  ;; the folder shown, where a folder may be picked; else #f.
+  (define (file-dialog-choice d)
+    (let ([p (file-dialog-target d)]
+          [folders? (memq (file-dialog-picks d) '(folders any))]
+          [files? (memq (file-dialog-picks d) '(files any))])
+      (cond [(not p) (and folders? (file-dialog-folder d))]
+            [(file-directory? p) (and folders? p)]
+            [(file-exists? p) (and files? p)]
+            [else #f])))
 
   ;; Return, or a double click: a folder named or selected is gone into, a
-  ;; file picked.
+  ;; file picked; with none, the folder shown, where a folder may be.
   (define (file-dialog-open! d)
     (let ([p (file-dialog-target d)])
       (cond [(and p (file-directory? p))
              (file-dialog-name-set! d "")
              (file-dialog-go! d p)]
-            [(file-dialog-file d) => (lambda (f) (file-dialog-pick! d f))])))
+            [(file-dialog-choice d) => (lambda (f) (file-dialog-pick! d f))])))
 
   ;; The dialog closes, then the window that waited gets the path.
   (define (file-dialog-pick! d path)
@@ -543,9 +555,9 @@
       (ui-button ui '(file-dialog cancel) cx cy cw ch "Cancel"
                  (lambda () (file-dialog-cancel! d)) 'tip "Escape")
       (ui-button ui '(file-dialog pick) bx cy aw ch action
-                 (lambda () (let ([f (file-dialog-file d)])
+                 (lambda () (let ([f (file-dialog-choice d)])
                               (when f (file-dialog-pick! d f))))
-                 'primary #t 'disabled (not (file-dialog-file d)))))
+                 'primary #t 'disabled (not (file-dialog-choice d)))))
 
   (define (file-dialog-draw d action w h)
     (let* ([ui (file-dialog-ui d)]
@@ -613,8 +625,9 @@
   ;; its action's button action; a file picked calls (on-pick path) as
   ;; parent's handler. opts: 'folder (where it opens: the current
   ;; directory's by default), 'types (((label ext ...) ...), the first
-  ;; shown; one with no ext shows every file: All files by default), and
-  ;; 'on-cancel (a thunk). => the dialog's window
+  ;; shown; one with no ext shows every file: All files by default),
+  ;; 'picks (files, the default; folders; or any, either), and 'on-cancel
+  ;; (a thunk). => the dialog's window
   (define (open-file-dialog parent title action on-pick . opts)
     (let* ([ui (make-ui)]
            [folder (file-dialog-resolve (current-directory)
@@ -622,6 +635,7 @@
                                                    (current-directory)))]
            [d (make-file-dialog parent on-pick (plist-ref opts 'on-cancel #f)
                                 (plist-ref opts 'types '(("All files")))
+                                (plist-ref opts 'picks 'files)
                                 ui (if (file-directory? folder)
                                        folder
                                        (file-dialog-home))

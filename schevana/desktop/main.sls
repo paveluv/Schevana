@@ -10,13 +10,12 @@
 
 (library (schevana desktop main)
   (export desktop-defaults desktop-size desktop-usage desktop-options
-          desktop-fork? desktop-demos desktop-demos-load! desktop-later?
+          desktop-fork? desktop-later?
           desktop-main)
   (import (chezscheme)
-          (only (schevana base) library-layer define-hook string-prefix?
-                string-suffix?)
-          (only (schevana core) core1-run core1-boot! world-value
-                *schevana-root*))
+          (only (schevana base) library-layer define-hook string-prefix?)
+          (only (schevana core) auto-load! auto-load-layer core1-run
+                core1-boot! world-app-file? world-value))
 
   (library-layer desktop)
 
@@ -28,8 +27,8 @@
       (fork? . #f)
       (desktop . #f)
       (hacker . #f)
-      (demo . #f)
-      (evals)))
+      (evals)
+      (auto-loads)))
 
   ;; "1280x800" => (1280 . 800); #f if it isn't a size.
   (define (desktop-size s)
@@ -47,14 +46,16 @@
     (fprintf (current-error-port)
              "usage: schevana-desktop [--size WxH] [--fullscreen] \
               [--headless] [--fork]\n                        \
-              [--hacker] [--demo] [--eval EXPR]...\n       \
+              [--hacker] [--eval EXPR]... [PATH]...\n       \
               schevana-desktop --install-desktop | --uninstall-desktop\n")
     (exit 1))
 
-  ;; What args ask, as desktop-defaults has it: a word it doesn't know
-  ;; prints the usage and stops. Core1's boot is handed it, which the world
-  ;; reads as *schevana-options*. The hacker edition is asked by --hacker
-  ;; or SCHEVANA_HACKER, as src/launch.ss asks it.
+  ;; What args ask, as desktop-defaults has it: a word that isn't an
+  ;; option is a file or folder to load with the world (auto-load!), an
+  ;; option it doesn't know prints the usage and stops. Core1's boot is
+  ;; handed it, which the world reads as *schevana-options*. The hacker
+  ;; edition is asked by --hacker or SCHEVANA_HACKER, as src/launch.ss asks
+  ;; it.
   (define (desktop-options args)
     (let loop ([args args]
                [opts (let ([v (getenv "SCHEVANA_HACKER")])
@@ -72,7 +73,6 @@
         [(arg? "--fullscreen") (next 1 'full-screen? #t)]
         [(arg? "--fork") (next 1 'fork? #t)]
         [(arg? "--hacker") (next 1 'hacker #t)]
-        [(arg? "--demo") (next 1 'demo #t)]
         [(arg? "--install-desktop") (next 1 'desktop 'install)]
         [(arg? "--uninstall-desktop") (next 1 'desktop 'uninstall)]
         [(and (value? "--size") (desktop-size (cadr args)))
@@ -80,6 +80,9 @@
         [(value? "--eval")
          (next 2 'evals
                (append (cdr (assq 'evals opts)) (list (cadr args))))]
+        [(not (string-prefix? "-" (car args)))
+         (next 1 'auto-loads
+               (append (cdr (assq 'auto-loads opts)) (list (car args))))]
         [else (desktop-usage)])))
 
   ;; A window wants the two threads, core0's for the screen and core1 for
@@ -89,33 +92,17 @@
     (and (not (cdr (assq 'desktop opts)))
          (or (eq? (cdr (assq 'mode opts)) 'sdl) (cdr (assq 'fork? opts)))))
 
-  ;; The demos' libraries, (schevana-demo name), by their files in
-  ;; schevana-demo/, in file-name order.
-  (define (desktop-demos)
-    (let ([dir (string-append *schevana-root* "/schevana-demo")])
-      (if (file-directory? dir)
-          (map (lambda (f)
-                 (list 'schevana-demo
-                       (string->symbol (path-root f))))
-               (sort string<?
-                     (filter (lambda (f) (string-suffix? ".sls" f))
-                             (directory-list dir))))
-          '())))
-
-  ;; Each demo's library, invoked: an app it defines registers itself
-  ;; (define-app), and shows among the apps.
-  (define (desktop-demos-load!)
-    (for-each invoke-library (desktop-demos)))
-
   ;; The desktop, from the command line's args. Installing its entry
   ;; opens no window.
-  ;; What of the world loads after the screen shows: the apps, libraries
-  ;; and files, the heaviest of it; the desktop opens its first apps itself
+  ;; What of the world loads after the screen shows: the apps, the heaviest
+  ;; of it, Schevana's and those of a folder added, a library by the layer
+  ;; it declares, a file in an apps folder; a kit or a look, of any
+  ;; folder, loads first. The desktop opens its first apps itself
   ;; (desktop-start!), loading them first.
   (define (desktop-later? entry)
     (if (pair? entry)
-        (eq? (cadr entry) 'apps)
-        (string-prefix? "apps/" entry)))
+        (eq? (auto-load-layer entry) 'apps)
+        (world-app-file? entry)))
 
   (define (desktop-main args)
     (let* ([options (desktop-options args)]
@@ -125,6 +112,6 @@
                  (car size) (cdr size) (option 'full-screen?)
                  (desktop-fork? options)
                  (lambda ()
+                   (for-each auto-load! (option 'auto-loads))
                    (core1-boot! options desktop-later?)
-                   (when (option 'demo) (desktop-demos-load!))
                    ((world-value 'desktop-start!)))))))

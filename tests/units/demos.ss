@@ -86,13 +86,65 @@
                 (equal? (guard (c [#t #f]) (read (open-input-string out)))
                         '(gnome () ()))))))
 
-;; On the desktop: each demo's library invoked, as --demo has it.
-(desktop-demos-load!)
+;; A path is kept in full, as given to auto-load! or the library search:
+;; from the current folder, ~ the home folder, . and .. resolved.
+(check "paths are kept in full: relative, ~, . and .., a slash at the end"
+       (and (equal? (path-full "a/./b/../c/")
+                    (path-full (string-append (current-directory) "/a/c")))
+            (equal? (path-full "/x/y/../../z") "/z")
+            (equal? (path-full "~/apps")
+                    (path-full (string-append (getenv "HOME") "/apps")))
+            (equal? (path-full "/") "/")
+            (for-all (lambda (p)
+                       (and (path-absolute? p)
+                            (not (string-contains-ci? p "/./"))))
+                     (auto-loads))))
 
-(check (format "--demo registers each demo's app (~a)" (desktop-demos))
-       (and (= (length (desktop-demos)) 2)
-            (for-all (lambda (app) (memq app (apps)))
-                     '(rings game))))
+;; On the desktop: the demos' folder loaded with the world, as
+;; ./schevana-desktop schevana-demo has it: each library in it runs, and
+;; an app it defines registers itself.
+(let ([dir (string-append *schevana-root* "/schevana-demo")])
+  (auto-load! dir)
+  (check (format "a folder auto-loaded loads its libraries, by their names \
+                  from the tree: the demos' apps register ~s"
+                 (auto-load-entries dir))
+         (and (equal? (auto-load-entries dir)
+                      '((schevana-demo game) (schevana-demo rings)))
+              ;; made absolute, as the tree's root may not be (".")
+              (string-suffix? "/schevana-demo" (car (last-pair (auto-loads))))
+              (for-all (lambda (app) (memq app (apps))) '(rings game)))))
+
+;; A folder of files of the test's own, read again at (reload!): a file
+;; added since loads, and one taken away is let go of; folders inside it
+;; are read too.
+(let* ([dir (string-append out-dir "/auto")]
+       [file (lambda (name)
+               (call-with-output-file (string-append dir "/" name)
+                 (lambda (p)
+                   (write `(set! auto-counted
+                             (cons ',(string->symbol (path-root
+                                                      (path-last name)))
+                                   auto-counted))
+                          p))
+                 'replace))])
+  (system (format "rm -rf '~a' && mkdir -p '~a/inner'" dir dir))
+  (eval '(define auto-counted '()) *world-env*)
+  (file "a.ss")
+  (file "inner/c.ss")
+  (auto-load! dir)
+  (let ([first (eval 'auto-counted *world-env*)])
+    (file "b.ss")
+    (delete-file (string-append dir "/a.ss"))
+    (eval '(set! auto-counted '()) *world-env*)
+    (reload!)
+    (steps 2)
+    (let ([again (eval 'auto-counted *world-env*)])
+      (check (format "an auto-loaded folder loads its files, recursively, \
+                      and (reload!) reads it again: what was added since \
+                      loads, what was taken away doesn't ~s"
+                     (list first again))
+             (and (equal? first '(c a))
+                  (equal? again '(c b)))))))
 
 (for-each
  (lambda (app)
@@ -105,3 +157,21 @@
      (close-window! (car (windows)))
      (steps 1)))
  '(rings game))
+
+;; A library from outside the tree: its name from its first form, and the
+;; folder its name is found from added to the library search, so that it
+;; loads by its name and "/" has what it exports.
+(let ([dir (string-append out-dir "/autolib")])
+  (system (format "rm -rf '~a' && mkdir -p '~a/auto-test'" dir dir))
+  (call-with-output-file (string-append dir "/auto-test/hello.sls")
+    (lambda (p)
+      (write '(library (auto-test hello)
+                (export auto-hello)
+                (import (chezscheme))
+                (define auto-hello 'hello))
+             p)))
+  (auto-load! dir)
+  (check (format "a library from outside the tree loads by the name its \
+                  first form gives ~s" (auto-load-entries dir))
+         (and (equal? (auto-load-entries dir) '((auto-test hello)))
+              (eq? (eval 'auto-hello *world-env*) 'hello))))

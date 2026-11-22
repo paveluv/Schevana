@@ -10,7 +10,8 @@
           (only (schevana base) define-state library-layer)
           (only (schevana core) *schevana-options* *schevana-root* find-window
                 load-user-folders! load-user-init! move-window! schevana-boot!
-                schevana-end! schevana-run! screen-w world-load-now!)
+                schevana-end! schevana-run! screen-w world-after-load!
+                world-load-now!)
           (only (schevana kits app) app-launch!)
           (only (schevana services grant) grant-file-load!)
           (only (schevana services pacer-lab) pacer-lab-log-load!)
@@ -59,7 +60,6 @@
       (schevana-boot! (option 'mode) (car size) (cdr size)
                       (option 'full-screen?)))
     (update-app-icon!)
-    (load-user-init!)
     ;; The pacer lab goes on if it was on ((schevana services pacer-lab)).
     (pacer-lab-log-load!)
     ;; The first apps, by the registry: their launchers' names come later
@@ -71,7 +71,12 @@
       (app-launch! 'clock)
       (move-window! (find-window 'clock) (- w 270) 60)
       (app-launch! 'repl))
-    (for-each (lambda (e) (eval (read (open-input-string e))))
-              (option 'evals))
+    ;; Your init file and the command line's expressions once all of the
+    ;; world has loaded, the apps that waited too: what they name is there.
+    (world-after-load!
+     (lambda ()
+       (load-user-init!)
+       (for-each (lambda (e) (eval (read (open-input-string e))))
+                 (option 'evals))))
     (schevana-run!)
     (schevana-end!)))

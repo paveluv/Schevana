@@ -44,14 +44,19 @@
     settings-draw-steps settings-draw-color-row settings-draw-big-swatch
     settings-colors settings-parse-hex settings-color-editor
     settings-draw-font-sample settings-fonts settings-display
-    settings-permissions settings-sidebar settings-pane-scrollbar
+    settings-permissions settings-paths settings-path-facts
+    settings-library-file settings-search-row settings-auto-row
+    settings-path-add settings-path-added! settings-sidebar
+    settings-pane-scrollbar
     settings-reveal! settings-draw settings-key settings-wheel settings)
   (import (chezscheme)
           (only (schevana base) at-load clamp define-made define-state
-                library-layer list-index plist-keys plist-ref string-join
-                string-split)
+                filter-map library-layer list-index plist-keys plist-ref
+                string-join string-prefix? string-split)
           (only (schevana core) *gpu-facts* *styles* *wallpapers*
-                *world-env* alpha app chain-ref close-window! color-default!
+                *world-env* *auto-loads* *schevana-root* add-library-directory!
+                auto-load! auto-load-entries auto-load-forget! auto-loads
+                path-full alpha app chain-ref close-window! color-default!
                 color-keys color-rgba common-options current-style
                 current-window define-app detached-window draw-text
                 draw-window* fill-box fill-circle fill-wallpaper find-style
@@ -84,7 +89,8 @@
                 ui-card-radius
                 ui-label-size ui-toggle ui-slider ui-dropdown ui-segmented
                 ui-slider-height ui-button ui-region! ui-draw-label
-                ui-control-height)
+                ui-control-height ui-rows ui-switch-row)
+          (only (schevana desktop file-dialog) open-file-dialog)
           (only (schevana services grant) grant-requested grant-decide!
                 grant-bundle-title grant-undecided grant-app-title grant-asks?
                 grant-of grant-apps)
@@ -95,7 +101,7 @@
 
   (define settings-tabs
     '((theme . "Theme") (colors . "Colors") (fonts . "Fonts")
-      (display . "Display") (permissions . "Permissions")))
+      (display . "Display") (permissions . "Permissions") (paths . "Paths")))
 
   ;; How frames reach the screen, those the window offers shown.
   (define settings-present-choices '(("VSync" . vsync) ("Mailbox" . mailbox)))
@@ -1181,6 +1187,164 @@
            y (grant-apps)))))
 
   ;;; ------------------------------------------------------------------
+  ;;; paths
+
+  ;; Where libraries are found, and what loads with the world: the library
+  ;; search, each folder by its rank (the first that holds a library is the
+  ;; one it loads from), whether it auto-loads; a path to add, to the
+  ;; search and, if asked, to what loads; the files and folders that load
+  ;; with the world; the libraries loaded from a file, each with the rank
+  ;; of the folder it came from and whether it auto-loads. => the y below
+  (define (settings-paths ui x y w)
+    (let* ([facts (settings-path-facts ui)]
+           [dirs (car facts)] [own (cadr facts)] [libs (caddr facts)]
+           [h (ui-control-height)] [gap (ui-gap)]
+           [y (+ 12 (ui-draw-label x y w 0 '(hint wrap)
+                                   "Libraries are found in these folders, \
+                                    the first that holds one by rank, and \
+                                    what auto-loads loads with the world, \
+                                    at boot and at each reload, a folder \
+                                    read again each time."))]
+           [y (ui-rows ui 'search x y w
+                       (map (lambda (d i) (settings-search-row ui d i))
+                            dirs (iota (length dirs)))
+                       'title "Library paths")]
+           [y (settings-path-add ui x (+ y 18) w)]
+           [y (ui-rows ui 'auto x (+ y 18) w
+                       (map (lambda (p) (settings-auto-row ui p (member p own)))
+                            (auto-loads))
+                       'title "Auto-load")])
+      (ui-rows ui 'libs x (+ y 18) w
+               (map (lambda (l)
+                      (list (format "~s" (car l))
+                            (format "Rank ~a~a · ~a" (cadr l)
+                                    (if (cadddr l) ", auto-loads" "")
+                                    (caddr l))
+                            0 #f
+                            'key (car l)))
+                    libs)
+               'title "Loaded libraries"
+               'description (format "~a more of Chez's own, with no file"
+                                    (- (length (library-list))
+                                       (length libs))))))
+
+  ;; What the tab shows, worked out once while the library search, the
+  ;; libraries loaded and what auto-loads stay the same: (search-folders
+  ;; own-auto-loads ((name rank file auto?) ...)).
+  (define (settings-path-facts ui)
+    (let ([key (list (library-directories) (length (library-list))
+                     (auto-loads))]
+          [kept (ui-memo ui 'path-facts #f)])
+      (if (and kept (equal? (car kept) key))
+          (cdr kept)
+          (let* ([dirs (library-directories)]
+                 [entries (apply append (map auto-load-entries (auto-loads)))]
+                 [libs (filter-map
+                        (lambda (name)
+                          (let loop ([ds dirs] [i 1])
+                            (and (pair? ds)
+                                 (let ([f (settings-library-file
+                                           (if (pair? (car ds)) (caar ds)
+                                               (car ds))
+                                           name)])
+                                   (if f
+                                       (list name i f
+                                             (and (member name entries) #t))
+                                       (loop (cdr ds) (+ i 1)))))))
+                        (list-sort (lambda (a b)
+                                     (string<? (format "~s" a)
+                                               (format "~s" b)))
+                                   (library-list)))]
+                 [own (list-head (auto-loads)
+                                 (- (length (auto-loads))
+                                    (length *auto-loads*)))]
+                 [facts (list dirs own libs)])
+            (ui-memo! ui 'path-facts (cons key facts))
+            facts))))
+
+  ;; The file of library name in folder dir, a source's, or #f.
+  (define (settings-library-file dir name)
+    (let ([base (string-append (path-full dir) "/"
+                               (string-join (map symbol->string name) "/"))])
+      (find file-exists?
+            (map (lambda (ext) (string-append base ext)) '(".sls" ".ss")))))
+
+  ;; A folder of the library search, d (source . objects), its rank i + 1:
+  ;; how it is written where that isn't in full (Chez's ".", the current
+  ;; folder), where its libraries compile to, and whether it auto-loads,
+  ;; which a folder holding the tree itself never may (its tests and its
+  ;; own sources would load).
+  (define (settings-search-row ui d i)
+    (let* ([source (if (pair? d) (car d) d)]
+           [objects (if (pair? d) (cdr d) d)]
+           [path (path-full source)]
+           [tree? (string-prefix? (string-append path "/")
+                                  (string-append (path-full *schevana-root*)
+                                                 "/"))]
+           [on? (and (member path (auto-loads)) #t)])
+      (ui-switch-row ui (list 'search-auto i) path on?
+                     (lambda (on)
+                       (if on (auto-load! path) (auto-load-forget! path)))
+                     'subtitle
+                     (string-append
+                      (format "Rank ~a" (+ i 1))
+                      (if (equal? source path) "" (format ", as ~s" source))
+                      (if (equal? (path-full objects) path)
+                          ", from its sources"
+                          (format ", compiled into ~a" (path-full objects)))
+                      (if tree? ", the tree's" ""))
+                     'disabled
+                     (or tree? (and on? (not (member path *auto-loads*)))))))
+
+  ;; A file or folder that auto-loads: Schevana's own (own?), or one added,
+  ;; which may be taken off; one not there yet says so.
+  (define (settings-auto-row ui path own?)
+    (list path
+          (string-append (if own? "Schevana's" "Added")
+                         (if (file-exists? path) "" ", not there"))
+          (if own? 0 90)
+          (and (not own?)
+               (lambda (x y w h)
+                 (ui-button ui (list 'auto-forget path)
+                            x (+ y (/ (- h (ui-control-height)) 2)) w
+                            (ui-control-height) "Remove"
+                            (lambda () (auto-load-forget! path)))))
+          'key path))
+
+  ;; A path to add, picked in the file dialog, a folder or a file: a folder
+  ;; joins the library search, and either what auto-loads if asked. => the
+  ;; y below
+  (define (settings-path-add ui x y w)
+    (let* ([h (ui-control-height)] [gap (ui-gap)]
+           [choose-w (call-with-values
+                       (lambda () (ui-button-size "Choose…" #f))
+                       (lambda (bw bh) bw))]
+           [y (ui-draw-label x y w 0 '(section) "Add a path")])
+      (ui-button ui 'path-add x (+ y 6) choose-w h "Choose…"
+                 (lambda ()
+                   (open-file-dialog (current-window) "Add a path" "Add"
+                                     (lambda (p)
+                                       (settings-path-added!
+                                        p (ui-memo ui 'path-auto #f)))
+                                     'picks 'any
+                                     'folder "~"
+                                     'types '(("Libraries" "sls" "ss")
+                                              ("All files"))))
+                 'primary #t)
+      (ui-checkbox ui 'path-auto (+ x choose-w gap gap) (+ y 6)
+                   (- w choose-w gap gap) h
+                   "Auto-load it: load what it holds now, and with the world"
+                   (ui-memo ui 'path-auto #f)
+                   (lambda (on) (ui-memo! ui 'path-auto on)))
+      (+ y 6 h)))
+
+  ;; path, picked: a folder joins the library search; auto?, it auto-loads.
+  (define (settings-path-added! path auto?)
+    (let ([p (path-full path)])
+      (when (file-directory? p) (add-library-directory! p))
+      (when auto? (auto-load! p))))
+
+  ;;; ------------------------------------------------------------------
   ;;; the app
 
   (define (settings-sidebar ui st sw h)
@@ -1261,6 +1425,7 @@
                          [(fonts) (settings-fonts ui x y cw)]
                          [(display) (settings-display ui x y cw)]
                          [(permissions) (settings-permissions ui x y cw)]
+                         [(paths) (settings-paths ui x y cw)]
                          [else (settings-theme-tab ui x y cw)])))]
            [content-h (+ (- bottom y) 20 18)]
            [max-scroll (max 0 (- content-h h))])

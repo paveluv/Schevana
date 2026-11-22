@@ -81,7 +81,9 @@
     load-user-init! user-directory schevana-boot! collector-declining?
     source-path source-files *source-texts* keep-source-text! load-file!
     load-user-folders! reload! core1-run core1-boot! look-load!
-    world-load-now! *world-later*
+    world-load-now! *world-later* auto-load! auto-load-forget! auto-loads
+    *auto-loads* auto-load-layer world-app-file? world-after-load!
+    auto-load-entries path-full add-library-directory!
     ;; (schevana core theme): the theme, styles, palettes, wallpapers and
     ;; parts
     *theme-version* *style-name* *style-changes* *theme-overrides*
@@ -224,7 +226,8 @@
           (prefix (only (schevana core screen) *screen-least*) core:)
           (only (schevana core loop) post-core1! schevana-run! quit!
                 schevana-end! uptime-ms user-directory schevana-boot!
-                collector-declining? core1-run loop-main)
+                collector-declining? core1-run loop-main path-full
+                add-library-directory!)
           (only (schevana core theme) common-options theme-default
                 define-palette palettes palette-title palette-colors
                 define-wallpaper wallpapers wallpaper-shown fill-wallpaper style
@@ -258,7 +261,9 @@
           (only (schevana core sources) core1-exported load-user-init!
                 source-path source-files keep-source-text! load-file!
                 load-user-folders! reload! core1-boot! program-world!
-                look-load! world-load-now!)
+                look-load! world-load-now! auto-load! auto-load-forget!
+                auto-loads auto-load-entries auto-load-layer world-app-file?
+                world-after-load!)
           (prefix (only (schevana tree) *schevana-root*) core:)
           (prefix (only (schevana core platform) platform-process-bytes now-ns
                         now-ms) core:)
@@ -293,7 +298,8 @@
                         current-window invalidate! *apps* new-window-position
                         *global-keys* window-gone!) core:)
           (prefix (only (schevana core sources) *world-env* *schevana-options*
-                        *world-later* *source-texts* app-load!) core:))
+                        *world-later* *auto-loads* *source-texts* app-load!)
+                  core:))
 
   (library-layer core facade)
 
@@ -308,6 +314,7 @@
   (define-view *schevana-root* core:*schevana-root*)
   (define-view *screen-least* core:*screen-least*)
   (define-view *world-later* core:*world-later*)
+  (define-view *auto-loads* core:*auto-loads*)
   (define-view platform-process-bytes core:platform-process-bytes)
   (define-view now-ns core:now-ns)
   (define-view now-ms core:now-ms)
