@@ -1168,8 +1168,6 @@
                       (inspect-list-labels l))])
       (and span (car span))))
 
-  ;;; -- the screen
-
   ;;; -- the platform
 
   ;; Returns which platform this is, as an alist with its keys in reading
