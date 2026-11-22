@@ -11,9 +11,12 @@
 (library (schevana core0 window)
   (export
     *core0-mode* *sdl-window* *sdl-event* *core0-clipboard* core0-app-id
-    core0-window-headless! core0-window-open! core0-window-show!
-    core0-window-close! core0-window-sizes core0-window-resize!
-    core0-resize-now! core0-window-minimum! core0-window-scale
+    core0-app-id! core0-window-title! core0-system-theme core0-own-frame!
+    core0-own-frame? core0-hit core0-window-hit-regions! core0-window-action!
+    core0-window-maximized? core0-window-headless!
+    core0-window-open! core0-window-show! core0-window-close!
+    core0-window-sizes core0-window-resize! core0-resize-now!
+    core0-window-minimum! core0-window-scale
     core0-window-fullscreen? core0-window-fullscreen! core0-window-icon!
     core0-flags core0-flag-names core0-error-text core0-event-name
     core0-hidden? sdl-event->list *wheel-rest* core0-window-pump
@@ -49,8 +52,81 @@
   (define-state *current-cursor* #f)
 
   ;; Who the window is to the desktop: its app id under Wayland, its
-  ;; class under X11. The desktop entry ((schevana desktop icon)) names it too.
-  (define core0-app-id "schevana")
+  ;; class under X11, which the desktop matches to a desktop entry ((schevana
+  ;; desktop icon) writes Schevana's). A program of its own may take another
+  ;; before its window opens (core0-app-id!).
+  (define-state core0-app-id "schevana")
+
+  (define (core0-app-id! id)
+    (unless (eq? *core0-mode* 'none)
+      (errorf 'core0-app-id! "the window is open already"))
+    (set! core0-app-id id))
+
+  ;; Whether the program draws its window's frame itself where the desktop
+  ;; draws none (a host app's header bar), asked before the window opens;
+  ;; and whether it does, the window open: under Wayland, a compositor that
+  ;; lists no xdg-decoration (GNOME's), where libdecor would draw it. Its
+  ;; GTK plugin redraws its title bar at each step of a resize inside SDL's
+  ;; pump, which held core0 3 to 240 ms a step (Debian 13, libdecor 0.2.2).
+  (define-state *core0-own-frame-asked* #f)
+  (define-state *core0-own-frame* #f)
+
+  (define (core0-own-frame! on?)
+    (unless (eq? *core0-mode* 'none)
+      (errorf 'core0-own-frame! "the window is open already"))
+    (set! *core0-own-frame-asked* on?))
+
+  (define (core0-own-frame?) *core0-own-frame*)
+
+  ;; The window's regions by which the desktop moves or resizes it, a frame
+  ;; of the program's own: #(kind x y w h ...) in window units, kind SDL's
+  ;; (0 the program's, 1 a drag that moves it, 2 to 9 a resize from the
+  ;; top left round to the left); the first that holds the point wins.
+  (define-state *core0-hit-regions* (vector))
+
+  ;; What of the window is at (x, y), window units: SDL's kind.
+  (define (core0-hit x y)
+    (let ([v *core0-hit-regions*])
+      (let loop ([i 0])
+        (cond
+          [(fx>= i (vector-length v)) 0]
+          [(and (fx<= (vector-ref v (fx+ i 1)) x)
+                (fx< x (fx+ (vector-ref v (fx+ i 1)) (vector-ref v (fx+ i 3))))
+                (fx<= (vector-ref v (fx+ i 2)) y)
+                (fx< y (fx+ (vector-ref v (fx+ i 2)) (vector-ref v (fx+ i 4)))))
+           (vector-ref v i)]
+          [else (loop (fx+ i 5))]))))
+
+  ;; SDL's hit test: called on core0's thread, in SDL's pump, as the
+  ;; pointer moves.
+  (define-made core0-hit-test-code
+    (let ([code (foreign-callable __collect_safe
+                                  (lambda (sdl-win point data)
+                                    (core0-hit (foreign-ref 'int point 0)
+                                               (foreign-ref 'int point 4)))
+                                  (uptr uptr uptr) int)])
+      (lock-object code)
+      (foreign-callable-entry-point code)))
+
+  ;; The regions, from core1: a job.
+  (define (core0-window-hit-regions! v)
+    (core0-post! (list core0-hit-regions-now! v)))
+  (define (core0-hit-regions-now! v) (set! *core0-hit-regions* v))
+
+  ;; The window maximized, restored or minimized, or the desktop's menu for
+  ;; it shown at (x, y), window units: a job.
+  (define (core0-window-action! action . at)
+    (when (eq? *core0-mode* 'sdl)
+      (core0-post! (list core0-action-now! action at))))
+  (define (core0-action-now! action at)
+    (case action
+      [(maximize) (sdl-maximize-window *sdl-window*)]
+      [(restore) (sdl-restore-window *sdl-window*)]
+      [(minimize) (sdl-minimize-window *sdl-window*)]
+      [(menu) (sdl-show-window-system-menu *sdl-window* (car at) (cadr at))]))
+
+  ;; SDL's flags include a change asked for and not made yet.
+  (define (core0-window-maximized?) (logtest (core0-flags) #x80))
 
   ;;; ------------------------------------------------------------------ window
 
@@ -77,7 +153,13 @@
     (sdl-set-hint "SDL_VIDEO_X11_NET_WM_BYPASS_COMPOSITOR" "0")
     (sdl-set-hint "SDL_MOUSE_FOCUS_CLICKTHROUGH" "1")
     (sdl-set-hint "SDL_APP_ID" core0-app-id)
+    (set! *core0-own-frame*
+      (and *core0-own-frame-asked* (platform-desktop-frameless?)))
+    (when *core0-own-frame*
+      (sdl-set-hint "SDL_VIDEO_WAYLAND_ALLOW_LIBDECOR" "0"))
     (core0-window-init! #f)
+    ;; SDL may have taken another video driver
+    (unless (platform-sdl-wayland?) (set! *core0-own-frame* #f))
     (set! *sdl-window*
       (sdl-create-window "Schevana" w h
                          (fxior SDL_WINDOW_RESIZABLE
@@ -87,6 +169,8 @@
     (when (= 0 *sdl-window*)
       (errorf 'core0-window-open! "SDL_CreateWindow failed: ~a"
               (sdl-get-error)))
+    (when *core0-own-frame*
+      (sdl-set-window-hit-test *sdl-window* core0-hit-test-code 0))
     (unless *renderer* (gpu-open! 'gpu))
     (gpu-claim-window! *sdl-window*)
     (core0-platform-read!)
@@ -166,6 +250,20 @@
       (unless (= icon 0)
         (sdl-set-window-icon *sdl-window* icon)
         (sdl-destroy-surface icon))))
+
+  ;; The window's title, as the desktop shows it (its title bar, the
+  ;; switcher): a job, in which SDL copies it.
+  (define (core0-window-title! title)
+    (when (eq? *core0-mode* 'sdl)
+      (core0-post! (list core0-title-now! title))))
+  (define (core0-title-now! title)
+    (sdl-set-window-title *sdl-window* title))
+
+  ;; The desktop's preference, light or dark, as SDL last read it: 'light,
+  ;; 'dark, or #f where it says none (no window, or a desktop that doesn't
+  ;; tell).
+  (define (core0-system-theme)
+    (case (vector-ref *core0-facts* 9) [(1) 'light] [(2) 'dark] [else #f]))
 
   ;;; ------------------------------------------------------------------ display
 
@@ -367,6 +465,7 @@
              (= type SDL_EVENT_WINDOW_DISPLAY_SCALE_CHANGED))
          '(window-resized)]
         [(= type SDL_EVENT_WINDOW_EXPOSED) '(expose)]
+        [(= type SDL_EVENT_SYSTEM_THEME_CHANGED) '(system-theme-changed)]
         [(= type SDL_EVENT_WINDOW_MOUSE_LEAVE) '(mouse-leave)]
         [else #f])))
 
@@ -686,7 +785,7 @@
             (set! *core0-facts*
               (vector f w h pw ph (sdl-get-window-display-scale *sdl-window*)
                       (core0-read-frame-ns) (core0-read-display)
-                      (sdl-get-error))))))))
+                      (sdl-get-error) (sdl-get-system-theme))))))))
 
   ;; The step's state as plain data, for inspect-core0 ((schevana kits
   ;; inspect)): the jobs and events waiting, and the last job that raised.

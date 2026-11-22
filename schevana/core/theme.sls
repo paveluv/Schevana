@@ -184,8 +184,10 @@
   ;;; styles
   ;;; A style is a name, a title and settings: theme keys, and 'parent (a
   ;;; style's name: it inherits that style's settings), 'options (the
-  ;;; common options it honors and its own) and 'places. Each is a file in
-  ;;; styles/:
+  ;;; common options it honors and its own) and 'places. A style whose
+  ;;; 'palette has a dark twin names it 'palette-dark: on a desktop that
+  ;;; prefers dark (screen-system-theme) it is the palette, unless one was
+  ;;; chosen. Each is a file in styles/:
   ;;;
   ;;;   (define-style flat-mac "Flat Mac" 'parent 'mac 'corner-radius 0)
 
@@ -358,6 +360,13 @@
       ;; inside a container, the style's settings for it (with-place)
       (let ([p (assq place places)])
         (when p (plist-into! t (cdr p) all)))
+      ;; a desktop that prefers dark: the dark palette (one chosen, where
+      ;; the style offers the choice, or the style's own), unless a
+      ;; palette was chosen
+      (let ([dark (or (hashtable-ref t 'palette-dark #f)
+                      (chain-ref chain 'palette-dark #f))])
+        (when (and dark (eq? (screen-system-theme) 'dark))
+          (plist-into! t (list 'palette dark) all)))
       (for-each (lambda (s) (plist-into! t (style-settings s)
                                          (lambda (k) (not (memq k meta-keys)))))
                 chain)

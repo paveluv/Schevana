@@ -157,23 +157,27 @@ has none, what its designers would have made:
   frames are olwm's to the pixel but for three, where olwm's corner shows
   the desktop through. It asks for Lucida Sans, OpenWindows' face, and
   takes the sans where that isn't installed.
-- **Adwaita**, GNOME 48's look, from libadwaita 1.7.6's and GNOME Shell
-  48.7's stylesheets (facts only, `CREDITS.md`): controls are flat tints of
-  the text color with no border, 34 high and 9 round; cards and boxed lists
+- **Adwaita**, the look of GNOME 48's apps, from libadwaita 1.7.6's
+  stylesheet (facts only, `CREDITS.md`): controls are flat tints of the
+  text color with no border, 34 high and 9 round; cards and boxed lists
   12 round, popovers, dialogs and windows 15. A window's title bar is a
   header bar, flat as libadwaita's toolbar view has it or raised
   (`adwaita-header`), its title bold in the middle, and as GNOME lays them
   out only a close button: a double click on the title maximizes, the
   window's menu minimizes, and `adwaita-window-buttons` shows all three.
   Segmented choices and tabs are toggle groups, a stepper a spin button,
-  scroll bars overlay ones under the pointer. The desktop is GNOME Shell's,
-  dark as it stays unless one prefers light: a black top bar with the
+  scroll bars overlay ones under the pointer. Its palette is `adwaita`, and
+  `adwaita-dark` where the desktop prefers dark (`palette-dark`, which
+  Settings shows as Dark palette); its text Cantarell, GNOME's 11 pt as 15
+  pixels. It is the look of a host app on GNOME ([APPS.md](APPS.md)), and
+  brings no desktop with it.
+- **GNOME**, Adwaita's windows on GNOME Shell 48.7's desktop (from its
+  stylesheet, facts only), dark as the Shell stays unless one prefers
+  light: a black top bar with the
   Activities dots and the clock, the Shell's menus for the desktop's own
   and popovers for a window's, notices as its banners at the top; GNOME has
   no taskbar, so the windows are a dash at the bottom, as the overview
-  shows it. Its palette is `adwaita`, and `adwaita-dark` where the desktop
-  prefers dark (`palette-dark`); its text Cantarell, GNOME's 11 pt as 15
-  pixels.
+  shows it.
 - **Mac** and **Windows**, as their names say.
 
 Each brings the palette of the same name and its wallpaper. Our own

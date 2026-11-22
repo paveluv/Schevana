@@ -11,7 +11,9 @@
     platform-report-ask! platform-reports-start! platform-reports-pump!
     platform-clock-offset *wayland-clock* *wayland-used* *wayland-input-clock*
     wayland-shown-ns wayland-input! wayland-input-on
-    platform-thread-interactive! platform-thread-class mac-rows *mac-shown*
+    platform-wayland-globals platform-desktop-frameless? platform-sdl-wayland?
+    platform-thread-interactive! platform-thread-class
+    mac-rows *mac-shown*
     mac-presented! *mac-drawable* mac-waiting-rows *mac-waiting* mac-ask!
     mac-pump! mac-reported!)
   (import (chezscheme)
@@ -241,6 +243,12 @@
     (foreign-procedure "wl_display_roundtrip_queue" (uptr uptr) int))
   (define-wayland wayland-dispatch
     (foreign-procedure "wl_display_dispatch_queue_pending" (uptr uptr) int))
+  (define-wayland wayland-connect
+    (foreign-procedure "wl_display_connect" (uptr) uptr))
+  (define-wayland wayland-disconnect
+    (foreign-procedure "wl_display_disconnect" (uptr) void))
+  (define-wayland wayland-queue-destroy
+    (foreign-procedure "wl_event_queue_destroy" (uptr) void))
 
   (define-ftype wayland-message
     (struct [name void*] [signature void*] [types void*]))
@@ -486,6 +494,52 @@
     (wayland-listener wayland-clock-code))
   (define-made wayland-registry-listener
     (wayland-listener wayland-global-code wayland-global-gone-code))
+
+  ;; The interfaces the compositor lists, by name, as
+  ;; platform-wayland-globals reads them.
+  (define-state *wayland-listed* '())
+  (define-wayland-callback wayland-listed-code
+    (lambda (data registry name interface version)
+      (set! *wayland-listed*
+        (cons (platform-c->string interface) *wayland-listed*)))
+    (uptr uptr unsigned-32 uptr unsigned-32))
+  (define-made wayland-listing-listener
+    (wayland-listener wayland-listed-code wayland-global-gone-code))
+
+  ;; What the compositor can do, asked before SDL starts: the interfaces it
+  ;; lists, by name, on a connection of core0's own (WAYLAND_DISPLAY's),
+  ;; opened and closed again; '() with no compositor.
+  (define (platform-wayland-globals)
+    (let ([display (if wayland-loaded? (wayland-connect 0) 0)])
+      (if (eqv? display 0)
+          '()
+          (with-interrupts-disabled
+           (set! *wayland-listed* '())
+           (let ([queue (wayland-create-queue display)]
+                 [registry (wayland-marshal-1
+                            display 1 (foreign-entry "wl_registry_interface")
+                            (wayland-version display) 0 0)])
+             (wayland-set-queue registry queue)
+             (wayland-add-listener registry wayland-listing-listener 0)
+             (wayland-roundtrip display queue)
+             (wayland-destroy registry)
+             (wayland-queue-destroy queue)
+             (wayland-disconnect display)
+             *wayland-listed*)))))
+
+  ;; Whether the desktop draws no window frames, asked before SDL starts:
+  ;; SDL is to use Wayland (as it does unless told otherwise), and the
+  ;; compositor lists no xdg-decoration (GNOME's).
+  (define (platform-desktop-frameless?)
+    (let ([driver (getenv "SDL_VIDEO_DRIVER")])
+      (and (or (not driver) (string=? driver "wayland"))
+           (let ([globals (platform-wayland-globals)])
+             (and (pair? globals)
+                  (not (member "zxdg_decoration_manager_v1" globals)))))))
+
+  ;; Whether SDL, started, runs on Wayland.
+  (define (platform-sdl-wayland?)
+    (equal? (sdl-get-current-video-driver) "wayland"))
   (define-made wayland-seat-listener (wayland-listener wayland-seat-code))
   (define-made wayland-pointer-listener
     (wayland-listener wayland-enter-code wayland-leave-code wayland-motion-code

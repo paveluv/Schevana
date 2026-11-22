@@ -69,9 +69,12 @@
     *pacer-gpu-taught* *pacer-between?* pacer-busy-ms pacer-peak-ms! pacer-rate
     pacer-ticks pacer-period pacer-start pacer-trial! pacer-margin screen-bytes
     screen-bytes-then
-    ;; (schevana core screen): the screen core0 shows
+    ;; (schevana core screen): the screen core0 shows, and what the host's
+    ;; desktop knows it by
     system-scale-percent fullscreen? set-fullscreen! toggle-fullscreen!
-    screen-set-icon!
+    screen-set-icon! screen-set-title! screen-set-app-id! screen-set-least!
+    *screen-least* screen-system-theme screen-own-frame! screen-own-frame?
+    screen-hit-regions! screen-window-action! screen-maximized?
     ;; (schevana core loop) and (schevana core sources): the step, boot,
     ;; sources and reload
     *input-step?* post-core1! schevana-run! quit! schevana-end! uptime-ms
@@ -93,7 +96,8 @@
     window window? window-id window-app window-title window-title-set! window-x
     window-x-set! window-y window-y-set! window-w window-w-set! window-h
     window-h-set! window-state window-state-set! window-restore-set!
-    window-handlers window-props window-error *windows* *focus* *drag-outline*
+    window-min-w window-min-h window-handlers window-props window-error
+    *windows* *focus* *drag-outline*
     *hover* *mouse-x* *mouse-y* *mouse-button* drag current-window invalidate!
     window-shadow window-extent screen-w screen-h screen-scale point-in?
     surface surface-doc define-surface find-surface surface-call define-strip
@@ -210,7 +214,11 @@
                 pacer-busy-ms pacer-peak-ms! pacer-rate pacer-ticks pacer-start
                 pacer-trial! pacer-margin screen-bytes screen-bytes-then)
           (only (schevana core screen) system-scale-percent fullscreen?
-                set-fullscreen! toggle-fullscreen! screen-set-icon!)
+                set-fullscreen! toggle-fullscreen! screen-set-icon!
+                screen-set-title! screen-set-app-id! screen-set-least!
+                screen-system-theme screen-own-frame! screen-own-frame?
+                screen-hit-regions! screen-window-action! screen-maximized?)
+          (prefix (only (schevana core screen) *screen-least*) core:)
           (only (schevana core loop) post-core1! schevana-run! quit!
                 schevana-end! uptime-ms user-directory schevana-boot!
                 collector-declining? core1-run loop-main)
@@ -227,7 +235,8 @@
                 window-title window-title-set! window-x window-x-set! window-y
                 window-y-set! window-w window-w-set! window-h window-h-set!
                 window-state window-state-set! window-restore-set!
-                window-handlers window-props window-error drag window-shadow
+                window-min-w window-min-h window-handlers window-props
+                window-error drag window-shadow
                 window-extent screen-w screen-h screen-scale point-in? surface
                 surface-doc define-surface find-surface surface-call
                 define-strip desktop-rect app app-name app-title app-launch
@@ -244,7 +253,7 @@
                 window-frame-soon! window-hover draw-window*)
           (only (schevana core sources) core1-exported load-user-init!
                 source-path source-files keep-source-text! load-file!
-                load-user-folders! reload! core1-boot!)
+                load-user-folders! reload! core1-boot! program-world!)
           (prefix (only (schevana tree) *schevana-root*) core:)
           (prefix (only (schevana core platform) platform-process-bytes now-ns
                         now-ms) core:)
@@ -285,11 +294,14 @@
 
   ;; A program on the whole core: the loop's main (loop-main), defined
   ;; here so that a program compiled as one carries this library.
+  ;; Its "/" is made first (program-world!), from the libraries it loaded.
   (define (schevana-main mode w h full? world . fork?)
+    (program-world!)
     (apply loop-main mode w h full? world fork?))
 
   ;; What the core sets, and the world reads or calls: views.
   (define-view *schevana-root* core:*schevana-root*)
+  (define-view *screen-least* core:*screen-least*)
   (define-view platform-process-bytes core:platform-process-bytes)
   (define-view now-ns core:now-ns)
   (define-view now-ms core:now-ms)

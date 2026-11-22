@@ -13,7 +13,7 @@
     *source-texts* keep-source-text! file-text load-file! app-load!
     load-source load-sources!
     load-user-folders! source-held-libraries reload! world-libraries
-    world-entries load-world!
+    world-entries load-world! program-world!
     source-libraries-keep!)
   (import (chezscheme)
           (schevana base)
@@ -277,6 +277,31 @@
                       (unless (and had (string=? (cdr had) text))
                         (keep-source-text! file text))))))
               names))
+
+  ;; A program's "/", where what calls by name finds it (a part's built-in,
+  ;; the procedures a style names, world-value): Chez's names, the core's
+  ;; facade and the world's libraries the program has loaded, a kit, a
+  ;; look, a demo, as "/" has them on the desktop; and each of those run,
+  ;; as the desktop runs them, so that what it registers (a style, a
+  ;; palette) is registered though the program named none of it. Made once,
+  ;; as the program runs (schevana-main); a world booted (core1-boot!) is
+  ;; its own.
+  (define (program-world!)
+    (unless *world-env*
+      (let ([world (copy-environment (scheme-environment) #t)]
+            [names (filter (lambda (name)
+                             (or (eq? (car name) 'schevana-demo)
+                                 (and (eq? (car name) 'schevana)
+                                      (= (length name) 3)
+                                      (member (symbol->string (cadr name))
+                                              source-folders))))
+                           (library-list))])
+        (eval `(import (schevana core) ,@names) world)
+        (set! *world-env* world)
+        (for-each invoke-library
+                  (filter (lambda (name)
+                            (memq (cadr name) '(styles palettes wallpapers)))
+                          names)))))
 
   ;; Makes "/", which imports what the core gives the world (its facade,
   ;; again at each reload of a library it stands on), and loads the

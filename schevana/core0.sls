@@ -8,8 +8,8 @@
 (library (schevana core0)
   (export
     ;; Constants, and procedures of their arguments alone: safe anywhere.
-    core0-app-id gpu-atlas-side gpu-usage-sampler gpu-usage-target
-    core0-flag-names core0-event-name gpu-show-run? gpu-run-gone?
+    gpu-atlas-side gpu-usage-sampler gpu-usage-target core0-flag-names
+    core0-event-name gpu-show-run? gpu-run-gone?
     ;; The records the two share. Their procedures touch nothing else, so
     ;; what's safe is who holds the record: a thread writes only those it
     ;; holds, and a frame is the world's from gpu-frame-make, or
@@ -34,18 +34,20 @@
     ;; What core0 says of itself, in variables it sets whole: another thread
     ;; reads each whole (Chez lets no thread see an object half made), but
     ;; not in step with the others, as ARM keeps no order between stores.
-    *gpu-facts* *core0-mode* *core0-platform*
+    *gpu-facts* *core0-mode* *core0-platform* core0-app-id
     ;; The same, read through procedures: the window's facts as core0's
     ;; step last read them, made again whole when they change; what became
     ;; of each frame, by its report; and the events its steps put in the
     ;; world's inbox, taken.
     core0-display core0-frame-ns core0-hidden? core0-flags core0-error-text
-    core0-step-state core0-frame-report
-    core0-window-sizes core0-window-scale core0-window-fullscreen?
-    clipboard-get core0-window-events core0-input-ns-take!
+    core0-step-state core0-frame-report core0-system-theme core0-own-frame?
+    core0-window-maximized? core0-window-sizes core0-window-scale
+    core0-window-fullscreen? clipboard-get core0-window-events
+    core0-input-ns-take!
     ;; Jobs: posted to core0's mailbox, run at its next step; safe from any
     ;; thread.
     core0-window-minimum! core0-window-fullscreen! core0-window-icon!
+    core0-window-title! core0-window-hit-regions! core0-window-action!
     core0-set-cursor! clipboard-set! core0-trace-dump! core0-refresh-ns!
     ;; a step of the calling thread's, on its own ring
     core0-trace!
@@ -61,9 +63,10 @@
     core0-world-loaded!
     ;; Calls into SDL or core0's own state: safe only on core0's thread.
     ;; Until core0 has a thread of its own the world steps it (core0-step!),
-    ;; and boots it (opening, sizing, showing the window).
-    core0-step! core0-window-headless! core0-window-open! core0-window-show!
-    core0-window-close! core0-window-resize!
+    ;; and boots it (who the window is, opening, sizing, showing it).
+    core0-app-id! core0-own-frame! core0-step! core0-window-headless!
+    core0-window-open!
+    core0-window-show! core0-window-close! core0-window-resize!
     ;; The clock and the CPU count, from any thread, and the means to bind
     ;; C of one's own ((schevana ffi)).
     core0-clock-ns platform-cpu-count load-first-library define-foreign
@@ -97,22 +100,25 @@
                 gpu-frame-in-flight-set! gpu-frame-number gpu-frame-shown?
                 gpu-publish! gpu-frames-back! gpu-take-answers!
                 core0-world-loaded!)
-          (only (schevana core0 window) core0-app-id core0-flag-names
-                core0-event-name core0-flags core0-error-text core0-step-state
-                core0-window-sizes core0-window-scale core0-window-fullscreen?
-                clipboard-get core0-window-events core0-input-ns-take!
-                core0-window-minimum! core0-window-fullscreen!
-                core0-window-icon! core0-set-cursor! clipboard-set! core0-quit!
-                core0-step! core0-window-headless! core0-window-open!
-                core0-window-show! core0-window-close! core0-window-resize!
-                core0-run!)
+          (only (schevana core0 window) core0-flag-names core0-event-name
+                core0-flags core0-error-text core0-step-state
+                core0-system-theme core0-own-frame? core0-window-maximized?
+                core0-window-hit-regions! core0-window-action! core0-own-frame!
+                core0-window-sizes core0-window-scale
+                core0-window-fullscreen? clipboard-get core0-window-events
+                core0-input-ns-take! core0-window-minimum!
+                core0-window-fullscreen! core0-window-icon!
+                core0-window-title! core0-set-cursor! clipboard-set!
+                core0-quit! core0-app-id! core0-step! core0-window-headless!
+                core0-window-open! core0-window-show! core0-window-close!
+                core0-window-resize! core0-run!)
           (prefix (only (schevana core0 mail) core0-world-wake!) core0:)
           (prefix (only (schevana core0 trace) core0-trace!) core0:)
           (prefix (only (schevana core0 platform) *core0-platform*) core0:)
           (prefix (only (schevana core0 gpu) *gpu-facts*
                         gpu-frame-waiting?) core0:)
           (prefix (only (schevana core0 window) *core0-mode*
-                        core0-hidden?) core0:))
+                        core0-hidden? core0-app-id) core0:))
 
   (library-layer core0 facade)
 
@@ -120,6 +126,7 @@
   (define-view *gpu-facts* core0:*gpu-facts*)
   (define-view *core0-mode* core0:*core0-mode*)
   (define-view *core0-platform* core0:*core0-platform*)
+  (define-view core0-app-id core0:core0-app-id)
   (define-view core0-hidden? core0:core0-hidden?)
   (define-view core0-trace! core0:core0-trace!)
   (define-view gpu-frame-waiting? core0:gpu-frame-waiting?)

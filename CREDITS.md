@@ -86,10 +86,11 @@ in this file.
 
 ## Adwaita
 
-The Adwaita style (`schevana/styles/adwaita.sls`) and its palettes
-(`schevana/palettes/adwaita.sls`, `adwaita-dark.sls`) take facts alone
-from GNOME's stylesheets: libadwaita 1.7.6's `src/stylesheet/` (LGPL-2.1+)
-and GNOME Shell 48.7's `data/theme/gnome-shell-sass/` (GPL-2.0+). What was
+The Adwaita style (`schevana/styles/adwaita.sls`), its palettes
+(`schevana/palettes/adwaita.sls`, `adwaita-dark.sls`) and the GNOME style
+around it (`schevana/styles/gnome.sls`) take facts alone from GNOME's
+stylesheets: libadwaita 1.7.6's `src/stylesheet/` (LGPL-2.1+) and GNOME
+Shell 48.7's `data/theme/gnome-shell-sass/` (GPL-2.0+). What was
 taken: sizes, paddings, radii, colors and the alphas of the tints, the
 fourteen avatar colors, the OKLab rule for the standalone colors, the
 spinner's widths and speed, and how the Shell's panel, menus, dash and

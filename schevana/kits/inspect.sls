@@ -64,7 +64,8 @@
                 clip-row-x1 clip-row-y0 clip-row-y1 core0-display
                 core0-flag-names core0-flags core0-frame-ns core0-frame-report
                 core0-step-state core0-window-scale core0-window-sizes
-                font-advance font-library-versions font-ready font-sized
+                core0-app-id screen-system-theme *screen-least* font-advance
+                font-library-versions font-ready font-sized
                 frame-ring-rows frame-ring-words gfx-fragments
                 glyph-row-character glyph-row-h glyph-row-left glyph-row-ref
                 glyph-row-top glyph-row-w gpu-atlas-image gpu-atlas-side
@@ -1301,11 +1302,16 @@
 
   ;;; -- the pacer
 
-  ;; Core0's step: the window's facts as it last read them, the jobs posted
-  ;; to it and the steps' events not yet taken, and the last job that raised.
+  ;; Core0's step: the window's facts as it last read them, who it is to the
+  ;; desktop (its app id, the least it may be dragged to, logical pixels,
+  ;; and the desktop's light or dark), the jobs posted to it and the steps'
+  ;; events not yet taken, and the last job that raised.
   (define (inspect-core0)
     (let ([state (core0-step-state)])
       `((sizes . ,(call-with-values core0-window-sizes list))
+        (app-id . ,core0-app-id)
+        (least . ,*screen-least*)
+        (system-theme . ,(screen-system-theme))
         (scale . ,(core0-window-scale))
         (flags . ,(core0-flag-names (core0-flags)))
         (frame-ns . ,(core0-frame-ns))

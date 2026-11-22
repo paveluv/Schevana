@@ -133,9 +133,29 @@
     (schevana-libraries! (schevana-launch-root *schevana-root*) #f)
     (for-each (lambda (lib)
                 (eval `(import ,lib) (copy-environment (scheme-environment))))
-              '((schevana core) (schevana core sources)
-                (schevana desktop main) (schevana core0 for-recorder)
-                (schevana recorder bytes) (schevana socket)))))
+              (append '((schevana core) (schevana core sources)
+                        (schevana desktop main) (schevana core0 for-recorder)
+                        (schevana recorder bytes) (schevana socket))
+                      (units-world-libraries)))))
+
+;; The world's libraries and the demos', by their files: compiled here
+;; once, so that topics booting at once never compile one together.
+(define (units-world-libraries)
+  (apply append
+         (map (lambda (dir name)
+                (let ([path (string-append *schevana-root* "/" dir)])
+                  (map (lambda (f)
+                         (append name (list (string->symbol (path-root f)))))
+                       (sort string<?
+                             (filter (lambda (f)
+                                       (equal? (path-extension f) "sls"))
+                                     (directory-list path))))))
+              '("schevana/kits" "schevana/services" "schevana/desktop"
+                "schevana/styles" "schevana/palettes" "schevana/wallpapers"
+                "schevana/apps" "schevana-demo")
+              '((schevana kits) (schevana services) (schevana desktop)
+                (schevana styles) (schevana palettes) (schevana wallpapers)
+                (schevana apps) (schevana-demo)))))
 
 (unless (= (length units-asked) 1)
   (units-cache-warm!)

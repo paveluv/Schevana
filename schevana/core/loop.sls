@@ -4,7 +4,8 @@
 (library (schevana core loop)
   (export
     *input-step?* post-core1! run-core1-mail! inject! wm-event! reload-ended!
-    reload-holding? schevana-step! schevana-run! quit! schevana-end! uptime-ms
+    reload-holding? schevana-step! schevana-run! *running* quit! schevana-end!
+    uptime-ms
     user-directory user-library-directory add-library-directory! schevana-boot!
     collector-young-quiet collector-old-quiet *collector-pass*
     *collector-holding?* *collector-check-ms* *collector-input-ms*

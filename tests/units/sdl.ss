@@ -70,6 +70,7 @@
 (define fake-ratio 1)
 (define fake-desktop 1)
 (define fake-flags 0)
+(define fake-system-theme 0)   ; SDL's: 0 unknown, 1 light, 2 dark
 (define fake-hints '())        ; the hints set, newest first
 (define fake-queue '())        ; the event types SDL_PollEvent hands out next
 (define fake-log '())          ; what was asked of the window, newest first
@@ -110,6 +111,9 @@
                   (if (= x y SDL_WINDOWPOS_CENTERED) 'centered (list x y)))
        #t)]
     [(sdl-show-window) (lambda (win) (fake-log! 'show) #t)]
+    [(sdl-set-window-title)
+     (lambda (win title) (fake-log! 'title title) #t)]
+    [(sdl-get-system-theme) (lambda () fake-system-theme)]
     [(sdl-set-window-minimum-size)
      (lambda (win w h) (fake-log! 'minimum w h) #t)]
     [(sdl-get-window-flags) (lambda (win) fake-flags)]
@@ -272,3 +276,64 @@
                        core0-app-id)
                (equal? (assoc "SDL_APP_ID" fake-hints)
                        (cons "SDL_APP_ID" core0-app-id))))))))
+
+;; What the host's desktop knows the window by: its title, a job of core0's;
+;; the least it may be dragged to, a program's own; its app id, which only
+;; a window not open yet may take. And the desktop's light or dark, which
+;; SDL tells of by an event: a style's dark palette follows it, unless a
+;; palette was chosen.
+(test-with-quiet-status
+ (lambda ()
+   (fluid-let ([*screen-min-size* #f] [*pixel-ratio* 1]
+               [*screen-least* *screen-least*]
+               [*screen-chosen-scale* *screen-chosen-scale*])
+     (with-fake-sdl
+      (lambda ()
+        (define (palette-of overrides)
+          (hashtable-ref (resolve-theme 'host-probe overrides '()) 'palette
+                         #f))
+        (set! fake-log '())
+        (fake-resize! '(1280 . 800) 1)
+        (fluid-let ([*core0-mode* 'sdl])
+          (screen-set-title! "Notes")
+          (screen-set-least! 360 480))
+        (fake-event! SDL_EVENT_WINDOW_EXPOSED)
+        (check (format "the window's title and least size go to SDL ~s"
+                       (reverse fake-log))
+               (and (member '(title "Notes") fake-log)
+                    (member '(minimum 360 480) fake-log)
+                    (equal? *screen-least* '(360 . 480))))
+        (check "an app id, and a frame of the program's own, are refused \
+                once the window is open"
+               (and (guard (c [#t #t])
+                      (screen-set-app-id! "org.example.Notes") #f)
+                    (guard (c [#t #t]) (screen-own-frame! #t) #f)
+                    (not (screen-own-frame?))))
+        (check (format "the compositor's globals, asked before SDL starts, \
+                        are names ~s" (length (platform-wayland-globals)))
+               (for-all string? (platform-wayland-globals)))
+        (define-style host-probe "Host probe"
+          'palette 'paper
+          'palette-dark 'nord)
+        (let ([light (palette-of '())])
+          (set! fake-system-theme 2)
+          (fake-event! SDL_EVENT_SYSTEM_THEME_CHANGED)
+          (let ([dark (screen-system-theme)] [follows (palette-of '())]
+                [chosen (palette-of '(palette gruvbox))]
+                [chosen-dark (palette-of '(palette-dark catppuccin))])
+            (set! fake-system-theme 0)
+            (fake-event! SDL_EVENT_SYSTEM_THEME_CHANGED)
+            (set! *styles* (remp (lambda (s) (eq? (style-name s) 'host-probe))
+                                 *styles*))
+            (theme-changed!)
+            (check (format "the desktop's dark comes by SDL's event, and a \
+                            style's palette follows it to its dark one, or \
+                            to one chosen for dark, unless a palette was \
+                            chosen ~s"
+                           (list light dark follows chosen chosen-dark))
+                   (and (eq? light 'paper) (eq? dark 'dark)
+                        (eq? follows 'nord) (eq? chosen 'gruvbox)
+                        (eq? chosen-dark 'catppuccin)
+                        (not (screen-system-theme))
+                        (null? fake-unfaked)))))
+        (fake-resize! '(1280 . 800) 1))))))

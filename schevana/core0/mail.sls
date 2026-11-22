@@ -85,10 +85,10 @@
         (condition-signal *core0-ready*))))
 
   ;; What SDL says of the window, as core0 read it last: #(flags w h pw ph
-  ;; scale frame-ns display error-text). Made again whole when it changes, so
-  ;; another thread reads it whole.
+  ;; scale frame-ns display error-text system-theme). Made again whole when
+  ;; it changes, so another thread reads it whole.
   (define-state *core0-facts*
-    (vector 0 0 0 0 0 1 (quotient 1000000000 60) #f ""))
+    (vector 0 0 0 0 0 1 (quotient 1000000000 60) #f "" 0))
 
   ;; How long the screen shows a frame, ns, and its display, as core0 read
   ;; them last.

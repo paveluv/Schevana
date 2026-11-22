@@ -59,6 +59,15 @@ The handlers, and what each is given besides the window:
 | `'focus`, `'blur` | | it gains or loses the keyboard |
 | `'close` | | it closes |
 
+A few properties mean something to the window manager: `'bg`, the
+color under the content; `'cursor`, the pointer over it; `'window-style`,
+a style of its own ([LOOKS.md](LOOKS.md)); `'frameless`, true for a
+window with no frame of the style's, its content all of it (a host app's
+window, [APPS.md](APPS.md)); and `'on-action`, `(lambda (win action)
+...)`, true when it did the action itself, which its frame's buttons, a
+double click on its title and its window menu (`menu`) ask for in place
+of the window manager's (a host app's frame acts on the OS window).
+
 `x` and `y` are in the content's coordinates, in logical pixels. `key` is
 a character (`#\a`) or a symbol (`return`, `escape`, `left`), and `mods`
 a list of `ctrl`, `shift`, `alt` and `super`. `window-on!` sets a handler

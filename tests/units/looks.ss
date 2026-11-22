@@ -1157,12 +1157,12 @@
           (reset-style!)
           (set-style! 'mac))))
 
-(check "Adwaita's desktop is GNOME Shell's: the top bar 2.2 em of GNOME's \
-        text, its 11 pt our 15, so 32; the Activities button and the dash's \
-        Show Apps open the apps"
+(check "GNOME's desktop is GNOME Shell's, around Adwaita's windows: the top \
+        bar 2.2 em of GNOME's text, its 11 pt our 15, so 32; the Activities \
+        button and the dash's Show Apps open the apps"
        (test-finally
         (lambda ()
-          (set-style! 'adwaita)
+          (set-style! 'gnome)
           (steps 1)
           (and (= (topbar-height)
                   (max 32 (round (* 2.2 44/45 (theme 'ui-font-size)))))

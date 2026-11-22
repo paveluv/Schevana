@@ -28,7 +28,8 @@
     window window? window-id window-app window-title window-title-set! window-x
     window-x-set! window-y window-y-set! window-w window-w-set! window-h
     window-h-set! window-state window-state-set! window-restore-set!
-    window-handlers window-props window-error *windows* *focus* *drag*
+    window-min-w window-min-h window-handlers window-props window-error
+    *windows* *focus* *drag*
     *drag-outline* *hover* *mouse-x* *mouse-y* *mouse-button* *cascade* drag
     current-window window-gone! invalidate! window-shadow window-shadow-reach
     window-bleed window-extent screen-w screen-h screen-scale point-in? surface
@@ -401,11 +402,20 @@
   (define (window-setting win key)
     (in-window-theme win (lambda () (theme key))))
 
+  ;; A window opened 'frameless #t has no frame of the style's: its
+  ;; content is all of it (a host app's one window, framed by the host's
+  ;; desktop).
+  (define (frameless? win) (window-ref win 'frameless))
+
   ;; Frame thickness around the content: (values left top right bottom).
-  (define (frame-insets win) (frame-call win 'frame-insets))
-  (define (frame-regions win) (frame-call win 'frame-regions))
-  (define (frame-radius win) (frame-call win 'frame-radius))
-  (define (frame-bleed win) (frame-call win 'frame-bleed))
+  (define (frame-insets win)
+    (if (frameless? win) (values 0 0 0 0) (frame-call win 'frame-insets)))
+  (define (frame-regions win)
+    (if (frameless? win) '() (frame-call win 'frame-regions)))
+  (define (frame-radius win)
+    (if (frameless? win) 0 (frame-call win 'frame-radius)))
+  (define (frame-bleed win)
+    (if (frameless? win) 0 (frame-call win 'frame-bleed)))
 
   ;; The hooks below are made as the library loads: defined after what they
   ;; reach, which Chez would otherwise check at each call.
@@ -630,14 +640,26 @@
         (restore-window! win)
         (maximize-window! win)))
 
-  ;; What an action a style's setting names does to win (a double click's):
-  ;; maximize, shade, minimize, close; any other nothing.
+  ;; What an action a style's setting names does to win (a double click's, a
+  ;; button's): maximize, shade, minimize, close; any other nothing. A
+  ;; window's 'on-action, (lambda (win action) ...) true when it acted, may
+  ;; do it in its place (a host app's: the OS window's), and the window
+  ;; menu ('menu) too.
   (define (window-action! win action)
-    (case action
-      [(maximize) (toggle-maximize! win)]
-      [(shade) (toggle-shade! win)]
-      [(minimize) (minimize-window! win)]
-      [(close) (close-window! win)]))
+    (let ([own (window-ref win 'on-action #f)])
+      (unless (and own (own win action))
+        (case action
+          [(maximize) (toggle-maximize! win)]
+          [(shade) (toggle-shade! win)]
+          [(minimize) (minimize-window! win)]
+          [(close) (close-window! win)]
+          [(depth) (depth-window! win)]))))
+
+  ;; The window's menu at (x, y): its 'on-action's, or the style's.
+  (define (window-menu! win x y)
+    (let ([own (window-ref win 'on-action #f)])
+      (unless (and own (own win 'menu))
+        ((theme-part 'open-window-menu) win x y))))
 
   ;; A shaded window shows only its frame's top and bottom (the insets its
   ;; frame gives while shaded); its content is not drawn and its app hears
@@ -717,7 +739,8 @@
                   [(corner) (window-setting win 'frame-corner)]
                   [(free?) (and (eq? (window-state win) 'normal)
                                 (not (shaded? win)))]   ; it may resize
-                  [(resizable?) (and free? (> edge 0))])
+                  ;; a frameless window's edges are its content's
+                  [(resizable?) (and free? (> edge 0) (not (frameless? win)))])
       (cond
         [(find (lambda (r) (and (or free? (not (memq (car r) resize-kinds)))
                                 (apply point-in? lx ly (list-head (cdr r) 4))))
@@ -887,14 +910,14 @@
            [(and (>= clicks 2)
                  (assq region (window-setting win 'button-double-click)))
             => (lambda (a) (window-action! win (cdr a)))]
-           [(eq? region 'menu) ((theme-part 'open-window-menu) win x y)]
+           [(eq? region 'menu) (window-menu! win x y)]
            [(eq? button 'left)
             (set! *drag* (make-drag region win button x y 0 0 0 0))
             (invalidate! win)])]   ; its style draws the button pressed
         [(frame) (void)]
         [(title)
          (cond
-           [(eq? button 'right) ((theme-part 'open-window-menu) win x y)]
+           [(eq? button 'right) (window-menu! win x y)]
            [(and (eq? button 'left) (>= clicks 2))
             (window-action! win (window-setting win 'title-double-click))]
            [(eq? button 'left)
@@ -929,12 +952,7 @@
              (when (and (memq win *windows*)
                         (eq? (window-at x y) win)
                         (eq? (window-region win x y) kind))
-               (case kind
-                 [(close) (close-window! win)]
-                 [(minimize) (minimize-window! win)]
-                 [(maximize) (toggle-maximize! win)]
-                 [(depth) (depth-window! win)]
-                 [(shade) (toggle-shade! win)]))]
+               (window-action! win kind))]
             [(capture)
              (when (eq? button (drag-button d)) (set! *drag* #f))
              (let-values ([(lx ly) (window-local win x y)])
@@ -1056,14 +1074,16 @@
               [w (window-w win)] [h (window-h win)]
               [hover (window-hover win)]
               [pressed (window-pressed win)])
-          ((theme-part 'frame-under) win x y w h focused? hover pressed)
+          (unless (frameless? win)
+            ((theme-part 'frame-under) win x y w h focused? hover pressed))
           (unless (shaded? win)
             (let-values ([(cx cy cw ch) (content-rect win)])
               (with-clip (x y w h (frame-radius win))
                 (with-clip (cx cy cw ch)
                   (show-list (window-content-list win x y w h cx cy cw ch)
                              cx cy)))))
-          ((theme-part 'frame-over) win x y w h focused? hover pressed)))))
+          (unless (frameless? win)
+            ((theme-part 'frame-over) win x y w h focused? hover pressed))))))
 
   ;; Whether what a list of win's is drawn with, the values e ..., changed
   ;; since it was drawn, kept by name in place: => #t, and the new values
@@ -1084,6 +1104,16 @@
                      changed
                      (begin (vector-set! k i v) #t))])
          (window-key-check k (+ i 1) c rest ...))]))
+
+  ;; What a crashed window shows in place of its content, till the desktop
+  ;; gives its panel ((schevana desktop crash)): the handler and the
+  ;; condition, a line of text, for a program with no desktop.
+  (define (window-crash-line win w h)
+    (let ([err (window-error win)])
+      (draw-text 8 8 (format "The '~a handler raised: ~a" (car err)
+                             (condition->string (cdr err)))
+                 'red 'ui)))
+  (at-load (theme-default! 'draw-crash-panel window-crash-line))
 
   ;; win's content, as a list from the content's corner, drawn again when win
   ;; is asked to draw, or when its size, the scale or its error changes; inside

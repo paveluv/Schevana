@@ -15,7 +15,10 @@
     *screen-min-size* *headless-size* system-scale-percent screen-units->world
     wm-screen-resized! screen-rescale! screen-window-size screen-init!
     screen-shutdown! fullscreen? set-fullscreen! toggle-fullscreen!
-    screen-set-icon! screen-events screen-event->world)
+    screen-set-icon! screen-set-title! screen-set-app-id! *screen-least*
+    screen-set-least! screen-system-theme screen-own-frame! screen-own-frame?
+    screen-hit-kinds screen-hit-regions! *screen-hit-regions*
+    screen-window-action! screen-maximized? screen-events screen-event->world)
   (import (chezscheme)
           (schevana base)
           (schevana core0)
@@ -38,6 +41,8 @@
   (define-state *pixel-ratio* 1)
   ;; the minimum size SDL last passed on to the window, or #f
   (define-state *screen-min-size* #f)
+  ;; the least the window may be dragged to, logical pixels (w . h)
+  (define-state *screen-least* '(640 . 400))
   (define-state *headless-size* '(1280 . 800))
 
   ;;; ---------------------------------------------------------------- scale
@@ -175,18 +180,7 @@
                (begin
                  (set! *screen-chosen-scale* scale)
                  (canvas-create-pixels! pw ph scale)
-                 ;; Core0's window may not shrink below 640 × 400 logical
-                 ;; pixels.
-                 ;; SDL is told only when that changes: each call also sets the
-                 ;; window's size again (a request to the window manager,
-                 ;; mid-drag). In full screen SDL may not pass it on (under X11
-                 ;; it does not), so it is told again after.
-                 (let ([m (cons
-                           (exact (ceiling (/ (* 640 scale) *pixel-ratio*)))
-                           (exact (ceiling (/ (* 400 scale) *pixel-ratio*))))])
-                   (unless (equal? m *screen-min-size*)
-                     (core0-window-minimum! (car m) (cdr m))
-                     (set! *screen-min-size* (and (not (fullscreen?)) m))))
+                 (screen-least-tell!)
                  #t))))]
       [(headless)
        (let ([scale (wanted-scale)])
@@ -197,6 +191,80 @@
                                 scale)
                 #t)))]
       [else #f]))
+
+  ;; Core0's window may not shrink below *screen-least*, in logical pixels.
+  ;; SDL is told only when that changes: each call also sets the window's
+  ;; size again (a request to the window manager, mid-drag). In full screen
+  ;; SDL may not pass it on (under X11 it does not), so it is told again
+  ;; after.
+  (define (screen-least-tell!)
+    (let* ([unit (lambda (n)
+                   (exact (ceiling (/ (* n *screen-chosen-scale*)
+                                      *pixel-ratio*))))]
+           [m (cons (unit (car *screen-least*)) (unit (cdr *screen-least*)))])
+      (unless (equal? m *screen-min-size*)
+        (core0-window-minimum! (car m) (cdr m))
+        (set! *screen-min-size* (and (not (fullscreen?)) m)))))
+
+  ;; The least the window may be dragged to, w × h logical pixels: a
+  ;; program's own (a host app's, its one window's least).
+  (define (screen-set-least! w h)
+    (set! *screen-least* (cons w h))
+    (when (eq? *core0-mode* 'sdl) (screen-least-tell!)))
+
+  ;;; ---------------------------------------------------------------- the host
+
+  ;; The window's title, which the desktop shows (its title bar, the
+  ;; switcher, the dock).
+  (define (screen-set-title! title) (core0-window-title! title))
+
+  ;; Who the window is to the desktop, which matches it to a desktop entry
+  ;; by it (core0-app-id): a program's own, before its window opens.
+  (define (screen-set-app-id! id) (core0-app-id! id))
+
+  ;; The desktop's preference: 'light, 'dark, or #f where it says none
+  ;; (headless, or a desktop that doesn't tell). A change rebuilds the theme
+  ;; (screen-event->world), whose palette may follow it ((schevana core
+  ;; theme), 'palette-dark).
+  (define (screen-system-theme) (core0-system-theme))
+
+  ;; A frame of the program's own where the desktop draws none (a host
+  ;; app's header bar, under GNOME): asked before the window opens
+  ;; (screen-own-frame!); whether it is so, once it has (screen-own-frame?).
+  (define (screen-own-frame! on?) (core0-own-frame! on?))
+  (define (screen-own-frame?) (core0-own-frame?))
+
+  ;; What of the window the desktop moves or resizes it by, a frame of the
+  ;; program's own: ((kind x y w h) ...), logical pixels, the first that
+  ;; holds a point winning; kind one of screen-hit-kinds (normal, the
+  ;; program's own). Told to core0 when it changes.
+  (define screen-hit-kinds
+    '(normal move resize-tl resize-t resize-tr resize-r resize-br resize-b
+      resize-bl resize-l))
+  (define-state *screen-hit-regions* '())
+
+  (define (screen-hit-regions! regions)
+    (unless (equal? regions *screen-hit-regions*)
+      (set! *screen-hit-regions* regions)
+      (core0-window-hit-regions!
+       (list->vector
+        (apply append
+               (map (lambda (r)
+                      (cons (list-index (lambda (k) (eq? k (car r)))
+                                        screen-hit-kinds)
+                            (map screen-units (cdr r))))
+                    regions))))))
+
+  ;; Logical pixels to the window's units.
+  (define (screen-units v)
+    (exact (round (/ (* v *screen-chosen-scale*) *pixel-ratio*))))
+
+  ;; The window maximized, restored or minimized, or the desktop's menu for
+  ;; it shown at (x, y), logical pixels.
+  (define (screen-window-action! action . at)
+    (apply core0-window-action! action (map screen-units at)))
+
+  (define (screen-maximized?) (core0-window-maximized?))
 
   ;;; ---------------------------------------------------------------- events
 
@@ -210,6 +278,7 @@
               (screen-units->world (caddr e)) (cdddr e))]
       [(window-resized)
        (and (screen-sync-size!) (list 'resize *canvas-w* *canvas-h*))]
+      [(system-theme-changed) (theme-changed!) #f]
       [else e]))
 
   ;; Steps core0, which drains its events into the world's inbox: on one

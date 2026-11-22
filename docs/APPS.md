@@ -87,3 +87,69 @@ third parties; an app will be able to span several files and use R6RS
 libraries; modules will be compiled ahead, for a faster start; and an app
 in a sandbox will be one you can define at the REPL, which today only a
 file can make.
+
+## Host apps
+
+An app can also be a program of its own whose one window is an app of
+the host's desktop, beside GNOME's or a Mac's own: the window is the
+screen's whole; its title is the one the desktop's switcher and dock
+show; it has an app id of its own; and it takes the host's look, Adwaita
+on Linux, Mac on a Mac, Windows on Windows, light or dark as the desktop
+prefers. Its title bar is the host's where the host draws one (KDE, X11,
+a Mac, Windows); where it draws none (GNOME under Wayland) it is the
+style's, Adwaita's header bar, as GNOME's own apps draw theirs: the
+desktop moves the window by it and resizes it by its edges, its close
+button quits, its other buttons and its menu (a right click on it,
+GNOME's window menu) act on the window. Closing it, Ctrl+Q or Ctrl+W
+quits. `(schevana kits host)` does it:
+
+```scheme no-run
+(import (chezscheme) (schevana core) (schevana kits host)
+        (schevana styles adwaita) (schevana palettes adwaita))
+
+(host-main "org.example.Notes" 360 480 (command-line-arguments)
+  (lambda ()
+    (open-window "Notes" 'min-size '(300 . 360)
+      'draw (lambda (win w h) ...))))
+```
+
+`host-main` takes the app id (reverse-DNS by custom, for the desktop to
+match to a desktop entry), the screen's size in logical pixels, the
+command line (`--headless` draws with no window, `--fork` runs the screen
+on a thread of its own) and a thunk that opens the window. The window's
+`'min-size` is the least the host lets the window be dragged to. The
+looks register as their libraries run, so the program imports those it
+may take. The same window opened on the Schevana desktop is a window like
+any other there.
+
+A host app needs no library of its own: `schevana-window-demo.ss`, a
+checklist, is a plain script, run with the tree as Chez's library folder.
+From the libraries' sources (1.3 s a start here):
+
+```bash
+CHEZSCHEMELIBDIRS=. scheme-script schevana-window-demo.ss
+```
+
+Or, as `schevana-window-demo.sh` does, with Chez compiling each library
+into a folder of objects as it's imported, and loading it from there
+while it's newer than its source (0.3 s a start once compiled):
+
+```bash
+scheme --libdirs .::.cache/mine --compile-imported-libraries \
+  --program schevana-window-demo.ss
+```
+
+The `.sh` takes the launchers' own cache, `.cache/` and Chez's version and
+machine type, so what `schevana-desktop` compiled is compiled for it too.
+`scheme-script` is `scheme --program` with no options of its own, so it
+can load a cache (`CHEZSCHEMELIBDIRS=.::.cache/mine`) but not fill one.
+
+What the host is told goes through the core: `screen-set-title!`,
+`screen-set-app-id!` and `screen-own-frame!` (before the window opens),
+`screen-set-least!`, `screen-hit-regions!` (what of the window the
+desktop moves and resizes it by: `((kind x y w h) ...)`, kind `move`,
+`resize-tl` and the rest round to `resize-l`, or `normal`, the app's),
+`screen-window-action!` (`maximize`, `restore`, `minimize`, `menu`),
+`screen-maximized?`, and `screen-system-theme`, the desktop's `'light` or
+`'dark` (or `#f`), whose change builds the theme again: a style naming a
+`'palette-dark` takes it on a dark desktop, unless a palette was chosen.

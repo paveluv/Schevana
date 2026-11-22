@@ -89,7 +89,7 @@
                 gpu-frame-root-set! gpu-frame-number-set! gpu-frame-earlier-set!
                 gpu-frame-writes-set! gpu-drawing->bytes gpu-compute-now!
                 gpu-submit-computes! gpu-buffer-download! gpu-reads-now!)
-          (only (schevana core0 window) core0-app-id core0-flag-names
+          (only (schevana core0 window) core0-flag-names
                 core0-event-name core0-flags core0-error-text core0-step-state
                 core0-window-sizes core0-window-scale core0-window-fullscreen?
                 clipboard-get core0-window-events core0-input-ns-take!
@@ -104,7 +104,7 @@
           (prefix (only (schevana core0 gpu) *gpu-facts* gpu-frame-waiting?
                         *gpu-frame-back*) core0:)
           (prefix (only (schevana core0 window) *core0-mode*
-                        core0-hidden?) core0:))
+                        core0-hidden? core0-app-id) core0:))
 
   (library-layer core0 facade)
 
@@ -112,6 +112,7 @@
   (define-view *gpu-facts* core0:*gpu-facts*)
   (define-view *core0-mode* core0:*core0-mode*)
   (define-view *core0-platform* core0:*core0-platform*)
+  (define-view core0-app-id core0:core0-app-id)
   (define-view *gpu-frame-back* core0:*gpu-frame-back*)
   (define-view core0-hidden? core0:core0-hidden?)
   (define-view core0-trace! core0:core0-trace!)

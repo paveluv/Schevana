@@ -101,7 +101,7 @@ before it:
   updates `docs/PLATFORMS.md`: where it ran, where it should work, what
   happens without it. Monitor's Platform tab shows it all, and copies a
   run as a row of it.
-- **The core has a budget**, 38,876 tokens (atoms as read; comments,
+- **The core has a budget**, 39,599 tokens (atoms as read; comments,
   whitespace and names' lengths are free; a library's exports and
   imports, which declare, are left out), in `tests/sources.ss`. Don't join lines or
   shorten names to fit it. Code the core doesn't need moves out to the
@@ -221,7 +221,8 @@ before it:
 - Everything drawn is a record; a form like `with-clip` allocates no closure,
   and recording whole numbers allocates nothing (`tests/units/pipeline.ss`).
 - **Mimicked styles** (Mac, Windows, Genera, the CADR, Interlisp, OPEN
-  LOOK, Adwaita, and in future CDE and Platinum) use the original's widgets.
+  LOOK, Adwaita, GNOME, and in future CDE and Platinum) use the original's
+  widgets.
   Where the original has none, make what its designers would have made.
   **Our own styles** (Cons, Curses, Draft, Fold, Halo, Lambda, Reticle,
   Slab, Spine) are free, as long as they stay coherent.

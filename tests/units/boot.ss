@@ -237,13 +237,16 @@
              (and slow (>= (cdr slow) 2000)
                   (equal? (assv 14 traced) '(14 . #x20d)))))))
 
-(check "headless, the window's facts are a world that's shown at 60 Hz, and \
-        inspect-core0 reads core0's step"
+(check "headless, the window's facts are a world that's shown at 60 Hz, with \
+        no light or dark of a desktop's, and inspect-core0 reads core0's step \
+        and who the window is to the desktop"
        (and (not (core0-hidden?))
             (= (core0-frame-ns) (quotient 1000000000 60))
+            (not (screen-system-theme))
             (equal? (map car (inspect-core0))
-                    '(sizes scale flags frame-ns jobs events failed
-                      refresh-said))))
+                    '(sizes app-id least system-theme scale flags frame-ns jobs
+                      events failed refresh-said))
+            (equal? (cdr (assq 'app-id (inspect-core0))) "schevana")))
 
 ;; Core0's sleep, on a thread of its own: a job posted or a frame published
 ;; wakes it, at once or from the next sleep; its events never do, so a

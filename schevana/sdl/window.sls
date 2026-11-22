@@ -14,6 +14,7 @@
     SDL_EVENT_WINDOW_MOUSE_LEAVE SDL_EVENT_WINDOW_DISPLAY_SCALE_CHANGED
     SDL_EVENT_KEY_DOWN SDL_EVENT_TEXT_INPUT SDL_EVENT_MOUSE_MOTION
     SDL_EVENT_MOUSE_BUTTON_DOWN SDL_EVENT_MOUSE_BUTTON_UP SDL_EVENT_MOUSE_WHEEL
+    SDL_EVENT_SYSTEM_THEME_CHANGED
     ;; and its calls
     sdl-init sdl-quit sdl-get-error sdl-set-hint sdl-create-window
     sdl-destroy-window sdl-set-window-minimum-size sdl-set-window-size
@@ -25,7 +26,9 @@
     sdl-get-window-flags sdl-create-surface-from sdl-destroy-surface
     sdl-set-window-icon sdl-memset sdl-get-window-properties
     sdl-get-pointer-property sdl-get-number-property sdl-get-string-property
-    sdl-get-version sdl-get-current-video-driver)
+    sdl-get-version sdl-get-current-video-driver sdl-set-window-title
+    sdl-get-system-theme sdl-set-window-hit-test sdl-maximize-window
+    sdl-restore-window sdl-minimize-window sdl-show-window-system-menu)
   (import (chezscheme)
           (schevana base)
           (schevana ffi)
@@ -57,6 +60,7 @@
   (define SDL_PIXELFORMAT_ARGB8888 #x16362004)
 
   (define SDL_EVENT_QUIT #x100)
+  (define SDL_EVENT_SYSTEM_THEME_CHANGED #x108)
   (define SDL_EVENT_WINDOW_EXPOSED #x204)
   (define SDL_EVENT_WINDOW_RESIZED #x206)
   (define SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED #x207)
@@ -112,6 +116,23 @@
     (int int unsigned-32 uptr int) uptr)
   (define-sdl-hook sdl-destroy-surface "SDL_DestroySurface" (uptr) void)
   (define-sdl-hook sdl-set-window-icon "SDL_SetWindowIcon" (uptr uptr) bool)
+  (define-sdl-hook sdl-set-window-title "SDL_SetWindowTitle" (uptr string)
+    bool)
+  ;; The desktop's light or dark: 0 unknown, 1 light, 2 dark.
+  (define-sdl-hook sdl-get-system-theme "SDL_GetSystemTheme" () int)
+  ;; A window whose frame the program draws: what of it the desktop moves or
+  ;; resizes it by (a callback's entry point), and what its buttons and
+  ;; menu do.
+  (define-sdl-hook sdl-set-window-hit-test "SDL_SetWindowHitTest"
+    (uptr uptr uptr) bool)
+  (define-sdl-hook/collect-safe sdl-maximize-window "SDL_MaximizeWindow"
+    (uptr) bool)
+  (define-sdl-hook/collect-safe sdl-restore-window "SDL_RestoreWindow" (uptr)
+    bool)
+  (define-sdl-hook/collect-safe sdl-minimize-window "SDL_MinimizeWindow"
+    (uptr) bool)
+  (define-sdl-hook sdl-show-window-system-menu "SDL_ShowWindowSystemMenu"
+    (uptr int int) bool)
   (define-sdl-hook sdl-memset "SDL_memset" (uptr int size_t) uptr)
 
   ;; What the window and the platform say of themselves.

@@ -82,14 +82,18 @@ brew install spirv-tools
 | `--install-desktop` | installs a `.desktop` file, for the icon (below) |
 | `--uninstall-desktop` | removes it |
 
-The demos are programs on the core alone, with no desktop, each with a
+The demos are programs on the core, with no desktop, each with a
 launcher beside `schevana-desktop`; `--headless` draws a frame and tells
-what it read back. On the desktop, `--demo` adds them as apps.
+what it read back. On the desktop, `--demo` adds the game and the rings
+as apps. The checklist is a plain script, no library of its own:
+`schevana-window-demo.ss` imports what it needs and opens its window, and
+`schevana-window-demo.sh` runs it with the tree as Chez's library folder,
+Chez compiling each library into the launchers' cache as it's imported.
 
 | Launcher | What it runs |
 | --- | --- |
 | `./schevana-game-demo` | Fireflies, a game, the screen its own |
-| `./schevana-window-demo` | a surface the screen's size, and a window over it |
+| `./schevana-window-demo.sh` | a checklist made of the widget kit, an app of the host's desktop: its title bar and look the host's (Adwaita on GNOME) |
 | `./schevana-rings-demo` | drawing alone, below the windows: a shader and a box that follows the mouse |
 
 A demo builds into one file that runs with no tree:
