@@ -121,6 +121,43 @@
            (for-each close-window! ws)
            ok)))
 
+;; A stipple whose tile finds the atlas full draws from the atlas's corner
+;; for one frame. The next frame empties the atlas and draws every window
+;; again, so the tile is made anew and shows its pattern.
+(check "once the atlas fills, the next frame empties it and draws every \
+        window again: a stipple made as it filled shows its pattern"
+       (let* ([rows '("##.." "#..." "...." "...#")]   ; a tile no look makes
+              [st (apply stipple #x000000 #xffffff rows)]
+              [ink (color->pixel #x000000)])
+         (set-theme! 'scale 100)
+         (steps 1)
+         (set! *atlas-x* 0)
+         (set! *atlas-y* (- gpu-atlas-side 2))
+         (set! *atlas-row* 0)
+         (let ([w (open-window "Atlas" 'size '(64 . 64) 'pos '(101 . 101)
+                               'window-style 'test-plain
+                               'draw (lambda (win w h) (fill-box 0 0 w h st)))])
+           (steps 1)
+           (let ([filled? *atlas-full?*])
+             (steps 1)
+             (let-values ([(cx cy cw ch) (content-rect w)])
+               (let ([shows?
+                      (let loop ([x cx] [y cy])
+                        (cond
+                          [(>= y (+ cy ch)) #t]
+                          [(>= x (+ cx cw)) (loop cx (+ y 1))]
+                          [(eq? (= (pixel-at (screen-picture) x y) ink)
+                                (char=? #\#
+                                        (string-ref (list-ref rows (mod y 4))
+                                                    (mod x 4))))
+                           (loop (+ x 1) y)]
+                          [else #f]))])
+                 (close-window! w)
+                 (set-theme! 'scale 0)
+                 (steps 1)
+                 (and filled? (not *atlas-full?*)
+                      (< *atlas-y* (- gpu-atlas-side 2)) shows?)))))))
+
 (check "at 113 % (a tie in floating point a hair off) px-fill's checker is \
         a stipple's, pixel for pixel"
        (let ([at (lambda (thunk)

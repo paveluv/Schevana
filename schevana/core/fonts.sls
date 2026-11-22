@@ -18,7 +18,8 @@
     font-line-height font-char-width font-ready text-width glyph-row-words
     glyph-row-u glyph-row-v glyph-row-w glyph-row-h glyph-row-left glyph-row-top
     glyph-row-character *glyph-table* *glyph-count* *glyph-table-dirty?*
-    *atlas-y* *atlas-row* *atlas-pieces* atlas-place! *stipple-tiles*
+    *atlas-y* *atlas-row* *atlas-pieces* *atlas-full?* atlas-place!
+    atlas-flush! *stipple-tiles*
     glyph-row-ref font-glyph-pages font-glyph)
   (import (chezscheme)
           (schevana base)
@@ -336,7 +337,8 @@
   (define-state *atlas-full?* #f)
 
   ;; Returns a place, (u . v), for w × h coverage bytes on their way to the
-  ;; atlas; (0 . 0) once the atlas is full.
+  ;; atlas; (0 . 0) once the atlas is full, until the next frame empties it
+  ;; (render-frame!, (schevana core pacer)).
   (define (atlas-place! w h bytes)
     (when (> (+ *atlas-x* w 1) gpu-atlas-side)
       (set! *atlas-x* 0)

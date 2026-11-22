@@ -676,8 +676,15 @@
           (let ([t0 (now-ns)] [waits *pacer-waits*])
             (core0-trace! 23 0)
             (set! *frame-draw-ns* t0)
+            ;; An atlas that the last frame filled is emptied, and this
+            ;; frame draws everything again (a new generation), since a list
+            ;; holds its glyphs and tiles by their places there.
+            (when *atlas-full?*
+              (atlas-flush!)
+              (set! *frame-generation* (+ *frame-generation* 1)))
             (rec-begin! *canvas-ratio*)
             (record-world!)
+            (when *atlas-full?* (request-frame!))
             (frame-number-set! (rec-present!))
             (pacer-drew!)
             (set! *frame-publish-ns* (now-ns))
