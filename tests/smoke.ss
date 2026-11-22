@@ -295,12 +295,12 @@
                p))
       'replace)
     (add-library-directory! lib)
-    (check "the tree's lib folder is searched by import, the user's not"
+    (check "the tree is searched by import, the user's lib folder not"
            (let ([on-path? (lambda (dir)
                              (exists (lambda (e)
                                        (equal? (if (pair? e) (car e) e) dir))
                                      (library-directories)))])
-             (and (on-path? (string-append *schevana-root* "/lib"))
+             (and (on-path? *schevana-root*)
                   (not (on-path? user-library-directory)))))
     (check "import loads a library from an added folder"
            (equal? '(25 6)

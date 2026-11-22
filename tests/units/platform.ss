@@ -1,8 +1,8 @@
 ;;; tests/units/platform.ss — which platform this is (src/base.ss,
-;;; (schevana core platform), lib/schevana/core0/platform.sls), as predicates,
+;;; (schevana core platform), schevana/core0/platform.sls), as predicates,
 ;;; facts, Monitor's Platform tab and a row for docs/PLATFORMS.md; the
 ;;; screen's times read on the clock that fits them; and the trace
-;;; (lib/schevana/core0/trace.sls). Whatever the platform: each check holds
+;;; (schevana/core0/trace.sls). Whatever the platform: each check holds
 ;;; on any of them.
 
 (define (platform-test-one-of preds)

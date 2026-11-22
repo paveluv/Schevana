@@ -15,7 +15,7 @@ gets from its definition to the GPU, and two examples to type at a REPL.
 - **The core draws everything with them.** A window's drawing is a list of
   records (boxes, glyphs, lines, shadows, gradients, stipples, images). One
   vertex shader, `gfx-vertex`, and a fragment shader in seven variants,
-  `gfx-fragments`, draw those records, all in `lib/schevana/core/draw.sls` and all in this
+  `gfx-fragments`, draw those records, all in `schevana/core/draw.sls` and all in this
   language. Each variant holds only the code its records need, so a pixel
   pays only for what it draws.
 - **Apps add their own, of two kinds.** A *paint* (`define-paint`) gives a
@@ -40,7 +40,7 @@ gets from its definition to the GPU, and two examples to type at a REPL.
   twin to the same answers.
 - **The GPU layer speaks in the world's terms.** Above core0 nothing names
   Vulkan, SPIR-V, Metal or MSL but the compiler, which writes the back
-  ends' code. Core0 (`lib/schevana/core0/gpu.sls`) makes the pipelines and runs them.
+  ends' code. Core0 (`schevana/core0/gpu.sls`) makes the pipelines and runs them.
 
 ## A first shader
 
@@ -140,7 +140,7 @@ undefined, and every back end keeps to it:
 
 1. **Defining it compiles it.** `define-compute-shader` (and
    `define-paint`) is a macro: as it expands, the front end in
-   `lib/schevana/shader.sls` checks the forms and lowers them to a small typed tree,
+   `schevana/shader.sls` checks the forms and lowers them to a small typed tree,
    with every local function inlined, every `cond`, `case` and `when` turned
    into `if`, and every constant replaced by its number. A test it can work
    out leaves only its arm. The back end for this machine then writes the
@@ -414,10 +414,10 @@ comes back to the CPU.
 
 | File | What it holds |
 |---|---|
-| `lib/schevana/shader.sls` | the language: the front end, the SPIR-V and MSL back ends, `define-compute-shader`, constants, helpers and layouts |
-| `lib/schevana/core/draw.sls` | `define-paint`, `fill-shader`, the core's own shaders and their helpers |
-| `lib/schevana/core/gpu.sls` | buffers and images as handles, calls, compute runs |
-| `lib/schevana/core0/gpu.sls` | core0: pipelines, dispatch, drawing |
+| `schevana/shader.sls` | the language: the front end, the SPIR-V and MSL back ends, `define-compute-shader`, constants, helpers and layouts |
+| `schevana/core/draw.sls` | `define-paint`, `fill-shader`, the core's own shaders and their helpers |
+| `schevana/core/gpu.sls` | buffers and images as handles, calls, compute runs |
+| `schevana/core0/gpu.sls` | core0: pipelines, dispatch, drawing |
 | `kits/twin.ss` | the twin |
 | `kits/inspect.ss` | `inspect-shader-…`, `inspect-computes` |
 | `apps/boids3d.ss` | an app that is all shaders |

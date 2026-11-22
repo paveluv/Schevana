@@ -1,10 +1,10 @@
-;;; demo/game.ss — a program on drawing alone: no theme, no windows, no
+;;; schevana-demo/game.ss — a program on drawing alone: no theme, no windows, no
 ;;; desktop. It imports the pieces below them, hands the loop what a frame
 ;;; draws and where an event goes, and runs: a shader of its own over the
 ;;; whole screen, a box that follows the mouse, a line of text.
 ;;;
-;;;   scheme --libdirs lib --program demo/game.ss             a window
-;;;   scheme --libdirs lib --program demo/game.ss --headless  a frame,
+;;;   scheme --libdirs . --program schevana-demo/game.ss             a window
+;;;   scheme --libdirs . --program schevana-demo/game.ss --headless  a frame,
 ;;;                                              read back and told
 
 (import (chezscheme)

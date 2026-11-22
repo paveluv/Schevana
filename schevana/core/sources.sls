@@ -199,7 +199,7 @@
   ;; text kept, as a file's is, for what describes a name.
   (define (load-world!)
     (hashtable-clear! *world-readers*)
-    (add-library-directory! (string-append *schevana-root* "/lib"))
+    (add-library-directory! *schevana-root*)
     (load-sources! (world-sources))
     (reload-mark!)
     (source-libraries-keep! (library-list)))

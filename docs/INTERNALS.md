@@ -13,7 +13,7 @@ world.ss       the world's boot, in "/": the user's settings, the first
 src/base.ss    what every environment of the top level has, a copy each:
                pure, no state, no C; forwarders, by which an environment
                gives another its names
-lib/schevana/  the libraries below the world, each declaring its layer:
+schevana/      the libraries below the world, each declaring its layer:
   base         the basics; the layers and their check; states, made
                values, hooks and views
   tree         where the tree is
@@ -52,7 +52,7 @@ services/      long-lived state behind procedures: crew, env, grant,
 desktop/       the screen's own surfaces: wallpaper, bars, menu, toasts;
                keys, arranging, the file dialog, the permissions dialog
 styles/  palettes/  wallpapers/  apps/     one definition a file
-demo/          programs on the core's libraries, one a file
+schevana-demo/ programs on the core's libraries, one a file
 ```
 
 ## The boot chain
@@ -86,7 +86,7 @@ order:
 Only the core calls C. No binding reaches "/", and `tests/sources.ss`
 checks that no folder names one, nor anything of the core's it isn't given.
 
-A program stands on the core alone (`demo/`): it imports the core's
+A program stands on the core alone (`schevana-demo/`): it imports the core's
 facade, or the pieces it needs, and runs with `schevana-main`, which boots
 the screen, calls a thunk that opens what the program shows, and runs the
 world till it quits:
@@ -167,7 +167,7 @@ is a list from its corner, what `draw-window` draws, and its content a
 list of its own shown in it. A frame records the wallpaper, the panels,
 the menu and the toasts, shows each window's list from the bottom up, each
 clipped to its extent (`record-world!` in
-`lib/schevana/core/windows.sls`), and sends them; a list that changed goes
+`schevana/core/windows.sls`), and sends them; a list that changed goes
 up to the GPU, and the others are there.
 
 A window draws again only when it opens or resizes, when what its frame is
@@ -361,7 +361,7 @@ GPU memory, so the bytes made count toward its old generations' growth.
 
 ## The profiler's hook
 
-`lib/schevana/core/processes.sls` keeps one hook, `*profile-span*` (`#f`,
+`schevana/core/processes.sls` keeps one hook, `*profile-span*` (`#f`,
 or a pair of procedures, begin and end), and `with-profile-span`, in which
 five places run their work: the step, `safely` (each phase of core1's
 loop, each surface's draw and tick), a window's handler, its drawing, and

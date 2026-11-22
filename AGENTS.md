@@ -45,14 +45,14 @@ before it:
 | Layer | What goes there |
 |---|---|
 | `src/base.ss` | What every environment of the top level has, a copy each: the basics, forwarders, by which an environment gives another its names, and the top level's own forms. Pure: no state, no C. |
-| `lib/schevana/core0/` | Core0, below the core, sealed in its libraries: the GPU's device side, the window and its events, the trace, what differs by platform. `main.ss` imports them and boots it, and it boots core1, the world's own thread (headless, one thread plays both). The core has of it only its facade, `(schevana core0)`; the recorder, `lib/schevana/recorder/` (the bytes of frames and their writers), has `(schevana core0 for-recorder)`, and the core has of the recorder its facade, `(schevana recorder)`. |
-| `lib/schevana/core/` | The core, sealed in its libraries, `(schevana core <piece>)`: the world (windows, focus, the theme's layers, processes, timers, its side of core0's window and events), core1's side of the GPU layer, drawing and fonts, the pacer, the loop, its registries, the hooks later layers fill, and the caches its own procedures need; making the world's environment, "/", where everything below loads, loading the world's files and reloading (`sources.sls`). The world has of it only its facade, `(schevana core)`, which lists what the world is given. |
+| `schevana/core0/` | Core0, below the core, sealed in its libraries: the GPU's device side, the window and its events, the trace, what differs by platform. `main.ss` imports them and boots it, and it boots core1, the world's own thread (headless, one thread plays both). The core has of it only its facade, `(schevana core0)`; the recorder, `schevana/recorder/` (the bytes of frames and their writers), has `(schevana core0 for-recorder)`, and the core has of the recorder its facade, `(schevana recorder)`. |
+| `schevana/core/` | The core, sealed in its libraries, `(schevana core <piece>)`: the world (windows, focus, the theme's layers, processes, timers, its side of core0's window and events), core1's side of the GPU layer, drawing and fonts, the pacer, the loop, its registries, the hooks later layers fill, and the caches its own procedures need; making the world's environment, "/", where everything below loads, loading the world's files and reloading (`sources.sls`). The world has of it only its facade, `(schevana core)`, which lists what the world is given. |
 | `kits/` | Libraries, pure or almost. |
 | `services/` | Long-lived state with an API and no surface: the crew of worker threads, the tree of environments, the apps' sandboxes and what they are allowed, vats and their jobs, the profiler, the saved look. |
 | `desktop/` | The screen's own surfaces and the desktop's behavior: wallpaper, bars, menu, toasts, keys, arranging windows. |
 | `styles/`, `palettes/`, `wallpapers/` | One definition per file, registered by its definer. |
 | `apps/` | One app per file, defined with `define-app`; one whose first form is `app-requests` runs in a sandbox of its own (`services/grant.ss`). |
-| `demo/` | Programs on the core's libraries (`lib/schevana/`), one per file: each imports what it needs and runs (`scheme --libdirs lib --program demo/game.ss`). |
+| `schevana-demo/` | Programs on the core's libraries (`schevana/`), one per file: each imports what it needs and runs (`scheme --libdirs . --program schevana-demo/game.ss`). |
 
 - **The boot is a chain**: `main.ss` boots core0, core0 boots core1, core1
   boots the world. A sealed layer gives the next only what its facade
@@ -83,9 +83,9 @@ before it:
   environment's copy is as good as another (`tests/sources.ss`). What
   isn't pure is core0's or the core's, and given by a facade.
 - **What differs by platform lives in the platform files**:
-  `lib/schevana/core0/platform.sls` for core0's (a folder,
-  `lib/schevana/core0/platform/`, once it outgrows a file),
-  `lib/schevana/core/platform.sls` for the core's. A stack
+  `schevana/core0/platform.sls` for core0's (a folder,
+  `schevana/core0/platform/`, once it outgrows a file),
+  `schevana/core/platform.sls` for the core's. A stack
   differs by OS, windowing system, compositor, SDL, GPU API, driver and
   monitor. Which one this is comes from their predicates and facts alone
   (`platform-mac?`, `platform-wayland?`, `platform-vulkan?`,
@@ -111,7 +111,7 @@ before it:
 - **The GPU layer speaks the world's terms.** Above core0, in the core too,
   nothing names SDL's GPU, Vulkan, SPIR-V, Metal or MSL, so that another
   back end or raw Vulkan stays core0's business alone (`tests/sources.ss`;
-  the compiler, `lib/schevana/shader.sls`, writes the back ends' code).
+  the compiler, `schevana/shader.sls`, writes the back ends' code).
 - **The shader language is the contract.** What a back end can't do doesn't
   get in: the twin (`kits/twin.ss`) is a second back end from the start, and
   `tests/units/shader.ss` holds it and the device together.
@@ -192,7 +192,7 @@ before it:
   `theme-file-save-soon!` captured as a value.
 - `(reload!)` of the tree into itself must keep working. It evaluates
   again each library whose file changed, and every library that imports
-  it (`lib/schevana/reload.sls`), imports them again where they were
+  it (`schevana/reload.sls`), imports them again where they were
   imported, and loads the world's files into "/"; core0's libraries, with
   all they import, change with a restart (`tests/units/reload.ss`). A
   `define` in "/" of a name the core gives makes the world's own, which

@@ -50,7 +50,7 @@
   (let loop ([forms (cddddr (call-with-input-file
                                 (string-append
                                  *schevana-root*
-                                 "/lib/schevana/sdl/window.sls")
+                                 "/schevana/sdl/window.sls")
                               read))]
              [acc '()])
     (cond

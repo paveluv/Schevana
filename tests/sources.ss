@@ -61,15 +61,15 @@
        (filter (lambda (f) (string=? (path-extension f) "ss"))
                (sort string<? (directory-list (source-path folder))))))
 
-;; The libraries below the world (lib/schevana/), main.ss's list: core0's,
+;; The libraries below the world (schevana/), main.ss's list: core0's,
 ;; the recorder's and the core's code is all in them, sealed. The world's
 ;; files are (source-files).
 (define library-files *schevana-libraries*)
 
-;; Every library under lib/schevana, the ones the core is built of and
+;; Every library under schevana/, the ones the core is built of and
 ;; those that still include a layer's files.
 (define all-library-files
-  (let walk ([dir "lib/schevana"])
+  (let walk ([dir "schevana"])
     (apply append
            (map (lambda (f)
                   (let ([path (string-append dir "/" f)])
@@ -80,22 +80,22 @@
 
 ;; Each declares its layer first (library-layer, (schevana base)), which
 ;; holds its imports to the layers' order as it compiles.
-(check "every library under lib/schevana declares its layer first"
+(check "every library under schevana/ declares its layer first"
        (none? (filter-map
                (lambda (f)
                  (let ([body (file-forms f)])
                    (and (not (and (pair? body) (pair? (car body))
                                   (eq? (caar body) 'library-layer)))
-                        (not (equal? f "lib/schevana/base.sls"))
+                        (not (equal? f "schevana/base.sls"))
                         (format "~a declares no layer first" f))))
                all-library-files)))
 
-;; Those of a layer's own, sealed: its folder of lib/schevana, and its
+;; Those of a layer's own, sealed: its folder of schevana/, and its
 ;; facade beside it.
 (define (layer-libraries folder)
   (filter (lambda (f)
-            (or (string-prefix? (string-append "lib/schevana/" folder "/") f)
-                (string=? (string-append "lib/schevana/" folder ".sls") f)))
+            (or (string-prefix? (string-append "schevana/" folder "/") f)
+                (string=? (string-append "schevana/" folder ".sls") f)))
           library-files))
 
 (define line-files
@@ -104,7 +104,8 @@
           (test-files "tests")
           (test-files "tests/units")
           (test-files "tests/fork")
-          '("main.ss" "world.ss" "schevana")))
+          '("main.ss" "world.ss")
+          (test-files "schevana-demo")))
 
 (define (long-lines f)
   (let loop ([ls (file-lines f)] [n 1] [acc '()])
@@ -228,7 +229,7 @@
 
 ;; Raise it deliberately: the core is what the desktop needs to boot and
 ;; run; everything else belongs in a folder. The core is the libraries
-;; below the world (lib/schevana/). What declares is left out, sized by
+;; below the world (schevana/). What declares is left out, sized by
 ;; what's given, each a reviewed change: a library's exports and imports
 ;; (file-forms).
 (define src-budget 38870)
@@ -269,7 +270,7 @@
 (define core-hooks
   (filter-map (lambda (x)
                 (and (pair? x) (eq? (car x) 'define-settable) (cadr x)))
-              (file-forms "lib/schevana/core.sls")))
+              (file-forms "schevana/core.sls")))
 
 ;; The names a file defines at its top level.
 (define (top-level-names f)
@@ -321,12 +322,12 @@
 ;;; may: they inspect what is drawn and stand in for SDL.
 
 (define ffi-names
-  (map cdr (append (definitions "lib/schevana/ffi.sls")
-                   (definitions "lib/schevana/sdl/system.sls")
-                   (definitions "lib/schevana/sdl/window.sls")
-                   (definitions "lib/schevana/sdl/gpu.sls")
-                   (definitions "lib/schevana/freetype.sls")
-                   (definitions "lib/schevana/fontconfig.sls"))))
+  (map cdr (append (definitions "schevana/ffi.sls")
+                   (definitions "schevana/sdl/system.sls")
+                   (definitions "schevana/sdl/window.sls")
+                   (definitions "schevana/sdl/gpu.sls")
+                   (definitions "schevana/freetype.sls")
+                   (definitions "schevana/fontconfig.sls"))))
 
 (define (reaches-c? s)
   (or (and (memq s (append ffi-names
@@ -346,7 +347,7 @@
           [else acc])))
 
 (define outside-src
-  (remp (lambda (f) (member (file-folder f) '("src" "lib")))
+  (remp (lambda (f) (member (file-folder f) '("src" "schevana")))
         (append world-files '("world.ss"))))
 
 ;; The GPU layer speaks the world's terms: above it, in the core too, nothing
@@ -357,18 +358,18 @@
 ;; (schevana core platform).
 (define above-gpu-files
   (remp (lambda (f)
-          (member f '("lib/schevana/ffi.sls" "lib/schevana/shader.sls"
-                      "lib/schevana/sdl.sls" "lib/schevana/sdl/system.sls"
-                      "lib/schevana/sdl/window.sls"
-                      "lib/schevana/sdl/gpu.sls"
-                      "lib/schevana/core0/mail.sls"
-                      "lib/schevana/core0/renderer.sls"
-                      "lib/schevana/core0/present.sls"
-                      "lib/schevana/core0/platform.sls"
-                      "lib/schevana/core0/gpu.sls"
-                      "lib/schevana/core0/window.sls"
-                      "lib/schevana/core/fonts.sls"
-                      "lib/schevana/core/platform.sls")))
+          (member f '("schevana/ffi.sls" "schevana/shader.sls"
+                      "schevana/sdl.sls" "schevana/sdl/system.sls"
+                      "schevana/sdl/window.sls"
+                      "schevana/sdl/gpu.sls"
+                      "schevana/core0/mail.sls"
+                      "schevana/core0/renderer.sls"
+                      "schevana/core0/present.sls"
+                      "schevana/core0/platform.sls"
+                      "schevana/core0/gpu.sls"
+                      "schevana/core0/window.sls"
+                      "schevana/core/fonts.sls"
+                      "schevana/core/platform.sls")))
         (append world-files '("world.ss"))))
 
 (define (names-a-back-end? s)
@@ -410,9 +411,9 @@
 ;; and (schevana sdl window), which binds SDL's video driver for core0's to
 ;; read
 (define platform-files
-  '("lib/schevana/base.sls" "lib/schevana/core/platform.sls"
-    "lib/schevana/sdl/window.sls"
-    "lib/schevana/core0/platform.sls" "kits/inspect.ss"))
+  '("schevana/base.sls" "schevana/core/platform.sls"
+    "schevana/sdl/window.sls"
+    "schevana/core0/platform.sls" "kits/inspect.ss"))
 
 ;; The strings in x.
 (define (strings-in x)
@@ -609,9 +610,9 @@
 (check "src/base.ss and (schevana base) are pure: no defvar, no set! of \
         their own names, no C"
        (let ([forms (append (file-forms "src/base.ss")
-                            (file-forms "lib/schevana/base.sls"))]
+                            (file-forms "schevana/base.sls"))]
              [own (map cdr (append (definitions "src/base.ss")
-                                   (definitions "lib/schevana/base.sls")))])
+                                   (definitions "schevana/base.sls")))])
          (none? (append
                  (filter-map (lambda (x)
                                (and (pair? x) (eq? (car x) 'defvar)
@@ -641,8 +642,8 @@
     "SDL_SetGPUSwapchainParameters"))
 
 (check "every SDL call that may block is collect-safe"
-       (let ([forms (append (file-forms "lib/schevana/sdl/window.sls")
-                            (file-forms "lib/schevana/sdl/gpu.sls"))])
+       (let ([forms (append (file-forms "schevana/sdl/window.sls")
+                            (file-forms "schevana/sdl/gpu.sls"))])
          (none? (filter-map
                  (lambda (c)
                    (let ([f (find (lambda (x)

@@ -154,7 +154,7 @@
 ;;; calls one of those, so that a closure made at run time which only calls
 ;;; one carries it, and is allocated where the top level's, which named a
 ;;; global, was not. So what a library makes as it loads is a state or a
-;;; made value (define-state, define-made: lib/schevana/base.sls), and a
+;;; made value (define-state, define-made: schevana/base.sls), and a
 ;;; procedure it defines is no closure at all. Asked of Chez's inspector,
 ;;; of each procedure a library of the core's defines and exports; what a
 ;;; state, a made value or a hook holds is its own.

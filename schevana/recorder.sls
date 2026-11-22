@@ -1,4 +1,4 @@
-;;; (schevana recorder) — the recorder (lib/schevana/recorder/), between
+;;; (schevana recorder) — the recorder (schevana/recorder/), between
 ;;; core0 and the core, as the core has it: how the core writes what it
 ;;; records and hands it over, and nothing else of it, so that the core
 ;;; names no byte core0 reads.

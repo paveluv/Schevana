@@ -33,7 +33,7 @@
 ;; A procedure handed over by its name, so that a redefinition takes at
 ;; the next call (world-value). In a library, where nothing is redefined
 ;; and a name is no way to reach it, the procedure itself
-;; (lib/schevana/layer.sls).
+;; (schevana/layer.sls).
 (define-syntax live-name
   (syntax-rules () [(_ name) 'name]))
 

@@ -14,10 +14,10 @@
 ;;; loading it:
 ;;;
 ;;;   1. This file boots core0, the code below the core, sealed in its
-;;;      libraries (lib/schevana/core0/), which this thread's environment
+;;;      libraries (schevana/core0/), which this thread's environment
 ;;;      imports.
 ;;;   2. Core0 boots core1 (core1-boot!, (schevana core sources)): the core
-;;;      is sealed in its libraries too (lib/schevana/core/), and has of
+;;;      is sealed in its libraries too (schevana/core/), and has of
 ;;;      core0's and the recorder's only their facades, (schevana core0)
 ;;;      and (schevana recorder).
 ;;;   3. Core1 makes the world's environment, "/", which imports what the
@@ -49,7 +49,7 @@
         (if (string=? dir "") "." dir))
       (top-level-value '*schevana-root*)))
 
-;; Schevana's R6RS libraries below the world (lib/schevana/): the
+;; Schevana's R6RS libraries below the world (schevana/): the
 ;; basics, where the tree is, how C is bound, SDL's bindings (SDL itself,
 ;; the window's, the GPU's, and all three as one), the shader compiler,
 ;; sockets, FreeType's bindings and fontconfig's; core0's own, and its
@@ -58,24 +58,24 @@
 ;; core's own, and its facade, what it gives the world. Each declares its
 ;; layer (library-layer, in (schevana base)).
 (define *schevana-libraries*
-  '("lib/schevana/base.sls" "lib/schevana/tree.sls" "lib/schevana/ffi.sls"
-    "lib/schevana/sdl/system.sls" "lib/schevana/sdl/window.sls"
-    "lib/schevana/sdl/gpu.sls" "lib/schevana/sdl.sls" "lib/schevana/shader.sls"
-    "lib/schevana/socket.sls" "lib/schevana/freetype.sls"
-    "lib/schevana/fontconfig.sls" "lib/schevana/core0/mail.sls"
-    "lib/schevana/core0/trace.sls" "lib/schevana/core0/renderer.sls"
-    "lib/schevana/core0/present.sls" "lib/schevana/core0/platform.sls"
-    "lib/schevana/core0/trace-file.sls" "lib/schevana/core0/gpu.sls"
-    "lib/schevana/core0/window.sls" "lib/schevana/core0/for-recorder.sls"
-    "lib/schevana/core0.sls" "lib/schevana/recorder/bytes.sls"
-    "lib/schevana/recorder.sls" "lib/schevana/reload.sls"
-    "lib/schevana/core/platform.sls" "lib/schevana/core/theme-table.sls"
-    "lib/schevana/core/processes.sls" "lib/schevana/core/gpu.sls"
-    "lib/schevana/core/fonts.sls" "lib/schevana/core/draw.sls"
-    "lib/schevana/core/pacer.sls" "lib/schevana/core/screen.sls"
-    "lib/schevana/core/loop.sls" "lib/schevana/core/theme.sls"
-    "lib/schevana/core/windows.sls" "lib/schevana/core/sources.sls"
-    "lib/schevana/core.sls"))
+  '("schevana/base.sls" "schevana/tree.sls" "schevana/ffi.sls"
+    "schevana/sdl/system.sls" "schevana/sdl/window.sls"
+    "schevana/sdl/gpu.sls" "schevana/sdl.sls" "schevana/shader.sls"
+    "schevana/socket.sls" "schevana/freetype.sls"
+    "schevana/fontconfig.sls" "schevana/core0/mail.sls"
+    "schevana/core0/trace.sls" "schevana/core0/renderer.sls"
+    "schevana/core0/present.sls" "schevana/core0/platform.sls"
+    "schevana/core0/trace-file.sls" "schevana/core0/gpu.sls"
+    "schevana/core0/window.sls" "schevana/core0/for-recorder.sls"
+    "schevana/core0.sls" "schevana/recorder/bytes.sls"
+    "schevana/recorder.sls" "schevana/reload.sls"
+    "schevana/core/platform.sls" "schevana/core/theme-table.sls"
+    "schevana/core/processes.sls" "schevana/core/gpu.sls"
+    "schevana/core/fonts.sls" "schevana/core/draw.sls"
+    "schevana/core/pacer.sls" "schevana/core/screen.sls"
+    "schevana/core/loop.sls" "schevana/core/theme.sls"
+    "schevana/core/windows.sls" "schevana/core/sources.sls"
+    "schevana/core.sls"))
 
 ;;; ---------------------------------------------------------- the command line
 
@@ -144,8 +144,7 @@
 ;; the tree's lib. This thread's environment has the basics too, a copy
 ;; of its own.
 (library-directories
- (let ([lib (string-append *schevana-root* "/lib")])
-   (cons (cons lib lib) (library-directories))))
+ (cons (cons *schevana-root* *schevana-root*) (library-directories)))
 (import (schevana ffi) (schevana sdl) (schevana shader)
         (schevana core0 mail) (schevana core0 trace) (schevana core0 renderer)
         (schevana core0 present) (schevana core0 platform)
