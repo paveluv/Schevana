@@ -171,11 +171,11 @@ it, the test framework finds itself:
 - A run whose heap passes its limit stops, as a failure, before the
   machine runs out of memory (`tests/lib.ss`): 2 GB, where a topic or a
   suite takes a few hundred MB to 1.5 GB; `SCHEVANA_TEST_HEAP_MB` sets
-  another. After each check, and each step under the held clock, the
-  collector looks at the older generations as the world's loop has it
-  look every 500 ms (`test-collector-look!`): a check that never steps,
-  and steps under a clock that never moves, would never let it, and
-  their garbage would pile up.
+  another. The collector looks at the older generations at most every
+  500 ms of the clock: under the held clock the tests let each look the
+  world takes go through, and look after each check too, since a check
+  that never steps the world never lets it (`tests/lib.ss`); else their
+  garbage would pile up.
 
 ## Every run alike
 

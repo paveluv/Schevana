@@ -58,7 +58,7 @@
 (define (settle)
   (let loop ([n 0])
     (when (and (< n 20) *dirty*)
-      (test-step! 0)
+      (schevana-step! 0)
       (loop (+ n 1)))))
 
 ;;; ------------------------------------------------------------------ images

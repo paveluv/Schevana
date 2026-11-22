@@ -116,12 +116,26 @@
     (printf "stopped after the check SCHEVANA_CHECK names\n")
     (exit (if (zero? failures) 0 1))))
 
-;; The collector's look at the older generations (collector-tick!), which
-;; comes at most every 500 ms of the clock, and only as the world's loop
-;; steps: now. A check that never steps the world, and steps under the
-;; held clock, would never have it, and what outlives a young collection
-;; would pile up, gigabytes of it. The look collects only what the world
-;; would by its own measure.
+;; The collector looks at the older generations (collector-tick!) as the
+;; world's loop steps, at most every 500 ms of the clock. Under the held
+;; clock it would never look, and what outlives a young collection would
+;; pile up, gigabytes of it: so the tests stand in for the look, which,
+;; the clock held, goes through each time the world takes it, as if the
+;; clock had moved on. It collects what the world would by its own
+;; measure; and with the heap past half the run's limit (busy, the world
+;; lets the old generations grow 512 MB, and a test's pictures to compare
+;; are 37 MB each at 300 %), every generation, lest garbage stop the run.
+(let ([look collector-tick!])
+  (set! collector-tick!
+        (lambda ()
+          (when test-clock-ms (set! *collector-check-ms* 0))
+          (look)
+          (when (> (bytes-allocated) (quotient test-heap-limit 2))
+            (collector-pass! 3 3)
+            (set! *collector-old-kept* (collector-grown))))))
+
+;; The look now, after a check: one that never steps the world never lets
+;; the world take it.
 (define (test-collector-look!)
   (set! *collector-check-ms* 0)
   (collector-tick!))
@@ -216,17 +230,11 @@
     (map (lambda (j) (bytevector-s32-native-ref bytes (* 4 (+ at j))))
          (iota (ui-stream-words s)))))
 
-;; A step of the world's loop, and, the clock held, the collector's look
-;; after it, as if the clock had moved on for it.
-(define (test-step! wait-ms)
-  (schevana-step! wait-ms)
-  (when test-clock-ms (test-collector-look!)))
-
 ;; The world's loop, n times, each after the held clock moves on ms.
 (define (steps n . ms)
   (do ([i 0 (+ i 1)]) ((= i n))
     (when (pair? ms) (test-clock-advance! (car ms)))
-    (test-step! 0)))
+    (schevana-step! 0)))
 
 ;; pred's first true value as the world goes on, a step each 5 ms, for up
 ;; to ms of the clock, held or the machine's; #f if it never is.

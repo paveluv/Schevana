@@ -49,6 +49,7 @@
     ((schevana apps tasks) tasks-forest tasks-draw-node)
     ((schevana core draw) draw-text rec-present!)
     ((schevana core fonts) text-width)
+    ((schevana core loop) collector-tick!)
     ((schevana core pacer) pacer-period render-frames-back!)
     ((schevana core platform) platform-process-bytes now-ns now-ms)
     ((schevana core processes) request-frame! notify report-error!)
