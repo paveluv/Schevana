@@ -2538,9 +2538,9 @@
   (define (ui-title-icon win) (window-ref win 'title-icon #f))
 
   ;; An environment's icon by its kind ((schevana services env)): the
-  ;; world's globe, a namespace's folder, a sandbox's box, a thread's or the
-  ;; worklets' gear, /apps' folder and an app's box, each in its kind's
-  ;; color, and faded when dim or disabled.
+  ;; world's globe, a namespace's folder, a sandbox's box, and a thread's or
+  ;; the worklets' gear, each in its kind's color, and faded when dim or
+  ;; disabled.
   (define-part (ui-draw-env-icon x y s flags kind)
     (let-values ([(glyph ink)
                   (case kind
@@ -2548,8 +2548,6 @@
                     [(worklets) (values 'gear 'yellow)]
                     [(thread) (values 'gear 'orange)]
                     [(sandbox) (values 'box 'teal)]
-                    [(apps) (values 'folder 'magenta)]
-                    [(app) (values 'box 'magenta)]
                     [(world) (values 'folder 'accent)]
                     [(private) (values 'folder 'accent-2)]
                     [(pure) (values 'folder 'green)]
