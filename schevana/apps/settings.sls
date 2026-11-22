@@ -81,6 +81,7 @@
                 ui-dialog ui-memo! ui-memo ui-button-size ui-flags
                 ui-pressable! ui-focus! ui-active? ui-draw-field
                 ui-draw-checkbox ui-draw-button ui-draw-focus ui-draw-card
+                ui-card-radius
                 ui-label-size ui-toggle ui-slider ui-dropdown ui-segmented
                 ui-slider-height ui-button ui-region! ui-draw-label
                 ui-control-height)
@@ -594,7 +595,7 @@
   ;; card outline.
   (define (settings-draw-card x y w h flags title changed? style . extra)
     (let ([lh (settings-card-label-height)])
-      (with-clip (x y w h 8)
+      (with-clip (x y w h (ui-card-radius))
         (apply draw-style-preview style x y w (- h lh) extra)
         (fill-box x (- (+ y h) lh) w lh 'panel)
         (draw-text (+ x 12) (+ (- (+ y h) lh)
@@ -604,7 +605,8 @@
           (fill-circle (- (+ x w) 15) (- (+ y h) (/ lh 2)) 3.5
                        'panel-accent)))
       (ui-draw-card x y w h flags)
-      (when (memq 'focused flags) (ui-draw-focus x y w h flags 8))))
+      (when (memq 'focused flags)
+        (ui-draw-focus x y w h flags (ui-card-radius)))))
 
   ;; A miniature of style name (extra: settings over it, a palette say) in
   ;; x y w h: its wallpaper and a focused window in its frame holding a
@@ -658,7 +660,8 @@
           [ch (settings-card-height)])
       (settings-card-grid (palettes) x y w cw ch
         (lambda (name cx cy)
-          (let ([id (list 'palette name)])
+          (let ([id (list key name)])
+
             (ui-pressable! ui id cx cy cw ch
                            (lambda ()
                              (settings-press-focus! ui id)

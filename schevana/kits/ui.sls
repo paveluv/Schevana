@@ -127,7 +127,17 @@
     ui-sheet ui-dialog-box ui-dialog-button-widths ui-dialog-lines
     ui-dialog-size ui-dialog-size* ui-dialog-areas ui-dialog-areas*
     ui-draw-scrim ui-draw-scrim* ui-draw-dialog ui-draw-dialog*
-    ui-stream-record)
+    ui-stream-record ui-joined-span ui-button-radius ui-linked
+    ui-draw-button-box ui-stepper-areas ui-stepper-areas* ui-toggle-track*
+    ui-rows ui-rows-height ui-row-spec-height ui-rows-heading ui-row
+    ui-switch-row ui-check-row ui-entry-row ui-rows-spacing ui-rows-spacing*
+    ui-row-height ui-row-height* ui-row-areas ui-row-areas* ui-rows-radius
+    ui-rows-radius* ui-draw-rows ui-draw-rows* ui-draw-row ui-draw-row*
+    ui-status-page ui-status-page-areas ui-status-page-areas*
+    ui-draw-status-page ui-draw-status-page* ui-draw-centered-lines
+    ui-banner ui-banner-height ui-banner-height* ui-banner-areas
+    ui-banner-areas* ui-draw-banner ui-draw-banner* ui-card-radius
+    ui-card-radius*)
   (import (chezscheme)
           (only (schevana base) at-load clamp define-hook filter-map
                 library-layer list-index plist-ref string-prefix? string-split)
@@ -948,7 +958,8 @@
   ;; Vector glyphs, no font: check cross plus chevron-down chevron-left
   ;; chevron-right search expand, the triangles up down left right (sort
   ;; marks, scroll arrows, submenus; sort-up and sort-down, their old names),
-  ;; centered in the box; pin and undo (Settings' rows); minus (a
+  ;; centered in the box; pin and undo (Settings' rows); edit, a pencil (an
+  ;; entry row's); minus (a
   ;; stepper's); globe folder box gear, in outline, and prompt, a REPL's
   ;; (the environments); home file drive and chevron-up (the file dialog);
   ;; panel-right panel-left, a window with a pane along that side, filled in
@@ -982,6 +993,10 @@
                  (line (p 0.72 0.28) (p 0.28 0.72))]
         [(plus) (line (p 0.5 0.2) (p 0.5 0.8)) (line (p 0.2 0.5) (p 0.8 0.5))]
         [(minus) (line (p 0.2 0.5) (p 0.8 0.5))]
+        [(edit)   ; a pencil, its point at the bottom left
+         (line (p 0.16 0.84) (p 0.22 0.62) (p 0.66 0.18) (p 0.82 0.34)
+               (p 0.38 0.78) (p 0.16 0.84))
+         (line (p 0.58 0.26) (p 0.74 0.42))]
         [(prompt)   ; >_
          (line (p 0.18 0.28) (p 0.44 0.5) (p 0.18 0.72))
          (line (p 0.52 0.74) (p 0.86 0.74))]
@@ -1090,20 +1105,65 @@
 
   ;;; ---------------------------------------------------------------- button
 
+  ;; opts: 'glyph, 'tip, 'disabled, and the flags 'primary (the suggested
+  ;; action), 'danger, 'quiet (flat: no box till the pointer is on it),
+  ;; 'selected (pressed in), 'pill and 'circular (round ends, a round
+  ;; button), 'join-left and 'join-right (square on that side, where a
+  ;; linked neighbor touches it), 'segment (a piece of a segmented
+  ;; choice).
   (define (ui-button ui id x y w h label on-press . opts)
     (ui-pressable! ui id x y w h on-press '(#\space return) opts
                    (list (cons 'L (or label (plist-ref opts 'tip #f) "Press"))))
     (ui-draw-button x y w h
                     (apply ui-flags ui id
                            (ui-opt-flags opts '(selected primary danger quiet
-                                                disabled)))
+                                                disabled pill circular
+                                                join-left join-right
+                                                segment)))
                     label (plist-ref opts 'glyph #f)))
+
+  ;; A box x..x+w whose corners are r round but on its joined sides (flags
+  ;; join-left, join-right), drawn as a rounded box that much wider there,
+  ;; cut to x..x+w (with-clip): => (values x w) of that wider box.
+  (define (ui-joined-span x w r flags)
+    (let ([l (if (memq 'join-left flags) r 0)]
+          [rt (if (memq 'join-right flags) r 0)])
+      (values (- x l) (+ w l rt))))
+
+  ;; A button's corners: half its height when it is a pill or round, else
+  ;; r.
+  (define (ui-button-radius h flags r)
+    (if (or (memq 'pill flags) (memq 'circular flags)) (/ h 2) r))
+
+  ;; Buttons side by side, joined into one (a linked group): items ((key
+  ;; label thunk opt ...) ...), opts as ui-button's, each as wide as
+  ;; ui-button-size says unless it gives 'width; neighbors share their
+  ;; edge's pixel. => the x after the last
+  (define (ui-linked ui id x y h items)
+    (let loop ([is items] [bx x] [first? #t])
+      (if (null? is)
+          (+ bx 1)
+          (let* ([it (car is)] [opts (cdddr it)]
+                 [bw (or (plist-ref opts 'width #f)
+                         (let-values ([(w bh) (ui-button-size
+                                               (cadr it)
+                                               (plist-ref opts 'glyph #f))])
+                           w))])
+            (apply ui-button ui (list id (car it)) bx y bw h (cadr it)
+                   (caddr it) 'join-left (not first?)
+                   'join-right (pair? (cdr is)) opts)
+            (loop (cdr is) (+ bx bw -1) #f)))))
 
   ;; A primary button's fill while pressed, and under the pointer.
   (at-load
    (color-default! 'primary-pressed (theme-rule (mix 'accent 'bg-0 0.15))))
   (at-load
    (color-default! 'primary-hover (theme-rule (mix 'accent 'text 0.15))))
+
+  ;; The built-in button's box: its fill and its outline, either #f.
+  (define (ui-draw-button-box x y w h fill stroke r)
+    (when fill (fill-box x y w h fill r))
+    (when stroke (stroke-box x y w h stroke 1 r)))
 
   ;; With hover and selected only it is the look Settings was built with.
   (define-part (ui-draw-button x y w h flags label glyph)
@@ -1135,13 +1195,19 @@
            [gw (if glyph (* 3/2 g) 0)]   ; the glyph and its gap
            [label (and label (text-fit label (- w 12 gw) 'ui))]
            [cw (if label (+ gw (text-width label 'ui)) g)]
-           [x0 (+ x (/ (- w cw) 2))])
-      (when fill (fill-box x y w h (ink fill) 6))
-      (when stroke (stroke-box x y w h (ink stroke) 1 6))
+           [x0 (+ x (/ (- w cw) 2))]
+           [r (ui-button-radius h flags 6)])
+      (if (or (on? 'join-left) (on? 'join-right))
+          (let-values ([(bx bw) (ui-joined-span x w r flags)])
+            (with-clip (x y w h)
+              (ui-draw-button-box bx y bw h (and fill (ink fill))
+                                  (and stroke (ink stroke)) r)))
+          (ui-draw-button-box x y w h (and fill (ink fill))
+                              (and stroke (ink stroke)) r))
       (when glyph (ui-draw-glyph x0 (+ y (/ (- h g) 2)) g g flags glyph))
       (when label
         (draw-text (+ x0 gw) (+ y (/ (- h lh) 2)) label (ink color) 'ui))
-      (when (on? 'focused) (ui-draw-focus x y w h flags 6))))
+      (when (on? 'focused) (ui-draw-focus x y w h flags r))))
 
   ;; A glyph alone is a square button.
   (define-part (ui-button-size label glyph)
@@ -1153,60 +1219,101 @@
               h)))
 
   ;; choices: ((label . value) ...); the one equal? to current is selected.
-  ;; opts: 'tip, every choice's.
+  ;; opts: 'tip, every choice's. Each is a button flagged segment, the
+  ;; style's segmented-gap apart; with no gap they are one group, its inner
+  ;; edges joined (join-left, join-right).
   (define (ui-segmented ui id x y w h choices current on-select . opts)
-    (let ([bw (/ w (length choices))])
+    (let* ([n (length choices)] [gap (theme 'segmented-gap)]
+           [bw (/ w n)] [joined? (zero? gap)])
       (for-each (lambda (c i)
-                  (ui-button ui (list id (cdr c)) (+ x (* i bw)) y (- bw 6) h
+                  (ui-button ui (list id (cdr c)) (+ x (* i bw)) y (- bw gap) h
                              (car c) (lambda () (on-select (cdr c)))
                              'selected (equal? current (cdr c))
+                             'segment #t
+                             'join-left (and joined? (> i 0))
+                             'join-right (and joined? (< i (- n 1)))
                              'tip (plist-ref opts 'tip #f)))
-                choices (iota (length choices)))))
+                choices (iota n))))
+
+  ;; The room between two choices of a segmented control.
+  (at-load
+   (theme-default! 'segmented-gap 6))
 
   ;; A whole number from lo to hi: a field that takes only digits, at its right
-  ;; as a table's numbers are, an arrow either side a step of 1, as Up and Down
-  ;; are. What's typed counts at once if it's in range; if not, Return brings it
-  ;; in range, and the field losing the keyboard forgets it. opts: 'tip. => its
-  ;; width
+  ;; as a table's numbers are, and a button either side, or both after it
+  ;; (ui-stepper-areas), a step of 1 each, as Up and Down are. What's typed
+  ;; counts at once if it's in range; if not, Return brings it in range, and
+  ;; the field losing the keyboard forgets it. opts: 'tip. => its width
   (define (ui-stepper ui id x y value lo hi on-change . opts)
     (let-values ([(w h) (ui-stepper-size lo hi)])
-      (let* ([b (ui-control-height)] [tip (plist-ref opts 'tip #f)]
+      (let* ([tip (plist-ref opts 'tip #f)]
+             [areas (ui-stepper-areas x y w h)]
+             [area (lambda (k) (list-head (cdr (assq k areas)) 4))]
+             [joins (lambda (k)
+                      (apply append
+                             (map (lambda (f) (list f #t))
+                                  (list-tail (cdr (assq k areas)) 4))))]
+             [glyphs (theme 'stepper-glyphs)]
              [field (list id 'field)] [typed (list id 'typed)]
              [step! (lambda (n)
                       (ui-memo! ui typed #f)
                       (on-change (clamp n lo hi)))])
         (unless (equal? (ui-focused ui) field) (ui-memo! ui typed #f))
-        (ui-button ui (list id 'down) x y b b #f (lambda () (step! (- value 1)))
-                   'glyph 'chevron-left 'disabled (<= value lo) 'tip tip)
-        (ui-text-field ui field (+ x b) y (- w b b) h
-                       (or (ui-memo ui typed #f) (number->string value))
-                       (lambda (text)
-                         (when (ui-stepper-text? text lo)
-                           (ui-memo! ui typed text)
-                           (let ([n (string->number text)])
-                             (when (and n (<= lo n hi)) (on-change n)))))
-                       'tip tip
-                       'right #t
-                       'max (apply max
-                                   (map (lambda (n)
-                                          (string-length (number->string n)))
-                                        (list lo hi)))
-                       'on-enter (lambda ()
-                                   (let ([n (string->number
-                                             (or (ui-memo ui typed #f) ""))])
-                                     (if n
-                                         (step! n)
-                                         (ui-memo! ui typed #f))))
-                       'on-key (lambda (key mods text)
-                                 (and (null? mods) (memq key '(up down))
-                                      (begin
-                                        (step! (+ value
-                                                  (if (eq? key 'up) 1 -1)))
-                                        #t))))
-        (ui-button ui (list id 'up) (- (+ x w) b) y b b #f
-                   (lambda () (step! (+ value 1)))
-                   'glyph 'chevron-right 'disabled (>= value hi) 'tip tip)
+        (apply ui-button ui (list id 'down)
+               (append (area 'down)
+                       (list #f (lambda () (step! (- value 1)))
+                             'glyph (car glyphs) 'disabled (<= value lo)
+                             'tip tip)
+                       (joins 'down)))
+        (apply ui-text-field ui field
+               (append
+                (area 'field)
+                (list (or (ui-memo ui typed #f) (number->string value))
+                      (lambda (text)
+                        (when (ui-stepper-text? text lo)
+                          (ui-memo! ui typed text)
+                          (let ([n (string->number text)])
+                            (when (and n (<= lo n hi)) (on-change n)))))
+                      'tip tip
+                      'right #t
+                      'max (apply max
+                                  (map (lambda (n)
+                                         (string-length (number->string n)))
+                                       (list lo hi)))
+                      'on-enter (lambda ()
+                                  (let ([n (string->number
+                                            (or (ui-memo ui typed #f) ""))])
+                                    (if n
+                                        (step! n)
+                                        (ui-memo! ui typed #f))))
+                      'on-key (lambda (key mods text)
+                                (and (null? mods) (memq key '(up down))
+                                     (begin
+                                       (step! (+ value
+                                                 (if (eq? key 'up) 1 -1)))
+                                       #t))))
+                (joins 'field)))
+        (apply ui-button ui (list id 'up)
+               (append (area 'up)
+                       (list #f (lambda () (step! (+ value 1)))
+                             'glyph (cdr glyphs) 'disabled (>= value hi)
+                             'tip tip)
+                       (joins 'up)))
         w)))
+
+  ;; Where a stepper w x h puts its buttons and its field: ((down x y w h
+  ;; flag ...) (field ...) (up ...)), each flag (join-left, join-right) a
+  ;; side it shares with a neighbor. Here a button either side, a control
+  ;; square, the field between.
+  (define-part (ui-stepper-areas x y w h)
+    (let ([b (ui-control-height)])
+      (list (list 'down x y b b)
+            (list 'field (+ x b) y (- w b b) h)
+            (list 'up (- (+ x w) b) y b b))))
+
+  ;; The stepper's glyphs, (down . up).
+  (at-load
+   (theme-default! 'stepper-glyphs '(chevron-left . chevron-right)))
 
   ;; Can text become a number here, as it's typed? Digits, after a minus sign
   ;; where the numbers go below 0.
@@ -1348,7 +1455,8 @@
   ;;; checkbox and toggle: one behavior, two looks
 
   (define (ui-checkbox ui id x y w h label checked? on-change . opts)
-    (let-values ([(kw kh) (ui-checkbox-size label)])   ; cut: a tooltip
+    ;; cut: a tooltip; a box alone (no label) has none
+    (let-values ([(kw kh) (if label (ui-checkbox-size label) (values 0 0))])
       (ui-pressable! ui id x y w h (lambda () (on-change (not checked?)))
                      '(#\space)
                      (cons* 'tip (or (plist-ref opts 'tip #f)
@@ -1458,7 +1566,7 @@
       (when (on? 'focused) (ui-draw-focus x y w h flags r))))
 
   ;; A toggle's track, the pill its knob slides in: (values w h).
-  (define (ui-toggle-track)
+  (define-part (ui-toggle-track)
     (let ([th (+ (ui-glyph-size) 6)]) (values (- (* 2 th) 4) th)))
 
   (define-part (ui-draw-toggle x y w h flags label)
@@ -1553,7 +1661,8 @@
   ;;; ---------------------------------------------------------------- tabs
 
   ;; choices: ((label . value) ...). Returns the x after the last tab. The
-  ;; last tab's flags say so (last): a style that chains its tabs ends there.
+  ;; first and last tabs' flags say so (first, last): a style that chains
+  ;; its tabs ends there, one that groups them rounds the group's ends.
   (define (ui-tabs ui id x y h choices current on-select)
     (let loop ([cs choices] [tx x])
       (if (null? cs)
@@ -1566,6 +1675,7 @@
                            (apply ui-flags ui tid
                                   (append
                                    (if (equal? value current) '(selected) '())
+                                   (if (eq? cs choices) '(first) '())
                                    (if (null? (cdr cs)) '(last) '())))
                            label)
               (loop (cdr cs) (+ tx tw)))))))
@@ -1813,8 +1923,9 @@
   ;; true when it acted), 'suggest and 'on-pick (below), and the flags
   ;; 'large 'bare 'search 'single (an area whose Return is not a newline)
   ;; 'inner (inside another widget's box: never a box of its own) 'right (a
-  ;; field's text at its right, while it fits). An area of lines taller than
-  ;; its box has a scroll bar.
+  ;; field's text at its right, while it fits) 'join-left 'join-right (its box
+  ;; square on that side, where a neighbor shares its edge: a stepper's). An
+  ;; area of lines taller than its box has a scroll bar.
   ;;
   ;; Suggestions: (suggest text) gives what the text may become, best first
   ;; (ui-suggestions ranks them); while the box has the keyboard, up to 8
@@ -1823,7 +1934,8 @@
   ;; calls (on-pick s), by default making s the text.
   (define (ui-text-box ui id x y w h text on-change area? opts)
     (let* ([own (append (ui-opt-flags opts
-                                      '(large bare search single inner right))
+                                      '(large bare search single inner right
+                                        join-left join-right))
                         (if area? '() '(field))
                         ;; an area of lines: a box of its own, not a field
                         (if (and area? (not (plist-ref opts 'single #f)))
@@ -2046,7 +2158,8 @@
       (with-clip ((if (> dx 0) tx (- tx 2)) ty (+ tw (if (> dx 0) 2 4)) th)
         (if (memq 'placeholder flags)
             (when placeholder
-              (draw-text tx ty (text-fit placeholder tw font) 'text-faint font))
+              (draw-text tx ty (text-fit placeholder tw font)
+                         (theme 'text-placeholder-color) font))
             ;; only the rows in view
             (let loop ([r (max 0 (- (exact (floor (/ dy lh))) 1))])
               (let ([ry (- (+ ty (* r lh)) dy)] [rx (- tx dx)])
@@ -2085,7 +2198,9 @@
                 [cy (- (+ ty (* lh (edit-row-at lay caret))) dy)])
             (if (eq? (theme 'text-caret) 'block)
                 (px-invert cx cy (ui-caret-block-width text caret font) lh)
-                (fill-box (- cx 1) cy 2 lh 'accent)))))))
+                (let ([cw (theme 'text-caret-width)])
+                  (fill-box (- cx (/ cw 2)) cy cw lh
+                            (theme 'text-caret-color)))))))))
 
   ;; How the text's caret and selection show: a bar and a fill, or as the
   ;; Lisp machines showed them, a block in reverse video over the character
@@ -2094,6 +2209,13 @@
    (theme-default! 'text-caret 'bar))
   (at-load
    (theme-default! 'text-selection 'fill))
+  ;; A bar caret's width and color, and a placeholder's color.
+  (at-load
+   (theme-default! 'text-caret-width 2))
+  (at-load
+   (theme-default! 'text-caret-color 'accent))
+  (at-load
+   (theme-default! 'text-placeholder-color 'text-faint))
 
   ;; A block caret is as wide as the character under it; at the end of the
   ;; text or of a line, the font's own width.
@@ -3972,15 +4094,18 @@
   (define-part (ui-draw-separator x y w h flags)
     (let ([my (+ y (/ h 2))]) (draw-line x my (+ x w) my 'window-border)))
 
-  ;; A card's outline (a task, a style): flags selected (or floating, while
-  ;; dragged), hover.
+  ;; A card's corners: what an app fills or clips a card to.
+  (define-part (ui-card-radius) 8)
+
+  ;; A card's outline (a task, a style), drawn over what the app drew in
+  ;; it: flags selected (or floating, while dragged), hover.
   (define-part (ui-draw-card x y w h flags)
     (let ([selected? (memq 'selected flags)])
       (stroke-box x y w h
                   (cond [(or selected? (memq 'floating flags)) 'accent]
                         [(memq 'hover flags) 'text-faint]
                         [else 'window-border])
-                  (if selected? 2 1) 8)))
+                  (if selected? 2 1) (ui-card-radius))))
 
   ;; A tooltip's lines: wrapped at 280, at most 6.
   ;; A tooltip's lines: its text wrapped at 280, each of its own lines (a
@@ -4275,6 +4400,335 @@
              (loop (cdr rs)
                    (+ (max (+ cy ch (if hint (+ 4 hh) 0)) (+ y lh)) gap)
                    #f))]))))
+
+  ;;; ---------------------------------------------------------------- rows
+  ;;; A boxed list: rows in one box, a line between two, each a title, maybe
+  ;;; a subtitle under it, and what the app draws at its end (a switch, a
+  ;;; button, a value) or before its title (a check box); over the box, a
+  ;;; group's title and what the group is for. GNOME's preferences are made
+  ;;; of them. The rows are the app's data, as a form's are, and the box
+  ;;; knows its height before it is drawn (ui-rows-height).
+  ;;;
+  ;;;   (ui-rows ui 'net x y w
+  ;;;     (list (ui-switch-row ui 'wifi "Wi-Fi" on? set-on! 'subtitle "On")
+  ;;;           (list "Proxy" "Manual" 0 #f 'on-press open-proxy!))
+  ;;;     'title "Network")
+
+  ;; rows: each (title subtitle suffix-w suffix opt ...): title a string,
+  ;; subtitle one or #f, suffix #f or (lambda (x y w h) ...) drawing what
+  ;; ends the row in a place suffix-w wide. opts: 'on-press, a thunk a
+  ;; press, Space or Return on the row calls (it shows the pointer on it);
+  ;; 'prefix-width and 'prefix, a place before the title and what draws in
+  ;; it; 'body, (lambda (x y w h) ...) drawing the title's place itself (an
+  ;; entry row's field); 'key, what names the row and its widgets, (id
+  ;; key) (by default its index); 'height; 'tip; 'disabled; 'selected.
+  ;; ui-rows' own opts: 'title and 'description, a heading over the box.
+  ;; => the y below
+  (define (ui-rows ui id x y w rows . opts)
+    (let* ([top (ui-rows-heading x y w (plist-ref opts 'title #f)
+                                 (plist-ref opts 'description #f) #t)]
+           [hs (map ui-row-spec-height rows)]
+           [h (apply + hs)])
+      (unless (null? rows)
+        (ui-draw-rows x top w h '())
+        ;; the rows inside the box's corners, then its edge over them
+        (with-clip (x top w h (ui-rows-radius))
+          (let loop ([rs rows] [hs hs] [ry top] [i 0])
+            (unless (null? rs)
+              (ui-row ui (list id (plist-ref (cddddr (car rs)) 'key i))
+                      x ry w (car hs) (car rs) (= i 0) (null? (cdr rs)))
+              (loop (cdr rs) (cdr hs) (+ ry (car hs)) (+ i 1)))))
+        (ui-draw-rows x top w h '(over)))
+      (+ top h)))
+
+  ;; The height ui-rows takes at width w, opts as its.
+  (define (ui-rows-height w rows . opts)
+    (+ (ui-rows-heading 0 0 w (plist-ref opts 'title #f)
+                        (plist-ref opts 'description #f) #f)
+       (apply + (map ui-row-spec-height rows))))
+
+  ;; A row's height: its own, or as tall as its title and subtitle need.
+  (define (ui-row-spec-height row)
+    (or (plist-ref (cddddr row) 'height #f)
+        (ui-row-height (car row) (cadr row))))
+
+  ;; The heading over a box of rows from y, w wide, drawn when draw?: its
+  ;; title and its description, each if given. => the y the box starts at
+  (define (ui-rows-heading x y w title description draw?)
+    (if (not (or title description))
+        y
+        (let*-values ([(gap below) (ui-rows-spacing)]
+                      [(tw th) (if title
+                                   (ui-label-size '(group) title w)
+                                   (values 0 0))]
+                      [(dy) (if (and title description)
+                                (+ y th gap)
+                                (+ y th))]
+                      [(dw dh) (if description
+                                   (ui-label-size '(dim wrap) description w)
+                                   (values 0 0))])
+          (when draw?
+            (when title (ui-draw-label x y w th '(group) title))
+            (when description
+              (ui-draw-label x dy w dh '(dim wrap) description)))
+          (+ dy dh below))))
+
+  ;; A row of ui-rows at x y w h, rid its id: its region, its look, then
+  ;; what it holds.
+  (define (ui-row ui rid x y w h row first? last?)
+    (let* ([title (car row)] [subtitle (cadr row)]
+           [suffix (cadddr row)] [sw (if suffix (or (caddr row) 0) 0)]
+           [opts (cddddr row)]
+           [on-press (plist-ref opts 'on-press #f)]
+           [prefix (plist-ref opts 'prefix #f)]
+           [body (plist-ref opts 'body #f)]
+           [areas (ui-row-areas x y w h
+                                (if prefix (plist-ref opts 'prefix-width 0) 0)
+                                sw)]
+           [t (cdr (assq 'title areas))])
+      (if on-press
+          (ui-pressable! ui rid x y w h on-press '(#\space return) opts
+                         '((L . "Choose")))
+          (ui-region! ui rid x y w h 'tip (plist-ref opts 'tip #f)))
+      (ui-draw-row x y w h
+                   (apply ui-flags ui rid
+                          (append (if first? '(first) '())
+                                  (if last? '(last) '())
+                                  (if on-press '(activatable) '())
+                                  (ui-opt-flags opts '(disabled selected))))
+                   (and (not body) title) (and (not body) subtitle)
+                   (car t) (caddr t))
+      (when prefix (apply prefix (cdr (assq 'prefix areas))))
+      (when body (apply body t))
+      (when suffix (apply suffix (cdr (assq 'suffix areas))))))
+
+  ;; A row whose switch says whether something is on (a switch row): a
+  ;; press anywhere on the row turns it. opts: 'subtitle, and a row's.
+  ;; => a row for ui-rows
+  (define (ui-switch-row ui id title on? on-change . opts)
+    (let-values ([(tw th) (ui-toggle-track)])
+      (cons* title (plist-ref opts 'subtitle #f) tw
+             (lambda (x y w h)
+               (ui-toggle ui (list id 'switch) x y w h #f on? on-change
+                          'focus 'keep))
+             'on-press (lambda () (on-change (not on?)))
+             'key id
+             opts)))
+
+  ;; A row with a check box before its title (a check row): a press
+  ;; anywhere on the row checks it or clears it. opts: 'subtitle, and a
+  ;; row's. => a row for ui-rows
+  (define (ui-check-row ui id title checked? on-change . opts)
+    (cons* title (plist-ref opts 'subtitle #f) 0 #f
+           'prefix-width (ui-checkbox-box)
+           'prefix (lambda (x y w h)
+                     (ui-checkbox ui (list id 'check) x y w h #f checked?
+                                  on-change 'focus 'keep))
+           'on-press (lambda () (on-change (not checked?)))
+           'key id
+           opts))
+
+  ;; A row that is a text field (an entry row): its title in the text's
+  ;; place while the field is empty and has not the keyboard, small over
+  ;; the text otherwise; a pencil at its end while it has not the keyboard
+  ;; says it can be changed. id is the field's. opts: the field's
+  ;; ('placeholder aside), and a row's. => a row for ui-rows
+  (define (ui-entry-row ui id title text on-change . opts)
+    (cons* title #f 0 #f
+           'key id
+           'body
+           (lambda (x y w h)
+             (let* ([lh (font-line-height 'ui)]
+                    [sh (font-line-height 'ui-small)]
+                    [g (ui-glyph-size)]
+                    [focused? (equal? (ui-focused ui) id)]
+                    [up? (or focused? (not (string=? text "")))]
+                    [ty (+ y (/ (- h sh 2 lh) 2))]
+                    [in (ui-text-box-inset '(field inner))]
+                    [fw (if focused? w (- w g (ui-gap)))])
+               ;; a press on the title gives the field the keyboard
+               (ui-pressable! ui (list id 'title) x y w h
+                              (lambda () (ui-focus! ui id)) '() '(focus keep))
+               (if up?
+                   (ui-draw-label x ty fw sh '(hint) title)
+                   (ui-draw-label x y fw h '(dim) title))
+               (unless focused?
+                 (ui-draw-glyph (- (+ x w) g) (+ y (/ (- h g) 2)) g g
+                                '(hover) 'edit))
+               (apply ui-text-field ui id (- x in)
+                      (if up? (- (+ ty sh 2) 4) y) (+ fw in)
+                      (if up? (+ lh 8) h) text on-change 'inner #t
+                      (plist-remove opts 'placeholder))))
+           opts))
+
+  ;; How far a heading's description is under its title, and the box under
+  ;; the heading.
+  (define-part (ui-rows-spacing) (values 4 (ui-gap)))
+
+  ;; A row's height for its title and subtitle (#f: none).
+  (define-part (ui-row-height title subtitle)
+    (max (+ (ui-control-height) 8)
+         (round (+ 12 (font-line-height 'ui)
+                   (if subtitle (+ 2 (font-line-height 'ui-small)) 0)))))
+
+  ;; Where a row x y w h puts what it holds: ((prefix x y w h) (title ..)
+  ;; (suffix ..)), the prefix pw wide and the suffix sw (0: none), the pad
+  ;; in from the box's sides and a gap between them.
+  (define-part (ui-row-areas x y w h pw sw)
+    (let* ([m (ui-pad)] [g (ui-gap)]
+           [tx (if (> pw 0) (+ x m pw g) (+ x m))]
+           [sx (- (+ x w) m sw)]
+           [te (if (> sw 0) (- sx g) (- (+ x w) m))])
+      (list (list 'prefix (+ x m) y pw h)
+            (list 'title tx y (max 0 (- te tx)) h)
+            (list 'suffix sx y sw h))))
+
+  ;; The corners of the box of rows.
+  (define-part (ui-rows-radius) 8)
+
+  ;; The box of rows: under them (flags ()), its edge over them (over).
+  (define-part (ui-draw-rows x y w h flags)
+    (if (memq 'over flags)
+        (stroke-box x y w h 'window-border 1 (ui-rows-radius))
+        (fill-box x y w h 'bg-0 (ui-rows-radius))))
+
+  ;; A row: flags first, last (no line under it), activatable (a press acts:
+  ;; it shows the pointer), hover, pressed, focused, selected, disabled;
+  ;; its title and subtitle (each #f: none) in tx..tx+tw.
+  (define-part (ui-draw-row x y w h flags title subtitle tx tw)
+    (let* ([on? (lambda (f) (memq f flags))]
+           [lh (font-line-height 'ui)] [sh (font-line-height 'ui-small)]
+           [th (if subtitle (+ lh 2 sh) lh)] [ty (+ y (/ (- h th) 2))]
+           [ink (lambda (c) (if (on? 'disabled) (alpha c 0.5) c))])
+      (cond [(on? 'selected) (fill-box x y w h 'selection)]
+            [(and (on? 'activatable) (on? 'pressed)) (fill-box x y w h 'bg-3)]
+            [(and (on? 'activatable) (on? 'hover)) (fill-box x y w h 'bg-2)])
+      (unless (on? 'last)
+        (fill-box x (+ y h -1) w 1 'window-border))
+      (when title
+        (draw-text tx ty (text-fit title tw 'ui) (ink 'text) 'ui))
+      (when subtitle
+        (draw-text tx (+ ty lh 2) (text-fit subtitle tw 'ui-small)
+                   (ink 'text-dim) 'ui-small))
+      (when (on? 'focused)
+        (ui-draw-focus (+ x 3) (+ y 3) (- w 6) (- h 6) flags 4))))
+
+  ;;; ---------------------------------------------------------- status page
+
+  ;; What a view shows when it has nothing to show (an empty list, no
+  ;; results), centered in x y w h: a large glyph, a title, what to do, and
+  ;; maybe a button that does it. glyph: a name ui-draw-glyph knows, or
+  ;; (lambda (x y s flags) ...) drawing one s square; description: words or
+  ;; #f. opts: 'compact (smaller, for a narrow pane), 'button (label
+  ;; thunk), a pill under the words.
+  (define (ui-status-page ui id x y w h glyph title description . opts)
+    (let ([b (plist-ref opts 'button #f)]
+          [flags (ui-opt-flags opts '(compact))])
+      (ui-region! ui id x y w h)
+      (ui-draw-status-page x y w h flags glyph title description
+                           (and b (car b)))
+      (when b
+        (apply ui-button ui (list id 'button)
+               (append (cdr (assq 'button
+                                  (ui-status-page-areas x y w h flags title
+                                                        description (car b))))
+                       (list (car b) (cadr b) 'pill #t 'primary #t))))))
+
+  ;; The font of a status page's title.
+  (at-load
+   (theme-default! 'status-title-font 'heading))
+
+  ;; ((glyph x y s s) (title x y w h) (description ..) (button ..)) of a
+  ;; status page in x y w h, the block centered: the glyph over the title,
+  ;; the description wrapped under it, the button (with label; else none)
+  ;; under that.
+  (define-part (ui-status-page-areas x y w h flags title description label)
+    (let*-values ([(s) (if (memq 'compact flags) 48 64)]
+                  [(g) (ui-gap)]
+                  [(tw) (max 0 (- w (* 2 (ui-pad))))]
+                  [(tf) (theme 'status-title-font)]
+                  [(th) (* (font-line-height tf)
+                           (length (ui-label-lines title tw tf)))]
+                  [(dh) (if description
+                            (* (font-line-height 'ui)
+                               (length (ui-label-lines description tw 'ui)))
+                            0)]
+                  [(bw bh) (if label (ui-button-size label #f) (values 0 0))]
+                  [(bw) (if label (+ bw (* 2 (ui-pad))) 0)]
+                  [(top) (+ y (max 0 (/ (- h (+ s g g th
+                                                (if description (+ g dh) 0)
+                                                (if label (+ g g bh) 0)))
+                                        2)))]
+                  [(ty) (+ top s g g)]
+                  [(dy) (+ ty th g)]
+                  [(by) (+ (if description (+ dy dh) (+ ty th)) g g)]
+                  [(tx) (+ x (/ (- w tw) 2))])
+      (list (list 'glyph (+ x (/ (- w s) 2)) top s s)
+            (list 'title tx ty tw th)
+            (list 'description tx dy tw dh)
+            (list 'button (+ x (/ (- w bw) 2)) by bw bh))))
+
+  ;; text wrapped at w, each line centered in x..x+w, from y down.
+  (define (ui-draw-centered-lines x y w text color font)
+    (fold-left (lambda (ly line)
+                 (draw-text (+ x (/ (- w (text-width line font)) 2)) ly line
+                            color font)
+                 (+ ly (font-line-height font)))
+               y (ui-label-lines text w font)))
+
+  ;; The glyph, faint, and the words, centered; label: the button's, whose
+  ;; place the areas keep (the button draws itself).
+  (define-part (ui-draw-status-page x y w h flags glyph title description
+                                    label)
+    (let* ([areas (ui-status-page-areas x y w h flags title description
+                                        label)]
+           [g (cdr (assq 'glyph areas))] [t (cdr (assq 'title areas))]
+           [d (cdr (assq 'description areas))]
+           [s (caddr g)] [tf (theme 'status-title-font)])
+      (if (procedure? glyph)
+          (glyph (car g) (cadr g) s '(dim))
+          (ui-draw-glyph (car g) (cadr g) s s '((ink . text-faint)) glyph))
+      (ui-draw-centered-lines (car t) (cadr t) (caddr t) title 'text tf)
+      (when description
+        (ui-draw-centered-lines (car d) (cadr d) (caddr d) description
+                                'text-dim 'ui))))
+
+  ;;; ---------------------------------------------------------------- banner
+
+  ;; A strip across the top of a view saying something about it, an action
+  ;; at its end (a banner): title, and label and on-press the button's (#f:
+  ;; none). => its height
+  (define (ui-banner ui id x y w title label on-press)
+    (let* ([h (ui-banner-height)]
+           [b (assq 'button (ui-banner-areas x y w h title label))])
+      (ui-region! ui id x y w h)
+      (ui-draw-banner x y w h '() title label)
+      (when label
+        (apply ui-button ui (list id 'button)
+               (append (cdr b) (list label on-press))))
+      h))
+
+  (define-part (ui-banner-height) (+ (ui-control-height) 12))
+
+  ;; ((title x y w h) (button x y w h)): the button at the end (none
+  ;; without label), the title centered in the strip where it fits, else
+  ;; in the room the button leaves.
+  (define-part (ui-banner-areas x y w h title label)
+    (let*-values ([(m) 6]
+                  [(bw bh) (if label (ui-button-size label #f) (values 0 0))]
+                  [(room) (- w m m (if label (+ bw m) 0))]
+                  [(tw) (max 0 (min room (text-width title 'ui-bold)))]
+                  [(tx) (max (+ x m) (+ x (/ (- w tw) 2)))]
+                  [(tx) (if (> (+ tx tw) (+ x m room)) (+ x m) tx)])
+      (list (list 'title tx y tw h)
+            (list 'button (- (+ x w) m bw) (+ y (/ (- h bh) 2)) bw bh))))
+
+  ;; The strip, and its title in its place; label: the button's.
+  (define-part (ui-draw-banner x y w h flags title label)
+    (let ([t (cdr (assq 'title (ui-banner-areas x y w h title label)))])
+      (fill-box x y w h (alpha 'accent 0.15))
+      (draw-text (car t) (+ y (/ (- h (font-line-height 'ui-bold)) 2))
+                 (text-fit title (caddr t) 'ui-bold) 'text 'ui-bold)))
 
   ;;; ---------------------------------------------------------------- dialog
 

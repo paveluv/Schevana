@@ -123,10 +123,11 @@
                 ui-text-box-size ui-tabs-size ui-button-size ui-dropdown
                 ui-draw-dim ui-draw-surface ui-draw-progress ui-draw-glyph
                 ui-progress-height ui-draw-chip ui-draw-avatar ui-avatar-size
-                ui-draw-card ui-table-fit ui-table-cell-inset ui-chip-size
-                ui-wrap-lines ui-pad ui-gap ui-scrollbar-inset ui-open-menu!
-                ui-focus! ui-forget! ui-day->date ui-today ui-date-label
-                ui-month-names ui-date->day ui-stale! ui-days-in-month))
+                ui-draw-card ui-card-radius ui-table-fit ui-table-cell-inset
+                ui-chip-size ui-wrap-lines ui-pad ui-gap ui-scrollbar-inset
+                ui-open-menu! ui-focus! ui-forget! ui-day->date ui-today
+                ui-date-label ui-month-names ui-date->day ui-stale!
+                ui-days-in-month))
 
   (library-layer apps)
 
@@ -1525,7 +1526,8 @@
       ;; pixels, so its edge stays crisp over what it is dragged across
       (if (<= (theme 'corner-radius) 0)
           (fill-box x y w h 'bg-2)
-          (fill-box x y w h 'bg-2 8))
+          (fill-box x y w h 'bg-2 (ui-card-radius)))
+
       (ui-draw-card x y w h flags)
       (tasks-draw-mark (+ x p) (+ y1 (/ (- a m) 2)) m 'priority
                        (task-priority t))

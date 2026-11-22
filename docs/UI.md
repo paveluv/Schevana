@@ -43,7 +43,22 @@ presses                                    ; => 1
 
 A widget takes options after its arguments: `'tip` gives a tooltip,
 `'disabled #t` greys it out, and a button takes `'primary`, `'danger` or
-`'quiet`.
+`'quiet` (flat until the pointer is on it), and `'pill` or `'circular` for
+round ends. `ui-linked` puts buttons side by side as one group, their
+inner sides joined:
+
+```scheme
+(apply open-window "Linked" 'size '(320 . 70)
+  'draw (lambda (win w h)
+          (let ([ui (window-ref win 'ui)])
+            (ui-begin! ui)
+            (ui-linked ui 'align 20 20 (ui-control-height)
+                       (list (list 'left "Left" (lambda () #f))
+                             (list 'center "Center" (lambda () #f))
+                             (list 'right "Right" (lambda () #f))))
+            (ui-end! ui w h)))
+  (ui-handlers (make-ui)))
+```
 
 ## Values and changes
 
@@ -116,6 +131,60 @@ The other choices: `ui-radio` (one of several, each its own widget),
 `ui-segmented` and `ui-tabs` (choices side by side), `ui-text-area` (many
 lines), `ui-chips` and `ui-chip-input` (tags), `ui-breadcrumbs`, `ui-nav`
 (a list to choose a page from), and `ui-live-badge`.
+
+## Rows, empty views and banners
+
+Settings are often a group of rows in one box, a boxed list: each row a
+title, maybe a subtitle, and what ends it (a switch, a button, a value) or
+comes before its title (a check box), under the group's title:
+
+```scheme
+(define (net-draw win w h)
+  (let ([ui (window-ref win 'ui)]
+        [set (lambda (key) (lambda (v) (window-set! win key v)))])
+    (ui-begin! ui)
+    (ui-draw-surface 0 0 w h '(page))
+    (ui-rows ui 'net 20 20 (- w 40)
+      (list (ui-switch-row ui 'wifi "Wi-Fi" (window-ref win 'wifi) (set 'wifi)
+                           'subtitle "Connected")
+            (ui-check-row ui 'metered "Metered" (window-ref win 'metered)
+                          (set 'metered))
+            (ui-entry-row ui 'proxy "Proxy" (window-ref win 'proxy)
+                          (set 'proxy))
+            (list "Details" #f 0 #f 'on-press (lambda () (notify "Details"))))
+      'title "Network" 'description "How this machine connects")
+    (ui-end! ui w h)))
+(define net
+  (apply open-window "Network" 'size '(420 . 380)
+    'wifi #t 'metered #f 'proxy ""
+    'draw (lambda (win w h) (net-draw win w h))
+    (ui-handlers (make-ui))))
+```
+
+A row is `(title subtitle suffix-width suffix opt ...)`: `suffix` draws
+what ends the row in a place that wide, `(lambda (x y w h) ...)`, and
+`'on-press` makes the whole row a button. `ui-switch-row`,
+`ui-check-row` and `ui-entry-row` make the common ones, and
+`(ui-rows-height w rows opt ...)` says how tall the box will be before it
+is drawn, as `ui-form-height` does for a form.
+
+A view with nothing to show says so with `ui-status-page`, a large glyph,
+a title and what to do, centered; `ui-banner` is a strip across a view's
+top with an action at its end:
+
+```scheme
+(apply open-window "Empty" 'size '(380 . 320)
+  'draw (lambda (win w h)
+          (let ([ui (window-ref win 'ui)])
+            (ui-begin! ui)
+            (let ([top (ui-banner ui 'offline 0 0 w "Offline" "Retry"
+                                  (lambda () (notify "Retrying")))])
+              (ui-status-page ui 'empty 0 top w (- h top) 'folder "No Tasks"
+                              "Add a task to see it here"
+                              'button (list "Add Task" (lambda () #f))))
+            (ui-end! ui w h)))
+  (ui-handlers (make-ui)))
+```
 
 ## Laying out
 

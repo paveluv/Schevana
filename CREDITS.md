@@ -83,3 +83,19 @@ USL. Used by written permission of the owners.
 trademark of Bigelow & Holmes. Permission to use the Lucida trademark is
 hereby granted only in association with the images and fonts described
 in this file.
+
+## Adwaita
+
+The Adwaita style (`schevana/styles/adwaita.sls`) and its palettes
+(`schevana/palettes/adwaita.sls`, `adwaita-dark.sls`) take facts alone
+from GNOME's stylesheets: libadwaita 1.7.6's `src/stylesheet/` (LGPL-2.1+)
+and GNOME Shell 48.7's `data/theme/gnome-shell-sass/` (GPL-2.0+). What was
+taken: sizes, paddings, radii, colors and the alphas of the tints, the
+fourteen avatar colors, the OKLab rule for the standalone colors, the
+spinner's widths and speed, and how the Shell's panel, menus, dash and
+banners are laid out, each cited in the code as file:line at those tags.
+No SCSS, code, icon, image or font was copied: the glyphs (the check, the
+window buttons' crosses, the dropdown's arrow, the spinner) are drawn from
+their geometry, and the wallpaper is circles over GNOME's fallback blues,
+not GNOME's image. Its text is Cantarell, which Debian sets for GNOME 48;
+the OKLab conversion is Björn Ottosson's published one.

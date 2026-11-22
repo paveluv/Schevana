@@ -1,5 +1,5 @@
 ;;; tests/units/looks.ss — the styles' own looks: Genera, the CADR, Interlisp,
-;;; Mac and ours, drawn and measured.
+;;; OPEN LOOK, Adwaita, Mac and ours, drawn and measured.
 
 ;;; Our styles, finished (step 9)
 
@@ -1035,3 +1035,137 @@
            (equal? r (list (list #t (color->pixel #xb7b7b7))
                            (list #t (color->pixel #x000000))
                            (list #f (color->pixel #xcccccc)))))))
+
+;;; Adwaita: libadwaita's widgets and windows, GNOME Shell's desktop
+
+;; A pixel's channels, each within 2 of color's: what the GPU blends,
+;; rounded its own way.
+(define (adwaita-test-near? pixel color)
+  (let ([want (color->pixel color)])
+    (for-all (lambda (shift)
+               (<= (abs (- (fxand (fxsra pixel shift) 255)
+                           (fxand (fxsra want shift) 255)))
+                   2))
+             '(0 8 16))))
+
+;; The pixels at points of what draw draws in a w x h picture on the
+;; window's color, in Adwaita.
+(define (adwaita-test-pixels w h draw points)
+  (with-style 'adwaita
+    (lambda ()
+      (let ([img (image w h 1 (lambda () (fill-box 0 0 w h 'window-bg)
+                                (draw)))])
+        (let ([ps (map (lambda (p) (pixel-at img (car p) (cdr p))) points)])
+          (picture-free! img)
+          ps)))))
+
+(check "Adwaita's palettes are libadwaita 1.7's: the window #fafafb, the \
+        text rgb(0 0 6 / 80%) on it, the accent GNOME's blue; dark, the \
+        window #222226 and white text; the top bar black in both"
+       (let ([of (lambda (p . keys)
+                   (map (lambda (k) (plist-ref (palette-colors p) k #f))
+                        keys))])
+         (and (equal? (of 'adwaita 'bg-1 'bg-0 'text 'accent 'panel)
+                      '(#xfafafb #xffffff #x323237 #x3584e4 #x000000))
+              (equal? (of 'adwaita-dark 'bg-1 'bg-0 'text 'accent 'panel)
+                      '(#x222226 #x1d1d20 #xffffff #x3584e4 #x000000))
+              (with-style 'adwaita
+                (lambda ()
+                  (equal? (list (theme 'palette) (theme 'palette-dark))
+                          '(adwaita adwaita-dark)))))))
+
+(check "Adwaita's standalone colors are libadwaita's OKLab ones: blue \
+        #0461be as text in the light style, #81d0ff in the dark, the \
+        destructive red #c30000"
+       (equal? (list (adwaita-standalone #x3584e4 #f)
+                     (adwaita-standalone #x3584e4 #t)
+                     (adwaita-standalone #xe01b24 #f))
+               '(#x0461be #x81d0ff #xc30000)))
+
+(check "an Adwaita button is a control high, 9 round, the text at 10 % \
+        behind it; a suggested one the accent; a destructive one its red \
+        at 15 %"
+       (with-style 'adwaita
+         (lambda ()
+           (let* ([h (ui-control-height)]
+                  [ps (adwaita-test-pixels 300 60
+                        (lambda ()
+                          (ui-draw-button 10 10 80 h '() "Go" #f)
+                          (ui-draw-button 110 10 80 h '(primary) "Go" #f)
+                          (ui-draw-button 210 10 80 h '(danger) "Go" #f))
+                        ;; inside each, clear of its label; a corner
+                        ;; outside the 9 round
+                        '((14 . 20) (114 . 20) (214 . 20) (10 . 10)))])
+             (and (= h (+ 10 (max 24 (round (font-line-height 'ui)))))
+                  (= (theme 'adwaita-button-radius) 9)
+                  (adwaita-test-near? (car ps) (mix 'window-bg 'text 0.1))
+                  (adwaita-test-near? (cadr ps) 'accent)
+                  (adwaita-test-near? (caddr ps)
+                                      (mix 'window-bg 'adwaita-destructive-ink
+                                           0.15))
+                  (adwaita-test-near? (cadddr ps) 'window-bg))))))
+
+(check "an Adwaita check box is 20 square, a ring of the text at 15 % \
+        empty, the accent checked"
+       (with-style 'adwaita
+         (lambda ()
+           (let ([ps (adwaita-test-pixels 100 30
+                       (lambda ()
+                         (ui-draw-checkbox 10 0 20 30 '() #f)
+                         (ui-draw-checkbox 50 0 20 30 '(checked) #f))
+                       ;; the box is 5 down: its ring's middle row, its
+                       ;; inside, a checked one's corner clear of the check
+                       '((20 . 5) (20 . 15) (52 . 22) (31 . 15)))])
+             (and (adwaita-test-near? (car ps) (mix 'window-bg 'text 0.15))
+                  (adwaita-test-near? (cadr ps) 'window-bg)
+                  (adwaita-test-near? (caddr ps) 'accent)
+                  (adwaita-test-near? (cadddr ps) 'window-bg))))))
+
+(check "an Adwaita switch is 46 by 26: its track the text at 15 % off and \
+        the accent on, its knob 20 across, 3 in"
+       (with-style 'adwaita
+         (lambda ()
+           (let-values ([(tw th) (ui-toggle-track)])
+             (let ([ps (adwaita-test-pixels 120 30
+                         (lambda ()
+                           (ui-draw-toggle 0 0 46 26 '() #f)
+                           (ui-draw-toggle 60 0 46 26 '(checked) #f))
+                         ;; the off track at its right, the off knob's
+                         ;; middle, the on track at its left, the on knob
+                         '((41 . 13) (13 . 13) (65 . 13) (93 . 13)))])
+               (and (equal? (list tw th) '(46 26))
+                    (adwaita-test-near? (car ps) (mix 'window-bg 'text 0.15))
+                    (adwaita-test-near? (cadr ps) 'adwaita-slider)
+                    (adwaita-test-near? (caddr ps) 'accent)
+                    (adwaita-test-near? (cadddr ps) #xffffff)))))))
+
+(check "an Adwaita window's title bar is a header bar, 12 more than a \
+        control; its only button is close, unless all three are asked for"
+       (test-finally
+        (lambda ()
+          (set-style! 'adwaita)
+          (let* ([w (open-window "Header" 'size '(400 . 200))]
+                 [r (list (style-insets 'adwaita)
+                          (map car (frame-regions w)))])
+            (set-theme! 'adwaita-window-buttons 'all)
+            (let ([all (map car (frame-regions w))])
+              (close-window! w)
+              (and (equal? (car r) (list 0 (+ 12 (ui-control-height)) 0 0))
+                   (equal? (cadr r) '(close))
+                   (equal? all '(minimize maximize close))))))
+        (lambda ()
+          (reset-style!)
+          (set-style! 'mac))))
+
+(check "Adwaita's desktop is GNOME Shell's: the top bar 2.2 em of GNOME's \
+        text, its 11 pt our 15, so 32; the Activities button and the dash's \
+        Show Apps open the apps"
+       (test-finally
+        (lambda ()
+          (set-style! 'adwaita)
+          (steps 1)
+          (and (= (topbar-height)
+                  (max 32 (round (* 2.2 44/45 (theme 'ui-font-size)))))
+               (eq? (car (car (topbar-areas))) 'launcher)
+               (eq? (car (car (taskbar-areas))) 'launcher)))
+        (lambda () (set-style! 'mac))))
