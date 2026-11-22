@@ -110,7 +110,7 @@
                 (equal? (desktop-options '("--headless" "--size" "400x300"
                                            "--eval" "1" "--fork" "demos"
                                            "--eval" "2" "--hacker"
-                                           "/tmp/more.ss"))
+                                           "/tmp/more"))
                         '((mode . headless)
                           (size 400 . 300)
                           (full-screen? . #f)
@@ -118,8 +118,12 @@
                           (desktop . #f)
                           (hacker . #t)
                           (evals "1" "2")
-                          (auto-loads "demos" "/tmp/more.ss")))
+                          (auto-loads "demos" "/tmp/more")))
                 (eq? (desktop-options '("--size" "400")) 'usage)
+                ;; a folder to load, not a file
+                (eq? (desktop-options (list (string-append *schevana-root*
+                                                           "/README.md")))
+                     'usage)
                 (eq? (desktop-options '("--size")) 'usage)
                 (eq? (desktop-options '("--frobnicate")) 'usage)
                 (equal? *schevana-options* (desktop-options '("--headless")))))

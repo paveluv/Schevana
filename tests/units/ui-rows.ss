@@ -90,6 +90,37 @@
            (close-window! win)
            (equal? r '(2 #f #f)))))
 
+(check "a box of rows may end in a row that adds one, ui-add-row-height \
+        high and counted in ui-rows-height, a press or Return on it \
+        calling its thunk; a box of none holds it alone"
+       (let* ([added 0] [bottoms '()] [ui-of #f]
+              [rows (list (list "One" #f 0 #f 'key 'one))]
+              [add (list "Add Thing" (lambda () (set! added (+ added 1))))]
+              [win (test-kit-window "Add"
+                     (lambda (ui w h)
+                       (set! ui-of ui)
+                       (set! bottoms
+                         (list (ui-rows ui 'rows 20 20 300 rows 'add add)
+                               (ui-rows ui 'none 20 200 300 '() 'add add))))
+                     '(400 . 320))])
+         (steps 2)
+         (focus-window! win)
+         (test-click! win '(rows add))
+         (parameterize ([current-window win])
+           (ui-focus! ui-of '(none add)))
+         (test-press! 'return)
+         (steps 1)
+         (let* ([a (test-region ui-of '(rows add))]
+                [r (list added (car bottoms) (cadr bottoms)
+                         (ui-region-y a) (ui-region-h a))])
+           (close-window! win)
+           (printf "  ~s\n" r)
+           (and (= added 2)
+                (= (car bottoms) (+ 20 (ui-rows-height 300 rows 'add add)))
+                (= (cadr bottoms) (+ 200 (ui-add-row-height)))
+                (= (list-ref r 3) (+ 20 (ui-row-height "One" #f)))
+                (= (list-ref r 4) (ui-add-row-height))))))
+
 (check "an entry row's title gives its field the keyboard, and what is \
         typed goes into it"
        (let-values ([(win wifi agree server opened bottom ui-of)

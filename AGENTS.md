@@ -55,7 +55,7 @@ before it:
 | `schevana/desktop/` | The screen's own surfaces and the desktop's behavior: wallpaper, bars, menu, toasts, keys, arranging windows; and its start (`main.sls`, from the command line; `start.sls`, once the world is loaded). |
 | `schevana/apps/` | The apps that tune the world (the REPL, Settings, Tasks, Monitor, ...), one per library, defined with `define-app`. |
 | `apps/` | The apps in sandboxes, one per file, its first form `app-requests`: each runs in a sandbox of its own (`schevana/services/grant.sls`). |
-| `schevana-demo/` | The demos, one library each, `(schevana-demo <name>)`, on the core's facade: a program with a launcher at the root (`./schevana-game-demo`), and an app the desktop's `--demo` adds. |
+| `schevana-demo/` | The demos, one library each, `(schevana-demo <name>)`, on the core's facade: a program with a launcher at the root (`./schevana-game-demo`), and an app the desktop adds when its folder is given (`./schevana-desktop schevana-demo`). |
 
 - **The boot is a chain**: a launcher boots core0, then core1, which
   boots the world (`(schevana desktop main)`). A sealed layer gives the next only what its facade

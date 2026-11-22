@@ -134,7 +134,8 @@
     ui-switch-row ui-check-row ui-entry-row ui-rows-spacing ui-rows-spacing*
     ui-row-height ui-row-height* ui-row-areas ui-row-areas* ui-rows-radius
     ui-rows-radius* ui-draw-rows ui-draw-rows* ui-draw-row ui-draw-row*
-    ui-status-page ui-status-page-areas ui-status-page-areas*
+    ui-add-row ui-add-row-height ui-add-row-height* ui-draw-add-row
+    ui-draw-add-row* ui-status-page ui-status-page-areas ui-status-page-areas*
     ui-draw-status-page ui-draw-status-page* ui-draw-centered-lines
     ui-banner ui-banner-height ui-banner-height* ui-banner-areas
     ui-banner-areas* ui-draw-banner ui-draw-banner* ui-card-radius
@@ -4423,7 +4424,8 @@
   ;;;   (ui-rows ui 'net x y w
   ;;;     (list (ui-switch-row ui 'wifi "Wi-Fi" on? set-on! 'subtitle "On")
   ;;;           (list "Proxy" "Manual" 0 #f 'on-press open-proxy!))
-  ;;;     'title "Network")
+  ;;;     'title "Network"
+  ;;;     'add (list "Add Network" add-network!))
 
   ;; rows: each (title subtitle suffix-w suffix opt ...): title a string,
   ;; subtitle one or #f, suffix #f or (lambda (x y w h) ...) drawing what
@@ -4433,22 +4435,30 @@
   ;; it; 'body, (lambda (x y w h) ...) drawing the title's place itself (an
   ;; entry row's field); 'key, what names the row and its widgets, (id
   ;; key) (by default its index); 'height; 'tip; 'disabled; 'selected.
-  ;; ui-rows' own opts: 'title and 'description, a heading over the box.
-  ;; => the y below
+  ;; ui-rows' own opts: 'title and 'description, a heading over the box;
+  ;; 'add, (label thunk), a last row that adds one, as the style makes it
+  ;; (ui-draw-add-row): a press, Space or Return on it calls thunk, its id
+  ;; (id add). => the y below
   (define (ui-rows ui id x y w rows . opts)
     (let* ([top (ui-rows-heading x y w (plist-ref opts 'title #f)
                                  (plist-ref opts 'description #f) #t)]
+           [add (plist-ref opts 'add #f)]
            [hs (map ui-row-spec-height rows)]
-           [h (apply + hs)])
-      (unless (null? rows)
+           [rh (apply + hs)]
+           [h (+ rh (if add (ui-add-row-height) 0))])
+      (unless (and (null? rows) (not add))
         (ui-draw-rows x top w h '())
         ;; the rows inside the box's corners, then its edge over them
         (with-clip (x top w h (ui-rows-radius))
           (let loop ([rs rows] [hs hs] [ry top] [i 0])
             (unless (null? rs)
               (ui-row ui (list id (plist-ref (cddddr (car rs)) 'key i))
-                      x ry w (car hs) (car rs) (= i 0) (null? (cdr rs)))
-              (loop (cdr rs) (cdr hs) (+ ry (car hs)) (+ i 1)))))
+                      x ry w (car hs) (car rs) (= i 0)
+                      (and (null? (cdr rs)) (not add)))
+              (loop (cdr rs) (cdr hs) (+ ry (car hs)) (+ i 1))))
+          (when add
+            (ui-add-row ui (list id 'add) x (+ top rh) w (- h rh) (car add)
+                        (cadr add) (null? rows))))
         (ui-draw-rows x top w h '(over)))
       (+ top h)))
 
@@ -4456,7 +4466,18 @@
   (define (ui-rows-height w rows . opts)
     (+ (ui-rows-heading 0 0 w (plist-ref opts 'title #f)
                         (plist-ref opts 'description #f) #f)
-       (apply + (map ui-row-spec-height rows))))
+       (apply + (map ui-row-spec-height rows))
+       (if (plist-ref opts 'add #f) (ui-add-row-height) 0)))
+
+  ;; The row that ends a box of rows and adds one, rid its id: label, and
+  ;; thunk, which a press, Space or Return on it calls.
+  (define (ui-add-row ui rid x y w h label thunk first?)
+    (ui-pressable! ui rid x y w h thunk '(#\space return) '() '((L . "Add")))
+    (ui-draw-add-row x y w h
+                     (apply ui-flags ui rid
+                            (append (if first? '(first) '())
+                                    '(last activatable)))
+                     label))
 
   ;; A row's height: its own, or as tall as its title and subtitle need.
   (define (ui-row-spec-height row)
@@ -4593,6 +4614,22 @@
       (list (list 'prefix (+ x m) y pw h)
             (list 'title tx y (max 0 (- te tx)) h)
             (list 'suffix sx y sw h))))
+
+  ;; The height of the row that adds one.
+  (define-part (ui-add-row-height) (ui-row-height "" #f))
+
+  ;; The row that adds one: flags a row's; a plus and its label where a
+  ;; row's title goes, in the accent.
+  (define-part (ui-draw-add-row x y w h flags label)
+    (let* ([t (cdr (assq 'title (ui-row-areas x y w h 0 0)))]
+           [g (ui-glyph-size)] [lh (font-line-height 'ui)]
+           [tx (car t)] [lx (+ tx g (ui-gap))])
+      (ui-draw-row x y w h flags #f #f tx (caddr t))
+      (ui-draw-glyph tx (+ y (/ (- h g) 2)) g g '((ink . accent)) 'plus)
+      (draw-text lx (ui-text-y (+ y (/ (- h lh) 2)) 'ui)
+                 (text-fit label (max 0 (- (+ tx (caddr t)) lx)) 'ui)
+                 (if (memq 'disabled flags) (alpha 'accent 0.5) 'accent)
+                 'ui)))
 
   ;; The corners of the box of rows.
   (define-part (ui-rows-radius) 8)

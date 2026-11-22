@@ -120,20 +120,28 @@
             (eq? (settings-style-name "  CDE: Broica II ") 'cde-broica-ii)
             (not (settings-style-name " - "))))
 
-;; Settings' Paths tab: the library search by rank, what auto-loads, and a
-;; path added there, picked in the file dialog, joins both when Auto-load
-;; is ticked.
+;; Settings' Paths tab: the library search by rank, each folder with a
+;; switch for whether it auto-loads, and a row that adds one: a folder
+;; picked in the file dialog joins the search, not auto-loading until its
+;; switch is turned on.
+(define (settings-test-rank dir)
+  (let loop ([ds (library-directories)] [i 0])
+    (cond [(null? ds) #f]
+          [(equal? (path-full (if (pair? (car ds)) (caar ds) (car ds)))
+                   (path-full dir))
+           i]
+          [else (loop (cdr ds) (+ i 1))])))
+
 (let ([dir (string-append out-dir "/paths-tab")])
   (system (format "rm -rf '~a' && mkdir -p '~a'" dir dir))
   (for-each close-window! (windows))
   (app-launch! 'settings)
   (steps 2)
-  (let ([win (find-window 'settings)] [added *auto-loads*])
+  (let ([win (find-window 'settings)])
     (settings-st-tab-set! (window-ref win 'state) 'paths)
     (invalidate! win)
     (steps 2)
-    (test-click! win 'path-auto)
-    (test-click! win 'path-add)
+    (test-click! win '(search add))
     (steps 2)
     ;; the dialog, over Settings: the folder named, then Add
     (let* ([fd (focused-window)] [d (window-ref fd 'state)])
@@ -142,14 +150,18 @@
       (steps 1)
       (test-click! fd '(file-dialog pick))
       (steps 2))
-    (check (format "the Paths tab adds a folder to the library search and, \
-                    asked, to what auto-loads ~s" (auto-loads))
-           (and (not (window-error win))
-                (member (path-full dir) (auto-loads))
-                (not (member (path-full dir) added))
-                (exists (lambda (d)
-                          (equal? (path-full (if (pair? d) (car d) d))
-                                  (path-full dir)))
-                        (library-directories))))
+    (let* ([i (settings-test-rank dir)]
+           [added (and i (not (member (path-full dir) (auto-loads))))])
+      (invalidate! win)
+      (steps 2)
+      (when i (test-click! win `(search (search-auto ,i))))
+      (steps 1)
+      (check (format "the Paths tab adds a folder to the library search, \
+                      not auto-loading, and its switch turns it on ~s"
+                     (list i (auto-loads)))
+             (and (not (window-error win))
+                  added
+                  (member (path-full dir) (auto-loads))
+                  (member (path-full dir) *auto-loads*))))
     (auto-load-forget! dir)
     (close-window! win)))

@@ -1132,6 +1132,32 @@
                         (with-style 'mac
                           (lambda () (= (ui-text-y 8 'ui) 8)))))))))))
 
+(check "an Adwaita boxed list's row is libadwaita's: its header 50 high, \
+        2 of padding round it and a line under it, 55; its title 14 in; \
+        its button row that adds one 40 and 2 above and below, 44, its \
+        plus and title, a heading, centered together, 6 apart"
+       (let ([at '()])
+         (with-style 'adwaita
+           (lambda ()
+             (let ([real draw-text])
+               (fluid-let ([draw-text (lambda (x y s . rest)
+                                        (set! at (cons (cons s x) at))
+                                        (apply real x y s rest))])
+                 (image 320 60 1
+                        (lambda () (ui-draw-add-row 0 0 300 44 '() "Add"))))
+               (and (= (ui-row-height "Title" #f) 55)
+                    (= (ui-row-height "Title" "Subtitle") 55)
+                    (= (ui-add-row-height) 44)
+                    (= (cadr (assq 'title (ui-row-areas 0 0 300 55 0 0))) 14)
+                    (equal? (assoc "Add" at)
+                            (cons "Add"
+                                  (+ 14 (floor (/ (- 272
+                                                     (+ 16 6
+                                                        (text-width
+                                                         "Add" 'ui-bold)))
+                                                  2))
+                                     16 6)))))))))
+
 (check "an Adwaita check box is 20 square, a ring of the text at 15 % \
         empty, the accent checked"
        (with-style 'adwaita

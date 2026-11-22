@@ -91,14 +91,15 @@
     (if (path-absolute? f) f (string-append *schevana-root* "/" f)))
 
   ;;; ---- what loads
-  ;;; The world loads files and folders, at boot and at every (reload!),
-  ;;; each folder read again each time, recursively, its libraries (.sls)
-  ;;; and files (.ss) in file-name order. Schevana's own come first: the
-  ;;; tree's folders in the layers' order, its apps' files, and, once the
-  ;;; desktop turns them on, the user's folders; then those added
-  ;;; (auto-load!, the desktop's command line), in their order.
+  ;;; The world loads folders, at boot and at every (reload!), each read
+  ;;; again each time, recursively, its libraries (.sls) and files (.ss) in
+  ;;; file-name order. Schevana's own come first: the tree's folders in the
+  ;;; layers' order, its apps' files, and, once the desktop turns them on,
+  ;;; the user's folders; then the folders of the library search that
+  ;;; auto-load (auto-load!, the desktop's command line, Settings' Paths),
+  ;;; in the order they were turned on.
 
-  ;; Those added, absolute.
+  ;; The library search's folders that auto-load, in full.
   (define-state *auto-loads* '())
 
   ;; The user's folders, of source-folders' names, in ~/.schevana.d.
@@ -115,19 +116,24 @@
             (if *user-folders?* (user-folders) '())
             *auto-loads*))
 
-  ;; path (a file's or a folder's), in full (path-full), added to what
-  ;; loads; with a world, what it holds loads now. => those added.
-  (define (auto-load! path)
-    (let ([p (path-full path)])
+  ;; folder, in full (path-full), joins the library search if it isn't
+  ;; there (add-library-directory!) and auto-loads; with a world, what it
+  ;; holds loads now. => those that auto-load
+  (define (auto-load! folder)
+    (let ([p (path-full folder)])
+      (when (and (file-exists? p) (not (file-directory? p)))
+        (errorf 'auto-load! "~a is not a folder" p))
+      (add-library-directory! p)
       (unless (member p (auto-loads))
         (set! *auto-loads* (append *auto-loads* (list p)))
         (when *world-env* (load-sources! (auto-load-entries p))))
       *auto-loads*))
 
-  ;; path no longer loads with the world, from the next (reload!) or boot;
-  ;; what it loaded stays. Only one added may go. => those added.
-  (define (auto-load-forget! path)
-    (set! *auto-loads* (remove (path-full path) *auto-loads*))
+  ;; folder no longer auto-loads, from the next (reload!) or boot; it
+  ;; stays in the library search, and what it loaded stays. Only one turned
+  ;; on may be turned off. => those that auto-load
+  (define (auto-load-forget! folder)
+    (set! *auto-loads* (remove (path-full folder) *auto-loads*))
     *auto-loads*)
 
   ;; What path holds, in load order: a library by its name, a file by its

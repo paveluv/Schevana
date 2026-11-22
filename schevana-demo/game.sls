@@ -3,7 +3,8 @@
 ;;; catches the fireflies that are lit; a dark one slips through, and a
 ;;; moth cracks the jar: three cracks and it breaks. Every ten fireflies
 ;;; is a level, with one more moth and all of them faster. The same game
-;;; is an app in a window on the desktop (./schevana-desktop --demo) and a
+;;; is an app in a window on the desktop (./schevana-desktop schevana-demo)
+;;; and a
 ;;; surface that fills a screen of its own:
 ;;;
 ;;;   ./schevana-game-demo [--size WxH] [--fullscreen]  a screen its own

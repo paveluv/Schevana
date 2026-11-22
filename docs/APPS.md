@@ -32,23 +32,26 @@ look may name them. `~/.schevana.ss` loads too, like `.emacs`.
 (surfaces)                                 ; the desktop's own: bars, menu, toasts
 ```
 
-Those folders are what loads with Schevana; you may add more, files or
-folders anywhere, which load after them, folders recursively: any
-library, a kit, a style, a palette or an app (`(third-party my-kit)`),
-by the name its first form gives (the folder it is found from by that
-name joins the library search), and a file (`.ss`) by its path. Each
-folder is read again at every `(reload!)`: a file added since loads. On
-the desktop the apps wait for the screen, Schevana's and yours alike, a
-library by the layer it declares (`(library-layer apps)`), a file in a
-folder named `apps`; the rest loads first. Paths are kept in full
-(`path-full`). From the command line, `./schevana-desktop ~/my-apps`;
-in Settings, Paths, which shows the library search by rank, what
-auto-loads, and every library loaded with its file; from a REPL or
+Those folders are what loads with Schevana. A folder of the library
+search (where libraries are found by name) may auto-load too, after
+them, recursively: any library, a kit, a style, a palette or an app
+(`(third-party my-kit)`), by the name its first form gives (the folder
+it is found from by that name joins the library search), and a file
+(`.ss`) by its path. Each is read again at every `(reload!)`: a file
+added since loads. On the desktop the apps wait for the screen,
+Schevana's and yours alike, a library by the layer it declares
+(`(library-layer apps)`), a file in a folder named `apps`; the rest
+loads first. Paths are kept in full (`path-full`). From the command
+line, `./schevana-desktop ~/my-apps`; in Settings, Paths, which shows
+the library search by rank, each folder with a switch for whether it
+auto-loads, a row to add one (it doesn't auto-load until switched on),
+and every library loaded with its file; from a REPL or
 `~/.schevana.ss`, which runs once the world has loaded:
 
 ```scheme no-run
-(auto-load! "/home/me/my-apps")            ; loads it now, and with the world
-(auto-loads)                               ; every file and folder that loads
+(auto-load! "/home/me/my-apps")            ; searched, loads now and with the world
+(auto-load-forget! "/home/me/my-apps")     ; searched still, no longer loads
+(auto-loads)                               ; every folder that loads
 ```
 
 ## Apps in sandboxes

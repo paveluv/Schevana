@@ -1,7 +1,7 @@
 #!/usr/bin/env scheme-script
 ;;; schevana-game-demo — Fireflies, a game on the core alone: no desktop,
 ;;; the screen its own (schevana-demo game). The same game is an app on the
-;;; desktop too: ./schevana-desktop --demo.
+;;; desktop too: ./schevana-desktop schevana-demo.
 ;;;
 ;;;   ./schevana-game-demo [--size WxH] [--fullscreen] [--headless]
 

@@ -46,9 +46,9 @@
     adwaita-rows-spacing adwaita-row-height adwaita-row-areas
     adwaita-rows-radius adwaita-rows adwaita-row adwaita-status-title-font
     adwaita-status-page-areas adwaita-status-page adwaita-banner-height
-    adwaita-banner adwaita-text-y adwaita-text-height adwaita-text-top
-    adwaita-text adwaita-text-in adwaita-center adwaita-text-centered
-    adwaita-lines)
+    adwaita-banner adwaita-add-row-height adwaita-add-row adwaita-text-y
+    adwaita-text-height adwaita-text-top adwaita-text adwaita-text-in
+    adwaita-center adwaita-text-centered adwaita-lines)
   (import (chezscheme)
           (only (schevana base) at-load clamp filter-map library-layer
                 string-suffix?)
@@ -1185,21 +1185,25 @@
   ;; heading, its description dimmed, 6 apart, the list 12 under them.
   (define (adwaita-rows-spacing) (values 6 12))
 
-  ;; An action row (widgets/_lists.scss:118-163): at least 50 high, its
-  ;; title and subtitle 6 from its top and bottom, 3 apart.
+  ;; An action row (widgets/_lists.scss:16-19, 118-163, 334-338): its
+  ;; header, at least 50 high, its title and subtitle 6 from its top and
+  ;; bottom, 3 apart, inside 2 of padding, over a line of 1.
   (define (adwaita-row-height title subtitle)
-    (max 50 (round (+ 12 (font-line-height 'ui)
-                      (if subtitle (+ 3 (font-line-height 'ui-small)) 0)))))
+    (+ 2 2 1 (max 50 (+ 12 (adwaita-text-height 'ui)
+                        (if subtitle (+ 3 (adwaita-text-height 'ui-small))
+                            0)))))
 
-  ;; 12 in from the sides, 6 between what it holds, a prefix 6 more from
+  ;; The header, 2 in from the row's edges and over its line; what it
+  ;; holds 12 in from the header's sides, 6 apart, a prefix 6 more from
   ;; the title (widgets/_lists.scss:124-163).
   (define (adwaita-row-areas x y w h pw sw)
-    (let* ([tx (if (> pw 0) (+ x 12 pw 12) (+ x 12))]
-           [sx (- (+ x w) 12 sw)]
-           [te (if (> sw 0) (- sx 6) (- (+ x w) 12))])
-      (list (list 'prefix (+ x 12) y pw h)
-            (list 'title tx y (max 0 (- te tx)) h)
-            (list 'suffix sx y sw h))))
+    (let* ([hy (+ y 2)] [hh (max 0 (- h 5))]
+           [tx (if (> pw 0) (+ x 14 pw 12) (+ x 14))]
+           [sx (- (+ x w) 14 sw)]
+           [te (if (> sw 0) (- sx 6) (- (+ x w) 14))])
+      (list (list 'prefix (+ x 14) hy pw hh)
+            (list 'title tx hy (max 0 (- te tx)) hh)
+            (list 'suffix sx hy sw hh))))
 
   (define (adwaita-rows-radius) 12)
 
@@ -1220,7 +1224,8 @@
   (define (adwaita-row x y w h flags title subtitle tx tw)
     (let* ([on? (lambda (f) (memq f flags))]
            [lh (adwaita-text-height 'ui)] [sh (adwaita-text-height 'ui-small)]
-           [th (if subtitle (+ lh 3 sh) lh)] [ty (adwaita-center y h th)]
+           [th (if subtitle (+ lh 3 sh) lh)]
+           [ty (adwaita-center (+ y 2) (- h 5) th)]
            [ink (lambda (c) (if (on? 'disabled) (alpha c 0.5) c))])
       (cond [(on? 'selected) (fill-box x y w h (alpha 'accent 0.25))]
             [(and (on? 'activatable) (on? 'pressed))
@@ -1234,6 +1239,27 @@
       (when subtitle
         (adwaita-text tx (+ ty lh 3) (text-fit subtitle tw 'ui-small)
                       (ink 'text-dim) 'ui-small))
+      (when (on? 'focused)
+        (adwaita-ring (+ x 1) (+ y 1) (- w 2) (- h 2) 11))))
+
+  ;; A button row (AdwButtonRow: widgets/_lists.scss:440-455, adw-button-
+  ;; row.ui) that adds one: inside the row's 2 of padding a box 40 high,
+  ;; 12 in from its sides, a plus and the title, a heading, centered in it
+  ;; together, 6 apart; under the pointer and pressed as an activatable
+  ;; row; the last, so no line under it.
+  (define (adwaita-add-row-height) 44)
+
+  (define (adwaita-add-row x y w h flags label)
+    (let* ([on? (lambda (f) (memq f flags))] [g (ui-glyph-size)]
+           [bx (+ x 14)] [bw (max 0 (- w 28))] [by (+ y 2)] [bh (- h 4)]
+           [label (text-fit label (max 0 (- bw g 6)) 'ui-bold)]
+           [x0 (adwaita-center bx bw (+ g 6 (text-width label 'ui-bold)))]
+           [ink (if (on? 'disabled) (alpha 'text 0.5) 'text)])
+      (cond [(on? 'pressed) (fill-box x y w h (alpha 'text 0.08))]
+            [(on? 'hover) (fill-box x y w h (alpha 'text 0.03))])
+      (ui-draw-glyph x0 (adwaita-center by bh g) g g (list (cons 'ink ink))
+                     'plus)
+      (adwaita-text-in (+ x0 g 6) by bh label ink 'ui-bold)
       (when (on? 'focused)
         (adwaita-ring (+ x 1) (+ y 1) (- w 2) (- h 2) 11))))
 
@@ -1432,6 +1458,8 @@
      'ui-rows-radius 'adwaita-rows-radius
      'ui-draw-rows 'adwaita-rows
      'ui-draw-row 'adwaita-row
+     'ui-add-row-height 'adwaita-add-row-height
+     'ui-draw-add-row 'adwaita-add-row
      'ui-status-page-areas 'adwaita-status-page-areas
      'ui-draw-status-page 'adwaita-status-page
      'ui-banner-height 'adwaita-banner-height

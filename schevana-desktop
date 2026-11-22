@@ -3,12 +3,13 @@
 ;;; styles on the core, from (schevana desktop main).
 ;;;
 ;;;   ./schevana-desktop [--size WxH] [--fullscreen] [--headless] [--fork]
-;;;                      [--hacker] [--demo] [--eval EXPR]...
+;;;                      [--hacker] [--eval EXPR]... [FOLDER]...
 ;;;   ./schevana-desktop --install-desktop | --uninstall-desktop
 ;;;
 ;;; --hacker is the hacker edition: every library's names, internals too,
-;;; to see and redefine live. --demo adds the demos' apps
-;;; (schevana-demo/). --eval expressions run after boot, e.g.
+;;; to see and redefine live. A FOLDER joins the library search and loads
+;;; with the world: schevana-demo adds the demos' apps. --eval expressions
+;;; run after boot, e.g.
 ;;;
 ;;;   --eval '(after 2000 (lambda () (png-write-screen-then "s.png" \
 ;;;                                    (lambda (p) (quit!)))))'

@@ -5,8 +5,11 @@
 ;;; settings, the screen, the first windows, the run till it quits.
 ;;;
 ;;;   ./schevana-desktop [--size WxH] [--fullscreen] [--headless] [--fork]
-;;;                      [--hacker] [--demo] [--eval EXPR]...
+;;;                      [--hacker] [--eval EXPR]... [FOLDER]...
 ;;;   ./schevana-desktop --install-desktop | --uninstall-desktop
+;;;
+;;; Each FOLDER joins the library search and loads with the world
+;;; (./schevana-desktop schevana-demo: the demos).
 
 (library (schevana desktop main)
   (export desktop-defaults desktop-size desktop-usage desktop-options
@@ -46,13 +49,14 @@
     (fprintf (current-error-port)
              "usage: schevana-desktop [--size WxH] [--fullscreen] \
               [--headless] [--fork]\n                        \
-              [--hacker] [--eval EXPR]... [PATH]...\n       \
+              [--hacker] [--eval EXPR]... [FOLDER]...\n       \
               schevana-desktop --install-desktop | --uninstall-desktop\n")
     (exit 1))
 
   ;; What args ask, as desktop-defaults has it: a word that isn't an
-  ;; option is a file or folder to load with the world (auto-load!), an
-  ;; option it doesn't know prints the usage and stops. Core1's boot is
+  ;; option is a folder for the library search that loads with the world
+  ;; (auto-load!); an option it doesn't know, or a file, prints the usage
+  ;; and stops. Core1's boot is
   ;; handed it, which the world reads as *schevana-options*. The hacker
   ;; edition is asked by --hacker or SCHEVANA_HACKER, as src/launch.ss asks
   ;; it.
@@ -80,7 +84,9 @@
         [(value? "--eval")
          (next 2 'evals
                (append (cdr (assq 'evals opts)) (list (cadr args))))]
-        [(not (string-prefix? "-" (car args)))
+        [(and (not (string-prefix? "-" (car args)))
+              (not (and (file-exists? (car args))
+                        (not (file-directory? (car args))))))
          (next 1 'auto-loads
                (append (cdr (assq 'auto-loads opts)) (list (car args))))]
         [else (desktop-usage)])))

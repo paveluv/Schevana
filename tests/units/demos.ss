@@ -3,7 +3,8 @@
 ;;; and tells what it read back (a window that drew, its parts found in the
 ;;; program's "/"); a plain script among them, the checklist, its .sh
 ;;; giving scheme-script the tree as its library folder. On the desktop
-;;; (--demo) each demo's library (schevana-demo/) registers its app, which
+;;; (its folder auto-loaded) each demo's library (schevana-demo/) registers
+;;; its app, which
 ;;; opens a window that draws.
 
 ;; What launcher (a file at the tree's root: a launcher of Schevana's, or a
@@ -105,14 +106,23 @@
 ;; an app it defines registers itself.
 (let ([dir (string-append *schevana-root* "/schevana-demo")])
   (auto-load! dir)
-  (check (format "a folder auto-loaded loads its libraries, by their names \
-                  from the tree: the demos' apps register ~s"
+  (check (format "a folder auto-loaded joins the library search and loads \
+                  its libraries, by their names from the tree: the demos' \
+                  apps register; a file is no folder to load ~s"
                  (auto-load-entries dir))
          (and (equal? (auto-load-entries dir)
                       '((schevana-demo game) (schevana-demo rings)))
               ;; made absolute, as the tree's root may not be (".")
               (string-suffix? "/schevana-demo" (car (last-pair (auto-loads))))
-              (for-all (lambda (app) (memq app (apps))) '(rings game)))))
+              (for-all (lambda (app) (memq app (apps))) '(rings game))
+              ;; a folder of the library search, which a file can't be
+              (exists (lambda (d)
+                        (equal? (path-full (if (pair? d) (car d) d))
+                                (path-full dir)))
+                      (library-directories))
+              (guard (c [#t #t])
+                (auto-load! (string-append *schevana-root* "/README.md"))
+                #f))))
 
 ;; A folder of files of the test's own, read again at (reload!): a file
 ;; added since loads, and one taken away is let go of; folders inside it
