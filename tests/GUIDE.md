@@ -169,9 +169,13 @@ it, the test framework finds itself:
 - A file a test writes goes in the suite's output folder (`out/`), named
   relative to it, never at an absolute path or in `/tmp`.
 - A run whose heap passes its limit stops, as a failure, before the
-  machine runs out of memory (`tests/lib.ss`): 2 GB for a topic or the
-  smoke suite, which take a few hundred MB, more for the frames' suite,
-  which keeps screens at 300 %; `SCHEVANA_TEST_HEAP_MB` sets another.
+  machine runs out of memory (`tests/lib.ss`): 2 GB, where a topic or a
+  suite takes a few hundred MB to 1.5 GB; `SCHEVANA_TEST_HEAP_MB` sets
+  another. After each check, and each step under the held clock, the
+  collector looks at the older generations as the world's loop has it
+  look every 500 ms (`test-collector-look!`): a check that never steps,
+  and steps under a clock that never moves, would never let it, and
+  their garbage would pile up.
 
 ## Every run alike
 

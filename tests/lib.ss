@@ -116,6 +116,16 @@
     (printf "stopped after the check SCHEVANA_CHECK names\n")
     (exit (if (zero? failures) 0 1))))
 
+;; The collector's look at the older generations (collector-tick!), which
+;; comes at most every 500 ms of the clock, and only as the world's loop
+;; steps: now. A check that never steps the world, and steps under the
+;; held clock, would never have it, and what outlives a young collection
+;; would pile up, gigabytes of it. The look collects only what the world
+;; would by its own measure.
+(define (test-collector-look!)
+  (set! *collector-check-ms* 0)
+  (collector-tick!))
+
 (define-syntax check
   (syntax-rules ()
     [(_ name expr)
@@ -124,6 +134,7 @@
                  expr)])
        (unless ok (set! failures (+ failures 1)))
        (printf "~a ~a\n" (if ok "ok  " "FAIL") name)
+       (test-collector-look!)
        (test-only-done name))]))
 
 ;; A form outside a check that raises fails, at its line, and the suite goes
@@ -205,11 +216,17 @@
     (map (lambda (j) (bytevector-s32-native-ref bytes (* 4 (+ at j))))
          (iota (ui-stream-words s)))))
 
+;; A step of the world's loop, and, the clock held, the collector's look
+;; after it, as if the clock had moved on for it.
+(define (test-step! wait-ms)
+  (schevana-step! wait-ms)
+  (when test-clock-ms (test-collector-look!)))
+
 ;; The world's loop, n times, each after the held clock moves on ms.
 (define (steps n . ms)
   (do ([i 0 (+ i 1)]) ((= i n))
     (when (pair? ms) (test-clock-advance! (car ms)))
-    (schevana-step! 0)))
+    (test-step! 0)))
 
 ;; pred's first true value as the world goes on, a step each 5 ms, for up
 ;; to ms of the clock, held or the machine's; #f if it never is.
