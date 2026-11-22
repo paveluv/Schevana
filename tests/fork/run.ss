@@ -1,5 +1,5 @@
 ;;; tests/fork/run.ss — what tests/units/fork.ss has a forked world do:
-;;; loaded by schevana-desktop's --eval on core1, its own thread, core0 on
+;;; loaded by ./desktop's --eval on core1, its own thread, core0 on
 ;;; the process's first. It writes what it saw, as a datum, to the file
 ;;; *fork-out* names, then quits.
 

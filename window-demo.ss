@@ -1,4 +1,4 @@
-;;; schevana-window-demo.ss — a checklist, an app of the host's desktop made
+;;; window-demo.ss — a checklist, an app of the host's desktop made
 ;;; of Schevana's widget kit: a plain program, no library of its own. Its
 ;;; one window is a window of GNOME's (or a Mac's), its look the host's own,
 ;;; light or dark as the desktop prefers ((schevana kits host)). Its title
@@ -7,10 +7,10 @@
 ;;; gives a transparent window an alpha swapchain; once we move to it, the
 ;;; window gets GNOME's shadow (on subsurfaces under it) and rounded
 ;;; corners. Run with the tree as Chez's library folder, from the libraries'
-;;; sources, or as schevana-window-demo.sh does, with them compiled into a
+;;; sources, or as window-demo.sh does, with them compiled into a
 ;;; cache:
 ;;;
-;;;   CHEZSCHEMELIBDIRS=. scheme-script schevana-window-demo.ss
+;;;   CHEZSCHEMELIBDIRS=. scheme-script window-demo.ss
 ;;;   ... --headless     a frame, read back and told
 ;;;   ... --fork         the screen on a thread of its own
 ;;;   ... --style NAME   one of Schevana's styles in place of the host's look

@@ -3,7 +3,7 @@
 ;;; alone would, allocating only its sums; its keys and its rules window.
 
 ;; Boids' own names, bo:boids-step and the rest (tests/reach.ss).
-(test-library '(schevana-demo boids) 'bo:)
+(test-library '(demo boids) 'bo:)
 
 ;; Three boids close together: x, y, and the heading's dx, dy.
 (define three-boids

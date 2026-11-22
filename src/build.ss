@@ -2,8 +2,8 @@
 ;;; the libraries it imports into out/lib: the libraries each to its own
 ;;; file, and the program with them all as one, which runs with no tree.
 ;;;
-;;;   scheme --script src/build.ss schevana-demo game game-main
-;;;   scheme --program out/lib/game.so --headless
+;;;   scheme --script src/build.ss games fireflies fireflies-main
+;;;   scheme --program out/lib/fireflies.so --headless
 ;;;
 ;;; From the tree's root: the library's name, its parts, then its main,
 ;;; which is handed the program's command line's arguments.

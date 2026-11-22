@@ -1,4 +1,4 @@
-;;; (schevana-demo springies) — Springies: masses joined by springs, falling,
+;;; (demo springies) — Springies: masses joined by springs, falling,
 ;;; bouncing and wobbling. Ported from Springies in Agave
 ;;; (github.com/dharmatech/agave, demos/springies.sls), which followed
 ;;; Douglas DeCarlo's XSpringies (1991). The physics is written from
@@ -18,7 +18,7 @@
 ;;; Those names are its own, not exported: a REPL of the hacker edition
 ;;; (--hacker) has them.
 
-(library (schevana-demo springies)
+(library (demo springies)
   (export springies)
   (import (chezscheme)
           (only (schevana base) library-layer)

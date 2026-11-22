@@ -1,14 +1,14 @@
-;;; (schevana-demo rings) — a program on drawing alone: no theme, no
+;;; (demo rings) — a program on drawing alone: no theme, no
 ;;; windows, no desktop. It hands the loop what a frame draws and where an
 ;;; event goes, the hooks the windows layer would fill, and runs: a shader
 ;;; of its own over the whole screen, a box that follows the mouse, a line
-;;; of text. On the desktop (./schevana-desktop schevana-demo) the same, in
+;;; of text. On the desktop (./desktop demo) the same, in
 ;;; a window.
 ;;;
-;;;   ./schevana-rings-demo             a window
-;;;   ./schevana-rings-demo --headless  a frame, read back and told
+;;;   ./rings-demo             a window
+;;;   ./rings-demo --headless  a frame, read back and told
 
-(library (schevana-demo rings)
+(library (demo rings)
   (export rings-main rings)
   (import (chezscheme)
           (only (schevana base) library-layer)

@@ -26,7 +26,7 @@
                (schevana core0 gpu) (schevana core0 window) (schevana reload)))
 
 ;; The world, loaded as the desktop loads it, headless
-;; (./schevana-desktop --headless), here on this thread; this environment
+;; (./desktop --headless), here on this thread; this environment
 ;; stays the tests' (tests/reach.ss), but in the hacker edition, where it
 ;; is the world. A demo comes only where a test uses it (test-demos!,
 ;; test-library).

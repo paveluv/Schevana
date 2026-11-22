@@ -149,7 +149,7 @@
     screen-event-seen!
     worklet-spread
     ;; And those the windows layer fills, which a program without it fills
-    ;; itself (schevana-demo rings): what a frame draws, where an event
+    ;; itself (demo rings): what a frame draws, where an event
     ;; goes, what a tick does.
     record-world!
     wm-event!

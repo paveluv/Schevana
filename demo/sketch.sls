@@ -1,7 +1,7 @@
-;;; (schevana-demo sketch) — freehand drawing. Strokes are plain Scheme data:
+;;; (demo sketch) — freehand drawing. Strokes are plain Scheme data:
 ;;; (window-ref win 'strokes) => ((color width (x . y) ...) ...)
 
-(library (schevana-demo sketch)
+(library (demo sketch)
   (export sketch)
   (import (chezscheme)
           (only (schevana base) library-layer)

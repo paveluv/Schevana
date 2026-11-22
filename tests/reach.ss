@@ -84,7 +84,7 @@
 ;;; Its names come to "/" under a prefix, so that none of them is one of
 ;;; the world's.
 ;;;
-;;;   (test-library '(schevana-demo boids) 'bo:)
+;;;   (test-library '(demo boids) 'bo:)
 ;;;   (bo:boids-step (bo:boids-scatter 3 100 100) bo:boids-default-rules)
 ;;;   (fluid-let ([bo:boids-scatter (lambda (n w h) (make-flvector 0))])
 ;;;     ...)

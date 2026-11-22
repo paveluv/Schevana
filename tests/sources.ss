@@ -67,7 +67,7 @@
 (define library-files test-core-libraries)
 
 ;; Every library in the tree: under schevana/, the core's and those above
-;; it, and the demos', under schevana-demo/.
+;; it, the demos', under demo/, and the games', under games/.
 (define all-library-files
   (apply append
          (map (lambda (top)
@@ -82,7 +82,7 @@
                                         [else '()])))
                               (sort string<?
                                     (directory-list (source-path dir)))))))
-              '("schevana" "schevana-demo"))))
+              '("schevana" "demo" "games"))))
 
 ;; Each declares its layer first (library-layer, (schevana base)), which
 ;; holds its imports to the layers' order as it compiles.

@@ -3,13 +3,13 @@
 ;;; frames and its timer.
 
 ;; Boids 3D's own names, b3:boids3d-steer and the rest (tests/reach.ss).
-(test-library '(schevana-demo boids3d) 'b3:)
+(test-library '(demo boids3d) 'b3:)
 
 (check "Nothing in Boids 3D waits for the GPU or works on the crew: it \
         names neither gpu-compute! nor gpu-buffer-read! nor crew-for*; its \
         rules window is no app's, the flock's own"
        (let* ([file (string-append *schevana-root*
-                                   "/schevana-demo/boids3d.sls")]
+                                   "/demo/boids3d.sls")]
               [names (let walk ([x (call-with-input-file file read)]
                                 [acc '()])
                        (cond [(symbol? x) (cons x acc)]

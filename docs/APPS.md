@@ -42,7 +42,7 @@ added since loads. On the desktop the apps wait for the screen,
 Schevana's and yours alike, a library by the layer it declares
 (`(library-layer apps)`), a file in a folder named `apps`; the rest
 loads first. Paths are kept in full (`path-full`). From the command
-line, `./schevana-desktop ~/my-apps`; in Settings, Paths, which shows
+line, `./desktop ~/my-apps`; in Settings, Paths, which shows
 the library search by rank, each folder with a switch for whether it
 auto-loads, a row to add one (it doesn't auto-load until switched on),
 and every library loaded with its file; from a REPL or
@@ -71,8 +71,8 @@ world as the rest is:
 
 What it defines is the world's, so name it by the app (`counter-…`), as
 Schevana's apps do. An app may be a library too, in a folder that
-auto-loads: the demos are, in `schevana-demo/`, `(schevana-demo boids)`
-and the rest, which `./schevana-desktop schevana-demo` loads. Code you
+auto-loads: the demos are, in `demo/`, `(demo boids)`
+and the rest, which `./desktop demo` loads. Code you
 would rather keep apart goes in a sandbox you make
 ([ENVIRONMENTS.md](ENVIRONMENTS.md)).
 
@@ -113,28 +113,28 @@ name, and the palettes it names, with `look-load!` (the core's), and
 `--style NAME` takes any of Schevana's styles in its place:
 
 ```bash
-./schevana-window-demo.sh --style genera
+./window-demo.sh --style genera
 ```
 
-A host app needs no library of its own: `schevana-window-demo.ss`, a
+A host app needs no library of its own: `window-demo.ss`, a
 checklist, is a plain script, run with the tree as Chez's library folder.
 From the libraries' sources (1.3 s a start here):
 
 ```bash
-CHEZSCHEMELIBDIRS=. scheme-script schevana-window-demo.ss
+CHEZSCHEMELIBDIRS=. scheme-script window-demo.ss
 ```
 
-Or, as `schevana-window-demo.sh` does, with Chez compiling each library
+Or, as `window-demo.sh` does, with Chez compiling each library
 into a folder of objects as it's imported, and loading it from there
 while it's newer than its source (0.3 s a start once compiled):
 
 ```bash
 scheme --libdirs .::.cache/mine --compile-imported-libraries \
-  --program schevana-window-demo.ss
+  --program window-demo.ss
 ```
 
 The `.sh` takes the launchers' own cache, `.cache/` and Chez's version and
-machine type, so what `schevana-desktop` compiled is compiled for it too.
+machine type, so what `./desktop` compiled is compiled for it too.
 `scheme-script` is `scheme --program` with no options of its own, so it
 can load a cache (`CHEZSCHEMELIBDIRS=.::.cache/mine`) but not fill one.
 

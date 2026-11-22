@@ -419,16 +419,16 @@
   ;; A program's "/", where what calls by name finds it (a part's built-in,
   ;; the procedures a style names, world-value): Chez's names, the core's
   ;; facade and the world's libraries the program has loaded, a kit, a
-  ;; look, a demo, as "/" has them on the desktop; and each of those run,
-  ;; as the desktop runs them, so that what it registers (a style, a
-  ;; palette) is registered though the program named none of it. Made once,
-  ;; as the program runs (schevana-main); a world booted (core1-boot!) is
-  ;; its own.
+  ;; look, a demo, a game, as "/" has them on the desktop; and each of
+  ;; those run, as the desktop runs them, so that what it registers (a
+  ;; style, a palette) is registered though the program named none of it.
+  ;; Made once, as the program runs (schevana-main); a world booted
+  ;; (core1-boot!) is its own.
   (define (program-world!)
     (unless *world-env*
       (let ([world (copy-environment (scheme-environment) #t)]
             [names (filter (lambda (name)
-                             (or (eq? (car name) 'schevana-demo)
+                             (or (memq (car name) '(demo games))
                                  (and (eq? (car name) 'schevana)
                                       (= (length name) 3)
                                       (member (symbol->string (cadr name))

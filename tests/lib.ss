@@ -13,10 +13,10 @@
 (load (string-append *schevana-root* "/tests/boot.ss"))
 
 ;; The demos named, loaded into the world now, as the desktop loads the
-;; folder it is given (./schevana-desktop schevana-demo): the tests' world
+;; folder it is given (./desktop demo): the tests' world
 ;; has none but those a test uses. (test-demos! 'life 'sketch)
 (define (test-demos! . names)
-  (load-sources! (map (lambda (name) (list 'schevana-demo name)) names)))
+  (load-sources! (map (lambda (name) (list 'demo name)) names)))
 
 ;; A library evaluated again, and what imports it, as a reload does when
 ;; its file changed, in either edition: => the libraries evaluated again.
@@ -25,12 +25,18 @@
       ((eval 'hacker-reload-libraries!) (source-held-libraries) name)
       (reload-libraries! (source-held-libraries) name)))
 
-;; The launchers at the tree's root, schevana-desktop and the demos', each
-;; a program of a few lines (src/launch.ss).
+;; The programs at the tree's root: the launchers, desktop and the
+;; demos', each a program of a few lines (src/launch.ss), and the window
+;; demo's script: each file there that starts with #! or is Scheme's.
 (define test-launchers
   (filter (lambda (f)
-            (and (string-prefix? "schevana-" f)
-                 (not (file-directory? (string-append *schevana-root* "/" f)))))
+            (let ([path (string-append *schevana-root* "/" f)])
+              (and (not (file-directory? path))
+                   (or (string=? (path-extension f) "ss")
+                       (call-with-input-file path
+                         (lambda (p)
+                           (and (eqv? (read-char p) #\#)
+                                (eqv? (read-char p) #\!))))))))
           (sort string<? (directory-list *schevana-root*))))
 
 ;; The libraries below the world, under schevana/: core0's, the

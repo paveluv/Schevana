@@ -165,7 +165,7 @@ it, the test framework finds itself:
   loads it into the world, as the desktop given the demos' folder does,
   for a test that opens its window.
 - A library the world doesn't boot, a demo's own names: `(test-library
-  '(schevana-demo boids) 'bo:)` (`tests/reach.ss`) strips the
+  '(demo boids) 'bo:)` (`tests/reach.ss`) strips the
   library, as the hacker edition
   strips every library, its body evaluated again at the top level of an
   environment of its own (in the hacker edition, as it is), and gives

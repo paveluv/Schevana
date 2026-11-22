@@ -2694,7 +2694,7 @@
 ;; Life's cells take a theme change made behind set-theme!'s back, once
 ;; asked to draw (set-theme! asks every window). Its bar's height is its
 ;; own (tests/reach.ss).
-(test-library '(schevana-demo life) 'lf:)
+(test-library '(demo life) 'lf:)
 (let ([l (lf:life)] [green (theme 'green)] [cyan (theme 'cyan)])
   (window-call l 'key #\space '())   ; paused
   (move-window! l 100 60)

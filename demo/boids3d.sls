@@ -1,4 +1,4 @@
-;;; (schevana-demo boids3d) — Boids in three dimensions, as Craig Reynolds
+;;; (demo boids3d) — Boids in three dimensions, as Craig Reynolds
 ;;; first made them (1987), all on the GPU: compute shaders steer the flock
 ;;; and lay it out on the screen, and a paint draws it, birds far off
 ;;; against an evening sky over the sea, the sun setting, a wooded shore
@@ -22,7 +22,7 @@
 ;;;
 ;;; Its shaders touch only the buffers it hands them.
 
-(library (schevana-demo boids3d)
+(library (demo boids3d)
   (export boids3d)
   (import (chezscheme)
           (only (schevana base) library-layer define-state)

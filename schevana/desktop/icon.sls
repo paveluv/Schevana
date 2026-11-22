@@ -37,7 +37,7 @@
   ;;; icon of the app's .desktop file, which they match to the window by its
   ;;; app id (core0-app-id; the class under X11). (install-desktop-entry!)
   ;;; writes that file and the icon under ~/.local/share;
-  ;;; ./schevana-desktop --install-desktop does the same.
+  ;;; ./desktop --install-desktop does the same.
 
   (define (desktop-data-home)
     (or (getenv "XDG_DATA_HOME")
@@ -66,7 +66,7 @@
                                   '("." "")) (current-directory)]
                          [else (string-append (current-directory) "/"
                                               *schevana-root*)])]
-             [exec (string-append root "/schevana-desktop")])
+             [exec (string-append root "/desktop")])
         (make-directories! (path-parent entry))
         (make-directories! (path-parent icon))
         (write-app-icon! icon 256)

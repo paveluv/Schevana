@@ -26,10 +26,10 @@
                                      (directory-list path))))))
               '("schevana/kits" "schevana/services" "schevana/styles"
                 "schevana/palettes" "schevana/wallpapers" "schevana/desktop"
-                "schevana/apps" "schevana-demo")
+                "schevana/apps" "demo" "games")
               '((schevana kits) (schevana services) (schevana styles)
                 (schevana palettes) (schevana wallpapers) (schevana desktop)
-                (schevana apps) (schevana-demo)))))
+                (schevana apps) (demo) (games)))))
 
 (unless (schevana-hacker? '())
   (let ([root (schevana-launch-root *schevana-root*)])

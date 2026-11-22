@@ -787,8 +787,8 @@
 ;;; the crew: Life at one pixel a cell, Boids at its largest
 
 ;; Their own names, lf:life-speeds and bo:boids-step-on (tests/reach.ss).
-(test-library '(schevana-demo life) 'lf:)
-(test-library '(schevana-demo boids) 'bo:)
+(test-library '(demo life) 'lf:)
+(test-library '(demo boids) 'bo:)
 
 ;; Steps of Life, maximized on a 1920 × 1080 screen at 200% (a 4K one), one
 ;; pixel a cell, a generation every tick, its controls hidden; of them, the

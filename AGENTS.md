@@ -58,7 +58,7 @@ before it:
 
 | Layer | What goes there |
 |---|---|
-| `schevana-desktop` and the demos' launchers | Programs of a few lines at the tree's root, which is where Schevana's libraries are found: each loads `src/launch.ss` and starts its library's main. |
+| `desktop` and the demos' launchers | Programs of a few lines at the tree's root, which is where Schevana's libraries are found: each loads `src/launch.ss` and starts its library's main. |
 | `src/` | The top level's own files: `launch.ss` (the tree's libraries, compiled into `.cache/`, or spliced for `--hacker`), `hacker.ss` (the hacker edition: every library spliced into one environment, all its names redefinable), `strip.ss` (a library's own forms at the top level, for the hacker edition and the tests' `test-library`), and `base.ss`: what every environment of the top level has, a copy each, the basics, forwarders, by which an environment gives another its names, and the top level's own forms. Pure: no state, no C. |
 | `schevana/core0/` | Core0, below the core, sealed in its libraries: the GPU's device side, the window and its events, the trace, what differs by platform. A launcher boots it, and core1 on the world's own thread (headless, one thread plays both). The core has of it only its facade, `(schevana core0)`; the recorder, `schevana/recorder/` (the bytes of frames and their writers), has `(schevana core0 for-recorder)`, and the core has of the recorder its facade, `(schevana recorder)`. |
 | `schevana/core/` | The core, sealed in its libraries, `(schevana core <piece>)`: the world (windows, focus, the theme's layers, processes, timers, its side of core0's window and events), core1's side of the GPU layer, drawing and fonts, the pacer, the loop, its registries, the hooks later layers fill, and the caches its own procedures need; making the world's environment, "/", where everything below loads, loading the world's files and reloading (`sources.sls`). The world has of it only its facade, `(schevana core)`, which lists what the world is given. |
@@ -67,7 +67,8 @@ before it:
 | `schevana/styles/`, `schevana/palettes/`, `schevana/wallpapers/` | The looks: one definition per library, registered by its definer as the library runs (the registries are the core's: `define-style`, `define-palette`, `define-wallpaper`). |
 | `schevana/desktop/` | The screen's own surfaces and the desktop's behavior: wallpaper, bars, menu, toasts, keys, arranging windows; and its start (`main.sls`, from the command line; `start.sls`, once the world is loaded). |
 | `schevana/apps/` | The desktop's own apps (the REPL, Settings, Tasks, Monitor, Clock, ...), one per library, defined with `define-app`. |
-| `schevana-demo/` | The demos, one library each, `(schevana-demo <name>)`, on the core's facade: an app the desktop adds when its folder is given (`./schevana-desktop schevana-demo`: Boids, Life, Springies, ...), some a program too, with a launcher at the root (`./schevana-game-demo`). |
+| `demo/` | The demos, one library each, `(demo <name>)`, on the core's facade: an app the desktop adds when its folder is given (`./desktop demo`: Boids, Life, Springies, ...), some a program too, with a launcher at the root (`./rings-demo`). |
+| `games/` | The games, one library each, `(games <name>)`, on the core's facade: an app a REPL loads by its name (`(import (games fireflies))`, then `(fireflies)`), or the desktop with the folder given (`./desktop games`), a program too with a launcher at the root (`./game-demo`). |
 
 - **The boot is a chain**: a launcher boots core0, then core1, which
   boots the world (`(schevana desktop main)`). A sealed layer gives the next only what its facade

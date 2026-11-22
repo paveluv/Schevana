@@ -7,7 +7,7 @@ pieces work.
 ## The tree
 
 ```
-schevana-desktop  the desktop's launcher; the demos' are beside it
+desktop        the desktop's launcher; the demos' are beside it
 src/launch.ss  what a launcher loads: the tree's libraries, compiled into
                .cache/, or spliced (src/hacker.ss), then its library's
                main
@@ -59,13 +59,16 @@ schevana/      the libraries below the world, each declaring its layer:
                keys, arranging, the file dialog; the desktop's start
                (main, start)
   apps/        the desktop's own apps: the REPL, Settings, Tasks, Clock, ...
-schevana-demo/ the demos, a library each: Boids, Life, Springies, ...; some
-               with launchers at the root
+demo/          the demos, a library each: Boids, Life, Springies, Rings,
+               ...; some with launchers at the root
+games/         the games, a library each: Fireflies; a REPL loads one by
+               its name, (import (games fireflies)), and each has a
+               launcher at the root
 ```
 
 ## The boot chain
 
-A launcher at the tree's root (`schevana-desktop`) loads `src/launch.ss`,
+A launcher at the tree's root (`desktop`) loads `src/launch.ss`,
 which finds the libraries in the tree (each compiled once into `.cache/`,
 a folder there for each Chez version and machine) and calls the main of
 the launcher's library, `(schevana desktop main)`: core0 boots, then core1
@@ -115,13 +118,13 @@ elsewhere gets its names forwarded there. `(reload!)` splices again each
 library whose file changed, and what imports it. The suites pass in both
 editions (`SCHEVANA_HACKER=1`, [TESTING.md](TESTING.md)).
 
-A program stands on the core alone (`schevana-demo/`, each with a
+A program stands on the core alone (`demo/`, `games/`, each with a
 launcher at the root): it imports the core's facade and runs with
 `schevana-main`, which boots the screen, calls a thunk that opens what
 the program shows, and runs the world till it quits. One with no windows
 fills the hooks the windows layer would, what a frame draws
 (`record-world!`), where an event goes (`wm-event!`) and what a tick does
-(`wm-tick!`), as `(schevana-demo rings)` does:
+(`wm-tick!`), as `(demo rings)` does:
 
 ```scheme no-run
 (import (chezscheme) (schevana core))

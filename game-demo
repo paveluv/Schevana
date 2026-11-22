@@ -1,0 +1,13 @@
+#!/usr/bin/env scheme-script
+;;; game-demo — Fireflies, a game on the core alone: no desktop, the
+;;; screen its own (games fireflies). The same game is an app on the
+;;; desktop too: (import (games fireflies)) and (fireflies) at a REPL.
+;;;
+;;;   ./game-demo [--size WxH] [--fullscreen] [--headless]
+
+(import (chezscheme))
+
+(let ([root (path-parent (car (command-line)))])
+  (load (string-append (if (string=? root "") "." root) "/src/launch.ss"))
+  ((eval 'schevana-launch) root '(games fireflies) 'fireflies-main
+   (command-line-arguments)))

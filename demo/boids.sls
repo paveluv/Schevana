@@ -1,4 +1,4 @@
-;;; (schevana-demo boids) — Boids, Craig Reynolds' flocking simulation (1987).
+;;; (demo boids) — Boids, Craig Reynolds' flocking simulation (1987).
 ;;; Ported from Boids in Niva (github.com/dharmatech/boids-niva), which was
 ;;; in turn inspired by Boids in Aloe, a Lisp whose kernel is sending a
 ;;; message (github.com/dharmatech/2026-09-02-aloe-racket).
@@ -21,7 +21,7 @@
 ;;; Those names are its own, not exported: a REPL of the hacker edition
 ;;; (--hacker) has them.
 
-(library (schevana-demo boids)
+(library (demo boids)
   (export boids)
   (import (chezscheme)
           (only (schevana base) library-layer)

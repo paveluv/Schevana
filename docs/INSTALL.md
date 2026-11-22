@@ -2,7 +2,7 @@
 
 Schevana needs Chez Scheme 10, SDL 3.2 or later, FreeType and fontconfig
 (usually installed already on a Linux desktop), and a GPU API: Vulkan on
-Linux, Metal on a Mac. There is no build step: `./schevana-desktop`
+Linux, Metal on a Mac. There is no build step: `./desktop`
 compiles Schevana's libraries the first time it starts, into the tree's
 `.cache/`, and loads them from there after, until one's file changes; the
 world's own files load from source.
@@ -24,7 +24,7 @@ tests run on it, and it takes over when no GPU can open. The tests need
 `spirv-tools` too ([TESTING.md](TESTING.md)).
 
 SDL chooses between Wayland and X11 by itself; `SDL_VIDEO_DRIVER=x11
-./schevana-desktop` (or `wayland`) chooses for it. With NVIDIA's driver on
+./desktop` (or `wayland`) chooses for it. With NVIDIA's driver on
 Wayland, set the one module option in
 [LINUX_NVIDIA_TUNING.md](LINUX_NVIDIA_TUNING.md), or the compositor now
 and then shows a frame again although the next was ready.
@@ -63,11 +63,11 @@ brew install spirv-tools
 ## Running
 
 ```bash
-./schevana-desktop
+./desktop
 ```
 
 ```bash
-./schevana-desktop --size 1600x1000 --eval '(life)'
+./desktop --size 1600x1000 --eval '(life)'
 ```
 
 | Option | What it does |
@@ -78,29 +78,30 @@ brew install spirv-tools
 | `--headless` | no window: the world runs offscreen, as in the tests |
 | `--fork` | core1 on a thread of its own even when headless |
 | `--hacker` | the hacker edition: every library's names, internals too, in the world, to see and redefine live ([INTERNALS.md](INTERNALS.md)) |
-| `PATH`... | files and folders to load with the world, folders recursively, at boot and at each `(reload!)`, after the screen shows (`./schevana-desktop schevana-demo` adds the demos' apps) |
+| `PATH`... | files and folders to load with the world, folders recursively, at boot and at each `(reload!)`, after the screen shows (`./desktop demo` adds the demos' apps) |
 | `--install-desktop` | installs a `.desktop` file, for the icon (below) |
 | `--uninstall-desktop` | removes it |
 
 The demos are programs on the core, with no desktop, each with a
-launcher beside `schevana-desktop`; `--headless` draws a frame and tells
-what it read back. On the desktop, `./schevana-desktop schevana-demo`
-adds the game and the rings as apps. The checklist is a plain script, no library of its own:
-`schevana-window-demo.ss` imports what it needs and opens its window, and
-`schevana-window-demo.sh` runs it with the tree as Chez's library folder,
+launcher beside `./desktop`; `--headless` draws a frame and tells what it
+read back. On the desktop, `./desktop demo` adds the rings as an app, and
+a REPL loads the game by its name: `(import (games fireflies))`, then
+`(fireflies)`. The checklist is a plain script, no library of its own:
+`window-demo.ss` imports what it needs and opens its window, and
+`window-demo.sh` runs it with the tree as Chez's library folder,
 Chez compiling each library into the launchers' cache as it's imported.
 
 | Launcher | What it runs |
 | --- | --- |
-| `./schevana-game-demo` | Fireflies, a game, the screen its own |
-| `./schevana-window-demo.sh` | a checklist made of the widget kit, an app of the host's desktop: its look the host's (Adwaita on GNOME), or any of Schevana's with `--style NAME` |
-| `./schevana-rings-demo` | drawing alone, below the windows: a shader and a box that follows the mouse |
+| `./game-demo` | Fireflies, a game, the screen its own |
+| `./window-demo.sh` | a checklist made of the widget kit, an app of the host's desktop: its look the host's (Adwaita on GNOME), or any of Schevana's with `--style NAME` |
+| `./rings-demo` | drawing alone, below the windows: a shader and a box that follows the mouse |
 
 A demo builds into one file that runs with no tree:
 
 ```bash
-scheme --script src/build.ss schevana-demo game game-main
-scheme --program out/lib/game.so
+scheme --script src/build.ss games fireflies fireflies-main
+scheme --program out/lib/fireflies.so
 ```
 
 ## Your files
@@ -120,5 +121,5 @@ GNOME and similar desktops take app icons from `.desktop` files instead,
 so install one once; it goes under `~/.local/share`:
 
 ```bash
-./schevana-desktop --install-desktop
+./desktop --install-desktop
 ```

@@ -3,7 +3,7 @@
 ;;; and tells what it read back (a window that drew, its parts found in the
 ;;; program's "/"); a plain script among them, the checklist, its .sh
 ;;; giving scheme-script the tree as its library folder. On the desktop
-;;; (its folder auto-loaded) each demo's library (schevana-demo/) registers
+;;; (its folder auto-loaded) each demo's library (demo/) registers
 ;;; its app, which opens a window that draws.
 
 ;; What launcher (a file at the tree's root: a launcher of Schevana's, or a
@@ -34,14 +34,14 @@
             (and (eqv? (car run) 0)
                  (string-contains-ci? (cdr run) "pixels")
                  (not (string-contains-ci? (cdr run) "crashed"))))))
- '("schevana-window-demo.sh" "schevana-rings-demo" "schevana-game-demo")
+ '("window-demo.sh" "rings-demo" "game-demo")
  '("a host app made of widgets, a plain script" "drawing alone" "a game"))
 
 ;; The checklist in a style of Schevana's own, a desktop's look among them
 ;; (Cons draws the desktop's bars too), host-main's --style: drawn in it,
 ;; no desktop with it; a name that is no style's is refused.
-(let ([cons (demos-run "schevana-window-demo.sh" "--style" "cons")]
-      [none (demos-run "schevana-window-demo.sh" "--style" "no-such")])
+(let ([cons (demos-run "window-demo.sh" "--style" "cons")]
+      [none (demos-run "window-demo.sh" "--style" "no-such")])
   (check (format "--style draws the checklist in a style by name, and refuses \
                   one that isn't ~s" (list cons none))
          (and (eqv? (car cons) 0)
@@ -101,9 +101,9 @@
                      (auto-loads))))
 
 ;; On the desktop: the demos' folder loaded with the world, as
-;; ./schevana-desktop schevana-demo has it: each library in it runs, and
+;; ./desktop demo has it: each library in it runs, and
 ;; an app it defines registers itself.
-(let ([dir (string-append *schevana-root* "/schevana-demo")])
+(let ([dir (string-append *schevana-root* "/demo")])
   (auto-load! dir)
   (check (format "a folder auto-loaded joins the library search and loads \
                   its libraries, by their names from the tree: the demos' \
@@ -111,14 +111,12 @@
                   file is no folder to load ~s"
                  (auto-load-entries dir))
          (and (equal? (auto-load-entries dir)
-                      '((schevana-demo boids) (schevana-demo boids3d)
-                        (schevana-demo game) (schevana-demo life)
-                        (schevana-demo rings) (schevana-demo sketch)
-                        (schevana-demo springies)))
+                      '((demo boids) (demo boids3d) (demo life)
+                        (demo rings) (demo sketch) (demo springies)))
               ;; made absolute, as the tree's root may not be (".")
-              (string-suffix? "/schevana-demo" (car (last-pair (auto-loads))))
+              (string-suffix? "/demo" (car (last-pair (auto-loads))))
               (for-all (lambda (app) (memq app (apps)))
-                       '(boids boids3d game life rings sketch springies))
+                       '(boids boids3d life rings sketch springies))
               ;; a folder of the library search, which a file can't be
               (exists (lambda (d)
                         (equal? (path-full (if (pair? d) (car d) d))
@@ -170,7 +168,7 @@
                  (window-title (car (windows)))))
      (close-window! (car (windows)))
      (steps 1)))
- '(rings game))
+ '(rings))
 
 ;; A library from outside the tree: its name from its first form, and the
 ;; folder its name is found from added to the library search, so that it

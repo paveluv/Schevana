@@ -1,5 +1,5 @@
-;;; launch.ss — how a launcher at the tree's root (schevana-desktop,
-;;; schevana-game-demo, ...) starts the library it names: the tree's root is
+;;; launch.ss — how a launcher at the tree's root (desktop,
+;;; game-demo, ...) starts the library it names: the tree's root is
 ;;; where import finds Schevana's libraries, each compiled once into
 ;;; .cache/ (a folder there for each Chez version and machine) and loaded
 ;;; from it after, until its file changes; then the library's main, handed
@@ -8,7 +8,7 @@
 ;;;   (import (chezscheme))
 ;;;   (let ([root (path-parent (car (command-line)))])
 ;;;     (load (string-append (if (string=? root "") "." root) "/src/launch.ss"))
-;;;     (schevana-launch root '(schevana-demo game) 'game-main
+;;;     (schevana-launch root '(games fireflies) 'fireflies-main
 ;;;                      (command-line-arguments)))
 ;;;
 ;;; --hacker (or SCHEVANA_HACKER set, which a run started from this one

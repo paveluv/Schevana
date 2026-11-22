@@ -420,5 +420,5 @@ comes back to the CPU.
 | `schevana/core0/gpu.sls` | core0: pipelines, dispatch, drawing |
 | `schevana/kits/twin.sls` | the twin |
 | `schevana/kits/inspect.sls` | `inspect-shader-…`, `inspect-computes` |
-| `schevana-demo/boids3d.sls` | an app that is all shaders |
+| `demo/boids3d.sls` | an app that is all shaders |
 | `tests/units/shader.ss` | the device and the twin held together |

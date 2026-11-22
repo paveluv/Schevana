@@ -1,13 +1,13 @@
 #!/usr/bin/env scheme-script
-;;; schevana-rings-demo — a program on drawing alone: a shader over the
+;;; rings-demo — a program on drawing alone: a shader over the
 ;;; whole screen and a box that follows the mouse, below the windows layer
-;;; ((schevana-demo rings)).
+;;; ((demo rings)).
 ;;;
-;;;   ./schevana-rings-demo [--headless]
+;;;   ./rings-demo [--headless]
 
 (import (chezscheme))
 
 (let ([root (path-parent (car (command-line)))])
   (load (string-append (if (string=? root "") "." root) "/src/launch.ss"))
-  ((eval 'schevana-launch) root '(schevana-demo rings) 'rings-main
+  ((eval 'schevana-launch) root '(demo rings) 'rings-main
    (command-line-arguments)))

@@ -1,15 +1,15 @@
-;;; (schevana desktop main) — the desktop's start, which ./schevana-desktop
+;;; (schevana desktop main) — the desktop's start, which ./desktop
 ;;; launches: it reads the command line, then core1 (on a thread of its own with
 ;;; a window, core0 keeping the process's first for the screen) loads the world
 ;;; and starts it (desktop-start!, (schevana desktop start)): the user's
 ;;; settings, the screen, the first windows, the run till it quits.
 ;;;
-;;;   ./schevana-desktop [--size WxH] [--fullscreen] [--headless] [--fork]
+;;;   ./desktop [--size WxH] [--fullscreen] [--headless] [--fork]
 ;;;                      [--hacker] [--eval EXPR]... [FOLDER]...
-;;;   ./schevana-desktop --install-desktop | --uninstall-desktop
+;;;   ./desktop --install-desktop | --uninstall-desktop
 ;;;
 ;;; Each FOLDER joins the library search and loads with the world
-;;; (./schevana-desktop schevana-demo: the demos).
+;;; (./desktop demo: the demos).
 
 (library (schevana desktop main)
   (export desktop-defaults desktop-size desktop-usage desktop-options
@@ -47,10 +47,10 @@
   ;; How to run it, on stderr; and the run stops.
   (define (desktop-usage)
     (fprintf (current-error-port)
-             "usage: schevana-desktop [--size WxH] [--fullscreen] \
-              [--headless] [--fork]\n                        \
+             "usage: ./desktop [--size WxH] [--fullscreen] \
+              [--headless] [--fork]\n                 \
               [--hacker] [--eval EXPR]... [FOLDER]...\n       \
-              schevana-desktop --install-desktop | --uninstall-desktop\n")
+              ./desktop --install-desktop | --uninstall-desktop\n")
     (exit 1))
 
   ;; What args ask, as desktop-defaults has it: a word that isn't an

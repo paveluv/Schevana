@@ -1,4 +1,4 @@
-;;; (schevana-demo life) — Conway's Game of Life. Shows mouse input,
+;;; (demo life) — Conway's Game of Life. Shows mouse input,
 ;;; animation and the crew: a generation runs on as many threads as it is
 ;;; given, and the controls beside the grid push it as far as the machine
 ;;; goes, up to one pixel a cell in a maximized window and a generation
@@ -8,7 +8,7 @@
 ;;; Space: pause · R: randomize · C: clear · N: single step · H: the controls,
 ;;; as does the button at the end of the status line · Click/drag: draw
 
-(library (schevana-demo life)
+(library (demo life)
   (export life)
   (import (chezscheme)
           (only (schevana base) library-layer)

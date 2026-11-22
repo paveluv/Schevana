@@ -2,7 +2,7 @@
 ;;; reference, its controls, the crew.
 
 ;; Life's own names, lf:life-step-rows! and the rest (tests/reach.ss).
-(test-library '(schevana-demo life) 'lf:)
+(test-library '(demo life) 'lf:)
 
 ;; The next generation on a torus, the obvious way: the reference.
 (define (life-reference grid cols rows)
