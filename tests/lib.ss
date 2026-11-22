@@ -70,18 +70,29 @@
 (define test-heap-limit
   (* 1024 1024
      (or (string->number (or (getenv "SCHEVANA_TEST_HEAP_MB") "")) 2048)))
+
+;; Made once, so that a look allocates nothing: Chez counts a thread's
+;; allocation in every thread's bytes-allocated, by the 16 KB segment as
+;; the thread takes one, and a time made each look (48 bytes) put 16 KB
+;; into whatever step a check was measuring, every 34 s.
+(define test-heap-nap (make-time 'time-duration 100000000 0))
+
+;; The watch's look, 100 ms after the last: #f once it has stopped the run.
+(define (test-heap-look)
+  (sleep test-heap-nap)
+  (or (<= (bytes-allocated) test-heap-limit)
+      (begin
+        (fprintf (console-error-port)
+                 "FAIL the heap passed ~a MB: a runaway, stopped~%"
+                 (quotient test-heap-limit (* 1024 1024)))
+        (flush-output-port (console-error-port))
+        (system "kill -KILL $PPID")
+        #f)))
+
 (fork-thread
  (lambda ()
    (let loop ()
-     (sleep (make-time 'time-duration 100000000 0))
-     (if (> (bytes-allocated) test-heap-limit)
-         (begin
-           (fprintf (console-error-port)
-                    "FAIL the heap passed ~a MB: a runaway, stopped~%"
-                    (quotient test-heap-limit (* 1024 1024)))
-           (flush-output-port (console-error-port))
-           (system "kill -KILL $PPID"))
-         (loop)))))
+     (when (test-heap-look) (loop)))))
 
 ;; The crew's limit on core1 ((schevana services crew)) is 100 ms of the
 ;; machine's clock, for runaways. A busy machine keeps a worker waiting longer

@@ -24,6 +24,13 @@
           (let ([d (- (allocation-now) a)])
             (loop (+ i 1) (if least (min least d) d)))))))
 
+;; What every check here measures counts every thread's allocation, and
+;; the suites' own thread, the heap's watch (tests/lib.ss), allocates
+;; nothing as it looks.
+(let ([look (allocation-least 3 test-heap-look)])
+  (check (format "the heap's watch allocates nothing a look (~a bytes)" look)
+         (= look 0)))
+
 ;; Thunk's value, on a clock that goes on a microsecond each time it's
 ;; read, and the machine's again once it has caught up.
 (define (allocation-on-clock thunk)

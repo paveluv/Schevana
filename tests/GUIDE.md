@@ -197,6 +197,11 @@ it, the test framework finds itself:
   flag in the profiler, what the world does once a second. Steps whose
   allocation is measured run on a clock of their own
   (`tests/units/allocation.ss`).
+- `bytes-allocated` counts every thread's allocation, another thread's by
+  the 16 KB segment as it takes one, so a step measured on one thread
+  counts another's segment whenever it falls in. A thread of the suites'
+  own allocates nothing as it waits (the heap's watch, `tests/lib.ss`),
+  and the world's are idle while a check measures.
 - The held clock isn't held while a process runs that never yields: a
   process's turn ends by that clock, so it would never end. The clock
   fails the run when a tick reads it 100,000 times (`tests/lib.ss`).
