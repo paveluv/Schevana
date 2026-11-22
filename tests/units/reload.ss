@@ -7,14 +7,13 @@
        (let ([present gpu-publish!]
              [theme-was (eval 'theme core-env)])
          (reload!)
-         (and (eq? gpu-publish! present)
-              (eq? (eval 'theme core-env) theme-was)
-              (eq? (eval 'theme *world-env*) theme-was)
-              (for-all (lambda (n)
-                         (guard (c [#t #f])
-                           (or (top-level-bound? n *world-env*)
-                               (top-level-syntax? n *world-env*))))
-                       (core1-exported)))))
+         ;; A mutable environment calls any name it lacks syntax
+         ;; (top-level-syntax?), so its names are what it lists.
+         (let ([world (environment-symbols *world-env*)])
+           (and (eq? gpu-publish! present)
+                (eq? (eval 'theme core-env) theme-was)
+                (eq? (eval 'theme *world-env*) theme-was)
+                (for-all (lambda (n) (memq n world)) (core1-exported))))))
 
 ;;; Reloading as a process.
 
