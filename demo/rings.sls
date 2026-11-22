@@ -1,12 +1,14 @@
-;;; (demo rings) — a program on drawing alone: no theme, no
-;;; windows, no desktop. It hands the loop what a frame draws and where an
-;;; event goes, the hooks the windows layer would fill, and runs: a shader
-;;; of its own over the whole screen, a box that follows the mouse, a line
-;;; of text. On the desktop (./desktop demo) the same, in
-;;; a window.
+;;; (demo rings) — a program on drawing alone: no theme, no windows, no
+;;; desktop. It hands the loop what a frame draws and where an event goes,
+;;; the hooks the windows layer would fill, and runs six paints of the
+;;; shader language at once, each a tile of the screen: two waves'
+;;; ripples, plasma, a Julia set, metaballs, cells and fire. The mouse
+;;; moves the ripples' second source and a ball; 1 to 6 shows one paint
+;;; alone, 0 (or Escape) all of them, Escape on all quits. On the desktop
+;;; (./desktop demo) the same, in a window.
 ;;;
 ;;;   ./rings-demo             a window
-;;;   ./rings-demo --headless  a frame, read back and told
+;;;   ./rings-demo --headless  a frame, read back: each paint drew, or not
 
 (library (demo rings)
   (export rings-main rings)
@@ -16,41 +18,265 @@
 
   (library-layer apps)
 
-  ;; Rings that spread with t from the middle.
-  (define-paint (rings-paint x y)
-    ([w fixnum]
-     [h fixnum]
-     [t flonum])
-    (define (byte f) (flonum->fixnum (fl* 255.0 f)))
-    (let* ([dx (fl- (fixnum->flonum x) (fl* 0.5 (fixnum->flonum w)))]
-           [dy (fl- (fixnum->flonum y) (fl* 0.5 (fixnum->flonum h)))]
-           [d (flsqrt (fl+ (fl* dx dx) (fl* dy dy)))]
-           [ring (fl* 0.5 (fl+ 1.0 (flsin (fl- (fl* 0.05 d) t))))])
-      (fxior (fxsll 255 24)
-             (fxior (fxsll (byte (fl* 0.2 ring)) 16)
-                    (fxior (fxsll (byte (fl* 0.5 ring)) 8) (byte ring))))))
+  ;;; ------------------------------------------------------------------ paints
+  ;;; Each paint gets its tile's size, w × h device pixels, and t, seconds
+  ;;; since the program began; x and y are its pixel, from the tile's
+  ;;; corner.
 
-  ;; The rings, w × h logical pixels at (0, 0) (pw × ph the screen's), a
-  ;; box at (x, y) and the line of text, t seconds since began.
-  (define (rings-draw w h pw ph x y began font)
-    (fill-shader 0 0 w h rings-paint pw ph (/ (- (now-ms) began) 1000.0))
-    (fill-box (- x 20) (- y 20) 40 40 #xffcc33 6)
-    (draw-text 16 16 "drawing alone: no theme, no windows" #xffffff font))
+  ;; What the paints share: a byte of a fraction, a color of three, a
+  ;; cosine palette's channel (a half and a half the cosine of 2π(v + d)),
+  ;; and the distance between two points.
+  (define-shader-helpers rings-helpers
+    (define (byte v) (flonum->fixnum (fl* 255.0 (clamp01 v))))
+    (define (rgb r g b)
+      (fxior -16777216 (fxsll (byte r) 16) (fxsll (byte g) 8) (byte b)))
+    (define (wave v d)
+      (fl+ 0.5 (fl* 0.5 (flcos (fl* 6.2831853 (fl+ v d))))))
+    (define (dist ax ay bx by)
+      (let ([dx (fl- ax bx)] [dy (fl- ay by)])
+        (flsqrt (fl+ (fl* dx dx) (fl* dy dy))))))
 
-  ;; On the desktop: the same in a window, the box following the pointer
-  ;; over it, a frame after every frame.
+  ;; Value noise: each point of a whole-number lattice a value from 0 to
+  ;; 1, by hashing its coordinates (32-bit words that wrap), and between
+  ;; them a smooth mix of the four around.
+  (define-shader-helpers rings-noise
+    (define (lattice ix iy)
+      (let* ([a (fx+ (fx* ix 374761393) (fx* iy 668265263))]
+             [b (fx* (fxxor a (fxsrl a 13)) 1274126177)]
+             [c (fxxor b (fxsrl b 16))])
+        (fl* 0.0000152590219 (fixnum->flonum (fxand c 65535)))))
+    (define (noise px py)
+      (let* ([x0 (flfloor px)] [y0 (flfloor py)]
+             [ix (flonum->fixnum x0)] [iy (flonum->fixnum y0)]
+             [u (fl- px x0)] [v (fl- py y0)]
+             [su (fl* u u (fl- 3.0 (fl* 2.0 u)))]
+             [sv (fl* v v (fl- 3.0 (fl* 2.0 v)))]
+             [a (lattice ix iy)] [b (lattice (fx+ ix 1) iy)]
+             [c (lattice ix (fx+ iy 1))] [d (lattice (fx+ ix 1) (fx+ iy 1))])
+        (fl+ a (fl* su (fl- b a)) (fl* sv (fl- c a))
+             (fl* su sv (fl- (fl- a b) (fl- c d)))))))
+
+  ;; Two sources' waves, one at the middle, one at (mx, my): where crests
+  ;; meet it's light, where a crest meets a trough dark.
+  (define-paint (rings-ripples x y)
+    ([w fixnum] [h fixnum] [t flonum] [mx flonum] [my flonum])
+    (use-shader-helpers rings-helpers)
+    (let* ([fw (fixnum->flonum w)] [fh (fixnum->flonum h)]
+           [px (fixnum->flonum x)] [py (fixnum->flonum y)]
+           [k (fl/ 60.0 (flmin fw fh))]
+           [a (dist px py (fl* 0.5 fw) (fl* 0.5 fh))]
+           [b (dist px py mx my)]
+           [v (fl* 0.25 (fl+ 2.0
+                             (flsin (fl- (fl* k a) (fl* 4.0 t)))
+                             (flsin (fl- (fl* k b) (fl* 4.0 t)))))])
+      (rgb (fl* 0.6 v v) (fl+ 0.1 (fl* 0.7 v)) (fl+ 0.25 (fl* 0.75 v)))))
+
+  ;; Plasma: four sines, along x, along y, across, and round a point that
+  ;; wanders, through the palette.
+  (define-paint (rings-plasma x y)
+    ([w fixnum] [h fixnum] [t flonum])
+    (use-shader-helpers rings-helpers)
+    (let* ([k (fl/ 10.0 (flmin (fixnum->flonum w) (fixnum->flonum h)))]
+           [px (fl* k (fixnum->flonum x))]
+           [py (fl* k (fixnum->flonum y))]
+           [cx (fl- px (fl* 5.0 (fl+ 1.0 (flsin (fl* 0.3 t)))))]
+           [cy (fl- py (fl* 3.0 (fl+ 1.0 (flcos (fl* 0.4 t)))))]
+           [v (fl* 0.125
+                   (fl+ 4.0
+                        (flsin (fl+ px t))
+                        (flsin (fl* 0.5 (fl+ py t)))
+                        (flsin (fl* 0.5 (fl+ px py t)))
+                        (flsin (fl+ t (flsqrt (fl+ (fl* cx cx) (fl* cy cy)
+                                                   1.0))))))])
+      (rgb (wave v 0.0) (wave v 0.33) (wave v 0.67))))
+
+  ;; The Julia set of c, c going round a circle of 0.7885 from 2.4
+  ;; radians, where the sets curl: z² + c from each pixel, at most 96
+  ;; times; a pixel whose z stays near is the set.
+  (define-paint (rings-julia x y)
+    ([w fixnum] [h fixnum] [t flonum])
+    (use-shader-helpers rings-helpers)
+    (let* ([fw (fixnum->flonum w)] [fh (fixnum->flonum h)]
+           [k (fl/ 3.2 (flmin fw fh))]
+           [ar (fl* k (fl- (fixnum->flonum x) (fl* 0.5 fw)))]
+           [ai (fl* k (fl- (fixnum->flonum y) (fl* 0.5 fh)))]
+           [a (fl+ 2.4 (fl* 0.2 t))]
+           [cr (fl* 0.7885 (flcos a))]
+           [ci (fl* 0.7885 (flsin a))]
+           [count
+            (do-bounded 96 ([zr ar (fl+ (fl- (fl* zr zr) (fl* zi zi)) cr)]
+                            [zi ai (fl+ (fl* 2.0 zr zi) ci)]
+                            [n 0 (fx+ n 1)])
+              ((fl> (fl+ (fl* zr zr) (fl* zi zi)) 4.0) n))])
+      (if (fx>= count 96)
+          (rgb 0.02 0.0 0.05)
+          (let ([v (fl* 1.6 (flsqrt (fl/ (fixnum->flonum count) 96.0)))])
+            (rgb (wave v 0.5) (wave v 0.6) (wave v 0.7))))))
+
+  ;; Metaballs: four balls' fields added, three going round and one at
+  ;; (mx, my); where the field passes 1 they're one hot surface, and they
+  ;; glow round it.
+  (define-paint (rings-metaballs x y)
+    ([w fixnum] [h fixnum] [t flonum] [mx flonum] [my flonum])
+    (use-shader-helpers rings-helpers)
+    ;; a ball's field at (px, py); where a ball goes, along a side s long,
+    ;; at most a of it from the middle, b radians a second
+    (define (ball px py bx by r2)
+      (let ([dx (fl- px bx)] [dy (fl- py by)])
+        (fl/ r2 (fl+ (fl* dx dx) (fl* dy dy) 1.0))))
+    (define (by-sin s a b) (fl* s (fl+ 0.5 (fl* a (flsin (fl* b t))))))
+    (define (by-cos s a b) (fl* s (fl+ 0.5 (fl* a (flcos (fl* b t))))))
+    (let* ([fw (fixnum->flonum w)] [fh (fixnum->flonum h)]
+           [px (fixnum->flonum x)] [py (fixnum->flonum y)]
+           [r2 (fl* 0.02 fw fh)]
+           [f (fl+ (ball px py (by-sin fw 0.25 0.9) (by-cos fh 0.25 1.3) r2)
+                   (ball px py (by-cos fw 0.3 0.7) (by-sin fh 0.2 1.1) r2)
+                   (ball px py (by-sin fw 0.2 1.7) (by-sin fh 0.3 0.6) r2)
+                   (ball px py mx my r2))]
+           [glow (clamp01 (fl* 0.6 f f))]
+           [hot (clamp01 (fl* 0.5 (fl- f 1.0)))])
+      (if (fl> f 1.0)
+          (rgb 1.0 (fl+ 0.45 (fl* 0.5 hot)) (fl+ 0.1 (fl* 0.8 hot)))
+          (rgb (fl+ 0.06 (fl* 0.9 glow)) (fl+ 0.02 (fl* 0.3 glow glow))
+               (fl+ 0.12 (fl* 0.25 glow))))))
+
+  ;; Cells: twelve seeds going round, and each pixel the color of the
+  ;; nearest, darker away from it and dark where the second nearest is
+  ;; nearly as near, the cells' walls.
+  (define-paint (rings-cells x y)
+    ([w fixnum] [h fixnum] [t flonum])
+    (use-shader-helpers rings-helpers)
+    (let* ([fw (fixnum->flonum w)] [fh (fixnum->flonum h)]
+           [px (fixnum->flonum x)] [py (fixnum->flonum y)])
+      ;; how far seed i is, its two angles each going round at a pace
+      ;; of its own
+      (define (seed i)
+        (let* ([fi (fixnum->flonum i)]
+               [a (fl+ (fl* 1.7 fi) (fl* t (fl+ 0.21 (fl* 0.037 fi))))]
+               [b (fl+ (fl* 2.3 fi) (fl* t (fl+ 0.17 (fl* 0.041 fi))))])
+          (dist px py
+                (fl* fw (fl+ 0.5 (fl* 0.45 (flsin a))))
+                (fl* fh (fl+ 0.5 (fl* 0.45 (flcos b)))))))
+      (do-bounded 12 ([i 0 (fx+ i 1)]
+                      [d1 1e9 (flmin d1 (seed i))]
+                      [d2 1e9 (if (fl< (seed i) d1) d1 (flmin d2 (seed i)))]
+                      [id 0 (if (fl< (seed i) d1) i id)])
+        ((fx>= i 12)
+         (let* ([wall (clamp01 (fl* 0.08 (fl- d2 d1)))]
+                [far (clamp01 (fl/ d1 (fl* 0.6 (flmin fw fh))))]
+                [shade (fl* wall (fl- 1.0 far))]
+                [v (fl* 0.083 (fixnum->flonum id))])
+           (rgb (fl* shade (wave v 0.0)) (fl* shade (wave v 0.33))
+                (fl* shade (wave v 0.67))))))))
+
+  ;; Fire: five octaves of noise, rising, and hotter the lower down; from
+  ;; black through red and orange to yellow and white.
+  (define-paint (rings-fire x y)
+    ([w fixnum] [h fixnum] [t flonum])
+    (use-shader-helpers rings-helpers)
+    (use-shader-helpers rings-noise)
+    (let* ([fh (fixnum->flonum h)]
+           [k (fl/ 6.0 (flmin (fixnum->flonum w) fh))]
+           [px (fl* k (fixnum->flonum x))]
+           [py (fl+ (fl* k (fixnum->flonum y)) (fl* 2.0 t))])
+      ;; the noise f times as fine
+      (define (octave f) (noise (fl* px f) (fl* py f)))
+      (let* ([n (do-bounded 5 ([o 0 (fx+ o 1)]
+                               [amp 0.5 (fl* amp 0.5)]
+                               [freq 1.0 (fl* freq 2.0)]
+                               [sum 0.0 (fl+ sum (fl* amp (octave freq)))])
+                  ((fx>= o 5) sum))]
+             [low (fl/ (fixnum->flonum y) fh)]
+             [heat (clamp01 (fl- (fl* 1.9 n low) 0.35))])
+        (rgb (fl* 2.6 heat) (fl- (fl* 2.0 heat) 0.6)
+             (fl- (fl* 3.0 heat) 2.2)))))
+
+  ;;; ------------------------------------------------------------------ tiles
+
+  (define rings-names
+    '#("Ripples" "Plasma" "Julia" "Metaballs" "Cells" "Fire"))
+
+  ;; Paint i over the box at (x, y), w × h, s device pixels a unit, t
+  ;; seconds in; (mx . my) the pointer in the box's units, or #f.
+  (define (rings-tile i x y w h s t mouse)
+    (let* ([pw (exact (round (* w s)))]
+           [ph (exact (round (* h s)))]
+           ;; the pointer in the tile's device pixels, or a point going
+           ;; round where there's none over it
+           [over? (and mouse (<= x (car mouse) (+ x w))
+                       (<= y (cdr mouse) (+ y h)))]
+           [mx (if over?
+                   (inexact (* s (- (car mouse) x)))
+                   (* pw (+ 0.5 (* 0.3 (cos (* 0.7 t))))))]
+           [my (if over?
+                   (inexact (* s (- (cdr mouse) y)))
+                   (* ph (+ 0.5 (* 0.3 (sin (* 0.9 t))))))])
+      (case i
+        [(0) (fill-shader x y w h rings-ripples pw ph t mx my)]
+        [(1) (fill-shader x y w h rings-plasma pw ph t)]
+        [(2) (fill-shader x y w h rings-julia pw ph t)]
+        [(3) (fill-shader x y w h rings-metaballs pw ph t mx my)]
+        [(4) (fill-shader x y w h rings-cells pw ph t)]
+        [else (fill-shader x y w h rings-fire pw ph t)])))
+
+  ;; Where tile i sits, of w × h (a line at the bottom left out): (x y w
+  ;; h), all six in three columns and two rows, or the one shown alone.
+  (define (rings-place i alone w h)
+    (let ([h (- h 24)])
+      (if alone
+          (list 0 0 w h)
+          (let ([tw (quotient (- w 8) 3)] [th (quotient (- h 4) 2)])
+            (list (* (mod i 3) (+ tw 4)) (* (quotient i 3) (+ th 4)) tw th)))))
+
+  ;; The paints over w × h logical pixels, s device pixels to one, t
+  ;; seconds in, all six or the one alone (#f, all), each named, and what
+  ;; the keys do, Escape quitting the program's.
+  (define (rings-draw w h s t mouse alone font program?)
+    (fill-box 0 0 w h #x101018)
+    (for-each
+     (lambda (i)
+       (let ([p (rings-place i alone w h)])
+         (apply (lambda (x y tw th)
+                  (rings-tile i x y tw th s t mouse)
+                  (draw-text (+ x 11) (+ y 9) (vector-ref rings-names i)
+                             #x000000 font)
+                  (draw-text (+ x 10) (+ y 8) (vector-ref rings-names i)
+                             #xffffff font))
+                p)))
+     (if alone (list alone) (iota 6)))
+    (draw-text 10 (- h 20)
+               (cond
+                 [alone "0 or Escape: all six"]
+                 [program? "Six paints in the shader language.   1-6: one \
+                            alone.   Escape quits."]
+                 [else "Six paints in the shader language.   1-6: one \
+                        alone."])
+               #xb8b8c8 font))
+
+  ;; What a key asks of alone: => the paint shown alone now (#f, all), or
+  ;; quit for Escape on all six.
+  (define (rings-key alone key)
+    (cond [(and (char? key) (char<=? #\1 key #\6))
+           (- (char->integer key) (char->integer #\1))]
+          [(or (eqv? key #\0) (and (eq? key 'escape) alone)) #f]
+          [(eq? key 'escape) 'quit]
+          [else alone]))
+
+  ;; On the desktop: the same in a window, a frame after every frame.
   (define-app (rings) "Rings"
-    (let ([began (now-ms)] [font (font "monospace" 16)])
+    (let ([began (now-ms)] [font (font "sans-serif" 14 'bold)])
       (open-window "Rings"
-        'size '(480 . 320)
+        'size '(720 . 480)
         'open (lambda (win) (window-frame-soon! win))
-        'frame (lambda (win t) (window-frame-soon! win))
-        'mouse-move (lambda (win x y)
-                      (window-set! win 'box (cons x y)))
+        'frame (lambda (win t) (invalidate! win) (window-frame-soon! win))
+        'mouse-move (lambda (win x y) (window-set! win 'mouse (cons x y)))
+        'key (lambda (win key mods)
+               (let ([alone (rings-key (window-ref win 'alone) key)])
+                 (window-set! win 'alone (and (fixnum? alone) alone))))
         'draw (lambda (win w h)
-                (let ([box (or (window-ref win 'box) (cons 100 100))])
-                  (rings-draw w h (round (* w *scale*)) (round (* h *scale*))
-                              (car box) (cdr box) began font))))))
+                (rings-draw w h (draw-scale) (/ (- (now-ms) began) 1000.0)
+                            (window-ref win 'mouse) (window-ref win 'alone)
+                            font #f)))))
 
   ;; The pixel at (x, y) of bytes, the screen's, as (r g b).
   (define (rings-pixel bytes x y)
@@ -59,39 +285,61 @@
             (bytevector-u8-ref bytes (+ at 1))
             (bytevector-u8-ref bytes at))))
 
+  ;; Whether tile i drew, in bytes: not all of nine pixels across it the
+  ;; same.
+  (define (rings-drew? bytes i)
+    (let* ([s (/ *canvas-pw* *canvas-w*)]
+           [p (rings-place i #f *canvas-w* *canvas-h*)]
+           [at (lambda (f g)
+                 (rings-pixel bytes
+                              (exact (floor (* s (+ (car p) (* f (caddr p))))))
+                              (exact (floor (* s (+ (cadr p)
+                                                    (* g (cadddr p))))))))]
+           [seen (apply append
+                        (map (lambda (f)
+                               (map (lambda (g) (at f g)) '(0.3 0.5 0.7)))
+                             '(0.3 0.5 0.7)))])
+      (not (for-all (lambda (c) (equal? c (car seen))) seen))))
+
   ;; The program, from the command line's args: the loop's hooks filled
-  ;; here, so nothing of the windows layer runs. --headless draws a frame
-  ;; and tells what it read back.
+  ;; here, so nothing of the windows layer runs. --headless draws a frame,
+  ;; tells what it read back, and fails if a paint drew nothing.
   (define (rings-main args)
     (let ([headless? (member "--headless" args)]
           [began (now-ms)]
-          [font (font "monospace" 16)]
-          [x 100]
-          [y 100])
+          [font (font "sans-serif" 14 'bold)]
+          [mouse #f]
+          [alone #f])
       (set! record-world!
         (lambda ()
-          (rings-draw *canvas-w* *canvas-h* *canvas-pw* *canvas-ph* x y began
-                      font)))
+          (rings-draw *canvas-w* *canvas-h* (/ *canvas-pw* *canvas-w*)
+                      (/ (- (now-ms) began) 1000.0) mouse alone font #t)))
       (set! wm-event!
         (lambda (ev)
           (case (car ev)
             [(mouse-move)
-             (set! x (cadr ev))
-             (set! y (caddr ev))
+             (set! mouse (cons (cadr ev) (caddr ev)))
              (request-frame!)]
-            [(key-down) (when (eq? (cadr ev) 'escape) (quit!))]
+            [(key-down)
+             (let ([now (rings-key alone (cadr ev))])
+               (if (eq? now 'quit)
+                   (quit!)
+                   (begin (set! alone now) (request-frame!))))]
             [else (void)])))
       (set! wm-tick! (lambda () (unless headless? (request-frame!))))
-      (schevana-main (if headless? 'headless 'sdl) 640 400 #f
+      (schevana-main (if headless? 'headless 'sdl) 960 600 #f
         (lambda ()
           (when headless?
             (after 100
               (lambda ()
                 (screen-bytes-then
                  (lambda (bytes)
-                   (printf "~a x ~a pixels; the box ~s, the middle ~s~n"
-                           *canvas-pw* *canvas-ph*
-                           (rings-pixel bytes 100 100)
-                           (rings-pixel bytes (quotient *canvas-pw* 2)
-                                        (quotient *canvas-ph* 2)))
-                   (quit!)))))))))))
+                   (let ([drew (map (lambda (i) (rings-drew? bytes i))
+                                    (iota 6))])
+                     (printf "~a x ~a pixels; ~{~a~^, ~}~n"
+                             *canvas-pw* *canvas-ph*
+                             (map (lambda (i d)
+                                    (format "~a ~a" (vector-ref rings-names i)
+                                            (if d "drew" "drew nothing")))
+                                  (iota 6) drew))
+                     (if (for-all values drew) (quit!) (exit 1)))))))))))))

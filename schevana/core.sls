@@ -121,7 +121,8 @@
     draw-window*
     ;; (schevana shader): the shader language
     *shader-constants* *shader-helpers* *shader-fields* define-shader-layout
-    shader-type shader-tree define-compute-shader
+    define-shader-constant define-shader-helpers shader-type shader-tree
+    define-compute-shader
     ;; (schevana socket): sockets
     socket-listen socket-accept socket-read socket-write socket-close
     ;; (schevana reload): what a reload of the libraries keeps
@@ -157,7 +158,8 @@
   (import (chezscheme)
           (only (schevana base) library-layer define-view define-settable)
           (only (schevana shader) *shader-constants* *shader-helpers*
-                *shader-fields* define-shader-layout shader-type shader-tree
+                *shader-fields* define-shader-layout define-shader-constant
+                define-shader-helpers shader-type shader-tree
                 define-compute-shader shader shader-name shader-stage
                 shader-coords shader-params shader-source shader-words)
           (only (schevana socket) socket-listen socket-accept socket-read

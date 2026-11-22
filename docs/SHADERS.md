@@ -421,4 +421,5 @@ comes back to the CPU.
 | `schevana/kits/twin.sls` | the twin |
 | `schevana/kits/inspect.sls` | `inspect-shader-…`, `inspect-computes` |
 | `demo/boids3d.sls` | an app that is all shaders |
+| `demo/rings.sls` | six paints: waves, sines, a Julia set's bounded loop, metaballs, Voronoi cells, and noise of hashed whole numbers (fire); helpers they share (`define-shader-helpers`) |
 | `tests/units/shader.ss` | the device and the twin held together |
