@@ -64,6 +64,27 @@
 (set! *grant-file-path* (string-append out-dir "/permissions.ss"))
 (when (file-exists? *grant-file-path*) (delete-file *grant-file-path*))
 
+;; A run whose heap passes 2 GB has run away (a loop that allocates without
+;; end): it stops, as a failure, before the machine runs out, as forty
+;; topics run at once. A thread of its own looks, for one that runs away
+;; never comes back to a check, and the shell ends the process, as exit
+;; from a thread ends only the thread. A run's heap is a few hundred MB.
+(define test-heap-limit
+  (* 1024 1024
+     (or (string->number (or (getenv "SCHEVANA_TEST_HEAP_MB") "")) 2048)))
+(fork-thread
+ (lambda ()
+   (let loop ()
+     (sleep (make-time 'time-duration 100000000 0))
+     (if (> (bytes-allocated) test-heap-limit)
+         (begin
+           (fprintf (console-error-port)
+                    "FAIL the heap passed ~a MB: a runaway, stopped~%"
+                    (quotient test-heap-limit (* 1024 1024)))
+           (flush-output-port (console-error-port))
+           (system "kill -KILL $PPID"))
+         (loop)))))
+
 ;; The crew's limit on core1 ((schevana services crew)) is 100 ms of the
 ;; machine's clock, for runaways. A busy machine keeps a worker waiting longer
 ;; than that in the middle of an ordinary call, and the caller then raises as

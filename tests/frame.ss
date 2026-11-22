@@ -45,6 +45,11 @@
 
 (load (string-append *schevana-root* "/tests/lib.ss"))
 
+;; Screens of every style kept at 300 % come to about 9.6 GB at the peak
+;; (measured): this suite's heap may pass a topic's limit, up to 16 GB.
+(unless (getenv "SCHEVANA_TEST_HEAP_MB")
+  (set! test-heap-limit (* 16 1024 1024 1024)))
+
 ;; The test's clock held (tests/lib.ss), so that Life steps when a check
 ;; says. Checks that need time to pass go back to the machine's.
 (test-clock-hold! 1000000)

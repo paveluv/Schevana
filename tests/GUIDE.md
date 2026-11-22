@@ -136,6 +136,10 @@ level above tests only what it adds, trusting the levels below.
   Vulkan driver on the CPU (`mesa-vulkan-drivers`), or on Metal on a Mac.
 - A file a test writes goes in the suite's output folder (`out/`), named
   relative to it, never at an absolute path or in `/tmp`.
+- A run whose heap passes its limit stops, as a failure, before the
+  machine runs out of memory (`tests/lib.ss`): 2 GB for a topic or the
+  smoke suite, which take a few hundred MB, more for the frames' suite,
+  which keeps screens at 300 %; `SCHEVANA_TEST_HEAP_MB` sets another.
 
 ## Every run alike
 
