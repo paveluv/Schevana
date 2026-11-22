@@ -83,6 +83,7 @@
         (compile-imported-libraries #f)
         (putenv "SCHEVANA_HACKER" "1")
         (load (string-append root "/src/base.ss"))
+        (load (string-append root "/src/strip.ss"))
         (load (string-append root "/src/hacker.ss")))
       (begin
         (library-directories

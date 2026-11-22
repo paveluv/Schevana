@@ -90,8 +90,8 @@ name of the world's, so `(set-theme! ...)` there still acts on the world.
 Neither is a security sandbox. A thread's REPL sends its forms to a thread
 of its own, which runs and prints them.
 
-`(repl "/lab")` opens a REPL in an environment that exists, such as an
-app's sandbox, `(repl "/apps/boids")`, where its own names are. How
+`(repl "/lab")` opens a REPL in an environment that exists, such as a
+sandbox you made, where its own names are. How
 environments are made and what they hold is in
 [ENVIRONMENTS.md](ENVIRONMENTS.md).
 

@@ -78,7 +78,8 @@ A programmer's guide, taught at the REPL, in reading order:
 - [Widgets](docs/UI.md): the kit every app here is built with
 - [The look](docs/LOOKS.md): settings, styles, parts, palettes,
   wallpapers
-- [Your own apps](docs/APPS.md): keeping what you make, sandboxes
+- [Your own apps](docs/APPS.md): keeping what you make, folders that
+  load with the world
 - [Shaders](docs/SHADERS.md): Scheme on the GPU
 - [Environments](docs/ENVIRONMENTS.md): the tree of namespaces, sandboxes
 - [Threads](docs/THREADS.md): worklets, the crew, vats
@@ -117,11 +118,9 @@ What Schevana takes from others, and under which terms, is in
 ## Known gaps, and after v1
 
 - Every start and `(reload!)` compiles the whole tree again, about 0.8 s.
-- An app in a sandbox keeps no files and writes only to its log.
 - The REPL has no selection or copy, though Ctrl+V pastes from outside,
   and there's no text editor app yet.
-- Windows and their state vanish on exit: only the look and what you
-  allowed the apps are kept.
+- Windows and their state vanish on exit: only the look is kept.
 - It runs on Linux and on a Mac; I haven't tried Windows yet.
 
 After v1, I plan to turn the apps' sandboxes and grants into a module

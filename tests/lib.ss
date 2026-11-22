@@ -58,11 +58,9 @@
 (define out-dir
   (if (pair? (command-line-arguments)) (car (command-line-arguments)) "."))
 
-;; Never touch the user's real theme file, nor their apps' permissions.
+;; Never touch the user's real theme file.
 (set! *theme-file-path* (string-append out-dir "/theme.ss"))
 (when (file-exists? *theme-file-path*) (delete-file *theme-file-path*))
-(set! *grant-file-path* (string-append out-dir "/permissions.ss"))
-(when (file-exists? *grant-file-path*) (delete-file *grant-file-path*))
 
 ;; A run whose heap passes 2 GB has run away (a loop that allocates without
 ;; end): it stops, as a failure, before the machine runs out, as forty

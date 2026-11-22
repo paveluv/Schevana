@@ -25,7 +25,8 @@
           (only (schevana base) at-load clamp define-hook define-state
                 library-layer plist-ref set-hook!)
           (only (schevana core) *apps* *mouse-button* *mouse-x* *mouse-y* after
-                app-title close-window! define-part define-surface desktop-rect
+                app-name app-title close-window! define-part define-surface
+                desktop-rect
                 draw-text fill-box font font-char-width font-line-height
                 frame-regions fullscreen? minimize-window! new-window-position
                 notify now-ms point-in? quit! reload! report-error!
@@ -34,6 +35,7 @@
                 toggle-maximize! toggle-shade! window-action! window-at
                 window-region window-setting window-state with-clip with-place
                 world-value)
+          (only (schevana kits app) app-launch!)
           (only (schevana kits menu) make-menu menu-x menu-y menu-sel
                 menu-sel-set! menu-filter menu-filter-set! menu-filter?
                 menu-tag menu-label-text menu-label-key menu-label-width
@@ -42,7 +44,6 @@
           (only (schevana kits ui) ui-menu-open-tag ui-menu-open!
                 ui-draw-highlight ui-draw-separator ui-draw-panel)
           (only (schevana desktop arrange) cascade-windows! tile-windows!)
-          (only (schevana desktop permissions) launch-app-asking!)
           (only (schevana desktop screenshot) save-screenshot!))
 
   (library-layer desktop)
@@ -368,7 +369,7 @@
             (cons (app-title a)
                   (lambda ()
                     (parameterize ([new-window-position at])
-                      (launch-app-asking! a)))))
+                      (app-launch! (app-name a))))))
           (sort (lambda (a b) (string<? (app-title a) (app-title b))) *apps*))
      (list 'separator
            (cons "Tile windows\tCtrl+Shift+T" (lambda () (tile-windows!)))

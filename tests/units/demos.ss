@@ -4,8 +4,7 @@
 ;;; program's "/"); a plain script among them, the checklist, its .sh
 ;;; giving scheme-script the tree as its library folder. On the desktop
 ;;; (its folder auto-loaded) each demo's library (schevana-demo/) registers
-;;; its app, which
-;;; opens a window that draws.
+;;; its app, which opens a window that draws.
 
 ;; What launcher (a file at the tree's root: a launcher of Schevana's, or a
 ;; shell script) prints, run headless with args more and HOME a scratch
@@ -108,13 +107,18 @@
   (auto-load! dir)
   (check (format "a folder auto-loaded joins the library search and loads \
                   its libraries, by their names from the tree: the demos' \
-                  apps register; a file is no folder to load ~s"
+                  apps register, Boids, Life and the rest among them; a \
+                  file is no folder to load ~s"
                  (auto-load-entries dir))
          (and (equal? (auto-load-entries dir)
-                      '((schevana-demo game) (schevana-demo rings)))
+                      '((schevana-demo boids) (schevana-demo boids3d)
+                        (schevana-demo game) (schevana-demo life)
+                        (schevana-demo rings) (schevana-demo sketch)
+                        (schevana-demo springies)))
               ;; made absolute, as the tree's root may not be (".")
               (string-suffix? "/schevana-demo" (car (last-pair (auto-loads))))
-              (for-all (lambda (app) (memq app (apps))) '(rings game))
+              (for-all (lambda (app) (memq app (apps)))
+                       '(boids boids3d game life rings sketch springies))
               ;; a folder of the library search, which a file can't be
               (exists (lambda (d)
                         (equal? (path-full (if (pair? d) (car d) d))

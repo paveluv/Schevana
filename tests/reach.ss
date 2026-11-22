@@ -45,6 +45,101 @@
        [_ (identifier? x) id]
        [(_ . rest) #`(#,id . rest)]))))
 
+;;; ------------------------------------------------------------------
+;;; a library's own names
+;;; A test asks nothing of a library: no export, hook or name of its own
+;;; for the test. It reaches what the library keeps to itself by stripping
+;;; it, as the hacker edition strips every library: in the library
+;;; edition, its body evaluated again at the top level of an environment
+;;; of its own, after its imports and the top level's forms as the hacker
+;;; edition has them (src/base.ss, src/strip.ss); in the hacker edition,
+;;; as it is, its names in "/" already. Its names come to "/" under a
+;;; prefix, so that none of them is one of the world's.
+;;;
+;;;   (test-library '(schevana-demo springies) 'sp:)
+;;;   (sp:pt+ (sp:make-pt 1.0 2.0) sp:pt-zero)
+;;;   (fluid-let ([sp:springies-controls-size (lambda () (values 100 100))])
+;;;     ...)
+;;;
+;;; Each is settable, and a set (fluid-let's stand-in) is the library's
+;;; own: its calls to its procedures go by the top level. Stripped again,
+;;; it is another of the library: its state its own, its app the one the
+;;; launcher opens.
+
+;; The names a body form of a library defines: a record type's too, by
+;; R6RS's rules for the names it makes.
+(define (test-library-defined form)
+  (define (name+ . parts)
+    (string->symbol
+     (apply string-append
+            (map (lambda (x) (if (symbol? x) (symbol->string x) x)) parts))))
+  (define (record-names spec clauses)
+    (let ([name (if (pair? spec) (car spec) spec)]
+          [fields (let ([f (assq 'fields clauses)]) (if f (cdr f) '()))])
+      (append
+       (list name)
+       (if (pair? spec) (cdr spec) (list (name+ "make-" name) (name+ name "?")))
+       (apply append
+              (map (lambda (f)
+                     (cond [(symbol? f) (list (name+ name "-" f))]
+                           [(pair? (cddr f)) (cddr f)]
+                           [(eq? (car f) 'mutable)
+                            (list (name+ name "-" (cadr f))
+                                  (name+ name "-" (cadr f) "-set!"))]
+                           [else (list (name+ name "-" (cadr f)))]))
+                   fields)))))
+  (if (not (pair? form))
+      '()
+      (case (car form)
+        [(begin) (apply append (map test-library-defined (cdr form)))]
+        [(define-record-type) (record-names (cadr form) (cddr form))]
+        [(define define-syntax define-state define-made define-hook
+          define-worklet define-compute-shader define-paint define-app
+          define-part)
+         (let ([n (let first ([x (cadr form)])
+                    (if (pair? x) (first (car x)) x))])
+           (if (eq? (car form) 'define-part)
+               (list n (name+ n "*"))
+               (list n)))]
+        [else '()])))
+
+;; The source of library name: the first folder of the library search
+;; that holds it.
+(define (test-library-file name)
+  (let ([rel (string-append
+              (apply string-append
+                     (map (lambda (part)
+                            (string-append "/" (symbol->string part)))
+                          name))
+              ".sls")])
+    (or (exists (lambda (d)
+                  (let ([f (string-append (if (pair? d) (car d) d) rel)])
+                    (and (file-exists? f) f)))
+                (library-directories))
+        (errorf 'test-library "no source for ~s" name))))
+
+(define (test-library name prefix)
+  (let* ([form (call-with-input-file (test-library-file name) read)]
+         [body (cddddr form)]          ; past its name, exports and imports
+         [env (if test-hacker?
+                  world-env
+                  (let* ([e (copy-environment (scheme-environment) #t)]
+                         [in-e (lambda (x) (eval x e))])
+                    (eval `(import ,@(cdr (cadddr form))) e)
+                    (for-each (lambda (f)
+                                (load (string-append *schevana-root* f) in-e))
+                              '("/src/base.ss" "/src/strip.ss"))
+                    (for-each in-e body)
+                    e))]
+         [anchor (environment-anchor env)])
+    (for-each (lambda (n)
+                (define-top-level-syntax
+                  (string->symbol (string-append (symbol->string prefix)
+                                                 (symbol->string n)))
+                  (reach-forwarder (datum->syntax anchor n))
+                  world-env))
+              (apply append (map test-library-defined body)))))
+
 ;; Each name of the two's, in "/", from the first of the core's and the
 ;; tests' that has it, a state or a hook (a macro) as a variable is, to be
 ;; set (by its names: top-level-syntax? says so of any name). What the

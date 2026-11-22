@@ -19,8 +19,8 @@ scheme --script tests/sources.ss
 
 - **smoke** boots the world headless and uses it as a person would: it
   types into the REPL, drives every app by mouse and keys, presses every
-  button of each style, asks an app's permissions, crashes windows and
-  reloads the sources. It writes screenshots to `out/`.
+  button of each style, crashes windows and reloads the sources. It
+  writes screenshots to `out/`.
 - **units** runs every file of `tests/units/`, a topic each (an app's, a
   kit's, a service's, a part of the core's), in a process of its own, so
   that none leans on what another left behind, many at once: as many as
@@ -126,12 +126,31 @@ level above tests only what it adds, trusting the levels below.
   by the app's own measures, the selection it needs), not from what an
   earlier sequence left, so one failure doesn't take the rest with it.
 
+## What a test asks of a library
+
+Nothing. A library is written for what it does, never for its tests: no
+export, hook or name of its own for them. What a test needs of it, the
+test framework finds itself:
+
+- A library's own names: `(test-library '(schevana-demo springies)
+  'sp:)` (`tests/reach.ss`) strips the library, as the hacker edition
+  strips every library, its body evaluated again at the top level of an
+  environment of its own (in the hacker edition, as it is), and gives
+  the test each name it defines under the prefix: `sp:pt+`,
+  `sp:make-particle`, `sp:springies`. The prefix keeps them apart from the
+  world's.
+- A stand-in for one of its procedures: a `fluid-let` of the prefixed
+  name. Stripped, the library calls its own procedures through the top
+  level, so it calls the stand-in.
+- Its app: the stripped library registers it again, so the launcher, and
+  the prefixed launcher (`sp:springies`), open the one the test reaches.
+
 ## What a test may touch
 
 - Tests and scripts never touch the user's `~/.schevana-theme.ss`,
-  `~/.schevana.ss` or `~/.schevana.d`. Point `*theme-file-path*` and
-  `*grant-file-path*` at scratch files, as the suites do, or run with
-  `HOME` set to a scratch folder.
+  `~/.schevana.ss` or `~/.schevana.d`. Point `*theme-file-path*` at a
+  scratch file, as the suites do, or run with `HOME` set to a scratch
+  folder.
 - Nothing opens a real window: the suites run headless, on lavapipe, the
   Vulkan driver on the CPU (`mesa-vulkan-drivers`), or on Metal on a Mac.
 - A file a test writes goes in the suite's output folder (`out/`), named

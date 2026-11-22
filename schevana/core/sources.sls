@@ -13,7 +13,7 @@
     auto-loads auto-load! auto-load-forget! auto-load-entries auto-load-layer
     library-file-layer
     world-app-file? world-after-load!
-    *source-texts* keep-source-text! file-text load-file! app-load!
+    *source-texts* keep-source-text! file-text load-file!
     load-source load-sources!
     load-user-folders! source-held-libraries reload! world-libraries
     world-entries load-world! program-world! look-load! *world-later*
@@ -95,8 +95,8 @@
   ;;; The world loads folders, at boot and at every (reload!), each read
   ;;; again each time, recursively, its libraries (.sls) and files (.ss) in
   ;;; file-name order. Schevana's own come first: the tree's folders in the
-  ;;; layers' order, its apps' files, and, once the desktop turns them on,
-  ;;; the user's folders; then the folders of the library search that
+  ;;; layers' order and, once the desktop turns them on, the user's
+  ;;; folders; then the folders of the library search that
   ;;; auto-load (auto-load!, the desktop's command line, Settings' Paths),
   ;;; in the order they were turned on.
 
@@ -113,7 +113,6 @@
     (append (map (lambda (f)
                    (path-full (format "~a/schevana/~a" *schevana-root* f)))
                  source-folders)
-            (list (path-full (string-append *schevana-root* "/apps")))
             (if *user-folders?* (user-folders) '())
             *auto-loads*))
 
@@ -257,11 +256,6 @@
     (keep-source-text! path (file-text path))
     (load path))
 
-  ;; Loads an app's file (one in an apps folder, the tree's or the user's):
-  ;; into the world, until (schevana services grant) sets it to give each app a
-  ;; sandbox of its own.
-  (define-hook (app-load! path) (load-file! path))
-
   ;; A world's source: a file, by its path, or one of the world's
   ;; libraries, by its name, imported into "/" (once: a reload of a library
   ;; imports it again there) and run, so that what it registers (an app, a
@@ -273,10 +267,7 @@
             (reload-import! *world-env* f)
             (set! *world-imported* (cons f *world-imported*)))
           (invoke-library f))
-        (let ([path (source-path f)])
-          (if (equal? (path-last (path-parent path)) "apps")
-              (app-load! path)
-              (load-file! path)))))
+        (load-file! (source-path f))))
 
   ;; Loads files into the world (from a private REPL too), or into env.
   ;; Run as a process (the launcher's "Reload
@@ -324,8 +315,8 @@
   (define-state *world-later?* #f)
   (define-state *world-later-ms* 0)
 
-  ;; Whether f, a file, is an app's: in an apps folder, the tree's or the
-  ;; user's.
+  ;; Whether f, a file, is an app's: in a folder named apps (the user's, or
+  ;; one that auto-loads).
   (define (world-app-file? f)
     (and (string? f)
          (equal? (path-last (path-parent (source-path f))) "apps")))

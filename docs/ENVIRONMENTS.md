@@ -2,16 +2,16 @@
 
 An environment is where a name means something. Schevana keeps them in a
 tree whose root is the world, "/": the worklets' under it in "/worklets",
-the apps' sandboxes under "/apps", and whatever you make. A REPL evaluates in
-one ([REPL.md](REPL.md)), and `(envs)` shows the tree.
+and whatever you make. A REPL evaluates in one ([REPL.md](REPL.md)), and
+`(envs)` shows the tree.
 
 ## The tree
 
 ```scheme
 (env-root)                                 ; the world, "/"
 (map env-path (env-children (env-root)))
-(env-find "/apps/clock")
-(env-kinds)       ; => (private world pure sandbox apps app thread)
+(env-find "/worklets")
+(env-kinds)       ; => (private world pure sandbox thread)
 (env-forks (env-root))                     ; => (private world pure sandbox thread)
 ```
 
@@ -106,15 +106,15 @@ world through Chez: it organizes what you define, and confines nothing.
 (env-dropped? lab)                         ; => #t
 ```
 
-`(env-load e path)` evaluates a file in `e`. An app's sandbox, on the
-confined base, has a console, which writes to its log, `(env-log e)`; a
-sandbox on Scheme's pure core has none. Dropping an environment drops what is under it and
+`(env-load e path)` evaluates a file in `e`. A sandbox on the confined
+base, what is always safe (`(env-child e 'name 'confined)`), has a
+console, which writes to its log, `(env-log e)`; a sandbox on Scheme's
+pure core has none. Dropping an environment drops what is under it and
 stops their threads; what still holds it can ask `env-dropped?`.
 
-The tree's apps live in sandboxes made this way, under "/apps"
-([APPS.md](APPS.md)). Core0, the recorder and the core are sealed in
-their libraries, and have no environment: the world imports what the
-core gives it ([INTERNALS.md](INTERNALS.md)).
+Core0, the recorder and the core are sealed in their libraries, and have
+no environment: the world imports what the core gives it
+([INTERNALS.md](INTERNALS.md)).
 
 ## The Environments app
 
@@ -137,8 +137,5 @@ own. Its toolbar and a row's right-press menu act on it:
   (a style's `modal-above`).
 - **Drop…**: it, what is under it and their threads.
 
-On `/worklets` it sets the pool's threads. On an app's sandbox it lists
-the bundles the app requests, as each stands (a press shows a bundle's
-names), who decides them, and Permissions… to change them; `/apps` lists
-every bundle. A world namespace gets the names the world gains at its next
+On `/worklets` it sets the pool's threads. A world namespace gets the names the world gains at its next
 evaluation; Sync shares them now (`env-sync!`).

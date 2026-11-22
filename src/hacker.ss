@@ -6,28 +6,11 @@
 ;;; src/base.ss and before any of the tree's libraries. From source only:
 ;;; nothing is compiled to a file.
 ;;;
-;;; The libraries' own forms take their top-level sense here: a state is a
-;;; variable kept as its file loads again (a defvar), a made value and a hook
-;;; are definitions, a view and a checked setter are nothing (the name is
-;;; already the thing), and a layer's declaration checks nothing: what holds
-;;; a library to its layer is the library edition's.
+;;; The libraries' own forms take their top-level sense here, as
+;;; src/strip.ss, loaded before this, has them.
 
 ;; Chez's library and import forms, under names of their own.
 (import (prefix (only (chezscheme) library import) chez:))
-
-(define-syntax define-state
-  (syntax-rules ()
-    [(_ name init)
-     (define name (if (top-level-bound? 'name) (top-level-value 'name) init))]))
-(define-syntax define-made
-  (syntax-rules () [(_ name init) (define name init)]))
-(define-syntax define-view (syntax-rules () [(_ . x) (begin)]))
-(define-syntax define-settable (syntax-rules () [(_ . x) (begin)]))
-(define-syntax library-layer (syntax-rules () [(_ . x) (begin)]))
-(define-syntax at-load (syntax-rules () [(_ form ...) (begin form ...)]))
-(define-syntax set-hook!
-  (syntax-rules ()
-    [(_ (name . formals) body ...) (set! name (lambda formals body ...))]))
 
 ;; The libraries here before any is spliced: Chez's, and (schevana base),
 ;; which src/base.ss imported. Not spliced again.

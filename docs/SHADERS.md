@@ -26,11 +26,11 @@ gets from its definition to the GPU, and two examples to type at a REPL.
   shaders steer the flock, lay it out by the camera and sort it into
   tiles, and a paint draws the sky, the sea and the birds. The flock never
   comes back to the CPU.
-- **Apps in sandboxes get them through a bundle.** `gpu`, "Compute and draw
-  on the GPU", gives an app `define-compute-shader`, `define-paint`,
-  `fill-shader`, `draw-scale`, `make-gpu-buffer`, `gpu-buffer-set!`,
-  `gpu-buffer-release!` and `gpu-compute-soon!`. A shader touches only the
-  buffers it is handed, so a sandboxed app's shaders reach nothing else.
+- **A shader touches only what it is handed.** An app has
+  `define-compute-shader`, `define-paint`, `fill-shader`, `draw-scale`,
+  `make-gpu-buffer`, `gpu-buffer-set!`, `gpu-buffer-release!` and
+  `gpu-compute-soon!` from the core's facade; a shader reads and writes
+  only the buffers it is handed, so it reaches nothing else.
 - **The language is a contract.** It asks only for what every GPU API has,
   and defines its own meaning where targets differ (dividing by zero, say),
   so that a shader gives the same results everywhere. What one back end
@@ -420,5 +420,5 @@ comes back to the CPU.
 | `schevana/core0/gpu.sls` | core0: pipelines, dispatch, drawing |
 | `schevana/kits/twin.sls` | the twin |
 | `schevana/kits/inspect.sls` | `inspect-shader-…`, `inspect-computes` |
-| `apps/boids3d.ss` | an app that is all shaders |
+| `schevana-demo/boids3d.sls` | an app that is all shaders |
 | `tests/units/shader.ss` | the device and the twin held together |

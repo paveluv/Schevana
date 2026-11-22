@@ -1,13 +1,8 @@
 ;;; tests/units/life.ss — Life: its kernels and its grid against a plain
 ;;; reference, its controls, the crew.
 
-;; Life runs in its sandbox ((schevana services grant)): its procedures, from
-;; there.
-(define life-env (env-environment (grant-env 'life)))
-(define (life-row-pixels . args)
-  (apply (top-level-value 'life-row-pixels life-env) args))
-(define life-step-rows! (top-level-value 'life-step-rows! life-env))
-(define (life-bar-height) ((top-level-value 'life-bar-height life-env)))
+;; Life's own names, lf:life-step-rows! and the rest (tests/reach.ss).
+(test-library '(schevana-demo life) 'lf:)
 
 ;; The next generation on a torus, the obvious way: the reference.
 (define (life-reference grid cols rows)
@@ -54,13 +49,13 @@
 ;; k generations by the kernel, checking every generation against the
 ;; reference and every pixel against its cell.
 (define (life-kernel-ok? grid cols rows k)
-  (let ([row-px (life-row-pixels rows)]
+  (let ([row-px (lf:life-row-pixels rows)]
         [dead (color->pixel 'bg-0)]
         [pix (make-bytevector (* 4 cols rows) 0)])
     (let loop ([i 0] [g grid])
       (or (= i k)
           (let ([next (make-bytevector (* cols rows) 0)])
-            (life-step-rows! 0 rows pix g next row-px dead cols rows)
+            (lf:life-step-rows! 0 rows pix g next row-px dead cols rows)
             (and (equal? next (life-reference g cols rows))
                  (for-all (lambda (c)
                             (= (bytevector-u32-native-ref pix (* 4 c))
@@ -72,13 +67,13 @@
 
 ;; k generations by the kernel alone.
 (define (life-kernel-run grid cols rows k)
-  (let ([row-px (life-row-pixels rows)]
+  (let ([row-px (lf:life-row-pixels rows)]
         [pix (make-bytevector (* 4 cols rows) 0)])
     (let loop ([i 0] [g grid])
       (if (= i k)
           g
           (let ([next (make-bytevector (* cols rows) 0)])
-            (life-step-rows! 0 rows pix g next row-px 0 cols rows)
+            (lf:life-step-rows! 0 rows pix g next row-px 0 cols rows)
             (loop (+ i 1) next))))))
 
 (let ([block (life-grid "......" ".##..." ".##..." "......" "......")]
@@ -113,7 +108,7 @@
               [whole (life-reference g 72 44)]
               [part (make-bytevector (* 72 44) 9)]
               [pix (make-bytevector (* 4 72 44) 0)])
-         (life-step-rows! 10 27 pix g part (life-row-pixels 44) 0 72 44)
+         (lf:life-step-rows! 10 27 pix g part (lf:life-row-pixels 44) 0 72 44)
          (for-all (lambda (i)
                     (= (bytevector-u8-ref part i)
                        (if (<= (* 10 72) i (- (* 27 72) 1))
@@ -124,12 +119,12 @@
 (let* ([g (random-life-grid 72 44)]
        [next (make-bytevector (* 72 44) 0)]
        [pix (make-bytevector (* 4 72 44) 0)]
-       [row-px (life-row-pixels 44)]
+       [row-px (lf:life-row-pixels 44)]
        [dead (color->pixel 'bg-0)])
-  (life-step-rows! 0 44 pix g next row-px dead 72 44)
+  (lf:life-step-rows! 0 44 pix g next row-px dead 72 44)
   (let ([b0 (bytes-total)])
     (do ([i 0 (fx+ i 1)]) ((fx= i 20))
-      (life-step-rows! 0 44 pix g next row-px dead 72 44))
+      (lf:life-step-rows! 0 44 pix g next row-px dead 72 44))
     (let ([b (- (bytes-total) b0)])
       ;; an 8-argument + made each generation allocate about 300 KB
       (check (format "Life's kernel allocates nothing (~a bytes in 20 \
@@ -141,22 +136,15 @@
 (define (life-drawn win s)
   (let-values ([(cw ch) (window-content-size win)])
     (let* ([seen #f]
-           [real (top-level-value 'draw-life-cells life-env)]
-           [a (dynamic-wind
-                (lambda ()
-                  (set-top-level-value! 'draw-life-cells
-                                        (lambda args
-                                          (set! seen args)
-                                          (apply real args))
-                                        life-env))
-                (lambda ()
-                  (image (exact (ceiling (* s cw))) (exact (ceiling (* s ch)))
-                         s
-                         (lambda ()
-                           ((hashtable-ref (window-handlers win) 'draw #f)
-                            win cw ch))))
-                (lambda ()
-                  (set-top-level-value! 'draw-life-cells real life-env)))])
+           [real lf:draw-life-cells]
+           [a (fluid-let ([lf:draw-life-cells (lambda args
+                                                (set! seen args)
+                                                (apply real args))])
+                (image (exact (ceiling (* s cw))) (exact (ceiling (* s ch)))
+                       s
+                       (lambda ()
+                         ((hashtable-ref (window-handlers win) 'draw #f)
+                          win cw ch))))])
       (values a seen))))
 
 ;; The live cells a window shows: those whose pixel is not bg-0's.
@@ -172,7 +160,7 @@
                    (bytevector-u8-set! g i 1)))))
            seen)))
 
-(let ([win (life)])
+(let ([win (lf:life)])
   (window-call win 'key #\space '())   ; paused
   (let ([shown (life-shown win)])
     (window-call win 'key #\n '())
@@ -186,7 +174,7 @@
 ;; bar.
 (define (life-matches-rects? s content-w content-h)
   (canvas-create! 1280 800 s)
-  (let ([win (life)])
+  (let ([win (lf:life)])
     (window-call win 'key #\h '())   ; the grid alone
     (resize-window! win content-w content-h)
     (let-values ([(cw ch) (window-content-size win)]
@@ -210,7 +198,7 @@
                                            (mix 'green 'cyan
                                                 (/ y rows))))))))))
                        seen)]
-             [grid-bottom (exact (floor (* s (- ch (life-bar-height)))))]
+             [grid-bottom (exact (floor (* s (- ch (lf:life-bar-height)))))]
              [ok (and (> live 100)
                       (= 0 (max-diff a b (list 0 grid-bottom pw ph))))])
         (picture-free! a)
@@ -229,19 +217,13 @@
 ;; What Life's status line says at a draw: (generation running? cols rows
 ;; rate).
 (define (life-status win)
-  (let ([seen #f] [real (top-level-value 'life-status-text life-env)])
-    (dynamic-wind
-      (lambda ()
-        (set-top-level-value! 'life-status-text
-                              (lambda args
-                                (set! seen args)
-                                (apply real args))
-                              life-env))
-      (lambda ()
-        (let-values ([(a drawn) (life-drawn win 1)])
-          (picture-free! a))
-        seen)
-      (lambda () (set-top-level-value! 'life-status-text real life-env)))))
+  (let ([seen #f] [real lf:life-status-text])
+    (fluid-let ([lf:life-status-text (lambda args
+                                       (set! seen args)
+                                       (apply real args))])
+      (let-values ([(a drawn) (life-drawn win 1)])
+        (picture-free! a))
+      seen)))
 
 (define (life-generation win) (car (life-status win)))
 
@@ -257,13 +239,13 @@
       (window-call win 'mouse-up x y 'left))))
 
 (define (life-paused!)
-  (let ([win (life)])
+  (let ([win (lf:life)])
     (window-call win 'key #\space '())
     (life-size win)   ; a first draw: the panel's widgets are there
     win))
 
 (define (life-speed! win label)
-  (let ([speeds (top-level-value 'life-speeds life-env)])
+  (let ([speeds lf:life-speeds])
     (life-slide! win 'speed
                  (/ (list-index (lambda (s) (string=? (car s) label)) speeds)
                     (- (length speeds) 1)))))
@@ -339,7 +321,7 @@
     (let*-values ([(cw ch) (window-content-size win)]
                   [(size) (life-size win)]
                   [(a seen) (life-drawn win s)])
-      (let* ([gh (- ch (life-bar-height))]
+      (let* ([gh (- ch (lf:life-bar-height))]
              [ok (and (= (car size) (* s cw)) (= (cadr size) (* s gh))
                       (apply
                        (lambda (pixels cols rows cell ox oy)
@@ -364,7 +346,7 @@
 
 (check "Life: every frame is a generation each frame, though the clock \
         stands still; flat out, several; at 12 a second, none till it is time"
-       (let ([win (life)] [frame! (lambda (win) (window-call win 'frame 0))])
+       (let ([win (lf:life)] [frame! (lambda (win) (window-call win 'frame 0))])
          (life-size win)
          (fluid-let ([now-ms (let ([t (now-ms)]) (lambda () t))])
            (frame! win)   ; maybe a generation: it was long ago
@@ -381,7 +363,7 @@
              (and (= slow 0) (= every 5) (> flat 1))))))
 
 (check "Life: a frame's generation allocates under 8 KB"
-       (let ([win (life)])
+       (let ([win (lf:life)])
          (life-size win)
          (life-speed! win "every frame")
          (window-call win 'frame 0)
@@ -409,18 +391,17 @@
               [g (make-bytevector n 0)] [next (make-bytevector n 0)]
               [pix (make-bytevector (* 4 n) 0)]
               [seeds (make-fxvector rows)]
-              [chunk ((top-level-value 'life-chunk-rows life-env) cols)])
+              [chunk (lf:life-chunk-rows cols)])
          (do ([y 0 (+ y 1)]) ((= y rows))
            (fxvector-set! seeds y (random 4294967296)))
-         (crew-for* chunk 0 rows (top-level-value 'life-seed-rows! life-env)
-                    g seeds cols)
+         (crew-for* chunk 0 rows lf:life-seed-rows! g seeds cols)
          (let ([alive (apply + (bytevector->u8-list g))]
                [row (lambda (y)
                       (let ([r (make-bytevector cols)])
                         (bytevector-copy! g (* y cols) r 0 cols)
                         r))])
-           (crew-for* chunk 0 rows life-step-rows! pix g next
-                      (life-row-pixels rows) 0 cols rows)
+           (crew-for* chunk 0 rows lf:life-step-rows! pix g next
+                      (lf:life-row-pixels rows) 0 cols rows)
            (and (< 0.2 (/ alive n 1.0) 0.24)
                 (not (equal? (row 0) (row 1)))
                 (equal? next (life-reference g cols rows))))))

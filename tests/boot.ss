@@ -22,12 +22,15 @@
                (schevana core0 platform) (schevana core0 trace-file)
                (schevana core0 gpu) (schevana core0 window) (schevana reload)))
 
-;; The world, loaded as the desktop loads it, headless, here on this thread;
-;; this environment stays the tests' (tests/reach.ss), but in the hacker
+;; The world, loaded as the desktop loads it, headless, with the demos
+;; (./schevana-desktop --headless schevana-demo), here on this thread; this
+;; environment stays the tests' (tests/reach.ss), but in the hacker
 ;; edition, where it is the world.
 (define test-options
   (schevana-call test-hacker? '(schevana desktop main) 'desktop-options
                  '("--headless")))
+(schevana-call test-hacker? '(schevana core sources) 'auto-load!
+               (string-append *schevana-root* "/schevana-demo"))
 (parameterize ([interaction-environment (interaction-environment)])
   (schevana-call test-hacker? '(schevana core sources) 'core1-boot!
                  test-options))

@@ -36,8 +36,8 @@
 ;;;                 steps have computed its rows; the step that finishes
 ;;;                 draws it again, and the screen is the reference
 ;;;
-;;; output-dir receives the scratch theme and permissions files and a
-;;; screenshot of a failure.
+;;; output-dir receives the scratch theme file and a screenshot of a
+;;; failure.
 
 (define *schevana-root*
   (let ([dir (path-parent (path-parent (car (command-line))))])

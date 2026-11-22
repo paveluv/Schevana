@@ -111,7 +111,7 @@
           (test-files "tests/units")
           (test-files "tests/fork")
           test-launchers
-          '("src/launch.ss" "src/hacker.ss" "src/build.ss")))
+          '("src/launch.ss" "src/hacker.ss" "src/strip.ss" "src/build.ss")))
 
 (define (long-lines f)
   (let loop ([ls (file-lines f)] [n 1] [acc '()])
@@ -194,18 +194,6 @@
 
 (define world-files (append all-library-files (source-files)))
 
-;; An app in a sandbox ((schevana services grant)): what its file defines is the
-;; sandbox's, but for the app itself, so it collides with nothing.
-(define (sandboxed-file? f)
-  (and (equal? (file-folder f) "apps")
-       (grant-env (string->symbol (file-stem f)))
-       #t))
-
-(define (world-definitions f)
-  (if (sandboxed-file? f)
-      (remp (lambda (d) (eq? (car d) 'name)) (definitions f))
-      (definitions f)))
-
 (check (format "no top-level name is defined in two of the world's ~a files"
                (length world-files))
        (let ([where (make-hashtable equal-hash equal?)])
@@ -215,7 +203,7 @@
                                    (lambda (fs) (if (member f fs) fs
                                                     (cons f fs)))
                                    '()))
-                               (world-definitions f)))
+                               (definitions f)))
                    world-files)
          (none? (filter-map
                  (lambda (d)
@@ -304,7 +292,7 @@
          (for-each (lambda (f)
                      (for-each (lambda (n) (hashtable-set! owner n f))
                                (top-level-names f)))
-                   (remp sandboxed-file? world-files))
+                   world-files)
          (none?
           (apply append
                  (map (lambda (f)
@@ -780,14 +768,10 @@
 
 (define world-symbols (environment-symbols (interaction-environment)))
 
-;; d is registered: a name in the world, or in box, the sandbox of the
-;; app whose file defines it ((schevana services grant)).
-(define (registered? d box)
+;; d is registered: a name in the world, an app, a style ...
+(define (registered? d)
   (case (car d)
-    [(name) (and (memq (cdr d) (if box
-                                   (environment-symbols (env-environment box))
-                                   world-symbols))
-                 #t)]
+    [(name) (and (memq (cdr d) world-symbols) #t)]
     [(app) (and (memq (cdr d) (apps)) #t)]
     [(style) (and (find-style (cdr d)) #t)]
     [(palette) (and (assq (cdr d) *palettes*) #t)]
@@ -795,12 +779,16 @@
     [(surface) (and (find-surface (cdr d)) #t)]
     [(strip) (and (assq (cdr d) *strips*) #t)]))
 
-;; The world's sources as files, in load order: a library's file for its
-;; name.
+;; The world's sources as files, in load order, of its own folders: a
+;; library's file for its name. What else auto-loads (the demos) is not
+;; held to the folders' rules.
 (define (world-entry-files)
-  (map (lambda (e)
-         (if (pair? e) (format "schevana/~a/~a.sls" (cadr e) (caddr e)) e))
-       (world-entries)))
+  (filter-map (lambda (e)
+                (cond [(string? e) e]
+                      [(eq? (car e) 'schevana)
+                       (format "schevana/~a/~a.sls" (cadr e) (caddr e))]
+                      [else #f]))
+              (world-entries)))
 
 ;; The folder a world's source is of: kits for (schevana kits x) and for
 ;; schevana/kits/x.sls.
@@ -813,12 +801,11 @@
   (let* ([ds (definitions f)]
          [stem (string->symbol (file-stem f))]
          [kind (cdr (or (assoc (world-folder f) folder-kinds) '(#f . #f)))]
-         [own (filter (lambda (d) (eq? (car d) kind)) ds)]
-         [box (and (eq? kind 'app) (grant-env stem))])
+         [own (filter (lambda (d) (eq? (car d) kind)) ds)])
     (append
      (map (lambda (d)
             (format "~a: ~a ~a is not registered" f (car d) (cdr d)))
-          (remp (lambda (d) (registered? d box)) ds))
+          (remp registered? ds))
      (cond
        [(equal? (world-folder f) "desktop") '()]
        [(not kind)
@@ -849,10 +836,20 @@
                (string-join source-folders ", "))
        (none? (apply append (map folder-problems (world-entry-files)))))
 
-;; What the files define, in load order, of one kind.
+;; What the files define, in load order, of one kind: of everything that
+;; loads with the world, the demos too.
 (define (defined-in-files kind)
   (map cdr (filter (lambda (d) (eq? (car d) kind))
-                   (apply append (map definitions (world-entry-files))))))
+                   (apply append
+                          (map definitions
+                               (map (lambda (e)
+                                      (if (pair? e)
+                                          (string-append
+                                           (string-join
+                                            (map symbol->string e) "/")
+                                           ".sls")
+                                          e))
+                                    (world-entries)))))))
 
 ;; An app registers as its library runs, after any it imports (the Debug
 ;; REPL's runs the REPL's): the launcher lists them by their titles.
@@ -1029,73 +1026,6 @@
        (for-all (lambda (name) (hashtable-contains? (name-docs) name))
                 '("ui-button" "mac-draw-under" "px-bevel" "settings"
                   "ui-draw-button" "ui-draw-button*")))
-
-;;; ------------------------------------------------------------------ apps in
-;;; sandboxes A tree app that requests bundles runs in a sandbox, approved by
-;;; the table in (schevana services grant): what it requests is that, so a new
-;;; request is a reviewed change. Sketch is left to the person, to show how an
-;;; app of theirs asks.
-
-(define apps-the-person-approves '(sketch))
-
-;; Names the world has for itself: Chez's, and what its own files define.
-(define world-own-names
-  (let ([t (make-eq-hashtable)])
-    (for-each (lambda (s) (hashtable-set! t s #t))
-              (environment-symbols (scheme-environment)))
-    (for-each (lambda (f)
-                (for-each (lambda (d) (hashtable-set! t (cdr d) #t))
-                          (world-definitions f)))
-              world-files)
-    t))
-
-(check "an app in a sandbox keeps its names there: the world holds only its \
-        launcher"
-       (none?
-        (apply append
-               (map (lambda (f)
-                      (filter-map
-                       (lambda (d)
-                         (and (eq? (car d) 'name)
-                              (memq (cdr d) world-symbols)
-                              (not (hashtable-contains? world-own-names
-                                                        (cdr d)))
-                              (format "~a puts ~a in the world" f (cdr d))))
-                       (definitions f)))
-                    (filter sandboxed-file? world-files)))))
-
-(check "every bundle names what the world has, each name in one bundle, \
-        and every tree app that requests bundles requests what the table \
-        approves, or is one the person approves"
-       (none?
-        (append
-         (let loop ([ns (apply append (map grant-bundle-names
-                                           (map car grant-bundles)))]
-                    [acc '()])
-           (cond [(null? ns) acc]
-                 [(memq (car ns) (cdr ns))
-                  (loop (cdr ns)
-                        (cons (format "~a is in two bundles" (car ns)) acc))]
-                 [else (loop (cdr ns) acc)]))
-         (filter-map (lambda (n)
-                       (and (not (memq n world-symbols))
-                            (format "a bundle names ~a, not the world's" n)))
-                     (apply append (map grant-bundle-names
-                                        (map car grant-bundles))))
-         (filter-map
-          (lambda (f)
-            (let ([app (string->symbol (file-stem f))]
-                  [asks (grant-requests (source-path f))])
-              (and asks
-                   (not (if (memq app apps-the-person-approves)
-                            (not (assq app grant-tree-apps))
-                            (equal? asks (cdr (or (assq app grant-tree-apps)
-                                                  '(#f . #f))))))
-                   (format "~a requests ~a; the table approves ~a" f asks
-                           (cdr (or (assq app grant-tree-apps)
-                                    '(#f . none)))))))
-          (filter (lambda (f) (equal? (file-folder f) "apps"))
-                  (folder-files))))))
 
 (check "the tests never load ~/.schevana.d"
        (and (not *user-folders?*) (not (exists path-absolute? (source-files)))))

@@ -29,7 +29,7 @@
     *toasts* notify *last-error* report-error! proc proc? proc-id proc-name
     proc-state proc-ticks proc-started proc-wake *procs* spawn procs find-proc
     kill! sleep-ms worklet-base-environment *worklet-environment* worklet?
-    worklet-compile worklet define-worklet request-frame! *timers* after
+    worklet define-worklet request-frame! *timers* after
     ;; (schevana core gpu): the GPU's world side: images, buffers, lists,
     ;; computes
     *gpu-bytes-made* *gpu-held-gone* gpu-image-make gpu-image-make-target
@@ -39,7 +39,7 @@
     ;; (schevana core fonts): fonts and text
     font-file-upem font-file-ascender font-file-descender font-file-pages
     font-library-versions make-font*
-    *font-specs* font get-font font-advance font-ascent font-descent
+    *font-specs* font get-font font-advance font-ascent
     font-line-height font-char-width font-ready text-width *glyph-count*
     *atlas-y* *atlas-row* glyph-row-ref font-family font-size font-sized
     font-weight glyph-row-character glyph-row-h glyph-row-left glyph-row-top
@@ -80,7 +80,7 @@
     ;; sources and reload
     *input-step?* post-core1! schevana-run! quit! schevana-end! uptime-ms
     load-user-init! user-directory schevana-boot! collector-declining?
-    source-path source-files *source-texts* keep-source-text! load-file!
+    source-files *source-texts* keep-source-text! load-file!
     load-user-folders! reload! core1-run core1-boot! look-load!
     world-load-now! *world-later* auto-load! auto-load-forget! auto-loads
     *auto-loads* auto-load-layer world-app-file? world-after-load!
@@ -107,7 +107,7 @@
     *hover* *mouse-x* *mouse-y* *mouse-button* drag current-window invalidate!
     window-shadow window-extent screen-w screen-h screen-scale point-in?
     surface surface-doc define-surface find-surface surface-call define-strip
-    desktop-rect app app-name app-title app-launch *apps* register-app!
+    desktop-rect app app-name app-title app-launch *apps*
     define-app apps open-window detached-window new-window-position
     cascade-reset! place-window! windows focused-window visible? maximized?
     find-window window-ref window-set! window-bg in-window-theme window-setting
@@ -146,7 +146,6 @@
     *profile-span*
     theme-save!
     window-gone!
-    app-load!
     screen-event-seen!
     worklet-spread
     ;; And those the windows layer fills, which a program without it fills
@@ -187,7 +186,7 @@
                 make-timeout-condition safe-call safely proc proc? proc-id
                 proc-name proc-state proc-ticks proc-started proc-wake spawn
                 procs find-proc kill! sleep-ms worklet-base-environment worklet?
-                worklet-compile worklet define-worklet after)
+                worklet define-worklet after)
           (only (schevana core gpu) gpu-image-make gpu-image-make-target
                 gpu-image-release! gpu-atlas-image gpu-list-new make-gpu-buffer
                 gpu-buffer-set! gpu-buffer-release! gpu-buffer-read!
@@ -195,7 +194,7 @@
           (only (schevana core fonts) font-file-upem font-file-ascender
                 font-file-descender font-file-pages
                 font-library-versions make-font* font get-font font-advance
-                font-ascent font-descent font-line-height font-char-width
+                font-ascent font-line-height font-char-width
                 font-ready glyph-row-ref font-family font-size font-sized
                 font-weight glyph-row-character glyph-row-h glyph-row-left
                 glyph-row-top glyph-row-w)
@@ -249,7 +248,7 @@
                 window-extent screen-w screen-h screen-scale point-in? surface
                 surface-doc define-surface find-surface surface-call
                 define-strip desktop-rect app app-name app-title app-launch
-                register-app! define-app apps open-window detached-window
+                define-app apps open-window detached-window
                 cascade-reset! place-window! windows focused-window visible?
                 maximized? find-window window-ref window-set! window-bg
                 in-window-theme window-setting frame-insets frame-regions
@@ -261,7 +260,7 @@
                 screen-at resize-kinds window-region bind-key!
                 window-frame-soon! window-hover draw-window*)
           (only (schevana core sources) core1-exported load-user-init!
-                source-path source-files keep-source-text! load-file!
+                source-files keep-source-text! load-file!
                 load-user-folders! reload! core1-boot! program-world!
                 look-load! world-load-now! auto-load! auto-load-forget!
                 auto-loads auto-load-entries auto-load-layer world-app-file?
@@ -300,7 +299,7 @@
                         current-window invalidate! *apps* new-window-position
                         *global-keys* window-gone!) core:)
           (prefix (only (schevana core sources) *world-env* *schevana-options*
-                        *world-later* *auto-loads* *source-texts* app-load!)
+                        *world-later* *auto-loads* *source-texts*)
                   core:))
 
   (library-layer core facade)
@@ -407,8 +406,6 @@
   (define-settable theme-save! core:theme-save!
     procedure?)
   (define-settable window-gone! core:window-gone!
-    procedure?)
-  (define-settable app-load! core:app-load!
     procedure?)
 
   ;; And those the windows layer fills, for a program that has none.

@@ -111,7 +111,6 @@ scheme --program out/lib/game.so
 | `~/.schevana.d/` | your apps, styles, palettes, wallpapers, kits, services and desktop code, in folders of those names, loaded at boot and at each `(reload!)` ([APPS.md](APPS.md)) |
 | `~/.schevana.d/lib/` | your R6RS libraries ([REPL.md](REPL.md)) |
 | `~/.schevana-theme.ss` | the look you chose in Settings; plain data, never evaluated |
-| `~/.schevana.d/permissions.ss` | what you allowed the apps in sandboxes; plain data |
 
 ## The icon
 

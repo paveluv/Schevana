@@ -5,7 +5,8 @@
 
 (check "the desktop's apps wait, libraries and files; the rest loads first"
        (and (desktop-later? '(schevana apps tasks))
-            (desktop-later? "apps/boids.ss")
+            (desktop-later? '(schevana-demo boids))
+            (desktop-later? "/home/me/.schevana.d/apps/weather.ss")
             (not (desktop-later? '(schevana kits ui)))
             (not (desktop-later? '(schevana desktop topbar)))
             (not (desktop-later? "src/base.ss"))))

@@ -18,6 +18,10 @@ scheme --script tests/frame.ss out
 scheme --script tests/sources.ss
 ```
 
+- A test asks nothing of a library: no export, hook or name of its own
+  for the test. The test framework reaches what it needs itself, a
+  library's own names stripped as the hacker edition strips it
+  (`test-library`, [tests/GUIDE.md](tests/GUIDE.md)).
 - A change in behavior comes with a test of it, written by the rules in
   [tests/GUIDE.md](tests/GUIDE.md): where a check goes, what it may touch,
   and how it holds under both Chez versions, with any font and on any
@@ -46,16 +50,15 @@ before it:
 | Layer | What goes there |
 |---|---|
 | `schevana-desktop` and the demos' launchers | Programs of a few lines at the tree's root, which is where Schevana's libraries are found: each loads `src/launch.ss` and starts its library's main. |
-| `src/` | The top level's own files: `launch.ss` (the tree's libraries, compiled into `.cache/`, or spliced for `--hacker`), `hacker.ss` (the hacker edition: every library spliced into one environment, all its names redefinable), and `base.ss`: what every environment of the top level has, a copy each, the basics, forwarders, by which an environment gives another its names, and the top level's own forms. Pure: no state, no C. |
+| `src/` | The top level's own files: `launch.ss` (the tree's libraries, compiled into `.cache/`, or spliced for `--hacker`), `hacker.ss` (the hacker edition: every library spliced into one environment, all its names redefinable), `strip.ss` (a library's own forms at the top level, for the hacker edition and the tests' `test-library`), and `base.ss`: what every environment of the top level has, a copy each, the basics, forwarders, by which an environment gives another its names, and the top level's own forms. Pure: no state, no C. |
 | `schevana/core0/` | Core0, below the core, sealed in its libraries: the GPU's device side, the window and its events, the trace, what differs by platform. A launcher boots it, and core1 on the world's own thread (headless, one thread plays both). The core has of it only its facade, `(schevana core0)`; the recorder, `schevana/recorder/` (the bytes of frames and their writers), has `(schevana core0 for-recorder)`, and the core has of the recorder its facade, `(schevana recorder)`. |
 | `schevana/core/` | The core, sealed in its libraries, `(schevana core <piece>)`: the world (windows, focus, the theme's layers, processes, timers, its side of core0's window and events), core1's side of the GPU layer, drawing and fonts, the pacer, the loop, its registries, the hooks later layers fill, and the caches its own procedures need; making the world's environment, "/", where everything below loads, loading the world's files and reloading (`sources.sls`). The world has of it only its facade, `(schevana core)`, which lists what the world is given. |
 | `schevana/kits/` | Libraries, pure or almost, `(schevana kits <name>)`. |
-| `schevana/services/` | Long-lived state with an API and no surface: the crew of worker threads, the tree of environments, the apps' sandboxes and what they are allowed, vats and their jobs, the profiler, the saved look. |
+| `schevana/services/` | Long-lived state with an API and no surface: the crew of worker threads, the tree of environments and its sandboxes, vats and their jobs, the profiler, the saved look. |
 | `schevana/styles/`, `schevana/palettes/`, `schevana/wallpapers/` | The looks: one definition per library, registered by its definer as the library runs (the registries are the core's: `define-style`, `define-palette`, `define-wallpaper`). |
 | `schevana/desktop/` | The screen's own surfaces and the desktop's behavior: wallpaper, bars, menu, toasts, keys, arranging windows; and its start (`main.sls`, from the command line; `start.sls`, once the world is loaded). |
-| `schevana/apps/` | The apps that tune the world (the REPL, Settings, Tasks, Monitor, ...), one per library, defined with `define-app`. |
-| `apps/` | The apps in sandboxes, one per file, its first form `app-requests`: each runs in a sandbox of its own (`schevana/services/grant.sls`). |
-| `schevana-demo/` | The demos, one library each, `(schevana-demo <name>)`, on the core's facade: a program with a launcher at the root (`./schevana-game-demo`), and an app the desktop adds when its folder is given (`./schevana-desktop schevana-demo`). |
+| `schevana/apps/` | The desktop's own apps (the REPL, Settings, Tasks, Monitor, Clock, ...), one per library, defined with `define-app`. |
+| `schevana-demo/` | The demos, one library each, `(schevana-demo <name>)`, on the core's facade: an app the desktop adds when its folder is given (`./schevana-desktop schevana-demo`: Boids, Life, Springies, ...), some a program too, with a launcher at the root (`./schevana-game-demo`). |
 
 - **The boot is a chain**: a launcher boots core0, then core1, which
   boots the world (`(schevana desktop main)`). A sealed layer gives the next only what its facade
@@ -75,7 +78,7 @@ before it:
 - **The core never depends on a later layer.** It reaches them only
   through registries, parts and settings they fill, and hooks they set:
   what its facade gives settable (`*profile-span*`, `theme-save!`,
-  `window-gone!`, `app-load!`, ...).
+  `window-gone!`, ...).
 - **The looks sit below the desktop.** A look imports the core's facade,
   kits and services, never the desktop or an app, so that a program takes
   a look without the desktop's surfaces, keys and timers (a host app,
@@ -129,11 +132,6 @@ before it:
   defines** (`tests/sources.ss`). "/" imports each of the world's
   libraries and runs it, the folders in their order, each folder's
   libraries and files in file-name order (`world-entries`).
-- **An app in a sandbox requests what the table approves**
-  (`grant-tree-apps` in `schevana/services/grant.sls`, `tests/sources.ss`): a new
-  request is a reviewed change, and a bundle names only what the world
-  has. An app that tunes the world (Settings, Tasks) requests nothing and
-  runs there.
 
 ## State
 
@@ -149,7 +147,7 @@ before it:
   long-lived state behind its procedures. The desktop keeps its surfaces'
   state; an app its own data, per window where it can.
 - **S3. Lifetime.** State that must outlive `(reload!)` is, in a
-  library, a `define-state`, in a file (a sandboxed app's, the user's) a
+  library, a `define-state`, in a file (the user's) a
   `defvar`; a cache may be a `define` that starts empty. A window's state lives in the
   window (`window-ref`, `window-set!`), not in a global table.
 - **S4. Threads.** Global state belongs to core1, the world's thread, and
@@ -188,9 +186,10 @@ before it:
   the hacker edition splices their internals there too), so no plain
   common word (`part`, `rule`, `item`) names a global, and no two
   libraries define one name. Qualify a name by its owner or subject:
-  `theme-`, `style-`, `window-`. An app in a sandbox has a namespace of its
-  own, which stays there (`boids-step` in `apps/boids.ss`): the world holds
-  only its launcher (`tests/sources.ss`).
+  `theme-`, `style-`, `window-`. A demo exports its launcher alone; what
+  it keeps to itself may keep its own words (`pt` in Springies), the
+  hacker edition holding them too, while no other library defines them
+  (`tests/sources.ss`).
 - In `schevana/kits/` and `schevana/services/`, every name starts with its
   library's: `ui-…` in `(schevana kits ui)`, `profile-…` in `(schevana
   services profile)`; a record of the library's own name may give `make-x`
@@ -214,7 +213,7 @@ before it:
   again each library whose file changed, and every library that imports
   it (`schevana/reload.sls`), imports them again where they were
   imported ("/" among them), runs the world's libraries and loads its
-  files (the sandboxed apps', the user's); core0's libraries, with all
+  files (the user's); core0's libraries, with all
   they import, change with a restart (`tests/units/reload.ss`).
 
 ## Drawing and the look

@@ -49,14 +49,19 @@
                                (* frac (- (ui-region-w r) 16)))))
               (exact (round (+ cy (ui-region-y r) (/ (ui-region-h r) 2))))))))
 
-;; Wheels a scrolling pane (Settings') until the area id is in view: 41
-;; turns at most as the suite goes, the Theme tab's length at the biggest
-;; fonts, and never more than 200, for an area no wheel brings there.
+;; Wheels a scrolling pane (Settings') until the area id is in view, in
+;; the window's content and on the desktop, clear of its bars, which grow
+;; with the fonts: 41 turns at most as the suite goes, the Theme tab's
+;; length at the biggest fonts, and never more than 200, for an area no
+;; wheel brings there.
 (define (scroll-to-ui! win id)
   (let loop ([n 0])
-    (let-values ([(x y) (ui-point win id 0.5)]
-                 [(cx cy cw ch) (content-rect win)])
-      (let ([dy (cond [(> y (+ cy ch -10)) -1] [(< y (+ cy 10)) 1] [else 0])])
+    (let*-values ([(x y) (ui-point win id 0.5)]
+                  [(cx cy cw ch) (content-rect win)]
+                  [(dx dy dw dh) (desktop-rect)]
+                  [(top) (max cy dy)]
+                  [(bottom) (min (+ cy ch) (+ dy dh))])
+      (let ([dy (cond [(> y (- bottom 10)) -1] [(< y (+ top 10)) 1] [else 0])])
         (unless (or (zero? dy) (= n 200))
           (inject! `(mouse-move ,(+ cx cw -20) ,(+ cy 100)) `(wheel 0 ,dy))
           (steps 2)
@@ -926,100 +931,6 @@
 ;; The launcher by F1, the desktop's menu, F11 and the icon:
 ;; tests/units/desktop.ss.
 (close-window! c)
-
-;; An app in a sandbox that asks ((schevana services grant)): the launcher shows
-;; what it requests first ((schevana desktop permissions)), and Settings changes
-;; the answer later.
-(let ([launch! (lambda ()
-                 (launch-app-asking!
-                  (find (lambda (a) (eq? (app-name a) 'sketch)) *apps*))
-                 (steps 2))])
-  (launch!)
-  (let ([d (focused-window)])
-    (check "the launcher asks before Sketch opens: what it requests, each \
-            ticked"
-           (and (eq? (window-ref d 'permissions #f) 'sketch)
-                (not (find-window 'sketch))
-                (equal? (window-ref d 'ticked #f) '(window draw))))
-    (click-ui! d '(permissions draw))   ; unticked
-    (click-ui! d '(permissions allow))
-    (steps 2)
-    (let ([s (find-window 'sketch)])
-      (check "Allow decides as ticked and saves it, and Sketch opens; what \
-              it may not do crashes its window, which says where to allow it"
-             (and s (not (memq d (windows)))
-                  (let-values ([(ok no) (grant-of 'sketch)])
-                    (and (equal? ok '(window)) (equal? no '(draw))))
-                  (file-exists? *grant-file-path*)
-                  (window-error s)
-                  (grant-needed? (cdr (window-error s)))))
-      (let ([st (settings)])
-        (settings-st-tab-set! (window-ref st 'state) 'permissions)
-        (invalidate! st)
-        (steps 2)
-        (click-ui! st '(grant sketch draw))
-        (steps 2)
-        (let ([s2 (find-window 'sketch)])
-          (check "Settings' Permissions allows it: Sketch opens again where \
-                  it was, and draws"
-                 (and s2 (not (eq? s2 s)) (not (memq s (windows)))
-                      (not (window-error s2))
-                      (= (window-x s2) (window-x s))
-                      (= (window-y s2) (window-y s))
-                      (let-values ([(ok no) (grant-of 'sketch)])
-                        (and (equal? ok '(window draw)) (null? no))))))
-        (close-window! st)
-        (close-window! (find-window 'sketch)))
-      (launch!)
-      (check "decided, the launcher opens it without asking"
-             (let ([s3 (find-window 'sketch)])
-               (and s3 (eq? (focused-window) s3)
-                    (not (exists (lambda (w) (window-ref w 'permissions #f))
-                                 (windows))))))
-      (close-window! (find-window 'sketch))))
-  ;; Environments shows the bundles, and Permissions… changes them.
-  (let* ([e (envs)] [v (window-ref e 'state)] [ui (window-ref e 'ui)]
-         [show! (lambda (env)
-                  (envs-select! v env)
-                  (invalidate! e)
-                  (steps 2))])
-    (show! (grant-apps-env))
-    (check "Environments on /apps lists every bundle, and has no Permissions…"
-           (and (for-all (lambda (b) (ui-find ui (list '(envs bundles) b)))
-                         (map car grant-bundles))
-                (not (ui-find ui '(envs permissions)))))
-    (show! (grant-env 'clock))
-    (click-ui! e '(envs permissions))
-    (check "on Clock, what it requests; Permissions… does nothing: the \
-            table allows it"
-           (and (ui-find ui '((envs bundles) timers))
-                (not (ui-find ui '((envs bundles) toasts)))
-                (not (window-modal-child e))))
-    (let ([old (grant-env 'sketch)])
-      (show! old)
-      (click-ui! e '(envs permissions))
-      (let ([d (window-modal-child e)])
-        (check "on Sketch, Permissions… asks over Environments, which waits"
-               (and d (eq? (focused-window) d)
-                    (eq? (window-ref d 'permissions #f) 'sketch)))
-        (click-ui! d '(permissions draw))   ; unticked
-        (click-ui! d '(permissions allow))
-        (steps 2)
-        (check "Allow decides, and Environments stays on Sketch, whose \
-                sandbox was made again"
-               (and (not (memq d (windows))) (not (window-modal-child e))
-                    (env-dropped? old)
-                    (eq? (envs-view-selected v) (grant-env 'sketch))
-                    (eq? (grant-state 'sketch 'draw) 'denied)))))
-    (click-ui! e '((envs bundles) draw))
-    (check "a press on a bundle shows only its names"
-           (and (equal? (envs-view-names-query v) "Draw in its windows")
-                (eq? (envs-view-names v) 'shared)))
-    (click-ui! e '((envs bundles) draw))
-    (check "and again, all"
-           (equal? (envs-view-names-query v) ""))
-    (grant-decide! 'sketch '(window draw) '())
-    (close-window! e)))
 
 ;; Theme changes are live.
 (set-theme! 'accent #xff9e64)
@@ -2779,17 +2690,15 @@
   (remp (lambda (s) (eq? (style-name s) 'broken)) *styles*))
 
 ;; Life's cells take a theme change made behind set-theme!'s back, once
-;; asked to draw (set-theme! asks every window).
-(let ([l (life)] [green (theme 'green)] [cyan (theme 'cyan)])
+;; asked to draw (set-theme! asks every window). Its bar's height is its
+;; own (tests/reach.ss).
+(test-library '(schevana-demo life) 'lf:)
+(let ([l (lf:life)] [green (theme 'green)] [cyan (theme 'cyan)])
   (window-call l 'key #\space '())   ; paused
   (move-window! l 100 60)
   (steps 2)
   (let*-values ([(cx cy cw ch) (content-rect l)]
-                [(grid) (device-box cx cy cw
-                                    (- ch ((top-level-value
-                                            'life-bar-height
-                                            (env-environment
-                                             (grant-env 'life))))))]
+                [(grid) (device-box cx cy cw (- ch (lf:life-bar-height)))]
                 [(old) (canvas-pixels grid (color->pixel green))])
     (hashtable-set! *theme* 'green #xff00ff)
     (hashtable-set! *theme* 'cyan #xff00ff)

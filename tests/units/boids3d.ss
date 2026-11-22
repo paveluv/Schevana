@@ -1,43 +1,32 @@
-;;; tests/units/boids3d.ss — Boids 3D: in its sandbox with the GPU, its
-;;; flocking against the rules written out plainly, its shaders on the device
-;;; against the twin, its picture, its keys.
+;;; tests/units/boids3d.ss — Boids 3D: on the GPU, its flocking against the
+;;; rules written out plainly, its shaders on the device against the twin,
+;;; its picture, its keys.
 
-;; Boids 3D runs in its sandbox ((schevana services grant)): its names,
-;; forwarded here.
-(define boids3d-box (grant-env 'boids3d))
+;; Boids 3D's own names, b3:boids3d-steer and the rest (tests/reach.ss).
+(test-library '(schevana-demo boids3d) 'b3:)
 
-(check "Boids 3D runs in its sandbox with the GPU's bundle, allowed by the \
-        table, and nothing there waits for the GPU; its names and shaders \
-        stay there; its rules window is no app's, the flock's own"
-       (let* ([held (environment-symbols (env-environment boids3d-box))]
-              [world (environment-symbols *world-env*)]
-              [win (boids3d)]
+(check "Nothing in Boids 3D waits for the GPU or works on the crew: it \
+        names neither gpu-compute! nor gpu-buffer-read! nor crew-for*; its \
+        rules window is no app's, the flock's own"
+       (let* ([file (string-append *schevana-root*
+                                   "/schevana-demo/boids3d.sls")]
+              [names (let walk ([x (call-with-input-file file read)]
+                                [acc '()])
+                       (cond [(symbol? x) (cons x acc)]
+                             [(pair? x) (walk (cdr x) (walk (car x) acc))]
+                             [(vector? x) (walk (vector->list x) acc)]
+                             [else acc]))]
+              [win (b3:boids3d)]
               [rw (find-window "Boids 3D — Rules")]
-              [ok (and (equal? (env-path boids3d-box) "/apps/boids3d")
-                       (equal? (grant-requested 'boids3d)
-                               '(window draw ui timers gpu))
-                       (null? (grant-undecided 'boids3d))
-                       (memq 'define-compute-shader held)
-                       (memq 'gpu-compute-soon! held)
-                       (not (memq 'gpu-compute! held))
-                       (not (memq 'gpu-buffer-read! held))
-                       (not (memq 'crew-for* held))
-                       (memq 'boids3d-steer held)
-                       (not (memq 'boids3d-steer world))
+              [ok (and (memq 'gpu-compute-soon! names)
+                       (not (memq 'gpu-compute! names))
+                       (not (memq 'gpu-buffer-read! names))
+                       (not (memq 'crew-for* names))
                        (eq? (window-app win) 'boids3d)
                        (not (window-app rw))
                        (eq? (window-owner rw) win))])
          (close-window! win)
          ok))
-
-(for-each (lambda (n)
-            (define-top-level-syntax n
-              (forwarder-to (datum->syntax (env-anchor boids3d-box) n))))
-          '(boids3d-steer boids3d-place boids3d-bin boids3d-view
-            boids3d-steering boids3d-default-rules boids3d-rule
-            boids3d-random-rules boids3d-ranges boids3d-set-rule
-            boids3d-space boids3d-words boids3d-shape-words boids3d-step!
-            boids3d-resize! boids3d-current boids3d-camera boids3d-horizon))
 
 ;;; ------------------------------------------------------------------ steps
 
@@ -51,7 +40,7 @@
 (define (b3-sum vs) (fold-left b3-v+ '(0.0 0.0 0.0) vs))
 
 (define (b3-ref-step flock rules)
-  (define (rule k) (inexact (boids3d-rule rules k)))
+  (define (rule k) (inexact (b3:boids3d-rule rules k)))
   (define (reach w r) (if (= (rule w) 0.0) 0.0 (* (rule r) (rule r))))
   (define (half-cos angle)
     (if (>= angle 360.0) -2.0 (cos (* (/ angle 2.0) (/ pi 180.0)))))
@@ -114,7 +103,7 @@
               [nv (fold-left b3-v+ v (list coh ali sep side back))]
               [r (sqrt (b3-dot p p))]
               [nv (b3-v- nv (b3-v* p (/ (* (rule 'home)
-                                           (max (- r boids3d-space) 0.0))
+                                           (max (- r b3:boids3d-space) 0.0))
                                         (max r 1.0))))]
               [s (sqrt (b3-dot nv nv))]
               [k (cond [(> s (rule 'max-speed)) (/ (rule 'max-speed) s)]
@@ -140,12 +129,12 @@
 
 ;; A flock as the bytes a buffer holds, floats, and back.
 (define (b3-bytes flock)
-  (let ([bv (make-bytevector (* 4 boids3d-words (length flock)) 0)])
+  (let ([bv (make-bytevector (* 4 b3:boids3d-words (length flock)) 0)])
     (for-each (lambda (b i)
                 (for-each (lambda (v k)
                             (bytevector-ieee-single-native-set!
-                             bv (* 4 (+ (* i boids3d-words) k)) v))
-                          b (iota boids3d-words)))
+                             bv (* 4 (+ (* i b3:boids3d-words) k)) v))
+                          b (iota b3:boids3d-words)))
               flock (iota (length flock)))
     bv))
 
@@ -153,8 +142,8 @@
   (map (lambda (i)
          (map (lambda (k)
                 (bytevector-ieee-single-native-ref
-                 bv (* 4 (+ (* i boids3d-words) k))))
-              (iota boids3d-words)))
+                 bv (* 4 (+ (* i b3:boids3d-words) k))))
+              (iota b3:boids3d-words)))
        (iota n)))
 
 ;; A step of flock on the twin: the shader as Scheme, in floats.
@@ -162,9 +151,10 @@
   (let* ([n (length flock)]
          [in (b3-bytes flock)]
          [out (make-bytevector (bytevector-length in) 0)]
-         [args (append (boids3d-steering rules) (list boids3d-space 1.0))])
+         [args (append (b3:boids3d-steering rules)
+                       (list b3:boids3d-space 1.0))])
     (do ([i 0 (+ i 1)]) ((= i n))
-      (apply (twin-procedure boids3d-steer) i 0 n 1 in out n args))
+      (apply (twin-procedure b3:boids3d-steer) i 0 n 1 in out n args))
     (b3-flock out n)))
 
 ;; n birds in a ball of radius r, heading anywhere, from a seed.
@@ -189,11 +179,11 @@
        (for-all
         (lambda (seed)
           (let* ([flock (b3-random-flock 40 320.0 seed)]
-                 [rules (boids3d-set-rule
-                         (boids3d-set-rule
-                          (boids3d-set-rule
-                           (boids3d-set-rule boids3d-default-rules
-                                             'clear-view 0.3)
+                 [rules (b3:boids3d-set-rule
+                         (b3:boids3d-set-rule
+                          (b3:boids3d-set-rule
+                           (b3:boids3d-set-rule b3:boids3d-default-rules
+                                                'clear-view 0.3)
                            'back-off 0.2)
                           'blocker-radius 80.0)
                          'view-angle 270.0)])
@@ -201,8 +191,9 @@
         '(1 2 3)))
 
 (check "Boids 3D: what the view lets a bird see, a cone round its heading"
-       (let* ([rules (boids3d-set-rule
-                      (boids3d-set-rule boids3d-default-rules 'alignment 0.0)
+       (let* ([rules (b3:boids3d-set-rule
+                      (b3:boids3d-set-rule b3:boids3d-default-rules 'alignment
+                                           0.0)
                       'separation 0.0)]
               [bird '(0.0 0.0 0.0 2.0 0.0 0.0 0.0 0.0)]
               [ahead '(30.0 5.0 0.0 0.0 0.0 0.0 0.0 0.0)]
@@ -215,9 +206,9 @@
 
 (check "Boids 3D: clear view steps square to the line to a blocker, on the \
         side the bird heads; back off steps straight away"
-       (let* ([rules (fold-left (lambda (r kv) (boids3d-set-rule r (car kv)
-                                                                 (cdr kv)))
-                                boids3d-default-rules
+       (let* ([rules (fold-left (lambda (r kv) (b3:boids3d-set-rule r (car kv)
+                                                                    (cdr kv)))
+                                b3:boids3d-default-rules
                                 '((cohesion . 0.0) (alignment . 0.0)
                                   (separation . 0.0) (home . 0.0)
                                   (min-speed . 0.0) (max-speed . 10.0)))]
@@ -225,11 +216,11 @@
               [bird '(0.0 0.0 0.0 2.0 0.5 0.0 0.0 0.0)]
               [blocker '(20.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0)]
               [side (car (b3-twin-step (list bird blocker)
-                                       (boids3d-set-rule rules 'clear-view
-                                                         1.0)))]
+                                       (b3:boids3d-set-rule rules 'clear-view
+                                                            1.0)))]
               [back (car (b3-twin-step (list bird blocker)
-                                       (boids3d-set-rule rules 'back-off
-                                                         1.0)))])
+                                       (b3:boids3d-set-rule rules 'back-off
+                                                            1.0)))])
          ;; aside: up by a unit, the way it heads, x as it was; back: x less
          (and (< (abs (- (list-ref side 3) 2.0)) 1e-5)
               (< (abs (- (list-ref side 4) 1.5)) 1e-5)
@@ -238,22 +229,22 @@
 
 (check "Boids 3D: a bird out of the ball turns back toward its middle, and \
         its speed keeps within the limits"
-       (let* ([far (+ boids3d-space 100.0)]
+       (let* ([far (+ b3:boids3d-space 100.0)]
               ;; one past the ball flying round it, one nearly still
               [flock (list (list far 0.0 0.0 0.0 0.0 2.0 0.0 0.0)
                            (list 0.0 0.0 0.0 0.01 0.0 0.0 0.0 0.0))]
-              [next (b3-twin-step flock boids3d-default-rules)]
+              [next (b3-twin-step flock b3:boids3d-default-rules)]
               [speed (lambda (b) (sqrt (b3-dot (list-head (list-tail b 3) 3)
                                                (list-head (list-tail b 3)
                                                           3))))])
          (and (< (list-ref (car next) 3) 0.0)
               (for-all (lambda (b)
-                         (<= (- (boids3d-rule boids3d-default-rules
-                                              'min-speed)
+                         (<= (- (b3:boids3d-rule b3:boids3d-default-rules
+                                                 'min-speed)
                                 1e-5)
                              (speed b)
-                             (+ (boids3d-rule boids3d-default-rules
-                                              'max-speed)
+                             (+ (b3:boids3d-rule b3:boids3d-default-rules
+                                                 'max-speed)
                                 1e-5)))
                        next))))
 
@@ -262,13 +253,13 @@
 ;; A step on the device, by the frame, read back.
 (define (b3-device-step flock rules)
   (let* ([n (length flock)]
-         [in (make-gpu-buffer (* boids3d-words n))]
-         [out (make-gpu-buffer (* boids3d-words n))])
+         [in (make-gpu-buffer (* b3:boids3d-words n))]
+         [out (make-gpu-buffer (* b3:boids3d-words n))])
     (let ([bytes (b3-bytes flock)])
-      (do ([i 0 (+ i 1)]) ((= i (* boids3d-words n)))
+      (do ([i 0 (+ i 1)]) ((= i (* b3:boids3d-words n)))
         (gpu-buffer-set! in i (bytevector-s32-native-ref bytes (* 4 i)))))
-    (apply gpu-compute! boids3d-steer n 1 in out n
-           (append (boids3d-steering rules) (list boids3d-space 1.0)))
+    (apply gpu-compute! b3:boids3d-steer n 1 in out n
+           (append (b3:boids3d-steering rules) (list b3:boids3d-space 1.0)))
     (let ([next (b3-flock (gpu-buffer-read! out) n)])
       (gpu-buffer-release! in)
       (gpu-buffer-release! out)
@@ -278,7 +269,8 @@
 ;; (tests/units/shader.ss holds it to the twin's +, -, * and / alone).
 (check "Boids 3D: a step on the device is the twin's"
        (let* ([flock (b3-random-flock 200 300.0 7)]
-              [rules (boids3d-set-rule boids3d-default-rules 'back-off 0.1)])
+              [rules (b3:boids3d-set-rule b3:boids3d-default-rules 'back-off
+                                          0.1)])
          (b3-close? (b3-device-step flock rules) (b3-twin-step flock rules))))
 
 (check "Boids 3D: each tile lists the birds whose boxes touch it, in order, \
@@ -292,17 +284,19 @@
                        (1.0 1.0 -1.0 -1.0)      ; behind the eye: none
                        (2.0 2.0 40.0 20.0)      ; the first three across
                        (0.0 0.0 5.0 5.0))]      ; tile 0, past its room
-              [shapes (make-bytevector (* 4 boids3d-shape-words n) 0)]
+              [shapes (make-bytevector (* 4 b3:boids3d-shape-words n) 0)]
               [tiles (make-bytevector (* 4 across down (+ most 1)) 0)])
          (for-each (lambda (box i)
                      (for-each (lambda (v k)
                                  (bytevector-ieee-single-native-set!
-                                  shapes (* 4 (+ (* i boids3d-shape-words) k))
+                                  shapes
+                                  (* 4 (+ (* i b3:boids3d-shape-words) k))
                                   v))
                                box (iota 4)))
                    boxes (iota n))
          (do ([t 0 (+ t 1)]) ((= t (* across down)))
-           ((twin-procedure boids3d-bin) (modulo t across) (quotient t across)
+           ((twin-procedure b3:boids3d-bin)
+            (modulo t across) (quotient t across)
             across down shapes tiles n across most 16.0))
          (let ([tile (lambda (t)
                        (let* ([at (* t (+ most 1))]
@@ -324,7 +318,7 @@
 ;; of the ball heading right across the camera's view, the camera level in
 ;; front of it.
 (define (b3-one-bird-window)
-  (let ([win (boids3d)])
+  (let ([win (b3:boids3d)])
     (close-window! (find-window "Boids 3D — Rules"))
     (window-call win 'key #\space '())
     (window-set! win 'count 1)
@@ -348,7 +342,7 @@
                                                 13))))]
                   [mx (+ cx (quotient cw 2))]
                   [my (+ cy (quotient fh 2))]
-                  [hy (+ cy (exact (floor (* fh (boids3d-horizon 0.0)))))]
+                  [hy (+ cy (exact (floor (* fh (b3:boids3d-horizon 0.0)))))]
                   [red (lambda (p) (fxand (fxsrl p 16) 255))]
                   [light (lambda (p) (+ (fxand (fxsrl p 16) 255)
                                         (fxand (fxsrl p 8) 255)
@@ -384,7 +378,7 @@
            (let* ([fh (- ch (max 26 (round (+ (font-line-height 'ui-small)
                                                 13))))]
                   [mx (+ cx (quotient cw 2))]
-                  [hy (+ cy (exact (floor (* fh (boids3d-horizon 0.0)))))]
+                  [hy (+ cy (exact (floor (* fh (b3:boids3d-horizon 0.0)))))]
                   [light (lambda (p) (+ (fxand (fxsrl p 16) 255)
                                         (fxand (fxsrl p 8) 255)
                                         (fxand p 255)))]
@@ -399,7 +393,7 @@
 
 (check "Boids 3D: a drag turns the scene with the camera; the camera's own \
         circling leaves the scene where it is"
-       (let* ([win (boids3d)]
+       (let* ([win (b3:boids3d)]
               [bearing (lambda () (window-ref win 'scene-bearing))]
               [start (bearing)])
          (close-window! (find-window "Boids 3D — Rules"))
@@ -418,8 +412,7 @@
 
 (check "Boids 3D: space pauses the flock, h shows and hides the rules; a \
         closed window leaves no step waiting for the frame"
-       (let* ([win (boids3d)]
-              [box (env-environment boids3d-box)]
+       (let* ([win (b3:boids3d)]
               [tick (lambda ()
                       (let ([t (+ (now-ms) 20)])
                         (let loop () (when (< (now-ms) t) (loop))))
@@ -434,7 +427,7 @@
                 [rules? (find-window "Boids 3D — Rules")]
                 [_ (window-call win 'key #\h '())]
                 [hidden (not (find-window "Boids 3D — Rules"))])
-           (boids3d-step! win)
+           (b3:boids3d-step! win)
            (let ([waiting (map car (inspect-computes))])
              (close-window! win)
              (and moving still rules? hidden
@@ -444,19 +437,19 @@
 (check "Boids 3D: random rules are the rules, each within its range; what a \
         step is handed: a half view all round is -2, a rule without weight \
         reaches nothing"
-       (let* ([rules (boids3d-random-rules)]
-              [all-round (boids3d-set-rule
-                          (boids3d-set-rule boids3d-default-rules 'view-angle
-                                            360.0)
+       (let* ([rules (b3:boids3d-random-rules)]
+              [all-round (b3:boids3d-set-rule
+                          (b3:boids3d-set-rule b3:boids3d-default-rules
+                                               'view-angle 360.0)
                           'cohesion 0.0)]
-              [steering (boids3d-steering all-round)])
-         (and (equal? (map car boids3d-ranges)
+              [steering (b3:boids3d-steering all-round)])
+         (and (equal? (map car b3:boids3d-ranges)
                       (let loop ([r rules])
                         (if (null? r) '() (cons (car r) (loop (cddr r))))))
               (for-all (lambda (range)
-                         (<= (cadr range) (boids3d-rule rules (car range))
+                         (<= (cadr range) (b3:boids3d-rule rules (car range))
                              (caddr range)))
-                       boids3d-ranges)
+                       b3:boids3d-ranges)
               (= (length steering) 15)
               (= (list-ref steering 5) -2.0)
               (= (list-ref steering 7) 0.0))))
@@ -464,7 +457,7 @@
 (check "Boids 3D: its frames step the flock by time, a step a frame as far \
         as the time since the last, three steps' worth at most however \
         long; the camera turns by the same time"
-       (let* ([win (boids3d)]
+       (let* ([win (b3:boids3d)]
               [yaw (lambda () (window-ref win 'yaw))]
               [t (+ (now-ns) 1000000000)])
          (close-window! (find-window "Boids 3D — Rules"))
@@ -486,7 +479,8 @@
 ;; for no frame, its steps sent to the GPU at each turn's end; riding frames
 ;; again, its timer stops.
 (check "Boids 3D rides frames by default: minimized, its flock waits"
-       (let* ([win (boids3d)] [flipped (lambda () (window-ref win 'flipped?))])
+       (let* ([win (b3:boids3d)]
+              [flipped (lambda () (window-ref win 'flipped?))])
          (close-window! (find-window "Boids 3D — Rules"))
          (steps 2)
          (minimize-window! win)
@@ -499,8 +493,7 @@
 
 (check "Boids 3D riding a timer flies on while minimized, asking for no \
         frame; riding frames again, its timer stops"
-       (let* ([win (boids3d)]
-              [box (env-environment boids3d-box)]
+       (let* ([win (b3:boids3d)]
               [flips 0])
          (close-window! (find-window "Boids 3D — Rules"))
          (minimize-window! win)
@@ -510,7 +503,7 @@
          ;; a copy: after links a timer in place, behind any already
          ;; due, so into these very cells on a machine running late
          (let ([before (list-copy *timers*)])
-           (eval '(boids3d-ride! 'timer) box)
+           (b3:boids3d-ride! 'timer)
            (window-call win 'frame (now-ns))   ; its timer set
            (let* ([own (remp (lambda (x) (memq x before)) *timers*)]
                   ;; the first of its 15 ms steps finds it due
@@ -525,7 +518,7 @@
                    (unless (eq? was (window-ref win 'flipped?))
                      (set! flips (+ flips 1)))))
                (let ([quiet (not *dirty*)] [queued (pair? *gpu-computes*)])
-                 (eval '(boids3d-ride! 'frames) box)
+                 (b3:boids3d-ride! 'frames)
                  (set! t (+ t 15))
                  (run-timers!)
                  (let ([stopped (null? *timers*)] [had (pair? own)])
@@ -541,7 +534,7 @@
 
 (check "Boids 3D's home rule says what it does, and its Defaults button that \
         they make a murmuration"
-       (let ([win (boids3d)])
+       (let ([win (b3:boids3d)])
          (steps 2)
          (let* ([ui (window-ref (find-window "Boids 3D — Rules") 'ui)]
                 [tip (lambda (id) (ui-region-tip (ui-find ui id)))]

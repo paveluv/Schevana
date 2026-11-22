@@ -1,7 +1,7 @@
 ;;; (schevana desktop crash) — what a crashed window shows in place of its
-;;; content: the handler that raised, the condition, and how to go on (for an
-;;; app that lacked a permission, where to allow it). The window manager calls
-;;; the part draw-crash-panel inside the window's content.
+;;; content: the handler that raised, the condition, and how to go on. The
+;;; window manager calls the part draw-crash-panel inside the window's
+;;; content.
 
 (library (schevana desktop crash)
   (export
@@ -10,8 +10,7 @@
           (only (schevana base) condition->string define-hook library-layer
                 string-split)
           (only (schevana core) define-part draw-text fill-box font
-                font-char-width font-line-height mix window-error)
-          (only (schevana services grant) grant-needed?))
+                font-char-width font-line-height mix window-error))
 
   (library-layer desktop)
 
@@ -28,10 +27,7 @@
                            (condition->string (cdr err)) 'text 'mono-small)
         (when hint?
           (draw-text 16 (- h hint-h)
-                     (if (grant-needed? (cdr err))   ; an app's stub
-                         "Settings, Permissions allows it."
-                         "Click to retry.  Fix it live: (window-on! win 'draw \
-                          ...)")
+                     "Click to retry.  Fix it live: (window-on! win 'draw ...)"
                      'text-faint 'ui-small)))))
 
   ;; Character-wrapped text for monospace fonts; returns the y after the text.

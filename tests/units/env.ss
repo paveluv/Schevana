@@ -160,9 +160,8 @@
 
 (check "an environment forks only the kinds its own allows, refuses \
         what is not its to share and options it does not take, and hands \
-        forks down: a world namespace's makes all the world's, not an \
-        app's sandbox, a sandbox's sandboxes and threads, a pure one holds \
-        none"
+        forks down: a world namespace's makes all the world's, a \
+        sandbox's sandboxes and threads, a pure one holds none"
        (let* ([w (env-fork (env-root) 'world)]
               [wf (env-eval w 'fork)]
               [s (env-find (wf 'sandbox))]
@@ -173,8 +172,6 @@
                 [named (env-find (sf 'sandbox 'name 'units-named))]
                 [t (env-find (sf 'thread))]
                 [ok (and (equal? (wf) (env-forks (env-root)))
-                         (not (memq 'app (wf)))
-                         (raises? (lambda () (wf 'app)))
                          (equal? (sf) '(sandbox thread))
                          (raises? (lambda () (sf 'private)))
                          (raises? (lambda ()
@@ -369,7 +366,7 @@
               (equal? (envs-chip-picked "a") '(a "" "")))))
 
 (check "dropping a child takes it, and its children, out of the tree and \
-        marks them dropped; not the world, nor /worklets or /apps"
+        marks them dropped; not the world, nor /worklets"
        (let ([g (env-child units-env-world 'grand 'chez)])
          (env-drop! units-env-world)
          (env-drop! units-env)
@@ -378,14 +375,14 @@
               (raises? (lambda () (env-child g 'more 'chez)))
               (raises? (lambda () (env-drop! (env-root))))
               (raises? (lambda () (env-drop! (env-worklets))))
-              (raises? (lambda () (env-drop! (grant-apps-env))))
               (not (env-find "/units-world/grand"))
               (not (env-find "/units"))
               (not (memq units-env (env-children (env-root))))
               (equal? (map env-name (env-children (env-root)))
-                      '(worklets apps)))))
+                      '(worklets)))))
 
-;;; The confined base ((schevana services env)): what is always safe, for apps.
+;;; The confined base ((schevana services env)): what is always safe, for
+;;; sandboxes.
 
 (check "a confined sandbox has what is always safe, and nothing that \
         reaches past its arguments: no files, eval or environments, C, \
@@ -437,9 +434,9 @@
                           (not ((env-eval e 'env?) (env-root)))
                           (eq? (record-type-uid
                                 (env-eval e '(make-record-type-descriptor
-                                              'q #f 'schevana-grant-app-1 #f
+                                              'q #f 'schevana-font-file-1 #f
                                               #f '#())))
-                               '/units-records:schevana-grant-app-1))])
+                               '/units-records:schevana-font-file-1))])
              (env-drop! e)
              ok))))
 

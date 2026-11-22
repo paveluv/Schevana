@@ -170,7 +170,7 @@ the launcher, which shows it at once:
 
 `(apps)` lists the apps registered, and `(app-launch! name)` opens one as
 the launcher does. An app defined at the REPL runs in the world; to keep
-it, and to give it a sandbox of its own, see [APPS.md](APPS.md).
+it, see [APPS.md](APPS.md).
 
 ## Keys, timers, processes, notices
 

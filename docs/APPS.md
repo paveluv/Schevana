@@ -8,7 +8,7 @@ each `(reload!)`.
 
 | Folder | What goes there |
 | --- | --- |
-| `apps/` | one app a file, named after it, each in a sandbox of its own |
+| `apps/` | one app a file, named after it ([below](#an-app-of-yours)) |
 | `styles/`, `palettes/`, `wallpapers/` | one definition a file ([LOOKS.md](LOOKS.md)) |
 | `kits/` | code your styles and bars share |
 | `services/` | code that keeps state |
@@ -54,16 +54,13 @@ and every library loaded with its file; from a REPL or
 (auto-loads)                               ; every folder that loads
 ```
 
-## Apps in sandboxes
+## An app of yours
 
-An app of yours runs in a sandbox: an environment of its own, under
-`/apps`, holding only what it asks for, not even your kits, which are the
-world's. Its file's first form says what it needs, in bundles:
+An app of yours is a file in `~/.schevana.d/apps/`, loaded into the
+world as the rest is:
 
 ```scheme no-run
 ;;; ~/.schevana.d/apps/counter.ss
-(app-requests window draw)
-
 (define-app (counter) "Counter"
   (let ([n 0])
     (open-window "Counter" 'size '(240 . 100)
@@ -72,47 +69,12 @@ world's. Its file's first form says what it needs, in bundles:
       'mouse-down (lambda (win x y button clicks) (set! n (+ n 1))))))
 ```
 
-The launcher asks you before its first run, and Settings' Permissions
-page changes your answers later; they're kept in
-`~/.schevana.d/permissions.ss`. A bundle not allowed is there as stubs
-that raise, naming it, and a name in no bundle it requests isn't there at
-all.
-
-The bundles, and the tree's apps that run in sandboxes:
-
-```scheme
-(map car grant-bundles)          ; => (window draw ui timers crew gpu toasts launch)
-(grant-bundle-title 'timers)               ; => "Run on a timer"
-(grant-bundle-names 'timers)               ; => (after now-ms now-ns current-date)
-(grant-apps)                     ; => (boids boids3d clock life sketch springies)
-(grant-requested 'clock)                   ; => (window draw timers)
-(grant-undecided 'sketch)                  ; => (window draw)
-```
-
-What an app defines stays in its sandbox. The world has only its
-launcher, so `(clock)` at "/" opens Clock, but Clock's own names are
-Clock's:
-
-```scheme
-(env-path (grant-env 'clock))              ; => "/apps/clock"
-(procedure? (env-eval (grant-env 'clock) 'draw-clock-face))  ; => #t
-(repl "/apps/clock")                       ; a REPL among them
-```
-
-Settings, Monitor, Tasks, the REPL and Environments request nothing: they
-tune the world, and run in it.
-
-## The sandboxes are a beta
-
-Grants will be redesigned after v1, as a module system of Schevana's own,
-built on environments: a module imports and exports names, and a grant is
-a module's environment, imported. It won't be R6RS's, so that you can
-still go into any module's environment and inspect or redefine everything
-in it. Kits, and probably themes, will be modules too, installable from
-third parties; an app will be able to span several files and use R6RS
-libraries; modules will be compiled ahead, for a faster start; and an app
-in a sandbox will be one you can define at the REPL, which today only a
-file can make.
+What it defines is the world's, so name it by the app (`counter-…`), as
+Schevana's apps do. An app may be a library too, in a folder that
+auto-loads: the demos are, in `schevana-demo/`, `(schevana-demo boids)`
+and the rest, which `./schevana-desktop schevana-demo` loads. Code you
+would rather keep apart goes in a sandbox you make
+([ENVIRONMENTS.md](ENVIRONMENTS.md)).
 
 ## Host apps
 

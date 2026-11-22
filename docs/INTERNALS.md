@@ -52,15 +52,15 @@ schevana/      the libraries below the world, each declaring its layer:
                  reload!
   kits/        libraries, pure or almost: ui, edit, text, color, px,
                menu, ...
-  services/    long-lived state behind procedures: crew, env, grant,
-               profile, theme-file, vat
+  services/    long-lived state behind procedures: crew, env, profile,
+               theme-file, vat
   styles/  palettes/  wallpapers/    the looks, one definition a library
   desktop/     the screen's own surfaces: wallpaper, bars, menu, toasts;
-               keys, arranging, the file dialog, the permissions dialog;
-               the desktop's start (main, start)
-  apps/        the apps that tune the world: the REPL, Settings, Tasks, ...
-apps/          the apps in sandboxes, one a file
-schevana-demo/ the demos, a library each, with launchers at the root
+               keys, arranging, the file dialog; the desktop's start
+               (main, start)
+  apps/        the desktop's own apps: the REPL, Settings, Tasks, Clock, ...
+schevana-demo/ the demos, a library each: Boids, Life, Springies, ...; some
+               with launchers at the root
 ```
 
 ## The boot chain
@@ -92,7 +92,7 @@ it, and loads a copy of `src/base.ss` and the folders in the layers'
 order, the looks before the desktop, each in file-name order:
 
 ```scheme
-(map env-path (env-children (env-root)))   ; "/worklets", "/apps", ...
+(map env-path (env-children (env-root)))   ; "/worklets", ...
 (length (source-files))                    ; every file the world loaded
 ```
 

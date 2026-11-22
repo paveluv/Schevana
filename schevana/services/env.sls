@@ -18,7 +18,7 @@
 ;;;   (env-path e) => "/scratch"   (env-find "/scratch")   (env-drop! e)
 ;;;
 ;;; Root is the world (*world-env*), the superuser. A child has a base,
-;;; chez (all of Chez), confined (what is always safe, for apps) or core
+;;; chez (all of Chez), confined (what is always safe, for sandboxes) or core
 ;;; (Scheme's pure core, the worklets'), and of its parent's names only
 ;;; those the parent shares, as read-only forwarders
 ;;; (forwarder-to, src/base.ss): live, at no cost a call, and refusing a
@@ -399,14 +399,14 @@
     (hashtable-set! (env-given e) name note))
 
   ;;; ---------------------------------------------------------------- confined
-  ;;; The confined base, for apps ((schevana services grant)): what is always
-  ;;; safe, touching only its arguments and what it makes itself. R6RS's
-  ;;; libraries but those of I/O, files, programs, evaluation and record
-  ;;; inspection; Chez's pure extras; strings' ports; and, narrowed, records and
-  ;;; the console. Left out on purpose: syntax-case (datum->syntax on an
-  ;;; identifier a world macro hands in would name any of the world's bindings),
-  ;;; record-writer (it would change how the world prints the conditions'
-  ;;; types), the clock (an app's timers bundle), eval and environments, C,
+  ;;; The confined base, for sandboxes: what is always safe, touching only
+  ;;; its arguments and what it makes itself. R6RS's libraries but those of
+  ;;; I/O, files, programs, evaluation and record inspection; Chez's pure
+  ;;; extras; strings' ports; and, narrowed, records and the console. Left
+  ;;; out on purpose: syntax-case (datum->syntax on an identifier a world
+  ;;; macro hands in would name any of the world's bindings), record-writer
+  ;;; (it would change how the world prints the conditions' types), the
+  ;;; clock (the world's to share), eval and environments, C,
   ;;; threads and sleep, the inspector, Chez's own parameters, files and the
   ;;; console's ports, exit. One name per line: adding one is a reviewed change,
   ;;; and tests/units.ss refuses the dangerous ones.
@@ -681,7 +681,7 @@
       (if k (plist-ref (cdr k) key default) default)))
 
   ;; What e may fork: a list of kinds. Kinds registered with 'fork #f are
-  ;; made by code alone (an app's sandbox, (schevana services grant)).
+  ;; made by code alone.
   (define (env-forks e)
     (let ([f (env-may-fork e)])
       (filter (lambda (k) (env-kind-ref k 'fork #t))

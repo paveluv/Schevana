@@ -13,7 +13,6 @@
                 schevana-end! schevana-run! screen-w world-after-load!
                 world-load-now!)
           (only (schevana kits app) app-launch!)
-          (only (schevana services grant) grant-file-load!)
           (only (schevana services pacer-lab) pacer-lab-log-load!)
           (only (schevana services profile) profile-flag-log!)
           (only (schevana services theme-file) theme-file-load!)
@@ -36,8 +35,6 @@
     ;; and apps, before the saved theme is loaded: it may name a style or
     ;; palette of the user's.
     (load-user-folders!)
-    ;; What you allowed apps in sandboxes ((schevana services grant)).
-    (grant-file-load!)
     (for-each (lambda (thunk) (thunk)) *desktop-start-thunks*)
     ;; A checkout's private folder, if it has one, keeps every late tick, for
     ;; whoever is looking into them.
@@ -65,7 +62,7 @@
     ;; The first apps, by the registry: their launchers' names come later
     ;; than this file, with the apps, which load after the screen shows but
     ;; for these two, loaded first.
-    (world-load-now! "apps/clock.ss")
+    (world-load-now! '(schevana apps clock))
     (world-load-now! '(schevana apps repl))
     (let ([w (screen-w)])
       (app-launch! 'clock)

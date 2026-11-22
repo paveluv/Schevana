@@ -4,17 +4,17 @@ What Schevana takes from others, and under which terms.
 
 ## Boids and Boids 3D
 
-Boids (`apps/boids.ss`) is ported from Eduardo Cavazos's
+Boids (`schevana-demo/boids.sls`) is ported from Eduardo Cavazos's
 [Boids in Niva](https://github.com/dharmatech/boids-niva) (MIT). Its two
 blocker rules, clear view and back off, follow Gary William Flake's *The
 Computational Beauty of Nature* (MIT Press, 1998), written from his
-description. Boids 3D (`apps/boids3d.ss`) takes the same rules into three
-dimensions, as Craig Reynolds' "Flocks, Herds, and Schools: A Distributed
-Behavioral Model" (SIGGRAPH 1987) first had them.
+description. Boids 3D (`schevana-demo/boids3d.sls`) takes the same rules
+into three dimensions, as Craig Reynolds' "Flocks, Herds, and Schools: A
+Distributed Behavioral Model" (SIGGRAPH 1987) first had them.
 
 ## Springies
 
-Springies (`apps/springies.ss`) is ported from Eduardo Cavazos's
+Springies (`schevana-demo/springies.sls`) is ported from Eduardo Cavazos's
 Springies in [Agave](https://github.com/dharmatech/agave) (Apache 2.0),
 which followed Douglas DeCarlo's XSpringies. Its physics is written
 from XSpringies' behavior, not its (GPL) source, and its models are

@@ -10,8 +10,7 @@
 ;;; saved to *theme-file-path* (~/.schevana-theme.ss). Settings draws with the
 ;;; widget kit, so it is drawn in the chosen style too; its own pictures
 ;;; (the styles' miniatures, swatches, color tracks) are its
-;;; settings-draw-… procedures. Permissions, last, is what each app in a
-;;; sandbox may do ((schevana services grant)).
+;;; settings-draw-… procedures.
 
 (library (schevana apps settings)
   (export
@@ -44,7 +43,7 @@
     settings-draw-steps settings-draw-color-row settings-draw-big-swatch
     settings-colors settings-parse-hex settings-color-editor
     settings-draw-font-sample settings-fonts settings-display
-    settings-permissions settings-paths settings-layer-rank
+    settings-paths settings-layer-rank
     settings-path-facts
     settings-library-file settings-search-row settings-path-choose
     settings-path-added! settings-sidebar
@@ -93,9 +92,6 @@
                 ui-slider-height ui-button ui-region! ui-draw-label
                 ui-control-height ui-rows ui-switch-row)
           (only (schevana desktop file-dialog) open-file-dialog)
-          (only (schevana services grant) grant-requested grant-decide!
-                grant-bundle-title grant-undecided grant-app-title grant-asks?
-                grant-of grant-apps)
           (only (schevana services theme-file) theme-file-plain?
                 theme-file-hex))
 
@@ -103,7 +99,7 @@
 
   (define settings-tabs
     '((theme . "Theme") (colors . "Colors") (fonts . "Fonts")
-      (display . "Display") (permissions . "Permissions") (paths . "Paths")))
+      (display . "Display") (paths . "Paths")))
 
   ;; How frames reach the screen, those the window offers shown.
   (define settings-present-choices '(("VSync" . vsync) ("Mailbox" . mailbox)))
@@ -1144,51 +1140,6 @@
                                   needn't mean fewer missed frames."))))))
 
   ;;; ------------------------------------------------------------------
-  ;;; permissions
-
-  ;; What each app in a sandbox may do: under its title, what it requests, a
-  ;; checkbox each, ticked when allowed. A change saves, and reloads the app
-  ;; (its windows open again). One the tree approves is shown, not changed.
-  ;; => the y below
-  (define (settings-permissions ui x y w)
-    (let ([h (ui-control-height)] [gap (ui-gap)]
-          [y (+ 18 (ui-draw-label x y w 0 '(hint wrap)
-                                  "An app outside the world runs in a sandbox: \
-                                   it holds only what it asks for and is \
-                                   allowed. Changing one reloads the app."))])
-      (if (null? (grant-apps))
-          (ui-draw-label x y w 0 '(hint wrap) "No app runs in a sandbox.")
-          (fold-left
-           (lambda (y app)
-             (let-values ([(ok no) (grant-of app)])
-               (let* ([asks? (grant-asks? app)]
-                      [y (ui-draw-label x y w 0 '(section)
-                                        (grant-app-title app))]
-                      [y (+ 4 (ui-draw-label
-                               x (+ y 2) w 0 '(hint wrap)
-                               (cond [(not asks?) "Built in, and allowed by \
-                                                   Schevana."]
-                                     [(pair? (grant-undecided app))
-                                      "Not all decided: it asks at its next \
-                                       launch."]
-                                     [else "As you decided."])))])
-                 (+ 22
-                    (fold-left
-                     (lambda (y b)
-                       (ui-checkbox ui (list 'grant app b) x y w h
-                                    (format (if (memq b no) "~a (denied)" "~a")
-                                            (grant-bundle-title b))
-                                    (and (memq b ok) #t)
-                                    (lambda (on)
-                                      (if on
-                                          (grant-decide! app (list b) '())
-                                          (grant-decide! app '() (list b))))
-                                    'disabled (not asks?))
-                       (+ y h gap))
-                     y (grant-requested app))))))
-           y (grant-apps)))))
-
-  ;;; ------------------------------------------------------------------
   ;;; paths
 
   ;; Where libraries are found, and what loads with the world: the library
@@ -1407,7 +1358,6 @@
                          [(colors) (settings-colors ui st x y cw (- h 38))]
                          [(fonts) (settings-fonts ui x y cw)]
                          [(display) (settings-display ui x y cw)]
-                         [(permissions) (settings-permissions ui x y cw)]
                          [(paths) (settings-paths ui x y cw)]
                          [else (settings-theme-tab ui x y cw)])))]
            [content-h (+ (- bottom y) 20 18)]

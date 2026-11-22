@@ -19,24 +19,27 @@
 
 ;; Reloading as a process (the launcher's "Reload sources", a REPL) holds
 ;; the world still until it ends, but stays a process. These reload a copy
-;; of the tree with a file of its own last in apps/, apps/zz-last.ss, which
-;; holds form. The copy holds what the world loads as files, src/ (the
-;; basics) and apps/ (the apps in sandboxes); its libraries are found by
-;; their names.
+;; of the tree with a folder of its own that auto-loads, apps/, its one
+;; file apps/zz-last.ss holding form, the last to load. The copy holds
+;; what the world loads as files, src/ (the basics); its libraries are
+;; found by their names. tree-copy-done! puts the tree back.
+(define tree-copy-auto-loads '())
+
 (define (tree-copy-with name form)
   (let ([dir (string-append out-dir "/" name)])
-    (system (format "rm -rf '~a' && mkdir -p '~a' && cp -r~{ '~a'~} '~a'"
-                    dir dir
-                    (map (lambda (f) (string-append *schevana-root* "/" f))
-                         '("src" "apps"))
-                    dir))
-    ;; the last file to load into the world: an app in a sandbox would run
-    ;; the form there
+    (system (format "rm -rf '~a' && mkdir -p '~a/apps' && cp -r '~a' '~a'"
+                    dir dir (string-append *schevana-root* "/src") dir))
     (let ([p (open-output-file (string-append dir "/apps/zz-last.ss") 'append)])
       (write form p)
       (newline p)
       (close-port p))
+    (set! tree-copy-auto-loads *auto-loads*)
+    (set! *auto-loads* (list (path-full (string-append dir "/apps"))))
     dir))
+
+(define (tree-copy-done! root)
+  (set! *schevana-root* root)
+  (set! *auto-loads* tree-copy-auto-loads))
 
 ;; A long load: until it ends no frame, timer, tick, handler or other
 ;; process runs, and events that come meanwhile are handled after it, in
@@ -87,7 +90,7 @@
         (schevana-step! 0)
         (loop)))
     (kill! late))
-  (set! *schevana-root* root)
+  (tree-copy-done! root)
   (steps 3)
   (check (format "a long reload run as a process holds the world still (~a \
                   steps; ticks, draws, timers, other process, keys before and \
@@ -127,7 +130,7 @@
     (let ([alive? (and (memq p (procs)) #t)] [t0 ticks])
       (test-press! #\c 'ctrl)
       (steps 3)
-      (set! *schevana-root* root)
+      (tree-copy-done! root)
       (check (format "a reload whose source loops does not freeze the world \
                       (~a steps, the longest ~a ms), Ctrl+C kills it and a \
                       toast names the file"
@@ -154,7 +157,7 @@
     (let loop ([n 0])
       (unless (or caught? (> n 3000)) (schevana-step! 0) (loop (+ n 1))))
     (steps 2)
-    (set! *schevana-root* root)
+    (tree-copy-done! root)
     (check "a reload whose source raises ends there, and a toast names the file"
            (and caught? (memq p (procs)) (not (reload-holding?))
                 (exists (lambda (t)

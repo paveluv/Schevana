@@ -784,6 +784,10 @@
 ;;; ------------------------------------------------------------------
 ;;; the crew: Life at one pixel a cell, Boids at its largest
 
+;; Their own names, lf:life-speeds and bo:boids-step-on (tests/reach.ss).
+(test-library '(schevana-demo life) 'lf:)
+(test-library '(schevana-demo boids) 'bo:)
+
 ;; Steps of Life, maximized on a 1920 × 1080 screen at 200% (a 4K one), one
 ;; pixel a cell, a generation every tick, its controls hidden; of them, the
 ;; tick's ms and the rest's (its frame and upload).
@@ -801,8 +805,7 @@
                             [y (+ (ui-region-y r) (/ (ui-region-h r) 2))])
                        (window-call win 'mouse-down x y 'left 1)
                        (window-call win 'mouse-up x y 'left)))]
-           [speeds (top-level-value 'life-speeds
-                                    (env-environment (grant-env 'life)))])
+           [speeds lf:life-speeds])
       (slide! 'cell 0)
       (slide! 'speed (/ (- (length speeds) 2) (- (length speeds) 1)))
       (window-call win 'key #\h '())
@@ -831,10 +834,9 @@
   (clear-world!)
   (crew-size-set! size))
 
-(let* ([box (env-environment (grant-env 'boids))]
-       [step-on (top-level-value 'boids-step-on box)]
-       [scatter (top-level-value 'boids-scatter box)]
-       [rules (top-level-value 'boids-default-rules box)]
+(let* ([step-on bo:boids-step-on]
+       [scatter bo:boids-scatter]
+       [rules bo:boids-default-rules]
        [size (crew-size)])
   (for-each
    (lambda (n)
