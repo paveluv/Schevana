@@ -3458,7 +3458,7 @@
                                frames: each time, the GPU goes over the whole \
                                frame once more")])
                 (ui-draw-label (+ sx lw sw 8) ey (max 0 (- screen-w lw sw 8)) ch
-                               '(dim) (if (= every 1) "tick" "ticks"))))
+                               '(dim) (if (= every 1) "frame" "frames"))))
             ;; what a kept frame can't show
             (when (and (pipeline-view-held? v) (> (inspect-list-left-out l) 0))
               (ui-draw-label sx (+ hy ch gap)

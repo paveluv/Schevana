@@ -985,7 +985,7 @@
                     (> (inspect-history-newest history) frames)
                     (>= (ui-stream-sent river) sent)
                     (not (window-error w)))))))
-  ;; how often the small screen draws
+  ;; how often the small screen draws, and the words the window draws
   (let ([drawn (lambda (n)
                  (let ([calls 0] [plain inspect-preview!])
                    (fluid-let ([inspect-preview!
@@ -993,15 +993,24 @@
                                   (set! calls (+ calls 1))
                                   (apply plain image count left-out))])
                      (steps n))
-                   calls))])
+                   calls))]
+        [said (lambda ()
+                (let ([words '()] [plain draw-text])
+                  (fluid-let ([draw-text (lambda (x y s . more)
+                                           (set! words (cons s words))
+                                           (apply plain x y s more))])
+                    (invalidate! w)
+                    (steps 1))
+                  words))])
     (check "the small screen draws every frame by default"
            (and (= (pipeline-view-every v) 1) (= (drawn 8) 8)))
     (press! '((pipeline every) up))
     (press! '((pipeline every) up))
     (press! '((pipeline every) up))
-    (check "its control makes that as seldom as it's told"
+    (check "its control makes that as seldom as it's told, counted in frames"
            (and (= (pipeline-view-every v) 4)
-                (<= 1 (drawn 8) 3)))
+                (<= 1 (drawn 8) 3)
+                (member "frames" (said))))
     (pipeline-view-every-set! v 1)
     (steps 1))
   ;; the Tape
