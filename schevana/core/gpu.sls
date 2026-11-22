@@ -292,13 +292,11 @@
 
   ;;; ---------------------------------------------------------------- frames
 
-  ;; The frames core0 gave back, to fill again, and the last one it gave.
+  ;; The frames core0 gave back, to fill again.
   (define-state *gpu-frames-free* '())
-  (define-state *gpu-frame-last* #f)
 
   (define (gpu-frame-free! f)
-    (set! *gpu-frames-free* (cons f *gpu-frames-free*))
-    (set! *gpu-frame-last* f))
+    (set! *gpu-frames-free* (cons f *gpu-frames-free*)))
 
   ;; Core1's side of publishing: fills a frame, and hands on with it what
   ;; core1 asked of the GPU since the last time. The recorder gives it the

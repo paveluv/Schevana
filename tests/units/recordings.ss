@@ -3,6 +3,13 @@
 ;;; its list or frame, retired after the last frame that may show it, and
 ;;; written again only once core0 has given that frame back.
 
+;; The last frame that core0 gave back, as gpu-frame-free! takes it (the
+;; tests' build stands in for it).
+(define recordings-last-frame #f)
+(let ([plain gpu-frame-free!])
+  (set! gpu-frame-free!
+    (lambda (f) (set! recordings-last-frame f) (plain f))))
+
 (for-each close-window! (windows))
 (request-frame!)
 (steps 2)
@@ -14,14 +21,14 @@
   (check "the frame just published is the root's newest, frozen, and lent \
           to the frame"
          (and (not (gpu-recording-until r))
-              (eq? (gpu-frame-root *gpu-frame-last*) r)))
+              (eq? (gpu-frame-root recordings-last-frame) r)))
   (request-frame!)
   (steps 1)
   (check "replaced, it retires after the frame that showed it, and is free \
           once core0 gave that frame back"
          (and (not (eq? r *rec-root*))
               (eqv? (gpu-recording-until r)
-                    (- (gpu-frame-number *gpu-frame-last*) 1))
+                    (- (gpu-frame-number recordings-last-frame) 1))
               (rec-free? r))))
 
 ;; A list recorded again and again, with a frame in between each time: it
@@ -76,7 +83,7 @@
   (rec-past! target recs 64 extras 8 '())
   (request-frame!)
   (steps 1)
-  (let ([lent (gpu-frame-earlier *gpu-frame-last*)])
+  (let ([lent (gpu-frame-earlier recordings-last-frame)])
     (bytevector-fill! recs 0)
     (check (format "a list drawn ahead of a frame is the recorder's copy, \
                     read by that frame alone, free once it's back ~s"
@@ -93,7 +100,7 @@
     (request-frame!)
     (steps 1)
     (check "the next frame draws nothing ahead unless handed something"
-           (null? (gpu-frame-earlier *gpu-frame-last*))))
+           (null? (gpu-frame-earlier recordings-last-frame))))
   (gpu-image-release! target))
 
 ;; (recordings-poisoned poison? body ...) runs body. While poison? is true,

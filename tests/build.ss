@@ -55,6 +55,7 @@
     ((schevana apps tasks) tasks-forest tasks-draw-node)
     ((schevana core draw) draw-text rec-present!)
     ((schevana core fonts) text-width)
+    ((schevana core gpu) gpu-frame-free!)
     ((schevana core loop) collector-tick!)
     ((schevana core pacer)
      pacer-period pacer-start pacer-procs-ms render-frames-back!)
