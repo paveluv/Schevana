@@ -32,8 +32,9 @@
                 fill-wallpaper font-line-height linear-gradient maximized?
                 mix pi rgb screen-h screen-w stroke-box stroke-circle
                 text-width theme theme-default! theme-font-rule theme-rule
-                visible? window-app window-bg window-id window-shadow
-                window-title window-w window? with-clip with-place draw-line)
+                visible? wallpaper-shown window-app window-bg window-id
+                window-shadow window-title window-w window? with-clip
+                with-place draw-line)
           (only (schevana kits app) app-color)
           (only (schevana kits menu) menu-entries menu-filter menu-filter?
                 menu-label-key menu-label-text menu-tag menu-x menu-y)
@@ -394,7 +395,7 @@
   ;; which the screen's edges cut. Any other wallpaper is drawn alone.
   (define (gnome-draw-wallpaper w h)
     (fill-wallpaper 0 0 w h (theme 'wallpaper) 'desktop-top 'desktop-bottom)
-    (when (eq? (theme 'wallpaper) 'gradient)
+    (when (eq? (wallpaper-shown (theme 'wallpaper)) 'gradient)
       (let ([s (max w h)])
         (fill-circle (* w 0.1) (* h 1.15) (* s 0.55)
                      (alpha (mix 'desktop-bottom #x000000 0.3) 0.45))

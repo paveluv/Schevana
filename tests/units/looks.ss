@@ -625,6 +625,20 @@
                (and (equal? ink (list i i i))
                     (equal? shaded (list i p i))))))))
 
+(check "GNOME's wallpaper draws a gone one as the wallpaper it falls back \
+        to, its circles too, as the built-in wallpaper does"
+       (let ([at (lambda (name)
+                   (override! 'wallpaper name)
+                   (image 80 50 1 (lambda () (gnome-draw-wallpaper 80 50))))])
+         (let* ([shown (at (wallpaper-shown 'no-such-wallpaper))]
+                [gone (at 'no-such-wallpaper)])
+           (override! 'wallpaper)
+           (let ([same (zero? (max-diff shown gone))])
+             (picture-free! shown)
+             (picture-free! gone)
+             (and (eq? (wallpaper-shown 'no-such-wallpaper) 'gradient)
+                  same)))))
+
 (check "Interlisp's desktop is Medley's #x8822: dashes two pixels tall, \
         moved two columns every two rows"
        (let* ([img (image 4 4 1 (lambda ()
