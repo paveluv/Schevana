@@ -1,4 +1,4 @@
-;;; tests/units/ui-dropdown.ss — the kit's dropdown (kits/ui.ss), by
+;;; tests/units/ui-dropdown.ss — the kit's dropdown ((schevana kits ui)), by
 ;;; itself: the menu it opens, by a press or by keys, and what a choice
 ;;; does.
 

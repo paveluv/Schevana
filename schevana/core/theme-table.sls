@@ -92,10 +92,9 @@
     (unless (hashtable-contains? *theme* key)
       (hashtable-set! *theme* key value)))
 
-  ;; The pacer's choices, settings a person may change live
-  ;; ((schevana core theme)), unless a trial holds them: ((key . value) ...),
-  ;; the pacer lab's (services/pacer-lab.ss), which is never saved with the
-  ;; look.
+  ;; The pacer's choices, settings a person may change live ((schevana core
+  ;; theme)), unless a trial holds them: ((key . value) ...), the pacer lab's
+  ;; ((schevana services pacer-lab)), which is never saved with the look.
   (define-state *pacer-trial* '())
 
   (define (pacer-knob key)

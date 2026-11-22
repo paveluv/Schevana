@@ -115,15 +115,14 @@
   ;; the newest frame core0 gave back: sent, or found no room
   (define-state *frame-back* 0)
 
-  ;; The last frames, for kits/inspect.ss: what each took and held, and what
-  ;; became of it (1 it reached the screen, 2 the window had no room, 0 not
+  ;; The last frames, for (schevana kits inspect): what each took and held, and
+  ;; what became of it (1 it reached the screen, 2 the window had no room, 0 not
   ;; given back yet); its number (its report's, core0-frame-report), and when
-  ;; the oldest input it shows came (now-ns; 0, none) by SDL's stamp; then
-  ;; when its tick began, its draw began and it was published, and when that
-  ;; input came by core0's pump and by the compositor's time; the latch its
-  ;; tick aimed at (0, none), and when the pacer meant its tick to begin.
-  ;; Always kept: a few numbers a frame, for as many frames as the reports
-  ;; keep.
+  ;; the oldest input it shows came (now-ns; 0, none) by SDL's stamp; then when
+  ;; its tick began, its draw began and it was published, and when that input
+  ;; came by core0's pump and by the compositor's time; the latch its tick aimed
+  ;; at (0, none), and when the pacer meant its tick to begin. Always kept: a
+  ;; few numbers a frame, for as many frames as the reports keep.
   (define frame-ring-rows 2048)
   (define frame-ring-words 15)
   (define-state *frame-ring*

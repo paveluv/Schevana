@@ -28,7 +28,7 @@
 ;;;
 ;;; Keyboard focus: one focused widget per ui. A click focuses what takes
 ;;; typing; Tab and Shift+Tab go through every widget in draw order; Escape
-;;; leaves. Text editing is pure (kits/edit.ss), so the tests need no
+;;; leaves. Text editing is pure ((schevana kits edit)), so the tests need no
 ;;; window.
 
 (library (schevana kits ui)
@@ -126,7 +126,8 @@
     ui-draw-day* ui-form ui-form-height ui-form-walk ui-dialog ui-under?
     ui-sheet ui-dialog-box ui-dialog-button-widths ui-dialog-lines
     ui-dialog-size ui-dialog-size* ui-dialog-areas ui-dialog-areas*
-    ui-draw-scrim ui-draw-scrim* ui-draw-dialog ui-draw-dialog*)
+    ui-draw-scrim ui-draw-scrim* ui-draw-dialog ui-draw-dialog*
+    ui-stream-record)
   (import (chezscheme)
           (only (schevana base) at-load clamp define-hook filter-map
                 library-layer list-index plist-ref string-prefix? string-split)
@@ -699,8 +700,8 @@
   ;;; ---------------------------------------------------------------- menus
 
   ;; Opens a menu of entries at (x, y) of the screen, opts as open-menu! has
-  ;; them: the desktop's menu (desktop/menu.ss), which sets this; until then,
-  ;; none opens.
+  ;; them: the desktop's menu ((schevana desktop menu)), which sets this; until
+  ;; then, none opens.
   (define-hook (ui-menu-open! x y entries . opts) (void))
 
   ;; The tag of the menu that is open ('tag, as open-menu! takes it), or #f:
@@ -2134,7 +2135,7 @@
 
   ;; choices ((name . detail) ...) that typed matches, best first, as a
   ;; vector of (name detail positions); first? says a name goes first among
-  ;; equals. The completion kit's ranking (kits/complete.ss), which sets
+  ;; equals. The completion kit's ranking ((schevana kits complete)), which sets
   ;; this, by segments; until then, the names typed begins.
   (define-hook (ui-rank typed choices first?)
     (list->vector
@@ -2341,9 +2342,9 @@
   ;; draws it by the title, or elsewhere, or not at all.
   (define (ui-title-icon win) (window-ref win 'title-icon #f))
 
-  ;; An environment's icon by its kind (services/env.ss): the world's globe,
-  ;; a namespace's folder, a sandbox's box, a thread's or the worklets' gear,
-  ;; /apps' folder and an app's box, each in its kind's color; dim or
+  ;; An environment's icon by its kind ((schevana services env)): the world's
+  ;; globe, a namespace's folder, a sandbox's box, a thread's or the worklets'
+  ;; gear, /apps' folder and an app's box, each in its kind's color; dim or
   ;; disabled, faded.
   (define-part (ui-draw-env-icon x y s flags kind)
     (let-values ([(glyph ink)

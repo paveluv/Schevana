@@ -129,21 +129,23 @@
                     (sort (remp (lambda (name) (member name ready)) left)
                           (append (reverse ready) done)))))))))
 
-  ;; The libraries whose files changed since they were evaluated, and the
-  ;; libraries that import them, evaluated again in order and run; then
-  ;; the environments' imports again. held: libraries that stay as they
-  ;; are, with all they import. Their texts are kept only once all went
-  ;; in, so a reload stopped on an error tries the whole set again.
-  ;; => the libraries evaluated again
-  (define (reload-libraries! held)
+  ;; The libraries whose files changed since they were evaluated (and
+  ;; those of forced, as if theirs had), and the libraries that import them,
+  ;; evaluated again in order and run; then the environments' imports
+  ;; again. held: libraries that stay as they are, with all they import.
+  ;; Their texts are kept only once all went in, so a reload stopped on an
+  ;; error tries the whole set again. => the libraries evaluated again
+  (define (reload-libraries! held . forced)
     (let* ([candidates (reload-candidates held)]
            [changed (begin
                       (apply reload-mark! candidates)
                       (filter (lambda (name)
-                                (not (string=? (reload-text
-                                                (reload-source name))
-                                               (hashtable-ref *reload-texts*
-                                                              name ""))))
+                                (or (member name forced)
+                                    (not (string=? (reload-text
+                                                    (reload-source name))
+                                                   (hashtable-ref
+                                                    *reload-texts* name
+                                                    "")))))
                               candidates))]
            [order (reload-order changed candidates)])
       (for-each (lambda (name)

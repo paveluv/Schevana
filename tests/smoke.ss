@@ -489,11 +489,12 @@
                 (for-all (lambda (p) (= (+ (caddr p) 4) (cadddr p))) pages)
                 (for-all (lambda (p) (= (cadr p) (cadar pages))) pages)
                 (exists (lambda (p) (not (= (car p) (caar pages)))) pages))))
-  ;; A REPL's own handler outlives loading the REPL's file again.
+  ;; A REPL's own handler outlives its library evaluated again and run.
   (let ([mine (lambda (win x y button clicks) #f)])
     (hashtable-set! (window-handlers w) 'mouse-down mine)
-    (load (source-path "apps/repl.ss"))
-    (check "loading the REPL again keeps a REPL's own mouse handler"
+    (test-reload-library! '(schevana apps repl))
+    (check "the REPL's library evaluated again keeps a REPL's own mouse \
+            handler"
            (eq? mine (hashtable-ref (window-handlers w) 'mouse-down #f))))
   (close-window! w))
 
@@ -923,8 +924,8 @@
 ;; tests/units/desktop.ss.
 (close-window! c)
 
-;; An app in a sandbox that asks (services/grant.ss): the launcher shows
-;; what it requests first (desktop/permissions.ss), and Settings changes
+;; An app in a sandbox that asks ((schevana services grant)): the launcher shows
+;; what it requests first ((schevana desktop permissions)), and Settings changes
 ;; the answer later.
 (let ([launch! (lambda ()
                  (launch-app-asking!
@@ -1029,7 +1030,7 @@
 ;; Window styles: the frame, its buttons and their actions come from the style.
 ;; The insets Genera's rule gives with today's fonts: its 2-pixel border
 ;; and 4-pixel margin on each side, and at the bottom its label strip, the
-;; label font's line and 2, at least 14 (styles/genera.ss).
+;; label font's line and 2, at least 14 ((schevana styles genera)).
 (define (test-genera-insets)
   (with-style 'genera
     (lambda ()
@@ -1038,7 +1039,7 @@
 
 ;; Medley's: a border of 4, and above it the title strip, at least
 ;; Medley's 15 pixels, the title font's line under the ink, or the title
-;; bar's setting less 15 (styles/interlisp.ss).
+;; bar's setting less 15 ((schevana styles interlisp)).
 (define (test-interlisp-insets)
   (with-style 'interlisp
     (lambda ()
@@ -2305,7 +2306,7 @@
                 (task-assignee t) (task-tags t) (task-due t) (task-checklist t)
                 (task-created t) (task-updated t)))
          *tasks*))
-  (load-sources! '("apps/tasks.ss"))
+  (test-reload-library! '(schevana apps tasks))
   (steps 3)
   (let ([new (find-window 'tasks)])
     (check "a reload that changed task's fields keeps every task, each \
@@ -2843,8 +2844,7 @@
   (hashtable-set! (window-props old) 'ui 'an-older-kits-ui)
   (let ([x (window-x old)] [y (window-y old)]
         [w (window-w old)] [h (window-h old)])
-    (load (source-path "schevana/kits/ui.sls"))
-    (invoke-library '(schevana kits ui))
+    (test-reload-library! '(schevana kits ui))
     (steps 2)
     (let ([new (find-window 'clock)])
       (check "reloading the kit reopens a window of an older kit's ui in its \

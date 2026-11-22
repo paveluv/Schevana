@@ -1,6 +1,6 @@
 ;;; tests/units/present.ss — what the screen says of each frame: its reports
-;;; ((schevana core0 present)), joined to the frames drawn and the input
-;;; they show (kits/inspect.ss). Headless, nothing reports, so the reports
+;;; ((schevana core0 present)), joined to the frames drawn and the input they
+;;; show ((schevana kits inspect)). Headless, nothing reports, so the reports
 ;;; here are written as the screen's callbacks would write them.
 
 ;; Frame n's row begun, as core0 sends it at sent: none of the screen's

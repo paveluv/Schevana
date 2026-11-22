@@ -1,6 +1,6 @@
 # Widgets
 
-`kits/ui.ss` is the widget kit every app here is built with: buttons,
+`schevana/kits/ui.sls` is the widget kit every app here is built with: buttons,
 text, choices, tables, trees, scroll views, menus, dialogs and charts. It
 is immediate-mode: there is no tree of widget objects. A window's draw
 procedure calls a procedure for each widget, where it should be, every

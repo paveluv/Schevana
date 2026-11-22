@@ -1,6 +1,6 @@
 ;;; (schevana services grant) — apps in sandboxes. An app outside the world
 ;;; runs in an environment of its own, /apps/<name>, on the confined base
-;;; (services/env.ss), holding of the world's names only the bundles it
+;;; ((schevana services env)), holding of the world's names only the bundles it
 ;;; requests and someone approved:
 ;;;
 ;;;   ;;; apps/weather.ss — today's weather in a window.

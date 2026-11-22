@@ -1,8 +1,8 @@
-;;; tests/units/ui-tree.ss — the kit's tree (kits/ui.ss), by itself: rows
-;;; selected by a click or by keys, a twisty, Right, Left and Space
-;;; expanding and collapsing, Return and a double click opening, a right
-;;; press's menu, a collapse that hides the selection, and a tree with no
-;;; rows. The rows' order and steps are ui.ss's (ui-tree-rows, -step).
+;;; tests/units/ui-tree.ss — the kit's tree ((schevana kits ui)), by itself:
+;;; rows selected by a click or by keys, a twisty, Right, Left and Space
+;;; expanding and collapsing, Return and a double click opening, a right press's
+;;; menu, a collapse that hides the selection, and a tree with no rows. The
+;;; rows' order and steps are ui.ss's (ui-tree-rows, -step).
 
 (define ui-tree-test-kids
   '((a a1 a2) (a1 a11) (c c1)))

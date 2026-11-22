@@ -1,5 +1,5 @@
 ;;; tests/units/ui-scroll.ss — the kit's scroll view and scroll bar
-;;; (kits/ui.ss), by themselves, and a text area's own scrolling: the
+;;; ((schevana kits ui)), by themselves, and a text area's own scrolling: the
 ;;; wheel, the bar pressed and dragged, Page Down, Ctrl+End and Ctrl+Home.
 ;;; Which side the bar is on, and when it shows, are behaviors.ss's.
 

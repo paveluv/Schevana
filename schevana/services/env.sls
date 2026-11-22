@@ -399,18 +399,17 @@
     (hashtable-set! (env-given e) name note))
 
   ;;; ---------------------------------------------------------------- confined
-  ;;; The confined base, for apps (services/grant.ss): what is always safe,
-  ;;; touching only its arguments and what it makes itself. R6RS's libraries
-  ;;; but those of I/O, files, programs, evaluation and record inspection;
-  ;;; Chez's pure extras; strings' ports; and, narrowed, records and the
-  ;;; console. Left out on purpose: syntax-case (datum->syntax on an
-  ;;; identifier a world macro hands in would name any of the world's
-  ;;; bindings), record-writer (it would change how the world prints the
-  ;;; conditions' types), the clock (an app's timers bundle), eval and
-  ;;; environments, C, threads and sleep, the inspector, Chez's own
-  ;;; parameters, files and the console's ports, exit. One name per line:
-  ;;; adding one is a reviewed change, and tests/units.ss refuses the
-  ;;; dangerous ones.
+  ;;; The confined base, for apps ((schevana services grant)): what is always
+  ;;; safe, touching only its arguments and what it makes itself. R6RS's
+  ;;; libraries but those of I/O, files, programs, evaluation and record
+  ;;; inspection; Chez's pure extras; strings' ports; and, narrowed, records and
+  ;;; the console. Left out on purpose: syntax-case (datum->syntax on an
+  ;;; identifier a world macro hands in would name any of the world's bindings),
+  ;;; record-writer (it would change how the world prints the conditions'
+  ;;; types), the clock (an app's timers bundle), eval and environments, C,
+  ;;; threads and sleep, the inspector, Chez's own parameters, files and the
+  ;;; console's ports, exit. One name per line: adding one is a reviewed change,
+  ;;; and tests/units.ss refuses the dangerous ones.
 
   (define env-confined-libraries
     '((rnrs base)
@@ -663,7 +662,7 @@
   ;;;   world    a namespace shared every name of the world's, followed
   ;;;   pure     a namespace shared nothing
   ;;;   sandbox  Scheme's pure core, and what is shared with it
-  ;;;   thread   a sandbox in a vat of its own (services/vat.ss)
+  ;;;   thread   a sandbox in a vat of its own ((schevana services vat))
 
   ;; ((kind . plist) ...), in the order registered. plist: 'title, 'base,
   ;; 'forks (the kinds a child of it forks: a list, or all), 'doc, 'share
@@ -682,7 +681,7 @@
       (if k (plist-ref (cdr k) key default) default)))
 
   ;; What e may fork: a list of kinds. Kinds registered with 'fork #f are
-  ;; made by code alone (an app's sandbox, services/grant.ss).
+  ;; made by code alone (an app's sandbox, (schevana services grant)).
   (define (env-forks e)
     (let ([f (env-may-fork e)])
       (filter (lambda (k) (env-kind-ref k 'fork #t))

@@ -18,7 +18,7 @@
 ;;; A thread, the kind of environment (env-fork), is a sandbox and a vat
 ;;; started on it once it is shared what it is given.
 ;;;
-;;; A vat is a thread, its mailbox and a sandbox (services/env.ss) that
+;;; A vat is a thread, its mailbox and a sandbox ((schevana services env)) that
 ;;; only its thread evaluates in, so the sandbox's globals are written by
 ;;; that thread alone (S4, by construction). Share names with the sandbox
 ;;; before the vat starts: after, the sandbox is the vat's.

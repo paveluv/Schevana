@@ -15,8 +15,8 @@
 ;;; Space: pause · drag: pull a mass
 ;;; H: the controls window, beside the box (it closes with the box)
 ;;;
-;;; It runs in a sandbox (services/grant.ss), where the names above are: a
-;;; REPL in /apps/springies has them.
+;;; It runs in a sandbox ((schevana services grant)), where the names above are:
+;;; a REPL in /apps/springies has them.
 
 (app-requests window draw ui timers)
 

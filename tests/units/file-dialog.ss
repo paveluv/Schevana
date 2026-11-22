@@ -1,5 +1,5 @@
 ;;; tests/units/file-dialog.ss — the desktop's file dialog
-;;; (desktop/file-dialog.ss), by itself, over a tree of its own in the
+;;; ((schevana desktop file-dialog)), by itself, over a tree of its own in the
 ;;; output folder: paths and crumbs, what the list shows, its keys, and a
 ;;; file picked or the dialog cancelled.
 

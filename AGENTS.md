@@ -23,7 +23,7 @@ scheme --script tests/sources.ss
   and how it holds under both Chez versions, with any font and on any
   platform (and how to run the suites under the other Chez).
 - A new internal structure isn't finished until an `inspect-…` procedure in
-  `kits/inspect.ss` reads it: what the Pipeline shows, a REPL and a test can
+  `schevana/kits/inspect.sls` reads it: what the Pipeline shows, a REPL and a test can
   read.
 
 ## Simplicity first
@@ -49,11 +49,12 @@ before it:
 | `src/` | The top level's own files: `launch.ss` (the tree's libraries, compiled into `.cache/`, or spliced for `--hacker`), `hacker.ss` (the hacker edition: every library spliced into one environment, all its names redefinable), and `base.ss`: what every environment of the top level has, a copy each, the basics, forwarders, by which an environment gives another its names, and the top level's own forms. Pure: no state, no C. |
 | `schevana/core0/` | Core0, below the core, sealed in its libraries: the GPU's device side, the window and its events, the trace, what differs by platform. A launcher boots it, and core1 on the world's own thread (headless, one thread plays both). The core has of it only its facade, `(schevana core0)`; the recorder, `schevana/recorder/` (the bytes of frames and their writers), has `(schevana core0 for-recorder)`, and the core has of the recorder its facade, `(schevana recorder)`. |
 | `schevana/core/` | The core, sealed in its libraries, `(schevana core <piece>)`: the world (windows, focus, the theme's layers, processes, timers, its side of core0's window and events), core1's side of the GPU layer, drawing and fonts, the pacer, the loop, its registries, the hooks later layers fill, and the caches its own procedures need; making the world's environment, "/", where everything below loads, loading the world's files and reloading (`sources.sls`). The world has of it only its facade, `(schevana core)`, which lists what the world is given. |
-| `kits/` | Libraries, pure or almost. |
-| `services/` | Long-lived state with an API and no surface: the crew of worker threads, the tree of environments, the apps' sandboxes and what they are allowed, vats and their jobs, the profiler, the saved look. |
-| `desktop/` | The screen's own surfaces and the desktop's behavior: wallpaper, bars, menu, toasts, keys, arranging windows. |
-| `styles/`, `palettes/`, `wallpapers/` | One definition per file, registered by its definer. |
-| `apps/` | One app per file, defined with `define-app`; one whose first form is `app-requests` runs in a sandbox of its own (`services/grant.ss`). |
+| `schevana/kits/` | Libraries, pure or almost, `(schevana kits <name>)`. |
+| `schevana/services/` | Long-lived state with an API and no surface: the crew of worker threads, the tree of environments, the apps' sandboxes and what they are allowed, vats and their jobs, the profiler, the saved look. |
+| `schevana/desktop/` | The screen's own surfaces and the desktop's behavior: wallpaper, bars, menu, toasts, keys, arranging windows; and its start (`main.sls`, from the command line; `start.sls`, once the world is loaded). |
+| `schevana/styles/`, `schevana/palettes/`, `schevana/wallpapers/` | The looks: one definition per library, registered by its definer as the library runs. |
+| `schevana/apps/` | The apps that tune the world (the REPL, Settings, Tasks, Monitor, ...), one per library, defined with `define-app`. |
+| `apps/` | The apps in sandboxes, one per file, its first form `app-requests`: each runs in a sandbox of its own (`schevana/services/grant.sls`). |
 | `schevana-demo/` | The demos, one library each, `(schevana-demo <name>)`, on the core's facade: a program with a launcher at the root (`./schevana-game-demo`), and an app the desktop's `--demo` adds. |
 
 - **The boot is a chain**: a launcher boots core0, then core1, which
@@ -100,7 +101,7 @@ before it:
   updates `docs/PLATFORMS.md`: where it ran, where it should work, what
   happens without it. Monitor's Platform tab shows it all, and copies a
   run as a row of it.
-- **The core has a budget**, 38,870 tokens (atoms as read; comments,
+- **The core has a budget**, 38,876 tokens (atoms as read; comments,
   whitespace and names' lengths are free; a library's exports and
   imports, which declare, are left out), in `tests/sources.ss`. Don't join lines or
   shorten names to fit it. Code the core doesn't need moves out to the
@@ -114,11 +115,14 @@ before it:
   back end or raw Vulkan stays core0's business alone (`tests/sources.ss`;
   the compiler, `schevana/shader.sls`, writes the back ends' code).
 - **The shader language is the contract.** What a back end can't do doesn't
-  get in: the twin (`kits/twin.ss`) is a second back end from the start, and
+  get in: the twin (`schevana/kits/twin.sls`) is a second back end from the start, and
   `tests/units/shader.ss` holds it and the device together.
-- **A file in a folder registers what it defines** (`tests/sources.ss`).
+- **A library or a file of the world's folders registers what it
+  defines** (`tests/sources.ss`). "/" imports each of the world's
+  libraries and runs it, the folders in their order, each folder's
+  libraries and files in file-name order (`world-entries`).
 - **An app in a sandbox requests what the table approves**
-  (`grant-tree-apps` in `services/grant.ss`, `tests/sources.ss`): a new
+  (`grant-tree-apps` in `schevana/services/grant.sls`, `tests/sources.ss`): a new
   request is a reviewed change, and a bundle names only what the world
   has. An app that tunes the world (Settings, Tasks) requests nothing and
   runs there.
@@ -136,9 +140,9 @@ before it:
   caller holds (a ui, an edit, an owner's completion list). A service keeps
   long-lived state behind its procedures. The desktop keeps its surfaces'
   state; an app its own data, per window where it can.
-- **S3. Lifetime.** State that must outlive `(reload!)` is a `defvar`,
-  in a library a `define-state`; a cache may be a `define` that starts
-  empty. A window's state lives in the
+- **S3. Lifetime.** State that must outlive `(reload!)` is, in a
+  library, a `define-state`, in a file (a sandboxed app's, the user's) a
+  `defvar`; a cache may be a `define` that starts empty. A window's state lives in the
   window (`window-ref`, `window-set!`), not in a global table.
 - **S4. Threads.** Global state belongs to core1, the world's thread, and
   only it writes it. The exceptions are a service's own structures that
@@ -172,32 +176,38 @@ before it:
 
 ## Names
 
-- Everything is top-level, in one shared namespace, so no plain common word
-  (`part`, `rule`, `item`) names a global. Qualify a top-level name by its
-  owner or subject: `theme-`, `style-`, `window-`. An app in a sandbox has a
-  namespace of its own, which stays there (`boids-step` in `apps/boids.ss`):
-  the world holds only its launcher (`tests/sources.ss`).
-- In `kits/` and `services/`, every name starts with its file's: `ui-…` in
-  `kits/ui.ss`, `profile-…` in `services/profile.ss`; a record of the
-  file's own name may give `make-x` and `x?` (`tests/sources.ss`).
+- The world's libraries give "/" their names, one shared namespace (and
+  the hacker edition splices their internals there too), so no plain
+  common word (`part`, `rule`, `item`) names a global, and no two
+  libraries define one name. Qualify a name by its owner or subject:
+  `theme-`, `style-`, `window-`. An app in a sandbox has a namespace of its
+  own, which stays there (`boids-step` in `apps/boids.ss`): the world holds
+  only its launcher (`tests/sources.ss`).
+- In `schevana/kits/` and `schevana/services/`, every name starts with its
+  library's: `ui-…` in `(schevana kits ui)`, `profile-…` in `(schevana
+  services profile)`; a record of the library's own name may give `make-x`
+  and `x?` (`tests/sources.ss`). A record whose name is also a
+  procedure's names itself apart (`repl-record`, the REPL's).
 - American spelling everywhere: code, comments, UI text, documents (color,
   gray, center, neighbor, labeled).
 
 ## Live redefinition
 
-- The world's definitions are top-level, never in R6RS libraries, so the
-  REPL can redefine any of them in the running world. The layers below it
-  are libraries, which change with their files at a reload.
+- The world is libraries, which change with their files at a reload. A
+  `define` at "/" makes a name of the world's own, which the world reaches
+  where it calls by name (a hook, a part, a handler, `draw-window`): what
+  may be replaced live is a hook or called by name. The hacker edition
+  (`--hacker`, `src/hacker.ss`) splices every library into "/", where any
+  name may be redefined and every call reaches it.
 - A hook or a registry calls procedures by name, so a redefinition takes
   effect at the next call: `(lambda () (theme-file-save-soon!))`, not
   `theme-file-save-soon!` captured as a value.
 - `(reload!)` of the tree into itself must keep working. It evaluates
   again each library whose file changed, and every library that imports
   it (`schevana/reload.sls`), imports them again where they were
-  imported, and loads the world's files into "/"; core0's libraries, with
-  all they import, change with a restart (`tests/units/reload.ss`). A
-  `define` in "/" of a name the core gives makes the world's own, which
-  the core never calls.
+  imported ("/" among them), runs the world's libraries and loads its
+  files (the sandboxed apps', the user's); core0's libraries, with all
+  they import, change with a restart (`tests/units/reload.ss`).
 
 ## Drawing and the look
 

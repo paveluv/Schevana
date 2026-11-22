@@ -4,7 +4,8 @@
 ;;; The Niva version's tests (tests/flockTest.niva in boids-niva), and the
 ;;; screen's rules.
 
-;; Boids runs in its sandbox (services/grant.ss): its names, forwarded here.
+;; Boids runs in its sandbox ((schevana services grant)): its names, forwarded
+;; here.
 (define boids-box (grant-env 'boids))
 
 (check "Boids runs in its sandbox, holding its bundles, allowed by the table, \

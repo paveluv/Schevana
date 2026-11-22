@@ -1,5 +1,5 @@
 ;;; tests/units/ui-date-field.ss — the kit's date field and its calendar
-;;; (kits/ui.ss), by themselves: opened by a press or keys, a day picked
+;;; ((schevana kits ui)), by themselves: opened by a press or keys, a day picked
 ;;; by a click or by keys, Escape, and the date cleared.
 
 ;; A date field, its date kept where its on-select puts it, in a window as

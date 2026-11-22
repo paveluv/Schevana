@@ -410,8 +410,8 @@
          (set! *rec-runs-same* (vector-ref outer 10))
          (apply rec-state-restore! (list-tail (vector->list outer) 11))))))
 
-  ;; lst drawn with its origin at (x, y), inside the clip: no record, a run
-  ;; that shows it, and how many labels came before it, for kits/inspect.ss.
+  ;; lst drawn with its origin at (x, y), inside the clip: no record, a run that
+  ;; shows it, and how many labels came before it, for (schevana kits inspect).
   ;; Moved, only this run changes; lst isn't recorded again.
   (define (show-list lst x y)
     (rec-run-end!)

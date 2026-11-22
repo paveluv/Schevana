@@ -12,6 +12,13 @@
 ;; The world, loaded but not booted, and the tests' reach.
 (load (string-append *schevana-root* "/tests/boot.ss"))
 
+;; A library evaluated again, and what imports it, as a reload does when
+;; its file changed, in either edition: => the libraries evaluated again.
+(define (test-reload-library! name)
+  (if test-hacker?
+      ((eval 'hacker-reload-libraries!) (source-held-libraries) name)
+      (reload-libraries! (source-held-libraries) name)))
+
 ;; The launchers at the tree's root, schevana-desktop and the demos', each
 ;; a program of a few lines (src/launch.ss).
 (define test-launchers
@@ -57,11 +64,11 @@
 (set! *grant-file-path* (string-append out-dir "/permissions.ss"))
 (when (file-exists? *grant-file-path*) (delete-file *grant-file-path*))
 
-;; The crew's limit on core1 (services/crew.ss) is 100 ms of the machine's
-;; clock, for runaways. A busy machine keeps a worker waiting longer than
-;; that in the middle of an ordinary call, and the caller then raises as
-;; for a runaway: so the limit is long in every suite, and the crew's own
-;; topic checks it, at what it is, with a call that never ends.
+;; The crew's limit on core1 ((schevana services crew)) is 100 ms of the
+;; machine's clock, for runaways. A busy machine keeps a worker waiting longer
+;; than that in the middle of an ordinary call, and the caller then raises as
+;; for a runaway: so the limit is long in every suite, and the crew's own topic
+;; checks it, at what it is, with a call that never ends.
 (define test-crew-budget crew-core1-ms)
 (set! crew-core1-ms 60000)
 

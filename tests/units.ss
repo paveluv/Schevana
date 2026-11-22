@@ -156,7 +156,7 @@
 
 ;; The insets Genera's rule gives with today's fonts: its 2-pixel border
 ;; and 4-pixel margin on each side, and at the bottom its label strip, the
-;; label font's line and 2, at least 14 (styles/genera.ss).
+;; label font's line and 2, at least 14 ((schevana styles genera)).
 (define (test-genera-insets)
   (with-style 'genera
     (lambda ()
@@ -165,7 +165,7 @@
 
 ;; Medley's: a border of 4, and above it the title strip, at least
 ;; Medley's 15 pixels, the title font's line under the ink, or the title
-;; bar's setting less 15 (styles/interlisp.ss).
+;; bar's setting less 15 ((schevana styles interlisp)).
 (define (test-interlisp-insets)
   (with-style 'interlisp
     (lambda ()

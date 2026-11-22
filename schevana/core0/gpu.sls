@@ -732,8 +732,8 @@
 
   ;; A list kept to be shown by another: its recording, and the labels the
   ;; recorder gave it; when it was last recorded (core0-now-ns) and in how many
-  ;; ns, for kits/inspect.ss. Its id, a handle's, names its GPU buffers in
-  ;; *gpu-lists*; #f for a copy that's never shown (kits/inspect.ss).
+  ;; ns, for (schevana kits inspect). Its id, a handle's, names its GPU buffers
+  ;; in *gpu-lists*; #f for a copy that's never shown ((schevana kits inspect)).
   (define-record-type gpu-list
     (nongenerative schevana-gpu-list-3)
     (fields id (mutable recording) (mutable labels) (mutable recorded)

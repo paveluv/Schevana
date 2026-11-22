@@ -19,7 +19,8 @@
 
 ;; Reloading as a process (the launcher's "Reload sources", a REPL) holds
 ;; the world still until it ends, but stays a process. These reload a copy
-;; of the tree whose apps/tasks.ss ends in form.
+;; of the tree with a file of its own last in apps/, apps/zz-last.ss, which
+;; holds form.
 (define (tree-copy-with name form)
   (let ([dir (string-append out-dir "/" name)])
     (system (format "rm -rf '~a' && mkdir -p '~a' && cp -r~{ '~a'~} '~a'"
@@ -29,7 +30,7 @@
                     dir))
     ;; the last file to load into the world: an app in a sandbox would run
     ;; the form there
-    (let ([p (open-output-file (string-append dir "/apps/tasks.ss") 'append)])
+    (let ([p (open-output-file (string-append dir "/apps/zz-last.ss") 'append)])
       (write form p)
       (newline p)
       (close-port p))
@@ -133,7 +134,7 @@
                   (not *reloading*) (> ticks t0)
                   (exists (lambda (t)
                             (string-contains-ci? (vector-ref t 1)
-                                                 "apps/tasks.ss"))
+                                                 "apps/zz-last.ss"))
                           *toasts*))))
     (close-window! w)
     (set! *toasts* '())
@@ -156,7 +157,7 @@
            (and caught? (memq p (procs)) (not (reload-holding?))
                 (exists (lambda (t)
                           (string-contains-ci? (vector-ref t 1)
-                                               "failed in apps/tasks.ss"))
+                                               "failed in apps/zz-last.ss"))
                         *toasts*)))
     (kill! p)
     (set! *toasts* '())

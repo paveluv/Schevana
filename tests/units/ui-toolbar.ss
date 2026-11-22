@@ -1,7 +1,7 @@
-;;; tests/units/ui-toolbar.ss — the kit's toolbar (kits/ui.ss), by itself:
-;;; its items in a row a gap apart, the one of no width taking what the
-;;; others leave, a row filled exactly still one row, wrapping past it, and
-;;; its end item at the right of the first row.
+;;; tests/units/ui-toolbar.ss — the kit's toolbar ((schevana kits ui)), by
+;;; itself: its items in a row a gap apart, the one of no width taking what the
+;;; others leave, a row filled exactly still one row, wrapping past it, and its
+;;; end item at the right of the first row.
 
 ;; Where each item of a toolbar w wide was drawn, (x y w h), in order, and
 ;; then its end's, of width end if given; flex as ui-toolbar takes it.

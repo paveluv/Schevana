@@ -1,6 +1,6 @@
-;;; tests/units/ui-tooltip.ss — the kit's tooltip (kits/ui.ss), by itself:
-;;; when one shows, and what uses it up until the pointer moves. The test's
-;;; clock holds still, so a wait is ui-tip-ms on any machine.
+;;; tests/units/ui-tooltip.ss — the kit's tooltip ((schevana kits ui)), by
+;;; itself: when one shows, and what uses it up until the pointer moves. The
+;;; test's clock holds still, so a wait is ui-tip-ms on any machine.
 
 (define ui-tooltip-test-rows 30)
 

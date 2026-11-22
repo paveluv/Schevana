@@ -22,7 +22,7 @@ made in code, not read from XSpringies' example files.
 
 ## The CADR's 5X5 font
 
-The CADR's 5X5 font in `styles/genera.ss` (the glyphs of `genera-5x5`) is
+The CADR's 5X5 font in `schevana/styles/genera.sls` (the glyphs of `genera-5x5`) is
 MIT's, decoded from System 99's `fonts/5x5.qfasl`, under this license:
 
 Copyright (c) 1980, Massachusetts Institute of Technology. All rights
@@ -50,7 +50,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 ## OPEN LOOK
 
-The OPEN LOOK style's glyphs in `styles/open-look.ss` are Sun's glyph
+The OPEN LOOK style's glyphs in `schevana/styles/open-look.sls` are Sun's glyph
 fonts, `olgl10/12/14/19.bdf` from the X11R6 contrib tape, under their
 notice:
 
@@ -72,7 +72,7 @@ USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR
 OTHER TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR
 PERFORMANCE OF THIS SOFTWARE.
 
-Its shades and frame in `styles/open-look.ss` are translated from OLGX
+Its shades and frame in `schevana/styles/open-look.sls` are translated from OLGX
 and olwm (XView 3.2), whose notice asks for these words:
 
 (c) Copyright 1989, 1990, 1991 Sun Microsystems, Inc. Sun design patents

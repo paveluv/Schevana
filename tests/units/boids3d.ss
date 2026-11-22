@@ -2,7 +2,8 @@
 ;;; flocking against the rules written out plainly, its shaders on the device
 ;;; against the twin, its picture, its keys.
 
-;; Boids 3D runs in its sandbox (services/grant.ss): its names, forwarded here.
+;; Boids 3D runs in its sandbox ((schevana services grant)): its names,
+;; forwarded here.
 (define boids3d-box (grant-env 'boids3d))
 
 (check "Boids 3D runs in its sandbox with the GPU's bundle, allowed by the \

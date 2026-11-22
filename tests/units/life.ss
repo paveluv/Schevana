@@ -1,7 +1,7 @@
 ;;; tests/units/life.ss — Life: its kernels and its grid against a plain
 ;;; reference, its controls, the crew.
 
-;; Life runs in its sandbox (services/grant.ss): its procedures, from
+;; Life runs in its sandbox ((schevana services grant)): its procedures, from
 ;; there.
 (define life-env (env-environment (grant-env 'life)))
 (define (life-row-pixels . args)

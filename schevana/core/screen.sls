@@ -26,8 +26,8 @@
 
   (library-layer core)
 
-  ;; told of every event core0 sends, by its number, whether it means
-  ;; anything to the world or not (services/profile.ss sets it); till then
+  ;; told of every event core0 sends, by its number, whether it means anything
+  ;; to the world or not ((schevana services profile) sets it); till then
   ;; nothing
   (define-hook (screen-event-seen! type) (void))
   (define-state *screen-fullscreen* #f)   ; what headless mode pretends

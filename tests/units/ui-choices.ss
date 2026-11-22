@@ -1,6 +1,6 @@
-;;; tests/units/ui-choices.ss — the kit's slider, segmented choice,
-;;; checkbox and toggle (kits/ui.ss), by themselves: what a press, a drag
-;;; and Space set, and a slider let go over another window.
+;;; tests/units/ui-choices.ss — the kit's slider, segmented choice, checkbox and
+;;; toggle ((schevana kits ui)), by themselves: what a press, a drag and Space
+;;; set, and a slider let go over another window.
 
 ;; A slider 0 to 100 at x 20, 200 wide; a segmented choice of three; a
 ;; checkbox, a disabled one and a toggle: each value kept in a box.

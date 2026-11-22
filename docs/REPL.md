@@ -1,7 +1,7 @@
 # The REPL
 
-Everything in Schevana is a top-level definition in a running Chez Scheme,
-and the REPL is how you reach it. A REPL is a window: Ctrl+Shift+R opens
+Everything in Schevana is a live value in a running Chez Scheme, and the
+REPL is how you reach it. A REPL is a window: Ctrl+Shift+R opens
 one, and so does `(repl)`. This page is about what happens to what you
 type; the REPL's own keys and completion are in its tooltips.
 
@@ -21,8 +21,8 @@ it returns is the live thing, not a copy:
 
 ## Redefining the world
 
-A `define` at "/" replaces the definition the world calls, from its next
-call on:
+A `define` at "/" replaces what the world calls by name (a part, a
+handler, `draw-window`), from its next call on:
 
 ```scheme
 (define (draw-wallpaper w h)
@@ -30,9 +30,12 @@ call on:
 (define (draw-window win) (draw-window* win #t))   ; every window focused
 ```
 
-Every procedure is called by name, so nothing has to be restarted, and
-nothing is out of reach: the bars, the menus, the styles, the window
-manager. `(reload!)` loads the sources again and undoes what you redefined:
+What a library calls of its own it calls directly: a `define` at "/" of
+one of those makes the world's own, and the library's changes with its
+file, at `(reload!)`. Started with `--hacker`, the hacker edition, every
+library's names are "/"'s, internals too, and a `define` replaces any of
+them at every call: the bars, the menus, the styles, the window manager.
+`(reload!)` loads the sources again and undoes what you redefined:
 
 ```scheme no-run
 (reload!)

@@ -1,8 +1,8 @@
 ;;; (schevana desktop main) — the desktop's start, which ./schevana-desktop
-;;; launches: it reads the command line, then core1 (on a thread of its
-;;; own with a window, core0 keeping the process's first for the screen)
-;;; loads the world and starts it (desktop-start!, desktop/start.ss): the
-;;; user's settings, the screen, the first windows, the run till it quits.
+;;; launches: it reads the command line, then core1 (on a thread of its own with
+;;; a window, core0 keeping the process's first for the screen) loads the world
+;;; and starts it (desktop-start!, (schevana desktop start)): the user's
+;;; settings, the screen, the first windows, the run till it quits.
 ;;;
 ;;;   ./schevana-desktop [--size WxH] [--fullscreen] [--headless] [--fork]
 ;;;                      [--hacker] [--demo] [--eval EXPR]...

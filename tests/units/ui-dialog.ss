@@ -1,4 +1,4 @@
-;;; tests/units/ui-dialog.ss — the kit's dialog (kits/ui.ss), by itself:
+;;; tests/units/ui-dialog.ss — the kit's dialog ((schevana kits ui)), by itself:
 ;;; the keyboard it takes, Return for its default button, Escape and a
 ;;; press outside it, and its buttons by a click.
 

@@ -19,8 +19,8 @@
 ;;; R: random rules · D: the defaults · S: scatter · H: the rules window ·
 ;;; Space: pause · drag: move round the flock
 ;;;
-;;; It runs in a sandbox (services/grant.ss), where its shaders touch only the
-;;; buffers it hands them.
+;;; It runs in a sandbox ((schevana services grant)), where its shaders touch
+;;; only the buffers it hands them.
 
 (app-requests window draw ui timers gpu)
 

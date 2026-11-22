@@ -1,8 +1,8 @@
-;;; tests/units/grant.ss — apps in sandboxes (services/grant.ss): bundles,
-;;; grants, stubs, decisions, an app's own worklets.
+;;; tests/units/grant.ss — apps in sandboxes ((schevana services grant)):
+;;; bundles, grants, stubs, decisions, an app's own worklets.
 
-;;; Apps in sandboxes (services/grant.ss): bundles, grants, stubs and the
-;;; person's decisions.
+;;; Apps in sandboxes ((schevana services grant)): bundles, grants, stubs and
+;;; the person's decisions.
 
 (check "a tree app that requests bundles runs in its sandbox under /apps, \
         holding them, live, and nothing it did not request; the world's \
@@ -131,7 +131,7 @@
                 (not (memq 'open-window
                            (environment-symbols (env-environment e))))))))
 
-;;; An app's worklets (services/grant.ss).
+;;; An app's worklets ((schevana services grant)).
 
 (define-worklet (grant-test-square x) (* x x))
 

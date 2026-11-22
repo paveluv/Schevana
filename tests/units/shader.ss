@@ -1,7 +1,7 @@
 ;;; tests/units/shader.ss — the shader language's contract: every operation
-;;; gives the same on the device and on the twin (kits/twin.ss), whatever
-;;; the driver; what's outside the language is refused at expansion. A paint
-;;; colors its box, in its clip, and needs nothing recorded to change.
+;;; gives the same on the device and on the twin ((schevana kits twin)),
+;;; whatever the driver; what's outside the language is refused at expansion. A
+;;; paint colors its box, in its clip, and needs nothing recorded to change.
 
 ;; A buffer holding words.
 (define (shader-test-buffer words)

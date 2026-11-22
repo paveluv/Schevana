@@ -1,4 +1,4 @@
-;;; tests/units/ui-table.ss — the kit's table (kits/ui.ss), by itself: a
+;;; tests/units/ui-table.ss — the kit's table ((schevana kits ui)), by itself: a
 ;;; row selected, opened and its menu asked for, a heading's press, a
 ;;; row's checkbox, and the selected row scrolled into view. Its columns'
 ;;; handles and headings' places are behaviors.ss's; its steps by keys

@@ -13,7 +13,7 @@
     *source-texts* keep-source-text! file-text load-file! app-load!
     load-source load-sources!
     load-user-folders! source-held-libraries reload! world-libraries
-    load-world!
+    world-entries load-world!
     source-libraries-keep!)
   (import (chezscheme)
           (schevana base)
@@ -138,15 +138,25 @@
     (load path))
 
   ;; Loads an app's file (one in an apps folder, the tree's or the user's):
-  ;; into the world, until services/grant.ss sets it to give each app a
+  ;; into the world, until (schevana services grant) sets it to give each app a
   ;; sandbox of its own.
   (define-hook (app-load! path) (load-file! path))
 
+  ;; A world's source: a file, by its path, or one of the world's
+  ;; libraries, by its name, imported into "/" (once: a reload of a library
+  ;; imports it again there) and run, so that what it registers (an app, a
+  ;; style, a surface) is registered.
   (define (load-source f)
-    (let ([path (source-path f)])
-      (if (equal? (path-last (path-parent path)) "apps")
-          (app-load! path)
-          (load-file! path))))
+    (if (pair? f)
+        (begin
+          (unless (member f *world-imported*)
+            (reload-import! *world-env* f)
+            (set! *world-imported* (cons f *world-imported*)))
+          (invoke-library f))
+        (let ([path (source-path f)])
+          (if (equal? (path-last (path-parent path)) "apps")
+              (app-load! path)
+              (load-file! path)))))
 
   ;; Loads files into the world (from a private REPL too), or into env.
   ;; Run as a process (the launcher's "Reload
@@ -206,46 +216,53 @@
     (collector-settle!)
     (notify "Sources reloaded" 'green))
 
-  ;; The world's files into "/" (core1-boot!, reload!). The folders may
-  ;; import the libraries shipped in lib/; each loaded by then is seen as it
-  ;; reads, for the next reload to tell a change (reload-mark!), and its
-  ;; text kept, as a file's is, for what describes a name.
-  ;; The world's libraries, (schevana <folder> <name>), the folders in
-  ;; their order, each's in file-name order: those of the tree's
-  ;; schevana/<folder>/ for each of source-folders.
-  (define (world-libraries)
-    (apply append
-           (map (lambda (folder)
-                  (let ([dir (string-append *schevana-root* "/schevana/"
-                                            folder)])
-                    (if (file-directory? dir)
-                        (map (lambda (f)
-                               (list 'schevana (string->symbol folder)
-                                     (string->symbol (path-root f))))
-                             (sort string<?
-                                   (filter (lambda (f)
-                                             (string-suffix? ".sls" f))
-                                           (directory-list dir))))
-                        '())))
-                source-folders)))
+  ;; The world's libraries, (schevana <folder> <name>): those of the
+  ;; tree's schevana/<folder>/, for each of source-folders.
+  (define (world-libraries) (filter pair? (world-entries)))
+
+  ;; The world's sources in load order: the folders in theirs, each
+  ;; folder's libraries and files merged in file-name order, a library by
+  ;; its name, a file by its path; then the user's folders' files.
+  (define (world-entries)
+    (append
+     (apply append
+            (map (lambda (folder)
+                   (let* ([dir (string-append *schevana-root* "/schevana/"
+                                              folder)]
+                          [libs (if (file-directory? dir)
+                                    (map (lambda (f)
+                                           (cons (path-root f)
+                                                 (list 'schevana
+                                                       (string->symbol folder)
+                                                       (string->symbol
+                                                        (path-root f)))))
+                                         (filter (lambda (f)
+                                                   (string-suffix? ".sls" f))
+                                                 (directory-list dir)))
+                                    '())]
+                          [files (map (lambda (f)
+                                        (cons (path-root (path-last f)) f))
+                                      (folder-sources folder))])
+                     (map cdr (sort (lambda (a b) (string<? (car a) (car b)))
+                                    (append libs files)))))
+                 source-folders))
+     (user-folder-files)))
 
   ;; The world's libraries "/" imports (as a reload imports them again), so
   ;; that one new since is imported at the next.
   (define-state *world-imported* '())
 
-  ;; Each of the world's libraries imported into "/" and run, in order, so
-  ;; that what it registers (an app, a style, a surface) is registered;
-  ;; then the world's files.
+  ;; The world's sources into "/" (core1-boot!, reload!): in the library
+  ;; edition the basics first, a copy of "/"'s own. The folders may import
+  ;; the libraries shipped in the tree; each loaded by then is seen as it
+  ;; reads, for the next reload to tell a change (reload-mark!), and its
+  ;; text kept, as a file's is, for what describes a name.
   (define (load-world!)
     (hashtable-clear! *world-readers*)
     (add-library-directory! *schevana-root*)
-    (for-each (lambda (lib)
-                (unless (member lib *world-imported*)
-                  (reload-import! *world-env* lib)
-                  (set! *world-imported* (cons lib *world-imported*)))
-                (invoke-library lib))
-              (world-libraries))
-    (load-sources! (world-sources))
+    (load-sources! (if (schevana-hacker?)
+                       (world-entries)
+                       (cons "src/base.ss" (world-entries))))
     (reload-mark!)
     (source-libraries-keep! (library-list)))
 

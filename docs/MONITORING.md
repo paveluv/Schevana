@@ -77,7 +77,7 @@ it comes, to outlive a run.
 
 ## Inside the frame
 
-`kits/inspect.ss` reads what the core keeps about frames, the GPU and the
+`schevana/kits/inspect.sls` reads what the core keeps about frames, the GPU and the
 platform, as plain data, which the Pipeline draws.
 
 ```scheme

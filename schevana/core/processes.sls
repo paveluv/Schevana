@@ -46,18 +46,17 @@
   (define handler-fuel 50000000)
   (define slice-fuel 10000)        ; per process slice; roughly 15us
 
-  ;; The profiler's hook: #f, or (begin . end), procedures that
-  ;; services/profile.ss sets while on: (begin key part) opens a span of key
-  ;; (a symbol, or a window's or a process's id) and part (a window
-  ;; handler's kind, or #f; #t for a process's turn); (end outer?) closes
-  ;; the span open innermost, or with outer? true (the step's end) the
-  ;; outermost, and any a raise left open. Five places run their work in
-  ;; with-profile-span: the step, safely, a window's handler (window-call)
-  ;; and drawing (record-world!), and a process's turn (run-procs!).
-  ;; Off, each costs a variable read and a branch; key and part are
-  ;; computed only while the hook is set; nothing is allocated either way,
-  ;; and nothing is kept across the work (a value live across an engine's
-  ;; run costs Chez a copy of the frame).
+  ;; The profiler's hook: #f, or (begin . end), procedures that (schevana
+  ;; services profile) sets while on: (begin key part) opens a span of key (a
+  ;; symbol, or a window's or a process's id) and part (a window handler's kind,
+  ;; or #f; #t for a process's turn); (end outer?) closes the span open
+  ;; innermost, or with outer? true (the step's end) the outermost, and any a
+  ;; raise left open. Five places run their work in with-profile-span: the step,
+  ;; safely, a window's handler (window-call) and drawing (record-world!), and a
+  ;; process's turn (run-procs!). Off, each costs a variable read and a branch;
+  ;; key and part are computed only while the hook is set; nothing is allocated
+  ;; either way, and nothing is kept across the work (a value live across an
+  ;; engine's run costs Chez a copy of the frame).
   (define-state *profile-span* #f)
 
   ;; A span already over, from start to end on now-ns's clock, told to the
@@ -420,7 +419,7 @@
 
   ;; (worklet-spread chunk start end worklet arg ...): (worklet lo hi arg
   ;; ...) over [start, end), in chunks of at least chunk, the crew's threads
-  ;; sharing them once services/crew.ss sets it; on this one till then.
+  ;; sharing them once (schevana services crew) sets it; on this one till then.
   (define-hook (worklet-spread chunk start end proc . args)
     (when (< start end) (apply proc start end args)))
 

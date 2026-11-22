@@ -35,7 +35,7 @@
     ;; before the saved theme is loaded: it may name a style or palette of
     ;; the user's.
     (load-user-folders!)
-    ;; What you allowed apps in sandboxes (services/grant.ss).
+    ;; What you allowed apps in sandboxes ((schevana services grant)).
     (grant-file-load!)
     (for-each (lambda (thunk) (thunk)) *desktop-start-thunks*)
     ;; A checkout's private folder, if it has one, keeps every late tick, for
@@ -60,7 +60,7 @@
                       (option 'full-screen?)))
     (update-app-icon!)
     (load-user-init!)
-    ;; The pacer lab goes on if it was on (services/pacer-lab.ss).
+    ;; The pacer lab goes on if it was on ((schevana services pacer-lab)).
     (pacer-lab-log-load!)
     ;; The first apps, by the registry: their launchers' names come later
     ;; than this file, with the apps.

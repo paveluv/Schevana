@@ -1,7 +1,7 @@
-;;; tests/units/vat.ss — vats (services/vat.ss): threads with a mailbox and a
-;;; sandbox; jobs, their deliveries on core1, and their kills.
+;;; tests/units/vat.ss — vats ((schevana services vat)): threads with a mailbox
+;;; and a sandbox; jobs, their deliveries on core1, and their kills.
 
-;;; Vats (services/vat.ss): threads with a mailbox and a sandbox; jobs,
+;;; Vats ((schevana services vat)): threads with a mailbox and a sandbox; jobs,
 ;;; their deliveries on core1, and their kills.
 
 ;; Steps the world until (pred), a vat's thread doing its part meanwhile:

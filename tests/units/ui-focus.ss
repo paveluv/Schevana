@@ -1,6 +1,6 @@
-;;; tests/units/ui-focus.ss — the keyboard's focus (kits/ui.ss), by itself:
-;;; Tab and Shift+Tab through the widgets in the order they're drawn, and
-;;; a scroll view bringing what gets the keyboard into view, a text area
+;;; tests/units/ui-focus.ss — the keyboard's focus ((schevana kits ui)), by
+;;; itself: Tab and Shift+Tab through the widgets in the order they're drawn,
+;;; and a scroll view bringing what gets the keyboard into view, a text area
 ;;; taller than the view by its caret's row.
 
 ;; Five fields in a column.

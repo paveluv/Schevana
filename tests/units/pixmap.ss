@@ -1,4 +1,4 @@
-;;; tests/units/pixmap.ss — pixmaps (kits/pixmap.ss).
+;;; tests/units/pixmap.ss — pixmaps ((schevana kits pixmap)).
 
 (check "color->pixel"
        (and (= (color->pixel #x123456) #xff123456)

@@ -1,5 +1,5 @@
-;;; tests/units/ui-split.ss — the kit's split (kits/ui.ss), by itself: the
-;;; line between two panes dragged, kept within their least widths, and a
+;;; tests/units/ui-split.ss — the kit's split ((schevana kits ui)), by itself:
+;;; the line between two panes dragged, kept within their least widths, and a
 ;;; double click on it back to the app's width.
 
 ;; A split of 360 from x 20, its left pane 150 at first, at least 80 and

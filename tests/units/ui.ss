@@ -511,7 +511,9 @@
       (when (and scan (not (edit-layout-done? scan)))
         (ui-state-scans-set! ui (list scan)))
       (ui-end! ui 200 100)))
-  (fluid-let ([now-ms (lambda () t)])
+  ;; the timers its own alone: the world's, set as it booted, may be due by
+  ;; a time made up so early
+  (fluid-let ([now-ms (lambda () t)] [*timers* '()])
     (let ([timers (length *timers*)] [before (asked)])
       (draw! 1500)
       (draw! 1500)

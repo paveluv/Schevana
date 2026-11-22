@@ -128,14 +128,15 @@
                (chez:library name (ex external ...) (im (chezscheme))
                  (define-syntax external (quote forward)) ...))))])))
 
-;; Each spliced library whose file changed since, and each that imports
-;; one of them, spliced again, in the order they were first: their names
-;; redefined here, which every caller reaches at its next call, and what
-;; sets a hook set again; a macro's users keep what they expanded to. held:
-;; libraries that stay as they are, with all they import, as in the
-;; library edition (reload-libraries!). => the names of those spliced
-;; again, kept as the library edition's reload keeps them.
-(define (hacker-reload-libraries! held)
+;; Each spliced library whose file changed since (and those of forced, as
+;; if theirs had), and each that imports one of them, spliced again, in the
+;; order they were first: their names redefined here, which every caller
+;; reaches at its next call, and what sets a hook set again; a macro's
+;; users keep what they expanded to. held: libraries that stay as they
+;; are, with all they import, as in the library edition
+;; (reload-libraries!). => the names of those spliced again, kept as the
+;; library edition's reload keeps them.
+(define (hacker-reload-libraries! held . forced)
   (let* ([imports (lambda (name)
                     (let ([e (assoc name hacker-spliced)])
                       (if e (cadddr e) '())))]
@@ -147,11 +148,12 @@
          [candidates (remp (lambda (e) (member (car e) held)) hacker-spliced)]
          [changed (map car
                        (filter (lambda (e)
-                                 (and (file-exists? (cadr e))
-                                      (not (string=? (caddr e)
-                                                     (call-with-input-file
-                                                       (cadr e)
-                                                       get-string-all)))))
+                                 (or (member (car e) forced)
+                                     (and (file-exists? (cadr e))
+                                          (not (string=? (caddr e)
+                                                         (call-with-input-file
+                                                           (cadr e)
+                                                           get-string-all))))))
                                candidates))]
          [set (let grow ([set changed])
                 (let ([more (filter (lambda (e)

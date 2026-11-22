@@ -20,11 +20,10 @@
 ;;;   (emit-color r g b a)  (nothing)
 ;;; cond, case, when and unless are only ways to write if, a constant is its
 ;;; number, helpers are local functions and a layout's field an index: all gone
-;;; by the tree, and no back end knows of them.
-;;; A back end is a table from those to its target and a walk over the
-;;; tree. SPIR-V's and MSL's are here; the twin (kits/twin.ss), the same tree
-;;; as a Scheme procedure, is another, so that nothing one target alone can do
-;;; gets into the language.
+;;; by the tree, and no back end knows of them. A back end is a table from those
+;;; to its target and a walk over the tree. SPIR-V's and MSL's are here; the
+;;; twin ((schevana kits twin)), the same tree as a Scheme procedure, is
+;;; another, so that nothing one target alone can do gets into the language.
 
 (library (schevana shader)
   (export

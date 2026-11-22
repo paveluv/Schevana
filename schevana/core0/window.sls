@@ -49,7 +49,7 @@
   (define-state *current-cursor* #f)
 
   ;; Who the window is to the desktop: its app id under Wayland, its
-  ;; class under X11. The desktop entry (desktop/icon.ss) names it too.
+  ;; class under X11. The desktop entry ((schevana desktop icon)) names it too.
   (define core0-app-id "schevana")
 
   ;;; ------------------------------------------------------------------ window
@@ -688,8 +688,8 @@
                       (core0-read-frame-ns) (core0-read-display)
                       (sdl-get-error))))))))
 
-  ;; The step's state as plain data, for inspect-core0 (kits/inspect.ss): the
-  ;; jobs and events waiting, and the last job that raised.
+  ;; The step's state as plain data, for inspect-core0 ((schevana kits
+  ;; inspect)): the jobs and events waiting, and the last job that raised.
   (define (core0-step-state)
     (list (cons 'jobs (length (unbox *core0-jobs*)))
           (cons 'events (length (unbox *core0-inbox*)))

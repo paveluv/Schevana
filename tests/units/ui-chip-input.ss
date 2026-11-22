@@ -1,4 +1,4 @@
-;;; tests/units/ui-chip-input.ss — the kit's chip input (kits/ui.ss), by
+;;; tests/units/ui-chip-input.ss — the kit's chip input ((schevana kits ui)), by
 ;;; itself: chips added by Return, a comma or a paste, removed by Backspace
 ;;; or a chip's ×, and a suggestion picked by keys.
 

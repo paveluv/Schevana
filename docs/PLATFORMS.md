@@ -59,7 +59,7 @@ several monitors.
 | The Debug REPL's socket | `schevana/socket.sls` (the address's layout differs on a Mac) | Linux; the Mac | Linux, macOS; not Windows | — |
 | The generic font names asking for DejaVu first | `schevana/core/fonts.sls` (`font-generic-families`) | the Mac | macOS | the system's own fonts, taller lines |
 | The window's app id (Wayland) and class (X11) | `schevana/core0/window.sls` | GNOME Shell 48.7 | freedesktop desktops | a generic icon |
-| The desktop entry (`--install-desktop`) | `desktop/icon.ss` | GNOME Shell 48.7 | freedesktop desktops | launched from a terminal only |
+| The desktop entry (`--install-desktop`) | `schevana/desktop/icon.sls` | GNOME Shell 48.7 | freedesktop desktops | launched from a terminal only |
 | Core1 at the class core0's runs at, the user-interactive one | `schevana/core0/platform.sls` (`platform-thread-interactive!`, `pthread_set_qos_class_self_np`), called as `src/core0/boot.ss` forks core1 | macOS 15.7.9, M3 Pro: the process's first thread runs at `QOS_CLASS_USER_INTERACTIVE`, a thread forked at `QOS_CLASS_DEFAULT` till it asks | Macs | the OS's default for core1 (Linux, Windows) |
 | The process's memory in the top bar (the number after "/") | `schevana/core/platform.sls` (`platform-process-bytes`: `/proc/self/status`'s `VmRSS` on Linux, `proc_pid_rusage` on a Mac) | Linux | Linux; macOS, written and not run | the heap alone, with no "/" |
 | The machine's load in the Pipeline's facts | `schevana/core/platform.sls` (`platform-machine-load`: `getloadavg`) | Linux | Linux, macOS | the line is left out |

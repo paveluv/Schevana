@@ -1,5 +1,5 @@
-;;; tests/units/pipeline.ss — kits/inspect.ss reads what the recorder wrote,
-;;; and the Pipeline shows it.
+;;; tests/units/pipeline.ss — (schevana kits inspect) reads what the recorder
+;;; wrote, and the Pipeline shows it.
 
 ;; thunk drawn as a frame, and the list that frame leaves; the world's own
 ;; recording comes back.

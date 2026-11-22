@@ -47,16 +47,18 @@ schevana/      the libraries below the world, each declaring its layer:
     theme        settings in layers, rules, palettes, styles, parts
     windows      windows, z-order, focus, hit testing, dragging,
                  dispatch; the registries of surfaces and strips
-    sources      "/", the world's files, loading them and reload!
-  desktop/     the desktop's libraries: main, its start from the command
-               line
-kits/          libraries, pure or almost: ui, edit, text, color, px, ...
-services/      long-lived state behind procedures: crew, env, grant,
+    sources      "/", the world's libraries and files, loading them and
+                 reload!
+  kits/        libraries, pure or almost: ui, edit, text, color, px, ...
+  services/    long-lived state behind procedures: crew, env, grant,
                profile, theme-file, vat
-desktop/       the screen's own surfaces: wallpaper, bars, menu, toasts;
-               keys, arranging, the file dialog, the permissions dialog
-styles/  palettes/  wallpapers/  apps/     one definition a file
-schevana-demo/ programs on the core's libraries, one a file
+  desktop/     the screen's own surfaces: wallpaper, bars, menu, toasts;
+               keys, arranging, the file dialog, the permissions dialog;
+               the desktop's start (main, start)
+  styles/  palettes/  wallpapers/    the looks, one definition a library
+  apps/        the apps that tune the world: the REPL, Settings, Tasks, ...
+apps/          the apps in sandboxes, one a file
+schevana-demo/ the demos, a library each, with launchers at the root
 ```
 
 ## The boot chain
@@ -66,7 +68,7 @@ which finds the libraries in the tree (each compiled once into `.cache/`,
 a folder there for each Chez version and machine) and calls the main of
 the launcher's library, `(schevana desktop main)`: core0 boots, then core1
 on the world's thread (`core1-run`), which loads the world (`core1-boot!`)
-and starts it (`desktop-start!`, `desktop/start.ss`).
+and starts it (`desktop-start!`, `schevana/desktop/start.sls`).
 Core0, the recorder and the core are sealed in their libraries, and each
 layer has of the one below only what its facade gives: the core imports
 `(schevana core0)` and `(schevana recorder)`, the world `(schevana
@@ -133,8 +135,8 @@ and they change with a restart. It runs as a process, and while
 it loads nothing else runs half-loaded code: no frames, timers, ticks or
 other processes, and input waits to be handled in order when it's done.
 Ctrl+C stops it, and a toast names the file it was loading if it's
-stopped or fails. State that must survive it is a `defvar`, in a
-library a `define-state`, and record types are nongenerative.
+stopped or fails. State that must survive it is, in a library, a
+`define-state`, in a file a `defvar`, and record types are nongenerative.
 
 The core's own code changes with its library's file: edit it and
 `(reload!)`. A `define` in "/" of a name the core gives makes the
@@ -388,7 +390,7 @@ or a pair of procedures, begin and end), and `with-profile-span`, in which
 five places run their work: the step, `safely` (each phase of core1's
 loop, each surface's draw and tick), a window's handler, its drawing, and
 a process's turn. Off, each costs a variable read and a branch. On,
-`services/profile.ss` times each on the monotonic clock in fixnum ns, on a
+`schevana/services/profile.sls` times each on the monotonic clock in fixnum ns, on a
 stack of fixed depth, giving each its self time, so the parts add up to
 the tick; a span allocates nothing. A span inside an engine runs untimed,
 since an engine can be suspended halfway, and so does one on another

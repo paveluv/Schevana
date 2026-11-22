@@ -418,7 +418,7 @@ comes back to the CPU.
 | `schevana/core/draw.sls` | `define-paint`, `fill-shader`, the core's own shaders and their helpers |
 | `schevana/core/gpu.sls` | buffers and images as handles, calls, compute runs |
 | `schevana/core0/gpu.sls` | core0: pipelines, dispatch, drawing |
-| `kits/twin.ss` | the twin |
-| `kits/inspect.ss` | `inspect-shader-…`, `inspect-computes` |
+| `schevana/kits/twin.sls` | the twin |
+| `schevana/kits/inspect.sls` | `inspect-shader-…`, `inspect-computes` |
 | `apps/boids3d.ss` | an app that is all shaders |
 | `tests/units/shader.ss` | the device and the twin held together |

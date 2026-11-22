@@ -18,8 +18,8 @@
 ;;; R: random rules · D: the defaults · S: scatter · Space: pause
 ;;; H: the rules window, beside the flock (it closes with the flock)
 ;;;
-;;; It runs in a sandbox (services/grant.ss), where the names above are: a
-;;; REPL in /apps/boids has them.
+;;; It runs in a sandbox ((schevana services grant)), where the names above are:
+;;; a REPL in /apps/boids has them.
 
 (app-requests window draw ui timers crew)
 

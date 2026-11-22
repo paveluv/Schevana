@@ -124,7 +124,7 @@
   ;; the window whose handler is running
   (define-state current-window (make-thread-parameter #f))
   ;; Told of each window that closes or crashes, to stop what works for it
-  ;; (its background jobs: services/vat.ss sets it); till then nothing.
+  ;; (its background jobs: (schevana services vat) sets it); till then nothing.
   (define-hook (window-gone! win) (void))
 
   ;; A window's shadow, for its style: the theme key 'shadow, half unfocused;

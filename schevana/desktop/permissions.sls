@@ -1,8 +1,9 @@
 ;;; (schevana desktop permissions) — asking the person what an app in a sandbox
-;;; may do (services/grant.ss). The launcher opens an app that requests what no
-;;; one decided yet only once they answer: a window lists its requests, ticked,
-;;; to allow or not. Settings' Permissions page and Environments' Permissions…
-;;; change the answers later; a crashed window says which one it lacked.
+;;; may do ((schevana services grant)). The launcher opens an app that requests
+;;; what no one decided yet only once they answer: a window lists its requests,
+;;; ticked, to allow or not. Settings' Permissions page and Environments'
+;;; Permissions… change the answers later; a crashed window says which one it
+;;; lacked.
 
 (library (schevana desktop permissions)
   (export

@@ -1,6 +1,6 @@
-;;; tests/units/profile.ss — the profiler (services/profile.ss).
+;;; tests/units/profile.ss — the profiler ((schevana services profile)).
 
-;;; the profiler (services/profile.ss)
+;;; the profiler ((schevana services profile))
 
 (for-each close-window! (windows))
 (steps 2)

@@ -1,6 +1,6 @@
-;;; tests/units/crew.ss — the crew (services/crew.ss).
+;;; tests/units/crew.ss — the crew ((schevana services crew)).
 
-;;; The crew (services/crew.ss).
+;;; The crew ((schevana services crew)).
 
 ;; About us µs of work, without allocating; the thread's id noted in ids
 ;; (a box of a list) the first time.

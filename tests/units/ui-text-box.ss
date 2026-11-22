@@ -1,5 +1,5 @@
 ;;; tests/units/ui-text-box.ss — the kit's text field and text area
-;;; (kits/ui.ss, ui-text-box), by themselves: typing, selecting, the
+;;; ((schevana kits ui), ui-text-box), by themselves: typing, selecting, the
 ;;; clipboard, a double click, Return, and the keyboard taken away.
 
 ;; A field and an area, each text kept where its on-change puts it, and

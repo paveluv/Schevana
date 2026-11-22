@@ -1,5 +1,5 @@
 ;;; tests/units/tasks-editor.ss — the editor of a task's description
-;;; (apps/tasks.ss): a window of its own, opened by the button by the
+;;; ((schevana apps tasks)): a window of its own, opened by the button by the
 ;;; Description label or by Ctrl+E in it, modal to Tasks; Save (Ctrl+S)
 ;;; and Cancel (Escape, asking first when there are changes); closed in
 ;;; any way, Tasks goes on.

@@ -40,7 +40,7 @@
   (library-layer core)
 
   (define-state *theme-version* 0)
-  ;; Keeps a change to the layers: services/theme-file.ss sets it (the
+  ;; Keeps a change to the layers: (schevana services theme-file) sets it (the
   ;; file saved soon after); till then nothing.
   (define-hook (theme-save!) (void))
 
@@ -500,7 +500,8 @@
         (thunk)
         (theme-changed!))))
 
-  ;; The layers at once, as a saved look gives them (services/theme-file.ss).
+  ;; The layers at once, as a saved look gives them ((schevana services
+  ;; theme-file)).
   (define (theme-layers-set! style overrides changes scale)
     (set! *style-name* style)
     (set! *theme-overrides* overrides)

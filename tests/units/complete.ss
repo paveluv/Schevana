@@ -1,4 +1,4 @@
-;;; tests/units/complete.ss — the completion list (kits/complete.ss), by
+;;; tests/units/complete.ss — the completion list ((schevana kits complete)), by
 ;;; itself, its owner a test's own: Tab's list, prefix and popups, the
 ;;; list narrowed, keys, the wheel and presses, and the matching. What the
 ;;; REPL completes, describes and draws is smoke's.

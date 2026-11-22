@@ -132,7 +132,7 @@ at once ([THREADS.md](THREADS.md)), and `draw-image` draws any image, a
 pixmap's among them: at its size or bigger each pixel is a sharp block,
 smaller they blend.
 
-`kits/px.ss` draws pixel art on whole device pixels: `px-bevel` (Motif's
+`schevana/kits/px.sls` draws pixel art on whole device pixels: `px-bevel` (Motif's
 corners or the Mac's), `px-bits` for small pictures from rows of
 characters, `px-invert` and `px-bitmap-text`, a bitmap font's text (the
 Genera style has one, the CADR's 5X5, `genera-5x5`).

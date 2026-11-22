@@ -1,6 +1,7 @@
-;;; tests/units/env.ss — environments (services/env.ss) and the confined base.
+;;; tests/units/env.ss — environments ((schevana services env)) and the confined
+;;; base.
 
-;;; Environments (services/env.ss): a child sees what its parent shares,
+;;; Environments ((schevana services env)): a child sees what its parent shares,
 ;;; live, and changes none of it.
 
 (define units-env-value 1)
@@ -384,7 +385,7 @@
               (equal? (map env-name (env-children (env-root)))
                       '(worklets apps)))))
 
-;;; The confined base (services/env.ss): what is always safe, for apps.
+;;; The confined base ((schevana services env)): what is always safe, for apps.
 
 (check "a confined sandbox has what is always safe, and nothing that \
         reaches past its arguments: no files, eval or environments, C, \

@@ -2,7 +2,7 @@
 ;;; as XSpringies has them, Runge-Kutta against motion known exactly, the
 ;;; walls, the models, and the window, its pointer and its controls.
 
-;; Springies runs in its sandbox (services/grant.ss): its names,
+;; Springies runs in its sandbox ((schevana services grant)): its names,
 ;; forwarded here.
 (define springies-box (grant-env 'springies))
 

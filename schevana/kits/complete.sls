@@ -17,7 +17,7 @@
 ;;; field works out only when the item shows; matched are the indices of
 ;;; name that the typed text matched, drawn in the accent.
 ;;;
-;;; The seam, as in kits/ui.ss: only the complete-draw-… procedures draw
+;;; The seam, as in (schevana kits ui): only the complete-draw-… procedures draw
 ;;; or name a theme color, and complete-size measures for them.
 
 (library (schevana kits complete)
@@ -36,7 +36,7 @@
     complete-source complete-codes-within? complete-align complete-search
     complete-score complete-less? complete-rank complete-row-height
     complete-detail-height complete-show complete-rows-y complete-kinds-width
-    complete-doc-lines complete-size complete-draw-list)
+    complete-doc-lines complete-size complete-draw-list complete-source-record)
   (import (chezscheme)
           (only (schevana base) clamp define-made define-state filter-map
                 library-layer set-hook! string-prefix?)
@@ -462,7 +462,7 @@
       (list->vector
        (map cdr (list-head sorted (min complete-max-items (length sorted)))))))
 
-  ;; ui's suggestions rank by this (ui-rank, kits/ui.ss).
+  ;; ui's suggestions rank by this (ui-rank, (schevana kits ui)).
   (set-hook! (ui-rank typed choices first?)
              (complete-rank typed choices first?))
 

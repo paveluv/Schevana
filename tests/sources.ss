@@ -48,7 +48,7 @@
         (cddddr (car forms))
         forms)))
 
-;; "styles/mac.ss" -> "styles", "mac"
+;; "(schevana styles mac)" -> "styles", "mac"
 (define (file-folder f) (path-first f))
 (define (file-stem f) (path-root (path-last f)))
 
@@ -146,15 +146,20 @@
                      (map (lambda (fd)
                             (let ([f (symbol->string
                                       (if (pair? fd) (cadr fd) fd))])
-                              (if (and (pair? fd) (eq? (car fd) 'mutable))
-                                  (list (sym s "-" f) (sym s "-" f "-set!"))
-                                  (list (sym s "-" f)))))
+                              (cond
+                                ;; (immutable name accessor), (mutable name
+                                ;; accessor mutator): the names given
+                                [(and (pair? fd) (pair? (cddr fd)))
+                                 (cddr fd)]
+                                [(and (pair? fd) (eq? (car fd) 'mutable))
+                                 (list (sym s "-" f) (sym s "-" f "-set!"))]
+                                [else (list (sym s "-" f))])))
                           fields)))))
   (define (names kind xs) (map (lambda (x) (cons kind x)) xs))
   (if (and (pair? form) (pair? (cdr form)))
       (let ([head (cadr form)])
         (case (car form)
-          [(begin) (apply append (map defined (cdr form)))]
+          [(begin at-load) (apply append (map defined (cdr form)))]
           [(define defvar define-hook define-state define-made define-syntax
             define-foreign define-foreign/collect-safe define-sdl-hook
             define-sdl-hook/collect-safe define-worklet)
@@ -189,7 +194,7 @@
 
 (define world-files (append all-library-files (source-files)))
 
-;; An app in a sandbox (services/grant.ss): what its file defines is the
+;; An app in a sandbox ((schevana services grant)): what its file defines is the
 ;; sandbox's, but for the app itself, so it collides with nothing.
 (define (sandboxed-file? f)
   (and (equal? (file-folder f) "apps")
@@ -232,7 +237,7 @@
 ;; below the world (schevana/). What declares is left out, sized by
 ;; what's given, each a reviewed change: a library's exports and imports
 ;; (file-forms).
-(define src-budget 38870)
+(define src-budget 38876)
 
 ;; The tokens of a datum as read; a list's end is none.
 (define (tokens x)
@@ -776,7 +781,7 @@
 (define world-symbols (environment-symbols (interaction-environment)))
 
 ;; d is registered: a name in the world, or in box, the sandbox of the
-;; app whose file defines it (services/grant.ss).
+;; app whose file defines it ((schevana services grant)).
 (define (registered? d box)
   (case (car d)
     [(name) (and (memq (cdr d) (if box
@@ -790,10 +795,24 @@
     [(surface) (and (find-surface (cdr d)) #t)]
     [(strip) (and (assq (cdr d) *strips*) #t)]))
 
+;; The world's sources as files, in load order: a library's file for its
+;; name.
+(define (world-entry-files)
+  (map (lambda (e)
+         (if (pair? e) (format "schevana/~a/~a.sls" (cadr e) (caddr e)) e))
+       (world-entries)))
+
+;; The folder a world's source is of: kits for (schevana kits x) and for
+;; schevana/kits/x.sls.
+(define (world-folder f)
+  (if (string-prefix? "schevana/" f)
+      (path-first (substring f 9 (string-length f)))
+      (file-folder f)))
+
 (define (folder-problems f)
   (let* ([ds (definitions f)]
          [stem (string->symbol (file-stem f))]
-         [kind (cdr (or (assoc (file-folder f) folder-kinds) '(#f . #f)))]
+         [kind (cdr (or (assoc (world-folder f) folder-kinds) '(#f . #f)))]
          [own (filter (lambda (d) (eq? (car d) kind)) ds)]
          [box (and (eq? kind 'app) (grant-env stem))])
     (append
@@ -801,7 +820,7 @@
             (format "~a: ~a ~a is not registered" f (car d) (cdr d)))
           (remp (lambda (d) (registered? d box)) ds))
      (cond
-       [(equal? (file-folder f) "desktop") '()]
+       [(equal? (world-folder f) "desktop") '()]
        [(not kind)
         ;; a kit: its names start with its own (ui-, make-ui-state,
         ;; *complete-open*), or are its record's of the same name (edit,
@@ -828,18 +847,25 @@
 
 (check (format "every file in ~a registers what it defines"
                (string-join source-folders ", "))
-       (none? (apply append (map folder-problems (folder-files)))))
+       (none? (apply append (map folder-problems (world-entry-files)))))
 
 ;; What the files define, in load order, of one kind.
 (define (defined-in-files kind)
   (map cdr (filter (lambda (d) (eq? (car d) kind))
-                   (apply append (map definitions (folder-files))))))
+                   (apply append (map definitions (world-entry-files))))))
 
-(check "styles, palettes, wallpapers and apps are listed in file-name order"
-       (and (equal? (styles) (defined-in-files 'style))
-            (equal? (palettes) (defined-in-files 'palette))
-            (equal? (wallpapers) (defined-in-files 'wallpaper))
-            (equal? (apps) (defined-in-files 'app))))
+;; An app registers as its library runs, after any it imports (the Debug
+;; REPL's runs the REPL's): the launcher lists them by their titles.
+(check "styles, palettes and wallpapers are listed in file-name order, \
+        and every app is"
+       (let ([sorted (lambda (l)
+                       (sort (lambda (a b)
+                               (string<? (symbol->string a) (symbol->string b)))
+                             l))])
+         (and (equal? (styles) (defined-in-files 'style))
+              (equal? (palettes) (defined-in-files 'palette))
+              (equal? (wallpapers) (defined-in-files 'wallpaper))
+              (equal? (sorted (apps)) (sorted (defined-in-files 'app))))))
 
 ;;; ------------------------------------------------------------------
 ;;; styles' settings
@@ -876,11 +902,11 @@
 ;;; part would be passed by.
 
 (define seam-files
-  (append (filter (lambda (f) (member (file-folder f)
-                                            '("kits" "services" "desktop")))
-                  (folder-files))
-          '("apps/tasks.ss" "apps/settings.ss" "apps/envs.ss"
-            "apps/pipeline.ss")))
+  (append (filter (lambda (f) (member (world-folder f)
+                                      '("kits" "services" "desktop")))
+                  (world-entry-files))
+          '("schevana/apps/tasks.sls" "schevana/apps/settings.sls"
+            "schevana/apps/envs.sls" "schevana/apps/pipeline.sls")))
 
 ;; The parts: the keys whose built-in is name*, a body of their own.
 (define parts
@@ -930,7 +956,8 @@
   (code form))
 
 (define (form-name form)
-  (and (pair? form) (memq (car form) '(define defvar define-hook))
+  (and (pair? form)
+       (memq (car form) '(define defvar define-hook define-made define-state))
        (pair? (cdr form))
        (if (pair? (cadr form)) (caadr form) (cadr form))))
 
@@ -946,6 +973,16 @@
              (memq (car form) '(define-part theme-default! color-default!))
              #t))))
 
+;; A file's forms, those a library runs as it loads (at-load) among them.
+(define (seam-forms f)
+  (let loop ([forms (file-forms f)])
+    (apply append
+           (map (lambda (x)
+                  (if (and (pair? x) (eq? (car x) 'at-load))
+                      (loop (cdr x))
+                      (list x)))
+                forms))))
+
 (define (seam-file-problems f)
   (apply append
          (map (lambda (form)
@@ -956,7 +993,7 @@
                                    (or (form-name form) (car form))
                                    (car p) (cdr p)))
                          (seam-problems form))))
-              (file-forms f))))
+              (seam-forms f))))
 
 (check (format "in ~a, only drawing procedures draw or name a color"
                (string-join seam-files ", "))
@@ -993,12 +1030,11 @@
                 '("ui-button" "mac-draw-under" "px-bevel" "settings"
                   "ui-draw-button" "ui-draw-button*")))
 
-;;; ------------------------------------------------------------------
-;;; apps in sandboxes
-;;; A tree app that requests bundles runs in a sandbox, approved by the
-;;; table in services/grant.ss: what it requests is that, so a new request
-;;; is a reviewed change. Sketch is left to the person, to show how an app
-;;; of theirs asks.
+;;; ------------------------------------------------------------------ apps in
+;;; sandboxes A tree app that requests bundles runs in a sandbox, approved by
+;;; the table in (schevana services grant): what it requests is that, so a new
+;;; request is a reviewed change. Sketch is left to the person, to show how an
+;;; app of theirs asks.
 
 (define apps-the-person-approves '(sketch))
 
