@@ -71,23 +71,48 @@
     ;; Core0 on this thread, the world on its own.
     core0-run!)
   (import (chezscheme)
-          (schevana base)
-          (schevana ffi)
-          (schevana shader)
-          (except (schevana core0 mail) core0-world-wake!)
-          (except (schevana core0 trace) core0-trace!)
-          (except (schevana core0 platform) *core0-platform*)
-          (schevana core0 present)
-          (schevana core0 trace-file)
-          (except (schevana core0 gpu) *gpu-facts* gpu-frame-waiting?)
-          (except (schevana core0 window) *core0-mode* core0-hidden?)
+          (only (schevana base) library-layer define-view)
+          (only (schevana ffi) load-first-library define-foreign c-clock-gettime
+                c-close c-string->string)
+          (only (schevana shader) shader make-shader shader-name shader-stage
+                shader-coords shader-params shader-source shader-code
+                shader-price shader-target shader-entry shader-group-x
+                shader-uniforms shader-words)
+          (only (schevana core0 mail) core0-display core0-frame-ns core0-wake!
+                core0-forked? core0-world-wait! core0-clock-ns)
+          (only (schevana core0 platform) platform-cpu-count)
+          (only (schevana core0 present) core0-frame-report core0-refresh-ns!)
+          (only (schevana core0 trace-file) core0-trace-dump!)
+          (only (schevana core0 gpu) gpu-atlas-side gpu-usage-sampler
+                gpu-usage-target gpu-show-run? gpu-run-gone? gpu-list-id
+                gpu-list-labels gpu-list-labels-set! gpu-list-recorded
+                gpu-list-recorded-set! gpu-list-took gpu-list-took-set!
+                make-gpu-image gpu-image-id gpu-image-w gpu-image-h
+                gpu-image-levels gpu-image-gone?-set! make-gpu-buffer*
+                gpu-buffer-id gpu-buffer-size gpu-buffer-gone?-set!
+                make-gpu-call gpu-call? gpu-call-shader gpu-frame-make
+                gpu-frame-table-set! gpu-frame-table-n-set!
+                gpu-frame-pieces-set! gpu-frame-jobs-set!
+                gpu-frame-computes-set! gpu-frame-mode-set!
+                gpu-frame-in-flight-set! gpu-frame-number gpu-frame-shown?
+                gpu-publish! gpu-frames-back! gpu-take-answers!
+                core0-world-loaded!)
+          (only (schevana core0 window) core0-app-id core0-flag-names
+                core0-event-name core0-flags core0-error-text core0-step-state
+                core0-window-sizes core0-window-scale core0-window-fullscreen?
+                clipboard-get core0-window-events core0-input-ns-take!
+                core0-window-minimum! core0-window-fullscreen!
+                core0-window-icon! core0-set-cursor! clipboard-set! core0-quit!
+                core0-step! core0-window-headless! core0-window-open!
+                core0-window-show! core0-window-close! core0-window-resize!
+                core0-run!)
           (prefix (only (schevana core0 mail) core0-world-wake!) core0:)
           (prefix (only (schevana core0 trace) core0-trace!) core0:)
           (prefix (only (schevana core0 platform) *core0-platform*) core0:)
-          (prefix (only (schevana core0 gpu) *gpu-facts* gpu-frame-waiting?)
-                  core0:)
-          (prefix (only (schevana core0 window) *core0-mode* core0-hidden?)
-                  core0:))
+          (prefix (only (schevana core0 gpu) *gpu-facts*
+                        gpu-frame-waiting?) core0:)
+          (prefix (only (schevana core0 window) *core0-mode*
+                        core0-hidden?) core0:))
 
   (library-layer core0 facade)
 

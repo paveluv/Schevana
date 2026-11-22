@@ -140,90 +140,140 @@
     screen-event-seen!
     worklet-spread)
   (import (chezscheme)
-          (schevana base)
-          (except (schevana tree) *schevana-root*)
-          (schevana shader)
-          (schevana socket)
-          (schevana reload)
-          (schevana core0)
-          (schevana recorder)
-          (except (schevana core platform) platform-process-bytes now-ns
-                  now-ms)
-          (except (schevana core theme-table) world-value *pacer-trial*)
-          (except (schevana core processes) in-engine? current-proc *toasts*
-                  notify *last-error* report-error! *procs*
-                  *worklet-environment* request-frame! *timers* *profile-span*
-                  worklet-spread)
-          (except (schevana core gpu) *gpu-bytes-made* *gpu-held-gone*
-                  *gpu-computes*)
-          (except (schevana core fonts) *font-specs* text-width *glyph-count*
-                  *atlas-y* *atlas-row*)
-          (except (schevana core draw) *canvas-w* *canvas-h* *scale*
-                  *canvas-ratio* *canvas-pw* *canvas-ph* *rec-labels*
-                  *rec-label-at* draw-text)
-          (except (schevana core pacer) *frame-ms* *frames-drawn* *frame-ring*
-                  *frame-ring-n* *pacer-due* *pacer-frame-ns* *pacer-shown?*
-                  *pacer-latch* *pacer-lead* *pacer-counts* *pacer-aimed*
-                  *pacer-floor* *pacer-latch-phase* *pacer-depth* *pacer-made*
-                  *pacer-late-run* *pacer-late-chain* *pacer-gpu-taught*
-                  *pacer-between?* pacer-period)
-          (except (schevana core screen) screen-event-seen!)
-          (except (schevana core loop) *input-step?*)
-          (except (schevana core theme) *theme-version* *style-name*
-                  *style-changes* *theme-overrides* *scale-setting*
-                  default-theme color-keys *palettes* *styles* theme-save!)
-          (except (schevana core windows) *windows* *focus* *drag-outline*
-                  *hover* *mouse-x* *mouse-y* *mouse-button* current-window
-                  invalidate! *apps* new-window-position *global-keys*
-                  window-gone!)
-          (except (schevana core sources) *world-env* *schevana-options*
-                  *source-texts* app-load!)
+          (only (schevana base) library-layer define-view define-settable)
+          (only (schevana shader) *shader-constants* *shader-helpers*
+                *shader-fields* define-shader-layout shader-type shader-tree
+                define-compute-shader shader shader-name shader-stage
+                shader-coords shader-params shader-source shader-words)
+          (only (schevana socket) socket-listen socket-accept socket-read
+                socket-write socket-close)
+          (only (schevana reload) reload-facts)
+          (only (schevana core0) core0-app-id gpu-atlas-side core0-flag-names
+                core0-event-name gpu-show-run? gpu-run-gone? gpu-list-id
+                gpu-list-labels gpu-list-recorded gpu-list-took gpu-image-id
+                gpu-image-w gpu-image-h gpu-image-levels gpu-call?
+                gpu-call-shader *gpu-facts* core0-display core0-frame-ns
+                core0-hidden? core0-flags core0-error-text core0-step-state
+                core0-frame-report core0-window-sizes core0-window-scale
+                clipboard-get core0-set-cursor! clipboard-set! core0-refresh-ns!
+                platform-cpu-count)
+          (only (schevana recorder) rec-count rec-last-sizes rec-last-copy!
+                rec-last-runs rec-list-copy gpu-list-recs-n gpu-list-extras-n
+                gpu-list-runs gpu-list-version gpu-list-recs gpu-list-extras
+                rec-recordings rec-pixel-set! rec-image-rows!)
+          (only (schevana core platform) platform-fact platform-windowing
+                platform-gpu-api platform-predicates platform-machine-load
+                thread-cpu-ns)
+          (only (schevana core theme-table) theme-rule? theme-rule
+                call-with-theme theme theme-keys theme-part plist-has?
+                plist-remove)
+          (only (schevana core processes) core1-thread? proc-wait
+                make-timeout-condition safe-call safely proc proc? proc-id
+                proc-name proc-state proc-ticks proc-started proc-wake spawn
+                procs find-proc kill! sleep-ms worklet-base-environment worklet?
+                worklet-compile worklet define-worklet after)
+          (only (schevana core gpu) gpu-image-make gpu-image-make-target
+                gpu-image-release! gpu-atlas-image gpu-list-new make-gpu-buffer
+                gpu-buffer-set! gpu-buffer-release! gpu-buffer-read!
+                gpu-compute-soon! gpu-buffer-read-then! gpu-compute!)
+          (only (schevana core fonts) font-file-upem font-file-pages
+                font-library-versions make-font* font get-font font-advance
+                font-ascent font-descent font-line-height font-char-width
+                font-ready glyph-row-ref font-family font-size font-sized
+                font-weight glyph-row-character glyph-row-h glyph-row-left
+                glyph-row-top glyph-row-w)
+          (only (schevana core draw) pi canvas-pixel-width canvas-pixel-height
+                rgb alpha stipple stipple? linear-gradient radial-gradient
+                color-rgba mix color-word rec-variant record-list! fill-box
+                stroke-box fill-circle stroke-circle draw-line draw-polyline
+                fill-polygon invert-box add-box draw-shadow draw-image
+                define-paint fill-shader with-clip with-translation with-scale
+                with-turn with-label draw-scale gfx-fragments rec-preview!
+                rec-past! drawing->bytes rec-row-head rec-row-paint
+                rec-row-words rec-row-x0 rec-row-x1 rec-row-y0 rec-row-y1
+                rec-box-line rec-box-radius rec-glyph-number rec-glyph-pen-x
+                rec-glyph-pen-y rec-polygon-count rec-polygon-points
+                rec-segment-width rec-shadow-size rec-kind-glyph
+                rec-kind-polygon rec-paint-gradient rec-paint-image
+                rec-paint-stipple rec-gradient-radial gradient-row-kind
+                gradient-row-x0 gradient-row-x1 gradient-row-y0 gradient-row-y1
+                clip-row-parent clip-row-radius clip-row-rx0 clip-row-rx1
+                clip-row-ry0 clip-row-ry1 clip-row-words clip-row-x0 clip-row-x1
+                clip-row-y0 clip-row-y1)
+          (only (schevana core pacer) frame-ring-rows frame-ring-words
+                pacer-busy-ms pacer-peak-ms! pacer-rate pacer-ticks pacer-start
+                pacer-trial! pacer-margin screen-bytes screen-bytes-then)
+          (only (schevana core screen) system-scale-percent fullscreen?
+                set-fullscreen! toggle-fullscreen! screen-set-icon!)
+          (only (schevana core loop) post-core1! schevana-run! quit!
+                schevana-end! uptime-ms user-directory schevana-boot!
+                collector-declining? loop-main)
+          (only (schevana core theme) common-options theme-default
+                define-palette palettes palette-title palette-colors style
+                style-name style-title style-settings define-style find-style
+                styles current-style define-part color-default! theme-default!
+                with-style with-place style-changes-of style-chain chain-ref
+                honored? resolve-theme frame-over* change-layers!
+                theme-layers-set! set-style! set-theme! reset-style! override!
+                theme-overrides set-scale! set-palette! set-accent! reset-theme!
+                theme-font-rule chrome-height title-height)
+          (only (schevana core windows) window window? window-id window-app
+                window-title window-title-set! window-x window-x-set! window-y
+                window-y-set! window-w window-w-set! window-h window-h-set!
+                window-state window-state-set! window-restore-set!
+                window-handlers window-props window-error drag window-shadow
+                window-extent screen-w screen-h screen-scale point-in? surface
+                surface-doc define-surface find-surface surface-call
+                define-strip desktop-rect app app-name app-title app-launch
+                register-app! define-app apps open-window detached-window
+                cascade-reset! place-window! windows focused-window visible?
+                maximized? find-window window-ref window-set! window-bg
+                in-window-theme window-setting frame-insets frame-regions
+                frame-radius frame-bleed content-rect window-content-size
+                window-local window-call window-crash! window-modal-child
+                focus-window! close-window! minimize-window! set-geometry!
+                move-window! resize-window! restore-window! toggle-maximize!
+                window-action! shaded? unshade-window! toggle-shade! window-at
+                screen-at resize-kinds window-region bind-key!
+                window-frame-soon! window-hover draw-window*)
+          (only (schevana core sources) core1-exported load-user-init!
+                source-path source-files keep-source-text! load-file!
+                load-user-folders! reload!)
           (prefix (only (schevana tree) *schevana-root*) core:)
           (prefix (only (schevana core platform) platform-process-bytes now-ns
-                        now-ms)
-                  core:)
-          (prefix (only (schevana core theme-table) world-value *pacer-trial*)
-                  core:)
+                        now-ms) core:)
+          (prefix (only (schevana core theme-table) world-value
+                        *pacer-trial*) core:)
           (prefix (only (schevana core processes) in-engine? current-proc
                         *toasts* notify *last-error* report-error! *procs*
                         *worklet-environment* request-frame! *timers*
-                        *profile-span* worklet-spread)
-                  core:)
+                        *profile-span* worklet-spread) core:)
           (prefix (only (schevana core gpu) *gpu-bytes-made* *gpu-held-gone*
-                        *gpu-computes*)
-                  core:)
+                        *gpu-computes*) core:)
           (prefix (only (schevana core fonts) *font-specs* text-width
-                        *glyph-count* *atlas-y* *atlas-row*)
-                  core:)
+                        *glyph-count* *atlas-y* *atlas-row*) core:)
           (prefix (only (schevana core draw) *canvas-w* *canvas-h* *scale*
                         *canvas-ratio* *canvas-pw* *canvas-ph* *rec-labels*
-                        *rec-label-at* draw-text)
-                  core:)
+                        *rec-label-at* draw-text) core:)
           (prefix (only (schevana core pacer) *frame-ms* *frames-drawn*
-                        *frame-ring* *frame-ring-n* *pacer-due*
-                        *pacer-frame-ns* *pacer-shown?* *pacer-latch*
-                        *pacer-lead* *pacer-counts* *pacer-aimed*
-                        *pacer-floor* *pacer-latch-phase* *pacer-depth*
-                        *pacer-made* *pacer-late-run* *pacer-late-chain*
-                        *pacer-gpu-taught* *pacer-between?* pacer-period)
-                  core:)
-          (prefix (only (schevana core screen) screen-event-seen!)
-                  core:)
-          (prefix (only (schevana core loop) *input-step?*)
-                  core:)
+                        *frame-ring* *frame-ring-n* *pacer-due* *pacer-frame-ns*
+                        *pacer-shown?* *pacer-latch* *pacer-lead* *pacer-counts*
+                        *pacer-aimed* *pacer-floor* *pacer-latch-phase*
+                        *pacer-depth* *pacer-made* *pacer-late-run*
+                        *pacer-late-chain* *pacer-gpu-taught* *pacer-between?*
+                        pacer-period) core:)
+          (prefix (only (schevana core screen) screen-event-seen!) core:)
+          (prefix (only (schevana core loop) *input-step?*) core:)
           (prefix (only (schevana core theme) *theme-version* *style-name*
                         *style-changes* *theme-overrides* *scale-setting*
                         default-theme color-keys *palettes* *styles*
-                        theme-save!)
-                  core:)
-          (prefix (only (schevana core windows) *windows* *focus*
-                        *drag-outline* *hover* *mouse-x* *mouse-y*
-                        *mouse-button* current-window invalidate! *apps*
-                        new-window-position *global-keys* window-gone!)
-                  core:)
+                        theme-save!) core:)
+          (prefix (only (schevana core windows) *windows* *focus* *drag-outline*
+                        *hover* *mouse-x* *mouse-y* *mouse-button*
+                        current-window invalidate! *apps* new-window-position
+                        *global-keys* window-gone!) core:)
           (prefix (only (schevana core sources) *world-env* *schevana-options*
-                        *source-texts* app-load!)
-                  core:))
+                        *source-texts* app-load!) core:))
 
   (library-layer core facade)
 
