@@ -205,13 +205,13 @@
     (inject! `(mouse-move ,x ,y) `(mouse-down ,x ,y left 1)
              `(mouse-up ,x ,y left))
     (steps 1))
-  (fresh! "(set-th")
+  (fresh! "(togg")
   (press! 'tab)
   (steps 1)
   (check "tab extends to the shared prefix and lists the choices"
-         (and (string=? "(set-theme" (repl-input r))
+         (and (string=? "(toggle-" (repl-input r))
               (equal? (list-head (offered) 2)
-                      '("set-theme!" "set-theme-plist!"))))
+                      '("toggle-shade!" "toggle-launcher!"))))
   (png-write-screen (string-append out-dir "/completion.png"))
   (press! 'down)
   (press! 'return)
@@ -359,7 +359,7 @@
   ;; under the pointer shows that it takes a click: a box, a hand and the
   ;; mouse documentation's words. Off the list the cursor is the REPL's
   ;; own again, and so it is once the list closes under a still pointer.
-  (fresh! "(set-th")
+  (fresh! "(togg")
   (press! 'tab)
   (steps 1)
   (let-values ([(cx cy cw ch) (content-rect w)])
@@ -385,19 +385,19 @@
                  (and (equal? over '(1 hand ((L . "Complete") (W . "Scroll"))))
                       (equal? off '(#f ibeam ((L . "Close the list"))))
                       (equal? (state) '(#f ibeam ()))))))))
-  (fresh! "(set-th")
+  (fresh! "(togg")
   (press! 'tab)
   (inject! '(wheel 0 -1))
   (steps 1)
   (let-values ([(cx cy cw ch) (content-rect w)])
     (click! (+ cx cw -10) (+ cy 10))
     (check "a click elsewhere in the REPL closes the list"
-           (and (not (offered)) (string=? "(set-theme" (repl-input r)))))
+           (and (not (offered)) (string=? "(toggle-" (repl-input r)))))
   ;; Losing the keyboard closes it: a click on another window, or on the
   ;; desktop.
   (let ([open-list! (lambda ()
                       (focus-window! w)
-                      (fresh! "(set-th")
+                      (fresh! "(togg")
                       (press! 'tab)
                       (steps 1)
                       (and (offered) #t))]
@@ -422,14 +422,14 @@
   ;; With nothing to add, a popup says so, with the sole completion's
   ;; description; the popup goes at the next key, which then acts as usual
   ;; (the list itself is tested in tests/units/complete.ss).
-  (fresh! "(set-theme-plist!")
+  (fresh! "(toggle-shade!")
   (press! 'tab)
   (steps 1)
   (let ([c (complete-of r)])
     (check "tab on a sole completion says so, with its description"
            (and c (equal? (complete-message c) "Sole completion")
-                (equal? (offered) '("set-theme-plist!"))
-                (string=? "(set-theme-plist!" (repl-input r))
+                (equal? (offered) '("toggle-shade!"))
+                (string=? "(toggle-shade!" (repl-input r))
                 (>= (cadddr (complete-box c))
                     (+ 8 (complete-row-height) (complete-detail-height 0))))))
   (png-write-screen (string-append out-dir "/completion-sole.png"))
@@ -437,7 +437,7 @@
   (steps 1)
   (check "the next key closes it and acts as usual"
          (and (not (complete-of r))
-              (string=? "(set-theme-plist" (repl-input r))))
+              (string=? "(toggle-shade" (repl-input r))))
   (fresh! "(zzqx")
   (press! 'tab)
   (steps 1)

@@ -626,11 +626,6 @@
     (change-layers! (lambda () (set! *scale-setting* pct)))
     (theme-save!))
 
-  ;; Old names, kept for callers that still use them.
-  (define (set-theme-plist! plist)
-    (for-each (lambda (k) (set-theme! k (plist-ref plist k #f)))
-              (plist-keys plist)))
-
   (define (set-palette! name)
     (unless (assq name *palettes*)
       (errorf 'set-palette! "no theme ~s" name))

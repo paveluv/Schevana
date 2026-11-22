@@ -274,7 +274,7 @@
   ;;; aligns with a name in disjoint segments, in any order. Each segment
   ;;; starts where a part of the name starts (at its beginning, or after a
   ;;; character that is not a letter or digit), or at a separator that the
-  ;;; segment leads with: "stp" finds set-theme-plist!, and ":sp" finds
+  ;;; segment leads with: "wcs" finds window-content-size, and ":sp" finds
   ;;; head:split-window but not head:window-split. Except at the name's
   ;;; first character, a segment must hold a letter or digit ("*" finds
   ;;; *scratch*). Case is ignored.
