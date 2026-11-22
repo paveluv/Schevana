@@ -122,8 +122,10 @@ imported at once:
 `import` also looks in `~/.schevana.d/lib` (so `(acme math)` is
 `~/.schevana.d/lib/acme/math.sls`) and at the tree's root (where
 `(schevana kits ui)` is `schevana/kits/ui.sls`), and
-`(add-library-directory! dir)` adds more folders. A library is compiled in
-memory when imported; nothing is written next to its source.
+`(add-library-directory! dir)` adds more folders. The library edition
+compiles a library when it is first imported, into a file beside its
+source (`math.so` beside `math.sls`), which it loads again until the
+source changes; the hacker edition compiles it in memory.
 
 Two things differ from Schevana's own code. A library is loaded once per
 session: after editing one, `load` its file again and import it again,
