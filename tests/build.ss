@@ -57,7 +57,7 @@
     ((schevana core draw) draw-text rec-present!)
     ((schevana core fonts) text-width)
     ((schevana core gpu) gpu-frame-free!)
-    ((schevana core loop) collector-tick!)
+    ((schevana core loop) collector-tick! collector-settle!)
     ((schevana core pacer)
      pacer-period pacer-start pacer-procs-ms render-frames-back!)
     ((schevana core platform) platform-process-bytes now-ns now-ms)

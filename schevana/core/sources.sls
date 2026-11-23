@@ -316,7 +316,10 @@
   ;;; drew no frame and wants none, so that the first frame waits for none
   ;;; of them and no frame waits for one; while frames flow, one loads each
   ;;; second anyway. An entry asked for before its turn loads at once
-  ;;; (world-load-now!).
+  ;;; (world-load-now!). Once none waits, the next quiet step settles the
+  ;;; world, as the boot does: what loaded late moves into the oldest
+  ;;; generation, and only such a collection gives back to the system what
+  ;;; loading left over (in the hacker edition, compiling it from source).
 
   ;; The entries waiting, in load order; whether the world was booted with
   ;; some waiting (then the user's apps wait too); and when an entry last
@@ -324,6 +327,9 @@
   (define-state *world-later* '())
   (define-state *world-later?* #f)
   (define-state *world-later-ms* 0)
+
+  ;; Whether an entry has loaded since the world was last settled.
+  (define-state *world-unsettled?* #f)
 
   ;; Whether f, a file, is an app's: in a folder named apps (the user's, or
   ;; one that auto-loads).
@@ -338,6 +344,7 @@
          (begin
            (set! *world-later* (remove entry *world-later*))
            (set! *world-later-ms* (now-ms))
+           (set! *world-unsettled?* #t)
            (safely entry (lambda () (load-sources! (list entry))))
            #t)))
 
@@ -362,7 +369,10 @@
       [(and (null? *world-later*) (pair? *world-loaded-thunks*))
        (let ([ts *world-loaded-thunks*])
          (set! *world-loaded-thunks* '())
-         (for-each (lambda (t) (safely 'loaded t)) ts))]))
+         (for-each (lambda (t) (safely 'loaded t)) ts))]
+      [(and *world-unsettled?* (null? *world-later*) quiet?)
+       (set! *world-unsettled?* #f)
+       (collector-settle!)]))
 
 
   ;; Core0's libraries stay as core0 booted them, with all they import: its
@@ -398,6 +408,7 @@
       (when p (set! *reloading* #f)))
     (request-redraw!)
     (collector-settle!)
+    (set! *world-unsettled?* #f)
     (notify "Sources reloaded" 'green))
 
   ;; The world's sources in load order, read again from what loads

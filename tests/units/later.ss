@@ -2,6 +2,7 @@
 ;;; shows ((schevana core sources)): the desktop's apps wait
 ;;; (desktop-later?); one of them loads at each quiet step, or after a second
 ;;; of steps that weren't quiet; one asked for loads at once, and only once.
+;;; Once none waits, a quiet step settles the world.
 
 (check "the desktop's apps wait, libraries and files; the rest loads first"
        (and (desktop-later? '(schevana apps tasks))
@@ -91,3 +92,24 @@
                       once; with nothing waiting, at once ~s"
                      (list before ran))
              (and (null? before) (equal? ran '(now after)))))))
+
+;; Once the last waiting entry has loaded, the next quiet step settles the
+;; world, once; a step that isn't quiet never does, since a settle takes
+;; longer than a frame. The steps are the loop's report of each step, so
+;; that the test decides which is quiet.
+(let ([a (later-file "d")] [settled 0])
+  (fluid-let ([*world-later* (list a)]
+              [*world-later-ms* (- (now-ms) 2000)]
+              [*world-unsettled?* #f]
+              [collector-settle! (lambda () (set! settled (+ settled 1)))])
+    (loop-stepped! #f)
+    (let ([loaded (null? *world-later*)])
+      (loop-stepped! #f)
+      (let ([busy settled])
+        (loop-stepped! #t)
+        (let ([quiet settled])
+          (loop-stepped! #t)
+          (check (format "once nothing waits, a quiet step settles the \
+                          world, once ~s"
+                         (list loaded busy quiet settled))
+                 (and loaded (= busy 0) (= quiet 1) (= settled 1))))))))
