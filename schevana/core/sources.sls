@@ -139,14 +139,20 @@
   ;; Returns what path holds, in load order: a library by its name, a file
   ;; by its path (relative to the tree when inside it). A folder's entries
   ;; come recursively, in file-name order, leaving out names that start with
-  ;; a dot (editors' lock files). A path that isn't there gives nothing.
+  ;; a dot (editors' lock files) and a folder beside a library of its name
+  ;; (demo/boids3d/ beside demo/boids3d.sls): that folder holds the
+  ;; library's parts, which load as its imports and are none of the
+  ;; world's. A path that isn't there gives nothing.
   (define (auto-load-entries path)
     (cond
       [(file-directory? path)
        (apply append
               (map (lambda (f) (auto-load-entries (string-append path "/" f)))
                    (sort string<?
-                         (remp (lambda (f) (string-prefix? "." f))
+                         (remp (lambda (f)
+                                 (or (string-prefix? "." f)
+                                     (file-exists?
+                                      (string-append path "/" f ".sls"))))
                                (directory-list path)))))]
       [(string-suffix? ".sls" path)
        (let ([name (auto-load-library path)]) (if name (list name) '()))]

@@ -70,7 +70,7 @@ before it:
 | `schevana/styles/`, `schevana/palettes/`, `schevana/wallpapers/` | The looks: one definition per library, registered as the library runs (the registries are the core's: `define-style`, `define-palette`, `define-wallpaper`). |
 | `schevana/desktop/` | The screen's own surfaces and the desktop's behavior: the wallpaper, the bars, the menu, toasts, keys and arranging windows; and its start (`main.sls`, from the command line, and `start.sls`, once the world has loaded). |
 | `schevana/apps/` | The desktop's own apps (the REPL, Settings, Tasks, Monitor, Clock, ...), one per library, each defined with `define-app`. |
-| `demo/` | The demos, one library each, `(demo <name>)`, built on the core's facade. Each is an app the desktop adds when it is given the folder (`./desktop demo`: Boids, Life, Springies, ...), or what such a desktop starts with (the backlog, which enters Tasks' tasks as you would at a REPL); some are programs too, with a launcher at the root (`./rings-demo`). |
+| `demo/` | The demos, one library each, `(demo <name>)`, built on the core's facade. A demo too big for one file keeps its parts in the folder of its name, as libraries of their own that it imports (Boids 3D: `(demo boids3d)`, and `(demo boids3d flock)` and the rest in `demo/boids3d/`). Each is an app the desktop adds when it is given the folder (`./desktop demo`: Boids, Life, Springies, ...), or what such a desktop starts with (the backlog, which enters Tasks' tasks as you would at a REPL); some are programs too, with a launcher at the root (`./rings-demo`). |
 | `games/` | The games, one library each, `(games <name>)`, built on the core's facade. A REPL loads one by its name (`(import (games fireflies))`, then `(fireflies)`), or the desktop loads them all when given the folder (`./desktop games`); each is a program too, with a launcher at the root (`./game-demo`). |
 
 - **The boot is a chain.** A launcher boots core0, then core1, which
@@ -226,7 +226,10 @@ before it:
   `theme-`, `style-`, `window-`. A demo exports only its launcher; the
   names it keeps to itself may be its own words (`pt` in Springies),
   which the hacker edition holds too, as long as no other library defines
-  them (`tests/sources.ss`).
+  them (`tests/sources.ss`). Its parts, in the folder of its name, export
+  what it uses; the world loads them as its imports, not as its own, so
+  their names come to "/" only in the hacker edition
+  (`auto-load-entries`).
 - In `schevana/kits/` and `schevana/services/`, every name starts with
   its library's name: `ui-…` in `(schevana kits ui)`, `profile-…` in
   `(schevana services profile)`; a record named after the library may

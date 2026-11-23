@@ -106,13 +106,15 @@
 
 ;; On the desktop: the demos' folder loaded with the world, as
 ;; ./desktop demo loads it. Each library in it runs, and an app it defines
-;; registers itself.
+;; registers itself. Boids 3D's parts, in demo/boids3d/, are no entries:
+;; they load as its imports.
 (let ([dir (string-append *schevana-root* "/demo")])
   (auto-load! dir)
   (check (format "a folder auto-loaded joins the library search and loads \
                   its libraries, by their names from the tree: the demos' \
-                  apps register, Boids, Life and the rest among them; a \
-                  file is no folder to load ~s"
+                  apps register, Boids, Life and the rest among them, and \
+                  Boids 3D's parts are no entries; a file is no folder to \
+                  load ~s"
                  (auto-load-entries dir))
          (and (equal? (auto-load-entries dir)
                       '((demo backlog) (demo boids) (demo boids3d)
@@ -213,18 +215,45 @@
 
 ;; A library from outside the tree: its name comes from its first form,
 ;; and the folder from which its name is found is added to the library
-;; search, so that it loads by its name and "/" has what it exports.
-(let ([dir (string-append out-dir "/autolib")])
-  (system (format "rm -rf '~a' && mkdir -p '~a/auto-test'" dir dir))
+;; search, so that it loads by its name and "/" has what it exports. The
+;; folder beside it of its name holds its part, which loads as its import
+;; and is none of the world's: in the library edition "/" hasn't the
+;; part's names. A change to the part, made before any reload, is seen by
+;; the next one, which evaluates the library again.
+(let* ([dir (string-append out-dir "/autolib")]
+       [part (lambda (word)
+               (call-with-output-file
+                 (string-append dir "/auto-test/hello/word.sls")
+                 (lambda (p)
+                   (write `(library (auto-test hello word)
+                             (export auto-hello-word)
+                             (import (chezscheme))
+                             (define auto-hello-word ',word))
+                          p))
+                 'replace))])
+  (system (format "rm -rf '~a' && mkdir -p '~a/auto-test/hello'" dir dir))
+  (part 'hello)
   (call-with-output-file (string-append dir "/auto-test/hello.sls")
     (lambda (p)
       (write '(library (auto-test hello)
                 (export auto-hello)
-                (import (chezscheme))
-                (define auto-hello 'hello))
+                (import (chezscheme) (auto-test hello word))
+                (define (auto-hello) auto-hello-word))
              p)))
   (auto-load! dir)
-  (check (format "a library from outside the tree loads by the name its \
-                  first form gives ~s" (auto-load-entries dir))
-         (and (equal? (auto-load-entries dir) '((auto-test hello)))
-              (eq? (eval 'auto-hello *world-env*) 'hello))))
+  (let ([first (eval '(auto-hello) *world-env*)])
+    (part 'hi)
+    (reload!)
+    (steps 2)
+    (let ([again (eval '(auto-hello) *world-env*)])
+      (check (format "a library from outside the tree loads by the name its \
+                      first form gives; the folder of its name holds its \
+                      part, which loads as its import, not as the world's, \
+                      and a reload sees a change to the part ~s"
+                     (list (auto-load-entries dir) first again))
+             (and (equal? (auto-load-entries dir) '((auto-test hello)))
+                  (eq? first 'hello)
+                  (eq? again 'hi)
+                  (or test-hacker?
+                      (not (top-level-bound? 'auto-hello-word
+                                             *world-env*))))))))

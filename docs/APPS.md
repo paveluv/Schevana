@@ -35,7 +35,8 @@ like `.emacs`, once the world has loaded.
 
 Those folders are what loads with Schevana. A folder of the library
 search (where libraries are found by name) can auto-load too, after
-them, with the folders inside it. A library there loads by the name its
+them, with the folders inside it (but for a folder that holds a
+library's parts, [below](#an-app-in-several-files)). A library there loads by the name its
 first form gives, whatever it holds (a kit, a style, a palette or an
 app, such as `(third-party my-kit)`), and the folder it is found from by
 that name joins the library search; a plain file (`.ss`) loads by its
@@ -82,6 +83,46 @@ folder that auto-loads: the demos are libraries in `demo/`
 (`(demo boids)` and the others), which `./desktop demo` loads. Code you
 would rather keep apart goes in a sandbox you make
 ([ENVIRONMENTS.md](ENVIRONMENTS.md)).
+
+## An app in several files
+
+An app too big for one file is a library whose parts are libraries of
+their own, in a folder of the app's name beside it. Each part's name is
+the app's name and one more word, so it is found by its name from the
+same folder of the library search as the app. Boids 3D is made this way:
+
+| File | Library | What it holds |
+| --- | --- | --- |
+| `demo/boids3d.sls` | `(demo boids3d)` | the app: its window, keys, frames and timer |
+| `demo/boids3d/rules.sls` | `(demo boids3d rules)` | the flocking rules, as data |
+| `demo/boids3d/shaders.sls` | `(demo boids3d shaders)` | the code for the GPU: three compute shaders and a paint |
+| `demo/boids3d/flock.sls` | `(demo boids3d flock)` | the flock in a window: its buffers, its steps, what the keys do to it |
+| `demo/boids3d/view.sls` | `(demo boids3d view)` | the camera, and the field drawn with each frame |
+| `demo/boids3d/rules-window.sls` | `(demo boids3d rules-window)` | the rules window |
+
+The app imports its parts, and a part imports the parts it builds on (the
+view imports the shaders and the flock), as any library imports another.
+A part exports what the app and the other parts use, and keeps the rest
+to itself. The app exports only its launcher, `boids3d`.
+
+When the folder auto-loads, only the app is one of the world's entries
+(`auto-load-entries`): a folder beside a library of its name holds that
+library's parts, which load as its imports. So "/" gets the app's
+launcher and none of its parts' names, which may then be the app's own
+words. The hacker edition (`--hacker`) puts every library's names in "/",
+the parts' too, so no two of them may define the same name; Boids 3D's
+all start with `boids3d-`. A change to a part takes effect at the next
+`(reload!)`, which evaluates again the part and every library that
+imports it, the app among them.
+
+Your own app is laid out the same way, in a folder that auto-loads:
+
+```text
+~/my-apps/
+  counter.sls           (counter), the app, which imports (counter digits)
+  counter/
+    digits.sls          (counter digits), a part
+```
 
 ## Host apps
 

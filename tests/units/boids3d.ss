@@ -2,15 +2,26 @@
 ;;; uses: its shaders on the device, checked against the twin, its picture,
 ;;; its keys, its frames and its timer.
 
-;; Boids 3D's own names, b3:boids3d-steer and the rest (tests/reach.ss).
-(test-library '(demo boids3d) 'b3:)
+;; Boids 3D's own names, b3:boids3d-steer and the rest (tests/reach.ss):
+;; the app's, in (demo boids3d), and its parts', in demo/boids3d/.
+(for-each (lambda (lib) (test-library lib 'b3:))
+          '((demo boids3d rules) (demo boids3d shaders) (demo boids3d flock)
+            (demo boids3d view) (demo boids3d)))
 
-(check "Nothing in Boids 3D waits for the GPU or works on the crew: it \
-        names neither gpu-compute! nor gpu-buffer-read! nor crew-for*; its \
-        rules window is no app's, the flock's own"
-       (let* ([file (string-append *schevana-root*
-                                   "/demo/boids3d.sls")]
-              [names (let walk ([x (call-with-input-file file read)]
+;; Boids 3D's files: the app's and its parts'.
+(define b3-files
+  (let ([dir (string-append *schevana-root* "/demo/boids3d")])
+    (cons (string-append dir ".sls")
+          (map (lambda (f) (string-append dir "/" f))
+               (filter (lambda (f) (equal? (path-extension f) "sls"))
+                       (sort string<? (directory-list dir)))))))
+
+(check "Nothing in Boids 3D waits for the GPU or works on the crew: none \
+        of its files names gpu-compute! nor gpu-buffer-read! nor \
+        crew-for*; its rules window is no app's, the flock's own"
+       (let* ([names (let walk ([x (map (lambda (f)
+                                          (call-with-input-file f read))
+                                        b3-files)]
                                 [acc '()])
                        (cond [(symbol? x) (cons x acc)]
                              [(pair? x) (walk (cdr x) (walk (car x) acc))]

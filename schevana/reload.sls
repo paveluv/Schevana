@@ -89,19 +89,28 @@
   ;; first seen.
   (define (reload-mark! . names)
     (for-each (lambda (name)
-                (let ([file (reload-source name)])
-                  (when (and file
-                             (not (hashtable-contains? *reload-texts* name)))
-                    (hashtable-set! *reload-texts* name (reload-text file)))))
+                (unless (hashtable-contains? *reload-texts* name)
+                  (let ([file (reload-source name)])
+                    (when file
+                      (hashtable-set! *reload-texts* name
+                                      (reload-text file))))))
               (if (null? names)
                   (map reload-name (library-list))
                   names)))
 
   ;; Imports the libraries into environment, as an import form does
-  ;; there, and keeps them, so that a reload imports them again.
+  ;; there, and keeps them, so that a reload imports them again. What
+  ;; loaded with them is marked too, so that a reload sees a change to a
+  ;; part of theirs (a library's own, in the folder of its name): the walk
+  ;; stops at a library marked before, whose imports were marked with it.
   (define (reload-import! environment . names)
     (eval `(import ,@names) environment)
-    (apply reload-mark! names)
+    (let mark ([names names])
+      (for-each (lambda (name)
+                  (unless (hashtable-contains? *reload-texts* name)
+                    (reload-mark! name)
+                    (mark (reload-requires name))))
+                names))
     (set! *reload-imports*
           (cons (ephemeron-cons environment names)
                 (filter (lambda (e) (not (bwp-object? (car e))))

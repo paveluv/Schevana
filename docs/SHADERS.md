@@ -433,6 +433,6 @@ comes back to the CPU.
 | `schevana/core0/gpu.sls` | core0: pipelines, dispatch, drawing |
 | `schevana/kits/twin.sls` | the twin |
 | `schevana/kits/inspect.sls` | `inspect-shader-…`, `inspect-computes` |
-| `demo/boids3d.sls` | an app that is all shaders |
+| `demo/boids3d/shaders.sls` | the shaders of Boids 3D, an app that is all shaders: three compute shaders and a paint |
 | `demo/rings.sls` | six paints: waves, sines, a Julia set's bounded loop, metaballs, Voronoi cells, and noise of hashed whole numbers (fire); helpers they share (`define-shader-helpers`) |
 | `tests/units/shader.ss` | the device and the twin held to the same answers |
