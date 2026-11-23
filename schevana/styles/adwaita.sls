@@ -216,6 +216,18 @@
    (color-default! 'adwaita-dash-checked #x4c4c4f))
   (at-load
    (color-default! 'adwaita-dash-text #xfafafb))
+  ;; The overview behind the Shell's app grid, the system's base color
+  ;; (shell _colors.scss:20, widgets/_overview.scss:7-9); a tile on it under
+  ;; the pointer, a flat button lightened 7 % (widgets/_app-grid.scss:21-25,
+  ;; _drawing.scss:160-196, 342-371); and the search entry, the system's
+  ;; text mixed 9 % into its bg (_common.scss:337-345, _drawing.scss:85-129,
+  ;; _default-colors.scss:33, _colors.scss:46).
+  (at-load
+   (color-default! 'adwaita-overview #x222226))
+  (at-load
+   (color-default! 'adwaita-overview-hover #x333339))
+  (at-load
+   (color-default! 'adwaita-overview-entry #x404045))
 
   ;; The style's own settings: a title-1 text, 181 % bold (widgets/
   ;; _labels.scss:35-38), for a status page; the radius of a button (9:

@@ -1,46 +1,43 @@
 ;;; (schevana desktop menu) — the desktop's menu, one open at a time: the
-;;; launcher, a window's menu, or a dropdown's (the widget kit opens it
-;;; through its hook ui-menu-open!, which this file sets to open-menu!). A
-;;; menu is a list of entries, each (label . thunk) or 'separator, as in the
-;;; menu kit's data ((schevana kits menu)); a style lays it out and draws it.
-;;; While a menu is open, it takes every press, key and text (its surface's
-;;; box is the whole screen), and a press outside it closes it. How it feels
-;;; is up to the style: menu-choose (click: a press chooses; release: the
-;;; entry the button is released over is chosen, so a press can open a menu
-;;; and the release choose from it, and a menu released elsewhere stays
-;;; open), menu-blink (how many times a chosen entry blinks before its action
-;;; runs) and menu-hover (fill, or outline: a box, inverted while a button is
-;;; held on it).
+;;; launcher's ((schevana desktop launcher)), a window's menu, or a
+;;; dropdown's (the widget kit opens it through its hook ui-menu-open!,
+;;; which this file sets to open-menu!). A menu is a list of entries, each
+;;; (label . thunk), (label thunk icon) or 'separator, as in the menu kit's
+;;; data ((schevana kits menu)); a style lays it out and draws it. While a
+;;; menu is open, it takes every press, key and text (its surface's box is
+;;; the whole screen), and a press outside it closes it. How it feels is up
+;;; to the style: menu-choose (click: a press chooses; release: the entry
+;;; the button is released over is chosen, so a press can open a menu and
+;;; the release choose from it, and a menu released elsewhere stays open),
+;;; menu-blink (how many times a chosen entry blinks before its action
+;;; runs) and menu-hover (fill, or outline: a box, inverted while a button
+;;; is held on it).
 
 (library (schevana desktop menu)
   (export
-    menu-item-height open-menu! menu-areas menu-areas* menu-draw draw-menu
-    draw-menu* menu-box menu-at menu-mouse menu-takes launcher-open?
-    open-launcher! toggle-launcher! open-window-menu open-window-menu*)
+    menu-item-height open-menu! close-menu! menu-areas menu-areas* menu-draw
+    draw-menu draw-menu* menu-box menu-at menu-mouse menu-takes
+    open-window-menu open-window-menu*)
   (import (chezscheme)
           (only (schevana base) at-load clamp define-hook define-state
                 library-layer plist-ref set-hook!)
-          (only (schevana core) *apps* *mouse-button* *mouse-x* *mouse-y* after
-                app-name app-title close-window! define-part define-surface
-                desktop-rect
+          (only (schevana core) *mouse-button* *mouse-x* *mouse-y* after
+                close-window! define-part define-surface desktop-rect
                 draw-text fill-box font font-char-width font-line-height
-                frame-regions fullscreen? minimize-window! new-window-position
-                notify now-ms point-in? quit! reload! report-error!
-                request-frame! safe-call screen-h screen-w shaded? spawn
-                text-width theme theme-default! theme-rule toggle-fullscreen!
+                frame-regions minimize-window! notify now-ms point-in?
+                report-error! request-frame! safe-call screen-h screen-w
+                shaded? text-width theme theme-default! theme-rule
                 toggle-maximize! toggle-shade! window-action! window-at
                 window-region window-setting window-state with-clip with-place
                 world-value)
-          (only (schevana kits app) app-launch!)
           (only (schevana kits menu) make-menu menu-x menu-y menu-sel
                 menu-sel-set! menu-filter menu-filter-set! menu-filter?
                 menu-tag menu-label-text menu-label-key menu-label-width
-                menu-entries)
+                menu-entries menu-entry-action menu-entry-icon
+                menu-icon-size)
           (only (schevana kits px) px-invert)
           (only (schevana kits ui) ui-menu-open-tag ui-menu-open!
-                ui-draw-highlight ui-draw-separator ui-draw-panel)
-          (only (schevana desktop arrange) cascade-windows! tile-windows!)
-          (only (schevana desktop screenshot) save-screenshot!))
+                ui-draw-highlight ui-draw-separator ui-draw-panel))
 
   (library-layer desktop)
 
@@ -109,6 +106,11 @@
     (set! *menu* #f)
     (request-frame!))
 
+  ;; Returns the room that the icons of m's entries take before their
+  ;; text: an icon's side and a gap, or none (menu-icon-size).
+  (define (menu-icon-room m)
+    (let ([s (menu-icon-size m (theme 'menu-font))]) (if (> s 0) (+ s 8) 0)))
+
   ;; Returns where menu m and its pieces are, which its drawing, its clicks
   ;; and the pointer all read: (menu x y w h), then (filter x y w h) when it
   ;; filters, then each entry's (i x y w h) or each separator's (separator x
@@ -117,9 +119,10 @@
     (let* ([es (menu-entries m)] [ih (theme 'menu-item-height)]
            [sh (theme 'menu-separator-height)] [pad (theme 'menu-pad)]
            [head (if (menu-filter? m) (+ ih 8) 0)]
+           [icons (menu-icon-room m)]
            [w (fold-left (lambda (acc e)
                            (if (pair? e)
-                               (max acc (+ 8 (* 2 (theme 'menu-text-x))
+                               (max acc (+ 8 (* 2 (theme 'menu-text-x)) icons
                                            (menu-label-width
                                             (car e) (theme 'menu-font))))
                                acc))
@@ -172,7 +175,7 @@
   (define (menu-activate! i)
     (let ([es (menu-entries *menu*)])
       (when (and i (< i (length es)) (pair? (list-ref es i)) (not *menu-blink*))
-        (let ([thunk (cdr (list-ref es i))])
+        (let ([thunk (menu-entry-action (list-ref es i))])
           (if (> (theme 'menu-blink) 0)
               (begin (set! *menu-blink* (list (now-ms) i thunk))
                      (menu-blink!))
@@ -247,10 +250,13 @@
                                 (if on (menu-entry-flags on) '()))))
 
   ;; Draws menu m in its areas (menu-areas), with entry on shown as chosen
-  ;; (#f for none) and with its highlight's flags (menu-entry-flags).
+  ;; (#f for none) and with its highlight's flags (menu-entry-flags). An
+  ;; entry's icon goes at the text's inset, and the texts after the icons'
+  ;; room.
   (define-part (draw-menu m areas on flags)
     (let* ([es (list->vector (menu-entries m))] [font (theme 'menu-font)]
-           [lh (font-line-height font)] [f (assq 'filter areas)])
+           [lh (font-line-height font)] [f (assq 'filter areas)]
+           [is (menu-icon-size m font)] [icons (menu-icon-room m)])
       (apply ui-draw-panel (append (cdar areas) '((menu))))
       (when f
         (apply (lambda (fx fy fw fh) (draw-menu-filter m fx fy fw fh))
@@ -265,7 +271,9 @@
               [(fixnum? what)
                (let* ([sel? (eqv? what on)]
                       [flags (if sel? flags '())]
-                      [label (car (vector-ref es what))]
+                      [e (vector-ref es what)]
+                      [label (car e)]
+                      [icon (menu-entry-icon e)]
                       [text (menu-label-text label)]
                       [key (menu-label-key label)]
                       [ink (theme (cond [(not sel?) 'menu-ink]
@@ -275,9 +283,13 @@
                                         [else 'menu-ink-selected]))])
                  (when sel?
                    (ui-draw-highlight (+ x 5) y (- w 10) h flags))
+                 (when (and icon (> is 0))
+                   (icon (+ x (theme 'menu-text-x)) (+ y (/ (- h is) 2)) is
+                         '()))
                  (draw-text (if (eq? (theme 'menu-align) 'center)
-                                (+ x (/ (- w (text-width text font)) 2))
-                                (+ x (theme 'menu-text-x)))
+                                (+ x icons
+                                   (/ (- w icons (text-width text font)) 2))
+                                (+ x (theme 'menu-text-x) icons))
                             (+ y (/ (- h lh) 2)) text ink font)
                  ;; the key that does the same, at the right
                  (when key
@@ -358,39 +370,6 @@
    (define-surface menu 30
      'draw 'menu-draw 'box 'menu-box 'at 'menu-at 'mouse 'menu-mouse
      'key 'menu-takes 'doc (lambda (what) '((L . "Choose")))))
-
-  ;;; The launcher: every registered app, and a few system actions.
-
-  ;; at: where the apps' windows open (see new-window-position), or #f.
-  (define (launcher-items at)
-    (append
-     (map (lambda (a)
-            (cons (app-title a)
-                  (lambda ()
-                    (parameterize ([new-window-position at])
-                      (app-launch! (app-name a))))))
-          (sort (lambda (a b) (string<? (app-title a) (app-title b))) *apps*))
-     (list 'separator
-           (cons "Tile windows\tCtrl+Shift+T" (lambda () (tile-windows!)))
-           (cons "Cascade windows" (lambda () (cascade-windows!)))
-           (cons (if (fullscreen?) "Leave full screen\tF11" "Full screen\tF11")
-                 (lambda () (toggle-fullscreen!)))
-           (cons "Screenshot\tF12" (lambda () (save-screenshot!)))
-           (cons "Reload sources" (lambda () (spawn "reload" reload!)))
-           (cons "Quit Schevana" (lambda () (quit!))))))
-
-  (define (launcher-open?) (and *menu* (eq? (menu-tag *menu*) 'launcher)))
-
-  (define (open-launcher! x y . at)
-    (open-menu! x y (launcher-items (and (pair? at) (car at)))
-                'filter #t 'tag 'launcher))
-
-  (define (toggle-launcher!)
-    (if (launcher-open?)
-        (close-menu!)
-        ;; just under the strips at the screen's top (the top bar)
-        (let-values ([(l t w h) (desktop-rect)])
-          (open-launcher! 6 (+ 2 t)))))
 
   ;; Opens a window's menu, on a right click on its title or a press on a
   ;; frame's menu button (the window manager calls the part), or on a right

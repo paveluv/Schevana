@@ -13,8 +13,9 @@
           (only (schevana base) library-layer)
           (only (schevana core) *focus* *windows* close-window! focus-window!
                 minimize-window! point-in? visible? window-title window?)
-          (only (schevana desktop menu) open-window-menu open-menu!
-                toggle-launcher!))
+          (only (schevana desktop app-grid) close-app-grid!)
+          (only (schevana desktop launcher) toggle-launcher!)
+          (only (schevana desktop menu) open-window-menu open-menu!))
 
   (library-layer desktop)
 
@@ -27,6 +28,8 @@
   ;; Handles a press on a bar's area: the launcher opens or closes; windows
   ;; lists the windows to choose from; a window is focused or minimized (left
   ;; button), closed (middle) or shown its menu at the area's top (right).
+  ;; A press on a window closes the app grid, so that the window shows, as a
+  ;; click on a running app in GNOME's dash leaves the overview.
   (define (bar-mouse areas kind what x y button clicks)
     (when (eq? kind 'down)
       (cond
@@ -37,6 +40,7 @@
                                       (lambda () (focus-window! w))))
                               (reverse *windows*)))]
         [(window? what)
+         (close-app-grid!)
          (case button
            [(left) (if (and (eq? what *focus*) (visible? what))
                        (minimize-window! what)

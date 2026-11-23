@@ -18,7 +18,7 @@
                 screen-w text-width theme theme-default! theme-rule
                 window-title with-place world-value)
           (only (schevana desktop bar) bar-mouse bar-at)
-          (only (schevana desktop menu) launcher-open?)
+          (only (schevana desktop launcher) launcher-open?)
           (only (schevana desktop mousedoc) mouse-doc-frame mouse-doc-line)
           (only (schevana desktop status) *status-shown*))
 
@@ -70,10 +70,11 @@
                                         (mouse-doc-line) *status-shown*))))))
 
   ;; Draws the bar, h high, at the screen's top, in its areas
-  ;; (topbar-areas). open? says whether the launcher is open. doc is the
-  ;; mouse documentation's line (mouse-doc-line), or #f; when the style shows
-  ;; it ('mouse-doc), it takes the place of the status. status is the status
-  ;; segments, ((name . string or #f) ...), as last read.
+  ;; (topbar-areas). open? is the launcher's form while it is open, menu or
+  ;; grid, else #f. doc is the mouse documentation's line (mouse-doc-line),
+  ;; or #f; when the style shows it ('mouse-doc), it takes the place of the
+  ;; status. status is the status segments, ((name . string or #f) ...), as
+  ;; last read.
   (define-part (draw-topbar h areas open? doc status)
     (let* ([w (screen-w)] [ty (/ (- h (font-line-height 'ui)) 2)]
            [gap (max 11 (round (* 0.6 (font-line-height 'ui))))]

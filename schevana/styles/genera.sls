@@ -879,6 +879,7 @@
      'menu-ink 'text
      'menu-ink-selected 'text
      'menu-ink-pressed 'window-bg
+     'menu-icons #f
      'genera-separator-rule #t
      'places '((menu genera-separator-rule #f))
      'calendar-step-words #t

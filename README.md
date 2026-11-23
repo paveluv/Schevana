@@ -44,7 +44,7 @@ platform are in [docs/INSTALL.md](docs/INSTALL.md).
 
 | Key | Action |
 | --- | --- |
-| F1 / click "λ Schevana" / right-click desktop | launcher (type to filter); apps picked after a right-click open where you clicked |
+| F1 / click "λ Schevana" / right-click desktop | launcher (type to filter; in the GNOME style, F1 and the bars open the app grid); apps picked after a right-click open where you clicked |
 | Ctrl+Tab | cycle windows |
 | Ctrl+Shift+W / M / N / T / R | close / maximize / minimize / tile / new REPL |
 | F11 | full screen on and off (also in the launcher) |

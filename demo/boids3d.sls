@@ -67,7 +67,29 @@
       (errorf 'boids3d-ride! "no Boids 3D window is open"))
     (boids3d-set-ride! *boids3d-flock* mode))
 
-  (define-app (boids3d) "Boids 3D"
+  ;; The app's icon: two boids in a box seen in depth, the near one larger.
+  ;; It draws on the core alone, in 24 units across the icon.
+  (define (boids3d-draw-icon x y s flags)
+    (define (ink c)
+      (if (or (memq 'dim flags) (memq 'disabled flags)) (alpha c 0.5) c))
+    (define (boid bx by k)
+      (with-translation (bx by)
+        (with-scale (k)
+          (with-turn (-0.75)
+            (fill-polygon '((4 . 0) (-3 . 2.5) (-1.5 . 0) (-3 . -2.5))
+                          (ink 'teal))))))
+    (with-translation (x y)
+      (with-scale ((/ s 24))
+        (stroke-box 8 2.5 13.5 13.5 (ink (alpha 'text-dim 0.55)) 1.25)
+        (for-each (lambda (cx cy)
+                    (draw-line cx cy (+ cx 5.5) (- cy 5.5)
+                               (ink (alpha 'text-dim 0.55)) 1.25))
+                  '(2.5 16 2.5 16) '(8 8 21.5 21.5))
+        (stroke-box 2.5 8 13.5 13.5 (ink 'text-dim) 1.25)
+        (boid 16.5 8 0.7)
+        (boid 9 15.5 1.1))))
+
+  (define-app (boids3d) "Boids 3D" 'icon boids3d-draw-icon
     (let ([w 760] [h 520]
           [running? #t] [last-step (now-ns)]
           [drag #f]          ; (x y yaw pitch bearing) where a drag began

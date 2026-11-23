@@ -267,9 +267,21 @@
           [(eq? key 'escape) 'quit]
           [else alone]))
 
+  ;; The app's icon: the ripples of two waves, the first of the paints. It
+  ;; draws on the core alone, in 24 units across the icon.
+  (define (rings-draw-icon x y s flags)
+    (define (ink c)
+      (if (or (memq 'dim flags) (memq 'disabled flags)) (alpha c 0.5) c))
+    (with-translation (x y)
+      (with-scale ((/ s 24))
+        (for-each (lambda (r)
+                    (stroke-circle 9 12 r (ink 'cyan) 1.5)
+                    (stroke-circle 15 12 r (ink (alpha 'magenta 0.85)) 1.5))
+                  '(2.5 5.5 8.5)))))
+
   ;; On the desktop: the same paints in a window, which asks for a frame
   ;; after every frame.
-  (define-app (rings) "Rings"
+  (define-app (rings) "Rings" 'icon rings-draw-icon
     (let ([began (now-ms)] [font (font "sans-serif" 14 'bold)])
       (open-window "Rings"
         'size '(720 . 480)

@@ -175,6 +175,7 @@
      'options (remq 'corner-radius (map car common-options))
      'bell 'screen
      'menu-hover 'outline
+     'menu-icons #f   ; a terminal's menus are words alone
      'frame-insets 'curses-insets
      'frame-regions 'curses-regions
      'frame-under 'curses-draw-under)))

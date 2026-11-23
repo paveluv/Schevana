@@ -99,7 +99,8 @@
                 ui-stream ui-stream-send! ui-stream-sent ui-stream-resend!
                 ui-region! ui-draw-label ui-stream-layout ui-draw-surface
                 ui-button-size ui-live-badge-size ui-label-size ui-stream-room
-                ui-legend-size ui-bar-chart-bar ui-stream-new)
+                ui-legend-size ui-bar-chart-bar ui-stream-new ui-icon-grid
+                ui-icon-ink)
           (only (schevana services profile) profile-use-subject profile-use-ms
                 profile-use-phase profile-tick-uses profile-tick-late?
                 profile-tick-phase-ns profile-tick-ns profile-subject-of
@@ -3403,7 +3404,19 @@
           (when (< late pipeline-period-ms) (pipeline-view-looked-set! v due))
           (invalidate! win)))))
 
-  (define-app (pipeline) "Pipeline"
+  ;; The app's icon: a frame's time as stacked spans, the widest at the
+  ;; bottom, with a hot spot at the top.
+  (define (pipeline-draw-icon x y s flags)
+    (define (ink c) (ui-icon-ink flags c))
+    (ui-icon-grid (x y s)
+      (fill-box 2 17 20 4 (ink 'accent) 1)
+      (fill-box 2 12.5 12 4 (ink 'accent) 1)
+      (fill-box 14.5 12.5 7.5 4 (ink (alpha 'accent 0.5)) 1)
+      (fill-box 2 8 8 4 (ink 'orange) 1)
+      (fill-box 10.5 8 3.5 4 (ink (alpha 'accent 0.5)) 1)
+      (fill-box 2 3.5 5 4 (ink 'red) 1)))
+
+  (define-app (pipeline) "Pipeline" 'icon pipeline-draw-icon
     (let ([existing (find-window 'pipeline)])
       (if existing
           (begin (focus-window! existing) existing)

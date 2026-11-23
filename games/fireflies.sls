@@ -520,7 +520,22 @@
                     (fireflies-click! (window-ref win 'game) x y))
       'key (lambda (win key mods) (fireflies-key! (window-ref win 'game) key))))
 
-  (define-app (fireflies) "Fireflies"
+  ;; The game's icon: the jar with two fireflies lit in it and one outside.
+  ;; It draws on the core alone, in 24 units across the icon.
+  (define (fireflies-draw-icon x y s flags)
+    (define (ink c)
+      (if (or (memq 'dim flags) (memq 'disabled flags)) (alpha c 0.5) c))
+    (with-translation (x y)
+      (with-scale ((/ s 24))
+        (fill-box 4 7 13 15 (ink (alpha 'cyan 0.12)) 3.5)
+        (stroke-box 4 7 13 15 (ink 'text-dim) 1.5 3.5)
+        (fill-box 5.5 4 10 3 (ink 'orange) 1)
+        (for-each (lambda (fx fy)
+                    (fill-circle fx fy 3.2 (ink (alpha 'yellow 0.3)))
+                    (fill-circle fx fy 1.4 (ink 'yellow)))
+                  '(8.5 12.5 20.5) '(16.5 12 5)))))
+
+  (define-app (fireflies) "Fireflies" 'icon fireflies-draw-icon
     (fireflies-open))
 
   ;; Returns "960x640" as (960 . 640), or #f if s isn't a size.

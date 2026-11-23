@@ -1,6 +1,6 @@
 ;;; tests/units/windows.ss — the window manager's stacking (a window opened
-;;; above its owner stays there, and the two move as one) and the frames a
-;;; window asks for.
+;;; above its owner stays there, and the two move as one), the frames a
+;;; window asks for, and the apps' icons as the registry holds them.
 
 (for-each close-window! (windows))
 
@@ -269,3 +269,36 @@
   (close-window! a)
   (close-window! b))
 (test-clock-release!)
+
+;;; ------------------------------------------------------------------
+;;; apps' icons
+
+;; Returns the icon the registry holds for the app named name, or #f.
+(define (windows-app-icon name)
+  (let ([a (find (lambda (a) (eq? (app-name a) name)) *apps*)])
+    (and a (app-icon a))))
+
+(define windows-icon-seen #f)
+(define (windows-test-icon x y s flags) (set! windows-icon-seen 'first))
+(define-app (windows-iconed) "Iconed" 'icon windows-test-icon
+  (open-window "Iconed" 'size '(200 . 100)))
+(define-app (windows-plain) "Plain"
+  (open-window "Plain" 'size '(200 . 100)))
+
+(check "an app's icon is the procedure define-app gives after 'icon, called \
+        by name, so that a redefinition draws at the next call; an app that \
+        gives none has none"
+       (let ([icon (windows-app-icon 'windows-iconed)])
+         (icon 0 0 24 '())
+         (let ([first windows-icon-seen])
+           (set! windows-test-icon
+             (lambda (x y s flags)
+               (set! windows-icon-seen (list x y s flags))))
+           (icon 1 2 24 '(dim))
+           (and (eq? first 'first)
+                (equal? windows-icon-seen '(1 2 24 (dim)))
+                (not (windows-app-icon 'windows-plain))))))
+
+(set! *apps* (remp (lambda (a) (memq (app-name a)
+                                     '(windows-iconed windows-plain)))
+                   *apps*))

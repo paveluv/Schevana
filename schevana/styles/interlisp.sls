@@ -125,6 +125,7 @@
      'drag-feedback 'outline
      'menu-choose 'release
      'menu-hover 'outline
+     'menu-icons #f   ; its menus are words alone
      'bell 'window
      'title-double-click 'none
      'scrollbar-side 'left

@@ -28,16 +28,18 @@
   (import (chezscheme)
           (only (schevana base) at-load condition->string define-state
                 library-layer string-join string-split)
-          (only (schevana core) after define-app fill-box find-window
-                focus-window! invalidate! kill! now-ms open-window socket-accept
-                socket-close socket-listen socket-read socket-write spawn style)
+          (only (schevana core) after alpha define-app draw-line
+                draw-polyline fill-box fill-circle find-window focus-window!
+                invalidate! kill! now-ms open-window socket-accept socket-close
+                socket-listen socket-read socket-write spawn stroke-box style)
           (only (schevana desktop start) desktop-at-start!)
           (only (schevana kits transcript) transcript-scroll
                 transcript-scroll-set! transcript-draw-view transcript-new
                 transcript-count transcript-add!)
           (only (schevana services env) env-root env-eval)
           (only (schevana kits repl) repl-cont repl-prompt repl-read-input!
-                repl-value->string repl-window-size))
+                repl-value->string repl-window-size)
+          (only (schevana kits ui) ui-icon-grid ui-icon-ink))
 
   (library-layer apps)
 
@@ -305,7 +307,23 @@
         'close (lambda (win) (debug-repl-close! d))
         'state d)))
 
-  (define-app (debug-repl) "Debug REPL"
+  ;; The app's icon: a prompt in a window, with a bug on its corner.
+  (define (debug-repl-draw-icon x y s flags)
+    (define (ink c) (ui-icon-ink flags c))
+    (ui-icon-grid (x y s)
+      (fill-box 2 3 18 14 (ink (alpha 'orange 0.18)) 3)
+      (stroke-box 2 3 18 14 (ink 'orange) 1.75 3)
+      (draw-polyline '((6 . 7) (9 . 10) (6 . 13)) (ink 'orange) 1.75)
+      ;; the bug: three legs on each side, its body, its head
+      (for-each (lambda (x0 y0 x1 y1)
+                  (draw-line x0 y0 x1 y1 (ink 'red) 1.25)
+                  (draw-line (- 35 x0) y0 (- 35 x1) y1 (ink 'red) 1.25))
+                '(14 13.5 14) '(15.5 17.5 19.5) '(12 11.5 12) '(13.5 17.5 21.5))
+      (fill-circle 17.5 17.5 4 (ink 'red))
+      (fill-circle 17.5 12.6 2 (ink 'red))
+      (draw-line 17.5 14.5 17.5 21 (ink (alpha 'bg-0 0.6)) 1)))
+
+  (define-app (debug-repl) "Debug REPL" 'icon debug-repl-draw-icon
     (let ([existing (find-window 'debug-repl)])
       (if existing
           (begin (focus-window! existing) existing)

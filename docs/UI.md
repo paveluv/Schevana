@@ -311,9 +311,10 @@ content; the style decides where the bar is and when it shows.
 ```
 
 `ui-open-menu!` opens a menu at a point in the window, each entry a
-`(label . thunk)`. A dialog is drawn over the window at `ui-end!`, so it
-is a widget too: the app draws it for as long as its own state says the
-dialog is open. Return presses the dialog's last button, and Escape or a
+`(label . thunk)`, or `(label thunk icon)` with an icon drawn as an app's
+is ([WINDOWS.md](WINDOWS.md#apps)). A dialog is drawn over the window at
+`ui-end!`, so it is a widget too: the app draws it for as long as its own
+state says the dialog is open. Return presses the dialog's last button, and Escape or a
 press outside the dialog calls `on-dismiss`, its last argument.
 `ui-sheet` is a dialog whose body the app draws (a form, say).
 `ui-open-modal` opens a window that waits over another one, as the file

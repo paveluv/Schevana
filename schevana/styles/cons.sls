@@ -42,9 +42,9 @@
                 window-bg window-id window-shadow window-title window-w window?
                 with-clip)
           (only (schevana kits app) app-color)
-          (only (schevana kits menu) menu-entries menu-filter menu-filter?
-                menu-label-key menu-label-text menu-label-width menu-x
-                menu-y)
+          (only (schevana kits menu) menu-entries menu-entry-icon
+                menu-filter menu-filter? menu-icon-size menu-label-key
+                menu-label-text menu-label-width menu-x menu-y)
           (only (schevana kits text) text-widest text-draw-centered text-fit
                 text-ink)
           (only (schevana kits ui) ui-board-header-height ui-draw-mark
@@ -54,7 +54,8 @@
                 ui-tree-areas ui-scrollbar-areas ui-flow ui-chip-size
                 ui-small-glyph-size ui-text-box-top ui-scrollbar-width
                 ui-text-box-areas ui-control-height ui-checkbox-box
-                ui-button-size* ui-draw-glyph ui-glyph-size))
+                ui-button-size* ui-draw-glyph ui-glyph-size
+                ui-draw-window-icon))
 
   (library-layer looks)
 
@@ -933,17 +934,19 @@
   ;; pair; the last one's cdr holds nil, and a separator is a longer
   ;; pointer. An entry's row is its pair and the gap below it
   ;; (menu-item-height); the filter's field, when the menu has one, is
-  ;; above the entries.
+  ;; above the entries. An entry's icon goes in its car, before the text.
   (define (cons-menu-areas m)
     (let* ([es (menu-entries m)] [c (cons-cell)] [ih (theme 'menu-item-height)]
            [sh (theme 'menu-separator-height)] [pad (theme 'menu-pad)]
            [tx (theme 'menu-text-x)] [font (theme 'menu-font)]
+           [icons (cons-menu-icon-room m font)]
            [head (if (menu-filter? m) (+ (ui-control-height) pad) 0)]
            [w (fold-left (lambda (acc e)
                            (if (pair? e)
                                (max acc
-                                    (+ pad tx (menu-label-width (car e) font)
-                                           tx c pad))
+                                    (+ pad tx icons
+                                       (menu-label-width (car e) font)
+                                       tx c pad))
                                acc))
                          (theme 'menu-min-width) es)]
            [h (fold-left (lambda (acc e) (+ acc (if (pair? e) ih sh)))
@@ -964,6 +967,11 @@
                                         x ey w eh)
                                   (loop (cdr es) (+ i 1) (+ ey eh))))))))))
 
+  ;; Returns the room that the icons of m's entries take before their
+  ;; text: an icon's side and a gap, or none.
+  (define (cons-menu-icon-room m font)
+    (let ([is (menu-icon-size m font)]) (if (> is 0) (+ is 6) 0)))
+
   ;; The entry under the mouse, or the one the keys chose, fills with ink,
   ;; at 0.6 while a button is held on it; a blinking entry fills in its on
   ;; phases (on).
@@ -971,6 +979,7 @@
     (let* ([es (list->vector (menu-entries m))] [font (theme 'menu-font)]
            [lh (font-line-height font)] [c (cons-cell)]
            [pad (theme 'menu-pad)] [tx (theme 'menu-text-x)]
+           [is (menu-icon-size m font)] [icons (cons-menu-icon-room m font)]
            [f (assq 'filter areas)])
       (apply ui-draw-panel (append (cdar areas) '((menu))))
       (when f
@@ -989,13 +998,16 @@
                                        'cons-ink))]
                         [px (+ x pad)] [pw (- w pad pad c)])
                    (cons-pair-h! px y pw c c 'cons-ink 1 tint #f)
-                   (let* ([label (car (vector-ref es i))]
+                   (let* ([e (vector-ref es i)] [label (car e)]
+                          [icon (menu-entry-icon e)]
                           [key (menu-label-key label)]
                           [kw (if key (+ (text-width key font) 12) 0)]
                           [ink (if tint 'window-bg (theme 'menu-ink))])
-                     (draw-text (+ px tx) (+ y (/ (- c lh) 2))
+                     (when (and icon (> is 0))
+                       (icon (+ px tx) (+ y (/ (- c is) 2)) is '()))
+                     (draw-text (+ px tx icons) (+ y (/ (- c lh) 2))
                                 (text-fit (menu-label-text label)
-                                          (- pw tx 4 kw) font)
+                                          (- pw tx icons 4 kw) font)
                                 ink font)
                      (when key
                        (draw-text (- (+ px pw) tx (- kw 12))
@@ -1074,8 +1086,8 @@
 
   ;; The taskbar's windows are a list, [Tasks|•]→[REPL|•]→[Clock|/]: each
   ;; window's area is its pair and its pointer, with a car as wide as its
-  ;; title and a little more, at most 160, and narrower when the chain
-  ;; would not fit. The hint, a comment, sits at the right while the chain
+  ;; icon and title and a little more, at most 160, and narrower when the
+  ;; chain would not fit. The hint, a comment, sits at the right while the chain
   ;; leaves it room.
   (define (cons-taskbar-areas h hint)
     (let* ([w (screen-w)] [y0 (- (screen-h) h)]
@@ -1085,8 +1097,9 @@
            [hint-w (+ g g g g (text-width (string-append "; " hint)
                                      'mono-small))]
            [cars (map (lambda (win)
-                        (min 160 (+ g g (ceiling (text-width (window-title win)
-                                                            'ui)))))
+                        (min 160 (+ g g (cons-taskbar-icon-room)
+                                    (ceiling (text-width (window-title win)
+                                                         'ui)))))
                       ws)]
            [chain (apply + (map (lambda (cw) (+ cw c a)) cars))]
            [hint? (<= (+ chain hint-w) (- w g g g g))]
@@ -1102,9 +1115,14 @@
                     (cons (list (car ws) x y0 (+ (car cars) c a) h)
                           (loop (cdr ws) (cdr cars) (+ x (car cars) c a))))))))
 
+  ;; Returns the side of a window's icon in its car, and the room it takes
+  ;; with the gap after it.
+  (define (cons-taskbar-icon-size) (round (font-line-height 'ui)))
+  (define (cons-taskbar-icon-room) (+ (cons-taskbar-icon-size) 5))
+
   ;; The focused window's car fills with the panel's accent, a minimized
   ;; window's is faint, and the one under the mouse fills with the plain
-  ;; ink.
+  ;; ink. The window's icon goes before its title, the two centered.
   (define (cons-draw-taskbar h areas open? doc status hint)
     (let* ([w (screen-w)] [y0 (- (screen-h) h)]
            [c (cons-cell)] [a (cons-arrow)] [cy (+ y0 (quotient (- h c) 2))]
@@ -1126,10 +1144,14 @@
                                [min? 'panel-dim]
                                [else 'cons-ink])]
                     [tint (and (or focused? hover?) ink)]
-                    [s (text-fit (window-title win) (- cw 8) 'ui)])
+                    [is (cons-taskbar-icon-size)]
+                    [room (cons-taskbar-icon-room)]
+                    [s (text-fit (window-title win) (- cw 8 room) 'ui)]
+                    [ix (+ x (floor (/ (- cw room (text-width s 'ui)) 2)))])
                (cons-pair! x cy cw c ink 1 tint #f)
-               (draw-text (+ x (floor (/ (- cw (text-width s 'ui)) 2)))
-                          (+ cy (/ (- c lh) 2)) s
+               (ui-draw-window-icon win ix (+ cy (/ (- c is) 2)) is
+                                    (if min? '(dim) '()))
+               (draw-text (+ ix room) (+ cy (/ (- c lh) 2)) s
                           (cond [tint 'panel] [min? 'panel-dim]
                                 [else 'panel-text])
                           'ui)

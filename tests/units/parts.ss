@@ -95,7 +95,7 @@
               'topbar-areas 'test-topbar-areas)
             (set-style! 'test-launcher)
             (equal? (list plain (list (opened-at 40) (opened-at 340)))
-                    '((#t #f) (#f #t)))))))
+                    '((menu #f) (#f menu)))))))
 
 ;; What each of the desktop's parts was last handed, by its key.
 ;; (test-hand key built-in) is a style's part that records its arguments
@@ -109,7 +109,7 @@
 (define (handed key) (let ([e (assq key test-handed)]) (and e (cdr e))))
 
 (check "the desktop's parts are handed what they draw: the bars their \
-        height, their areas, whether the launcher is open, the mouse \
+        height, their areas, the launcher's form while it is open, the mouse \
         documentation's line and the status, the taskbar its hint too; the \
         toasts their boxes; the menu itself, its areas, the entry chosen \
         and its flags"
@@ -129,10 +129,10 @@
             (steps 1)
             (let ([ok (and (equal? (handed 'draw-topbar)
                                    (list (topbar-height) (placed-topbar-areas)
-                                         #t #f *status-shown*))
+                                         'menu #f *status-shown*))
                            (equal? (handed 'draw-taskbar)
                                    (list (taskbar-height)
-                                         (placed-taskbar-areas) #t #f
+                                         (placed-taskbar-areas) 'menu #f
                                          *status-shown* taskbar-hint))
                            (equal? (handed 'draw-toasts)
                                    (list (with-place 'toast toast-boxes)))
@@ -143,6 +143,33 @@
               (set! *toasts* '())
               (close-window! w)
               ok)))))
+
+(check "the app grid's parts are handed what they draw: the entries for \
+        what is typed, their areas on the page shown, what is typed, the \
+        page and the entry the keys chose; and the bars, that the launcher \
+        is the grid"
+       (with-test-styles
+        (lambda ()
+          (set! test-handed '())
+          (define-style test-hand-grid "Test"
+            'launcher-form 'grid
+            'draw-topbar (test-hand 'draw-topbar draw-topbar*)
+            'draw-app-grid (test-hand 'draw-app-grid draw-app-grid*))
+          (set-style! 'test-hand-grid)
+          (toggle-launcher!)
+          (test-type! "c")
+          (steps 1)
+          (let* ([h (handed 'draw-app-grid)] [es (app-grid-entries)]
+                 [ok (and h
+                          (equal? (map car (car h)) (map car es))
+                          (equal? (map cadr (car h)) (map cadr es))
+                          (equal? (cdr h)
+                                  (list (app-grid-areas (length es) 0) "c" 0
+                                        0))
+                          (eq? (caddr (handed 'draw-topbar)) 'grid))])
+            (close-app-grid!)
+            (steps 1)
+            ok))))
 
 (check "where a style has no top bar the taskbar is handed the mouse \
         documentation's line, where it shows it"

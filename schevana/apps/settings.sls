@@ -24,11 +24,12 @@
                 auto-load-entries auto-load-forget! auto-loads
                 library-file-layer path-full alpha chain-ref close-window!
                 color-keys color-rgba common-options current-style
-                current-window define-app detached-window draw-text draw-window*
-                fill-box fill-circle fill-wallpaper find-style find-window
+                current-window define-app detached-window draw-polyline
+                draw-text draw-window* fill-box fill-circle fill-polygon
+                fill-wallpaper find-style find-window
                 focus-window! font-char-width font-line-height fullscreen?
                 invalidate! load-file! open-window override! palette-title
-                palettes plist-has? reset-style! reset-theme! rgb
+                palettes pi plist-has? reset-style! reset-theme! rgb
                 set-fullscreen! set-scale! set-style! set-theme! stroke-box
                 stroke-circle style style-chain style-changes-of style-name
                 style-settings style-title styles system-scale-percent
@@ -52,7 +53,8 @@
                 ui-draw-checkbox ui-draw-button ui-draw-focus ui-draw-card
                 ui-card-radius ui-label-size ui-toggle ui-slider ui-dropdown
                 ui-segmented ui-slider-height ui-button ui-region! ui-draw-label
-                ui-control-height ui-rows ui-switch-row)
+                ui-control-height ui-rows ui-switch-row ui-icon-grid
+                ui-icon-ink)
           (only (schevana desktop file-dialog) open-file-dialog)
           (only (schevana services theme-file) theme-file-plain?
                 theme-file-hex))
@@ -1370,7 +1372,24 @@
           st (max 0 (- (settings-st-pane-scroll st)
                        (* 3 (round (font-line-height 'ui)) dy))))])))
 
-  (define-app (settings) "Settings"
+  ;; The app's icon: a gear of eight teeth around its hole.
+  (define (settings-draw-icon x y s flags)
+    (define (ink c) (ui-icon-ink flags c))
+    (let ([gear (apply append
+                       (map (lambda (k)
+                              (map (lambda (r da)
+                                     (let ([a (+ (* k (/ pi 4)) da)])
+                                       (cons (+ 12 (* r (cos a)))
+                                             (+ 12 (* r (sin a))))))
+                                   '(7.5 10.5 10.5 7.5)
+                                   '(-0.22 -0.13 0.13 0.22)))
+                            (iota 8)))])
+      (ui-icon-grid (x y s)
+        (fill-polygon gear (ink (alpha 'accent-2 0.2)))
+        (draw-polyline (append gear (list (car gear))) (ink 'accent-2) 1.5)
+        (stroke-circle 12 12 3 (ink 'accent-2) 1.75))))
+
+  (define-app (settings) "Settings" 'icon settings-draw-icon
     (let ([existing (find-window 'settings)])
       (if (and existing (settings-st? (window-ref existing 'state #f)))
           (begin (focus-window! existing) existing)

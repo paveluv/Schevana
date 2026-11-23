@@ -458,6 +458,46 @@
                               '("........" ".tttttt." ".tttttt." ".tttttt."
                                 ".tttttt." "........")))))))))
 
+;; An entry's icon goes at the text's inset, centered on its row, and every
+;; entry's text after the icons' room (an icon's side and a gap of 8),
+;; which the menu grows by; with menu-icons off, the style shows none and
+;; takes no room. The label is wider than the menu's least width, so the
+;; room shows in its width.
+(check "menu-icons: an entry's icon is drawn at the text's inset, centered \
+        on its row, and the menu grows by its room; with menu-icons off \
+        there is no icon and no room, and an entry with an icon still runs \
+        its action"
+       (let* ([seen '()] [ran #f]
+              [label (make-string 60 #\m)]
+              [icon (lambda (x y s flags)
+                      (set! seen (cons (list x y s) seen)))])
+         (reset-theme!)
+         (open-menu! 300 300 (list (list label (lambda () (set! ran #t)) icon)
+                                   (cons "Two" void)))
+         (steps 1)
+         (let* ([areas (placed-menu-areas *menu*)] [one (cdr (assv 0 areas))]
+                [w (cadddr (car areas))] [drawn seen]
+                [s (round (font-line-height (theme 'menu-font)))])
+           (set-theme! 'menu-icons #f)
+           (set! seen '())
+           (steps 1)
+           (let ([w-off (cadddr (car (placed-menu-areas *menu*)))]
+                 [drawn-off seen])
+             (reset-theme!)
+             (steps 1)
+             (let-values ([(x y) (menu-entry-point label)])
+               (inject! `(mouse-move ,x ,y) `(mouse-down ,x ,y left 1)
+                        `(mouse-up ,x ,y left))
+               (steps 2)
+               (and (member (list (+ (car one) (theme 'menu-text-x))
+                                  (+ (cadr one) (/ (- (cadddr one) s) 2))
+                                  s)
+                            drawn)
+                    (null? drawn-off)
+                    (= w (+ w-off s 8))
+                    ran
+                    (not *menu*)))))))
+
 ;; Genera's recipe for a window it is not using: its frame-over grays the
 ;; content with a sparse stipple of ink on clear paper.
 (define (test-gray-over win x y w h focused? hover pressed)

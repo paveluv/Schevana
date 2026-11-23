@@ -9,11 +9,13 @@
     pacer-lab)
   (import (chezscheme)
           (only (schevana base) library-layer plist-ref string-join)
-          (only (schevana core) after define-app fill-box font-line-height
-                invalidate! open-window theme)
+          (only (schevana core) after alpha define-app draw-line
+                draw-polyline fill-box fill-circle fill-polygon
+                font-line-height invalidate! open-window theme)
           (only (schevana kits ui) ui-handlers make-ui ui-end! ui-draw-cell
                 ui-table-room ui-table ui-draw-label ui-toggle ui-begin!
-                ui-control-height ui-pad ui-memo! ui-memo)
+                ui-control-height ui-pad ui-memo! ui-memo ui-icon-grid
+                ui-icon-ink)
           (only (schevana services pacer-lab) pacer-lab-on! pacer-lab-on?
                 pacer-lab-effects *pacer-lab-log-path* pacer-lab-periods
                 pacer-lab-period-ms pacer-lab-now pacer-lab-effect-verdict
@@ -126,7 +128,18 @@
                   (ui-draw-cell cx cy cw ch flags (pacer-lab-cell e key))))
       (ui-end! ui w h)))
 
-  (define-app (pacer-lab) "Pacer Lab"
+  ;; The app's icon: a metronome, its arm swung to the right.
+  (define (pacer-lab-draw-icon x y s flags)
+    (define (ink c) (ui-icon-ink flags c))
+    (let ([body '((6.5 . 21) (17.5 . 21) (14 . 3) (10 . 3))])
+      (ui-icon-grid (x y s)
+        (fill-polygon body (ink (alpha 'magenta 0.2)))
+        (draw-polyline (append body (list (car body))) (ink 'magenta) 1.75)
+        (draw-line 12 17.5 17.5 5 (ink 'text) 1.5)
+        (fill-circle 15.9 8.6 1.8 (ink 'magenta))
+        (fill-circle 12 17.5 1.3 (ink 'text)))))
+
+  (define-app (pacer-lab) "Pacer Lab" 'icon pacer-lab-draw-icon
     (let ([ui (make-ui)] [open? #t])
       ;; redraws once a second, to show the period's progress, until the
       ;; window closes

@@ -1132,7 +1132,7 @@
   (define-style genera "Genera, again")
   (define-palette nord "Nord, again")
   (define-wallpaper flat "Flat, again" (lambda (x y w h top bottom) (void)))
-  (register-app! 'clock "Clock, again" (lambda () #f))
+  (register-app! 'clock "Clock, again" (lambda () #f) #f)
   (let ([named (lambda (registry name-of title-of)
                  (map (lambda (e) (cons (name-of e) (title-of e))) registry))])
     (check "a style, palette, wallpaper or app defined again keeps its place"

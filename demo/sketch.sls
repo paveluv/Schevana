@@ -11,7 +11,27 @@
   (define (sketch-toolbar-height)
     (max 34 (round (+ (font-line-height 'ui-small) 21))))
 
-  (define-app (sketch) "Sketch"
+  ;; The app's icon: a pencil at the end of its line, its eraser up. It
+  ;; draws on the core alone, in 24 units across the icon.
+  (define (sketch-draw-icon x y s flags)
+    (define (ink c)
+      (if (or (memq 'dim flags) (memq 'disabled flags)) (alpha c 0.5) c))
+    (with-translation (x y)
+      (with-scale ((/ s 24))
+        (draw-polyline '((2.5 . 20.5) (4.5 . 16.5) (6.5 . 19.5) (9 . 17))
+                       (ink 'accent) 1.75)
+        (fill-polygon '((10.27 . 12.61) (18.44 . 4.44) (21.56 . 7.56)
+                        (13.39 . 15.73))
+                      (ink 'orange))
+        (fill-polygon '((17.38 . 5.5) (18.44 . 4.44) (21.56 . 7.56)
+                        (20.5 . 8.62))
+                      (ink 'red))
+        (fill-polygon '((9 . 17) (10.27 . 12.61) (13.39 . 15.73))
+                      (ink (alpha 'orange 0.45)))
+        (fill-polygon '((9 . 17) (9.45 . 15.43) (10.57 . 16.55))
+                      (ink 'text)))))
+
+  (define-app (sketch) "Sketch" 'icon sketch-draw-icon
     (let ([color 'accent] [width 3] [current #f])
       (define (strokes win) (window-ref win 'strokes '()))
       (define (swatch-at x y)

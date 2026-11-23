@@ -13,13 +13,13 @@
           (only (schevana base) at-load define-hook library-layer)
           (only (schevana core) *focus* *hover* *windows* alpha chrome-height
                 define-part define-strip define-surface draw-line draw-text
-                fill-box fill-circle font-line-height screen-h screen-w
-                text-width theme-default! theme-rule visible? window-app
-                window-id window-title window? with-place world-value)
-          (only (schevana kits app) app-color)
+                fill-box font-line-height screen-h screen-w text-width
+                theme-default! theme-rule visible? window-id window-title
+                window? with-place world-value)
           (only (schevana kits text) text-fit text-widest)
+          (only (schevana kits ui) ui-draw-window-icon)
           (only (schevana desktop bar) bar-mouse bar-at)
-          (only (schevana desktop menu) launcher-open?)
+          (only (schevana desktop launcher) launcher-open?)
           (only (schevana desktop mousedoc) mouse-doc-frame mouse-doc-line)
           (only (schevana desktop status) *status-shown*)
           (only (schevana desktop topbar) topbar-height))
@@ -37,6 +37,11 @@
   (define (taskbar-box)
     (let ([h (taskbar-height)]) (values 0 (- (screen-h) h) (screen-w) h)))
 
+  ;; A window's button shows its icon, 9 in, then its title after a gap of
+  ;; 7: the icon's side, and where the title starts.
+  (define (taskbar-icon-size) (round (font-line-height 'ui)))
+  (define (taskbar-text-x) (+ 16 (taskbar-icon-size)))
+
   ;; Returns the areas of a bar h high at the screen's bottom: the hint at the
   ;; right, while the buttons leave room for it, and a button for each
   ;; window, from left to right: ((hint x y w h) (window x y w h) ...).
@@ -51,8 +56,9 @@
            ;; the hint is dropped when the buttons would be too narrow for
            ;; their titles
            [hint-w (let ([hw (+ 24 (text-width hint 'ui-small))]
-                         [want (min 210 (+ 48 (text-widest (map window-title ws)
-                                                           'ui)))])
+                         [want (min 210 (+ (taskbar-text-x) 21
+                                           (text-widest (map window-title ws)
+                                                        'ui)))])
                      (if (>= (button-w hw) want) hw 0))]
            [bw (button-w hint-w)])
       (append (if (> hint-w 0) (list (list 'hint (- w hint-w) y0 hint-w h)) '())
@@ -81,10 +87,10 @@
                                        *status-shown* taskbar-hint)))))
 
   ;; Draws the bar, h high, at the screen's bottom, in its areas
-  ;; (taskbar-areas). open? says whether the launcher is open. doc is the
-  ;; mouse documentation's line when this bar shows it (taskbar-doc-line),
-  ;; or #f. status is the status segments, ((name . string or #f) ...).
-  ;; hint is the hint's text.
+  ;; (taskbar-areas). open? is the launcher's form while it is open, menu or
+  ;; grid, else #f. doc is the mouse documentation's line when this bar
+  ;; shows it (taskbar-doc-line), or #f. status is the status segments,
+  ;; ((name . string or #f) ...). hint is the hint's text.
   (define-part (draw-taskbar h areas open? doc status hint)
     (let ([w (screen-w)] [y0 (- (screen-h) h)] [lh (font-line-height 'ui)]
           [ha (assq 'hint areas)])
@@ -103,7 +109,7 @@
               (let ([focused? (eq? what *focus*)]
                     [hover? (equal? *hover* (list 'surface 'taskbar what))]
                     [min? (not (visible? what))]
-                    [color (app-color (window-app what))])
+                    [is (taskbar-icon-size)] [tx (taskbar-text-x)])
                 (when (or focused? hover?)
                   (fill-box x (+ y 5) bw (- h 10)
                             (if focused?
@@ -113,10 +119,10 @@
                 (when focused?
                   (fill-box (+ x 12) (- (+ y h) 6) (- bw 24) 2
                             'panel-accent 1))
-                (fill-circle (+ x 15) (+ y (/ h 2)) 4
-                             (if min? (alpha color 0.35) color))
-                (draw-text (+ x 27) (+ y (/ (- h lh) 2))
-                           (text-fit (window-title what) (- bw 36) 'ui)
+                (ui-draw-window-icon what (+ x 9) (+ y (/ (- h is) 2)) is
+                                     (if min? '(dim) '()))
+                (draw-text (+ x tx) (+ y (/ (- h lh) 2))
+                           (text-fit (window-title what) (- bw tx 9) 'ui)
                            (if min? 'panel-dim 'panel-text) 'ui))))
           a))
        areas)))

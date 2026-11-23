@@ -373,7 +373,17 @@
                  'red 2)
       (fill-circle x y 3 'yellow)))
 
-  (define-app (boids) "Boids"
+  ;; The app's icon: three boids heading the same way, drawn as the flock
+  ;; draws them.
+  (define (boids-draw-icon x y s flags)
+    (define (ink c) (ui-icon-ink flags c))
+    (ui-icon-grid (x y s)
+      (for-each (lambda (bx by)
+                  (draw-line bx by (+ bx 3.5) (- by 3.5) (ink 'red) 1.75)
+                  (fill-circle bx by 2.6 (ink 'yellow)))
+                '(15.5 8.5 13.5) '(8.5 12 17.5))))
+
+  (define-app (boids) "Boids" 'icon boids-draw-icon
     (let ([w 760] [h 520]
           [running? #t] [last-step 0]
           [step-ms 0.0]      ; a step's time, smoothed

@@ -63,7 +63,9 @@ The handlers, and what each one is given besides the window:
 A few properties mean something to the window manager: `'bg`, the color
 under the content; `'cursor`, the pointer's shape over the content;
 `'window-style`, a style for this window alone ([LOOKS.md](LOOKS.md));
-`'frameless`, true for a window without the style's frame, whose content
+`'title-icon`, the window's own icon, in place of its app's
+([below](#apps)); `'frameless`, true for a window without the style's
+frame, whose content
 fills all of it (a host app's window, [APPS.md](APPS.md)); and
 `'on-action`, a `(lambda (win action) ...)` that returns true when it has
 done the action itself. The frame's buttons, a double click on the title
@@ -156,10 +158,15 @@ together.
 ## Apps
 
 `define-app` defines a procedure that opens the app, and registers the
-app with the launcher, which lists it at once:
+app with the launcher, which lists it at once, with its icon:
 
 ```scheme
-(define-app (stopwatch) "Stopwatch"
+(define (stopwatch-draw-icon x y s flags)
+  (ui-icon-grid (x y s)
+    (fill-box 10 1.5 4 3 (ui-icon-ink flags 'accent) 1)
+    (stroke-circle 12 13.5 8.5 (ui-icon-ink flags 'accent) 2)
+    (draw-line 12 13.5 15.5 9.5 (ui-icon-ink flags 'text) 2)))
+(define-app (stopwatch) "Stopwatch" 'icon stopwatch-draw-icon
   (open-window "Stopwatch" 'size '(220 . 90)
     'start (now-ms)
     'open (lambda (win) (window-frame-soon! win))
@@ -180,6 +187,29 @@ app with the launcher, which lists it at once:
 `(apps)` lists the registered apps, and `(app-launch! name)` opens one
 as the launcher does. An app defined at the REPL lasts until you quit; to
 keep it, see [APPS.md](APPS.md).
+
+`'icon` after the title gives the app's icon: a procedure `(x y s flags)`
+that draws it in the square of side `s` at `x`, `y`, at whatever size it
+is asked for, in the theme's colors, so that it follows the look. The
+launcher lists the app with it, the taskbar (or GNOME's dash) shows it on
+each of the app's windows, and a style with an icon in its title bars
+(Windows, Mac, Adwaita) shows it there, unless the window gives its own
+as `'title-icon` (a REPL's window shows its environment's). Inside
+`ui-icon-grid` the square is 24 units across at any size, and
+`ui-icon-ink` fades a color when `flags` hold `dim` (an unfocused
+window's title, a minimized window's button). The icon is called by
+name, so redefining `stopwatch-draw-icon` shows at its next draw. An app
+that gives no icon has a stand-in, a tile in its color with its title's
+first letter. `ui-draw-app-icon` draws an app's icon by its name, and
+`ui-draw-window-icon` a window's:
+
+```scheme
+(open-window "Icons" 'size '(200 . 80)
+  'draw (lambda (win w h)
+          (ui-draw-app-icon 16 16 48 '() 'stopwatch)
+          (ui-draw-app-icon 76 16 48 '(dim) 'stopwatch)
+          (ui-draw-app-icon 136 16 48 '() 'clock)))
+```
 
 ## Keys, timers, processes, notices
 

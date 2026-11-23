@@ -123,7 +123,8 @@ the place they draw in (`bar`, `menu`, `toast`), as the kit does with a
 widget's parts:
 
 - `(topbar-areas h)` and `(draw-topbar h areas open? doc status)`: the
-  bar's height `h`, its areas, whether the launcher is open, the line of
+  bar's height `h`, its areas, the launcher's form while it is open
+  (`menu` or `grid`, else `#f`), the line of
   mouse documentation (worded by `mouse-doc-text`) or `#f`, which takes the
   status's place where the style shows it (`'mouse-doc`), and the status
   segments, `((name . string) ...)`;
@@ -132,9 +133,22 @@ widget's parts:
   documentation only where there is no top bar (Genera's who line);
 - `(menu-areas m)` and `(draw-menu m areas on flags)`: the menu, as the
   menu kit's data (`(schevana kits menu)`: `menu-entries`,
-  `menu-label-text`, `menu-filter`, ...), its areas, the entry shown
-  chosen or `#f`, and that entry's highlight's flags (`outline`,
-  `pressed`);
+  `menu-label-text`, `menu-entry-icon`, `menu-icon-size`, `menu-filter`,
+  ...), its areas, the entry shown chosen or `#f`, and that entry's
+  highlight's flags (`outline`, `pressed`). An entry may have an icon
+  (the launcher's apps have theirs), which the built-in menu draws before
+  its text unless the style's `menu-icons` is `#f` (the Lisp machines',
+  OPEN LOOK's and Curses' menus are words alone);
+- `(app-grid-areas n page)` and `(draw-app-grid entries areas filter page
+  sel)`: the app grid, the launcher of a style whose `launcher-form` is
+  `grid` (GNOME's), which shows the apps over the windows and under the
+  bars, in pages under a search field. Its areas, for `n` entries with
+  `page` shown, are the search field's, a dot for each page when there
+  is more than one, `((page . k) x y w h)`, and the page's entries, `(i x
+  y w h)`. It is handed its entries for what is typed, each `(label app .
+  thunk)`, where `app` is an app's name or `#f` for one of the desktop's
+  actions, their areas, what is typed, the page and the entry the keys
+  chose, or `#f`;
 - `(toast-boxes)`, which returns where each toast goes, and `(draw-toasts
   boxes)`; and `(draw-wallpaper w h)`, which fills the desktop with
   `fill-wallpaper`.
@@ -147,6 +161,13 @@ included. Plain settings cover the rest: a text's caret (`text-caret`:
 `bar` or `block`) and its selection (`text-selection`: `fill` or
 `underline`), a section label's font and case, how a menu's entries are
 aligned (`menu-align`), and the like.
+
+Every place that shows an app draws its icon ([WINDOWS.md](WINDOWS.md#apps)):
+the launcher, the taskbar or the dash, the app grid, and the title bar
+where a style has one there (`ui-title-icon`). An app's icon is drawn in
+the theme's colors, so it follows the palette; an app that gives none
+gets a stand-in from the part `ui-draw-app-tile`, a tile in the app's
+color (`app-colors`) with its title's first letter.
 
 ## The built-in styles
 
@@ -299,6 +320,7 @@ How a desktop behaves, beyond how it draws, is settings too:
 Among them are `title-double-click` (`maximize`, `shade`, `none`),
 `title-wheel`, `drag-feedback` (`live`, `outline`), `frame-edge` and
 `frame-corner` (the resize edges), `raise-on-click`, `menu-choose`
-(`click`, `release`), `scrollbar-side` and `scrollbar-show`, and the bell
+(`click`, `release`), `launcher-form` (`menu`, `grid`), `scrollbar-side`
+and `scrollbar-show`, and the bell
 (`bell`: `none`, `screen` or `window`), which `(bell)` rings. A style
 chooses each of them; the built-in styles show what they can do.

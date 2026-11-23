@@ -302,16 +302,23 @@
 (check "a window's title icon is drawn by the Mac and Windows styles' \
         frames, left of the title; Genera's busy mark is a terminal's \
         spinner in a character's cell, and its who line says Run"
-       (let* ([at #f]
+       (let* ([calls '()]
               [w (open-window "Iconic" 'size '(400 . 200)
                               'title-icon (lambda (x y s flags)
-                                            (set! at (list x s flags))))]
+                                            (set! calls
+                                              (cons (list x y s flags)
+                                                    calls))))]
+              ;; the title bar's call: the taskbar, at the screen's bottom,
+              ;; draws the window's icon too
               [drawn (lambda (style)
                        (set-style! style)
-                       (set! at #f)
+                       (set! calls '())
                        (invalidate!)
                        (steps 1)
-                       at)])
+                       (let ([c (find (lambda (c)
+                                        (< (cadr c) (+ (window-y w) 40)))
+                                      calls)])
+                         (and c (cons (car c) (cddr c)))))])
          (let* ([mac (drawn 'mac)] [windows (drawn 'windows)])
            (set-style! 'genera)
            (focus-window! w)

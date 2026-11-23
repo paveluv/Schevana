@@ -421,6 +421,7 @@
      'frame-insets 'open-look-insets
      'frame-regions 'open-look-regions
      'frame-under 'open-look-draw-under
+     'menu-icons #f   ; olwm's menus are words alone
      ;; only the corners resize
      'frame-edge 0))
 

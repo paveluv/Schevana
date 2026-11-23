@@ -108,7 +108,7 @@
     window-shadow window-extent screen-w screen-h screen-scale point-in?
     surface surface-doc define-surface find-surface surface-call surfaces
     define-strip
-    desktop-rect app app-name app-title app-launch *apps*
+    desktop-rect app app-name app-title app-launch app-icon *apps*
     define-app apps open-window detached-window new-window-position
     cascade-reset! place-window! windows focused-window visible? maximized?
     find-window window-ref window-set! window-on! window-bg in-window-theme
@@ -255,7 +255,7 @@
                 window-extent screen-w screen-h screen-scale point-in? surface
                 surface-doc define-surface find-surface surface-call surfaces
                 define-strip desktop-rect app app-name app-title app-launch
-                define-app apps open-window detached-window
+                app-icon define-app apps open-window detached-window
                 cascade-reset! place-window! windows focused-window visible?
                 maximized? find-window window-ref window-set! window-on!
                 window-bg

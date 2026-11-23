@@ -33,7 +33,7 @@
     drag current-window window-gone! invalidate! window-shadow window-extent
     screen-w screen-h screen-scale point-in? surface surface-doc define-surface
     find-surface surface-call define-strip desktop-rect app app-name app-title
-    app-launch *apps* define-app apps open-window detached-window
+    app-launch app-icon *apps* define-app apps open-window detached-window
     new-window-position cascade-reset! place-window! windows focused-window
     visible? maximized? find-window window-ref window-set! window-on! window-bg
     in-window-theme window-setting frame-insets frame-regions frame-radius
@@ -255,25 +255,42 @@
 
   ;;; ---------------------------------------------------------------- apps
 
+  ;; icon: a procedure (x y s flags) that draws the app's icon, or #f
   (define-record-type app
-    (nongenerative schevana-app)
-    (fields name title launch))
+    (nongenerative schevana-app-2)
+    (fields name title launch icon))
 
   (define-state *apps* '())
   (define-state current-app (make-thread-parameter #f))
 
-  (define (register-app! name title launch)
-    (set! *apps* (registry-add *apps* (make-app name title launch) app-name))
+  (define (register-app! name title launch icon)
+    (set! *apps*
+      (registry-add *apps* (make-app name title launch icon) app-name))
     (request-frame!))
 
   ;; (define-app (name) "Title" body ...) defines an ordinary procedure that
-  ;; opens the app, and registers it with the launcher.
+  ;; opens the app, and registers it with the launcher. With 'icon draw
+  ;; after the title, the app has an icon: draw is a procedure (x y s flags)
+  ;; that draws it in an s-square, faded when flags hold dim, and it is
+  ;; called by name, so that a redefinition shows at the next draw.
+  ;; 'icon is told by its datum: at the top level, where "/" binds every
+  ;; name, a literal would never match.
   (define-syntax define-app
-    (syntax-rules ()
-      [(_ (name . args) title body ...)
-       (begin
-         (define (name . args) (parameterize ([current-app 'name]) body ...))
-         (at-load (register-app! 'name title (lambda () (name)))))]))
+    (lambda (stx)
+      (syntax-case stx ()
+        [(_ (name . args) title key draw body ...)
+         (equal? (syntax->datum #'key) ''icon)
+         #'(begin
+             (define (name . args)
+               (parameterize ([current-app 'name]) body ...))
+             (at-load (register-app! 'name title (lambda () (name))
+                                     (lambda (x y s flags)
+                                       (draw x y s flags)))))]
+        [(_ (name . args) title body ...)
+         #'(begin
+             (define (name . args)
+               (parameterize ([current-app 'name]) body ...))
+             (at-load (register-app! 'name title (lambda () (name)) #f)))])))
 
   (define (apps) (map app-name *apps*))
 

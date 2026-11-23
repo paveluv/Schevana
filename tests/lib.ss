@@ -359,14 +359,15 @@
       v)))
 
 ;; Clears the world for a scene to start from: no window, toast, hover,
-;; drag or menu.
+;; drag, menu or app grid.
 (define (test-clear-world!)
   (for-each close-window! (windows))
   (set! *toasts* '())
   (set! *cascade* 0)
   (set! *hover* #f)
   (set! *drag* #f)
-  (when (test-menu-open?) (close-menu!)))
+  (when (test-menu-open?) (close-menu!))
+  (close-app-grid!))
 
 ;; Runs a scene: thunk, from a cleared world, setting up its own state. A
 ;; scene that raises fails under its name, and the next starts afresh.

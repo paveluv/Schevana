@@ -28,7 +28,8 @@
           (only (schevana base) condition->string filter-map library-layer
                 list-index string-contains-ci? string-join string-split)
           (only (schevana core) close-window! current-window define-app
-                find-window focus-window! font-line-height notify now-ms
+                draw-line find-window focus-window! font-line-height notify
+                now-ms
                 open-window report-error! spawn window-ref window-title
                 worklet?)
           (only (schevana desktop file-dialog) open-file-dialog)
@@ -45,7 +46,7 @@
                 ui-draw-cell ui-table-room ui-tree ui-draw-surface ui-pad
                 ui-table-fit ui-small-glyph-size ui-draw-label
                 ui-table-cell-inset ui-glyph-size ui-draw-env-icon ui-forget!
-                ui-focus!)
+                ui-focus! ui-icon-grid ui-icon-ink)
           (only (schevana services env) env-dropped? env-child-name env-find
                 env-environment env-worklets env-sync! env-world?
                 env-generation env env-kinds env-kind-title env-title env-load
@@ -1315,7 +1316,17 @@
     (let ([lh (font-line-height 'ui)])
       (cons (max 1080 (round (* 72 lh))) (max 660 (round (* 37 lh))))))
 
-  (define-app (envs) "Environments"
+  ;; The app's icon: the tree of environments, the world's globe over a
+  ;; namespace's folder and a sandbox's box, as the app's rows show them.
+  (define (envs-draw-app-icon x y s flags)
+    (ui-icon-grid (x y s)
+      (draw-line 10.5 9.5 6.5 14.5 (ui-icon-ink flags 'text-dim) 1.25)
+      (draw-line 13.5 9.5 17.5 14 (ui-icon-ink flags 'text-dim) 1.25)
+      (ui-draw-env-icon 7 0.5 10 flags 'root)
+      (ui-draw-env-icon 1 13 10 flags 'world)
+      (ui-draw-env-icon 13 13 10 flags 'sandbox)))
+
+  (define-app (envs) "Environments" 'icon envs-draw-app-icon
     (let ([existing (find-window 'envs)])
       (if (and existing (envs-view? (window-ref existing 'state #f)))
           (begin (focus-window! existing) existing)

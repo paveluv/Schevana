@@ -116,3 +116,30 @@
                                  'palette 'nord)
                      (theme 'palette))
                '((interlisp shade) nord tokyo-night)))
+
+;; Each style draws a menu entry's icon in its menu, its own or the
+;; built-in, unless it shows none (menu-icons): the Lisp machines', OPEN
+;; LOOK's and Curses' menus are words alone.
+(check "every style's menu draws an entry's icon, but those whose menus are \
+        words alone (menu-icons #f)"
+       (let ([drawn (map (lambda (style)
+                           (let ([seen #f])
+                             (set-style! style)
+                             (open-menu! 200 200
+                                         (list (list "One" void
+                                                     (lambda (x y s flags)
+                                                       (set! seen #t)))
+                                               (cons "Two" void))
+                                         'tag 'launcher)
+                             (steps 1)
+                             (close-menu!)
+                             (cons style seen)))
+                         (styles))])
+         (set-style! 'mac)
+         (printf "  ~s\n" drawn)
+         (for-all (lambda (d)
+                    (eq? (cdr d)
+                         (not (memq (car d)
+                                    '(genera cadr interlisp open-look
+                                      curses)))))
+                  drawn)))

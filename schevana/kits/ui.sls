@@ -62,9 +62,11 @@
     ui-text-area ui-draw-text-box* ui-draw-suggestion ui-draw-suggestion*
     ui-rank ui-suggestions ui-scroll ui-scrollbar ui-reveal! ui-scrollbar-width
     ui-scrollbar-inset ui-frame-scrollbar ui-scrollbar-areas ui-scrollbar-areas*
-    ui-draw-scrollbar ui-draw-scrollbar* ui-title-icon ui-draw-env-icon
-    ui-draw-env-icon* ui-busy-frame-ms ui-busy-size ui-busy-size* ui-draw-busy
-    ui-draw-busy* ui-split ui-draw-split ui-draw-split* ui-side-panel-toggle!
+    ui-draw-scrollbar ui-draw-scrollbar* ui-title-icon ui-icon-grid ui-icon-ink
+    ui-draw-app-icon ui-draw-window-icon ui-draw-app-tile*
+    ui-draw-env-icon ui-draw-env-icon* ui-busy-frame-ms ui-busy-size
+    ui-busy-size* ui-draw-busy ui-draw-busy* ui-split ui-draw-split
+    ui-draw-split* ui-side-panel-toggle!
     ui-side-panel ui-side-panel-button ui-table-room ui-table-fit ui-table
     ui-table-step ui-table-page ui-table-columns ui-table-header-height
     ui-table-row-height ui-table-cell-inset ui-table-cell-inset* ui-draw-cell
@@ -113,11 +115,11 @@
           (only (schevana base) at-load clamp define-hook filter-map
                 library-layer list-index plist-ref string-prefix? string-split)
           (only (schevana core) *input-step?* *scale* after alpha app
-                clipboard-get clipboard-set! close-window! color-default!
-                color-word content-rect core0-set-cursor! current-window
-                define-paint define-part define-shader-layout draw-line
-                draw-polyline draw-scale draw-shadow draw-text fill-box
-                fill-circle fill-polygon fill-shader focus-window!
+                app-icon app-title clipboard-get clipboard-set! close-window!
+                color-default! color-word content-rect core0-set-cursor!
+                current-window define-paint define-part define-shader-layout
+                draw-line draw-polyline draw-scale draw-shadow draw-text
+                fill-box fill-circle fill-polygon fill-shader focus-window!
                 focused-window font font-char-width font-family font-line-height
                 font-size font-weight frame-insets frame-regions get-font
                 gpu-buffer-release! gpu-buffer-set! gpu-list-new invalidate!
@@ -127,9 +129,9 @@
                 theme-default! theme-font-rule theme-rule window-app
                 window-content-size window-frame-soon! window-handlers
                 window-hover window-modal-child window-props window-ref
-                window-set! window-x window-y window? windows with-clip
-                with-place)
-          (only (schevana kits app) app-launch! app-color)
+                window-set! window-title window-x window-y window? windows
+                with-clip with-place with-scale with-translation)
+          (only (schevana kits app) app-find app-launch! app-color)
           (only (schevana kits color) color-readable-on)
           (only (schevana kits edit) edit-layout-text edit-range edit-move
                 edit-line-bounds edit-select edit-word-bounds edit-key
@@ -138,6 +140,7 @@
                 edit-at edit-all edit-anchor make-edit edit-change edit-text
                 edit-row-last edit-row edit-layout-count edit-layout-extend!
                 edit-layout-of edit-wrap edit-layout-scan! edit-caret edit?)
+          (only (schevana kits menu) menu-entry-action menu-entry-icon)
           (only (schevana kits px) px-invert)
           (only (schevana kits text) text-draw-centered text-widest text-fit))
 
@@ -723,12 +726,14 @@
       (define (wrap es)
         (map (lambda (e)
                (if (pair? e)
-                   (cons (car e)
-                         (lambda ()
-                           (when (memq win (windows))
-                             (parameterize ([current-window win]) ((cdr e)))
-                             (ui-stale! ui)
-                             (invalidate! win))))
+                   (let ([run (lambda ()
+                                (when (memq win (windows))
+                                  (parameterize ([current-window win])
+                                    ((menu-entry-action e)))
+                                  (ui-stale! ui)
+                                  (invalidate! win)))]
+                         [icon (menu-entry-icon e)])
+                     (if icon (list (car e) run icon) (cons (car e) run)))
                    e))
              es))
       (let-values ([(cx cy cw ch) (content-rect win)])
@@ -2505,9 +2510,60 @@
 
   ;; Returns a window's title icon: its 'title-icon, a (lambda (x y s flags)
   ;; ...) that draws it s square (with the flag dim for an unfocused
-  ;; window), or #f. A style draws it by the title, elsewhere, or not at
-  ;; all.
-  (define (ui-title-icon win) (window-ref win 'title-icon #f))
+  ;; window), else its app's icon, or #f. A style draws it by the title,
+  ;; elsewhere, or not at all.
+  (define (ui-title-icon win)
+    (or (window-ref win 'title-icon #f)
+        (let ([a (app-find (window-app win))]) (and a (app-icon a)))))
+
+  ;;; An icon (an app's, from define-app's 'icon, or a window's 'title-icon)
+  ;;; is a procedure (x y s flags) that draws in the s-square at x, y, at any
+  ;;; size, in the theme's colors, so that it follows the look as the
+  ;;; glyphs do. The flags dim (an unfocused window's title, a minimized
+  ;;; window's button) and disabled fade it. Every place that shows an app
+  ;;; draws its icon: the launcher, the taskbar or dash, a title bar where
+  ;;; the style has one; an app that gives none has a stand-in, its tile.
+
+  ;; Draws body in a grid of 24 units across the s-square at x, y: (12, 12)
+  ;; is its middle, and a line 2 wide is a twelfth of the icon at any size.
+  (define-syntax ui-icon-grid
+    (syntax-rules ()
+      [(_ (x y s) body ...)
+       (with-translation (x y) (with-scale ((/ s 24)) body ...))]))
+
+  ;; Returns color c as an icon drawn with flags shows it: faded when they
+  ;; hold dim or disabled.
+  (define (ui-icon-ink flags c)
+    (if (or (memq 'dim flags) (memq 'disabled flags)) (alpha c 0.5) c))
+
+  ;; Draws the icon of the app named name in the s-square at x, y: the
+  ;; app's own, or its tile.
+  (define (ui-draw-app-icon x y s flags name)
+    (let* ([a (app-find name)] [icon (and a (app-icon a))])
+      (if icon
+          (icon x y s flags)
+          (ui-draw-app-tile x y s flags name (if a (app-title a) "")))))
+
+  ;; Draws a window's icon in the s-square at x, y: its title icon, else
+  ;; the tile of its app (or of no app), with the window's title.
+  (define (ui-draw-window-icon win x y s flags)
+    (let ([icon (ui-title-icon win)])
+      (if icon
+          (icon x y s flags)
+          (ui-draw-app-tile x y s flags (window-app win) (window-title win)))))
+
+  ;; The stand-in for the icon of an app that gives none: a tile in the
+  ;; app's color (app-color, which takes #f for no app) with the first
+  ;; letter of title, in bold at three fifths of the tile.
+  (define-part (ui-draw-app-tile x y s flags name title)
+    (let ([c (app-color name)])
+      (fill-box x y s s (ui-icon-ink flags c) (/ s 4))
+      (unless (string=? title "")
+        (text-draw-centered x y s s
+                            (string (char-upcase (string-ref title 0)))
+                            (ui-icon-ink flags (color-readable-on c))
+                            (font (font-family (get-font 'ui-bold))
+                                  (max 6 (exact (round (* 3/5 s)))) 'bold)))))
 
   ;; An environment's icon by its kind ((schevana services env)): the
   ;; world's globe, a namespace's folder, a sandbox's box, and a thread's or

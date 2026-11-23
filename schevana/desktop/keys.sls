@@ -11,7 +11,7 @@
           (only (schevana kits app) app-launch!)
           (only (schevana desktop arrange) tile-windows! close-focused-window!
                 cycle-windows!)
-          (only (schevana desktop menu) toggle-launcher!)
+          (only (schevana desktop launcher) toggle-launcher!)
           (only (schevana desktop screenshot) save-screenshot!))
 
   (library-layer desktop)

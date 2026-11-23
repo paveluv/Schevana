@@ -36,8 +36,9 @@
                 repl-initial-rows repl-prompt repl-read-input!
                 repl-value->string repl-window-size)
           (only (schevana core) *scale* *schevana-options* *source-texts*
-                *windows* *world-env* after apps clipboard-get close-window!
-                color-default! core1-exported define-app fill-box focused-window
+                *windows* *world-env* after alpha apps clipboard-get
+                close-window! color-default! core1-exported define-app
+                draw-line draw-polyline fill-box focused-window
                 font-ascent font-char-width font-line-height invalidate! kill!
                 mix now-ms open-window palettes point-in? request-frame! spawn
                 stroke-box style styles theme theme-keys theme-rule wallpapers
@@ -61,7 +62,7 @@
                 transcript-lines)
           (only (schevana kits ui) ui-busy-frame-ms ui-draw-env-icon
                 ui-draw-tooltip ui-popup-place ui-tooltip-size ui-tip-ms
-                ui-draw-busy ui-busy-size)
+                ui-draw-busy ui-busy-size ui-icon-grid ui-icon-ink)
           (only (schevana services env) env-base env-parent env-binding
                 env-eval env-environment env-kind env? env-find env-fork
                 env-root env-path env-dropped? env)
@@ -1591,7 +1592,17 @@
     (define-top-level-value 'exit (lambda args (close-window! win))
                             (env-environment e)))
 
-  (define-app (repl . what) "REPL"
+  ;; The app's icon: a prompt and its cursor in a window. A REPL's own
+  ;; window shows its environment's icon instead ('title-icon).
+  (define (repl-draw-icon x y s flags)
+    (define (ink c) (ui-icon-ink flags c))
+    (ui-icon-grid (x y s)
+      (fill-box 2 4 20 16 (ink (alpha 'accent 0.18)) 3)
+      (stroke-box 2 4 20 16 (ink 'accent) 1.75 3)
+      (draw-polyline '((6.5 . 9) (10 . 12) (6.5 . 15)) (ink 'accent) 1.75)
+      (draw-line 12 15.5 17.5 15.5 (ink 'text) 1.75)))
+
+  (define-app (repl . what) "REPL" 'icon repl-draw-icon
     (open-repl (if (pair? what) (car what) 'root)))
 
   (define (open-repl-window r)

@@ -33,8 +33,9 @@
           (only (schevana base) at-load clamp define-made define-state
                 filter-map library-layer list-index plist-keys plist-ref
                 string-contains-ci? string-join string-prefix? string-split)
-          (only (schevana core) after close-window! content-rect current-window
-                define-app draw-text fill-box find-window focus-window! font
+          (only (schevana core) after alpha close-window! content-rect
+                current-window define-app draw-text fill-box find-window
+                focus-window! font
                 font-line-height invalidate! new-window-position notify
                 open-window point-in? resize-window! screen-h text-width theme
                 window-content-size window-handlers window-ref window-x window-y
@@ -64,7 +65,8 @@
                 ui-draw-card ui-card-radius ui-table-fit ui-table-cell-inset
                 ui-chip-size ui-wrap-lines ui-pad ui-gap ui-scrollbar-inset
                 ui-open-menu! ui-focus! ui-forget! ui-today ui-date-label
-                ui-month-names ui-date->day ui-stale! ui-days-in-month))
+                ui-month-names ui-date->day ui-stale! ui-days-in-month
+                ui-icon-grid ui-icon-ink))
 
   (library-layer apps)
 
@@ -2448,7 +2450,18 @@
               #t]
              [else #f]))))
 
-  (define-app (tasks) "Tasks"
+  ;; The app's icon: a board of three columns, holding three cards, one
+  ;; and two.
+  (define (tasks-draw-icon x y s flags)
+    (define (ink c) (ui-icon-ink flags c))
+    (ui-icon-grid (x y s)
+      (for-each (lambda (cx cards)
+                  (fill-box cx 3 6 18 (ink (alpha 'green 0.18)) 1.5)
+                  (do ([i 0 (+ i 1)]) ((= i cards))
+                    (fill-box (+ cx 1) (+ 4 (* i 5)) 4 4 (ink 'green) 1)))
+                '(2 9 16) '(3 1 2))))
+
+  (define-app (tasks) "Tasks" 'icon tasks-draw-icon
     (let ([existing (find-window 'tasks)])
       (if (and existing (tasks-view? (window-ref existing 'state #f)))
           (begin (focus-window! existing) existing)

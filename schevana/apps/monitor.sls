@@ -36,11 +36,12 @@
   (import (chezscheme)
           (only (schevana base) define-made library-layer string-join)
           (only (schevana core) *canvas-h* *canvas-w* *frame-ms* *last-error*
-                *scale* *timers* apps clipboard-set! core0-frame-ns
-                current-style define-app fill-box find-proc find-style
+                *scale* *timers* alpha apps clipboard-set! core0-frame-ns
+                current-style define-app draw-line draw-polyline fill-box
+                fill-circle fill-polygon find-proc find-style
                 find-window focus-window! focused-window font-char-width
                 font-line-height invalidate! kill! now-ms open-window
-                pacer-busy-ms pacer-period pacer-rate pacer-ticks
+                pacer-busy-ms pacer-period pacer-rate pacer-ticks pi
                 platform-process-bytes proc-id proc-name proc-started proc-ticks
                 proc-wake proc? procs style-title text-width theme uptime-ms
                 window-app window-error window-frame-soon! window-h window-id
@@ -58,7 +59,7 @@
                 ui-checkbox-size make-ui ui-memo! ui-memo ui-table-room
                 ui-table ui-draw-cell ui-table-header-height
                 ui-table-row-height ui-button ui-button-size ui-draw-label
-                ui-label-size ui-stream-new)
+                ui-label-size ui-stream-new ui-icon-grid ui-icon-ink)
           (only (schevana services profile) profile-clock-zero
                 profile-draw-phases profile-ms-label profile-ns-label
                 profile-subject-label profile-subject-labels
@@ -483,7 +484,25 @@
                                                        (proc-started p)))])))
                                    p key cx cy cw ch flags)))))))))))
 
-  (define-app (monitor) "Monitor"
+  ;; The app's icon: a gauge, its needle well up.
+  (define (monitor-draw-icon x y s flags)
+    (define (ink c) (ui-icon-ink flags c))
+    (define (at r a) (cons (+ 12 (* r (cos a))) (+ 15 (* r (sin a)))))
+    (let ([arc (map (lambda (i) (at 10 (* pi (+ 1 (/ i 16))))) (iota 17))])
+      (ui-icon-grid (x y s)
+        (fill-polygon arc (ink (alpha 'cyan 0.18)))
+        (draw-polyline (append arc (list (car arc))) (ink 'cyan) 1.75)
+        (for-each (lambda (k)
+                    (let ([a (* pi (+ 1 (/ k 4)))])
+                      (draw-line (car (at 7 a)) (cdr (at 7 a))
+                                 (car (at 8.5 a)) (cdr (at 8.5 a))
+                                 (ink 'cyan) 1.25)))
+                  '(1 2 3))
+        (draw-line 12 15 (car (at 7.5 (* pi 1.7))) (cdr (at 7.5 (* pi 1.7)))
+                   (ink 'text) 1.75)
+        (fill-circle 12 15 1.6 (ink 'text)))))
+
+  (define-app (monitor) "Monitor" 'icon monitor-draw-icon
     (let ([ui (make-ui)]
           [tab 'overview]    ; the tab shown: overview, ticks, flags, platform
           [view #f]          ; the history shown: (newest tick . seconds)

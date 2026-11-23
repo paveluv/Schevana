@@ -78,11 +78,12 @@ world as the rest is:
 ```
 
 What it defines belongs to the world, so give its names the app's prefix
-(`counter-…`), as Schevana's apps do. An app can also be a library, in a
-folder that auto-loads: the demos are libraries in `demo/`
-(`(demo boids)` and the others), which `./desktop demo` loads. Code you
-would rather keep apart goes in a sandbox you make
-([ENVIRONMENTS.md](ENVIRONMENTS.md)).
+(`counter-…`), as Schevana's apps do. `'icon` after the title gives it an
+icon of its own ([WINDOWS.md](WINDOWS.md#apps)), as each of Schevana's
+apps has. An app can also be a library, in a folder that auto-loads: the
+demos are libraries in `demo/` (`(demo boids)` and the others), which
+`./desktop demo` loads. Code you would rather keep apart goes in a
+sandbox you make ([ENVIRONMENTS.md](ENVIRONMENTS.md)).
 
 ## An app in several files
 

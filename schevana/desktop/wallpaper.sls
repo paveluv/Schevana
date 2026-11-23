@@ -15,7 +15,7 @@
           (only (schevana kits fill) fill-glow)
           (only (schevana kits text) text-draw-centered)
           (only (schevana desktop icon) icon-follow-theme!)
-          (only (schevana desktop menu) open-launcher!))
+          (only (schevana desktop launcher) open-launcher!))
 
   (library-layer desktop)
 

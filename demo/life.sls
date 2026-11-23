@@ -211,7 +211,16 @@
 
   ;;; ------------------------------------------------------------------ the app
 
-  (define-app (life) "Life"
+  ;; The app's icon: a glider, on its three by three cells.
+  (define (life-draw-icon x y s flags)
+    (define (ink c) (ui-icon-ink flags c))
+    (ui-icon-grid (x y s)
+      (do ([i 0 (+ i 1)]) ((= i 9))
+        (fill-box (+ 2.5 (* 6.5 (mod i 3))) (+ 2.5 (* 6.5 (quotient i 3))) 6 6
+                  (ink (if (memv i '(1 5 6 7 8)) 'green (alpha 'green 0.15)))
+                  1.25))))
+
+  (define-app (life) "Life" 'icon life-draw-icon
     (let* ([cols 0] [rows 0]
            [grid (make-bytevector 0)]    ; a byte per cell, 1 if alive
            [next (make-bytevector 0)]

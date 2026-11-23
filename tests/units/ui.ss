@@ -1,6 +1,6 @@
 ;;; tests/units/ui.ss — the widget kit: flow, forms, suggestions, tables'
-;;; keys, dates, trees and side panels, and when a window is drawn again by
-;;; itself.
+;;; keys, dates, trees and side panels, when a window is drawn again by
+;;; itself, and how an app's icon and a window's are drawn.
 
 ;; Lays out a side panel and its button on the given side, in w × h.
 ;; Returns (values rest panel), each the rectangle its procedure was called
@@ -607,3 +607,46 @@
                 (assq 'R (doc '(menu row 0)))
                 (not (assq 'R (doc '(plain row 0))))
                 (assq 'R (doc '(tree row 0)))))))
+
+;;; ------------------------------------------------------------------
+;;; icons
+
+(define ui-icons-seen #f)
+(define-app (ui-iconed) "Iconed"
+  'icon (lambda (x y s flags) (set! ui-icons-seen (list x y s flags)))
+  (open-window "Iconed" 'size '(200 . 100)))
+(define-app (ui-plain) "Plain" (open-window "Plain" 'size '(200 . 100)))
+
+(let* ([own (lambda (x y s flags) (void))]
+       [a (ui-iconed)]
+       [b (ui-plain)]
+       [c (open-window "Own" 'size '(200 . 100) 'app 'ui-iconed
+                       'title-icon own)]
+       [d (open-window "Lone" 'size '(200 . 100) 'app #f)])
+  (check "a window's title icon is its own 'title-icon, else its app's \
+          icon; a window of an app with none, or of no app, has none"
+         (and (eq? (ui-title-icon c) own)
+              (eq? (ui-title-icon a) (app-icon (app-find 'ui-iconed)))
+              (not (ui-title-icon b))
+              (not (ui-title-icon d))))
+  (check "an app's icon, and a window's, draw through the app's own \
+          procedure; an app with none, and a window of no app, draw the \
+          stand-in tile, with the app's title or the window's"
+         (let ([tiles '()])
+           (set-theme! 'ui-draw-app-tile
+                       (lambda args (set! tiles (cons args tiles))))
+           (ui-draw-app-icon 1 2 30 '(dim) 'ui-iconed)
+           (let ([app ui-icons-seen])
+             (ui-draw-window-icon a 3 4 16 '())
+             (let ([win ui-icons-seen])
+               (ui-draw-app-icon 5 6 30 '() 'ui-plain)
+               (ui-draw-window-icon d 7 8 16 '(dim))
+               (reset-theme!)
+               (and (equal? app '(1 2 30 (dim)))
+                    (equal? win '(3 4 16 ()))
+                    (equal? (reverse tiles)
+                            '((5 6 30 () ui-plain "Plain")
+                              (7 8 16 (dim) #f "Lone"))))))))
+  (for-each close-window! (list a b c d)))
+(set! *apps* (remp (lambda (a) (memq (app-name a) '(ui-iconed ui-plain)))
+                   *apps*))

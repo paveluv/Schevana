@@ -1344,6 +1344,29 @@
               (equal? (wallpapers) (defined-in-files 'wallpaper))
               (equal? (sorted (apps)) (sorted (defined-in-files 'app))))))
 
+;; Every app of the tree's (Schevana's own, the demos' and the games')
+;; draws its own icon, given after its title (define-app's 'icon), so that
+;; where an app shows, its icon shows rather than the stand-in tile.
+(define (app-definitions forms)
+  (apply append
+         (map (lambda (x)
+                (cond [(and (pair? x) (memq (car x) '(begin at-load)))
+                       (app-definitions (cdr x))]
+                      [(and (pair? x) (eq? (car x) 'define-app)) (list x)]
+                      [else '()]))
+              forms)))
+
+(check "every app of the tree's gives its icon (define-app's 'icon)"
+       (none? (apply append
+                     (map (lambda (f)
+                            (filter-map
+                             (lambda (d)
+                               (and (not (and (> (length d) 4)
+                                              (equal? (list-ref d 3) ''icon)))
+                                    (format "~a: ~a" f (caadr d))))
+                             (app-definitions (file-forms f))))
+                          all-library-files))))
+
 ;;; ------------------------------------------------------------------
 ;;; styles' settings
 

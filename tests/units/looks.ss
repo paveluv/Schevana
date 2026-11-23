@@ -1259,3 +1259,70 @@
                (eq? (car (car (placed-topbar-areas))) 'launcher)
                (eq? (car (car (placed-taskbar-areas))) 'launcher)))
         (lambda () (set-style! 'mac))))
+
+;; The distinct values of xs, from least to greatest.
+(define (looks-distinct xs)
+  (sort < (fold-left (lambda (acc x) (if (member x acc) acc (cons x acc)))
+                     '() xs)))
+
+(check "GNOME's launcher is GNOME Shell's app grid: its search entry 24 em \
+        wide, 12 under the top bar; on a screen wider than tall, pages of 4 \
+        rows of 6 square tiles, each 30 and a line more than one of the \
+        Shell's icon sizes, 12 to 36 apart; and a dot for each page"
+       (test-finally
+        (lambda ()
+          (set-style! 'gnome)
+          (steps 1)
+          (let*-values ([(dx dy dw dh) (desktop-rect)]
+                        [(lh) (font-line-height 'ui)]
+                        [(as) (app-grid-areas 30 0)]
+                        [(tiles) (filter (lambda (a) (fixnum? (car a))) as)]
+                        [(xs) (looks-distinct (map cadr tiles))]
+                        [(ys) (looks-distinct (map caddr tiles))]
+                        [(t) (cadddr (car tiles))]
+                        [(pitch) (- (cadr xs) (car xs))])
+            (printf "  tile ~s, pitch ~s\n" t pitch)
+            (and (> (screen-w) (screen-h))
+                 (= (length tiles) 24) (= (length xs) 6) (= (length ys) 4)
+                 (for-all (lambda (a) (= (cadddr a) (car (cddddr a)) t))
+                          tiles)
+                 (exists (lambda (s) (= t (round (+ s 30 lh))))
+                         '(96 64 48 32 24 16))
+                 (<= (+ t 12) pitch (+ t 36))
+                 (= 2 (length (filter (lambda (a) (pair? (car a))) as)))
+                 (= 6 (length (filter (lambda (a) (fixnum? (car a)))
+                                      (app-grid-areas 30 1))))
+                 (equal? (cddr (assq 'search as))
+                         (list (+ dy 12)
+                               (min (exact (round (* 24 (adwaita-em))))
+                                    (- dw 24))
+                               (exact (round (+ lh 18))))))))
+        (lambda () (set-style! 'mac))))
+
+(check "GNOME's Show Apps opens the app grid, over which the top bar is \
+        clear, showing the overview's color, and a second press closes it, \
+        the bar black again"
+       (test-finally
+        (lambda ()
+          (set-style! 'gnome)
+          (for-each close-window! (windows))
+          (steps 1)
+          (let ([press! (lambda ()
+                          (let* ([l (cdr (assq 'launcher
+                                               (placed-taskbar-areas)))]
+                                 [x (exact (round (+ (car l)
+                                                     (/ (caddr l) 2))))]
+                                 [y (exact (round (+ (cadr l)
+                                                     (/ (cadddr l) 2))))])
+                            (inject! `(mouse-move ,x ,y)
+                                     `(mouse-down ,x ,y left 1)
+                                     `(mouse-up ,x ,y left))
+                            (steps 1)))])
+            (press!)
+            (let ([form (launcher-open?)] [over (canvas-pixel 200 2)])
+              (press!)
+              (and (eq? form 'grid)
+                   (= over (color->pixel (theme 'adwaita-overview)))
+                   (not (launcher-open?))
+                   (= (canvas-pixel 200 2) (color->pixel (theme 'panel)))))))
+        (lambda () (close-app-grid!) (set-style! 'mac))))

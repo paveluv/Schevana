@@ -513,7 +513,20 @@
   (define (springies-toggle-running! win)
     (window-set! win 'running? (not (window-ref win 'running?))))
 
-  (define-app (springies) "Springies"
+  ;; The app's icon: two masses joined by a spring, in the springs' and the
+  ;; masses' colors.
+  (define (springies-draw-icon x y s flags)
+    (define (ink c) (ui-icon-ink flags c))
+    (ui-icon-grid (x y s)
+      (draw-polyline '((5.5 . 18.5) (7.45 . 16.55) (10.31 . 16.81)
+                       (8.49 . 12.39) (12.91 . 14.21) (11.09 . 9.79)
+                       (15.51 . 11.61) (13.69 . 7.19) (16.55 . 7.45)
+                       (18.5 . 5.5))
+                     (ink 'teal) 1.5)
+      (fill-circle 5.5 18.5 3.5 (ink 'yellow))
+      (fill-circle 18.5 5.5 3.5 (ink 'yellow))))
+
+  (define-app (springies) "Springies" 'icon springies-draw-icon
     (let ([w 760] [h 520] [last-step 0]
           [frame-ms 0.0]        ; a frame's time, smoothed
           [controls-win #f])    ; the controls window, while it is open
