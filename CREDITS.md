@@ -123,7 +123,8 @@ in this file.
 
 ## Adwaita
 
-The Adwaita style (`schevana/styles/adwaita.sls`), its palettes
+The Adwaita style (`schevana/styles/adwaita.sls` and its parts in
+`schevana/styles/adwaita/`), its palettes
 (`schevana/palettes/adwaita.sls`, `adwaita-dark.sls`) and the GNOME style
 around it (`schevana/styles/gnome.sls`) take only facts from GNOME's
 stylesheets: libadwaita 1.7.6's `src/stylesheet/` (LGPL-2.1+) and GNOME
@@ -131,8 +132,8 @@ Shell 48.7's `data/theme/gnome-shell-sass/` (GPL-2.0+). The facts taken
 are sizes, paddings, radii, colors and the alphas of the tints, the
 fourteen avatar colors, the OKLab rule for the standalone colors, the
 spinner's widths and speed, and how the Shell's panel, menus, dash and
-banners are laid out; the code cites each as file:line at those tags.
-No SCSS, code, icon, image or font was copied: the glyphs (the check, the
+banners are laid out; the code cites each as file:line at those tags. No
+SCSS, code, icon, image or font was copied: the glyphs (the check, the
 window buttons' crosses, the dropdown's arrow, the spinner) are drawn from
 their geometry, and the wallpaper is circles over GNOME's fallback blues,
 not GNOME's image. The style's text is Cantarell, which Debian sets for
