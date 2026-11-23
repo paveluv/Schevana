@@ -151,6 +151,16 @@ before it:
   grows a primitive for it (`tests/sources.ss`). Core1 calls C through
   the bindings below the layers (`(schevana ffi)`, `(schevana freetype)`,
   `(schevana fontconfig)`), which any layer may import.
+- **Only `(schevana ffi)` loads a shared library** (`ffi-load-library`,
+  `load-first-library`). Chez's `load-shared-object` keeps each library's
+  handle where its collector reads it as an object, and a Mac's handle
+  need not look like one that the collector leaves alone: once the heap
+  has grown over the address the handle names, a full collection ends the
+  process. So no other file names `load-shared-object`, the tests'
+  included, but for two tests that check for the name and call nothing,
+  and no page of the docs shows it as code (`tests/sources.ss`, which
+  lists the files that name it; `tests/units/platform.ss` checks the
+  handles Chez keeps).
 - **The GPU layer speaks the world's terms.** Above core0, in the core
   too, nothing names SDL's GPU API, Vulkan, SPIR-V, Metal or MSL, so that
   another back end, or raw Vulkan, stays core0's business alone

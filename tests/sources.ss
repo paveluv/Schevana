@@ -6,7 +6,8 @@
 ;;;
 ;;; Every line of every source file fits in 80 columns; no top-level name
 ;;; is defined in two files; the core stays within its budget of tokens;
-;;; above the core nothing calls C; each layer names only what the layer
+;;; above the core nothing calls C; only (schevana ffi) loads a shared
+;;; library; each layer names only what the layer
 ;;; below gives it; a library of Schevana's imports with only and names all
 ;;; it imports (its own parts it imports whole), and every name a library
 ;;; exports is used; nothing below
@@ -356,8 +357,8 @@
 ;;; from the three SDL libraries ((schevana sdl system), (schevana sdl
 ;;; window), (schevana sdl gpu)), from (schevana freetype) or from
 ;;; (schevana fontconfig), nor a foreign-… procedure, an ftype form or
-;;; load-shared-object. The tests may: they inspect what is drawn and stand
-;;; in for SDL.
+;;; load-shared-object. The tests may name all of these but the last (the
+;;; next section): they inspect what is drawn and stand in for SDL.
 
 (define ffi-names
   (map cdr (append (definitions "schevana/ffi.sls")
@@ -449,6 +450,96 @@
                                                   (symbols-in
                                                    (file-forms f))))))
                           above-core-files))))
+
+;;; ------------------------------------------------------------------
+;;; only (schevana ffi) loads a shared library
+;;; Chez's load-shared-object keeps each library's handle where its
+;;; collector reads it as an object, and a Mac's handle need not look like
+;;; one that the collector leaves alone: once the heap has grown over the
+;;; address the handle names, a full collection ends the process. (schevana
+;;; ffi) loads every library the tree binds, on a Mac without Chez's
+;;; procedure (ffi-load-library). So no other file names
+;;; load-shared-object anywhere, its imports included: not a library, a
+;;; file of the world's or of src/, a launcher or a test. Two tests name it
+;;; to check for the name, and call nothing. A page of the docs doesn't
+;;; show it as code either (below, with the docs' checks).
+
+;; The files that name load-shared-object on purpose, and how many times
+;; each does: (file times reason) ...
+(define shared-object-namers
+  '(("schevana/ffi.sls" 2 "it loads the process itself, and a library \
+                           where Chez's own loading is safe")
+    ("tests/sources.ss" 1 "the names that reach C")
+    ("tests/units/env.ss" 1 "the names a confined environment never holds")))
+
+;; The tree's Scheme files: the programs at its root but the shell
+;; scripts, and every .ss and .sls under its folders of sources, wherever
+;; it is (but a file whose name starts with a dot, an editor's).
+(define scheme-files
+  (append
+   (remp (lambda (f) (string=? (path-extension f) "sh")) test-launchers)
+   (apply append
+          (map (lambda (top)
+                 (let walk ([dir top])
+                   (apply append
+                          (map (lambda (f)
+                                 (let ([path (string-append dir "/" f)])
+                                   (cond [(string-prefix? "." f) '()]
+                                         [(file-directory? (source-path path))
+                                          (walk path)]
+                                         [(member (path-extension f)
+                                                  '("ss" "sls"))
+                                          (list path)]
+                                         [else '()])))
+                               (sort string<?
+                                     (directory-list (source-path dir)))))))
+               '("schevana" "demo" "games" "src" "tests")))))
+
+;; Whether s is Chez's name for loading a shared library, under a prefix
+;; that an import gave it too.
+(define (shared-object-name? s)
+  (and (symbol? s) (string-suffix? "load-shared-object" (symbol->string s))))
+
+;; Returns how many times x, something read, names load-shared-object.
+(define (shared-object-count x)
+  (cond [(shared-object-name? x) 1]
+        [(pair? x)
+         (+ (shared-object-count (car x)) (shared-object-count (cdr x)))]
+        [(vector? x) (shared-object-count (vector->list x))]
+        [else 0]))
+
+;; Returns how many times f names load-shared-object, among all that the
+;; reader finds in f, a library's exports and imports included. A
+;; launcher's first line, #!/usr/bin/env ..., is the shell's, and is
+;; passed over as load passes over it.
+(define (shared-object-names f)
+  (let* ([text (call-with-input-file (source-path f) get-string-all)]
+         [p (open-input-string text)])
+    (when (and (> (string-length text) 2)
+               (string=? (substring text 0 2) "#!")
+               (memv (string-ref text 2) '(#\/ #\space)))
+      (get-line p))
+    (shared-object-count
+     (let loop ([acc '()])
+       (let ([x (read p)])
+         (if (eof-object? x) acc (loop (cons x acc))))))))
+
+(check (format "of the ~a Scheme files only (schevana ffi) names \
+                load-shared-object, and two tests that check for the name; \
+                each file listed for it names it as many times as listed"
+               (length scheme-files))
+       (none? (filter-map
+               (lambda (f)
+                 (let ([names (shared-object-names f)]
+                       [listed (cond [(assoc f shared-object-namers) => cadr]
+                                     [else 0])])
+                   (and (not (= names listed))
+                        (format "~a names load-shared-object ~a time~:p, \
+                                 and is listed for ~a"
+                                f names listed))))
+               (append scheme-files
+                       (remp (lambda (f) (member f scheme-files))
+                             (map car shared-object-namers))))))
 
 ;;; ------------------------------------------------------------------
 ;;; which platform this is, said in one place
@@ -1032,6 +1123,40 @@
        (loop (cdr ls) block code (cons (string-append (car ls) "\n") prose))])))
 
 (define doc-names (symbol-table (apply append (map doc-names-of doc-pages))))
+
+;; Returns the texts of page's scheme blocks, those that run and those
+;; only shown.
+(define (doc-scheme-blocks page)
+  (let loop ([ls (file-lines page)] [block #f] [acc '()])
+    (cond
+      [(null? ls) (reverse acc)]
+      [(and (not block) (string-prefix? "```scheme" (car ls)))
+       (loop (cdr ls) '() acc)]
+      [(and block (string=? (car ls) "```"))
+       (loop (cdr ls) #f
+             (cons (apply string-append (reverse block)) acc))]
+      [block (loop (cdr ls) (cons (string-append (car ls) "\n") block) acc)]
+      [else (loop (cdr ls) #f acc)])))
+
+;; A page's scheme blocks run at "/", which has Chez's names
+;; (tests/units/docs.ss), and a reader types what a page shows. So no block
+;; names load-shared-object, among what the reader finds in it before
+;; anything it can't read.
+(check "no page of the docs shows load-shared-object as code"
+       (none? (filter-map
+               (lambda (page)
+                 (and (exists
+                       (lambda (text)
+                         (let ([p (open-input-string text)])
+                           (let next ()
+                             (let ([x (guard (c [#t (eof-object)])
+                                        (read p))])
+                               (and (not (eof-object? x))
+                                    (or (> (shared-object-count x) 0)
+                                        (next)))))))
+                       (doc-scheme-blocks page))
+                      (format "~a names load-shared-object" page)))
+               (cons "CREDITS.md" doc-pages))))
 
 ;; What the tree's libraries look up in "/" by name: world-value's name;
 ;; a symbol in a registry's form or a theme setting's, which names a
