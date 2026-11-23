@@ -52,6 +52,8 @@
           (mutable back)       ; what its next picture is drawn on, or #f
           (mutable flip?)      ; back has a newer picture than image
           (mutable reach)      ; while held, the River's now: a refresh
+          (mutable river-open) ; the first refresh the River drew before
+                               ; the screen's word on it
           (mutable tick)       ; the tick picked, or #f
           (mutable own)        ; what it takes itself, ms a tick
           (mutable tip)        ; the last bar's tooltip: ((k . now) . text)
@@ -848,6 +850,41 @@
             stamps, a 4096th of the time since at most, or to eight in a \
             row.")))
 
+;; The River's refreshes oldest to newest, by grid g, now its now, sent to
+;; its streams: those not sent yet, and again those whose words may still
+;; change. The screen reports a few refreshes on, and what's on its way
+;; moves: the last few go again, and every one drawn before the screen's
+;; word on it, however far now has moved since (frames queued in a stall
+;; move it several at once).
+(define (pipeline-river-send! v g now newest oldest)
+  (let ([river (pipeline-view-river v)] [ticks (pipeline-view-ticks v)]
+        [by-frame? (pipeline-view-ticks-by-frame? v)]
+        [again (min (- now 8) (pipeline-view-river-open v))])
+    (ui-stream-resend! river again)
+    (ui-stream-resend! ticks again)
+    (let* ([from (if (< newest (ui-stream-sent river))
+                     oldest
+                     (max oldest (+ (ui-stream-sent river) 1)))]
+           [ticks-from (if (< newest (ui-stream-sent ticks))
+                           oldest
+                           (max oldest (+ (ui-stream-sent ticks) 1)))]
+           [starts (pipeline-river-starts g (min from ticks-from))])
+      (ui-stream-send! river oldest newest
+                       (pipeline-river-word g now starts))
+      (ui-stream-send! ticks oldest newest
+                       (pipeline-river-tick-word
+                        g by-frame? starts
+                        (and (not by-frame?)
+                             (pipeline-river-ticks-ran g ticks-from))))
+      (pipeline-view-river-open-set! v (pipeline-river-open starts newest)))))
+
+;; The first refresh whose column may change with the screen's word: the
+;; first a frame on its way is placed at in starts (pipeline-river-starts),
+;; or the one after newest.
+(define (pipeline-river-open starts newest)
+  (let ([way (find caddr starts)])
+    (if way (car way) (+ newest 1))))
+
 (define (pipeline-river-pane v x y w h)
   (let*-values
       ([(ui) (pipeline-view-ui v)]
@@ -894,23 +931,7 @@
       (ui-draw-label x ly w gh '(group) "River")
       (ui-draw-label x ly w gh '(dim right) (pipeline-river-words v g)))
     (unless (pipeline-view-held? v)
-      ;; the screen reports a few refreshes on, and what's on its way moves
-      (ui-stream-resend! river (- now 8))
-      (ui-stream-resend! ticks (- now 8))
-      (let* ([from (if (< newest (ui-stream-sent river))
-                       oldest
-                       (max oldest (+ (ui-stream-sent river) 1)))]
-             [ticks-from (if (< newest (ui-stream-sent ticks))
-                             oldest
-                             (max oldest (+ (ui-stream-sent ticks) 1)))]
-             [starts (pipeline-river-starts g (min from ticks-from))])
-        (ui-stream-send! river oldest newest
-                         (pipeline-river-word g now starts))
-        (ui-stream-send! ticks oldest newest
-                         (pipeline-river-tick-word
-                          g by-frame? starts
-                          (and (not by-frame?)
-                               (pipeline-river-ticks-ran g ticks-from))))))
+      (pipeline-river-send! v g now newest oldest))
     (ui-stream ui 'pipeline-river river x sy w sh newest oldest top
                frame-rules
                (map (lambda (part j) (cons j (car part)))
@@ -3269,7 +3290,7 @@
                                           pipeline-frames-kept)
                                       river ticks 'lists (inspect-list) #f 0
                                       '() #f #f
-                                      #f #f #f #f #f #f 0.0 #f 1
+                                      #f #f #f #f #f 0 #f 0.0 #f 1
                                       (pipeline-tape-new 0) #f #f 5
                                       #f #f #f #f '() #f #f #f 'picture
                                       (inspect-list-empty) #f #f #f #f
