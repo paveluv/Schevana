@@ -7,8 +7,10 @@
 ;;; (schevana desktop launcher)). While it is open, it takes every key and
 ;;; text: typing searches, the arrows choose an entry, Page Up and Page Down
 ;;; turn the pages, Return opens the chosen entry and Escape closes the
-;;; grid. A press opens the entry under the pointer, turns to the page of a
-;;; page's dot, or, anywhere else, closes the grid. It lies over the windows
+;;; grid. The search field shows that the keys go to it, with its caret,
+;;; once it is pressed or typed in. A press elsewhere opens the entry under
+;;; the pointer, turns to the page of a page's dot, or, anywhere else,
+;;; closes the grid. It lies over the windows
 ;;; and under the bars, so the bars stay as they are while it shows. A style
 ;;; lays it out and draws it (app-grid-areas, draw-app-grid).
 
@@ -30,10 +32,11 @@
   (library-layer desktop)
 
   ;; While the grid is open: the procedure that gives its entries for what
-  ;; is typed, else #f; what is typed; the page shown; and the entry that
-  ;; the keys chose, or #f.
+  ;; is typed, else #f; what is typed; whether the search field has the
+  ;; keys' focus; the page shown; and the entry that the keys chose, or #f.
   (define-state *app-grid-items* #f)
   (define-state *app-grid-filter* "")
+  (define-state *app-grid-search-focus?* #f)
   (define-state *app-grid-page* 0)
   (define-state *app-grid-sel* #f)
 
@@ -44,6 +47,7 @@
   (define (open-app-grid! items)
     (set! *app-grid-items* items)
     (set! *app-grid-filter* "")
+    (set! *app-grid-search-focus?* #f)
     (set! *app-grid-page* 0)
     (set! *app-grid-sel* #f)
     (request-frame!))
@@ -87,9 +91,10 @@
             (iota (max 0 (min per (- n (* page per)))))))))
 
   ;; Draws the grid: entries as given for what is typed (filter), their
-  ;; areas (app-grid-areas), the page shown, and the entry the keys chose
-  ;; (sel), or #f. The pointer's entry is the one *hover* names.
-  (define-part (draw-app-grid entries areas filter page sel)
+  ;; areas (app-grid-areas), whether the search field has the keys' focus
+  ;; (focus?), the page shown, and the entry the keys chose (sel), or #f.
+  ;; The pointer's entry is the one *hover* names.
+  (define-part (draw-app-grid entries areas filter focus? page sel)
     (let ([es (list->vector entries)] [lh (font-line-height 'ui)])
       (fill-box 0 0 (screen-w) (screen-h) (alpha 'bg-0 0.96))
       (for-each
@@ -100,15 +105,18 @@
               [(eq? what 'search)
                (fill-box x y w h 'bg-2 6)
                (with-clip (x y w h)
-                 (let ([ty (+ y (/ (- h lh) 2))])
-                   (if (string=? filter "")
-                       (draw-text (+ x 10) ty "Type to search…" 'text-faint
-                                  'ui)
-                       (let ([ex (draw-text (min (+ x 10)
-                                                 (- (+ x w) 13
-                                                    (text-width filter 'ui)))
-                                            ty filter 'text 'ui)])
-                         (fill-box (+ ex 1) ty 1.5 lh 'accent)))))]
+                 (let* ([ty (+ y (/ (- h lh) 2))]
+                        [ex (if (string=? filter "")
+                                (begin
+                                  (draw-text (+ x 10) ty "Type to search…"
+                                             'text-faint 'ui)
+                                  (+ x 9))
+                                (+ 1 (draw-text (min (+ x 10)
+                                                     (- (+ x w) 13
+                                                        (text-width filter
+                                                                    'ui)))
+                                                ty filter 'text 'ui)))])
+                   (when focus? (fill-box ex ty 1.5 lh 'accent))))]
               [(pair? what)
                (fill-circle (+ x (/ w 2)) (+ y (/ h 2)) 4
                             (if (= (cdr what) page)
@@ -159,8 +167,9 @@
         ((world-value 'draw-app-grid) es
                                       (app-grid-areas (length es)
                                                       *app-grid-page*)
-                                      *app-grid-filter* *app-grid-page*
-                                      *app-grid-sel*))))
+                                      *app-grid-filter*
+                                      *app-grid-search-focus?*
+                                      *app-grid-page* *app-grid-sel*))))
 
   ;; Runs entry e's action, once the grid has closed.
   (define (app-grid-run! e)
@@ -168,9 +177,11 @@
     (safe-call 'app-grid (cddr e) (lambda (c) (report-error! 'app-grid c))))
 
   ;; Searches for f: the first page shows what it finds, and its first
-  ;; entry is chosen, for Return to open.
+  ;; entry is chosen, for Return to open. The search field has the keys'
+  ;; focus from then on.
   (define (app-grid-search! f)
     (set! *app-grid-filter* f)
+    (set! *app-grid-search-focus?* #t)
     (set! *app-grid-page* 0)
     (set! *app-grid-sel*
       (and (not (string=? f "")) (pair? (app-grid-entries)) 0))
@@ -242,7 +253,9 @@
              (when (eq? button 'left)
                (app-grid-run! (list-ref (app-grid-entries) what)))]
             [(pair? what) (app-grid-turn! (cdr what))]
-            [(eq? what 'search) (void)]
+            [(eq? what 'search)
+             (set! *app-grid-search-focus?* #t)
+             (request-frame!)]
             [else (close-app-grid!)])))
 
   (define (app-grid-takes kind value mods)

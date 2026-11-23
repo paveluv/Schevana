@@ -145,9 +145,9 @@
               ok)))))
 
 (check "the app grid's parts are handed what they draw: the entries for \
-        what is typed, their areas on the page shown, what is typed, the \
-        page and the entry the keys chose; and the bars, that the launcher \
-        is the grid"
+        what is typed, their areas on the page shown, what is typed, that \
+        the search field has the keys' focus, the page and the entry the \
+        keys chose; and the bars, that the launcher is the grid"
        (with-test-styles
         (lambda ()
           (set! test-handed '())
@@ -164,8 +164,8 @@
                           (equal? (map car (car h)) (map car es))
                           (equal? (map cadr (car h)) (map cadr es))
                           (equal? (cdr h)
-                                  (list (app-grid-areas (length es) 0) "c" 0
-                                        0))
+                                  (list (app-grid-areas (length es) 0) "c" #t
+                                        0 0))
                           (eq? (caddr (handed 'draw-topbar)) 'grid))])
             (close-app-grid!)
             (steps 1)

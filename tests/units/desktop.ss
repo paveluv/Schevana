@@ -267,6 +267,35 @@
                            '((#f 1) (#f 0) (#f 1) (0 0) (2 1) (2 1) (1 0)))
                    closed?))))))
 
+(check "the grid's search field takes the keys' focus, which its caret \
+        shows, once it is pressed or typed in, not as the grid opens; it \
+        keeps it when what is typed is erased, and a press on it closes \
+        nothing"
+       (desktop-test-grid
+        (lambda ()
+          (toggle-launcher!)
+          (steps 1)
+          (let ([opened *app-grid-search-focus?*])
+            (let-values ([(x y) (desktop-test-center
+                                 'search (desktop-test-grid-areas))])
+              (desktop-test-click! x y))
+            (let ([pressed *app-grid-search-focus?*] [open? (launcher-open?)])
+              (toggle-launcher!)
+              (toggle-launcher!)
+              (steps 1)
+              (let ([again *app-grid-search-focus?*])
+                (test-type! "c")
+                (steps 1)
+                (let ([typed *app-grid-search-focus?*])
+                  (test-press! 'backspace)
+                  (steps 1)
+                  (let ([erased (list *app-grid-filter*
+                                      *app-grid-search-focus?*)])
+                    (printf "  ~s\n" (list opened pressed open? again typed
+                                           erased))
+                    (and (not opened) pressed open? (not again) typed
+                         (equal? erased '("" #t)))))))))))
+
 ;;; ------------------------------------------------------------------
 ;;; the apps' icons in the launcher and the taskbar
 

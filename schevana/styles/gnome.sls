@@ -470,26 +470,27 @@
   ;; Draws the search entry: a pill in the system's entry color with a
   ;; magnifier 16 across, 4 from its text (shell widgets/_search-entry.scss:
   ;; 2-14), and "Type to search" at 70 % (js/ui/overviewControls.js:329;
-  ;; _common.scss:344) until something is typed, which shows in the entry's
-  ;; focus: its caret, and a ring 2 inside it in the Shell's accent (the
-  ;; accent mixed 40 % with white) at 80 % (_default-colors.scss:8, 47;
-  ;; _drawing.scss:57-66).
-  (define (gnome-grid-search x y w h text)
+  ;; _common.scss:344) until something is typed. While it has the keys'
+  ;; focus (focus?), it shows its caret, and a ring 2 inside it in the
+  ;; Shell's accent (the accent mixed 40 % with white) at 80 %
+  ;; (_default-colors.scss:8, 47; _drawing.scss:57-66).
+  (define (gnome-grid-search x y w h text focus?)
     (let* ([lh (font-line-height 'ui)] [ty (+ y (/ (- h lh) 2))]
            [g (ui-glyph-size)] [tx (+ x 9 g 4)]
            [ink 'adwaita-dash-text])
       (fill-box x y w h 'adwaita-overview-entry (/ h 2))
       (ui-draw-glyph (+ x 9) (+ y (/ (- h g) 2)) g g
                      (list (cons 'ink (alpha ink 0.7))) 'search)
-      (if (string=? text "")
-          (draw-text tx ty "Type to search" (alpha ink 0.7) 'ui)
-          (begin
-            (stroke-box x y w h (alpha (mix 'accent #xffffff 0.4) 0.8) 2
-                        (/ h 2))
-            (with-clip (tx y (- (+ x w) tx 9) h)
-              (let ([ex (draw-text (min tx (- (+ x w) 10 (text-width text 'ui)))
-                                   ty text ink 'ui)])
-                (fill-box ex ty 1 lh ink)))))))
+      (when focus?
+        (stroke-box x y w h (alpha (mix 'accent #xffffff 0.4) 0.8) 2 (/ h 2)))
+      (with-clip (tx y (- (+ x w) tx 9) h)
+        (let ([ex (if (string=? text "")
+                      (begin
+                        (draw-text tx ty "Type to search" (alpha ink 0.7) 'ui)
+                        tx)
+                      (draw-text (min tx (- (+ x w) 10 (text-width text 'ui)))
+                                 ty text ink 'ui))])
+          (when focus? (fill-box ex ty 1 lh ink))))))
 
   ;; Draws the app grid on the overview's color (shell widgets/
   ;; _overview.scss:7-9): its search entry; its tiles, 24 round
@@ -499,7 +500,7 @@
   ;; system action's (139-147). The current page's dot is white, and the
   ;; others two thirds its size at half its strength, or whole under the
   ;; pointer (120-131; js/ui/pageIndicators.js:6-9, 89-102).
-  (define (gnome-draw-app-grid entries areas filter page sel)
+  (define (gnome-draw-app-grid entries areas filter focus? page sel)
     (let ([es (list->vector entries)] [lh (font-line-height 'ui)]
           [ink 'adwaita-dash-text])
       (fill-box 0 0 (screen-w) (screen-h) 'adwaita-overview)
@@ -509,7 +510,8 @@
           (lambda (what x y w h)
             (let ([hover? (equal? *hover* (list 'surface 'app-grid what))])
               (cond
-                [(eq? what 'search) (gnome-grid-search x y w h filter)]
+                [(eq? what 'search)
+                 (gnome-grid-search x y w h filter focus?)]
                 [(pair? what)
                  (let ([on? (= (cdr what) page)])
                    (fill-circle (+ x (/ w 2)) (+ y 6 5) (if on? 5 10/3)

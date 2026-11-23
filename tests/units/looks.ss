@@ -1327,6 +1327,29 @@
                    (= (canvas-pixel 200 2) (color->pixel (theme 'panel)))))))
         (lambda () (close-app-grid!) (set-style! 'mac))))
 
+(check "a press on GNOME's search entry, with nothing typed, rings it"
+       (test-finally
+        (lambda ()
+          (set-style! 'gnome)
+          (steps 1)
+          (toggle-launcher!)
+          (steps 1)
+          (let* ([a (cdr (assq 'search (app-grid-areas
+                                        (length (app-grid-entries)) 0)))]
+                 [x (car a)] [y (cadr a)] [w (caddr a)] [h (cadddr a)]
+                 [ring (lambda () (canvas-pixel (+ x 1) (+ y (quotient h 2))))]
+                 [before (ring)]
+                 [cx (+ x (quotient w 2))] [cy (+ y (quotient h 2))])
+            (inject! `(mouse-move ,cx ,cy) `(mouse-down ,cx ,cy left 1)
+                     `(mouse-up ,cx ,cy left))
+            (steps 1)
+            (let ([after (ring)])
+              (and (= before (color->pixel (theme 'adwaita-overview-entry)))
+                   (not (= after before))
+                   (launcher-open?)
+                   (string=? *app-grid-filter* "")))))
+        (lambda () (close-app-grid!) (set-style! 'mac))))
+
 ;;; OPEN LOOK's controls: OLGX's buttons on XView's panes
 
 (check "OPEN LOOK's buttons are OLGX's: 18, 20, 22 and 28 high in 2D and \

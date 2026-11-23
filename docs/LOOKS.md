@@ -139,15 +139,17 @@ widget's parts:
   (the launcher's apps have theirs), which the built-in menu draws before
   its text unless the style's `menu-icons` is `#f` (the Lisp machines',
   OPEN LOOK's and Curses' menus are words alone);
-- `(app-grid-areas n page)` and `(draw-app-grid entries areas filter page
-  sel)`: the app grid, the launcher of a style whose `launcher-form` is
-  `grid` (GNOME's), which shows the apps over the windows and under the
-  bars, in pages under a search field. Its areas, for `n` entries with
-  `page` shown, are the search field's, a dot for each page when there
-  is more than one, `((page . k) x y w h)`, and the page's entries, `(i x
-  y w h)`. It is handed its entries for what is typed, each `(label app .
-  thunk)`, where `app` is an app's name or `#f` for one of the desktop's
-  actions, their areas, what is typed, the page and the entry the keys
+- `(app-grid-areas n page)` and `(draw-app-grid entries areas filter
+  focus? page sel)`: the app grid, the launcher of a style whose
+  `launcher-form` is `grid` (GNOME's), which shows the apps over the
+  windows and under the bars, in pages under a search field. Its areas,
+  for `n` entries with `page` shown, are the search field's, a dot for
+  each page when there is more than one, `((page . k) x y w h)`, and the
+  page's entries, `(i x y w h)`. It is handed its entries for what is
+  typed, each `(label app . thunk)`, where `app` is an app's name or
+  `#f` for one of the desktop's actions, their areas, what is typed,
+  whether the search field has the keys' focus (once it is pressed or
+  typed in, which its caret shows), the page and the entry the keys
   chose, or `#f`;
 - `(toast-boxes)`, which returns where each toast goes, and `(draw-toasts
   boxes)`; and `(draw-wallpaper w h)`, which fills the desktop with
