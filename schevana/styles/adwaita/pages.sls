@@ -15,10 +15,8 @@
           (only (schevana kits text) text-fit)
           (only (schevana kits ui) ui-control-height ui-draw-glyph ui-glyph-size
                 ui-label-lines ui-status-page-areas ui-banner-areas)
-          (only (schevana styles adwaita text) adwaita-center adwaita-lines
-                adwaita-text adwaita-text-height adwaita-text-in)
-          (only (schevana styles adwaita controls) adwaita-button-size
-                adwaita-ring))
+          (schevana styles adwaita text)
+          (schevana styles adwaita controls))
 
   (library-layer looks)
 

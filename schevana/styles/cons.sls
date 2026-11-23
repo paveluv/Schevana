@@ -41,27 +41,11 @@
           (only (schevana base) at-load library-layer)
           (only (schevana core) color-default! common-options define-style theme
                 theme-rule)
-          (only (schevana styles cons cells) cons-cell cons-draw-over
-                cons-draw-under cons-regions)
-          (only (schevana styles cons widgets) cons-arrow cons-button
-                cons-button-size cons-card cons-checkbox cons-checkbox-size
-                cons-chip cons-chip-areas cons-chip-input-areas cons-chip-size
-                cons-dropdown cons-dropdown-size cons-field cons-focus
-                cons-highlight cons-panel cons-progress cons-scrollbar
-                cons-scrollbar-areas cons-separator cons-slider cons-space
-                cons-surface cons-tab cons-table-header cons-table-row
-                cons-tabs-size cons-text-box-areas cons-toggle cons-tree-row)
-          (only (schevana styles cons popups) cons-avatar cons-day cons-dialog
-                cons-dialog-areas cons-dialog-size cons-scrim cons-tooltip
-                cons-tooltip-size)
-          (only (schevana styles cons board) cons-board-card-insets
-                cons-board-column cons-board-column-insets
-                cons-board-header-height cons-board-link cons-board-slot
-                cons-card-pad cons-panel-pad cons-table-cell-inset)
-          (only (schevana styles cons desktop) cons-draw-menu cons-draw-taskbar
-                cons-draw-toasts cons-draw-topbar cons-draw-wallpaper
-                cons-menu-areas cons-mouse-doc-text cons-taskbar-areas
-                cons-toast-boxes))
+          (schevana styles cons cells)
+          (schevana styles cons widgets)
+          (schevana styles cons popups)
+          (schevana styles cons board)
+          (schevana styles cons desktop))
 
   (library-layer looks)
 

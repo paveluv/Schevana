@@ -20,10 +20,8 @@
           (only (schevana kits text) text-draw-centered text-fit)
           (only (schevana kits ui) ui-draw-field ui-draw-panel ui-text-box-areas
                 ui-control-height ui-draw-window-icon)
-          (only (schevana styles cons cells) cons-cell cons-dot-x cons-dot-y
-                cons-down! cons-nil! cons-nil-h! cons-pair! cons-pair-h!
-                cons-pointer! cons-right!)
-          (only (schevana styles cons widgets) cons-arrow cons-space))
+          (schevana styles cons cells)
+          (schevana styles cons widgets))
 
   (library-layer looks)
 

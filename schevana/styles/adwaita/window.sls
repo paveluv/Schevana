@@ -14,7 +14,7 @@
           (only (schevana kits text) text-fit)
           (only (schevana kits ui) ui-control-height ui-frame-glyph
                 ui-glyph-size ui-title-icon)
-          (only (schevana styles adwaita text) adwaita-center adwaita-text-in))
+          (schevana styles adwaita text))
 
   (library-layer looks)
 

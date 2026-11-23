@@ -18,8 +18,8 @@
           (only (schevana kits ui) ui-chip-areas ui-control-height ui-draw-glyph
                 ui-glyph-size ui-joined-span ui-small-glyph-size ui-text-box-top
                 ui-scrollbar-width ui-card-radius)
-          (only (schevana styles adwaita text) adwaita-center adwaita-text-in)
-          (only (schevana styles adwaita controls) adwaita-box adwaita-ring))
+          (schevana styles adwaita text)
+          (schevana styles adwaita controls))
 
   (library-layer looks)
 

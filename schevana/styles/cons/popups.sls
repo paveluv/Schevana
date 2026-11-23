@@ -14,11 +14,8 @@
           (only (schevana kits text) text-widest text-draw-centered text-fit)
           (only (schevana kits ui) ui-initials ui-dialog-areas ui-dialog-lines
                 ui-draw-panel ui-tooltip-lines)
-          (only (schevana styles cons cells) cons-cell cons-dot-x cons-dot-y
-                cons-left cons-nil! cons-pair! cons-right! cons-ring!
-                cons-title-y)
-          (only (schevana styles cons widgets) cons-arrow cons-flag cons-space
-                cons-tint-of))
+          (schevana styles cons cells)
+          (schevana styles cons widgets))
 
   (library-layer looks)
 

@@ -8,7 +8,8 @@
 ;;; is defined in two files; the core stays within its budget of tokens;
 ;;; above the core nothing calls C; each layer names only what the layer
 ;;; below gives it; a library of Schevana's imports with only and names all
-;;; it imports, and every name a library exports is used; nothing below
+;;; it imports (its own parts it imports whole), and every name a library
+;;; exports is used; nothing below
 ;;; the apps names an app's; only a world
 ;;; namespace shares the whole world with an environment; every file in a
 ;;; folder registers what it defines (a kit's or a service's names start
@@ -710,8 +711,10 @@
 ;;; ------------------------------------------------------------------
 ;;; imports and exports
 ;;; A library of Schevana's (under schevana/) imports each of the tree's
-;;; libraries with only, naming what it uses, and uses every name it names;
-;;; a demo or a game imports them whole, as a program from outside would.
+;;; libraries with only, naming what it uses, and uses every name it names.
+;;; Its own parts, the libraries in the folder of its name, it imports
+;;; whole, as a part does its siblings; a demo or a game imports every
+;;; library whole, as a program from outside would.
 ;;; A library exports only what something uses: a library that imports it,
 ;;; a program at the tree's root or in src/, or, where "/" has the
 ;;; library's names (the world's libraries and the core's facade), the
@@ -885,8 +888,20 @@
                                implied-names))
             named)))
 
+;; Whether the library name is a part of e's own: one in the folder of e's
+;; name, or, when e is a part, of its front's. The sealed layers' libraries,
+;; beside their facades, are not parts.
+(define (own-part? e name)
+  (define (front n) (list-head n (- (length n) 1)))
+  (and (> (length name) 3)
+       (assoc (front name) tree-export-table)
+       (or (equal? (front name) (tree-name e))
+           (and (> (length (tree-name e)) 3)
+                (equal? (front name) (front (tree-name e)))))))
+
 ;; Returns the problems with library e's imports of the tree's libraries:
-;; one imported whole, or a name it lists and never names.
+;; one imported whole, or a name it lists and never names; or one of its
+;; own parts imported with only, or whole but never named.
 (define (import-problems e)
   (let ([named (library-references e)])
     (apply append
@@ -899,6 +914,14 @@
                                       [else #f]))])
                     (cond
                       [(not r) '()]
+                      [(and only (own-part? e (car r)))
+                       (list (format "~a imports its part ~s with only"
+                                     (tree-file e) (car r)))]
+                      [(own-part? e (car r))
+                       (if (exists (lambda (p) (memq (cdr p) named)) (cdr r))
+                           '()
+                           (list (format "~a imports ~s and names none of it"
+                                         (tree-file e) (car r))))]
                       [(not only)
                        (list (format "~a imports ~s whole" (tree-file e)
                                      (car r)))]
@@ -911,7 +934,7 @@
                 (tree-imports e)))))
 
 (check "a library of Schevana's imports each of the tree's libraries with \
-        only, and names every name it imports"
+        only, and names every name it imports, but its own parts whole"
        (none? (apply append
                      (map import-problems
                           (filter (lambda (e)

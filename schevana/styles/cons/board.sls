@@ -13,9 +13,8 @@
           (only (schevana kits text) text-draw-centered)
           (only (schevana kits ui) ui-board-header-height ui-draw-mark
                 ui-mark-size ui-draw-surface ui-scrollbar-inset)
-          (only (schevana styles cons cells) cons-cell cons-dot-x cons-dot-y
-                cons-down! cons-nil-h! cons-ring!)
-          (only (schevana styles cons widgets) cons-arrow cons-space))
+          (schevana styles cons cells)
+          (schevana styles cons widgets))
 
   (library-layer looks)
 

@@ -18,8 +18,7 @@
           (only (schevana kits ui) ui-button-radius ui-control-height
                 ui-draw-glyph ui-glyph-size ui-joined-span ui-label-font
                 ui-label-lines ui-label-size ui-label-text)
-          (only (schevana styles adwaita text) adwaita-center adwaita-lines
-                adwaita-text adwaita-text-in adwaita-text-top))
+          (schevana styles adwaita text))
 
   (library-layer looks)
 

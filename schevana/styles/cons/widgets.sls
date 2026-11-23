@@ -22,9 +22,7 @@
                 ui-text-box-top ui-scrollbar-width ui-text-box-areas
                 ui-control-height ui-checkbox-box ui-button-size* ui-draw-glyph
                 ui-glyph-size)
-          (only (schevana styles cons cells) cons-cell cons-dot-x cons-dot-y
-                cons-down! cons-nil! cons-nil-h! cons-pair-h! cons-right!
-                cons-ring! cons-thin))
+          (schevana styles cons cells))
 
   (library-layer looks)
 

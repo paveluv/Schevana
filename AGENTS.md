@@ -236,9 +236,10 @@ before it:
   give `make-x` and `x?` (`tests/sources.ss`). A record whose name is also
   a procedure's name takes a different name (`repl-record`, the REPL's).
 - A library under `schevana/` imports each of the tree's libraries with
-  `only`, naming what it uses, and names every name it imports. A demo
-  or a game imports them whole, as a program from outside would
-  (`tests/sources.ss`).
+  `only`, naming what it uses, and names every name it imports. Its own
+  parts, the libraries in the folder of its name, it imports whole, as a
+  part does its siblings. A demo or a game imports every library whole,
+  as a program from outside would (`tests/sources.ss`).
 - A library exports only what something uses: a library that imports
   it, a program at the tree's root or in `src/`, or, for a library whose
   names "/" has (the world's and the core's facade), the docs or a lookup

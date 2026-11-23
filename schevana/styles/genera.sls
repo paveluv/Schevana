@@ -44,7 +44,7 @@
                 theme theme-font-rule theme-rule window-bg window-h window-ref
                 window-title window-w with-clip with-place)
           (only (schevana kits px) px-bitmap-text px-bits px-invert px-bevel)
-          (only (schevana styles genera font-5x5) genera-5x5)
+          (schevana styles genera font-5x5)
           (only (schevana kits text) text-widest text-draw-centered text-fit)
           (only (schevana kits ui) ui-draw-mark* ui-initials ui-calendar-areas
                 ui-dialog-areas ui-dialog-lines ui-tooltip-lines ui-draw-panel

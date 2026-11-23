@@ -19,10 +19,8 @@
           (only (schevana kits ui) ui-calendar-areas ui-dialog-areas
                 ui-dialog-lines ui-draw-panel ui-glyph-size ui-initials
                 ui-live-badge-back ui-live-badge-mark ui-wrap-lines)
-          (only (schevana styles adwaita text) adwaita-center adwaita-lines
-                adwaita-text adwaita-text-centered adwaita-text-in
-                adwaita-text-top)
-          (only (schevana styles adwaita controls) adwaita-ring))
+          (schevana styles adwaita text)
+          (schevana styles adwaita controls))
 
   (library-layer looks)
 

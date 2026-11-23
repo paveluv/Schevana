@@ -44,7 +44,7 @@
           (only (schevana kits color) color->fixnum)
           (only (schevana kits text) text-within)
           (only (schevana kits ui) ui-draw-focus ui-draw-glyph ui-glyph-size)
-          (only (schevana styles open-look fonts) open-look-font-glyph))
+          (schevana styles open-look fonts))
 
   (library-layer looks)
 

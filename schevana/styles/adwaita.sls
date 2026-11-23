@@ -52,35 +52,13 @@
           (only (schevana core) alpha color-default! define-style
                 font-line-height mix theme theme-default! theme-font-rule
                 theme-rule)
-          (only (schevana styles adwaita colors) adwaita-by-style adwaita-dark?
-                adwaita-em adwaita-luma adwaita-standalone)
-          (only (schevana styles adwaita text) adwaita-text-y)
-          (only (schevana styles adwaita window) adwaita-draw-over
-                adwaita-draw-under adwaita-header-height adwaita-insets
-                adwaita-radius adwaita-regions)
-          (only (schevana styles adwaita controls) adwaita-button
-                adwaita-button-size adwaita-checkbox adwaita-checkbox-size
-                adwaita-focus adwaita-label adwaita-progress adwaita-radio
-                adwaita-radio-size adwaita-ring adwaita-slider adwaita-surface
-                adwaita-tab adwaita-tabs-size adwaita-toggle
-                adwaita-toggle-size adwaita-toggle-track)
-          (only (schevana styles adwaita fields) adwaita-card
-                adwaita-card-radius adwaita-chip adwaita-chip-size
-                adwaita-dropdown adwaita-dropdown-size adwaita-field
-                adwaita-scrollbar adwaita-scrollbar-areas adwaita-stepper-areas
-                adwaita-table-cell-inset adwaita-table-divider
-                adwaita-table-header adwaita-table-row adwaita-text-box-areas)
-          (only (schevana styles adwaita popups) adwaita-avatar adwaita-busy
-                adwaita-calendar adwaita-day adwaita-dialog
-                adwaita-dialog-areas adwaita-dialog-size adwaita-highlight
-                adwaita-live-badge adwaita-nav-row adwaita-panel adwaita-scrim
-                adwaita-separator adwaita-split adwaita-suggestion
-                adwaita-tooltip adwaita-tooltip-size)
-          (only (schevana styles adwaita pages) adwaita-add-row
-                adwaita-add-row-height adwaita-banner adwaita-banner-height
-                adwaita-row adwaita-row-areas adwaita-row-height adwaita-rows
-                adwaita-rows-radius adwaita-rows-spacing adwaita-status-page
-                adwaita-status-page-areas))
+          (schevana styles adwaita colors)
+          (schevana styles adwaita text)
+          (schevana styles adwaita window)
+          (schevana styles adwaita controls)
+          (schevana styles adwaita fields)
+          (schevana styles adwaita popups)
+          (schevana styles adwaita pages))
 
   (library-layer looks)
 
