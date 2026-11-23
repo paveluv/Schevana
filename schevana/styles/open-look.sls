@@ -11,11 +11,15 @@
 ;;; place a window resizes from. The focus is a band across the header, of
 ;;; ink in 2D and recessed in 3D, or, with open-look-focus set to lines,
 ;;; olwm's two lines. A window's 'footer, a string or (left . right), shows
-;;; under it in the title's font. Everything comes in OPEN LOOK's four sizes,
-;;; 10, 12, 14 and 19 point, whichever is nearest the text size. The fixed
-;;; parts are OLGX's own glyphs (its fonts, at this file's end) pixel for
-;;; pixel, the numbers are olwm's (winframe.c), and the shades follow OLGX's
-;;; arithmetic, translated from Sun's code, whose notice goes with it:
+;;; under it in the title's font. The controls are OLGX's as XView drew
+;;; them, on panes of the window color in 3D and white in 2D: an oblong
+;;; button, the default one ringed, a glyph alone in an abbreviated button,
+;;; and an inactive one grayed over. Everything comes in OPEN LOOK's four
+;;; sizes, 10, 12, 14 and 19 point, whichever is nearest the text size. The
+;;; fixed parts are OLGX's own glyphs (its fonts, at this file's end) pixel
+;;; for pixel, the numbers are olwm's (winframe.c), and the shades follow
+;;; OLGX's arithmetic, translated from Sun's code, whose notice goes with
+;;; it:
 ;;;
 ;;;   (c) Copyright 1989, 1990, 1991 Sun Microsystems, Inc. Sun design
 ;;;   patents pending in the U.S. and foreign countries. OPEN LOOK is a
@@ -30,14 +34,16 @@
 #!chezscheme
 (library (schevana styles open-look)
   (export
-    open-look-insets open-look-regions open-look-draw-under)
+    open-look-insets open-look-regions open-look-draw-under open-look-button
+    open-look-button-size)
   (import (chezscheme)
           (only (schevana base) at-load library-layer)
           (only (schevana core) color-default! define-style draw-text fill-box
-                font font-ascent rgb stroke-box text-width theme theme-rule
-                window-h window-ref window-title window-w)
+                font font-ascent rgb stipple stroke-box text-width theme
+                theme-rule window-h window-ref window-title window-w)
           (only (schevana kits color) color->fixnum)
-          (only (schevana kits text) text-within))
+          (only (schevana kits text) text-within)
+          (only (schevana kits ui) ui-draw-focus ui-draw-glyph ui-glyph-size))
 
   (library-layer looks)
 
@@ -386,10 +392,161 @@
       (open-look-draw-title win x y w (and band? (not (open-look-3d?))))
       (open-look-draw-footer win x y w h)))
 
-  ;; The window color and the ink, which you may change and save, and the
-  ;; shades OLGX derives from the window color.
+  ;;; ------------------------------------------------------------------
+  ;;; the controls, OLGX's (ol_button.c) as XView draws them on its panes:
+  ;;; on BG1 in 3D and on white in 2D, the window-bg the style gives
+
+  ;; An oblong button's numbers (OLGX's metrics, ol_init.c:148-268): its
+  ;; height, 2D's with the shadow under it and 3D's a pixel less; an end's
+  ;; width, where the label starts; the label's baseline under its top,
+  ;; button_height less base_off.
+  (define (open-look-oblong-h)
+    (- (open-look-by-size 18 20 22 28) (if (open-look-3d?) 1 0)))
+  (define (open-look-endcap) (open-look-by-size 8 9 11 18))
+  (define (open-look-oblong-base) (open-look-by-size 12 13 15 19))
+
+  ;; Glyph name, 1 pixel wide, drawn n wide from (x, y): a box for each run
+  ;; of its rows.
+  (define (open-look-glyph-across x y name n color)
+    (let ([g (open-look-font-glyph (open-look-size) name)])
+      (when (and g (> n 0))
+        (let rows ([rs (cddr g)] [j 0] [from #f])   ; from: the run's first
+          (let ([on? (and (pair? rs) (= (car rs) 1))])
+            (cond
+              [(and on? (not from)) (rows (cdr rs) (+ j 1) j)]
+              [(and from (not on?))
+               (fill-box x (+ y from) n (- j from) color)
+               (when (pair? rs) (rows (cdr rs) (+ j 1) #f))]
+              [(pair? rs) (rows (cdr rs) (+ j 1) from)]))))))
+
+  ;; A run of glyphs as OLGX prints one (ol_draw.c:16-39): left, n pixels
+  ;; of middle, right. OLGX sums the middle from pieces 16, 8, 4, 2 and 1
+  ;; wide, each the 1-wide one repeated, so that one is drawn n wide; the
+  ;; left one advances an end's width.
+  (define (open-look-strip x y n left middle right color)
+    (let ([e (open-look-endcap)])
+      (open-look-glyph x y left color)
+      (open-look-glyph-across (+ x e) y middle n color)
+      (open-look-glyph (+ x e n) y right color)))
+
+  ;; The oblong button w wide from (x, y) (olgx_draw_button, ol_button.c:
+  ;; 64-224): in 3D its bevel and face, raised, or recessed when invoked;
+  ;; in 2D its outline and shadow on white, filled with ink when invoked.
+  ;; The default ring lies a pixel inside, in 2D only while not invoked.
+  (define (open-look-draw-oblong x y w invoked? default?)
+    (let ([n (- w (* 2 (open-look-endcap)) 1)])
+      (define (strip left middle right color)
+        (open-look-strip x y n left middle right color))
+      (define (ring color)
+        (strip 'dflt-button-left-endcap 'dflt-button-middle-1
+               'dflt-button-right-endcap color))
+      (if (open-look-3d?)
+          (begin
+            (strip 'button-ul 'button-top-1 'button-ur
+                   (if invoked? 'open-look-bg3 'open-look-highlight))
+            (strip 'button-ll 'button-bottom-1 'button-lr
+                   (if invoked? 'open-look-highlight 'open-look-bg3))
+            (strip 'button-left-endcap-fill 'button-fill-1
+                   'button-right-endcap-fill
+                   (if invoked? 'open-look-bg2 'window-bg))
+            (when default? (ring 'open-look-bg3)))
+          (begin
+            ;; XView erases a button before it draws one (p_btn.c:667-743),
+            ;; a column past it too: here within its own box
+            (fill-box x y w (open-look-oblong-h) 'window-bg)
+            (cond [invoked?
+                   (strip 'button-fill-2d-leftendcap 'button-fill-2d-middle-1
+                          'button-fill-2d-rightendcap 'open-look-ink)]
+                  [default? (ring 'open-look-ink)])
+            (strip 'button-outline-left-endcap 'button-outline-middle-1
+                   'button-outline-right-endcap 'open-look-ink)))))
+
+  ;; OLGX's abbreviated button from (x, y) (olgx_draw_abbrev_button,
+  ;; ol_button.c:553-643), raised or invoked, with glyph inside where its
+  ;; menu mark would be.
+  (define (open-look-draw-abbrev x y invoked? glyph)
+    (let* ([s (- (open-look-button-h) 5)]   ; inside, a pixel clear
+           [ink (if (and invoked? (not (open-look-3d?)))
+                    'window-bg
+                    'open-look-ink)])
+      (if (open-look-3d?)
+          (begin
+            (open-look-glyph x y 'abbrev-menu-ul
+                             (if invoked? 'open-look-bg3 'open-look-highlight))
+            (open-look-glyph x y 'abbrev-menu-lr
+                             (if invoked? 'open-look-highlight 'open-look-bg3))
+            (open-look-glyph x y 'abbrev-menu-fill
+                             (if invoked? 'open-look-bg2 'window-bg)))
+          (let ([aw (open-look-button-w)])
+            (when invoked?
+              (fill-box (+ x 2) (+ y 2) (- aw 4) (- aw 4) 'window-bg))
+            (open-look-glyph x y (if invoked?
+                                     'abbrev-menu-button-inverted
+                                     'abbrev-menu-button)
+                             'open-look-ink)
+            ;; the 2D glyph holds its mark: cleared for the glyph
+            (fill-box (+ x 2) (+ y 2) s s (if invoked? 'open-look-ink
+                                              'window-bg))))
+      (ui-draw-glyph (+ x 2) (+ y 2) s s (list (cons 'ink ink)) glyph)))
+
+  ;; OLGX's cut (olgx_draw_text, ol_button.c:758-783): a label wider than w
+  ;; loses the character that passes w and the one before it.
+  (define (open-look-label-cut str w font)
+    (if (<= (text-width str font) w)
+        str
+        (let loop ([i 0] [sum 0])   ; sum: the first i characters' width
+          (if (> sum w)
+              (substring str 0 (max 0 (- i 2)))
+              (loop (+ i 1)
+                    (+ sum (text-width (string (string-ref str i)) font)))))))
+
+  ;; A button: an oblong one with its label, after its glyph if it has one,
+  ;; or its glyph alone in an abbreviated one. Pressed or selected, it is
+  ;; invoked; primary, the default; disabled, grayed over (OLGX_INACTIVE).
+  ;; OPEN LOOK has no hover, and a danger or quiet button is a plain one.
+  (define (open-look-button x y w h flags label glyph)
+    (let ([on? (lambda (f) (memq f flags))] [x (floor x)])
+      (let ([invoked? (or (on? 'pressed) (on? 'selected))])
+        (if label
+            (let* ([bh (open-look-oblong-h)] [w (floor w)]
+                   [y (floor (+ y (/ (- h bh) 2)))]
+                   [e (open-look-endcap)] [base (+ y (open-look-oblong-base))]
+                   [g (if glyph (ui-glyph-size) 0)] [gw (* 3/2 g)]
+                   [ink (if (and invoked? (not (open-look-3d?)))
+                            'window-bg
+                            'open-look-ink)])
+              (open-look-draw-oblong x y w invoked? (on? 'primary))
+              (when glyph
+                (ui-draw-glyph (+ x e) (- base g) g g (list (cons 'ink ink))
+                               glyph))
+              (open-look-text (+ x e gw) base
+                              (open-look-label-cut label (- w e e gw) 'ui)
+                              ink 'ui)
+              (when (on? 'disabled) (fill-box x y w bh 'open-look-inactive))
+              (when (on? 'focused)
+                (ui-draw-focus x y w bh flags (quotient bh 2))))
+            (let* ([aw (open-look-button-w)] [ah (open-look-button-h)]
+                   [x (floor (+ x (/ (- w aw) 2)))]
+                   [y (floor (+ y (/ (- h ah) 2)))])
+              (when glyph (open-look-draw-abbrev x y invoked? glyph))
+              (when (on? 'disabled) (fill-box x y aw ah 'open-look-inactive))
+              (when (on? 'focused) (ui-draw-focus x y aw ah flags 2)))))))
+
+  ;; XView's width: the label's and an end each side (item_set.c:657-679);
+  ;; a glyph alone, the abbreviated button's.
+  (define (open-look-button-size label glyph)
+    (if label
+        (values (+ (exact (ceiling (+ (text-width label 'ui)
+                                      (if glyph (* 3/2 (ui-glyph-size)) 0))))
+                   (* 2 (open-look-endcap)))
+                (open-look-oblong-h))
+        (values (open-look-button-w) (open-look-button-h))))
+
+  ;; OpenWindows' window color, which you may change and save: olwm's
+  ;; frames, and in 3D XView's panes too (the style's window-bg). The ink,
+  ;; and the shades OLGX derives from the window color.
   (at-load
-   (color-default! 'open-look-window 'window-bg))
+   (color-default! 'open-look-window 'bg-1))
   (at-load
    (color-default! 'open-look-ink 'text))
   (at-load
@@ -401,6 +558,12 @@
   (at-load
    (color-default! 'open-look-highlight
                    (theme-rule (open-look-shade 'open-look-window 'highlight))))
+  ;; OLGX_GREY_OUT (ol_init.c:1868-1882): the pane's color, BG1 or white,
+  ;; over every pixel where x + y is odd. OLGX counts from its window's
+  ;; corner and a stipple from the screen's, so the two agree where the
+  ;; pane's corner lies at an even x + y.
+  (at-load
+   (color-default! 'open-look-inactive (stipple 'window-bg #f ".#" "#.")))
 
   (at-load
    (define-style open-look "OPEN LOOK"
@@ -423,14 +586,21 @@
      'frame-under 'open-look-draw-under
      'menu-icons #f   ; olwm's menus are words alone
      ;; only the corners resize
-     'frame-edge 0))
+     'frame-edge 0
+     ;; XView's panes: the window color in 3D, white in 2D
+     'window-bg (theme-rule
+                 (theme (if (open-look-3d?) 'open-look-window 'bg-0)))
+     ;; the controls
+     'control-height (theme-rule (open-look-oblong-h))
+     'ui-draw-button 'open-look-button
+     'ui-button-size 'open-look-button-size))
 
   ;;; ------------------------------------------------------------------
   ;;; OLGX's glyph fonts, the pictures its parts are drawn from. OLGX draws
   ;;; nearly every fixed-size part (resize corners, pushpins, the window
   ;;; button, menu marks, the ends of buttons) as characters of a glyph
   ;;; font, one font for each scale, each drawn by hand at 10, 12, 14 and
-  ;;; 19 pixels (75 dpi, one pixel per point). Here are the glyphs the frame
+  ;;; 19 pixels (75 dpi, one pixel per point). Here are the glyphs the style
   ;;; draws, generated from olgl10/12/14/19.bdf (X11R6 contrib,
   ;;; fonts/bdf/misc), with the fonts' notice, which every copy must carry:
   ;;;
@@ -477,6 +647,33 @@
        ;; 23 OLG_ABBREV_MENU_BUTTON_INVERTED
        (abbrev-menu-button-inverted 14 13 #x1ffc #x2002 #x2ffb #x280b #x2beb
          #x2ddb #x2ddb #x2ebb #x2ebb #x2f7b #x2003 #x1fff #xffe)
+       ;; 24 BUTTON_UL
+       (button-ul 8 18 #x3 #xc #x10 #x20 #x40 #x40 #x80 #x80 #x80 #x80 #x80 #x40
+         #x40 #x20 #x0 #x0 #x0 #x0)
+       ;; 25 BUTTON_LL
+       (button-ll 8 17 #x0 #x0 #x0 #x0 #x0 #x0 #x0 #x0 #x0 #x0 #x0 #x0 #x0 #x0
+         #x10 #xc #x3)
+       ;; 26 BUTTON_LEFT_ENDCAP_FILL
+       (button-left-endcap-fill 8 16 #x0 #x3 #xf #x1f #x3f #x3f #x7f #x7f #x7f
+         #x7f #x7f #x3f #x3f #x1f #xf #x3)
+       ;; 27 BUTTON_LR
+       (button-lr 8 17 #x0 #x0 #x0 #x4 #x2 #x2 #x1 #x1 #x1 #x1 #x1 #x2 #x2 #x4
+         #x8 #x30 #xc0)
+       ;; 28 BUTTON_UR
+       (button-ur 5 17 #x18 #x6 #x1 #x0 #x0 #x0 #x0 #x0 #x0 #x0 #x0 #x0 #x0 #x0
+         #x0 #x0 #x0)
+       ;; 29 BUTTON_RIGHT_ENDCAP_FILL
+       (button-right-endcap-fill 7 16 #x0 #x60 #x78 #x7c #x7e #x7e #x7f #x7f
+         #x7f #x7f #x7f #x7e #x7e #x7c #x78 #x60)
+       ;; 30 BUTTON_TOP_1
+       (button-top-1 1 17 #x1 #x0 #x0 #x0 #x0 #x0 #x0 #x0 #x0 #x0 #x0 #x0 #x0
+         #x0 #x0 #x0 #x0)
+       ;; 35 BUTTON_BOTTOM_1
+       (button-bottom-1 1 17 #x0 #x0 #x0 #x0 #x0 #x0 #x0 #x0 #x0 #x0 #x0 #x0 #x0
+         #x0 #x0 #x0 #x1)
+       ;; 40 BUTTON_FILL_1
+       (button-fill-1 1 17 #x0 #x1 #x1 #x1 #x1 #x1 #x1 #x1 #x1 #x1 #x1 #x1 #x1
+         #x1 #x1 #x1 #x0)
        ;; 45 VERT_MENU_MARK_UL
        (vert-menu-mark-ul 7 7 #x7f #x40 #x20 #x20 #x10 #x10 #x0)
        ;; 46 VERT_MENU_MARK_LR
@@ -539,6 +736,33 @@
        ;; 105 PUSHPIN_IN_MIDDLE
        (pushpin-in-middle 13 13 #x0 #x38 #x17c #x6fe #x6fe #xefe #xe7c #xf38
          #x700 #x7c0 #x1e0 #x0 #x0)
+       ;; 106 DFLT_BUTTON_LEFT_ENDCAP
+       (dflt-button-left-endcap 8 16 #x0 #x0 #x1 #x6 #x8 #x10 #x10 #x20 #x20
+         #x20 #x10 #x10 #x8 #x6 #x1 #x0)
+       ;; 107 DFLT_BUTTON_RIGHT_ENDCAP
+       (dflt-button-right-endcap 8 16 #x0 #x0 #x80 #x60 #x10 #x8 #x8 #x4 #x4 #x4
+         #x8 #x8 #x10 #x60 #x80 #x0)
+       ;; 108 DFLT_BUTTON_MIDDLE_1
+       (dflt-button-middle-1 1 16 #x0 #x0 #x1 #x0 #x0 #x0 #x0 #x0 #x0 #x0 #x0
+         #x0 #x0 #x0 #x1 #x0)
+       ;; 139 BUTTON_OUTLINE_LEFT_ENDCAP
+       (button-outline-left-endcap 8 18 #x3 #xc #x10 #x20 #x40 #x40 #x80 #x80
+         #x80 #x80 #x80 #x40 #x40 #x20 #x10 #xc #x7 #x1)
+       ;; 140 BUTTON_OUTLINE_RIGHT_ENDCAP
+       (button-outline-right-endcap 9 18 #x180 #x60 #x10 #x8 #x4 #x6 #x2 #x3 #x3
+         #x3 #x3 #x7 #x6 #xe #x1c #x78 #x1f0 #x1c0)
+       ;; 141 BUTTON_OUTLINE_MIDDLE_1
+       (button-outline-middle-1 1 18 #x1 #x0 #x0 #x0 #x0 #x0 #x0 #x0 #x0 #x0 #x0
+         #x0 #x0 #x0 #x0 #x0 #x1 #x1)
+       ;; 146 BUTTON_FILL_2D_LEFTENDCAP
+       (button-fill-2d-leftendcap 8 18 #x0 #x0 #x1 #x7 #xf #x1f #x1f #x3f #x3f
+         #x3f #x1f #x1f #xf #x7 #x1 #x0 #x0 #x0)
+       ;; 147 BUTTON_FILL_2D_RIGHTENDCAP
+       (button-fill-2d-rightendcap 8 18 #x0 #x0 #x80 #xe0 #xf0 #xf8 #xf8 #xfc
+         #xfc #xfc #xf8 #xf8 #xf0 #xe0 #x80 #x0 #x0 #x0)
+       ;; 148 BUTTON_FILL_2D_MIDDLE_1
+       (button-fill-2d-middle-1 1 18 #x0 #x0 #x1 #x1 #x1 #x1 #x1 #x1 #x1 #x1 #x1
+         #x1 #x1 #x1 #x1 #x0 #x0 #x0)
        ;; 162 UL_RESIZE_OUTLINE
        (ul-resize-outline 10 10 #x3ff #x201 #x201 #x201 #x23f #x220 #x220 #x220
          #x220 #x3e0)
@@ -564,6 +788,34 @@
        ;; 23 OLG_ABBREV_MENU_BUTTON_INVERTED
        (abbrev-menu-button-inverted 16 15 #x7ffc #x8002 #xbffb #xbffb #xb01b
          #xb7db #xbbbb #xbbbb #xbd7b #xbd7b #xbefb #xbffb #x8003 #x7ffe #x3ffc)
+       ;; 24 BUTTON_UL
+       (button-ul 11 20 #x1c #x60 #x80 #x100 #x200 #x200 #x400 #x400 #x400 #x400
+         #x400 #x400 #x400 #x200 #x200 #x100 #x0 #x0 #x0 #x0)
+       ;; 25 BUTTON_LL
+       (button-ll 9 20 #x0 #x0 #x0 #x0 #x0 #x0 #x0 #x0 #x0 #x0 #x0 #x0 #x0 #x0
+         #x0 #x0 #x20 #x18 #x7 #x0)
+       ;; 26 BUTTON_LEFT_ENDCAP_FILL
+       (button-left-endcap-fill 9 20 #x0 #x7 #x1f #x3f #x7f #x7f #xff #xff #xff
+         #xff #xff #xff #xff #x7f #x7f #x3f #x1f #x7 #x0 #x0)
+       ;; 27 BUTTON_LR
+       (button-lr 9 20 #x0 #x0 #x0 #x4 #x2 #x2 #x1 #x1 #x1 #x1 #x1 #x1 #x1 #x2
+         #x2 #x4 #x8 #x30 #x1c0 #x0)
+       ;; 28 BUTTON_UR
+       (button-ur 9 18 #x1c0 #x30 #x8 #x0 #x0 #x0 #x0 #x0 #x0 #x0 #x0 #x0 #x0
+         #x0 #x0 #x0 #x0 #x0)
+       ;; 29 BUTTON_RIGHT_ENDCAP_FILL
+       (button-right-endcap-fill 9 20 #x0 #x1c0 #x1f0 #x1f8 #x1fc #x1fc #x1fe
+         #x1fe #x1fe #x1fe #x1fe #x1fe #x1fe #x1fc #x1fc #x1f8 #x1f0 #x1c0 #x0
+         #x0)
+       ;; 30 BUTTON_TOP_1
+       (button-top-1 1 18 #x1 #x0 #x0 #x0 #x0 #x0 #x0 #x0 #x0 #x0 #x0 #x0 #x0
+         #x0 #x0 #x0 #x0 #x0)
+       ;; 35 BUTTON_BOTTOM_1
+       (button-bottom-1 1 19 #x0 #x0 #x0 #x0 #x0 #x0 #x0 #x0 #x0 #x0 #x0 #x0 #x0
+         #x0 #x0 #x0 #x0 #x0 #x1)
+       ;; 40 BUTTON_FILL_1
+       (button-fill-1 1 19 #x0 #x1 #x1 #x1 #x1 #x1 #x1 #x1 #x1 #x1 #x1 #x1 #x1
+         #x1 #x1 #x1 #x1 #x1 #x0)
        ;; 45 VERT_MENU_MARK_UL
        (vert-menu-mark-ul 7 7 #x7f #x40 #x20 #x20 #x10 #x10 #x0)
        ;; 46 VERT_MENU_MARK_LR
@@ -627,6 +879,33 @@
        ;; 105 PUSHPIN_IN_MIDDLE
        (pushpin-in-middle 13 13 #x0 #x38 #x17c #x6fe #x6fe #xefe #xe7c #xf38
          #x700 #x7c0 #x1e0 #x0 #x0)
+       ;; 106 DFLT_BUTTON_LEFT_ENDCAP
+       (dflt-button-left-endcap 9 18 #x0 #x0 #x3 #xc #x10 #x20 #x20 #x40 #x40
+         #x40 #x40 #x40 #x20 #x20 #x10 #xc #x3 #x0)
+       ;; 107 DFLT_BUTTON_RIGHT_ENDCAP
+       (dflt-button-right-endcap 9 18 #x0 #x0 #x180 #x60 #x10 #x8 #x8 #x4 #x4
+         #x4 #x4 #x4 #x8 #x8 #x10 #x60 #x180 #x0)
+       ;; 108 DFLT_BUTTON_MIDDLE_1
+       (dflt-button-middle-1 1 18 #x0 #x0 #x1 #x0 #x0 #x0 #x0 #x0 #x0 #x0 #x0
+         #x0 #x0 #x0 #x0 #x0 #x1 #x0)
+       ;; 139 BUTTON_OUTLINE_LEFT_ENDCAP
+       (button-outline-left-endcap 9 20 #x7 #x18 #x20 #x40 #x80 #x80 #x100 #x100
+         #x100 #x100 #x100 #x100 #x100 #x80 #x80 #x40 #x20 #x18 #xf #x7)
+       ;; 140 BUTTON_OUTLINE_RIGHT_ENDCAP
+       (button-outline-right-endcap 10 20 #x380 #x60 #x10 #x8 #x4 #x6 #x2 #x3
+         #x3 #x3 #x3 #x3 #x3 #x7 #x6 #xe #x1c #x78 #x3f0 #x3c0)
+       ;; 141 BUTTON_OUTLINE_MIDDLE_1
+       (button-outline-middle-1 1 20 #x1 #x0 #x0 #x0 #x0 #x0 #x0 #x0 #x0 #x0 #x0
+         #x0 #x0 #x0 #x0 #x0 #x0 #x0 #x1 #x1)
+       ;; 146 BUTTON_FILL_2D_LEFTENDCAP
+       (button-fill-2d-leftendcap 9 17 #x0 #x0 #x3 #xf #x1f #x3f #x3f #x7f #x7f
+         #x7f #x7f #x7f #x3f #x3f #x1f #xf #x3)
+       ;; 147 BUTTON_FILL_2D_RIGHTENDCAP
+       (button-fill-2d-rightendcap 7 20 #x0 #x0 #x60 #x78 #x7c #x7e #x7e #x7f
+         #x7f #x7f #x7f #x7f #x7e #x7e #x7c #x78 #x60 #x0 #x0 #x0)
+       ;; 148 BUTTON_FILL_2D_MIDDLE_1
+       (button-fill-2d-middle-1 1 20 #x0 #x0 #x1 #x1 #x1 #x1 #x1 #x1 #x1 #x1 #x1
+         #x1 #x1 #x1 #x1 #x1 #x1 #x0 #x0 #x0)
        ;; 162 UL_RESIZE_OUTLINE
        (ul-resize-outline 11 11 #x7ff #x401 #x401 #x401 #x47f #x440 #x440 #x440
          #x440 #x440 #x7c0)
@@ -654,6 +933,34 @@
        (abbrev-menu-button-inverted 18 17 #x1fffc #x20002 #x2fffb #x2fffb
          #x2c01b #x2dfdb #x2efbb #x2efbb #x2f77b #x2f77b #x2fafb #x2fafb #x2fdfb
          #x2fffb #x20003 #x1ffff #xfffe)
+       ;; 24 BUTTON_UL
+       (button-ul 11 22 #xf #x30 #x40 #x80 #x100 #x200 #x200 #x400 #x400 #x400
+         #x400 #x400 #x400 #x400 #x200 #x200 #x100 #x80 #x0 #x0 #x0 #x0)
+       ;; 25 BUTTON_LL
+       (button-ll 11 21 #x0 #x0 #x0 #x0 #x0 #x0 #x0 #x0 #x0 #x0 #x0 #x0 #x0 #x0
+         #x0 #x0 #x0 #x0 #x40 #x30 #xf)
+       ;; 26 BUTTON_LEFT_ENDCAP_FILL
+       (button-left-endcap-fill 11 20 #x0 #xf #x3f #x7f #xff #x1ff #x1ff #x3ff
+         #x3ff #x3ff #x3ff #x3ff #x3ff #x3ff #x1ff #x1ff #xff #x7f #x3f #xf)
+       ;; 27 BUTTON_LR
+       (button-lr 11 21 #x0 #x0 #x0 #x8 #x4 #x2 #x2 #x1 #x1 #x1 #x1 #x1 #x1 #x1
+         #x2 #x2 #x4 #x8 #x10 #x60 #x780)
+       ;; 28 BUTTON_UR
+       (button-ur 11 21 #x780 #x60 #x10 #x0 #x0 #x0 #x0 #x0 #x0 #x0 #x0 #x0 #x0
+         #x0 #x0 #x0 #x0 #x0 #x0 #x0 #x0)
+       ;; 29 BUTTON_RIGHT_ENDCAP_FILL
+       (button-right-endcap-fill 11 20 #x0 #x780 #x7e0 #x7f0 #x7f8 #x7fc #x7fc
+         #x7fe #x7fe #x7fe #x7fe #x7fe #x7fe #x7fe #x7fc #x7fc #x7f8 #x7f0 #x7e0
+         #x780)
+       ;; 30 BUTTON_TOP_1
+       (button-top-1 1 21 #x1 #x0 #x0 #x0 #x0 #x0 #x0 #x0 #x0 #x0 #x0 #x0 #x0
+         #x0 #x0 #x0 #x0 #x0 #x0 #x0 #x0)
+       ;; 35 BUTTON_BOTTOM_1
+       (button-bottom-1 1 21 #x0 #x0 #x0 #x0 #x0 #x0 #x0 #x0 #x0 #x0 #x0 #x0 #x0
+         #x0 #x0 #x0 #x0 #x0 #x0 #x0 #x1)
+       ;; 40 BUTTON_FILL_1
+       (button-fill-1 1 21 #x0 #x1 #x1 #x1 #x1 #x1 #x1 #x1 #x1 #x1 #x1 #x1 #x1
+         #x1 #x1 #x1 #x1 #x1 #x1 #x1 #x0)
        ;; 45 VERT_MENU_MARK_UL
        (vert-menu-mark-ul 11 11 #x7ff #x400 #x200 #x200 #x100 #x100 #x80 #x80
          #x40 #x40 #x0)
@@ -725,6 +1032,35 @@
        ;; 105 PUSHPIN_IN_MIDDLE
        (pushpin-in-middle 15 15 #x0 #x70 #x1fc #xdfc #x1bfe #x1bfe #x3bfe #x39fc
          #x3dfc #x1c70 #x1e00 #xf80 #x3c0 #x0 #x0)
+       ;; 106 DFLT_BUTTON_LEFT_ENDCAP
+       (dflt-button-left-endcap 11 20 #x0 #x0 #x7 #x18 #x20 #x40 #x80 #x80 #x100
+         #x100 #x100 #x100 #x100 #x80 #x80 #x40 #x20 #x18 #x7 #x0)
+       ;; 107 DFLT_BUTTON_RIGHT_ENDCAP
+       (dflt-button-right-endcap 11 20 #x0 #x0 #x700 #xc0 #x20 #x10 #x8 #x8 #x4
+         #x4 #x4 #x4 #x4 #x8 #x8 #x10 #x20 #xc0 #x700 #x0)
+       ;; 108 DFLT_BUTTON_MIDDLE_1
+       (dflt-button-middle-1 1 20 #x0 #x0 #x1 #x0 #x0 #x0 #x0 #x0 #x0 #x0 #x0
+         #x0 #x0 #x0 #x0 #x0 #x0 #x0 #x1 #x0)
+       ;; 139 BUTTON_OUTLINE_LEFT_ENDCAP
+       (button-outline-left-endcap 11 22 #xf #x30 #x40 #x80 #x100 #x200 #x200
+         #x400 #x400 #x400 #x400 #x400 #x400 #x400 #x200 #x200 #x100 #x80 #x40
+         #x30 #x1f #xf)
+       ;; 140 BUTTON_OUTLINE_RIGHT_ENDCAP
+       (button-outline-right-endcap 12 22 #xf00 #xc0 #x20 #x10 #x8 #x4 #x6 #x2
+         #x3 #x3 #x3 #x3 #x3 #x3 #x7 #x6 #xe #x1c #x38 #xf0 #xfe0 #xf80)
+       ;; 141 BUTTON_OUTLINE_MIDDLE_1
+       (button-outline-middle-1 1 22 #x1 #x0 #x0 #x0 #x0 #x0 #x0 #x0 #x0 #x0 #x0
+         #x0 #x0 #x0 #x0 #x0 #x0 #x0 #x0 #x0 #x1 #x1)
+       ;; 146 BUTTON_FILL_2D_LEFTENDCAP
+       (button-fill-2d-leftendcap 11 22 #x0 #x0 #x7 #x1f #x3f #x7f #xff #xff
+         #x1ff #x1ff #x1ff #x1ff #x1ff #xff #xff #x7f #x3f #x1f #x7 #x0 #x0 #x0)
+       ;; 147 BUTTON_FILL_2D_RIGHTENDCAP
+       (button-fill-2d-rightendcap 11 22 #x0 #x0 #x700 #x7c0 #x7e0 #x7f0 #x7f8
+         #x7f8 #x7fc #x7fc #x7fc #x7fc #x7fc #x7f8 #x7f8 #x7f0 #x7e0 #x7c0 #x700
+         #x0 #x0 #x0)
+       ;; 148 BUTTON_FILL_2D_MIDDLE_1
+       (button-fill-2d-middle-1 1 22 #x0 #x0 #x1 #x1 #x1 #x1 #x1 #x1 #x1 #x1 #x1
+         #x1 #x1 #x1 #x1 #x1 #x1 #x1 #x1 #x0 #x0 #x0)
        ;; 162 UL_RESIZE_OUTLINE
        (ul-resize-outline 12 12 #xfff #x801 #x801 #x801 #x801 #x87f #x840 #x840
          #x840 #x840 #x840 #xfc0)
@@ -753,6 +1089,38 @@
          #x2ffffb #x2e003b #x2effbb #x2f7f7b #x2f7f7b #x2fbefb #x2fbefb #x2fddfb
          #x2fddfb #x2febfb #x2febfb #x2ff7fb #x2ffffb #x27fff3 #x100007 #xffffe
          #x7fffc)
+       ;; 24 BUTTON_UL
+       (button-ul 18 28 #xff #x700 #xc00 #x3000 #x6000 #x4000 #x8000 #x18000
+         #x10000 #x10000 #x20000 #x20000 #x20000 #x20000 #x20000 #x20000 #x20000
+         #x10000 #x10000 #x18000 #x8000 #x4000 #x6000 #x3000 #x0 #x0 #x0 #x0)
+       ;; 25 BUTTON_LL
+       (button-ll 18 27 #x0 #x0 #x0 #x0 #x0 #x0 #x0 #x0 #x0 #x0 #x0 #x0 #x0 #x0
+         #x0 #x0 #x0 #x0 #x0 #x0 #x0 #x0 #x0 #x0 #x1c00 #x700 #x1ff)
+       ;; 26 BUTTON_LEFT_ENDCAP_FILL
+       (button-left-endcap-fill 18 28 #x0 #xff #x3ff #xfff #x1fff #x3fff #x7fff
+         #x7fff #xffff #xffff #x1ffff #x1ffff #x1ffff #x1ffff #x1ffff #x1ffff
+         #x1ffff #xffff #xffff #x7fff #x7fff #x3fff #x1fff #xfff #x3ff #xff #x0
+         #x0)
+       ;; 27 BUTTON_LR
+       (button-lr 18 27 #x0 #x0 #x0 #x30 #x18 #x8 #x4 #x6 #x2 #x2 #x1 #x1 #x1
+         #x1 #x1 #x1 #x1 #x2 #x2 #x6 #x4 #x8 #x18 #x30 #xc0 #x380 #x3fc00)
+       ;; 28 BUTTON_UR
+       (button-ur 18 27 #x3fc00 #x380 #xc0 #x0 #x0 #x0 #x0 #x0 #x0 #x0 #x0 #x0
+         #x0 #x0 #x0 #x0 #x0 #x0 #x0 #x0 #x0 #x0 #x0 #x0 #x0 #x0 #x0)
+       ;; 29 BUTTON_RIGHT_ENDCAP_FILL
+       (button-right-endcap-fill 18 28 #x0 #x3fc00 #x3ff00 #x3ffc0 #x3ffe0
+         #x3fff0 #x3fff8 #x3fff8 #x3fffc #x3fffc #x3fffe #x3fffe #x3fffe #x3fffe
+         #x3fffe #x3fffe #x3fffe #x3fffc #x3fffc #x3fff8 #x3fff8 #x3fff0 #x3ffe0
+         #x3ffc0 #x3ff00 #x3fc00 #x0 #x0)
+       ;; 30 BUTTON_TOP_1
+       (button-top-1 1 29 #x1 #x0 #x0 #x0 #x0 #x0 #x0 #x0 #x0 #x0 #x0 #x0 #x0
+         #x0 #x0 #x0 #x0 #x0 #x0 #x0 #x0 #x0 #x0 #x0 #x0 #x0 #x0 #x0 #x0)
+       ;; 35 BUTTON_BOTTOM_1
+       (button-bottom-1 1 27 #x0 #x0 #x0 #x0 #x0 #x0 #x0 #x0 #x0 #x0 #x0 #x0 #x0
+         #x0 #x0 #x0 #x0 #x0 #x0 #x0 #x0 #x0 #x0 #x0 #x0 #x0 #x1)
+       ;; 40 BUTTON_FILL_1
+       (button-fill-1 1 29 #x0 #x1 #x1 #x1 #x1 #x1 #x1 #x1 #x1 #x1 #x1 #x1 #x1
+         #x1 #x1 #x1 #x1 #x1 #x1 #x1 #x1 #x1 #x1 #x1 #x1 #x1 #x0 #x0 #x0)
        ;; 45 VERT_MENU_MARK_UL
        (vert-menu-mark-ul 13 13 #x1fff #x1000 #x800 #x800 #x400 #x400 #x200
          #x200 #x100 #x100 #x80 #x80 #x0)
@@ -827,6 +1195,41 @@
        ;; 105 PUSHPIN_IN_MIDDLE
        (pushpin-in-middle 15 15 #x0 #x70 #x1fc #xdfc #x1bfe #x1bfe #x3bfe #x39fc
          #x3dfc #x1c70 #x1e00 #xf80 #x3c0 #x0 #x0)
+       ;; 106 DFLT_BUTTON_LEFT_ENDCAP
+       (dflt-button-left-endcap 18 26 #x0 #x0 #x7f #x180 #x600 #x800 #x1000
+         #x2000 #x2000 #x4000 #x4000 #x8000 #x8000 #x8000 #x8000 #x8000 #x4000
+         #x4000 #x2000 #x2000 #x1000 #x800 #x600 #x180 #x7f #x0)
+       ;; 107 DFLT_BUTTON_RIGHT_ENDCAP
+       (dflt-button-right-endcap 18 26 #x0 #x0 #x3f800 #x600 #x180 #x40 #x20
+         #x10 #x10 #x8 #x8 #x4 #x4 #x4 #x4 #x4 #x8 #x8 #x10 #x10 #x20 #x40 #x180
+         #x600 #x3f800 #x0)
+       ;; 108 DFLT_BUTTON_MIDDLE_1
+       (dflt-button-middle-1 1 26 #x0 #x0 #x1 #x0 #x0 #x0 #x0 #x0 #x0 #x0 #x0
+         #x0 #x0 #x0 #x0 #x0 #x0 #x0 #x0 #x0 #x0 #x0 #x0 #x0 #x1 #x0)
+       ;; 139 BUTTON_OUTLINE_LEFT_ENDCAP
+       (button-outline-left-endcap 18 28 #xff #x700 #xc00 #x3000 #x6000 #x4000
+         #x8000 #x18000 #x10000 #x10000 #x20000 #x20000 #x20000 #x20000 #x20000
+         #x20000 #x20000 #x10000 #x10000 #x18000 #x8000 #x4000 #x6000 #x3000
+         #x1c00 #x700 #x3ff #x7f)
+       ;; 140 BUTTON_OUTLINE_RIGHT_ENDCAP
+       (button-outline-right-endcap 19 28 #x7f800 #x700 #x180 #x60 #x30 #x18 #x8
+         #xc #x6 #x6 #x2 #x3 #x3 #x3 #x3 #x3 #x3 #x7 #x6 #xe #xc #x1c #x38 #x78
+         #x1f0 #x7e0 #x7ff80 #x7fc00)
+       ;; 141 BUTTON_OUTLINE_MIDDLE_1
+       (button-outline-middle-1 1 28 #x1 #x0 #x0 #x0 #x0 #x0 #x0 #x0 #x0 #x0 #x0
+         #x0 #x0 #x0 #x0 #x0 #x0 #x0 #x0 #x0 #x0 #x0 #x0 #x0 #x0 #x0 #x1 #x1)
+       ;; 146 BUTTON_FILL_2D_LEFTENDCAP
+       (button-fill-2d-leftendcap 18 27 #x0 #x0 #x0 #x7f #x1ff #x7ff #xfff
+         #x1fff #x1fff #x3fff #x3fff #x7fff #x7fff #x7fff #x7fff #x7fff #x3fff
+         #x3fff #x1fff #x1fff #xfff #x7ff #x1ff #x7f #x0 #x0 #x0)
+       ;; 147 BUTTON_FILL_2D_RIGHTENDCAP
+       (button-fill-2d-rightendcap 18 27 #x0 #x0 #x0 #x3f800 #x3fe00 #x3ff80
+         #x3ffc0 #x3ffe0 #x3ffe0 #x3fff0 #x3fff0 #x3fff8 #x3fff8 #x3fff8 #x3fff8
+         #x3fff8 #x3fff0 #x3fff0 #x3ffe0 #x3ffe0 #x3ffc0 #x3ff80 #x3fe00 #x3f800
+         #x0 #x0 #x0)
+       ;; 148 BUTTON_FILL_2D_MIDDLE_1
+       (button-fill-2d-middle-1 1 27 #x0 #x0 #x0 #x1 #x1 #x1 #x1 #x1 #x1 #x1 #x1
+         #x1 #x1 #x1 #x1 #x1 #x1 #x1 #x1 #x1 #x1 #x1 #x1 #x1 #x0 #x0 #x0)
        ;; 162 UL_RESIZE_OUTLINE
        (ul-resize-outline 14 14 #x3fff #x2001 #x2001 #x2001 #x2001 #x21ff #x2100
          #x2100 #x2100 #x2100 #x2100 #x2100 #x2100 #x3f00)

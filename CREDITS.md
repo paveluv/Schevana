@@ -107,9 +107,9 @@ USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR
 OTHER TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR
 PERFORMANCE OF THIS SOFTWARE.
 
-The style's shades and frame in `schevana/styles/open-look.sls` are
-translated from OLGX and olwm (XView 3.2), whose notice asks for these
-words:
+The style's shades, frame and buttons in `schevana/styles/open-look.sls`
+are translated from OLGX and olwm (XView 3.2), whose notice asks for
+these words:
 
 (c) Copyright 1989, 1990, 1991 Sun Microsystems, Inc. Sun design patents
 pending in the U.S. and foreign countries. OPEN LOOK is a trademark of

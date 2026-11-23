@@ -210,8 +210,13 @@ has none, the widget its designers would have made:
   50 %, and the highlight 120 %. Drawn where olwm's own screenshots have
   their frames, at every size in 2D and 3D, its frames match olwm's to the
   pixel but for three pixels at 14 and 19 point, where olwm's corner shows
-  the desktop through. It asks for Lucida Sans, OpenWindows' face, and
-  uses the sans font where that isn't installed.
+  the desktop through. Its buttons are OLGX's as XView drew them, on panes
+  of the window color in 3D and white in 2D: oblong, the default one
+  ringed a pixel inside, a glyph alone in an abbreviated button, a pressed
+  one recessed in 3D and filled with ink in 2D, and an inactive one grayed
+  over every other pixel. Drawn alone, each state is OLGX's to the pixel.
+  It asks for Lucida Sans, OpenWindows' face, and uses the sans font where
+  that isn't installed.
 - **Adwaita**, the look of GNOME 48's apps, from libadwaita 1.7.6's
   stylesheet (facts only, `CREDITS.md`): controls are flat tints of the
   text color with no border, 34 pixels high with corners of radius 9;
