@@ -33,10 +33,11 @@
     gpu-frame-table-n-set! gpu-frame-pieces-set! gpu-frame-jobs-set!
     gpu-frame-writes-set! gpu-frame-computes-set! gpu-frame-mode-set!
     gpu-frame-in-flight-set! gpu-frame-earlier-set! gpu-frame-shown?
-    gpu-frame-shown?-set! gpu-frame-next gpu-frame-next-set! gpu-frame-make
+    gpu-frame-shown?-set! gpu-frame-next gpu-frame-next-set! gpu-frame-wakes
+    gpu-frame-wakes-set! gpu-frame-make
     *gpu-frame-back* *gpu-published* gpu-publish! gpu-frame-waiting?
     gpu-give-back! gpu-frames-back! gpu-present! gpu-drawing->bytes
-    *gpu-present-mode*)
+    *gpu-present-mode* *gpu-frames-in-flight*)
   (import (chezscheme)
           (only (schevana base) at-load define-made define-state library-layer
                 string-contains-ci? string-join string-suffix?)
@@ -1439,22 +1440,26 @@
   ;;; the glyph table if it changed; the atlas's new pieces; the jobs, the
   ;;; writes and the compute runs asked for since the last frame; the
   ;;; present mode; the frames in flight; and lists kept from earlier to
-  ;;; draw on images first, each (image . recording), the recorder's copies.
-  ;;; It comes back with whether it reached the screen. The same few records
+  ;;; draw on images first, each (image . recording), the recorder's copies;
+  ;;; and which of core0's wakes core1 asks for with it, a list of taken
+  ;;; (as core0 takes it), done (as its GPU work is seen done) and back (as
+  ;;; core0 gives it back, where it reached the screen; one that didn't
+  ;;; always wakes core1). It comes back with whether it reached the
+  ;;; screen. The same few records
   ;;; go back and forth, filled again for each frame, so a frame allocates
   ;;; none. Each one goes back, and waits to be filled again, on a chain by
   ;;; its own link (next), which whoever holds it sets.
 
   (define-record-type gpu-frame
-    (nongenerative schevana-gpu-frame-8)
+    (nongenerative schevana-gpu-frame-9)
     (fields (mutable root) (mutable number) (mutable table) (mutable table-n)
             (mutable pieces) (mutable jobs) (mutable writes) (mutable computes)
             (mutable mode) (mutable in-flight) (mutable earlier)
-            (mutable shown?) (mutable next)))
+            (mutable shown?) (mutable next) (mutable wakes)))
 
   ;; A frame to fill: core1 keeps those given back to fill again.
   (define (gpu-frame-make)
-    (make-gpu-frame #f 0 #f 0 '() '() #f '() #f 3 '() #f #f))
+    (make-gpu-frame #f 0 #f 0 '() '() #f '() #f 3 '() #f #f '(taken back)))
 
   ;; The number of the last frame core0 gave back: what core0 read of the
   ;; recorder's for it is free to write again once a later frame doesn't

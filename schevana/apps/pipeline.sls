@@ -58,7 +58,8 @@
                 core0-frame-ns current-window define-app draw-image draw-line
                 draw-scale draw-text fill-box find-window focus-window!
                 font-line-height gpu-atlas-side invalidate! mix now-ms now-ns
-                open-window pacer-margin pacer-period point-in? rec-row-words
+                open-window pacer-margin pacer-period pacer2? pacer2-state
+                point-in? rec-row-words
                 screen-h screen-w shader shader-name stroke-box stroke-circle
                 text-width visible? window-app window-frame-soon! window-hover
                 window-ref window-title windows with-clip)
@@ -1106,8 +1107,9 @@
         'tip "A lap is a refresh, the screen's at the top. The newest frames \
               wind out from their oldest input, or their tick, to the screen, \
               in the lanes' colors, the newest bright: the laps a frame takes \
-              are the refreshes it shows old. The square on the rim is where \
-              the latch falls.")
+              are the refreshes it shows old. The square on the rim is the \
+              cutoff: where the latch falls, or with the second pacer, its \
+              hold before the refresh it aims at.")
       (pipeline-draw-timeline (+ x pipeline-clock-size 8) ty
                               (- w pipeline-clock-size 8)
                               (pipeline-timeline-height) v)
@@ -1120,7 +1122,7 @@
                   (- w pipeline-clock-size 8) (pipeline-timeline-height)
         'tip "The last six refreshes as they went, a frame a color: its \
               oldest input, core1 drawing it, its wait in the box, core0's \
-              wait for an image (a mark at the latch its tick aimed at), its \
+              wait for an image (a mark at what its tick aimed at), its \
               time on the screen, red where a refresh repeated. Lines are \
               the screen's refreshes. Held, it ends with the tick picked.")))
 
@@ -1134,8 +1136,8 @@
   ;; frame across its lanes as it went (its oldest input, core1's draw, its
   ;; wait in the box, core0's wait for an image, and its time on the screen,
   ;; red where a refresh repeated), the refreshes the screen reported, and
-  ;; the latch each tick aimed at. Held, it ends with the frame of the tick
-  ;; picked.
+  ;; what each tick aimed at (a latch, or with the second pacer, the
+  ;; refresh). Held, it ends with the frame of the tick picked.
   (define pipeline-timeline-lanes '("input" "core1" "box" "core0" "screen"))
   (define pipeline-timeline-refreshes 6)
 
@@ -1231,7 +1233,9 @@
   ;; input (or their tick) to the screen, one lap per refresh, their parts
   ;; in the lanes' colors, the newest the screen reported bright and the
   ;; rest faint: the number of laps a frame takes is how many refreshes old
-  ;; it is when shown. A mark on the rim shows where the latch falls.
+  ;; it is when shown. A mark on the rim shows the cutoff: where the latch
+  ;; falls, or with the second pacer, its hold before the refresh it aims
+  ;; at.
   (define pipeline-clock-frames 8)
   (define pipeline-clock-steps 64)    ; points per lap
   (define pipeline-clock-laps 3)      ; the most the clock holds
@@ -1275,11 +1279,15 @@
                                                             r)))
                                       rim)])
                          (+ (if (= k 0) cx cy) (quotient (* rad unit) 4096))))])
-          ;; the screen's refresh at the top; the latch on the rim
+          ;; the screen's refresh at the top; the cutoff on the rim
           (draw-line cx (- cy rim 3) cx (- cy rim -5) 'text 2)
-          (when *pacer-latch*
-            (fill-box (- (point *pacer-latch* #f 0) 3)
-                      (- (point *pacer-latch* #f 1) 3) 6 6 'chart-3))
+          (let ([cut (if (pacer2?)
+                         (and (> (pacer2-state 'hold) 0)
+                              (- (pacer2-state 'aim) (pacer2-state 'hold)))
+                         *pacer-latch*)])
+            (when cut
+              (fill-box (- (point cut #f 0) 3) (- (point cut #f 1) 3) 6 6
+                        'chart-3)))
           ;; its age at the hub, in refreshes
           (let* ([from (or (inspect-frame-at newest 'wl)
                            (inspect-frame-at newest 'sdl)
@@ -1318,7 +1326,7 @@
           [else 'chart-8]))
 
   ;; The numbers under the strip, for the newest frame the screen reported
-  ;; on and for the pacer now: a (label . text) pair each.
+  ;; on and for the pacer in use now: a (label . text) pair each.
   (define (pipeline-latency-readout last)
     (let* ([r (core0-frame-ns)]
            [i (let loop ([i last] [k 0])
@@ -1332,10 +1340,14 @@
                                           1e6))
                      "–"))]
            [input (and i (if (inspect-frame-at i 'wl) 'wl 'sdl))])
-      (list (cons "input to screen" (if input (ms input 'shown) "–"))
-            (cons "publish to screen" (ms 'publish 'shown))
-            (cons "in the box" (ms 'publish 'taken))
-            (cons "for an image" (ms 'acquiring 'acquired))
+      (append
+       (list (cons "input to screen" (if input (ms input 'shown) "–"))
+             (cons "publish to screen" (ms 'publish 'shown))
+             (cons "in the box" (ms 'publish 'taken))
+             (cons "for an image" (ms 'acquiring 'acquired)))
+       (if (pacer2?)
+           (pipeline-pacer2-readout i)
+           (list
             (cons "tick before latch" (format "~,1f ms" (/ *pacer-lead* 1e6)))
             (cons "margin" (format "~,1f ms"
                                    (/ (pacer-margin (core0-frame-ns)) 1e6)))
@@ -1346,7 +1358,31 @@
                                             *pacer-latch*)
                                          r)
                                  1e6))
-                      "–")))))
+                      "–")))))))
+
+  ;; The second pacer's numbers under the strip, for frame i (or #f): its
+  ;; hold, frame i's begin before the refresh it aimed at, and its work.
+  (define (pipeline-pacer2-readout i)
+    (list
+     (cons "hold" (format "~,1f ms" (/ (pacer2-state 'hold) 1e6)))
+     (cons "begin before aim"
+           (let ([aim (and i (inspect-frame-ref i 13))])
+             (if (and aim (> aim 0) (inspect-frame-at i 'tick))
+                 (format "~,1f ms" (/ (- aim (inspect-frame-at i 'tick)) 1e6))
+                 "–")))
+     ;; its tick to its GPU-done, less the waits in the box and for an
+     ;; image: what the pacer plans by
+     (cons "work"
+           (let ([at (map (lambda (point) (and i (inspect-frame-at i point)))
+                          '(tick publish taken acquiring acquired gpu))])
+             (if (for-all values at)
+                 (apply (lambda (tick publish taken acquiring acquired gpu)
+                          (format "~,1f ms"
+                                  (/ (- gpu tick (- taken publish)
+                                        (- acquired acquiring))
+                                     1e6)))
+                        at)
+                 "–")))))
 
   (define (pipeline-draw-readout x y w items)
     (let ([cw (quotient w (length items))] [lh (font-line-height 'ui-small)])

@@ -35,7 +35,7 @@
                 canvas-create-pixels! canvas-pixel-height canvas-pixel-width
                 drawing->bytes-then theme-changed!)
           (only (schevana core pacer) frame-input-came! pacer-on-latch?
-                pacer-wanted?))
+                pacer-wanted? pacer2?))
 
   (library-layer core)
 
@@ -307,21 +307,21 @@
   ;; screen-event-seen! of each one. With one thread for both, it first
   ;; steps core0, which drains its events into the world's inbox, and there
   ;; is nothing to wait for. With core0 on a thread of its own, it first
-  ;; waits up to wait-ms until it is woken: while a frame of core1's waits
-  ;; for core0, this is a wait for the screen, which holds core0 meanwhile;
-  ;; while ticks keep to the compositor's latches, it waits for the next
-  ;; latch.
-  (define (screen-events wait-ms)
-    (core0-trace! 20 wait-ms)
-    (let ([ns (* wait-ms 1000000)])
-      (cond [(not (core0-forked?)) (core0-step!)]
-            [(gpu-frame-waiting?)
-             (with-profile-span 'vsync-wait 'acquire
-                                (core0-world-wait-ns! ns))]
-            ;; until the next latch, the screen's, though input wakes it
-            [(and (pacer-wanted?) (pacer-on-latch?))
-             (with-profile-span 'vsync-wait 'latch (core0-world-wait-ns! ns))]
-            [else (core0-world-wait-ns! ns)]))
+  ;; waits up to wait ns (#f: with no end) until it is woken: while a frame
+  ;; of core1's waits for core0, this is a wait for the screen, which holds
+  ;; core0 meanwhile; while ticks keep to the compositor's latches, or a
+  ;; turn of the second pacer's is wanted, it waits for the next latch, the
+  ;; GPU or the turn's planned begin (the profiler's 'latch). The wait is
+  ;; traced in µs, -1 for no end.
+  (define (screen-events wait)
+    (core0-trace! 20 (if wait (fxquotient wait 1000) -1))
+    (cond [(not (core0-forked?)) (core0-step!)]
+          [(gpu-frame-waiting?)
+           (with-profile-span 'vsync-wait 'acquire (core0-world-wait-ns! wait))]
+          ;; until the next latch, the screen's, though input wakes it
+          [(and (pacer-wanted?) (or (pacer2?) (pacer-on-latch?)))
+           (with-profile-span 'vsync-wait 'latch (core0-world-wait-ns! wait))]
+          [else (core0-world-wait-ns! wait)])
     (core0-trace! 21 0)
     (let-values ([(events types) (core0-window-events)])
       (unless (null? types) (core0-trace! 27 (length types)))

@@ -26,7 +26,8 @@
     inspect-records-at inspect-label-at inspect-platform inspect-display-pixels
     inspect-display-hz inspect-platform-row inspect-device inspect-glyphs
     inspect-gpu-objects inspect-gpu-held inspect-present-mode inspect-core0
-    inspect-pacer inspect-shader-constants inspect-shader-helpers
+    inspect-pacer inspect-pacer2 inspect-pacer-rows inspect-shader-constants
+    inspect-shader-helpers
     inspect-shader-fields inspect-preview-image inspect-preview-w
     inspect-preview-h inspect-preview-free! inspect-preview-bytes
     inspect-preview! inspect-preview-list! inspect-list-paint! inspect-span-cost
@@ -63,17 +64,19 @@
                 gpu-list-took gpu-list-version gpu-run-gone? gpu-show-run?
                 gradient-row-kind gradient-row-x0 gradient-row-x1
                 gradient-row-y0 gradient-row-y1 now-ns pacer-margin pacer-period
-                pacer-start platform-cpu-count platform-fact platform-gpu-api
-                platform-predicates platform-windowing rec-box-line
-                rec-box-radius rec-glyph-number rec-glyph-pen-x rec-glyph-pen-y
-                rec-gradient-radial rec-kind-glyph rec-kind-polygon
-                rec-last-copy! rec-last-runs rec-last-sizes rec-list-copy
-                rec-paint-gradient rec-paint-image rec-paint-stipple rec-past!
-                rec-polygon-count rec-polygon-points rec-preview! rec-recordings
-                rec-row-head rec-row-paint rec-row-words rec-row-x0 rec-row-x1
-                rec-row-y0 rec-row-y1 rec-segment-width rec-shadow-size
-                rec-variant reload-facts shader shader-name shader-source
-                window-ref window-title world-value))
+                pacer-rate pacer-start pacer-ticks pacer2? pacer2-period
+                pacer2-state core0-look-ns platform-cpu-count platform-fact
+                platform-gpu-api platform-predicates platform-windowing
+                rec-box-line rec-box-radius rec-glyph-number rec-glyph-pen-x
+                rec-glyph-pen-y rec-gradient-radial rec-kind-glyph
+                rec-kind-polygon rec-last-copy! rec-last-runs rec-last-sizes
+                rec-list-copy rec-paint-gradient rec-paint-image
+                rec-paint-stipple rec-past! rec-polygon-count rec-polygon-points
+                rec-preview! rec-recordings rec-row-head rec-row-paint
+                rec-row-words rec-row-x0 rec-row-x1 rec-row-y0 rec-row-y1
+                rec-segment-width rec-shadow-size rec-variant reload-facts
+                shader shader-name shader-source window-ref window-title
+                world-value))
 
   (library-layer kits)
 
@@ -333,21 +336,29 @@
                                       (inspect-frame-at i 'publish))))]
       [else #f]))
 
-  ;; Returns the refresh frame i was meant for: the one after the latch its
-  ;; tick aimed at, or with no aim, the second one after its tick began; #f
-  ;; with no tick.
+  ;; Returns the refresh frame i was meant for: as the first pacer planned
+  ;; it, the one after the latch its tick aimed at; as the second planned
+  ;; it, the refresh its tick aimed at; with no aim, the second one after
+  ;; its tick began; #f with no tick.
   (define (inspect-frame-target g i)
     (let ([aimed (inspect-frame-ref i 13)])
       (if (and aimed (> aimed 0))
-          (+ 1 (inspect-refresh-of g aimed))
+          (+ (if (eqv? (inspect-frame-ref i 15) 2) 0 1)
+             (inspect-refresh-of g aimed))
           (let ([tick (inspect-frame-at i 'tick)])
             (and tick (+ 2 (inspect-refresh-of g tick)))))))
 
-  ;; Returns when the compositor took the frame shown at refresh k: in the
-  ;; refresh before, at the latch's phase as the pacer learned it; or #f.
+  ;; Returns where the cutoff for refresh k lies as the pacer in use holds
+  ;; it, or #f while it isn't known. For the first pacer, when the
+  ;; compositor took the frame shown there: in the refresh before, at the
+  ;; latch's phase as the pacer learned it. For the second, its hold before
+  ;; the refresh, by which a frame's GPU work must be seen done.
   (define (inspect-refresh-latch g k)
-    (and *pacer-latch-phase*
-         (+ (inspect-refresh-time g (- k 1)) *pacer-latch-phase*)))
+    (if (pacer2?)
+        (let ([hold (pacer2-state 'hold)])
+          (and (> hold 0) (- (inspect-refresh-time g k) hold)))
+        (and *pacer-latch-phase*
+             (+ (inspect-refresh-time g (- k 1)) *pacer-latch-phase*))))
 
   ;; Returns when the oldest input that frame i shows came: by the
   ;; compositor's own time, else by SDL's stamp, else by core0's pump; #f
@@ -1356,6 +1367,59 @@
       (depth . ,*pacer-depth*)
       (aimed . ,*pacer-aimed*)
       (start . ,(pacer-start))))
+
+  ;; Returns the second pacer's state ((schevana core pacer2)): whether the
+  ;; loop asks it (the setting pacer); the refresh's length (ns); whether
+  ;; the platform states the display's rate, or the length is core0's
+  ;; guess until a report gives one; its rate, the turns so far, how often
+  ;; core0 looks; and what the rule keeps between frames: t, the last
+  ;; turn's aim and plan, the hold and the floor under a closer call (ns; 0
+  ;; for none), the hold that a descent has proven, its probe's aim and the
+  ;; lead a probe missed by (0 for none), when the last descent began,
+  ;; whether the last raise was a look, the rows judged, and the begin that
+  ;; the loop sleeps to (0 for none).
+  (define (inspect-pacer2)
+    (let ([d (core0-display)])
+      `((on . ,(pacer2?))
+        (period . ,(pacer2-period))
+        (period-stated? . ,(and d (> (caddr d) 0) (> (cadddr d) 0) #t))
+        (rate . ,(pacer-rate))
+        (ticks . ,(pacer-ticks))
+        (look . ,core0-look-ns)
+        ,@(map (lambda (key) (cons key (pacer2-state key)))
+               '(t aim plan hold floor proven probe probe-miss probed soft?
+                 judged waited)))))
+
+  ;; Returns the last sixteen rows as the second pacer reads them, the
+  ;; oldest first: each one's turn's begin, the begin planned (0 for at
+  ;; once), the refresh aimed at, the publish, core0's take (0 while still
+  ;; in the slot), how long the screen held core0 for it, when its GPU work
+  ;; was seen done (0 for not yet), its kind (out, shown, dropped, or back:
+  ;; the window had no room), the refresh that showed it and that
+  ;; refresh's length (0 for none reported), and which pacer planned it.
+  ;; Times are in ns.
+  (define (inspect-pacer-rows)
+    (let* ([n *frame-ring-n*] [lo (max 0 (- n 16))])
+      (map (lambda (k)
+             (let* ([i (+ lo k)]
+                    [seen (lambda (k) (or (inspect-frame-report i k) 0))])
+               `((b . ,(inspect-frame-ref i 8))
+                 (plan . ,(inspect-frame-ref i 14))
+                 (aim . ,(inspect-frame-ref i 13))
+                 (p . ,(inspect-frame-ref i 10))
+                 (taken . ,(seen 7))
+                 (held . ,(- (seen 9) (seen 8)))
+                 (done . ,(seen 6))
+                 (kind . ,(if (eqv? (inspect-frame-ref i 5) 2)
+                              'back
+                              (case (seen 1)
+                                [(1) 'shown]
+                                [(2) 'dropped]
+                                [else 'out])))
+                 (shown . ,(seen 3))
+                 (refresh . ,(seen 4))
+                 (pacer . ,(inspect-frame-ref i 15)))))
+           (iota (- n lo)))))
 
   ;;; -- what shaders share
 

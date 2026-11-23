@@ -316,6 +316,93 @@ default, the screen holds core0 for each image, and that hold paces the
 frames. With `mailbox`, core0 seldom waits, and a newer frame replaces
 one that isn't shown yet.
 
+### The second pacer
+
+A second pacer, `(schevana core pacer2)`, can take the first one's place,
+for comparing the two. The setting `pacer` says which one the loop asks:
+1, the one above, by default, or 2. It is read live, and saved with the
+look:
+
+```scheme
+(override! 'pacer 2)                       ; the second pacer from now on
+(override! 'pacer)                         ; the first again
+(inspect-pacer2)                           ; its state
+(inspect-pacer-rows)                       ; the rows it reads
+```
+
+What a turn is, what asked for it, the rate, the turns so far, `t` and
+the frame ring are the two pacers' alike. Each frame's row says which
+pacer planned it, and neither learns from the other's rows: a switch
+starts the second one over, as at a run's start. With the second pacer,
+the world waits with no end while nothing is wanted, until input, mail
+or a timer wakes it.
+
+The second pacer reads only what every platform has. Each frame
+published leaves a row: when its tick began and the begin it was
+planned for, the refresh it aimed at, when it was published and when
+core0 took it, how long the screen held core0 for it (an acquire it
+held, or a submit that took longer than a look), when its GPU work was
+first seen done, and what the screen reported. At each decision it
+reads the last sixteen rows again. The grid is the newest refresh
+reported, at the length that core0's clock gives it; with no report,
+the pacer keeps a grid of its own, a 512th short of the display mode's
+refresh, so that a screen a little faster than it says never holds it
+back. The work is the largest of the last eight rows', from the tick's
+begin to its GPU work seen done, less the screen's waits; the slack is
+two of core0's looks plus the latest that any of those ticks began
+after its plan. The margin is a 16th of the refresh: a compositor's
+cutoff moves, and a frame done just over the hold still misses now and
+then (on GNOME, one in a hundred at 60 Hz; with a ms more lead, misses
+are as rare as the refreshes the compositor loses on its own).
+
+No tick begins while the newest frame's GPU work isn't seen done, for
+eight refreshes at most: core0 wakes the world when it sees the work
+done, and not as it takes a frame (each frame says which wakes core1
+asks for). Each frame on its way takes the first refresh a hold, less
+the slack, after its GPU work is done, one after the frame before it;
+the next tick aims at the refresh after that, and begins the hold, the
+margin, the work and the slack before it. With VSync the screen takes
+frames in order, so a frame on its way that it has said nothing of a
+refresh and a half after its aim (no report, not even one that core0
+holds back for saying a refresh was missed) showed at neither refresh,
+and the frames behind it wait too. While a compositor takes nothing,
+the next tick is put off a refresh at a time, eight past the frame's
+aim at most, and its frame is drawn for the refresh it can make once
+the compositor takes frames again, not for one long gone (GNOME stalls
+40 to 60 ms now and then, and holds back its word on the refresh before:
+of the frames queued then, only those already sent show late). A frame
+that missed one refresh shows at the next, its report in by then, and
+the frames behind it stay a refresh deep for a few ticks: a refresh to
+spare while the compositor's cutoff moves. A window's `'frame` handler
+is told `t`, the refresh the tick aims at, which is when its frame will
+show. Past a refresh of work, the next tick begins as soon as the GPU
+work is done, aimed at the refresh it can still make; none is skipped.
+Processes run until the next tick's planned begin, and at least 1 ms a
+step.
+
+The hold, how long before a refresh a frame's GPU work must be seen
+done, is the one thing the second pacer learns, from the screen's
+reports. The first frame shown gives it; a frame shown in time with less
+lead lowers it, never under the floor that a descent leaves. A frame
+that missed its refresh although it began on plan, its GPU work was done
+the hold before the refresh, and the frame before it was shown, is a
+clean miss. One alone is the compositor's. Two within the sixteen rows
+raise the hold a look over the lead that failed, never past the margin
+over the hold the frame was planned with (more lead than that failed by
+no cutoff: the compositor held a refresh, or the GPU was slow). Another
+before any frame is in time raises it a refresh, which owes a descent.
+Every three minutes, once eight frames in a row were in time and on
+plan, a descent tries the hold lower: one probe frame at a time, a look
+under what it has proven, with the frames around it at that. A probe in
+time proves a look lower, and the next frame probes. A probe's first
+clean miss counts as a miss alone, and the next frame probes the same
+hold; the second ends the descent, with the hold two looks over the
+larger lead of the two that failed, never over where the descent began,
+and the floor a look over that lead. A refresh of another length starts
+all of it over. Each verdict goes into the trace with its frame. With no
+reports nothing is learned, and an acquire that the screen held leaves a
+refresh out of the pacer's own grid where three frames are in flight.
+
 ## What the screen reports
 
 On Wayland, core0 asks the compositor to report on each frame it presents
@@ -422,7 +509,9 @@ written to `.work/traces/trace-<date>-<time>.txt` when the window closes,
 on Ctrl-C in the terminal, when core1 goes 5 s without a step (but not
 while it waits), or on `(core0-trace-dump!)`. The file's head says why it
 was written, how the window presents, how often core0 looks, and when
-the first step came on the clock.
+the first step came on the clock. With the second pacer, each tick's
+planned begin, aim, `t` and hold, and each frame's verdict, are in it
+too.
 
 ## The GPU
 

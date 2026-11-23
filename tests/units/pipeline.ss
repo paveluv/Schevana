@@ -1789,6 +1789,22 @@
                  (and (<= ready 7001)
                       (or (< before latch)
                           (and (near? ready 7000) (> compositor 0)))))))
+      ;; the same with the second pacer: the cutoff 10 ms into the refresh
+      ;; before, its hold a refresh less 10 ms
+      (fluid-let ([pacer2? (lambda () #t)] [*pacer2-hold* (- p 10000000)])
+        (let* ([cutoff (+ publish 10000000)]
+               [before (now-ns)]
+               [way (begin (fxvector-set! r (+ at 1) 0)
+                           (row 1000 1000 (list (list 1000 i #t))))]
+               [ready (list-ref way 8)]
+               [compositor (list-ref way 9)])
+          (fxvector-set! r (+ at 1) 1)
+          (check (format "with the second pacer, a frame on its way is ready \
+                          up to the cutoff, its hold before the refresh it \
+                          aims at, and the compositor's from there (~a)" way)
+                 (and (<= ready 7001)
+                      (or (< before cutoff)
+                          (and (near? ready 7000) (> compositor 0)))))))
       (let* ([seq (pipeline-frame-tick i)]
              [phases (length profile-draw-phases)]
              [k-ran (and seq (inspect-refresh-of g (pipeline-tick-began seq)))]

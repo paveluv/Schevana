@@ -139,17 +139,22 @@
   ;; in place, after those due no later, so each costs a vector and a pair,
   ;; however many are set. One set in an engine (an app's handler, a
   ;; process, or one of their timers) runs in an engine too, with fuel; one
-  ;; of the world's own runs as it is.
+  ;; of the world's own runs as it is. Its due time is a whole ms, whatever
+  ;; ms is, since the loop's wait is worked out from it in whole ns; one
+  ;; that is never due (+inf.0 ms) is not kept.
   (define (after ms thunk)
     (let* ([due (+ (now-ms) ms)]
            [t (vector due thunk (in-engine?))]
            [cell (list t)])
-      (if (or (null? *timers*) (< due (vector-ref (car *timers*) 0)))
-          (begin (set-cdr! cell *timers*) (set! *timers* cell))
-          (let ins ([ts *timers*])
-            (if (or (null? (cdr ts)) (< due (vector-ref (cadr ts) 0)))
-                (begin (set-cdr! cell (cdr ts)) (set-cdr! ts cell))
-                (ins (cdr ts)))))
+      (unless (infinite? due)
+        (let ([due (exact (ceiling due))])
+          (vector-set! t 0 due)
+          (if (or (null? *timers*) (< due (vector-ref (car *timers*) 0)))
+              (begin (set-cdr! cell *timers*) (set! *timers* cell))
+              (let ins ([ts *timers*])
+                (if (or (null? (cdr ts)) (< due (vector-ref (cadr ts) 0)))
+                    (begin (set-cdr! cell (cdr ts)) (set-cdr! ts cell))
+                    (ins (cdr ts)))))))
       t))
 
   ;; Runs the timers that are due, in order. An error in one of the world's
@@ -300,13 +305,16 @@
              ready)
             (loop))))))
 
-  ;; Gives up the CPU for ms milliseconds (only inside a process).
+  ;; Gives up the CPU for ms milliseconds (only inside a process). A timer
+  ;; ends the loop's wait for it, since a still world may wait with no end
+  ;; (the second pacer's).
   (define (sleep-ms ms)
     (let ([p (current-proc)])
       (unless p
         (errorf 'sleep-ms "can only sleep inside a process (use spawn)"))
       (let ([until (+ (now-ms) ms)])
         (proc-wake-set! p until)
+        (after ms void)
         (let loop ()
           (engine-block)
           (when (< (now-ms) until) (loop))))))

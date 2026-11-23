@@ -10,7 +10,7 @@
     inject!)
   (import (chezscheme)
           (only (schevana base) define-hook define-made define-state
-                library-layer string-prefix? string-split)
+                library-layer set-hook! string-prefix? string-split)
           (only (schevana core0) core0-forked? core0-run! core0-trace!
                 core0-world-wait-ns! core0-world-wake! gpu-frame-waiting?)
           (only (schevana core platform) now-ms now-ns)
@@ -19,12 +19,15 @@
                 run-timers! safely with-profile-span)
           (only (schevana core gpu) *gpu-bytes-made* *gpu-reads*
                 gpu-asks-pending? gpu-computes-send! gpu-held-sweep!
-                gpu-reads-send!)
+                gpu-reads-send! gpu-wakes)
           (only (schevana core pacer) *frame-back* *frame-number*
                 *pacer-between?* *pacer-waits* frame-input-drop! frame-ticked!
                 frame-turn-soon! pacer-procs-ms pacer-start pacer-step-done!
                 pacer-tick! pacer-wait-ms pacer-waited! pacer-wanted?
-                render-answers! render-frame! render-frames-back!)
+                pacer2? render-answers! render-frame! render-frames-back!
+                wm-tick!)
+          (only (schevana core pacer2) pacer2-begin? pacer2-procs-ms
+                pacer2-wait-ns)
           (only (schevana core screen) fullscreen? screen-events screen-init!
                 screen-shutdown!))
 
@@ -106,34 +109,36 @@
       [(eq? (car ev) 'quit) (quit!)]
       [else (set! *held-events* (cons ev *held-events*))]))
 
-  ;; Returns core0's events; the time spent waiting for them doesn't count
-  ;; as work (pacer-waited!).
-  (define (pacer-screen-events wait-ms)
-    (let* ([t (now-ns)] [events (screen-events wait-ms)])
+  ;; Returns core0's events; the time spent waiting for them (wait, in ns,
+  ;; or #f for until woken) doesn't count as work (pacer-waited!).
+  (define (pacer-screen-events wait)
+    (let* ([t (now-ns)] [events (screen-events wait)])
       (pacer-waited! t)
       events))
 
-  ;; Runs one turn of the world and records what it took, apart from its
-  ;; waits (pacer-step-done!). This is kept even with profiling off, at the
-  ;; cost of a few clock reads a step, because it tells whether a user of
-  ;; the desktop will see a tick missed.
-  (define (schevana-step! wait-ms)
+  ;; Runs one turn of the world, after waiting up to wait ns for core0's
+  ;; events (#f: until it is woken), and records what it took, apart from
+  ;; its waits (pacer-step-done!). This is kept even with profiling off, at
+  ;; the cost of a few clock reads a step, because it tells whether a user
+  ;; of the desktop will see a tick missed.
+  (define (schevana-step! wait)
     (let ([start (now-ns)])
       (set! *pacer-waits* 0)
-      (schevana-turn! wait-ms)
+      (schevana-turn! wait)
       (pacer-step-done! (- (now-ns) start))))
 
   ;; One turn of the world: events, mail (post-core1!), timers, a tick,
   ;; processes, and on a tick a frame if something asked for one. It ticks
-  ;; only when a tick is wanted (pacer-wanted?) and due, and its processes
-  ;; run until the frame must be drawn for the next tick. The profiler sums
-  ;; the steps between ticks into the next tick.
-  (define (schevana-turn! wait-ms)
+  ;; only when the pacer in use says (pacer2?): a tick wanted (pacer-wanted?)
+  ;; and due, or the second pacer's begin (pacer2-begin?); and its
+  ;; processes run until the frame must be drawn for the next tick. The
+  ;; profiler sums the steps between ticks into the next tick.
+  (define (schevana-turn! wait)
     (with-profile-span 'step #f
       (let* ([hold? (reload-holding?)]
              [evs (append (if hold? '() (reverse *held-events*))
                           (pacer-screen-events
-                           (if (pair? *injected*) 0 wait-ms))
+                           (if (pair? *injected*) 0 wait))
                           *injected*)])
         (unless hold? (set! *held-events* '()))
         (set! *injected* '())
@@ -166,21 +171,31 @@
                     (when (pair? *gpu-reads*)
                       (safely 'readback gpu-reads-send!))
                     (let ([now (now-ns)])
-                      (and (pacer-wanted?) (>= now (pacer-start))
-                           (not (gpu-frame-waiting?))
-                           (begin
-                             (core0-trace! 22 0)
-                             (collector-hold!)
-                             (pacer-tick! now)
-                             (frame-ticked! now)
-                             #t)))))])
+                      (if (pacer2?)
+                          (and (pacer2-begin? now)
+                               (begin
+                                 (collector-hold!)
+                                 (safely 'tick wm-tick!)
+                                 (frame-ticked! now)
+                                 #t))
+                          (and (pacer-wanted?) (>= now (pacer-start))
+                               (not (gpu-frame-waiting?))
+                               (begin
+                                 (core0-trace! 22 0)
+                                 (collector-hold!)
+                                 (pacer-tick! now)
+                                 (frame-ticked! now)
+                                 #t))))))])
         ;; a step leads up to a tick only while a tick is wanted; a step in a
         ;; quiet spell counts on its own
         (set! *pacer-between?* (and (not ticked?) (pacer-wanted?)))
         (unless (or ticked? (pacer-wanted?) *collector-after*)
           (collector-tick!))
         (loop-stepped! (not (or ticked? (pacer-wanted?))))
-        (safely 'procs (lambda () (run-procs! (pacer-procs-ms))))
+        (safely 'procs
+                (lambda ()
+                  (run-procs!
+                   (if (pacer2?) (pacer2-procs-ms) (pacer-procs-ms)))))
         ;; at most one frame per tick; a tick that nothing asked a frame of
         ;; goes on without a guard. A frame drawn may have moved what is
         ;; under a still pointer, so the next tick looks.
@@ -207,7 +222,9 @@
     (set! *running* #t)
     (let loop ()
       (when *running*
-        (schevana-step! (pacer-wait-ms))
+        (schevana-step! (if (pacer2?)
+                            (pacer2-wait-ns)
+                            (* 1000000 (pacer-wait-ms))))
         (loop)))
     (screen-shutdown!))
 
@@ -318,6 +335,23 @@
     (and *collector-holding?* (not *collector-pass*)))
 
   (define (collector-hold!) (set! *collector-holding?* #t))
+
+  ;; Returns whether the frame a turn publishes should ask core0 to wake
+  ;; core1 as it gives the frame back: a collection waits for that, or the
+  ;; older generations' check is due, and runs while the GPU works.
+  ;; Otherwise the second pacer hears of the frame at its GPU-done.
+  (define (collector-waiting?)
+    (or *collector-held?* (>= (now-ms) *collector-check-ms*)))
+
+  ;; The wakes that core1 asks of core0 with each frame it publishes: the
+  ;; first pacer's tick waits for core0 to take the last frame, and hears of
+  ;; it then and as it comes back; the second's turn waits for the last
+  ;; frame's GPU work to be seen done, and hears of the frame's way back
+  ;; only when a collection waits for it.
+  (set-hook! (gpu-wakes)
+    (cond [(not (pacer2?)) '(taken back)]
+          [(collector-waiting?) '(done back)]
+          [else '(done)]))
 
   ;; A frame turn ended: what it held off waits for its frame, the one drawn
   ;; last, to be sent. If something already waits for an earlier frame, it

@@ -8,9 +8,10 @@
 (library (schevana core0)
   (export
     ;; Constants, and procedures of their arguments alone: safe on any
-    ;; thread.
+    ;; thread; and how often core0 looks while it awaits something of a
+    ;; frame, in ns, this platform's fact.
     gpu-atlas-side gpu-usage-sampler gpu-usage-target core0-flag-names
-    core0-event-name gpu-show-run? gpu-run-gone?
+    core0-event-name gpu-show-run? gpu-run-gone? core0-look-ns
     ;; The records the two threads share. Their procedures touch nothing
     ;; else, so safety depends on who holds the record: a thread writes only
     ;; the records it holds, and a frame belongs to the world from
@@ -29,12 +30,13 @@
     gpu-frame-make gpu-frame-table-set! gpu-frame-table-n-set!
     gpu-frame-pieces-set! gpu-frame-jobs-set! gpu-frame-computes-set!
     gpu-frame-mode-set! gpu-frame-in-flight-set! gpu-frame-number
-    gpu-frame-shown? gpu-frame-next gpu-frame-next-set!
+    gpu-frame-shown? gpu-frame-next gpu-frame-next-set! gpu-frame-wakes-set!
     ;; What core0 reports about itself, in variables it sets whole: another
     ;; thread reads each one whole (Chez lets no thread see an object half
     ;; made), but not in step with the others, since ARM keeps no order
     ;; between stores.
-    *gpu-facts* *core0-mode* *core0-platform* core0-app-id
+    *gpu-facts* *core0-mode* *core0-platform* *gpu-frames-in-flight*
+    core0-app-id
     ;; The same, read through procedures: the window's facts as core0's
     ;; step last read them, made again whole when they change; what became
     ;; of each frame, from its report; and the events that core0's steps put
@@ -73,7 +75,7 @@
           (only (schevana shader) shader shader-params)
           (only (schevana core0 mail) core0-display core0-frame-ns core0-forked?
                 core0-world-wait-ns! core0-clock-ns)
-          (only (schevana core0 platform) platform-cpu-count)
+          (only (schevana core0 platform) core0-look-ns platform-cpu-count)
           (only (schevana core0 present) core0-frame-report core0-refresh-ns!)
           (only (schevana core0 trace-file) core0-trace-dump!)
           (only (schevana core0 gpu) gpu-atlas-side gpu-usage-sampler
@@ -88,7 +90,7 @@
                 gpu-frame-pieces-set! gpu-frame-jobs-set!
                 gpu-frame-computes-set! gpu-frame-mode-set!
                 gpu-frame-in-flight-set! gpu-frame-number gpu-frame-shown?
-                gpu-frame-next gpu-frame-next-set!
+                gpu-frame-next gpu-frame-next-set! gpu-frame-wakes-set!
                 gpu-publish! gpu-frames-back! gpu-take-answers!)
           (only (schevana core0 window) core0-flag-names core0-event-name
                 core0-flags core0-error-text core0-step-state
@@ -106,7 +108,7 @@
           (prefix (only (schevana core0 trace) core0-trace!) core0:)
           (prefix (only (schevana core0 platform) *core0-platform*) core0:)
           (prefix (only (schevana core0 gpu) *gpu-facts*
-                        gpu-frame-waiting?) core0:)
+                        *gpu-frames-in-flight* gpu-frame-waiting?) core0:)
           (prefix (only (schevana core0 window) *core0-mode*
                         core0-hidden? core0-app-id) core0:))
 
@@ -114,6 +116,7 @@
 
   ;; What core0 sets and core1 reads or calls, given as views.
   (define-view *gpu-facts* core0:*gpu-facts*)
+  (define-view *gpu-frames-in-flight* core0:*gpu-frames-in-flight*)
   (define-view *core0-mode* core0:*core0-mode*)
   (define-view *core0-platform* core0:*core0-platform*)
   (define-view core0-app-id core0:core0-app-id)

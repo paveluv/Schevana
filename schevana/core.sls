@@ -69,7 +69,9 @@
     *pacer-depth* *pacer-made* *pacer-late-run* *pacer-late-chain*
     *pacer-gpu-taught* *pacer-between?* pacer-busy-ms pacer-peak-ms! pacer-rate
     pacer-rate! pacer-ticks pacer-period pacer-start pacer-trial! pacer-margin
-    screen-bytes-then
+    screen-bytes-then pacer2?
+    ;; (schevana core pacer2): the second pacer's period and state
+    pacer2-period pacer2-state
     ;; (schevana core screen): the screen core0 shows, and what the host's
     ;; desktop knows it by
     system-scale-percent fullscreen? set-fullscreen! toggle-fullscreen!
@@ -140,7 +142,7 @@
     core0-hidden? core0-flags core0-error-text core0-step-state
     core0-frame-report core0-window-sizes core0-window-scale clipboard-get
     core0-set-cursor! clipboard-set! core0-refresh-ns! platform-cpu-count
-    core0-trace-dump!
+    core0-trace-dump! core0-look-ns
     ;; Passed on from the recorder ((schevana recorder)): what the Pipeline
     ;; reads of a list, and what the pixmap kit writes into an image with
     rec-count rec-last-sizes rec-last-copy! rec-last-runs rec-list-copy
@@ -178,7 +180,7 @@
                 core0-hidden? core0-flags core0-error-text core0-step-state
                 core0-frame-report core0-window-sizes core0-window-scale
                 clipboard-get core0-set-cursor! clipboard-set! core0-refresh-ns!
-                platform-cpu-count core0-trace-dump!)
+                platform-cpu-count core0-trace-dump! core0-look-ns)
           (only (schevana recorder) rec-count rec-last-sizes rec-last-copy!
                 rec-last-runs rec-list-copy gpu-list-recs-n gpu-list-extras-n
                 gpu-list-runs gpu-list-version gpu-list-recs gpu-list-extras
@@ -225,7 +227,8 @@
                 clip-row-y0 clip-row-y1)
           (only (schevana core pacer) frame-ring-rows frame-ring-words
                 pacer-busy-ms pacer-peak-ms! pacer-rate pacer-rate! pacer-ticks
-                pacer-start pacer-trial! pacer-margin screen-bytes-then)
+                pacer-start pacer-trial! pacer-margin screen-bytes-then pacer2?)
+          (only (schevana core pacer2) pacer2-period pacer2-state)
           (only (schevana core screen) system-scale-percent fullscreen?
                 set-fullscreen! toggle-fullscreen! screen-set-icon!
                 screen-set-title! screen-set-app-id! screen-set-least!

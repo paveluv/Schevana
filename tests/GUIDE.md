@@ -216,20 +216,21 @@ of a library, the test framework finds by itself:
 
 ## How a test steps time
 
-Core1's loop paces its steps, `(schevana-step! wait-ms)`: a step ticks
-only when a tick is wanted and due (`pacer-start`), after waiting for it,
-and its processes run until the next tick's frame must be drawn
-(`pacer-procs-ms`). The core has no other kind of step. A test steps the
+Core1's loop paces its steps, `(schevana-step! wait)`, after waiting up
+to `wait` ns for events: a step ticks only when a tick is wanted and due
+(`pacer-start`), and its processes run until the next tick's frame must
+be drawn (`pacer-procs-ms`). The core has no other kind of step. A test steps the
 world itself, with `test-step!` (`tests/lib.ss`), which `steps` and
 `test-wait` call:
 
 - Each of a test's steps is a tick, with no wait, as if the screen were
   ready for every frame at once. The step asks for a tick, as input does
-  (`frame-turn-soon!`), and stands in for the pacer's two decisions for
-  that step only (`pacer-start` and `pacer-procs-ms`, listed in
-  `test-stand-ins`): its tick is due now, and its processes run for 10
-  ms, the most the pacer gives them, since the next tick comes when the
-  test steps again. While a reload holds the world, no step ticks, whether
+  (`frame-turn-soon!`), and stands in for the pacer's decisions for that
+  step only (`pacer2?`, `pacer-start` and `pacer-procs-ms`, listed in
+  `test-stand-ins`): the first pacer is asked, whatever the setting
+  `pacer` says; its tick is due now; and its processes run for 10 ms, the
+  most the pacer gives them, since the next tick comes when the test
+  steps again. While a reload holds the world, no step ticks, whether
   it is core1's or a test's.
 - A tick's `t` (what a window's `'frame` handler or a surface is given) is
   the pacer's: the time that tick's frame shows, a period after the last
@@ -243,8 +244,14 @@ world itself, with `test-step!` (`tests/lib.ss`), which `steps` and
   `test-clock-advance!` move it. `now-ns` stays the machine's, since the
   pacer and the profiler go by it. So a held clock holds what goes by
   time, but not what goes by frames.
-- A check of the pacer runs core1's own step, `schevana-step!`, on a fake
-  clock of its own (`tests/units/pacer.ss`).
+- A check of a pacer runs core1's own step, `schevana-step!`, on a fake
+  clock of its own (`tests/units/pacer.ss`, and `tests/units/pacer2.ss`
+  for the second pacer, which it turns on by standing in for `pacer2?`).
+- A check may fake core1's clock (`now-ns`) while core0 stamps its words
+  of a frame's row on its own: the second pacer's sums take a core0 time
+  only from a core0 time (a frame's work: done less taken, and publish
+  less begin), so they hold; no new term may take a core1 time from a
+  core0 one.
 
 ## Every run alike
 

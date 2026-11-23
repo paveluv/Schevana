@@ -14,15 +14,16 @@
     gpu-list-release! make-gpu-buffer gpu-buffer-set! gpu-buffer-release!
     gpu-buffer-read! *gpu-reads* gpu-buffer-read-then! gpu-reads-send!
     gpu-make-call gpu-compute! *gpu-computes* gpu-compute-soon! gpu-take-asks!
-    gpu-asks-pending? gpu-computes-send! gpu-frame-free! gpu-publish)
+    gpu-asks-pending? gpu-computes-send! gpu-frame-free! gpu-publish
+    gpu-wakes)
   (import (chezscheme)
-          (only (schevana base) define-state library-layer)
+          (only (schevana base) define-hook define-state library-layer)
           (only (schevana shader) shader shader-params)
           (only (schevana core0) *core0-mode* core0-forked? gpu-atlas-side
                 gpu-buffer-gone?-set! gpu-buffer-id gpu-buffer-size
                 gpu-frame-computes-set! gpu-frame-in-flight-set!
                 gpu-frame-jobs-set! gpu-frame-make gpu-frame-mode-set!
-                gpu-frame-next gpu-frame-next-set!
+                gpu-frame-next gpu-frame-next-set! gpu-frame-wakes-set!
                 gpu-frame-pieces-set! gpu-frame-table-n-set!
                 gpu-frame-table-set! gpu-frame-waiting? gpu-image-gone?-set!
                 gpu-image-id gpu-list-id gpu-usage-sampler gpu-usage-target
@@ -311,9 +312,16 @@
     (gpu-frame-next-set! f *gpu-frames-free*)
     (set! *gpu-frames-free* f))
 
+  ;; Returns which of core0's wakes core1 asks for with the frame it
+  ;; publishes ((schevana core0 gpu)'s frame): as core0 takes it, as its
+  ;; GPU work is seen done, and as core0 gives it back. The loop sets it, as
+  ;; the pacer in use asks ((schevana core loop)).
+  (define-hook (gpu-wakes) '(taken back))
+
   ;; Core1's side of publishing: fills a frame, and hands on with it what
-  ;; core1 asked of the GPU since the last time. The recorder gives it the
-  ;; writes (rec-lend!). Returns the frame.
+  ;; core1 asked of the GPU since the last time, and the wakes core1 asks
+  ;; for. The recorder gives it the writes (rec-lend!). Returns the
+  ;; frame.
   (define (gpu-publish table table-n pieces mode in-flight)
     (let ([f (let ([f *gpu-frames-free*])
                (cond [f (set! *gpu-frames-free* (gpu-frame-next f)) f]
@@ -326,4 +334,5 @@
       (gpu-frame-pieces-set! f pieces)
       (gpu-frame-mode-set! f mode)
       (gpu-frame-in-flight-set! f in-flight)
+      (gpu-frame-wakes-set! f (gpu-wakes))
       f)))

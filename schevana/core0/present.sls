@@ -17,14 +17,15 @@
   (export
     present-rows present-words *present-ring* present-taken!
     present-acquiring! present-acquired! present-submitting!
-    present-submitted! present-done! present-at core0-frame-report
+    present-submitted! present-done! present-wake-done! present-at
+    core0-frame-report
     present-sent! present-reported! *present-refresh-said* core0-refresh-ns!
     present-fence! present-poll! present-awaiting?)
   (import (chezscheme)
           (only (schevana base) define-state library-layer)
           (only (schevana sdl) sdl-query-gpu-fence sdl-release-gpu-fence)
           (only (schevana core0 mail) core0-clock-ns core0-display
-                core0-frame-ns core0-post!)
+                core0-frame-ns core0-post! core0-world-wake!)
           (only (schevana core0 trace) core0-trace!)
           (only (schevana core0 renderer) *renderer* renderer-device))
 
@@ -384,16 +385,22 @@
                (fx< 0 sent)
                (fx< now (fx+ sent 1000000000))))))
 
+  ;; Whether core1 asked to be woken as a frame's GPU work is seen done, as
+  ;; the newest frame taken says (its pacer waits for that).
+  (define-state *present-wake-done?* #f)
+  (define (present-wake-done! wake?) (set! *present-wake-done?* wake?))
+
   ;; Records that frame's GPU work was seen done, now: with no window, as
-  ;; the frame goes back.
+  ;; the frame goes back. Core1 is woken for it if it asked to be.
   (define (present-done! frame)
     (let ([at (present-at frame)])
       (when (fx= (fxvector-ref *present-ring* at) frame)
-        (fxvector-set! *present-ring* (fx+ at 6) (core0-clock-ns)))))
+        (fxvector-set! *present-ring* (fx+ at 6) (core0-clock-ns))))
+    (when *present-wake-done?* (core0-world-wake!)))
 
   ;; Records the GPU times of the frames whose fences signaled since the
-  ;; last look, and publishes the reports held too long
-  ;; (present-held-poll!).
+  ;; last look, waking core1 for them where it asked (present-done!), and
+  ;; publishes the reports held too long (present-held-poll!).
   (define (present-poll!)
     (present-held-poll! (core0-clock-ns))
     (when *renderer*
@@ -401,13 +408,15 @@
         (do ([i 0 (fx+ i 1)]) ((fx= i present-fence-slots))
           (let ([fence (vector-ref fs i)])
             (unless (eqv? fence 0)
-              (let* ([frame (fxvector-ref *present-fence-frames* i)]
-                     [at (present-at frame)]
-                     [done? (sdl-query-gpu-fence dev fence)])
-                (when (fx= (fxvector-ref *present-ring* at) frame)
-                  (fxvector-set! *present-ring* (fx+ at (if done? 6 11))
-                                 (core0-clock-ns)))
-                (when done?
-                  (core0-trace! 12 frame)
-                  (sdl-release-gpu-fence dev fence)
-                  (vector-set! fs i 0))))))))))
+              (let ([frame (fxvector-ref *present-fence-frames* i)])
+                (cond
+                  [(sdl-query-gpu-fence dev fence)
+                   (present-done! frame)
+                   (core0-trace! 12 frame)
+                   (sdl-release-gpu-fence dev fence)
+                   (vector-set! fs i 0)]
+                  [else
+                   (let ([at (present-at frame)])
+                     (when (fx= (fxvector-ref *present-ring* at) frame)
+                       (fxvector-set! *present-ring* (fx+ at 11)
+                                      (core0-clock-ns))))])))))))))

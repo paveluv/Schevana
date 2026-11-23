@@ -88,6 +88,8 @@ Pipeline draws.
 ```scheme
 (inspect-platform)                         ; the OS, CPU, Chez, the display
 (inspect-pacer)                            ; when frames are due
+(inspect-pacer2)                           ; the second pacer's state
+(inspect-pacer-rows)                       ; the rows it reads
 (inspect-core0)                            ; core0's side: sizes, jobs, events
 (inspect-gpu-held)                         ; what the GPU holds
 (inspect-list-tree)                        ; the lists the last frame shows

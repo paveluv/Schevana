@@ -58,7 +58,8 @@
           (only (schevana core0 trace) core0-trace!)
           (only (schevana core0 renderer) *renderer* renderer-device)
           (only (schevana core0 present) *present-refresh-said*
-                present-awaiting? present-poll! present-taken!)
+                present-awaiting? present-poll! present-taken!
+                present-wake-done!)
           (only (schevana core0 platform) core0-look-ns core0-platform-read!
                 platform-desktop-frameless? platform-reports-pump!
                 platform-reports?
@@ -66,7 +67,8 @@
                 platform-thread-interactive!)
           (only (schevana core0 trace-file) core0-trace-start!
                 core0-trace-watch! core0-trace-write!)
-          (only (schevana core0 gpu) *gpu-published* gpu-give-back!
+          (only (schevana core0 gpu) *gpu-published* gpu-frame-shown?
+                gpu-frame-wakes gpu-give-back!
                 gpu-claim-window! gpu-frame-number gpu-frame-shown?-set!
                 gpu-idle! gpu-open! gpu-present! gpu-reads-now!
                 gpu-submit-computes! gpu-windowless-kind gpu-windowless-video))
@@ -753,20 +755,23 @@
         (let loop () (unless (box-cas! *gpu-published* f #f) (loop)))
         (core0-trace! 2 (gpu-frame-number f))
         (present-taken!)
+        (present-wake-done! (and (memq 'done (gpu-frame-wakes f)) #t))
         ;; taken: core1 may make the next frame (.work/gpu-design.md
         ;; 9.12), with the input that came until now, not only until the
-        ;; last step's pump
+        ;; last step's pump; it hears of it now if it asked to
         (core0-events-pumped!)
-        (core0-world-wake!)
+        (when (memq 'taken (gpu-frame-wakes f)) (core0-world-wake!))
         (gpu-frame-shown?-set! f (gpu-present! f))
         ;; the input that came while the acquire held core0, read before
         ;; core1 hears that the frame is back and may begin its next turn
         (core0-events-pumped!)
         (gpu-give-back! f)
         (core0-trace! 6 (gpu-frame-number f))
-        ;; given back, with what it read: core1 takes them at once, whether
-        ;; or not a frame follows
-        (core0-world-wake!))))
+        ;; given back, with what it read: core1 hears of it at once if it
+        ;; asked to, or if the window had no room for it, since core1 asks
+        ;; for it again
+        (when (or (not (gpu-frame-shown? f)) (memq 'back (gpu-frame-wakes f)))
+          (core0-world-wake!)))))
 
   (define (core0-run-job! job)
     (guard (c [#t (set! *core0-job-failed* (cons job c))])

@@ -213,27 +213,31 @@
 ;; next tick's frame must be drawn (pacer-procs-ms). A test steps the
 ;; world itself, each step a tick with no wait, as a screen ready for
 ;; every frame at once would have it. A test's step asks for a tick, as
-;; input does, and the test makes the pacer's two decisions for the step:
-;; the tick is due now, and the processes get 10 ms, the most the pacer
-;; gives, since the next tick comes when the test steps again. These are
-;; set for the step and put back after it, not by fluid-let: a process
-;; first run in the step would keep the fluid-let's dynamic-wind, and wind
-;; the test's values in again at every turn.
+;; input does, and the test makes the pacer's decisions for the step: the
+;; first pacer is asked, whatever the setting pacer says (pacer2?); the
+;; tick is due now; and the processes get 10 ms, the most the pacer gives,
+;; since the next tick comes when the test steps again. These are set for
+;; the step and put back after it, not by fluid-let: a process first run
+;; in the step would keep the fluid-let's dynamic-wind, and wind the
+;; test's values in again at every turn.
 (define (test-tick-due) 0)
 (define (test-procs-ms) 10)
+(define (test-pacer2?) #f)
 
 ;; One step of the world, a tick (except while a reload holds ticks back),
 ;; after waiting up to wait-ms for the screen's events (or not at all).
 ;; What it stood in for is put back, unless a reload in the step defined
 ;; it anew.
 (define (test-step! . wait-ms)
-  (let ([start pacer-start] [procs-ms pacer-procs-ms])
+  (let ([start pacer-start] [procs-ms pacer-procs-ms] [second? pacer2?])
     (frame-turn-soon!)
     (set! pacer-start test-tick-due)
     (set! pacer-procs-ms test-procs-ms)
-    (schevana-step! (if (pair? wait-ms) (car wait-ms) 0))
+    (set! pacer2? test-pacer2?)
+    (schevana-step! (* 1000000 (if (pair? wait-ms) (car wait-ms) 0)))
     (when (eq? pacer-start test-tick-due) (set! pacer-start start))
-    (when (eq? pacer-procs-ms test-procs-ms) (set! pacer-procs-ms procs-ms))))
+    (when (eq? pacer-procs-ms test-procs-ms) (set! pacer-procs-ms procs-ms))
+    (when (eq? pacer2? test-pacer2?) (set! pacer2? second?))))
 
 ;; Runs n steps of the world, each after the held clock moves on by ms (if
 ;; given).

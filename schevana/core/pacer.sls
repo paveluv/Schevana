@@ -4,6 +4,12 @@
 ;;; (render-frame!). It sits below what draws the screen ((schevana core
 ;;; windows), which sets its hooks record-world! and wm-tick!), and under
 ;;; the loop ((schevana core loop)), which asks it when to tick.
+;;;
+;;; A second pacer, (schevana core pacer2), sits above it, and the
+;;; setting pacer says which of the two the loop asks: 1, this one, by
+;;; default, or 2. What a turn is, what it was asked for, the rate, the
+;;; turns so far, t, and the frame ring are the two pacers' alike, and kept
+;;; here.
 
 (library (schevana core pacer)
   (export
@@ -17,7 +23,8 @@
     frame-turn-soon! pacer-wanted? pacer-frame-ns pacer-period pacer-start
     pacer-on-latch? pacer-trial! pacer-margin wm-tick! pacer-tick!
     pacer-procs-ms pacer-wait-ms record-world! record-safely render-frame!
-    render-frames-back! render-answers! screen-bytes-then pacer-rate!)
+    render-frames-back! render-answers! screen-bytes-then pacer-rate!
+    pacer2? pacer-turn-begun!)
   (import (chezscheme)
           (only (schevana base) at-load define-hook define-state library-layer)
           (only (schevana core0) *core0-mode* *gpu-facts* core0-forked?
@@ -117,6 +124,10 @@
   ;; into the next tick
   (define-state *pacer-between?* #f)
 
+  ;; which pacer planned the last turn: 1, this one, or 2, the second
+  ;; ((schevana core pacer2)); a frame's row keeps it
+  (define-state *pacer-kind* 1)
+
   ;; the last frame's time in ms: its work, not its wait for the screen
   (define-state *frame-ms* 0.0)
   (define-state *frames-drawn* 0)
@@ -129,12 +140,14 @@
   ;; not given back yet); its number (its report's, core0-frame-report); when
   ;; the oldest input it shows came (now-ns; 0 for none) by SDL's stamp; then
   ;; when its tick began, its draw began and it was published; when that
-  ;; input came by core0's pump and by the compositor's time; the latch its
-  ;; tick aimed at (0 for none); and when the pacer meant its tick to begin.
-  ;; They are always kept: a few numbers per frame, for the last
-  ;; frame-ring-rows frames.
+  ;; input came by core0's pump and by the compositor's time; what its tick
+  ;; aimed at (0 for none): the latch for this pacer, the refresh itself for
+  ;; the second; when the pacer meant its tick to begin (0 for at once,
+  ;; with the second); and which pacer planned it (*pacer-kind*). They are
+  ;; always kept: a few numbers per frame, for the last frame-ring-rows
+  ;; frames.
   (define frame-ring-rows 2048)
-  (define frame-ring-words 15)
+  (define frame-ring-words 16)
   (define-state *frame-ring*
     (make-fxvector (* frame-ring-rows frame-ring-words) 0))
   (define-state *frame-ring-n* 0)   ; frames so far
@@ -180,6 +193,7 @@
       (fxvector-set! ring (+ at 12) *frame-input-wl*)
       (fxvector-set! ring (+ at 13) *pacer-aimed*)
       (fxvector-set! ring (+ at 14) *pacer-planned*)
+      (fxvector-set! ring (+ at 15) *pacer-kind*)
       (frame-input-drop!)
       (fxvector-set! ring at 0)
       ;; the frame's sizes: it is published, so the recorder writes nothing
@@ -210,13 +224,18 @@
   ;;; ---------------------------------------------------------------- pacing
 
   ;; The pacer's choices, as fractions of a refresh, or in seconds for the
-  ;; fades.
+  ;; fades; and which pacer the loop asks, 1 or 2.
   (at-load
+   (theme-table-default! 'pacer 1)
    (theme-table-default! 'pacer-margin-start 0)
    (theme-table-default! 'pacer-margin-step 1/8)
    (theme-table-default! 'pacer-miss-own 1/8)
    (theme-table-default! 'pacer-lead-fade 1/2)
    (theme-table-default! 'pacer-margin-fade platform-pacer-margin-fade))
+
+  ;; Returns whether the loop asks the second pacer ((schevana core
+  ;; pacer2)), as the setting pacer says.
+  (define (pacer2?) (eqv? (pacer-knob 'pacer) 2))
 
   ;; Counts the time from since until now as a wait, for input or for the
   ;; screen.
@@ -538,11 +557,14 @@
   ;; frames; else #f.
   (define (pacer-aimed-of n) (pacer-frame-word n 13))
 
-  ;; Returns word k of frame n's row in the frame ring (frame-ring-at); else
-  ;; #f.
+  ;; Returns word k of frame n's row in the frame ring (frame-ring-at),
+  ;; where this pacer planned it; else #f. A row that the second pacer
+  ;; planned aims at a refresh, not at a latch, and teaches this one
+  ;; nothing.
   (define (pacer-frame-word n k)
     (let ([at (frame-ring-at n)])
-      (and at (fxvector-ref *frame-ring* (+ at k)))))
+      (and at (fx= (fxvector-ref *frame-ring* (+ at 15)) 1)
+           (fxvector-ref *frame-ring* (+ at k)))))
 
   ;; Returns the refresh that frame n showed at (now-ns), once the screen's
   ;; report on it is in; else #f.
@@ -595,6 +617,7 @@
   ;; that came early, each adding a period, would put it off without end,
   ;; and the world with it.
   (define (pacer-tick! now)
+    (set! *pacer-kind* 1)
     (set! *pacer-aimed* (if (pacer-on-latch?) (pacer-aim) 0))
     (set! *pacer-planned*
       (if (> *pacer-aimed* 0) (- *pacer-aimed* *pacer-lead*) now))
@@ -611,6 +634,18 @@
     (set! *pacer-ticks* (+ *pacer-ticks* 1))
     (set! *pacer-frame-ns* (pacer-next-frame-ns now))
     (safely 'tick wm-tick!))
+
+  ;; A turn that the second pacer begins ((schevana core pacer2)): t is when
+  ;; its frame shows, never earlier than the last turn's; aim, the refresh
+  ;; it aims at, and plan, the begin it was planned for (now-ns; 0 for at
+  ;; once), which its frame's row keeps. wm-tick! is the loop's to call.
+  (define (pacer-turn-begun! t aim plan)
+    (set! *pacer-kind* 2)
+    (set! *pacer-aimed* aim)
+    (set! *pacer-planned* plan)
+    (set! *pacer-wanted?* #f)
+    (set! *pacer-ticks* (+ *pacer-ticks* 1))
+    (set! *pacer-frame-ns* (max t *pacer-frame-ns*)))
 
   ;; Core0, on a thread of its own, gave back a frame that reached the screen
   ;; (shown?) or not. If it was shown by vsync at the screen's rate, the

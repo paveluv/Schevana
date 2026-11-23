@@ -37,8 +37,8 @@
     (set! now-ms (lambda () (quotient t 1000000)))
     ;; the wait for input ends at the next key of a flood
     (set! screen-events
-          (lambda (wait-ms)
-            (let ([until (+ t (* wait-ms 1000000))])
+          (lambda (wait)
+            (let ([until (+ t wait)])
               (if (and flood-at (<= flood-at until))
                   (begin (set! t (max t flood-at))
                          (set! flood-at (+ t 2000000))
@@ -79,7 +79,9 @@
       ;; 100 ms to settle (the first frame has no drawing time to go by)
       (let ([settled (+ t 100000000)])
         (let loop ()
-          (when (< t settled) (schevana-step! (pacer-wait-ms)) (loop))))
+          (when (< t settled) 
+                (schevana-step! (* 1000000 (pacer-wait-ms)))
+                (loop))))
       (set! ticks '())
       (set! frames 0)
       (set! slices 0)
@@ -92,7 +94,7 @@
             (when (and key-at (>= t key-at))
               (inject! '(key-down #\a ()))
               (set! key-at #f))
-            (schevana-step! (pacer-wait-ms))
+            (schevana-step! (* 1000000 (pacer-wait-ms)))
             (set! stepped (+ stepped 1))
             (loop))))
       (when p (kill! p))
@@ -248,8 +250,8 @@
     (set! now-ms (lambda () (quotient t 1000000)))
     (set! gpu-frame-waiting? (lambda () (screen!) boxed?))
     (set! screen-events
-          (lambda (wait-ms)
-            (let ([until (+ t (* wait-ms 1000000))]
+          (lambda (wait)
+            (let ([until (+ t wait)]
                   ;; core0 wakes core1 as it takes a frame; core1 wakes late
                   [woken (and boxed? held-to
                               (+ held-to
@@ -295,7 +297,9 @@
                                            (if mailbox? 'mailbox 'vsync))
                                      *gpu-facts*)])
         (let loop ()
-          (when (< t end) (schevana-step! (pacer-wait-ms)) (loop))))
+          (when (< t end) 
+                (schevana-step! (* 1000000 (pacer-wait-ms)))
+                (loop))))
       (close-window! mover))
     (set! now-ns real-ns)
     (set! now-ms real-ms)
@@ -485,11 +489,11 @@
     (set! now-ms (lambda () (quotient t 1000000)))
     (set! gpu-frame-waiting? (lambda () (screen!) boxed?))
     (set! screen-events
-          (lambda (wait-ms)
+          (lambda (wait)
             (screen!)
             (if woken?
                 (set! woken? #f)
-                (let ([until (+ t (* wait-ms 1000000))])
+                (let ([until (+ t wait)])
                   (let loop ()
                     (let ([ev (next-event)])
                       (if (> (car ev) until)
@@ -519,7 +523,9 @@
                   [*pacer-frame-ns* 0]
                   [*gpu-facts* (cons '(present-mode . vsync) *gpu-facts*)])
         (let loop ()
-          (when (< t end) (schevana-step! (pacer-wait-ms)) (loop))))
+          (when (< t end) 
+                (schevana-step! (* 1000000 (pacer-wait-ms)))
+                (loop))))
       (close-window! mover))
     (set! now-ns real-ns)
     (set! now-ms real-ms)
@@ -550,7 +556,7 @@
   (set! pacer-test-t (+ pacer-test-t (* ms 1000000))))
 (define (pacer-test-on-fake-clock thunk)
   (fluid-let ([now-ns (lambda () pacer-test-t)]
-              [screen-events (lambda (wait-ms)
+              [screen-events (lambda (wait)
                              (pacer-test-advance! pacer-test-wait)
                              '())]
               [rec-present!
@@ -637,13 +643,13 @@
        [ticks-in (lambda (n)   ; the ticks of n steps of core1's loop
                    (let ([before (pacer-ticks)])
                      (do ([i 0 (+ i 1)]) ((= i n))
-                       (schevana-step! (pacer-wait-ms)))
+                       (schevana-step! (* 1000000 (pacer-wait-ms))))
                      (- (pacer-ticks) before)))])
   (fluid-let ([*timers* '()]
               [now-ns (lambda () t)]
               [now-ms (lambda () (quotient t 1000000))]
-              [screen-events (lambda (wait-ms)
-                             (set! t (+ t (* (max 1 wait-ms) 1000000)))
+              [screen-events (lambda (wait)
+                               (set! t (+ t (max 1000000 wait)))
                              (let ([e events]) (set! events '()) e))])
     (ticks-in 20)
     (let* ([t0 t]

@@ -3,22 +3,31 @@
 ;;; of ./desktop in a process of its own, with HOME set to a scratch folder,
 ;;; which reports what it saw (tests/fork/run.ss).
 
-(let* ([home (string-append out-dir "/fork-home")]
-       [out (string-append out-dir "/fork-seen.ss")]
-       [run (string-append *schevana-root* "/tests/fork/run.ss")]
-       [status
-        (begin
-          (unless (file-directory? home) (mkdir home))
-          (when (file-exists? out) (delete-file out))
-          (test-system-within 120
-            (string-append
-              (test-chez (list (cons "HOME" home))
-                         (string-append *schevana-root* "/desktop")
-                         "--headless" "--fork" "--size" "400x300"
-                         "--eval" (format "(define *fork-out* ~s)" out)
-                         "--eval" (format "(load ~s)" run))
-              " > /dev/null")))]
-       [seen (and (file-exists? out) (call-with-input-file out read))])
+;; Runs ./desktop forked, with HOME the scratch folder named, evaluating
+;; first (a string) before it loads tests/fork/run.ss. Returns (status .
+;; seen): how the process ended, and what the run saw, or #f.
+(define (fork-run name first)
+  (let ([home (string-append out-dir "/" name "-home")]
+        [out (string-append out-dir "/" name "-seen.ss")]
+        [run (string-append *schevana-root* "/tests/fork/run.ss")])
+    (unless (file-directory? home) (mkdir home))
+    (when (file-exists? out) (delete-file out))
+    (let ([status
+           (test-system-within 120
+             (string-append
+               (test-chez (list (cons "HOME" home))
+                          (string-append *schevana-root* "/desktop")
+                          "--headless" "--fork" "--size" "400x300"
+                          "--eval" (format "(define *fork-out* ~s)" out)
+                          "--eval" first
+                          "--eval" (format "(load ~s)" run))
+               " > /dev/null"))])
+      (cons status
+            (and (file-exists? out) (call-with-input-file out read))))))
+
+(let* ([ran (fork-run "fork" "(void)")]
+       [status (car ran)]
+       [seen (cdr ran)])
   (define (saw key) (and (pair? seen) (cdr (assq key seen))))
   (check (format "a forked world loads on its own thread, draws frames \
                   core0 presents, and quits, ending the process ~s" seen)
@@ -46,6 +55,22 @@
                   phases sum to its time (~a ticks, ~a not)"
                  (saw 'ticks) (saw 'unsummed))
          (and (saw 'ticks) (> (saw 'ticks) 30) (= (saw 'unsummed) 0))))
+
+;; The same with the second pacer ((schevana core pacer2)), whose turn waits
+;; for the last frame's GPU work: each frame's, done as core0 gives it back,
+;; wakes the world, so frames don't wait out the pacer's gate, eight
+;; refreshes each.
+(let* ([ran (fork-run "fork-pacer2" "(override! 'pacer 2)")]
+       [seen (cdr ran)])
+  (define (saw key) (and (pair? seen) (cdr (assq key seen))))
+  (check (format "with the second pacer, a forked world's frames come at \
+                  core0's rate, far more often than one in eight refreshes, \
+                  each one's t whole refreshes after the last (~a frames, ~a \
+                  uneven; ~a refreshes by the machine's clock)"
+                 (saw 'animated) (saw 'uneven) (saw 'refreshes))
+         (and (eqv? (car ran) 0) (saw 'animated) (> (saw 'animated) 30)
+              (= (saw 'uneven) 0)
+              (< (saw 'refreshes) (* 4 (saw 'animated))))))
 
 ;; The guards on that run: a run that hangs is killed once its time is up,
 ;; and a word reaches sh whole, whatever it holds.

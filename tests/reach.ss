@@ -30,7 +30,7 @@
               (schevana core theme-table)
               (schevana core processes) (schevana core gpu)
               (schevana core fonts) (schevana core draw) (schevana core pacer)
-              (schevana core screen) (schevana core loop)
+              (schevana core pacer2) (schevana core screen) (schevana core loop)
               (schevana core theme) (schevana core windows)
               (schevana core sources) (schevana desktop main))))
 (define world-env (eval '*world-env* core-env))

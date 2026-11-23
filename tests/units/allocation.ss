@@ -198,6 +198,82 @@
 (check "core0's hold of a frame with no window allocates nothing"
        (= 0 (allocation-least 5 gpu-headless-hold!)))
 
+;;; The second pacer's calls ((schevana core pacer2)), on sixteen rows
+;;; written as a turn and core0 write them: fourteen frames of a flow, then
+;;; two that missed their refresh, done the hold before it, a pair. The
+;;; loop's wait, with a timer and without; a turn begun and one not;
+;;; processes' share; and the question, judging the rows and raising the
+;;; hold, then planning.
+(let* ([r 10000000] [T 1000000000000] [ms 1000000] [first 7000001]
+       [row! (lambda (k aim done shown)
+               (let ([f (+ first k)] [b (- aim (quotient r 2))]
+                     [at (* frame-ring-words
+                            (modulo *frame-ring-n* frame-ring-rows))]
+                     [pa (present-at (+ first k))])
+                 (for-each (lambda (w v)
+                             (fxvector-set! *frame-ring* (+ at w) v))
+                           '(5 6 8 10 13 14 15)
+                           (list 0 f b (+ b 100000) aim b 2))
+                 (set! *frame-ring-n* (+ *frame-ring-n* 1))
+                 (for-each (lambda (w v)
+                             (fxvector-set! *present-ring* (+ pa w) v))
+                           '(1 3 4 6 7 8 9)
+                           (list 1 shown r done (+ b 200000) (+ b 200000)
+                                 (+ b 200000)))
+                 (fxvector-set! *present-ring* pa f)))])
+  (do ([k 0 (+ k 1)]) ((= k 14))
+    (let ([aim (+ T (* k r))]) (row! k aim (- aim (* 3 ms)) aim)))
+  (row! 14 (+ T (* 14 r)) (- (+ T (* 14 r)) (* 4 ms)) (+ T (* 15 r)))
+  (row! 15 (+ T (* 16 r)) (- (+ T (* 16 r)) (* 5 ms)) (+ T (* 17 r)))
+  (pacer2-forget!)
+  (fluid-let ([*pacer2-t* 0] [*pacer2-hold* 0] [*pacer2-floor* 0]
+              [*pacer2-proven* 0] [*pacer2-probe* 0]
+              [*pacer2-probe-miss* 0] [*pacer2-probed* T]
+              [*pacer2-soft?* #f] [*pacer2-waited* 0] [*pacer2-aim* 0]
+              [*pacer2-plan* 0] [*pacer-rate* 'screen] [*dirty* #f]
+              [*pacer-wanted?* #f] [*timers* '()]
+              [*pacer2-judged* (- *frame-ring-n* 16)])
+    (let* ([lo (- *frame-ring-n* 16)] [now (+ T (* 18 r))]
+           [judging (allocation-least 20
+                      (lambda ()
+                        (set! *pacer2-judged* lo)
+                        (set! *pacer2-hold* (* 3 ms))
+                        (set! *pacer2-soft?* #f)
+                        (pacer2-decide! now)))]
+           [raised *pacer2-hold*]
+           [planning (allocation-least 20
+                       (lambda ()
+                         (set! *pacer-wanted?* #t)
+                         (pacer2-decide! now)))]
+           [begun (allocation-least 20
+                    (lambda ()
+                      (set! *pacer-wanted?* #t)
+                      (pacer2-begin? (+ now r))))]
+           [not-begun (allocation-least 20
+                        (lambda ()
+                          (set! *pacer-wanted?* #t)
+                          (pacer2-begin? (- now (* 5 r)))))]
+           [share (allocation-least 20 pacer2-procs-ms)]
+           [wait (allocation-on-clock
+                  (lambda () (allocation-least 20 pacer2-wait-ns)))]
+           [wait-timer (fluid-let ([*timers* '()])
+                         (after 60000 void)
+                         (allocation-on-clock
+                          (lambda ()
+                            (allocation-least 20 pacer2-wait-ns))))])
+      (check (format "the second pacer allocates nothing: judging rows with \
+                      a pair of misses (~a bytes; the hold raised to ~a), \
+                      planning (~a), a turn begun and not (~a ~a), \
+                      processes' share (~a), the loop's wait without a \
+                      timer and with (~a ~a)"
+                     judging raised planning begun not-begun share wait
+                     wait-timer)
+             ;; the pair's 5 ms of lead over the hold of 3 by more than
+             ;; the margin: raised to the margin and a look over it
+             (and (= raised (+ (* 3 ms) (pacer2-margin r) core0-look-ns))
+                  (for-all zero? (list judging planning begun not-begun
+                                       share wait wait-timer)))))))
+
 ;;; A library's procedures carry nothing. A variable of a library's own is
 ;;; held by every procedure that reads it, and by every procedure that
 ;;; calls one of those, so a closure made at run time that only calls one
