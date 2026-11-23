@@ -22,7 +22,8 @@
   (import (chezscheme)
           (only (schevana base) define-state library-layer)
           (only (schevana sdl) sdl-query-gpu-fence sdl-release-gpu-fence)
-          (only (schevana core0 mail) core0-clock-ns core0-frame-ns core0-post!)
+          (only (schevana core0 mail) core0-clock-ns core0-display
+                core0-frame-ns core0-post!)
           (only (schevana core0 trace) core0-trace!)
           (only (schevana core0 renderer) *renderer* renderer-device))
 
@@ -80,13 +81,14 @@
       (fxvector-set! r at frame)))
 
   ;; Takes the screen's report on frame: dropped (kind 2), or shown (kind 1)
-  ;; at stamp (core0-clock-ns), with a refresh that the screen says is
-  ;; refresh ns long (0 when it keeps no steady refresh, or doesn't say).
+  ;; at stamp (core0-clock-ns), at a refresh that the screen keeps steady
+  ;; (refresh over 0, the length the screen says, which is not read: the
+  ;; length comes from present-length) or not (0).
   (define (present-reported! frame kind stamp refresh)
     (let ([at (present-at frame)])
       (when (fx= (fxvector-ref *present-ring* at) frame)
         (if (fx= kind 1)
-            (present-shown! frame at stamp refresh)
+            (present-shown! frame at stamp (fx> refresh 0))
             (present-publish! at kind)))))
 
   ;; Makes the row at at visible with its kind, once what its report
@@ -112,10 +114,17 @@
   ;;; when that refresh came by the clock. A stamp may run a whole refresh
   ;;; late, so that its frame seems to show a refresh later than it did,
   ;;; and only the next frame's report can tell. So a report that says a
-  ;;; refresh was missed is held until another report agrees with it. The
+  ;;; refresh was missed is held until another report agrees with it, and
+  ;;; its stamp doesn't move the clock: a stamp that ran late reads as a
+  ;;; refresh later, and taken, it would leave the clock early. The
   ;;; display's own count of its refreshes is never read: a compositor may
   ;;; send none (KWin), or count frames where the driver counts nothing
-  ;;; (Mutter over NVIDIA's).
+  ;;; (Mutter over NVIDIA's). Nor is a report's own word on the refresh's
+  ;;; length read, only whether the refresh is steady: the display's mode
+  ;;; says how long it is. Where it isn't steady (a Mac's, a variable one),
+  ;;; each stamp is taken as it is: a Mac's stamps are the display's own,
+  ;;; and a clock there held a report after a missed refresh for 9 ms where
+  ;;; it comes in 1 ms as it is (docs/PLATFORMS.md).
 
   ;; The newest refresh a report placed, by number, and when it came by the
   ;; screen's clock (core0-clock-ns; 0 for none yet); how many reports came
@@ -134,16 +143,27 @@
   (define-state *present-held* -1)
   (define-state *present-held-last* -1)
 
-  ;; A refresh length (ns) that a person gives in place of the screen's
-  ;; own, used where the screen gives one; or 0 to use the screen's.
+  ;; A refresh length (ns) that a person gives in place of the display
+  ;; mode's; or 0 to use the mode's.
   (define-state *present-refresh-said* 0)
+
+  ;; Returns the refresh length that stamps are read by, in ns: what a
+  ;; person gave, else the display mode's; or 0 where neither says, and
+  ;; then each stamp is taken as it is, to the nearest of core0's guess.
+  (define (present-length)
+    (let ([d (core0-display)])
+      (cond
+        [(fx> *present-refresh-said* 0) *present-refresh-said*]
+        [(and d (fx> (caddr d) 0) (fx> (cadddr d) 0)) (core0-frame-ns)]
+        [else 0])))
 
   ;; Whether ns may be given: 0, or a refresh from 1 to 100 ms long.
   (define (present-refresh-ok? ns)
     (and (fixnum? ns) (or (fx= ns 0) (fx<= 1000000 ns 100000000))))
 
   ;; Posts a job so that, from the next report on, the screen's refreshes
-  ;; are taken to be ns long, or the screen's own length is used again (0).
+  ;; are taken to be ns long, or the display mode's length is used again
+  ;; (0).
   ;; Returns #f for a length it refuses.
   (define (core0-refresh-ns! ns)
     (and (present-refresh-ok? ns)
@@ -151,61 +171,65 @@
   (define (present-refresh-say! ns)
     (when (present-refresh-ok? ns) (set! *present-refresh-said* ns)))
 
-  ;; Records that frame, whose row is at at, was shown, from its stamp and
-  ;; the screen's refresh (present-reported!). The refresh it was shown at
-  ;; is published at once, or held where the screen keeps a clock and the
-  ;; report says a refresh was missed in a flow of frames (each sent within
-  ;; a refresh and a half of the one before). In a flow, a stamp is read as
-  ;; late by up to three quarters of a refresh, and early by at most a
-  ;; quarter; after a pause, or with no clock, it is read as the nearest
-  ;; refresh, and the clock is then set from it.
-  (define (present-shown! frame at stamp refresh)
+  ;; Records that frame, whose row is at at, was shown, from its stamp
+  ;; (present-reported!). The refresh it was shown at is published at once,
+  ;; or held, at the refresh the clock puts it at, where the screen keeps a
+  ;; clock and the report says a refresh was missed in a flow of frames
+  ;; (each sent within a refresh and a half of the one before). In a flow, a
+  ;; stamp is read as late by up to three quarters of a refresh, and early
+  ;; by at most a quarter; after a pause, or with no clock, it is read as
+  ;; the nearest refresh, and the clock is then set from it. Steady? says
+  ;; whether the screen says it keeps a steady refresh.
+  (define (present-shown! frame at stamp steady?)
     (let* ([r *present-ring*]
-           [refresh (if (and (fx> refresh 0) (fx> *present-refresh-said* 0))
-                        *present-refresh-said*
-                        refresh)]
-           [p (if (fx> refresh 0) refresh (core0-frame-ns))]
+           [len (present-length)]
+           [p (if (fx> len 0) len (core0-frame-ns))]
            [sent (fxvector-ref r (fx+ at 2))]
            ;; a clock to read the stamp against: one kept, and a flow
-           [clock? (and (fx> refresh 0) (fx> *present-refresh-at* 0)
+           [clock? (and steady? (fx> len 0) (fx> *present-refresh-at* 0)
                         (fx< (fx* 2 (fx- sent *present-sent*)) (fx* 3 p)))]
            [n (fxdiv (fx+ (fx- stamp *present-refresh-at*)
                           (fxquotient p (if clock? 4 2)))
-                     p)])
+                     p)]
+           [count (fx+ *present-refresh* n)])
       (fxvector-set! r (fx+ at 4) p)
       (fxvector-set! r (fx+ at 10) stamp)
+      (fxvector-set! r (fx+ at 5) count)
       (cond
         [(fx< n 0)
          ;; shown before the newest: reported out of order
          (fxvector-set! r (fx+ at 3) stamp)
-         (fxvector-set! r (fx+ at 5) (fx+ *present-refresh* n))
          (present-publish! at 1)]
         [else
          (set! *present-sent* sent)
-         (present-clock! stamp (fx* n p) clock?)
-         (set! *present-refresh* (fx+ *present-refresh* n))
-         (fxvector-set! r (fx+ at 3) *present-refresh-at*)
-         (fxvector-set! r (fx+ at 5) *present-refresh*)
-         (when (fx>= *present-held* 0) (present-held-settle! p))
+         (when (fx>= *present-held* 0) (present-held-settle! count p))
          (cond
-           [(fx>= *present-held* 0) (set! *present-held-last* frame)]
-           [(and clock? (fx> *present-refresh* (fx+ *present-shown* 1)))
+           [(and clock? (fx< *present-held* 0)
+                 (fx> count (fx+ *present-shown* 1)))
+            ;; held at the clock's time for it, the clock left as it was
+            (fxvector-set! r (fx+ at 3) (fx+ *present-refresh-at* (fx* n p)))
             (set! *present-held* frame)
             (set! *present-held-last* frame)]
            [else
-            ;; no two frames show at one refresh: a frame whose stamp says
-            ;; so is numbered one past the newest shown. No stamp comes
-            ;; before its refresh, so the clock was late (set by a stamp
-            ;; that ran late: the first, or one after a pause), and it takes
-            ;; this stamp instead
-            (when (fx<= *present-refresh* *present-shown*)
-              (set! *present-refresh* (fx+ *present-shown* 1))
-              (set! *present-refresh-at* stamp)
-              (set! *present-late-run* 0)
-              (fxvector-set! r (fx+ at 3) stamp)
-              (fxvector-set! r (fx+ at 5) *present-refresh*))
-            (set! *present-shown* *present-refresh*)
-            (present-publish! at 1)])])))
+            (present-clock! stamp (fx* n p) clock?)
+            (set! *present-refresh* count)
+            (fxvector-set! r (fx+ at 3) *present-refresh-at*)
+            (cond
+              [(fx>= *present-held* 0) (set! *present-held-last* frame)]
+              [else
+               ;; no two frames show at one refresh: a frame whose stamp
+               ;; says so is numbered one past the newest shown. No stamp
+               ;; comes before its refresh, so the clock was late (set by a
+               ;; stamp that ran late: the first, or one after a pause),
+               ;; and it takes this stamp instead
+               (when (fx<= *present-refresh* *present-shown*)
+                 (set! *present-refresh* (fx+ *present-shown* 1))
+                 (set! *present-refresh-at* stamp)
+                 (set! *present-late-run* 0)
+                 (fxvector-set! r (fx+ at 3) stamp)
+                 (fxvector-set! r (fx+ at 5) *present-refresh*))
+               (set! *present-shown* *present-refresh*)
+               (present-publish! at 1)])])])))
 
   ;; Moves the screen's clock on to the refresh a report places, since ns
   ;; after the clock's newest: to the time the stamp says, unless, in a
@@ -234,31 +258,35 @@
            (fx= (fxvector-ref *present-ring* (fx+ at 1)) 0)
            (fx> (fxvector-ref *present-ring* (fx+ at 10)) 0))))
 
-  ;; Publishes the frames held as they stand, the oldest first.
+  ;; Publishes the frames held as they stand, the oldest first, each at its
+  ;; stamp where that is earlier than the clock's time for it: no stamp
+  ;; comes before its refresh, so the clock was late.
   (define (present-held-publish!)
     (do ([f *present-held* (fx+ f 1)]) ((fx> f *present-held-last*))
       (when (present-held? f)
-        (set! *present-shown*
-          (fxvector-ref *present-ring* (fx+ (present-at f) 5)))
-        (present-publish! (present-at f) 1)))
+        (let ([r *present-ring*] [at (present-at f)])
+          (fxvector-set! r (fx+ at 3) (fxmin (fxvector-ref r (fx+ at 3))
+                                             (fxvector-ref r (fx+ at 10))))
+          (set! *present-shown* (fxvector-ref r (fx+ at 5)))
+          (present-publish! at 1))))
     (set! *present-held* -1)
     (set! *present-held-last* -1))
 
-  ;; Settles the frames held, now that a report has placed the newest
-  ;; refresh. If that refresh comes after theirs, the report agrees with
-  ;; them; if it leaves them no room after the newest shown, its own stamp
-  ;; was early. Either way they showed when they said. Otherwise their
-  ;; stamps ran late: each showed a refresh before the next (a refresh
-  ;; being p ns), and once the oldest is back in step with the newest
-  ;; shown, they are settled.
-  (define (present-held-settle! p)
+  ;; Settles the frames held, now that a report has placed refresh newest.
+  ;; If that refresh comes after theirs, the report agrees with them; if it
+  ;; leaves them no room after the newest shown, its own stamp was early.
+  ;; Either way they showed when they said. Otherwise their stamps ran
+  ;; late: each showed a refresh before the next (a refresh being p ns),
+  ;; and once the oldest is back in step with the newest shown, they are
+  ;; settled.
+  (define (present-held-settle! newest p)
     (let ([r *present-ring*])
-      (if (or (fx> *present-refresh*
+      (if (or (fx> newest
                    (fxvector-ref r (fx+ (present-at *present-held-last*) 5)))
-              (fx<= (fx- *present-refresh* *present-shown* 1)
+              (fx<= (fx- newest *present-shown* 1)
                     (fx- *present-held-last* *present-held*)))
           (present-held-publish!)
-          (let back ([f *present-held-last*] [next *present-refresh*])
+          (let back ([f *present-held-last*] [next newest])
             (cond
               [(fx< f *present-held*)
                (when (fx= next (fx+ *present-shown* 1))

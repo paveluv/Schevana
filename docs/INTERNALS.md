@@ -353,7 +353,11 @@ when that refresh came by the clock; the stamp is kept beside it. A stamp
 can run a whole refresh late, which only the next frame's report can
 tell, since a frame shows after the one before it. So a report that says
 a refresh was missed in a flow of frames is held until the next report
-agrees, or until three refreshes pass. Where the screen says it keeps no
+agrees, or until three refreshes pass, and its stamp doesn't move the
+clock at all: a stamp that ran more than three quarters of a refresh late
+reads as a refresh later, and taken, it would leave the clock early for
+the frames after it. Once shown, a held frame keeps the earlier of its
+stamp and the clock's time for it. Where the screen says it keeps no
 steady refresh (a variable refresh rate; a Mac, which reports none), each
 stamp is taken as it is.
 
@@ -377,21 +381,24 @@ refresh under its column: how far the clock moved at that refresh
 (`inspect-clock-moves`). Below 0, a stamp came earlier than the clock
 expected; above 0, the clock gave way to late stamps.
 
-The length of a refresh is what the screen says, which is the display
-mode's rate and can be a little off the display's real rate. To try
-another length, give it at a REPL, in nanoseconds:
+The length of a refresh is the display mode's. The screen's own word on
+it, where it gives one, is the same rate, and isn't read: not every
+platform gives one (Metal doesn't), so the screen's word says only
+whether its refresh is steady. The mode's rate can be a little off the
+display's real rate. To try another length, give it at a REPL, in
+nanoseconds:
 
 ```scheme
 (core0-refresh-ns! 16667505)   ; => #t, taken from the next report on
-(core0-refresh-ns! 0)          ; the screen's own length again
+(core0-refresh-ns! 0)          ; the display mode's length again
 (cdr (assq 'refresh-said (inspect-core0)))   ; the length given now
 ```
 
 A length from 1 to 100 ms (1,000,000 to 100,000,000 ns), or 0, is
 accepted; anything else is refused with `#f` and changes nothing. The
-length replaces the screen's only where the screen gives one: a screen
-with no steady refresh still has none. It isn't saved, and lasts until it
-is set to 0 or Schevana quits. A length that suits the display shows as a
+length replaces the mode's; a screen that says it keeps no steady refresh
+still has none. It isn't saved, and lasts until it is set to 0 or
+Schevana quits. A length that suits the display shows as a
 drift that stays at 0 between the clock's real moves.
 
 Which OS, windowing system and GPU API this is comes from predicates
