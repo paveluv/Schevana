@@ -33,8 +33,8 @@
     genera-highlight genera-highlight-over genera-separator genera-tooltip
     genera-tooltip-size genera-dialog-size genera-dialog-areas genera-dialog
     genera-scrim genera-calendar-areas genera-calendar-size genera-calendar
-    genera-day genera-5x5 genera-avatar-size genera-avatar genera-tasks-mark
-    genera-tasks-due genera-tasks-slot)
+    genera-day genera-5x5 genera-avatar-size genera-avatar genera-mark
+    genera-due genera-board-slot)
   (import (chezscheme)
           (only (schevana base) at-load clamp define-made library-layer
                 string-join)
@@ -43,10 +43,10 @@
                 font-family font-line-height font-size frame-insets get-font
                 screen-h screen-w stipple stroke-box stroke-circle text-width
                 theme theme-font-rule theme-rule window-bg window-h window-ref
-                window-title window-w with-clip with-place world-value)
+                window-title window-w with-clip with-place)
           (only (schevana kits px) px-bitmap-text px-bits px-invert px-bevel)
           (only (schevana kits text) text-widest text-draw-centered text-fit)
-          (only (schevana kits ui) ui-initials ui-calendar-areas
+          (only (schevana kits ui) ui-draw-mark* ui-initials ui-calendar-areas
                 ui-dialog-areas ui-dialog-lines ui-tooltip-lines ui-draw-panel
                 ui-draw-dim ui-draw-table-row ui-tree-areas ui-table-cell-inset
                 ui-scrollbar-areas ui-chip-areas ui-small-glyph-size
@@ -778,38 +778,36 @@
   (define (genera-avatar x y w h flags name)
     (unless (memq 'named flags) (genera-lozenge x y (ui-initials name) 'text)))
 
-  ;;; Tasks' marks ((schevana apps tasks)), each in ink: the shapes of Genera's
-  ;;; MOUSE font (WB Fig. 14) and the CADR's choice box.
+  ;;; Marks (the kit's), each in ink: the shapes of Genera's MOUSE font (WB
+  ;;; Fig. 14) and the CADR's choice box.
 
-  ;; Priority is four bars, those above it hollow, as a choice box that is
-  ;; off; a bug is a filled circle, a feature a filled lozenge, and a chore
-  ;; a hollow box; blocked is a fat circle with a minus in it; a status has
-  ;; no mark, since its word is written beside it (lispm-apps.md part 5).
-  (define (genera-tasks-mark x y s what value)
-    (case what
-      [(status) 0]
-      [(priority)
-       (let ([level (case value [(urgent) 4] [(high) 3] [(normal) 2] [else 1])]
-             [bw (max 3 (floor (/ (- s 3) 4)))])
-         (do ([i 0 (+ i 1)]) ((= i 4) s)
-           (let ([bh (round (* s (/ (+ i 2) 5)))] [bx (+ x (* i (+ bw 1)))])
-             (if (< i level)
+  ;; A level is its bars, those above it hollow, as a choice box that is
+  ;; off; a circle and a lozenge are filled, and a square is a hollow box;
+  ;; blocked is a fat circle with a minus in it; a state's dot is left out,
+  ;; since its word is written beside it (lispm-apps.md part 5).
+  (define (genera-mark x y s mark color)
+    (case (if (pair? mark) (car mark) mark)
+      [(dot) 0]
+      [(level)
+       (let* ([n (cadr mark)] [of (caddr mark)]
+              [bw (max 3 (floor (/ (- s (- of 1)) of)))])
+         (do ([i 0 (+ i 1)]) ((= i of) s)
+           (let ([bh (round (* s (/ (+ i 2) (+ of 1))))]
+                 [bx (+ x (* i (+ bw 1)))])
+             (if (< i n)
                  (fill-box bx (- (+ y s) bh) bw bh 'text)
                  (stroke-box bx (- (+ y s) bh) bw bh 'text)))))]
-      [(kind)
-       (if (eq? value 'chore)
-           (begin (stroke-box (+ x 2) (+ y 2) (- s 4) (- s 4) 'text) s)
-           ((world-value 'tasks-draw-mark*) x y s what value))]
+      [(square) (stroke-box (+ x 2) (+ y 2) (- s 4) (- s 4) 'text) s]
       [(blocked)
        (stroke-circle (+ x (/ s 2)) (+ y (/ s 2)) (- (* s 0.45) 1) 'text 2)
        (fill-box (+ x (round (* s 0.3))) (+ y (floor (- (/ s 2) 1)))
                  (- s (* 2 (round (* s 0.3)))) 2 'text)
        s]
-      [else ((world-value 'tasks-draw-mark*) x y s what value)]))
+      [else (ui-draw-mark* x y s mark color)]))
 
   ;; A due date: bold once it has passed (lispm-notes, answer 8), otherwise
   ;; plain; "Today" speaks for itself.
-  (define (genera-tasks-due x y w label when fnt)
+  (define (genera-due x y w label when fnt)
     (let* ([f (get-font fnt)]
            [f (if (eq? when 'past)
                   (font (font-family f) (font-size f) 'bold)
@@ -817,7 +815,7 @@
       (draw-text x y (text-fit label w f) 'text f)))
 
   ;; Where a dragged card would land: a box over the gray.
-  (define (genera-tasks-slot x y w h)
+  (define (genera-board-slot x y w h)
     (fill-box x y w h 'genera-gray)
     (stroke-box x y w h 'text))
 
@@ -934,11 +932,11 @@
      'ui-draw-day 'genera-day
      'ui-draw-avatar 'genera-avatar
      'ui-avatar-size 'genera-avatar-size
-     'tasks-draw-mark 'genera-tasks-mark
-     'tasks-draw-due 'genera-tasks-due
-     'tasks-draw-slot 'genera-tasks-slot
+     'ui-draw-mark 'genera-mark
+     'ui-draw-due 'genera-due
+     'ui-draw-board-slot 'genera-board-slot
      'repl-paren-mark (stipple 'text #f "#..." "...." "..#." "....")
-     'settings-swatch-ring (stipple 'text 'window-bg "#." ".#")
+     'swatch-ring (stipple 'text 'window-bg "#." ".#")
      ;; a chart's series told apart by patterns of ink; a share of its bars
      ;; in solid ink (the accent's), and a marked bar grayed
      'chart-1 (stipple 'text #f "#." "#.")

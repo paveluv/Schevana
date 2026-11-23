@@ -104,6 +104,15 @@ before it:
   its height, its areas and the status; the menu gets itself (the menu
   kit's data), its areas and the chosen entry; the toasts get their
   boxes. A style reads none of the desktop's state.
+- **Nothing below the apps names an app.** An app, a demo or a game may
+  be anyone's: the core, the kits, the services, the looks and the
+  desktop name nothing that one defines or registers, in code or by name
+  (a setting a style gives, `world-value`'s name). What a style changes in
+  an app's look is a kit's part that the app draws with (a board's
+  columns and cards, a mark, a due date: `ui-draw-board-column`,
+  `ui-draw-mark`, `ui-draw-due`), so that any app can use it. A piece may
+  take its name from a signature app (`'repl-paren`, the transcript
+  kit's), as long as it lives below the apps (`tests/sources.ss`).
 - **Core0 sits below the core.** Core0's libraries name nothing of the
   core above them, and only core0 names SDL: the clock and the CPU count
   are core0's, and it gives them to core1. What still crosses the line is

@@ -33,12 +33,12 @@
                 define-state filter-map library-layer string-contains-ci?
                 string-join string-prefix? string-split string-suffix?)
           (only (schevana core) *scale* *schevana-options* *source-texts*
-                *windows* *world-env* after alpha apps clipboard-get
-                close-window! color-default! core1-exported define-app fill-box
-                focused-window font-ascent font-char-width font-line-height
-                invalidate! keep-source-text! kill! mix now-ms open-window
-                palettes point-in? request-frame! spawn stroke-box style styles
-                theme theme-keys theme-rule wallpapers window-frame-soon!
+                *windows* *world-env* after apps clipboard-get close-window!
+                color-default! core1-exported define-app fill-box focused-window
+                font-ascent font-char-width font-line-height invalidate!
+                keep-source-text! kill! mix now-ms open-window palettes
+                point-in? request-frame! spawn stroke-box style styles theme
+                theme-keys theme-rule wallpapers window-frame-soon!
                 window-handlers window-ref window-set! window-title
                 window-title-set! windows with-place)
           (only (schevana desktop bell) bell)
@@ -1533,11 +1533,6 @@
     (if (eq? (theme 'text-caret) 'block)
         (px-invert x y cw th)
         (fill-box x y 2 th 'accent)))
-
-  ;; The mark under the parenthesis that matches the one at the cursor, and
-  ;; under that one too.
-  (at-load
-   (color-default! 'repl-paren-mark (theme-rule (alpha 'yellow 0.25))))
 
   ;;; ---------------------------------------------------------------- the app
 

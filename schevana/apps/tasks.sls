@@ -28,34 +28,27 @@
   (export
     task-title task-status task-assignee tasks-description-max find-task
     tasks-list add-task! set-task! move-task! delete-task! task-blockers
-    task-blocks tasks-tree tasks-column-header-height
-    tasks-column-header-height* tasks-details-pad tasks-details-pad*
-    tasks-card-pad tasks-card-pad* tasks-column-insets tasks-column-insets*
-    tasks-card-insets tasks-card-insets* tasks-mark-size tasks-draw-mark
-    tasks-draw-mark* tasks-draw-due tasks-draw-due* tasks-draw-column
-    tasks-draw-column* tasks-draw-slot tasks-draw-slot* tasks-draw-link
-    tasks-draw-link* tasks)
+    task-blocks tasks-tree tasks)
   (import (chezscheme)
-          (only (schevana base) at-load clamp define-hook define-made
-                define-state filter-map library-layer list-index plist-keys
-                plist-ref string-contains-ci? string-join string-prefix?
-                string-split)
-          (only (schevana core) after alpha close-window! content-rect
-                current-window define-app define-part draw-text fill-box
-                fill-circle fill-polygon find-window focus-window! font
+          (only (schevana base) at-load clamp define-made define-state
+                filter-map library-layer list-index plist-keys plist-ref
+                string-contains-ci? string-join string-prefix? string-split)
+          (only (schevana core) after close-window! content-rect current-window
+                define-app draw-text fill-box find-window focus-window! font
                 font-line-height invalidate! new-window-position notify
-                open-window point-in? resize-window! screen-h stroke-box
-                text-width theme window-content-size window-handlers window-ref
-                window-x window-y windows)
+                open-window point-in? resize-window! screen-h text-width theme
+                window-content-size window-handlers window-ref window-x window-y
+                windows)
           (only (schevana desktop menu) menu-item-height)
           (only (schevana desktop topbar) topbar-height)
-          (only (schevana kits color) color-readable-on)
           (only (schevana kits edit) edit-change edit-caret edit-text
                 edit-clean)
-          (only (schevana kits text) text-draw-centered text-widest text-within
-                text-fit)
-          (only (schevana kits ui) ui-table-page ui-table-step ui-tree-key
-                ui-edit ui-handlers ui-open-modal make-ui ui-end!
+          (only (schevana kits text) text-widest text-within text-fit)
+          (only (schevana kits ui) ui-board-card-insets ui-board-column-insets
+                ui-board-header-height ui-card-pad ui-draw-board-column
+                ui-draw-board-link ui-draw-board-slot ui-draw-due ui-draw-mark
+                ui-mark-size ui-panel-pad ui-table-page ui-table-step
+                ui-tree-key ui-edit ui-handlers ui-open-modal make-ui ui-end!
                 ui-next-midnight ui-due! ui-begin! ui-dialog ui-text-box-inset
                 ui-text-area ui-caret ui-focused ui-text-area-size ui-checkbox
                 ui-checkbox-size ui-chip-input ui-chip-input-size ui-date-field
@@ -985,33 +978,9 @@
     (max 160 (round (* 11 (font-line-height 'ui)))))
   (define (tasks-column-width)
     (max 200 (round (* 27/2 (font-line-height 'ui)))))
-  ;; A column heading's height; a style's part, as the column's insets
-  ;; are.
-  (define-part (tasks-column-header-height)
-    (round (+ (font-line-height 'ui) 14)))
-  ;; How far the details, or the keys when nothing is selected, are from
-  ;; the panel's edges (and clear of a scroll bar a style keeps room for).
-  (define-part (tasks-details-pad) 16)
-  ;; How far a card's marks, title, tags and dates are from its edges.
-  (define-part (tasks-card-pad) 10)
-  ;; Inside a column: its cards' margin at either side, the room above the
-  ;; first card and between two cards, and the + button's distance from the
-  ;; header's end. It is a style's part, as the cards' insets are: a style
-  ;; that draws something between or beside the cards (Cons's pointers)
-  ;; makes room for it.
-  (define-part (tasks-column-insets) (values 10 8 8 6))
-
-  ;; The left and right insets of a column's cards: the column's side
-  ;; margin, or the room a style's scroll bar keeps beside them (Genera's),
-  ;; if that is more.
-  (define-part (tasks-card-insets)
-    (let-values ([(side first between edge) (tasks-column-insets)])
-      (values (max side (ui-scrollbar-inset 'left))
-              (max side (ui-scrollbar-inset 'right)))))
   (define (tasks-list-min-width) (* 36 (font-line-height 'ui)))
   (define (tasks-page-width) (* 40 (font-line-height 'ui)))   ; at most
   (define (tasks-avatar-size) (round (+ (font-line-height 'ui-small) 7)))
-  (define (tasks-mark-size) (round (* (font-line-height 'ui) 0.8)))
 
   ;; The natural size: 4 columns and the details, tall enough for most of a
   ;; task.
@@ -1060,13 +1029,13 @@
   ;; long word breaks): at most 3, the last ending in "…" when there are
   ;; more. Returns (values lines cut?).
   (define (tasks-card-title w t)
-    (ui-wrap-lines (tasks-shown-title t) (- w (* 2 (tasks-card-pad))) 'ui 3))
+    (ui-wrap-lines (tasks-shown-title t) (- w (* 2 (ui-card-pad))) 'ui 3))
 
   ;; The tag chips that fit on a card w wide, the first always (cut to the
   ;; room), and how many more a "+k" after them counts. Returns
   ;; (values widths k).
   (define (tasks-card-tags w t)
-    (let ([room (- w (* 2 (tasks-card-pad)))]
+    (let ([room (- w (* 2 (ui-card-pad)))]
           [more (lambda (k)   ; "+k" and its gap
                   (if (zero? k)
                       0
@@ -1085,13 +1054,13 @@
   (define (tasks-card-size w t)
     (let-values ([(lines cut?) (tasks-card-title w t)]
                  [(cw ch) (ui-chip-size "" #f)])
-      (values w (round (+ (tasks-card-pad) (tasks-avatar-size) 6
+      (values w (round (+ (ui-card-pad) (tasks-avatar-size) 6
                           (* (length lines) (font-line-height 'ui))
                           (if (pair? (task-tags t)) (+ 6 ch) 0)
                           (if (or (task-due t) (pair? (task-checklist t)))
                               (+ 6 (font-line-height 'ui-small) 3)
                               0)
-                          (tasks-card-pad))))))
+                          (ui-card-pad))))))
 
 
   ;; Whether t's title is wider than room; then its row's tooltip shows
@@ -1106,7 +1075,7 @@
 
   ;; The room the blocked mark takes before a title, while t is blocked.
   (define (tasks-mark-room t)
-    (if (tasks-blocked? t) (+ (tasks-mark-size) 6) 0))
+    (if (tasks-blocked? t) (+ (ui-mark-size) 6) 0))
 
   ;; The room for t's title in a List's Title cell w wide.
   (define (tasks-title-room t w)
@@ -1121,7 +1090,7 @@
   ;; of drops leave, in that order, while flex would be narrower than 13
   ;; line heights.
   (define (tasks-fit-columns w keys drops flex at)
-    (let* ([lh (font-line-height 'ui)] [m (tasks-mark-size)]
+    (let* ([lh (font-line-height 'ui)] [m (ui-mark-size)]
            ;; a cell's text inset at either side (20 with the kit's own)
            [in2 (* 2 (ui-table-cell-inset))]
            [names (filter-map task-assignee *tasks*)]
@@ -1188,46 +1157,31 @@
   ;;; ------------------------------------------------------------------
   ;;; the app's own drawing: card, column, slot, marks, cells, empty states
 
-  ;; Draws a task's mark in the s-square at (x, y): what is priority (1–4
-  ;; bars for low, normal, high, urgent), kind (a circle for a bug, a
-  ;; diamond for a feature, a square for a chore: by form and color both),
-  ;; blocked (a no-entry sign) or status (its dot), and value is its value.
-  ;; Returns the width it took: s, or 0 for none (a style may leave out a
-  ;; mark whose word is written beside it).
-  (define-part (tasks-draw-mark x y s what value)
+  ;; Draws a task's mark, the kit's (ui-draw-mark), in the s-square at (x,
+  ;; y): what is priority (1–4 bars for low, normal, high, urgent), kind (a
+  ;; circle for a bug, a diamond for a feature, a square for a chore: by
+  ;; form and color both), blocked (a no-entry sign) or status (its dot),
+  ;; and value is its value. Returns the width it took.
+  (define (tasks-draw-mark x y s what value)
     (case what
       [(priority)
-       (let* ([level (- 4 (tasks-rank tasks-priorities value))]
-              [color (case value
+       (ui-draw-mark x y s
+                     (list 'level (- 4 (tasks-rank tasks-priorities value)) 4)
+                     (case value
                        [(urgent) 'red] [(high) 'orange] [(normal) 'text-dim]
-                       [else 'text-faint])]
-              [bw (/ s 5)])
-         (do ([i 0 (+ i 1)]) ((= i 4))
-           (let ([bh (* s (/ (+ i 2) 5))])
-             (fill-box (+ x (* i (+ bw (/ s 15)))) (+ y (- s bh)) bw bh
-                       (if (< i level)
-                           color
-                           (alpha 'text-faint 0.35))
-                       1))))]
+                       [else 'text-faint]))]
       [(kind)
-       (let ([c (/ s 2)])
-         (case value
-           [(bug) (fill-circle (+ x c) (+ y c) (* c 0.85) 'red)]
-           [(feature)
-            (fill-polygon (list (cons (+ x c) y) (cons (+ x s) (+ y c))
-                                (cons (+ x c) (+ y s)) (cons x (+ y c)))
-                          'accent)]
-           [else (fill-box (+ x 1) (+ y 1) (- s 2) (- s 2) 'text-dim 2)]))]
-      [(blocked)
-       (fill-circle (+ x (/ s 2)) (+ y (/ s 2)) (* s 0.45) 'orange)
-       (fill-box (+ x (* s 0.25)) (+ y (* s 0.41)) (* s 0.5) (* s 0.18)
-                 (color-readable-on 'orange))]
-      [(status)
-       (fill-circle (+ x (/ s 2)) (+ y (/ s 2)) (/ s 3)
-                    (case value
-                      [(doing) 'accent] [(review) 'magenta] [(done) 'green]
-                      [else 'text-faint]))])
-    s)
+       (case value
+         [(bug) (ui-draw-mark x y s 'circle 'red)]
+         [(feature) (ui-draw-mark x y s 'diamond 'accent)]
+         [else (ui-draw-mark x y s 'square 'text-dim)])]
+      [(blocked) (ui-draw-mark x y s 'blocked 'orange)]
+      [(status) (ui-draw-mark x y s 'dot (tasks-draw-status-color value))]))
+
+  ;; Returns the color of status's dot.
+  (define (tasks-draw-status-color status)
+    (case status
+      [(doing) 'accent] [(review) 'magenta] [(done) 'green] [else 'text-faint]))
 
   ;; Draws a line of t's title at (x, y): faint for "Untitled", dim when t
   ;; is done. Returns the x after it.
@@ -1237,17 +1191,9 @@
                               [else 'text])
                'ui))
 
-  ;; Draws a due date's label at (x, y), cut to w; when is past, today or
-  ;; #f: red when past, orange today. A style draws it as it likes, given
-  ;; nothing of a task's but this.
-  (define-part (tasks-draw-due x y w label when font)
-    (draw-text x y (text-fit label w font)
-               (case when [(past) 'red] [(today) 'orange] [else 'text-faint])
-               font))
-
-  ;; Draws t's due date at (x, y), cut to w, with the part.
+  ;; Draws t's due date at (x, y), cut to w, with the kit's part.
   (define (tasks-draw-due-of x y w t today font)
-    (tasks-draw-due x y w (tasks-due-label (task-due t) today)
+    (ui-draw-due x y w (tasks-due-label (task-due t) today)
                     (cond [(tasks-overdue? t today) 'past]
                           [(and (equal? (task-due t) today)
                                 (not (eq? (task-status t) 'done)))
@@ -1260,7 +1206,7 @@
   (define (tasks-draw-card x y w h flags t today)
     (let* ([on? (lambda (f) (memq f flags))]
            [lh (font-line-height 'ui)] [sh (font-line-height 'ui-small)]
-           [a (tasks-avatar-size)] [m (tasks-mark-size)] [p (tasks-card-pad)]
+           [a (tasks-avatar-size)] [m (ui-mark-size)] [p (ui-card-pad)]
            [y1 (+ y p)] [right (- (+ x w) p)])
       ;; bg-3 would hide the progress track; a square card sits on whole
       ;; device pixels, so its edge stays crisp over what it is dragged
@@ -1328,38 +1274,12 @@
             (ui-draw-progress (- right bar-w) (+ fy (/ (- sh ph) 2)) bar-w ph
                               '() (/ done n)))))))
 
-  ;; Draws a column's well and header: the status dot, its name and the
-  ;; count. flags: empty (the column says so in its middle).
-  (define-part (tasks-draw-column x y w h flags status label count)
-    (let ([hh (tasks-column-header-height)] [lh (font-line-height 'ui)]
-          [sh (font-line-height 'ui-small)] [m (tasks-mark-size)])
-      (ui-draw-surface x y w h '(well))
-      (let* ([dw (tasks-draw-mark (+ x 10) (+ y (/ (- hh m) 2)) m 'status
-                                  status)]
-             [end (draw-text (if (> dw 0) (+ x 16 m) (+ x 10))
-                             (+ y (/ (- hh lh) 2)) label 'text 'ui-bold)])
-        (draw-text (+ end 8) (+ y (/ (- hh sh) 2)) (number->string count)
-                   'text-faint 'ui-small))
-      (when (memq 'empty flags)
-        (text-draw-centered x (+ y hh) w (min 120 (- h hh)) "No tasks"
-                            'text-faint 'ui))))
-
-  ;; Where a dragged card would land.
-  (define-part (tasks-draw-slot x y w h)
-    (fill-box x y w h (alpha 'accent 0.15) 8)
-    (stroke-box x y w h 'accent 1 8))
-
-  ;; Drawn after a card at x y w h, with its flags: what links it to the
-  ;; next card, gap below it (Cons's pointer), or to nothing when it is the
-  ;; last; by default, nothing.
-  (define-part (tasks-draw-link x y w h flags gap last?) (void))
-
   ;; Draws a cell of the List or the Tree. flags: the kit's (hover,
   ;; selected, dim: the search and filters leave the task out), and blocked
   ;; (a mark before the title).
   (define (tasks-draw-cell x y w h flags t key today)
     (let* ([lh (font-line-height 'ui)] [sh (font-line-height 'ui-small)]
-           [m (tasks-mark-size)] [in (ui-table-cell-inset)] [px (+ x in)]
+           [m (ui-mark-size)] [in (ui-table-cell-inset)] [px (+ x in)]
            [ty (+ y (/ (- h lh) 2))] [my (+ y (/ (- h m) 2))] [cw (- w in in)]
            [text (lambda (x s color) (draw-text x ty (text-fit s (- (+ px cw) x)
                                                                'ui)
@@ -1426,7 +1346,7 @@
   ;; the room (or less than its whole width). flags are as a cell's.
   (define (tasks-draw-node x y w h flags t where)
     (let* ([lh (font-line-height 'ui)] [sh (font-line-height 'ui-small)]
-           [m (tasks-mark-size)] [in (ui-table-cell-inset)] [px (+ x in)]
+           [m (ui-mark-size)] [in (ui-table-cell-inset)] [px (+ x in)]
            [right (- (+ x w) in)] [ty (+ y (/ (- h lh) 2))]
            [tx (+ px (tasks-id-width) 8)]
            [tx (if (memq 'blocked flags) (+ tx m 6) tx)]
@@ -1619,7 +1539,7 @@
                                 (- h pad pad) (eqv? i target)))
                 cols (iota n))
       (when moving   ; as wide as the cards in a column
-        (let-values ([(left right) (tasks-card-insets)])
+        (let-values ([(left right) (ui-board-card-insets)])
           (ui-later! ui
             (lambda (ww wh)
               (let-values ([(w h) (tasks-card-size (- cw left right) moving)])
@@ -1632,9 +1552,9 @@
   ;; slot.
   (define (tasks-column v status tasks today x y w h target?)
     (let*-values
-        ([(ui) (tasks-view-ui v)] [(hh) (tasks-column-header-height)]
-         [(side first between edge) (tasks-column-insets)]
-         [(left right) (tasks-card-insets)]
+        ([(ui) (tasks-view-ui v)] [(hh) (ui-board-header-height)]
+         [(side first between edge) (ui-board-column-insets)]
+         [(left right) (ui-board-card-insets)]
          [(label) (cdr (assq status tasks-statuses))]
          [(card-w) (- w left right)] [(sid) (list 'column status)]
          [(heights) (map (lambda (t)
@@ -1650,9 +1570,10 @@
          [(sel) (tasks-view-selected v)]
          ;; the cards' view, short of a ring the well may have
          [(vh) (- h hh (ui-surface-well-ring))])
-      (tasks-draw-column x y w h
-                         (if (and (null? tasks) (not target?)) '(empty) '())
-                         status label (length tasks))
+      (ui-draw-board-column x y w h
+                            (if (and (null? tasks) (not target?)) '(empty) '())
+                            label (length tasks)
+                            (tasks-draw-status-color status) "No tasks")
       (ui-button ui (list 'add status) (- (+ x w) edge bw) (+ y (/ (- hh bh) 2))
                  bw bh #f (lambda () (tasks-new-task! v status))
                  'glyph 'plus 'quiet #t 'focus 'keep
@@ -1677,7 +1598,7 @@
                            ch))])
             (let loop ([ts tasks] [hs heights] [i 0] [cy (+ top first)])
               (let ([cy (if (eqv? i slot)
-                            (begin (tasks-draw-slot (+ x left) cy card-w dh)
+                            (begin (ui-draw-board-slot (+ x left) cy card-w dh)
                                    (+ cy dh between))
                             cy)])
                 (if (null? ts)
@@ -1751,7 +1672,7 @@
                                       '())
                                   (if (tasks-blocked? t) '(blocked) '())))])
         (tasks-draw-card x y w h flags t today)
-        (tasks-draw-link x y w h flags gap last?))))
+        (ui-draw-board-link x y w h flags gap last?))))
 
   ;; The List: a table of the visible tasks.
   (define (tasks-table v visible today x y w h)
@@ -1845,7 +1766,7 @@
   ;; when wide?, else as a page), or the keys when nothing is selected.
   (define (tasks-details v today wide? x y w h)
     (let ([t (tasks-view-selected v)] [ui (tasks-view-ui v)]
-          [p (tasks-details-pad)])
+          [p (ui-panel-pad)])
       (when wide? (ui-draw-surface x y w h '(side)))
       (if t
           ;; its pad at either side, or the room the scroll bar keeps, if
@@ -1864,7 +1785,7 @@
   ;; The details' first row: Back (narrow), the id and kind, and Close
   ;; (wide). Returns the y below it.
   (define (tasks-details-head v t wide? x y cw)
-    (let*-values ([(ui) (tasks-view-ui v)] [(m) (tasks-mark-size)]
+    (let*-values ([(ui) (tasks-view-ui v)] [(m) (ui-mark-size)]
                   [(back) (case (tasks-view-mode v)
                             [(board) "Board"] [(list) "List"] [else "Tree"])]
                   [(bw bh) (ui-button-size (and (not wide?) back)

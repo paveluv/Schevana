@@ -92,7 +92,7 @@
 
 (check "a card's tags: as many chips as fit beside \"+k\" for the rest, the \
         first cut when even it does not fit, never past the card's edge"
-       (let* ([pad (tasks-card-pad)]
+       (let* ([pad (ui-card-pad)]
               [chip (lambda (tag)
                       (let-values ([(w h) (ui-chip-size tag #f)]) w))]
               [more (lambda (k) (+ 4 (text-width (format "+~a" k) 'ui-small)))]
@@ -609,7 +609,7 @@
   (check "a card's title is at most three rows, cut past them; a tip is the \
           title when it's cut, what the task waits for while it's blocked, \
           both then, else none; a row's title is cut by its room, measured"
-         (let* ([w 200] [room (- w (* 2 (tasks-card-pad)))]
+         (let* ([w 200] [room (- w (* 2 (ui-card-pad)))]
                 [long (let grow ([s "W"])
                         (if (> (text-width s 'ui) (* 4 room))
                             s

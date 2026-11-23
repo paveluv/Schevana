@@ -102,7 +102,13 @@
     ui-draw-add-row ui-draw-add-row* ui-status-page ui-status-page-areas
     ui-status-page-areas* ui-draw-status-page ui-draw-status-page* ui-banner
     ui-banner-height ui-banner-height* ui-banner-areas ui-banner-areas*
-    ui-draw-banner ui-draw-banner* ui-card-radius ui-card-radius*)
+    ui-draw-banner ui-draw-banner* ui-card-radius ui-card-radius* ui-card-pad
+    ui-card-pad* ui-panel-pad ui-panel-pad* ui-mark-size ui-draw-mark
+    ui-draw-mark* ui-draw-due ui-draw-due* ui-board-header-height
+    ui-board-header-height* ui-board-column-insets ui-board-column-insets*
+    ui-board-card-insets ui-board-card-insets* ui-draw-board-column
+    ui-draw-board-column* ui-draw-board-slot ui-draw-board-slot*
+    ui-draw-board-link ui-draw-board-link*)
   (import (chezscheme)
           (only (schevana base) at-load clamp define-hook filter-map
                 library-layer list-index plist-ref string-prefix? string-split)
@@ -1150,6 +1156,12 @@
                    (caddr it) 'join-left (not first?)
                    'join-right (pair? (cdr is)) opts)
             (loop (cdr is) (+ bx bw -1) #f)))))
+
+  ;; The ring around a color's swatch (a color picker's), which shows on
+  ;; its row, chosen or not: a stipple of ink and paper where a style
+  ;; inverts the chosen row (Genera).
+  (at-load
+   (color-default! 'swatch-ring (theme-rule (alpha 'text 0.25))))
 
   ;; A primary button's fill while pressed, and under the pointer.
   (at-load
@@ -4172,6 +4184,113 @@
                         [(memq 'hover flags) 'text-faint]
                         [else 'window-border])
                   (if selected? 2 1) (ui-card-radius))))
+
+  ;; How far a card's content (its marks, title, tags and dates) is from
+  ;; its edges.
+  (define-part (ui-card-pad) 10)
+
+  ;; How far a panel beside a list or a board (its details, or keys when
+  ;; nothing is chosen) keeps what it shows from its edges, and clear of a
+  ;; scroll bar a style keeps room for.
+  (define-part (ui-panel-pad) 16)
+
+  ;;; ---------------------------------------------------------------- marks
+  ;;; A mark is a small sign in a square a little under a line of text, for
+  ;;; what an item is or how it stands: how important (a level), its kind
+  ;;; (a shape, told by form and color both), that it is blocked, or its
+  ;;; state (a dot beside the state's word).
+
+  (define (ui-mark-size) (round (* (font-line-height 'ui) 0.8)))
+
+  ;; Draws mark in the s-square at (x, y), in color, and returns the width
+  ;; it took: s, or 0 for none (a style may leave out a mark whose word is
+  ;; written beside it). mark is (level n of): of bars rising, the first n
+  ;; in color and the rest faint; circle, diamond or square, filled; blocked,
+  ;; a no-entry sign; or dot, a state's.
+  (define-part (ui-draw-mark x y s mark color)
+    (case (if (pair? mark) (car mark) mark)
+      [(level)
+       (let* ([n (cadr mark)] [of (caddr mark)] [bw (/ s (+ of 1))]
+              [gap (if (> of 1) (/ (- s (* of bw)) (- of 1)) 0)])
+         (do ([i 0 (+ i 1)]) ((= i of))
+           (let ([bh (* s (/ (+ i 2) (+ of 1)))])
+             (fill-box (+ x (* i (+ bw gap))) (+ y (- s bh)) bw bh
+                       (if (< i n) color (alpha 'text-faint 0.35))
+                       1))))]
+      [(circle)
+       (let ([c (/ s 2)]) (fill-circle (+ x c) (+ y c) (* c 0.85) color))]
+      [(diamond)
+       (let ([c (/ s 2)])
+         (fill-polygon (list (cons (+ x c) y) (cons (+ x s) (+ y c))
+                             (cons (+ x c) (+ y s)) (cons x (+ y c)))
+                       color))]
+      [(square) (fill-box (+ x 1) (+ y 1) (- s 2) (- s 2) color 2)]
+      [(blocked)
+       (fill-circle (+ x (/ s 2)) (+ y (/ s 2)) (* s 0.45) color)
+       (fill-box (+ x (* s 0.25)) (+ y (* s 0.41)) (* s 0.5) (* s 0.18)
+                 (color-readable-on color))]
+      [(dot) (fill-circle (+ x (/ s 2)) (+ y (/ s 2)) (/ s 3) color)])
+    s)
+
+  ;; Draws a due date's label at (x, y), cut to w: when is past (red), today
+  ;; (orange) or #f.
+  (define-part (ui-draw-due x y w label when font)
+    (draw-text x y (text-fit label w font)
+               (case when [(past) 'red] [(today) 'orange] [else 'text-faint])
+               font))
+
+  ;;; ---------------------------------------------------------------- boards
+  ;;; A board is columns of cards side by side, as a kanban's: each column a
+  ;;; well with a heading (a state's dot, its name and how many cards it
+  ;;; holds) and its cards one under another, each with what links it to
+  ;;; the next, and, while a card is dragged over a column, the slot where
+  ;;; it would land. The app lays them out and handles the cards; these
+  ;;; parts are their look and their room.
+
+  (define-part (ui-board-header-height)
+    (round (+ (font-line-height 'ui) 14)))
+
+  ;; Inside a column: its cards' margin at either side, the room above the
+  ;; first card and between two cards, and a heading button's distance from
+  ;; the heading's end. A style that draws something between or beside the
+  ;; cards (Cons's pointers) makes room for it.
+  (define-part (ui-board-column-insets) (values 10 8 8 6))
+
+  ;; The left and right insets of a column's cards: the column's side
+  ;; margin, or the room a style's scroll bar keeps beside them (Genera's),
+  ;; if that is more.
+  (define-part (ui-board-card-insets)
+    (let-values ([(side first between edge) (ui-board-column-insets)])
+      (values (max side (ui-scrollbar-inset 'left))
+              (max side (ui-scrollbar-inset 'right)))))
+
+  ;; Draws a column's well and heading: a dot of color dot (none for #f),
+  ;; label and count. flags: empty, when the column shows empty, the text
+  ;; that says so, in its middle.
+  (define-part (ui-draw-board-column x y w h flags label count dot empty)
+    (let ([hh (ui-board-header-height)] [lh (font-line-height 'ui)]
+          [sh (font-line-height 'ui-small)] [m (ui-mark-size)])
+      (ui-draw-surface x y w h '(well))
+      (let* ([dw (if dot
+                     (ui-draw-mark (+ x 10) (+ y (/ (- hh m) 2)) m 'dot dot)
+                     0)]
+             [end (draw-text (if (> dw 0) (+ x 16 m) (+ x 10))
+                             (+ y (/ (- hh lh) 2)) label 'text 'ui-bold)])
+        (draw-text (+ end 8) (+ y (/ (- hh sh) 2)) (number->string count)
+                   'text-faint 'ui-small))
+      (when (memq 'empty flags)
+        (text-draw-centered x (+ y hh) w (min 120 (- h hh)) empty
+                            'text-faint 'ui))))
+
+  ;; Where a dragged card would land.
+  (define-part (ui-draw-board-slot x y w h)
+    (fill-box x y w h (alpha 'accent 0.15) 8)
+    (stroke-box x y w h 'accent 1 8))
+
+  ;; Drawn after a card at x y w h, with its flags: what links it to the
+  ;; next card, gap below it (Cons's pointer), or to nothing when it is the
+  ;; last; by default, nothing.
+  (define-part (ui-draw-board-link x y w h flags gap last?) (void))
 
   ;; A tooltip's lines: its text wrapped at 280, each of the text's own
   ;; lines (a newline ends one) starting a new one; at most 6, or as many as

@@ -8,7 +8,8 @@
 ;;; is defined in two files; the core stays within its budget of tokens;
 ;;; above the core nothing calls C; each layer names only what the layer
 ;;; below gives it; a library of Schevana's imports with only and names all
-;;; it imports, and every name a library exports is used; only a world
+;;; it imports, and every name a library exports is used; nothing below
+;;; the apps names an app's; only a world
 ;;; namespace shares the whole world with an environment; every file in a
 ;;; folder registers what it defines (a kit's or a service's names start
 ;;; with its prefix; desktop/ defines plain names); a style sets only
@@ -1084,6 +1085,64 @@
         it, by a program at the tree's root or in src/, or, where \"/\" has \
         it, by the docs or by a lookup by name"
        (none? (export-problems)))
+
+;;; ------------------------------------------------------------------
+;;; nothing below the apps names an app
+;;; An app, a demo or a game may be anyone's, and come and go: the layers
+;;; below them (core0, the core, the kits, the services, the looks and the
+;;; desktop) name nothing that one defines or registers, in code or by
+;;; name (a setting a style gives, world-value's name). What a style
+;;; changes in an app's look is a kit's part, which the app draws with. An
+;;; app's launcher is left out: its name is a plain word, which the world
+;;; has other uses for (the status bar's clock).
+
+;; The libraries of the apps, the demos and the game.
+(define app-files
+  (filter (lambda (f)
+            (or (not (string-prefix? "schevana/" f))
+                (eq? (file-layer f) 'apps)))
+          all-library-files))
+
+;; The theme keys that forms register: color-default!'s and
+;; theme-default!'s first argument.
+(define (registered-keys x)
+  (let walk ([x x] [acc '()])
+    (cond [(not (pair? x)) acc]
+          [(and (memq (car x) '(color-default! theme-default!))
+                (pair? (cdr x)) (pair? (cadr x)) (eq? (caadr x) 'quote)
+                (pair? (cdadr x)))
+           (cons (cadadr x) acc)]
+          [else (walk (cdr x) (walk (car x) acc))])))
+
+;; Each name an app, a demo or the game owns, with its file.
+(define app-owned
+  (let ([t (make-eq-hashtable)])
+    (for-each
+     (lambda (f)
+       (let* ([ds (definitions f)]
+              [launchers (map cdr (filter (lambda (d) (eq? (car d) 'app))
+                                          ds))])
+         (for-each (lambda (n)
+                     (unless (memq n launchers) (hashtable-set! t n f)))
+                   (append (map cdr ds) (registered-keys (file-forms f))))))
+     app-files)
+    t))
+
+(check "nothing below the apps names what an app, a demo or a game defines \
+        or registers"
+       (none? (apply append
+                     (map (lambda (f)
+                            (map (lambda (n)
+                                   (format "~a names ~a, ~a's" f n
+                                           (hashtable-ref app-owned n #f)))
+                                 (filter (lambda (n)
+                                           (hashtable-ref app-owned n #f))
+                                         (reverse
+                                          (symbols-in (file-forms f))))))
+                          (filter (lambda (f)
+                                    (and (string-prefix? "schevana/" f)
+                                         (not (member f app-files))))
+                                  all-library-files)))))
 
 ;;; ------------------------------------------------------------------
 ;;; sharing the whole world

@@ -23,20 +23,19 @@
                 *auto-loads* *schevana-root* add-library-directory! auto-load!
                 auto-load-entries auto-load-forget! auto-loads
                 library-file-layer path-full alpha chain-ref close-window!
-                color-default! color-keys color-rgba common-options
-                current-style current-window define-app detached-window
-                draw-text draw-window* fill-box fill-circle fill-wallpaper
-                find-style find-window focus-window! font-char-width
-                font-line-height fullscreen? invalidate! load-file! open-window
-                override! palette-title palettes plist-has? reset-style!
-                reset-theme! rgb set-fullscreen! set-scale! set-style!
-                set-theme! stroke-box stroke-circle style style-chain
-                style-changes-of style-name style-settings style-title styles
-                system-scale-percent text-width theme theme-default
-                theme-default! theme-overrides theme-rule user-directory
-                window-h-set! window-hover window-ref window-w-set!
-                window-x-set! window-y-set! with-clip with-scale with-style
-                with-translation)
+                color-keys color-rgba common-options current-style
+                current-window define-app detached-window draw-text draw-window*
+                fill-box fill-circle fill-wallpaper find-style find-window
+                focus-window! font-char-width font-line-height fullscreen?
+                invalidate! load-file! open-window override! palette-title
+                palettes plist-has? reset-style! reset-theme! rgb
+                set-fullscreen! set-scale! set-style! set-theme! stroke-box
+                stroke-circle style style-chain style-changes-of style-name
+                style-settings style-title styles system-scale-percent
+                text-width theme theme-default theme-default! theme-overrides
+                user-directory window-h-set! window-hover window-ref
+                window-w-set! window-x-set! window-y-set! with-clip with-scale
+                with-style with-translation)
           (only (schevana kits color) color-from-hsl color->hsl color->fixnum)
           (only (schevana kits text) text-fit text-widest)
           (only (schevana kits theme) theme-palette-preview theme-source)
@@ -853,12 +852,7 @@
     (when (memq 'selected flags)
       (ui-draw-highlight-over (+ x 4) y (- w 8) h '()))
     (fill-box (+ x 12) (+ y (/ (- h 16) 2)) 16 16 key 4)
-    (stroke-box (+ x 12) (+ y (/ (- h 16) 2)) 16 16 'settings-swatch-ring 1 4))
-
-  ;; A swatch's ring, which shows on its row, chosen or not: a stipple of
-  ;; ink and paper where a style inverts the chosen row (Genera).
-  (at-load
-   (color-default! 'settings-swatch-ring (theme-rule (alpha 'text 0.25))))
+    (stroke-box (+ x 12) (+ y (/ (- h 16) 2)) 16 16 'swatch-ring 1 4))
 
   (define (settings-draw-big-swatch x y d color)
     (fill-box x y d d color 12)

@@ -21,8 +21,8 @@
     transcript-draw-scrollbar transcript-draw-view)
   (import (chezscheme)
           (only (schevana base) at-load clamp library-layer string-split)
-          (only (schevana core) color-default! draw-text font-char-width
-                font-line-height style theme theme-rule)
+          (only (schevana core) alpha color-default! draw-text
+                font-char-width font-line-height style theme theme-rule)
           (only (schevana kits ui) ui-draw-scrollbar ui-scrollbar-width))
 
   (library-layer kits)
@@ -157,6 +157,11 @@
   ;; rest of the code.
   (at-load
    (color-default! 'repl-paren (theme-rule (theme 'text-faint))))
+
+  ;; The mark under the parenthesis that matches the one at a REPL's
+  ;; cursor, and under that one too.
+  (at-load
+   (color-default! 'repl-paren-mark (theme-rule (alpha 'yellow 0.25))))
 
   ;; Draws the visual rows [row0, row1) of one wrapped logical line.
   (define (transcript-draw-line x y text colors cols row0 row1 cw lh)

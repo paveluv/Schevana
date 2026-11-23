@@ -342,6 +342,41 @@ are drawn. A series is drawn in the color the app gives it. The kit's
 `chart-1` to `chart-8` are settings taken from the palette's hues, so a
 style can give its own: Genera, which has no color, gives stipples.
 
+## Boards, cards and marks
+
+A board is columns of cards side by side, as Tasks shows its tasks. The
+app lays out the columns and the cards and handles them; the kit draws a
+column's well and heading (`ui-draw-board-column`), and its parts give
+the room around the cards, the link after each card (Cons draws a pointer
+to the next) and the slot where a dragged card would land
+(`ui-draw-board-slot`). A mark is a small sign on a card or a row, in the
+square `ui-mark-size` gives: `(level n of)` for how important,
+`circle`, `diamond` or `square` for a kind, `blocked`, or a state's
+`dot`. Each is a part, so a style draws them its own way: Genera's level
+is a choice box's bars, in ink.
+
+```scheme
+(define (board-draw win w h)
+  (let-values ([(side first between edge) (ui-board-column-insets)]
+               [(left right) (ui-board-card-insets)])
+    (ui-draw-board-column 10 10 220 (- h 20) '() "Doing" 2 'accent "Empty")
+    (let ([cw (- 220 left right)] [m (ui-mark-size)] [p (ui-card-pad)])
+      (for-each
+       (lambda (i title)
+         (let ([x (+ 10 left)]
+               [y (+ 10 (ui-board-header-height) first (* i (+ 64 between)))])
+           (fill-box x y cw 64 'bg-2 (ui-card-radius))
+           (ui-draw-card x y cw 64 '())
+           (ui-draw-mark (+ x p) (+ y p) m (list 'level (- 3 i) 4) 'orange)
+           (draw-text (+ x p m 6) (+ y p) title 'text 'ui)
+           (ui-draw-due (+ x p) (+ y 40) (- cw p p) "Due today" 'today
+                        'ui-small)
+           (ui-draw-board-link x y cw 64 '() between (= i 1))))
+       '(0 1) '("Write the docs" "Ship it")))))
+(open-window "A board" 'size '(240 . 230)
+  'draw (lambda (win w h) (board-draw win w h)))
+```
+
 ## How a style changes them
 
 Each kind of widget draws through one procedure, `ui-draw-KIND`, which

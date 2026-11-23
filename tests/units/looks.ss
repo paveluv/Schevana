@@ -247,18 +247,18 @@
                   (memq 'right flags)
                   (not (exists string? flags)))))))
 
-(check "Tasks' marks and avatars are a style's: Genera leaves out a status's \
-        mark (its word is beside it) and an avatar beside the name, else \
-        the initials in a lozenge"
+(check "the kit's marks and avatars are a style's: Genera leaves out a \
+        state's dot (its word is beside it) and an avatar beside the name, \
+        else the initials in a lozenge"
        (let ([mark (lambda (style)
                      (with-style style
                        (lambda ()
                          (let* ([w #f]
                                 [img (image 20 20 1
                                             (lambda ()
-                                              (set! w (tasks-draw-mark
-                                                       2 2 14 'status
-                                                       'todo))))])
+                                              (set! w (ui-draw-mark
+                                                       2 2 14 'dot
+                                                       'text-faint))))])
                            (picture-free! img)
                            w))))]
              [size (lambda (style flags)

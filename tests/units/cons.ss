@@ -4,24 +4,24 @@
 ;;; Cons: the parts and flags by which it reaches the widgets, and its look
 ;;; at a few pixels.
 
-(check "Tasks' column and card insets, its column and the link after each \
-        card are parts: a style's own insets move the cards, its link is \
-        called after each card with the gap and whether it is the last, \
-        and its column draws the empty one"
+(check "a board's column and card insets, its column and the link after \
+        each card are the kit's parts, which Tasks draws with: a style's own \
+        insets move the cards, its link is called after each card with the \
+        gap and whether it is the last, and its column draws the empty one"
        (with-test-styles
         (lambda ()
           (let ([links '()] [columns '()])
             (define-style test-chain "Test"
-              'tasks-column-insets (lambda () (values 10 8 21 6))
-              'tasks-card-insets (lambda () (values 12 30))
-              'tasks-draw-link
+              'ui-board-column-insets (lambda () (values 10 8 21 6))
+              'ui-board-card-insets (lambda () (values 12 30))
+              'ui-draw-board-link
               (lambda (x y w h flags gap last?)
                 (set! links (cons (list w gap last?) links)))
-              'tasks-draw-column
-              (lambda (x y w h flags status label count)
-                (set! columns (cons (list status (and (memq 'empty flags) #t))
+              'ui-draw-board-column
+              (lambda (x y w h flags label count dot empty)
+                (set! columns (cons (list label (and (memq 'empty flags) #t))
                                     columns))
-                (tasks-draw-column* x y w h flags status label count)))
+                (ui-draw-board-column* x y w h flags label count dot empty)))
             (set-style! 'test-chain)
             (test-backlog!)
             (let* ([win (tasks)] [ui (window-ref win 'ui)])
@@ -30,19 +30,20 @@
               (let* ([col (ui-region-frame (ui-find ui '(column todo)))]
                      [img (image 200 100 1
                                  (lambda ()
-                                   (tasks-draw-column 0 0 200 100 '(empty)
-                                                      'todo "To do" 0)))]
+                                   (ui-draw-board-column 0 0 200 100 '(empty)
+                                                         "To do" 0 #f
+                                                         "No tasks")))]
                      [r (list (pair? (filter caddr links))
                               (for-all (lambda (l)
                                          (and (= (cadr l) 21)
                                               (= (car l) (- (caddr col) 42))))
                                        links)
-                              (assq 'todo columns)
-                              (assq 'done columns))])
+                              (assoc "To do" columns)
+                              (assoc "Done" columns))])
                 (picture-free! img)
                 (close-window! win)
                 (steps 1)
-                (equal? r (list #t #t '(todo #t) '(done #f)))))))))
+                (equal? r (list #t #t '("To do" #t) '("Done" #f)))))))))
 
 (check "the kit flags the last tab and the last chip, a chip input's box \
         (chips), and makes a dialog's dismiss area, where a style's areas \
@@ -231,7 +232,7 @@
                   [r (list (- right (+ (car add) (caddr add)))
                            (- (cadr add) (- (cadr col)
                                             (with-style 'cons
-                                              tasks-column-header-height)))
+                                              ui-board-header-height)))
                            (- (car thumb) (+ (car card) (caddr card) c))
                            (- right (+ (car thumb) (caddr thumb)))
                            (- (cadr thumb) (cadr card)))])

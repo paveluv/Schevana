@@ -26,10 +26,10 @@
     cons-slider cons-progress cons-table-header cons-table-row cons-tree-row
     cons-surface cons-panel cons-highlight cons-separator cons-tooltip
     cons-tooltip-size cons-dialog-size cons-dialog-areas cons-dialog cons-scrim
-    cons-day cons-avatar cons-tasks-column-insets
-    cons-tasks-column-header-height cons-tasks-card-insets cons-tasks-card-pad
-    cons-table-cell-inset cons-tasks-details-pad cons-tasks-link
-    cons-tasks-column cons-tasks-slot cons-menu-areas cons-draw-menu
+    cons-day cons-avatar cons-board-column-insets
+    cons-board-header-height cons-board-card-insets cons-card-pad
+    cons-table-cell-inset cons-panel-pad cons-board-link
+    cons-board-column cons-board-slot cons-menu-areas cons-draw-menu
     cons-mouse-doc-text cons-draw-topbar cons-taskbar-areas cons-draw-taskbar
     cons-toast-boxes cons-draw-toasts cons-draw-wallpaper)
   (import (chezscheme)
@@ -38,16 +38,17 @@
                 color-default! common-options define-style desktop-rect
                 draw-line draw-scale draw-text fill-box fill-circle fill-polygon
                 fill-wallpaper font font-ascent font-line-height screen-h
-                screen-w text-width theme theme-part theme-rule title-height
-                visible? window-bg window-id window-shadow window-title window-w
-                window? with-clip world-value)
+                screen-w text-width theme theme-rule title-height visible?
+                window-bg window-id window-shadow window-title window-w window?
+                with-clip)
           (only (schevana kits app) app-color)
           (only (schevana kits menu) menu-entries menu-filter menu-filter?
                 menu-label-key menu-label-text menu-label-width menu-x
                 menu-y)
           (only (schevana kits text) text-widest text-draw-centered text-fit
                 text-ink)
-          (only (schevana kits ui) ui-draw-field ui-draw-surface
+          (only (schevana kits ui) ui-board-header-height ui-draw-mark
+                ui-mark-size ui-draw-field ui-draw-surface
                 ui-scrollbar-inset ui-initials ui-dialog-areas ui-dialog-lines
                 ui-draw-panel ui-tooltip-lines ui-draw-dim ui-draw-table-row
                 ui-tree-areas ui-scrollbar-areas ui-flow ui-chip-size
@@ -851,37 +852,37 @@
       (cons-ring! x y w w color 1)
       (text-draw-centered x y w w (ui-initials name) color 'ui-small)))
 
-  ;;; Tasks' board: a column is a list of cards.
+  ;;; A board (the kit's): a column is a list of cards.
 
   ;; The cards sit g from the well's sides and from its heading, and the +
   ;; g from the heading's end; the room between two cards is a pointer.
-  (define (cons-tasks-column-insets)
+  (define (cons-board-column-insets)
     (let ([g (cons-space)]) (values g g (cons-arrow) g)))
 
   ;; A heading is a cell high, with g above and below it, so that the +
   ;; cell sits g inside the well's corner.
-  (define (cons-tasks-column-header-height) (+ (cons-cell) (* 2 (cons-space))))
+  (define (cons-board-header-height) (+ (cons-cell) (* 2 (cons-space))))
 
   ;; A card's cdr stands at its right, a cell wide; past it is the room the
   ;; scroll bar keeps (its margin g, its thumb, and g to the well's edge).
-  (define (cons-tasks-card-insets)
+  (define (cons-board-card-insets)
     (let ([g (cons-space)])
       (values (max g (ui-scrollbar-inset 'left))
               (+ (cons-cell) (max g (ui-scrollbar-inset 'right))))))
 
   ;; Inside a card everything is g from its edges; a table's text is g
   ;; inside its row's box, which is g inside the table.
-  (define (cons-tasks-card-pad) (cons-space))
+  (define (cons-card-pad) (cons-space))
   (define (cons-table-cell-inset) (* 2 (cons-space)))
 
   ;; The details' margin is the pad.
-  (define (cons-tasks-details-pad) (* 2 (cons-space)))
+  (define (cons-panel-pad) (* 2 (cons-space)))
 
   ;; Each card's cdr stands beside it, sharing its edge; from the dot in it
   ;; a pointer goes down to the next card, and the last card's cdr holds
   ;; nil. A chosen or dragged card's cdr has the bold stroke, as its box
   ;; does.
-  (define (cons-tasks-link x y w h flags gap last?)
+  (define (cons-board-link x y w h flags gap last?)
     (let* ([c (cons-cell)]
            [bold? (or (memq 'selected flags) (memq 'floating flags))]
            [ink (if bold? 'accent 'cons-ink)] [lw (if bold? 2 1)])
@@ -891,15 +892,15 @@
           (cons-down! (cons-dot-x (+ x w) c lw) (cons-dot-y y h lw) (+ y h gap)
                       c ink lw))))
 
-  ;; A column's well and heading: its status dot g in, then its name and
-  ;; its count, g apart; an empty column shows ().
-  (define (cons-tasks-column x y w h flags status label count)
-    (let* ([hh ((theme-part 'tasks-column-header-height))] [g (cons-space)]
-           [m ((world-value 'tasks-mark-size))] [lh (font-line-height 'ui-bold)]
-           [sh (font-line-height 'ui-small)])
+  ;; A column's well and heading: its dot g in, then its name and its
+  ;; count, g apart; an empty column shows ().
+  (define (cons-board-column x y w h flags label count dot empty)
+    (let* ([hh (ui-board-header-height)] [g (cons-space)] [m (ui-mark-size)]
+           [lh (font-line-height 'ui-bold)] [sh (font-line-height 'ui-small)])
       (ui-draw-surface x y w h '(well))
-      (let* ([dw ((theme-part 'tasks-draw-mark) (+ x g) (+ y (/ (- hh m) 2)) m
-                  'status status)]
+      (let* ([dw (if dot
+                     (ui-draw-mark (+ x g) (+ y (/ (- hh m) 2)) m 'dot dot)
+                     0)]
              [end (draw-text (if (> dw 0) (+ x g m g) (+ x g))
                              (+ y (/ (- hh lh) 2)) label 'text 'ui-bold)])
         (draw-text (+ end g) (+ y (/ (- hh sh) 2)) (number->string count)
@@ -920,7 +921,7 @@
         (fill-box (+ x w -1) (+ y i) 1 d color))))
 
   ;; Where a dragged card would land: a dashed pair.
-  (define (cons-tasks-slot x y w h)
+  (define (cons-board-slot x y w h)
     (cons-dashes! x y w h 'accent)
     (cons-dashes! (+ x w -1) y (+ (cons-cell) 1) h 'accent))
 
@@ -1276,13 +1277,13 @@
      'ui-draw-scrim 'cons-scrim
      'ui-draw-day 'cons-day
      'ui-draw-avatar 'cons-avatar
-     ;; Tasks' board
-     'tasks-column-insets 'cons-tasks-column-insets
-     'tasks-column-header-height 'cons-tasks-column-header-height
-     'tasks-card-pad 'cons-tasks-card-pad
+     ;; a board's cards and panels
+     'ui-board-column-insets 'cons-board-column-insets
+     'ui-board-header-height 'cons-board-header-height
+     'ui-card-pad 'cons-card-pad
      'ui-table-cell-inset 'cons-table-cell-inset
-     'tasks-details-pad 'cons-tasks-details-pad
-     'tasks-card-insets 'cons-tasks-card-insets
-     'tasks-draw-link 'cons-tasks-link
-     'tasks-draw-column 'cons-tasks-column
-     'tasks-draw-slot 'cons-tasks-slot)))
+     'ui-panel-pad 'cons-panel-pad
+     'ui-board-card-insets 'cons-board-card-insets
+     'ui-draw-board-link 'cons-board-link
+     'ui-draw-board-column 'cons-board-column
+     'ui-draw-board-slot 'cons-board-slot)))
