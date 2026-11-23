@@ -1883,6 +1883,49 @@
       (pipeline-view-stage-set! v 'latency)
       (invalidate! w)
       (steps 2)
+      ;; narrowed until the River's words have half the room they take
+      ;; right of its tick choices
+      (let* ([ui (window-ref w 'ui)]
+             [choice (ui-find ui '((pipeline ticks) frame))]
+             [right (+ (ui-region-x choice) (ui-region-w choice))]
+             [river (ui-find ui '(pipeline-river))]
+             [room (- (+ (ui-region-x river) (ui-region-w river)) right)]
+             [words (pipeline-river-words v (inspect-refresh-grid))]
+             [group (ui-label-font '(group))]
+             [drawn '()]
+             [plain draw-text])
+        (let-values ([(cw ch) (window-content-size w)]
+                     [(lw lh) (ui-label-size '(group) "Latency" 0)])
+          (resize-window! w (+ (- cw room) (quotient (text-width words 'ui) 2))
+                          ch)
+          (fluid-let ([draw-text (lambda (x y s . more)
+                                   (set! drawn (cons (list x s more) drawn))
+                                   (apply plain x y s more))])
+            (invalidate! w)
+            (steps 1))
+          (resize-window! w cw ch)
+          (invalidate! w)
+          (steps 2)
+          (let ([at (lambda (ok?)
+                      (let ([d (find (lambda (d) (ok? (cadr d) (caddr d)))
+                                     drawn)])
+                        (and d (car d))))])
+            (let ([river-x (at (lambda (s more)
+                                 (string-prefix? "a column" s)))]
+                  [latency-x (at (lambda (s more)
+                                   (string-prefix? "input to" s)))]
+                  [name-x (at (lambda (s more)
+                                (and (string=? s "Latency")
+                                     (memq group more))))])
+              (check (format "narrowed, the words of a heading on Latency \
+                              keep to the room it leaves, cut to fit: the \
+                              River's right of its tick choices, and the \
+                              latency's right of its name (~a ~a, ~a ~a)"
+                             river-x right latency-x (and name-x
+                                                          (+ name-x lw)))
+                     (and river-x latency-x name-x
+                          (>= river-x right)
+                          (>= latency-x (+ name-x lw))))))))
       (let ([crashed (window-error w)]
             [river (ui-find (window-ref w 'ui) '(pipeline-river))]
             [hold (ui-find (window-ref w 'ui) '(pipeline hold))]

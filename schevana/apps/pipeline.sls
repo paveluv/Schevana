@@ -931,7 +931,7 @@
                                (inspect-clock-moves oldest))]
                   [(reach) (pipeline-drift-reach moves)])
       (ui-draw-label x y w gh '(group) "Clock drift")
-      (ui-draw-label x y w gh '(dim right)
+      (ui-draw-label (+ x gw 12) y (max 0 (- w gw 12)) gh '(dim right)
                      (format "the screen's clock's moves, within ~a µs"
                              (quotient reach 1000)))
       (pipeline-draw-drift x py w ph areas count newest moves reach)
@@ -1022,9 +1022,11 @@
          [(sh) (+ pipeline-river-inset
                   (ui-stream-room pipeline-draw-river-strips)
                   (* pipeline-river-depth unit))])
-      (let ([ly (+ y (quotient (- row gh) 2))])
+      ;; the words take the room right of the tick choices, cut to fit
+      (let ([ly (+ y (quotient (- row gh) 2))] [wx (+ x gw 12 lw 16 cw 16)])
         (ui-draw-label x ly w gh '(group) "River")
-        (ui-draw-label x ly w gh '(dim right) (pipeline-river-words v g)))
+        (ui-draw-label wx ly (max 0 (- (+ x w) wx)) gh '(dim right)
+                       (pipeline-river-words v g)))
       (unless (pipeline-view-held? v)
         (pipeline-river-send! v g now newest oldest))
       (ui-stream ui 'pipeline-river river x sy w sh newest oldest top
@@ -1117,7 +1119,7 @@
          [(gw gh) (ui-label-size '(group) "Latency" w)]
          [(ty) (+ y gh 4)])
       (ui-draw-label x y w gh '(group) "Latency")
-      (ui-draw-label x y w gh '(dim right)
+      (ui-draw-label (+ x gw 12) y (max 0 (- w gw 12)) gh '(dim right)
                      (string-append "input to screen, the last 10 s, ms at \
                                      the median and the 99th: "
                                     (string-join (pipeline-latency-words v)
