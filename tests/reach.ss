@@ -1,14 +1,16 @@
 ;;; tests/reach.ss — how a test reaches past the exports. tests/boot.ss
 ;;; loads it once the world is loaded. The test goes on in "/", the world
-;;; that core1 made, where every name of the core's libraries and of the
-;;; tests' own environment (core0's libraries and the recorder's, imported
-;;; there whole) is forwarded and may be set (set!, fluid-let), so that the
-;;; tests can stand in for SDL and the screen and look into the core. The
-;;; world itself has only what the core's facade, (schevana core), gives
-;;; it, read-only. What the test defined before it loaded the tree is
-;;; forwarded too, and so are main-env and core-env (the tests' environment,
-;;; and an environment with the core's libraries whole), for what goes by
-;;; name (top-level-value).
+;;; that core1 made, where every name of the core's libraries, of the
+;;; world's libraries (what each keeps to itself too) and of the tests' own
+;;; environment (core0's libraries and the recorder's, imported there
+;;; whole) is forwarded and may be set (set!, fluid-let), so that the tests
+;;; can stand in for SDL and the screen and look into the core and the
+;;; apps. The world itself has only what the core's facade, (schevana
+;;; core), gives it, read-only, and what the world's libraries export.
+;;; What the test defined before it loaded the tree is forwarded too, and
+;;; so are main-env and core-env (the tests' environment, and an
+;;; environment with the core's libraries whole), for what goes by name
+;;; (top-level-value).
 ;;;
 ;;; In the hacker edition the tests' environment is the world, which
 ;;; already has every name of every library, to set as any other: main-env,
@@ -64,8 +66,7 @@
 
 ;; Defines in env, under its plain name, each name that the build gives
 ;; (test:name) of the libraries imported into env, unless env has that
-;; name already: these are what a library of a sealed layer keeps to
-;; itself.
+;; name already: these are what a library keeps to itself.
 (define (reach-given! env)
   (let ([anchor (environment-anchor env)] [had (make-eq-hashtable)]
         [names (environment-symbols env)])
@@ -83,7 +84,9 @@
      names)))
 (unless test-hacker?
   (reach-given! main-env)
-  (reach-given! core-env))
+  (reach-given! core-env)
+  ;; the world's libraries, which "/" imports
+  (reach-given! test-env))
 
 ;;; ------------------------------------------------------------------
 ;;; a library's own names

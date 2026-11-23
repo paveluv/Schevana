@@ -6,12 +6,13 @@
 ;;; tree's libraries (Chez's current-expand): when it compiles into the
 ;;; cache, and when a reload evaluates it again.
 ;;;
-;;; - A library of a sealed layer (core0's, the recorder's, the core's, and
-;;;   the foundation under them), other than a facade, also exports every
-;;;   name it defines, with the prefix test: (test:*pacer-margin*).
-;;;   tests/reach.ss gives these names to the tests without the prefix.
-;;;   Because of the prefix, no library of the tree finds a name under its
-;;;   own spelling that its owner doesn't export.
+;;; - A library of Schevana's (under schevana/), other than a facade, also
+;;;   exports every name it defines, with the prefix test:
+;;;   (test:*pacer-margin*, test:tasks-wide-width). tests/reach.ss gives
+;;;   these names to the tests without the prefix. Because of the prefix,
+;;;   no library of the tree finds a name under its own spelling that its
+;;;   owner doesn't export, and "/", which imports the world's libraries,
+;;;   has them only under it.
 ;;; - A definition that a test stands in for (test-stand-ins) becomes a
 ;;;   hook, so that a set!, or a fluid-let, reaches every call to it. The
 ;;;   hook holds the original definition, kept under a name of its own.
@@ -243,10 +244,7 @@
                                 (and (pair? f) (eq? (car f) 'library-layer)
                                      (cdr f)))
                               data)]
-               [given (if (and layer
-                               (memq (car layer)
-                                     '(foundation core0 recorder core))
-                               (not (memq 'facade (cdr layer))))
+               [given (if (and layer (not (memq 'facade (cdr layer))))
                           (let ([exported (test-exported
                                            (test-datum (caddr parts)))]
                                 [assigned (test-assigned data)])
