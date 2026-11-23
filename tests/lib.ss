@@ -137,15 +137,17 @@
 ;; own measure; and once the heap is past half the run's limit, it
 ;; collects every generation, so that garbage doesn't stop the run (while
 ;; busy, the world lets the old generations grow by 512 MB, and a test's
-;; pictures to compare are 37 MB each at 300 %).
-(let ([look collector-tick!])
-  (set! collector-tick!
-        (lambda ()
-          (when test-clock-ms (set! *collector-check-ms* 0))
-          (look)
-          (when (> (bytes-allocated) (quotient test-heap-limit 2))
-            (collector-pass! 3 3)
-            (set! *collector-old-kept* (collector-grown))))))
+;; pictures to compare are 37 MB each at 300 %). The stand-in is a
+;; procedure of the top level, which carries nothing, as the world's own
+;; look carries nothing (tests/units/allocation.ss).
+(define test-real-collector-tick! collector-tick!)
+(define (test-collector-tick!)
+  (when test-clock-ms (set! *collector-check-ms* 0))
+  (test-real-collector-tick!)
+  (when (> (bytes-allocated) (quotient test-heap-limit 2))
+    (collector-pass! 3 3)
+    (set! *collector-old-kept* (collector-grown))))
+(set! collector-tick! test-collector-tick!)
 
 ;; The collector's look, taken right after each check (tests/check.ss): a
 ;; test that never steps the world never lets the world take it.

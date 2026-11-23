@@ -22,8 +22,8 @@
           (only (schevana core processes) *reloading* core1-thread! current-proc
                 notify request-redraw! safely)
           (only (schevana core loop) add-library-directory! collector-settle!
-                loop-stepped! path-full reload-ended! user-directory
-                user-library-directory)
+                collector-tick! loop-stepped! path-full reload-ended!
+                user-directory user-library-directory)
           (only (schevana core theme) style-chain chain-ref theme-default)
           (only (schevana core platform) now-ms))
 
@@ -282,7 +282,11 @@
   ;; it names itself and the file in *reloading* until it ends, so that the
   ;; world holds still meanwhile (schevana-step!); yet it is still
   ;; preempted, and Ctrl+C kills it. It doesn't use dynamic-wind, because
-  ;; an engine runs its exits at every preemption.
+  ;; an engine runs its exits at every preemption. After each file the
+  ;; collector looks at the older generations, as it does after a step of
+  ;; the loop: a boot loads the world before the loop's first step, and
+  ;; what compiling a library leaves behind outlives the young generation,
+  ;; some 2 GB of it for the whole world on a first boot.
   (define (load-sources! files . env)
     (let* ([p (current-proc)]
            [outer? (and p (not (and *reloading* (eq? (car *reloading*) p))))])
@@ -294,7 +298,8 @@
                           (raise c)])
           (for-each (lambda (f)
                       (when p (set! *reloading* (cons p f)))
-                      (load-source f))
+                      (load-source f)
+                      (collector-tick!))
                     files)
           (when outer? (set! *reloading* #f))))))
 

@@ -53,6 +53,34 @@
            (and (= (bytes-allocated 1) before)
                 (= 1 (bytevector-u8-ref kept 0))))))
 
+(check "the loader lets the collector look after each source it loads, as \
+        a step of the loop does: the look finds what the load left in the \
+        young generations, and collects it"
+       (let ([file (path-full (string-append out-dir "/collector-load.ss"))]
+             [left (* 2 collector-young-quiet)]
+             [look collector-tick!]
+             [found #f])
+         ;; a source that leaves 16 MB behind: a request finds the bytes
+         ;; alive and moves them on a generation, and then nothing holds
+         ;; them
+         (call-with-output-file file
+           (lambda (p)
+             (write `(let ([kept (make-bytevector ,left 1)])
+                       (collect-rendezvous)
+                       (bytevector-u8-ref kept 0))
+                    p))
+           'replace)
+         (set! *collector-check-ms* 0)
+         (set! *collector-input-ms* (- (now-ms) 2000))
+         (set! *input-step?* #f)
+         (fluid-let ([collector-tick! (lambda ()
+                                        (set! found (bytes-allocated 1))
+                                        (look))])
+           (load-sources! (list file)))
+         (and found
+              (>= found left)
+              (< (bytes-allocated 1) collector-young-quiet))))
+
 (check "GPU bytes made count as old growth: past the limit an old pass \
         comes, and finds a buffer dropped after it grew old"
        (let* ([held (box (make-gpu-buffer 4))]

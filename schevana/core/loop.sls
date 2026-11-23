@@ -6,7 +6,7 @@
     *input-step?* post-core1! wm-event! loop-stepped! reload-ended!
     schevana-run! quit! schevana-end! uptime-ms user-directory
     user-library-directory path-full add-library-directory! schevana-boot!
-    collector-declining? collector-settle! core1-run loop-main
+    collector-declining? collector-settle! collector-tick! core1-run loop-main
     inject!)
   (import (chezscheme)
           (only (schevana base) define-hook define-made define-state
@@ -372,7 +372,9 @@
 
   ;; Checks at most twice a second whether an older generation has grown
   ;; enough to collect: by the quiet limits when no input came for a
-  ;; second, else by the higher ones.
+  ;; second, else by the higher ones. The loop checks as it steps, and the
+  ;; loader after each source it loads (load-sources!), since a boot loads
+  ;; the world before the loop's first step.
   (define (collector-tick!)
     (let ([now (now-ms)])
       (when *input-step?* (set! *collector-input-ms* now))
