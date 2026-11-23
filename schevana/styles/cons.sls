@@ -44,12 +44,11 @@
           (only (schevana base) at-load clamp library-layer)
           (only (schevana core) *focus* *hover* *toasts* *windows* alpha
                 color-default! common-options define-style desktop-rect
-                draw-line draw-scale draw-text fill-box fill-circle
-                fill-polygon fill-wallpaper font font-ascent font-line-height
-                screen-h screen-w text-width theme theme-part theme-rule
-                title-height visible? window-bg window-id window-shadow
-                window-title window-w window? with-clip with-place
-                world-value)
+                draw-line draw-scale draw-text fill-box fill-circle fill-polygon
+                fill-wallpaper font font-ascent font-line-height screen-h
+                screen-w text-width theme theme-part theme-rule title-height
+                visible? window-bg window-id window-shadow window-title window-w
+                window? with-clip world-value)
           (only (schevana kits app) app-color)
           (only (schevana kits menu) menu-entries menu-filter menu-filter?
                 menu-label-key menu-label-text menu-label-width menu-x

@@ -27,20 +27,17 @@
           (only (schevana base) at-load clamp filter-map library-layer
                 string-suffix?)
           (only (schevana core) *focus* *hover* *toasts* *windows* alpha
-                color-default! color-rgba define-style desktop-rect
-                draw-polyline draw-shadow draw-text fill-box fill-circle
-                fill-wallpaper font-line-height linear-gradient maximized?
-                mix pi rgb screen-h screen-w stroke-box stroke-circle
-                text-width theme theme-default! theme-font-rule theme-rule
-                visible? wallpaper-shown window-app window-bg window-id
-                window-shadow window-title window-w window? with-clip
-                with-place draw-line)
+                define-style desktop-rect draw-shadow draw-text fill-box
+                fill-circle fill-wallpaper font-line-height mix screen-h
+                screen-w stroke-box text-width theme theme-rule visible?
+                wallpaper-shown window-app window-id window-title window?
+                with-clip)
           (only (schevana kits app) app-color)
           (only (schevana kits menu) menu-entries menu-filter menu-filter?
                 menu-label-key menu-label-text menu-tag menu-x menu-y)
-          (only (schevana kits text) text-draw-centered text-fit text-widest)
-          (only (schevana kits ui) ui-control-height ui-draw-glyph
-                ui-draw-panel ui-glyph-size ui-small-glyph-size ui-title-icon)
+          (only (schevana kits text) text-draw-centered text-fit)
+          (only (schevana kits ui) ui-control-height ui-draw-glyph ui-draw-panel
+                ui-glyph-size ui-title-icon)
           (only (schevana styles adwaita) adwaita-em adwaita-ring))
 
   (library-layer looks)

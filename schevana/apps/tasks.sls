@@ -97,12 +97,12 @@
                 plist-ref string-contains-ci? string-join string-prefix?
                 string-split)
           (only (schevana core) *schevana-root* after alpha close-window!
-                content-rect current-window define-app define-part drag
-                draw-text fill-box fill-circle fill-polygon find-window
-                focus-window! font font-line-height invalidate!
-                new-window-position notify open-window point-in? resize-window!
-                screen-h stroke-box text-width theme window-content-size
-                window-handlers window-ref window-x window-y windows)
+                content-rect current-window define-app define-part draw-text
+                fill-box fill-circle fill-polygon find-window focus-window! font
+                font-line-height invalidate! new-window-position notify
+                open-window point-in? resize-window! screen-h stroke-box
+                text-width theme window-content-size window-handlers window-ref
+                window-x window-y windows)
           (only (schevana desktop menu) menu-item-height)
           (only (schevana desktop topbar) topbar-height)
           (only (schevana kits color) color-readable-on)

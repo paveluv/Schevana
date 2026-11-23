@@ -9,17 +9,24 @@
     collector-declining? collector-settle! core1-run loop-main
     inject!)
   (import (chezscheme)
-          (schevana base)
-          (schevana core0)
-          (schevana recorder)
-          (schevana core theme-table)
-          (schevana core platform)
-          (schevana core processes)
-          (schevana core gpu)
-          (schevana core fonts)
-          (schevana core draw)
-          (schevana core pacer)
-          (schevana core screen))
+          (only (schevana base) define-hook define-made define-state
+                library-layer string-prefix? string-split)
+          (only (schevana core0) core0-forked? core0-run! core0-trace!
+                core0-world-wait! core0-world-wake! gpu-frame-waiting?)
+          (only (schevana core platform) now-ms now-ns)
+          (only (schevana core processes) *dirty* *procs* *reloading*
+                core1-thread! kill! notify request-redraw! run-procs!
+                run-timers! safely with-profile-span)
+          (only (schevana core gpu) *gpu-bytes-made* *gpu-reads*
+                gpu-asks-pending? gpu-computes-send! gpu-held-sweep!
+                gpu-reads-send!)
+          (only (schevana core pacer) *frame-back* *frame-number*
+                *pacer-between?* *pacer-waits* frame-input-drop! frame-ticked!
+                frame-turn-soon! pacer-procs-ms pacer-start pacer-step-done!
+                pacer-tick! pacer-wait-ms pacer-waited! pacer-wanted?
+                render-answers! render-frame! render-frames-back!)
+          (only (schevana core screen) fullscreen? screen-events screen-init!
+                screen-shutdown!))
 
   (library-layer core)
 

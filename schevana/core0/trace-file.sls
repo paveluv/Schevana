@@ -7,12 +7,14 @@
   (export
     core0-trace-start! core0-trace-watch! core0-trace-dump! core0-trace-write!)
   (import (chezscheme)
-          (schevana base)
-          (schevana tree)
-          (schevana core0 mail)
-          (schevana core0 trace)
-          (schevana core0 present)
-          (schevana core0 platform))
+          (only (schevana base) define-state library-layer)
+          (only (schevana tree) *schevana-root*)
+          (only (schevana core0 mail) core0-clock-ns core0-post!)
+          (only (schevana core0 trace) *core0-trace-dir* *core0-trace-rings*
+                *core0-trace-thread* core0-trace-rows)
+          (only (schevana core0 present) *present-ring* core0-frame-report
+                present-rows present-words)
+          (only (schevana core0 platform) *core0-platform*))
 
   (library-layer core0)
 

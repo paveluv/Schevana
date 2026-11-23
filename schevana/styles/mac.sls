@@ -6,7 +6,7 @@
     draw-resize-grip mac-radius mac-regions mac-glyph mac-draw-under mac-title
     mac-draw-over)
   (import (chezscheme)
-          (only (schevana base) at-load define-hook library-layer)
+          (only (schevana base) at-load library-layer)
           (only (schevana core) alpha color-default! define-style draw-line
                 fill-box fill-circle maximized? mix shaded? stroke-box
                 text-width theme theme-rule title-height window-bg

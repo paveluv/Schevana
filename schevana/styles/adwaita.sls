@@ -50,16 +50,13 @@
     adwaita-text-height adwaita-text-top adwaita-text adwaita-text-in
     adwaita-center adwaita-text-centered adwaita-lines)
   (import (chezscheme)
-          (only (schevana base) at-load clamp filter-map library-layer
-                string-suffix?)
-          (only (schevana core) *focus* *hover* *toasts* *windows* alpha
-                color-default! color-rgba define-style desktop-rect
+          (only (schevana base) at-load clamp library-layer)
+          (only (schevana core) alpha color-default! color-rgba define-style
                 draw-polyline draw-shadow draw-text fill-box fill-circle
                 font-ascent font-line-height linear-gradient maximized? mix pi
-                rgb screen-h screen-w stroke-box stroke-circle text-width theme
-                theme-default! theme-font-rule theme-rule visible? window-app
-                window-bg window-id window-shadow window-title window-w
-                window? with-clip with-place draw-line)
+                rgb stroke-box stroke-circle text-width theme theme-default!
+                theme-font-rule theme-rule window-bg window-shadow window-title
+                window-w with-clip draw-line)
           (only (schevana kits app) app-color)
           (only (schevana kits text) text-face-extent text-fit text-widest)
           (only (schevana kits ui) ui-button-radius ui-calendar-areas

@@ -11,9 +11,12 @@
     platform-process-bytes platform-machine-load now-ns now-ms thread-cpu-ns
     platform-pacer-margin-fade)
   (import (chezscheme)
-          (schevana base)
-          (schevana ffi)
-          (schevana core0))
+          (only (schevana base) define-made library-layer platform-arm64?
+                platform-linux? platform-mac? platform-windows? platform-x86-64?
+                string-prefix?)
+          (only (schevana ffi) c-clock-gettime)
+          (only (schevana core0) *core0-platform* c-clock-gettime
+                core0-clock-ns))
 
   (library-layer core)
 

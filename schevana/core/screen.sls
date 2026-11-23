@@ -17,12 +17,25 @@
     screen-set-least! screen-system-theme screen-own-frame! screen-own-frame?
     screen-hit-regions! screen-window-action! screen-maximized? screen-events)
   (import (chezscheme)
-          (schevana base)
-          (schevana core0)
-          (schevana core theme-table)
-          (schevana core processes)
-          (schevana core draw)
-          (schevana core pacer))
+          (only (schevana base) at-load clamp define-hook define-state
+                library-layer list-index)
+          (only (schevana core0) *core0-mode* core0-app-id! core0-forked?
+                core0-input-ns-take! core0-own-frame! core0-own-frame?
+                core0-quit! core0-step! core0-system-theme core0-trace!
+                core0-window-action! core0-window-close! core0-window-events
+                core0-window-fullscreen! core0-window-fullscreen?
+                core0-window-headless! core0-window-hit-regions!
+                core0-window-icon! core0-window-maximized? core0-window-minimum!
+                core0-window-open! core0-window-resize! core0-window-scale
+                core0-window-show! core0-window-sizes core0-window-title!
+                core0-world-wait! gpu-frame-waiting?)
+          (only (schevana core theme-table) theme theme-table-default!)
+          (only (schevana core processes) request-redraw! with-profile-span)
+          (only (schevana core draw) *canvas-h* *canvas-w* canvas-create!
+                canvas-create-pixels! canvas-pixel-height canvas-pixel-width
+                drawing->bytes-then theme-changed!)
+          (only (schevana core pacer) frame-input-came! pacer-on-latch?
+                pacer-wanted?))
 
   (library-layer core)
 

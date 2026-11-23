@@ -20,15 +20,25 @@
     render-frames-back! render-answers! screen-bytes screen-bytes-then
     pacer-rate!)
   (import (chezscheme)
-          (schevana base)
-          (schevana core0)
-          (schevana recorder)
-          (schevana core theme-table)
-          (schevana core platform)
-          (schevana core processes)
-          (schevana core gpu)
-          (schevana core fonts)
-          (schevana core draw))
+          (only (schevana base) at-load define-hook define-state library-layer)
+          (only (schevana core0) *core0-mode* *gpu-facts* core0-forked?
+                core0-frame-ns core0-frame-report core0-hidden? core0-trace!
+                gpu-frame-number gpu-frame-shown? gpu-frame-waiting?
+                gpu-frames-back! gpu-take-answers!)
+          (only (schevana recorder) rec-last-sizes)
+          (only (schevana core theme-table) *pacer-trial* pacer-knob
+                theme-table-default!)
+          (only (schevana core platform) now-ms now-ns
+                platform-pacer-margin-fade)
+          (only (schevana core processes) *dirty* *frame-generation* *timers*
+                after in-engine? procs-ready? request-frame! safely)
+          (only (schevana core gpu) gpu-frame-free!)
+          (only (schevana core fonts) *atlas-full?* *glyph-count* atlas-flush!)
+          (only (schevana core draw) *canvas-ph* *canvas-pw* *canvas-ratio*
+                *rec-clip* *rec-cx0* *rec-cx1* *rec-cy0* *rec-cy1* *rec-den*
+                *rec-num* *rec-ox* *rec-oy* *rec-turn* drawing->bytes
+                drawing->bytes-then rec-begin! rec-present! rec-runs
+                rec-state-restore!))
 
   (library-layer core)
 

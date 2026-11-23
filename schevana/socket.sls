@@ -7,8 +7,8 @@
   (export
     socket-listen socket-accept socket-read socket-write socket-close)
   (import (chezscheme)
-          (schevana base)
-          (schevana ffi))
+          (only (schevana base) define-made library-layer platform-mac?)
+          (only (schevana ffi) c-close define-foreign))
 
   (library-layer foundation)
 

@@ -17,7 +17,7 @@
           desktop-fork? desktop-later?
           desktop-main)
   (import (chezscheme)
-          (only (schevana base) library-layer define-hook string-prefix?)
+          (only (schevana base) library-layer string-prefix?)
           (only (schevana core) auto-load! auto-load-layer core1-run
                 core1-boot! world-app-file? world-value))
 

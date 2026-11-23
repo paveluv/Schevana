@@ -23,8 +23,9 @@
     worklet-base-environment *worklet-environment* worklet? worklet
     worklet-spread define-worklet)
   (import (chezscheme)
-          (schevana base)
-          (schevana core platform))
+          (only (schevana base) at-load condition->string define-hook
+                define-state forwarder-to library-layer)
+          (only (schevana core platform) now-ms now-ns))
 
   (library-layer core)
 

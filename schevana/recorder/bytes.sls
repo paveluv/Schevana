@@ -31,8 +31,23 @@
     rec-last-sizes rec-last-runs rec-last-copy! rec-drawing->bytes
     rec-bytes-copies)
   (import (chezscheme)
-          (schevana base)
-          (schevana core0 for-recorder))
+          (only (schevana base) define-state library-layer)
+          (only (schevana core0 for-recorder) *gpu-frame-back* core0-forked?
+                core0-post-reads! core0-post-submit! gpu-buffer-download!
+                gpu-compute-now! gpu-drawing->bytes gpu-frame-earlier-set!
+                gpu-frame-number-set! gpu-frame-root-set! gpu-frame-writes-set!
+                gpu-image-h gpu-image-id gpu-image-loans gpu-image-loans-set!
+                gpu-image-w gpu-image? gpu-list-id gpu-list-labels
+                gpu-list-recorded gpu-list-recording gpu-list-recording-set!
+                gpu-list-took gpu-reads-now! gpu-recording-extras
+                gpu-recording-extras-n gpu-recording-extras-n-set!
+                gpu-recording-extras-set! gpu-recording-next
+                gpu-recording-next-set! gpu-recording-recs gpu-recording-recs-n
+                gpu-recording-recs-n-set! gpu-recording-recs-set!
+                gpu-recording-runs gpu-recording-runs-set! gpu-recording-until
+                gpu-recording-until-set! gpu-recording-version
+                gpu-recording-version-set! gpu-recording? gpu-submit-computes!
+                make-gpu-list make-gpu-recording))
 
   (library-layer recorder)
 

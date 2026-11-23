@@ -9,7 +9,7 @@
           (only (schevana base) at-load define-hook define-state library-layer)
           (only (schevana core) *focus* after define-part define-surface
                 invert-box now-ms request-frame! screen-h screen-w theme
-                theme-default! window window-extent))
+                theme-default! window-extent))
 
   (library-layer desktop)
 

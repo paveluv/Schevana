@@ -14,8 +14,8 @@
     renderer-target-w-set! renderer-target-h renderer-target-h-set!
     renderer-fence renderer-fence-set! *renderer* gpu-driver-name)
   (import (chezscheme)
-          (schevana base)
-          (schevana sdl))
+          (only (schevana base) define-state library-layer)
+          (only (schevana sdl) sdl-gpu-driver))
 
   (library-layer core0)
 

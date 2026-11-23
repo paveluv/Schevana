@@ -37,15 +37,51 @@
     *gpu-published* *gpu-given-back* gpu-publish! gpu-frame-waiting?
     gpu-frames-back! gpu-present! gpu-drawing->bytes)
   (import (chezscheme)
-          (schevana base)
-          (schevana ffi)
-          (schevana shader)
-          (schevana sdl)
-          (schevana core0 mail)
-          (schevana core0 trace)
-          (schevana core0 renderer)
-          (schevana core0 present)
-          (schevana core0 platform))
+          (only (schevana base) at-load define-made define-state library-layer
+                string-contains-ci? string-join string-suffix?)
+          (only (schevana shader) shader shader-code shader-entry shader-group-x
+                shader-params shader-stage shader-target shader-uniforms)
+          (only (schevana sdl) gpu-copy-in gpu-copy-out sdl-acquire-gpu-commands
+                sdl-acquire-swapchain sdl-begin-compute-pass sdl-begin-copy-pass
+                sdl-begin-render-pass sdl-bind-compute-pipeline
+                sdl-bind-compute-storage sdl-bind-fragment-samplers
+                sdl-bind-fragment-storage sdl-bind-gpu-pipeline
+                sdl-bind-vertex-storage sdl-claim-window sdl-create-gpu-buffer
+                sdl-create-gpu-compute sdl-create-gpu-device
+                sdl-create-gpu-pipeline sdl-create-gpu-sampler
+                sdl-create-gpu-shader sdl-create-gpu-texture
+                sdl-create-gpu-transfer sdl-dispatch-compute
+                sdl-download-from-buffer sdl-download-from-texture
+                sdl-draw-primitives sdl-end-compute-pass sdl-end-copy-pass
+                sdl-end-render-pass sdl-generate-gpu-mipmaps sdl-get-error
+                sdl-map-gpu-transfer sdl-memcpy sdl-memset
+                sdl-push-compute-uniform sdl-push-fragment-uniform
+                sdl-push-vertex-uniform sdl-release-gpu-buffer
+                sdl-release-gpu-compute sdl-release-gpu-fence
+                sdl-release-gpu-pipeline sdl-release-gpu-shader
+                sdl-release-gpu-texture sdl-release-gpu-transfer
+                sdl-set-frames-in-flight sdl-set-gpu-scissor
+                sdl-set-swapchain-parameters sdl-submit-gpu sdl-submit-gpu-fence
+                sdl-swapchain-format sdl-unmap-gpu-transfer sdl-upload-to-buffer
+                sdl-upload-to-texture sdl-wait-gpu-fences sdl-wait-gpu-idle
+                sdl-window-supports-present-mode)
+          (only (schevana core0 mail) *core0-forked* core0-clock-ns
+                core0-frame-ns core0-put! core0-take! core0-wake!
+                core0-world-wake!)
+          (only (schevana core0 trace) core0-trace!)
+          (only (schevana core0 renderer) *renderer* gpu-driver-name
+                make-renderer renderer-atlas renderer-blank renderer-device
+                renderer-extras renderer-extras-set! renderer-fence
+                renderer-fence-set! renderer-glyphs renderer-glyphs-set!
+                renderer-kind renderer-paints renderer-pipelines
+                renderer-pipelines-set! renderer-records renderer-records-set!
+                renderer-sampler renderer-sdl-window renderer-sdl-window-set!
+                renderer-target renderer-target-h renderer-target-h-set!
+                renderer-target-set! renderer-target-w renderer-target-w-set!
+                renderer-transfer renderer-transfer-set!)
+          (only (schevana core0 present) present-acquired! present-acquiring!
+                present-fence! present-sent!)
+          (only (schevana core0 platform) platform-report-ask!))
 
   (library-layer core0)
 

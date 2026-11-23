@@ -57,7 +57,7 @@
   (import (chezscheme)
           (only (schevana base) condition->string filter-map library-layer
                 list-index string-contains-ci? string-join string-split)
-          (only (schevana core) app close-window! current-window define-app
+          (only (schevana core) close-window! current-window define-app
                 find-window focus-window! font-line-height notify now-ms
                 open-window report-error! spawn window-ref window-title
                 worklet?)
@@ -86,7 +86,7 @@
           (only (schevana services vat) vat-job-kill! vat-job-kind
                 vat-job-window vat-threads-of vat-pool-size-set! vat-pool-size
                 vat-jobs-of vat vat-env-kind vat-drop-env! vat-of vat?)
-          (only (schevana apps repl) repl repl?))
+          (only (schevana apps repl) repl))
 
   (library-layer apps)
 

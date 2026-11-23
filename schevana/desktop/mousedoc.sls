@@ -17,9 +17,8 @@
           (only (schevana base) at-load define-hook define-state library-layer
                 string-join)
           (only (schevana core) *hover* define-part find-surface frame-regions
-                maximized? request-frame! resize-kinds shaded? surface
-                surface-call surface-doc theme theme-default! window window-ref
-                window-setting))
+                maximized? request-frame! resize-kinds shaded? surface-call
+                surface-doc theme theme-default! window-ref window-setting))
 
   (library-layer desktop)
 

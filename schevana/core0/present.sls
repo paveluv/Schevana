@@ -20,11 +20,11 @@
     present-sent! present-reported! *present-refresh-said* core0-refresh-ns!
     present-fence! present-poll!)
   (import (chezscheme)
-          (schevana base)
-          (schevana sdl)
-          (schevana core0 mail)
-          (schevana core0 trace)
-          (schevana core0 renderer))
+          (only (schevana base) define-state library-layer)
+          (only (schevana sdl) sdl-query-gpu-fence sdl-release-gpu-fence)
+          (only (schevana core0 mail) core0-clock-ns core0-frame-ns core0-post!)
+          (only (schevana core0 trace) core0-trace!)
+          (only (schevana core0 renderer) *renderer* renderer-device))
 
   (library-layer core0)
 

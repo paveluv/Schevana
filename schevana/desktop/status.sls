@@ -10,7 +10,7 @@
     status-show! status-second! status-procs status-memory status-busy
     day-names status-clock)
   (import (chezscheme)
-          (only (schevana base) at-load define-hook define-state library-layer)
+          (only (schevana base) at-load define-state library-layer)
           (only (schevana core) *procs* after pacer-peak-ms!
                 platform-process-bytes request-frame! safe-call)
           (only (schevana kits ui) ui-month-names))

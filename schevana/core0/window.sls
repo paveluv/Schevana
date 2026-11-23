@@ -23,16 +23,49 @@
     core0-post-reads! core0-quit! core0-run! core0-step! core0-window-events
     core0-step-state)
   (import (chezscheme)
-          (schevana base)
-          (schevana ffi)
-          (schevana sdl)
-          (schevana core0 mail)
-          (schevana core0 trace)
-          (schevana core0 renderer)
-          (schevana core0 present)
-          (schevana core0 platform)
-          (schevana core0 trace-file)
-          (schevana core0 gpu))
+          (only (schevana base) define-made define-state library-layer)
+          (only (schevana ffi) c-string->string)
+          (only (schevana sdl) SDL_EVENT_KEY_DOWN SDL_EVENT_MOUSE_BUTTON_DOWN
+                SDL_EVENT_MOUSE_BUTTON_UP SDL_EVENT_MOUSE_MOTION
+                SDL_EVENT_MOUSE_WHEEL SDL_EVENT_QUIT
+                SDL_EVENT_SYSTEM_THEME_CHANGED SDL_EVENT_TEXT_INPUT
+                SDL_EVENT_WINDOW_DISPLAY_SCALE_CHANGED SDL_EVENT_WINDOW_EXPOSED
+                SDL_EVENT_WINDOW_MOUSE_LEAVE SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED
+                SDL_EVENT_WINDOW_RESIZED SDL_INIT_VIDEO SDL_PIXELFORMAT_ARGB8888
+                SDL_WINDOWPOS_CENTERED SDL_WINDOW_FULLSCREEN SDL_WINDOW_HIDDEN
+                SDL_WINDOW_HIGH_PIXEL_DENSITY SDL_WINDOW_RESIZABLE
+                sdl-create-surface-from sdl-create-system-cursor
+                sdl-create-window sdl-destroy-surface sdl-destroy-window
+                sdl-free sdl-get-clipboard-text sdl-get-current-display-mode
+                sdl-get-display-for-window sdl-get-error sdl-get-system-theme
+                sdl-get-window-display-scale sdl-get-window-flags
+                sdl-get-window-size sdl-get-window-size-in-pixels sdl-init
+                sdl-maximize-window sdl-minimize-window sdl-poll-event sdl-quit
+                sdl-release-window sdl-restore-window sdl-set-clipboard-text
+                sdl-set-cursor sdl-set-hint sdl-set-window-fullscreen
+                sdl-set-window-hit-test sdl-set-window-icon
+                sdl-set-window-minimum-size sdl-set-window-position
+                sdl-set-window-size sdl-set-window-title sdl-show-window
+                sdl-show-window-system-menu sdl-start-text-input)
+          (only (schevana core0 mail) *core0-facts* *core0-forked*
+                *core0-input-ns* *core0-input-pumped* *core0-input-wl*
+                *core0-jobs* *core0-ready* *core0-woken* *core0-world-mutex*
+                core0-clock-ns core0-input-set! core0-input-take! core0-ms
+                core0-post! core0-put! core0-take! core0-world-wake!)
+          (only (schevana core0 trace) core0-trace!)
+          (only (schevana core0 renderer) *renderer* renderer-device)
+          (only (schevana core0 present) *present-refresh-said* *present-taken*
+                present-poll! present-taken!)
+          (only (schevana core0 platform) core0-platform-read!
+                platform-desktop-frameless? platform-reports-pump!
+                platform-reports-start! platform-sdl-wayland?
+                platform-thread-interactive!)
+          (only (schevana core0 trace-file) core0-trace-start!
+                core0-trace-watch! core0-trace-write!)
+          (only (schevana core0 gpu) *gpu-given-back* *gpu-published*
+                gpu-claim-window! gpu-frame-number gpu-frame-shown?-set!
+                gpu-idle! gpu-open! gpu-present! gpu-reads-now!
+                gpu-submit-computes! gpu-windowless-kind gpu-windowless-video))
 
   (library-layer core0)
 

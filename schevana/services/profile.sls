@@ -100,15 +100,15 @@
     profile-total-ticks-set! profile-total-longest profile-total-longest-set!
     profile-total-parts profile-total-parts-set! profile-totals)
   (import (chezscheme)
-          (only (schevana base) at-load define-hook define-made define-state
-                library-layer set-hook! string-join)
+          (only (schevana base) at-load define-made define-state library-layer
+                set-hook! string-join)
           (only (schevana core) *frame-ring-n* *frames-drawn* *gpu-facts*
                 *pacer-between?* *profile-span* collector-declining?
                 core0-error-text core0-event-name core0-flag-names core0-flags
                 core0-hidden? find-proc find-window focused-window in-engine?
                 now-ns pacer-period platform-machine-load proc-id proc-name
                 proc? procs rec-count report-error! screen-event-seen!
-                thread-cpu-ns window window-id window-title window? windows)
+                thread-cpu-ns window-id window-title window? windows)
           (only (schevana kits inspect) inspect-device inspect-frames))
 
   (library-layer services)

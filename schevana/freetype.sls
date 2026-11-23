@@ -7,7 +7,7 @@
     ft-init-freetype ft-library-version ft-new-face ft-set-char-size
     ft-set-transform ft-load-char ft-get-first-char ft-get-next-char)
   (import (chezscheme) (only (schevana base) library-layer)
-          (schevana ffi))
+          (only (schevana ffi) define-foreign load-first-library))
 
   (library-layer foundation)
 

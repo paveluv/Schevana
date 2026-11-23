@@ -47,16 +47,16 @@
   (import (chezscheme)
           (only (schevana base) define-made library-layer string-join)
           (only (schevana core) *canvas-h* *canvas-w* *frame-ms* *last-error*
-                *scale* *timers* app apps clipboard-set! core0-frame-ns
+                *scale* *timers* apps clipboard-set! core0-frame-ns
                 current-style define-app fill-box find-proc find-style
                 find-surface find-window focus-window! focused-window
-                font-char-width font-line-height invalidate! kill! now-ms
-                now-ns open-window pacer-busy-ms pacer-period pacer-rate
-                pacer-ticks platform-process-bytes proc-id proc-name
-                proc-started proc-ticks proc-wake proc? procs style-title
-                text-width theme uptime-ms window-app window-error
-                window-frame-soon! window-h window-id window-state window-title
-                window-w window-x window-y window? windows)
+                font-char-width font-line-height invalidate! kill! now-ms now-ns
+                open-window pacer-busy-ms pacer-period pacer-rate pacer-ticks
+                platform-process-bytes proc-id proc-name proc-started proc-ticks
+                proc-wake proc? procs style-title text-width theme uptime-ms
+                window-app window-error window-frame-soon! window-h window-id
+                window-state window-title window-w window-x window-y window?
+                windows)
           (only (schevana kits inspect) inspect-platform-row inspect-display-hz
                 inspect-display-pixels inspect-platform inspect-refresh-grid
                 inspect-refresh-estimated? inspect-frames-truth)

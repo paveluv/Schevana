@@ -45,16 +45,25 @@
     window-frame-soon! draw-window window-hover draw-window*
     surfaces maximize-window! unbind-key!)
   (import (chezscheme)
-          (schevana base)
-          (schevana core0)
-          (schevana core theme-table)
-          (schevana core processes)
-          (schevana core gpu)
-          (schevana core draw)
-          (schevana core pacer)
-          (schevana core screen)
-          (schevana core loop)
-          (schevana core theme))
+          (only (schevana base) at-load clamp condition->string define-hook
+                define-state library-layer plist-ref registry-add set-hook!
+                string-contains-ci?)
+          (only (schevana core0) core0-set-cursor!)
+          (only (schevana core theme-table) *main-theme* *theme* theme
+                theme-part world-value)
+          (only (schevana core processes) *frame-generation* proc report-error!
+                request-frame! request-redraw! safe-call safely
+                with-profile-span)
+          (only (schevana core gpu) gpu-list-new gpu-list-release!)
+          (only (schevana core draw) *canvas-h* *canvas-w* *rec-den* *rec-num*
+                *scale* draw-shadow draw-text fill-box record-list! show-list
+                with-clip with-label with-translation)
+          (only (schevana core pacer) frame-turn-soon! pacer-frame-ns
+                record-safely record-world! wm-tick!)
+          (only (schevana core screen) wm-screen-resized!)
+          (only (schevana core loop) wm-event!)
+          (only (schevana core theme) find-style style-theme theme-default!
+                wm-chrome-changed!))
 
   (library-layer core)
 

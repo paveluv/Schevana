@@ -45,13 +45,12 @@
           (only (schevana base) at-load condition->string define-state
                 library-layer string-join string-split)
           (only (schevana core) after define-app fill-box find-window
-                focus-window! invalidate! kill! now-ms open-window proc
-                socket-accept socket-close socket-listen socket-read
-                socket-write spawn style)
+                focus-window! invalidate! kill! now-ms open-window socket-accept
+                socket-close socket-listen socket-read socket-write spawn style)
           (only (schevana desktop start) desktop-at-start!)
           (only (schevana kits transcript) transcript-scroll
                 transcript-scroll-set! transcript-draw-view transcript-new
-                transcript-count transcript-add! transcript)
+                transcript-count transcript-add!)
           (only (schevana services env) env-root env-eval)
           (only (schevana apps repl) repl-window-size read-input! value->string
                 repl-cont repl-prompt))

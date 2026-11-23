@@ -16,7 +16,7 @@
   (export reload-import! reload-mark! reload-libraries! reload-facts
           reload-source)
   (import (chezscheme)
-          (schevana base))
+          (only (schevana base) define-made define-state library-layer))
 
   (library-layer foundation)
 

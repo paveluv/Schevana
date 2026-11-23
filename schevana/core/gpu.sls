@@ -16,11 +16,21 @@
     gpu-make-call gpu-compute! *gpu-computes* gpu-compute-soon! gpu-take-asks!
     gpu-asks-pending? gpu-computes-send! gpu-frame-free! gpu-publish)
   (import (chezscheme)
-          (schevana base)
-          (schevana shader)
-          (schevana core0)
-          (schevana recorder)
-          (schevana core processes))
+          (only (schevana base) define-state library-layer)
+          (only (schevana shader) shader shader-params)
+          (only (schevana core0) *core0-mode* core0-forked? gpu-atlas-side
+                gpu-buffer-gone?-set! gpu-buffer-id gpu-buffer-size
+                gpu-frame-computes-set! gpu-frame-in-flight-set!
+                gpu-frame-jobs-set! gpu-frame-make gpu-frame-mode-set!
+                gpu-frame-pieces-set! gpu-frame-table-n-set!
+                gpu-frame-table-set! gpu-frame-waiting? gpu-image-gone?-set!
+                gpu-image-id gpu-list-id gpu-usage-sampler gpu-usage-target
+                make-gpu-buffer* make-gpu-call make-gpu-image shader
+                shader-params)
+          (only (schevana recorder) rec-buffer-read! rec-buffer-read-then!
+                rec-buffer-set! rec-compute-now! rec-list-new
+                rec-submit-computes! rec-writes-pending?)
+          (only (schevana core processes) proc-wait))
 
   (library-layer core)
 

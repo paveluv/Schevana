@@ -50,14 +50,13 @@
     settings-pane-scrollbar
     settings-reveal! settings-draw settings-key settings-wheel settings)
   (import (chezscheme)
-          (only (schevana base) at-load clamp define-made define-state
-                filter-map library-layer library-layer-names list-index
-                plist-keys plist-ref
-                string-join string-prefix? string-split)
-          (only (schevana core) *gpu-facts* *styles* *wallpapers*
-                *world-env* *auto-loads* *schevana-root* add-library-directory!
-                auto-load! auto-load-entries auto-load-forget! auto-loads
-                library-file-layer path-full alpha app chain-ref close-window!
+          (only (schevana base) at-load clamp define-made filter-map
+                library-layer library-layer-names list-index plist-keys
+                plist-ref string-join string-prefix? string-split)
+          (only (schevana core) *gpu-facts* *styles* *wallpapers* *world-env*
+                *auto-loads* *schevana-root* add-library-directory! auto-load!
+                auto-load-entries auto-load-forget! auto-loads
+                library-file-layer path-full alpha chain-ref close-window!
                 color-default! color-keys color-rgba common-options
                 current-style current-window define-app detached-window
                 draw-text draw-window* fill-box fill-circle fill-wallpaper
@@ -81,15 +80,13 @@
           (only (schevana kits ui) ui-handlers make-ui ui-state-my ui-state-mx
                 ui-region-in? ui-wheel ui-end! ui-scrollbar-inset ui-begin!
                 ui-region-frame ui-state-reveal-set! ui-find ui-state-reveal
-                ui-scrollbar ui-scrollbar-width ui-nav ui-checkbox ui-gap
-                ui-focused ui-hover? ui-area ui-draw-surface
-                ui-draw-highlight-over ui-draw-highlight ui-text-field
-                ui-dialog ui-memo! ui-memo ui-button-size ui-flags
+                ui-scrollbar ui-scrollbar-width ui-nav ui-focused ui-hover?
+                ui-area ui-draw-surface ui-draw-highlight-over ui-draw-highlight
+                ui-text-field ui-dialog ui-memo! ui-memo ui-button-size ui-flags
                 ui-pressable! ui-focus! ui-active? ui-draw-field
                 ui-draw-checkbox ui-draw-button ui-draw-focus ui-draw-card
-                ui-card-radius
-                ui-label-size ui-toggle ui-slider ui-dropdown ui-segmented
-                ui-slider-height ui-button ui-region! ui-draw-label
+                ui-card-radius ui-label-size ui-toggle ui-slider ui-dropdown
+                ui-segmented ui-slider-height ui-button ui-region! ui-draw-label
                 ui-control-height ui-rows ui-switch-row)
           (only (schevana desktop file-dialog) open-file-dialog)
           (only (schevana services theme-file) theme-file-plain?

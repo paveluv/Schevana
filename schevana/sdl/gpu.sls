@@ -24,9 +24,9 @@
     sdl-set-frames-in-flight sdl-set-swapchain-parameters sdl-wait-gpu-idle
     gpu-copy-in gpu-copy-out)
   (import (chezscheme)
-          (schevana base)
-          (schevana ffi)
-          (schevana sdl system))
+          (only (schevana base) at-load define-made library-layer)
+          (only (schevana ffi) define-foreign define-foreign/collect-safe)
+          (only (schevana sdl system) sdl-library))
 
   (library-layer foundation)
 

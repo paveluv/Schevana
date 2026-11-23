@@ -48,27 +48,25 @@
     inspect-span-changed inspect-record-run inspect-run-fragment
     inspect-helpers-used inspect-shader-lines inspect-atlas-image)
   (import (chezscheme)
-          (only (schevana base) define-hook define-made library-layer
-                platform-cpu platform-os string-join string-prefix?
-                string-suffix?)
+          (only (schevana base) define-made library-layer platform-cpu
+                platform-os string-join string-prefix? string-suffix?)
           (only (schevana core) *world-later* auto-loads *atlas-row* *atlas-y*
-                *canvas-ph* *canvas-pw* *canvas-ratio* *font-specs*
-                *frame-ring* *frame-ring-n*
-                *glyph-count* *gpu-bytes-made* *gpu-computes* *gpu-facts*
-                *gpu-held-gone* *pacer-aimed* *pacer-counts* *pacer-depth*
-                *pacer-due* *pacer-floor* *pacer-frame-ns* *pacer-gpu-taught*
-                *pacer-latch* *pacer-latch-phase* *pacer-late-chain*
-                *pacer-late-run* *pacer-lead* *pacer-made* *pacer-shown?*
-                *pacer-trial* *rec-label-at* *rec-labels* *schevana-root*
-                *shader-constants* *shader-fields* *shader-helpers* *windows*
-                clip-row-parent clip-row-radius clip-row-rx0 clip-row-rx1
-                clip-row-ry0 clip-row-ry1 clip-row-words clip-row-x0
-                clip-row-x1 clip-row-y0 clip-row-y1 core0-display
-                core0-flag-names core0-flags core0-frame-ns core0-frame-report
-                core0-step-state core0-window-scale core0-window-sizes
-                core0-app-id screen-system-theme *screen-least* font-advance
-                font-library-versions font-ready font-sized
-                frame-ring-rows frame-ring-words gfx-fragments
+                *canvas-ph* *canvas-pw* *canvas-ratio* *font-specs* *frame-ring*
+                *frame-ring-n* *glyph-count* *gpu-bytes-made* *gpu-computes*
+                *gpu-facts* *gpu-held-gone* *pacer-aimed* *pacer-counts*
+                *pacer-depth* *pacer-due* *pacer-floor* *pacer-frame-ns*
+                *pacer-gpu-taught* *pacer-latch* *pacer-latch-phase*
+                *pacer-late-chain* *pacer-late-run* *pacer-lead* *pacer-made*
+                *pacer-shown?* *pacer-trial* *rec-label-at* *rec-labels*
+                *schevana-root* *shader-constants* *shader-fields*
+                *shader-helpers* *windows* clip-row-parent clip-row-radius
+                clip-row-rx0 clip-row-rx1 clip-row-ry0 clip-row-ry1
+                clip-row-words clip-row-x0 clip-row-x1 clip-row-y0 clip-row-y1
+                core0-display core0-flag-names core0-flags core0-frame-ns
+                core0-frame-report core0-step-state core0-window-scale
+                core0-window-sizes core0-app-id screen-system-theme
+                *screen-least* font-advance font-library-versions font-ready
+                font-sized frame-ring-rows frame-ring-words gfx-fragments
                 glyph-row-character glyph-row-h glyph-row-left glyph-row-ref
                 glyph-row-top glyph-row-w gpu-atlas-image gpu-atlas-side
                 gpu-call-shader gpu-call? gpu-image-h gpu-image-levels
@@ -77,19 +75,18 @@
                 gpu-list-recorded gpu-list-recs gpu-list-recs-n gpu-list-runs
                 gpu-list-took gpu-list-version gpu-run-gone? gpu-show-run?
                 gradient-row-kind gradient-row-x0 gradient-row-x1
-                gradient-row-y0 gradient-row-y1 now-ns pacer-margin
-                pacer-period pacer-start platform-cpu-count platform-fact
-                platform-gpu-api platform-predicates platform-windowing
-                rec-box-line rec-box-radius rec-glyph-number rec-glyph-pen-x
-                rec-glyph-pen-y rec-gradient-radial rec-kind-glyph
-                rec-kind-polygon rec-last-copy! rec-last-runs rec-last-sizes
-                rec-list-copy rec-paint-gradient rec-paint-image
-                rec-paint-stipple rec-past! rec-polygon-count
-                rec-polygon-points rec-preview! rec-recordings rec-row-head
-                rec-row-paint rec-row-words rec-row-x0 rec-row-x1 rec-row-y0
-                rec-row-y1 rec-segment-width rec-shadow-size rec-variant
-                reload-facts shader shader-name shader-source window-ref
-                window-title window? world-value))
+                gradient-row-y0 gradient-row-y1 now-ns pacer-margin pacer-period
+                pacer-start platform-cpu-count platform-fact platform-gpu-api
+                platform-predicates platform-windowing rec-box-line
+                rec-box-radius rec-glyph-number rec-glyph-pen-x rec-glyph-pen-y
+                rec-gradient-radial rec-kind-glyph rec-kind-polygon
+                rec-last-copy! rec-last-runs rec-last-sizes rec-list-copy
+                rec-paint-gradient rec-paint-image rec-paint-stipple rec-past!
+                rec-polygon-count rec-polygon-points rec-preview! rec-recordings
+                rec-row-head rec-row-paint rec-row-words rec-row-x0 rec-row-x1
+                rec-row-y0 rec-row-y1 rec-segment-width rec-shadow-size
+                rec-variant reload-facts shader shader-name shader-source
+                window-ref window-title world-value))
 
   (library-layer kits)
 

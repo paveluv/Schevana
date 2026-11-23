@@ -11,7 +11,8 @@
     theme theme-keys world-value theme-part plist-has? plist-remove
     *theme-table-defaults* theme-table-default! *pacer-trial* pacer-knob)
   (import (chezscheme)
-          (schevana base))
+          (only (schevana base) define-hook define-made define-state
+                library-layer))
 
   (library-layer core)
 

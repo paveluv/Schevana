@@ -7,7 +7,7 @@
     fc-default-substitute fc-font-match fc-pattern-get-string
     fc-pattern-get-integer fc-pattern-destroy)
   (import (chezscheme) (only (schevana base) library-layer)
-          (schevana ffi))
+          (only (schevana ffi) define-foreign load-first-library))
 
   (library-layer foundation)
 

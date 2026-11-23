@@ -7,7 +7,7 @@
   (export
     sdl-library sdl-get-ticks-ns sdl-get-num-logical-cpu-cores)
   (import (chezscheme) (only (schevana base) library-layer)
-          (schevana ffi))
+          (only (schevana ffi) define-foreign load-first-library))
 
   (library-layer foundation)
 

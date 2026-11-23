@@ -35,15 +35,32 @@
     with-scale with-turn with-label draw-scale gfx-fragments rec-present!
     rec-preview! rec-past! drawing->bytes-then drawing->bytes)
   (import (chezscheme)
-          (schevana base)
-          (schevana shader)
-          (schevana core0)
-          (schevana recorder)
-          (schevana core theme-table)
-          (schevana core platform)
-          (schevana core processes)
-          (schevana core gpu)
-          (schevana core fonts))
+          (only (schevana base) at-load clamp define-hook define-made
+                define-state library-layer)
+          (only (schevana shader) define-fragment-shader define-shader-constant
+                define-shader-helpers define-shader-layout define-vertex-shader
+                shader-make)
+          (only (schevana core0) *core0-mode* core0-forked? core0-step!
+                gpu-frame-number gpu-image-h gpu-image-levels gpu-image-w
+                gpu-list-labels-set! gpu-list-recorded-set! gpu-list-took-set!
+                gpu-publish!)
+          (only (schevana recorder) gpu-list-runs rec-bytes-begin!
+                rec-bytes-copies rec-count rec-drawing->bytes rec-earlier-add!
+                rec-extra! rec-extra-at rec-extra-ref rec-extra-u32! rec-freeze!
+                rec-into-list! rec-lend! rec-write!)
+          (only (schevana core theme-table) pacer-knob theme theme-part
+                theme-table-default!)
+          (only (schevana core platform) now-ns)
+          (only (schevana core processes) *profile-span* report-error!
+                request-frame!)
+          (only (schevana core gpu) gpu-ask! gpu-make-call gpu-publish
+                gpu-take-asks!)
+          (only (schevana core fonts) *atlas-pieces* *glyph-count* *glyph-table*
+                *glyph-table-dirty?* *stipple-tiles* atlas-place! font
+                font-advance font-ascent font-crisp? font-glyph font-glyph-pages
+                font-ready get-font glyph-row-h glyph-row-left glyph-row-ref
+                glyph-row-top glyph-row-u glyph-row-v glyph-row-w
+                glyph-row-words))
 
   (library-layer core)
 

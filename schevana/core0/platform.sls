@@ -13,13 +13,20 @@
     platform-desktop-frameless? platform-sdl-wayland?
     platform-thread-interactive!)
   (import (chezscheme)
-          (schevana base)
-          (schevana ffi)
-          (schevana sdl)
-          (schevana core0 mail)
-          (schevana core0 trace)
-          (schevana core0 renderer)
-          (schevana core0 present))
+          (only (schevana base) define-made define-state library-layer
+                platform-mac? string-prefix?)
+          (only (schevana ffi) c-clock-gettime c-close)
+          (only (schevana sdl) sdl-get-current-video-driver
+                sdl-get-num-logical-cpu-cores sdl-get-number-property
+                sdl-get-pointer-property sdl-get-string-property sdl-get-version
+                sdl-get-window-properties)
+          (only (schevana core0 mail) *core0-input-wl* core0-clock-ns
+                core0-input-set!)
+          (only (schevana core0 trace) core0-trace!)
+          (only (schevana core0 renderer) *renderer* gpu-driver-name
+                renderer-device)
+          (only (schevana core0 present) *present-ring* present-at
+                present-reported!))
 
   (library-layer core0)
 

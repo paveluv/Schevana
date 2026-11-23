@@ -151,17 +151,17 @@
     pipeline-screen-facts pipeline-lists-pane pipeline-image! pipeline-draw
     pipeline-frame! pipeline)
   (import (chezscheme)
-          (only (schevana base) clamp define-hook define-made library-layer
-                list-index string-join)
+          (only (schevana base) clamp define-made library-layer list-index
+                string-join)
           (only (schevana core) *canvas-ph* *canvas-pw* *frame-ring-n*
                 *pacer-latch* *pacer-lead* alpha close-window! color-word
-                core0-frame-ns current-window define-app drag draw-image
-                draw-line draw-scale draw-text fill-box find-window
-                focus-window! font-line-height gpu-atlas-side invalidate! mix
-                now-ms now-ns open-window pacer-margin pacer-period point-in?
-                rec-row-words screen-h screen-w shader shader-name stroke-box
-                stroke-circle text-width visible? window-app window-frame-soon!
-                window-hover window-ref window-title windows with-clip)
+                core0-frame-ns current-window define-app draw-image draw-line
+                draw-scale draw-text fill-box find-window focus-window!
+                font-line-height gpu-atlas-side invalidate! mix now-ms now-ns
+                open-window pacer-margin pacer-period point-in? rec-row-words
+                screen-h screen-w shader shader-name stroke-box stroke-circle
+                text-width visible? window-app window-frame-soon! window-hover
+                window-ref window-title windows with-clip)
           (only (schevana kits inspect) inspect-list-empty inspect-history-new
                 inspect-list-left-out inspect-preview-image
                 inspect-preview-free! inspect-preview-h inspect-preview-w

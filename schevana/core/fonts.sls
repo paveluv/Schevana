@@ -22,13 +22,18 @@
     atlas-flush! *stipple-tiles*
     glyph-row-ref font-glyph-pages font-glyph)
   (import (chezscheme)
-          (schevana base)
-          (schevana ffi)
-          (schevana shader)
-          (schevana freetype)
-          (schevana fontconfig)
-          (schevana core theme-table)
-          (schevana core0))
+          (only (schevana base) at-load define-made define-state library-layer
+                platform-mac?)
+          (only (schevana ffi) c-string->string)
+          (only (schevana shader) define-shader-layout)
+          (only (schevana freetype) ft-get-first-char ft-get-next-char
+                ft-init-freetype ft-library-version ft-load-char ft-new-face
+                ft-set-char-size ft-set-transform)
+          (only (schevana fontconfig) fc-config-get-current fc-config-substitute
+                fc-default-substitute fc-font-match fc-get-version fc-name-parse
+                fc-pattern-destroy fc-pattern-get-integer fc-pattern-get-string)
+          (only (schevana core theme-table) theme)
+          (only (schevana core0) c-string->string gpu-atlas-side))
 
   (library-layer core)
 

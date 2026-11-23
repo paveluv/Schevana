@@ -13,8 +13,8 @@
     core0-trace-rows *core0-trace-dir* *core0-trace-rings* *core0-trace-thread*
     core0-trace!)
   (import (chezscheme)
-          (schevana base)
-          (schevana core0 mail))
+          (only (schevana base) define-state library-layer)
+          (only (schevana core0 mail) core0-clock-ns))
 
   (library-layer core0)
 

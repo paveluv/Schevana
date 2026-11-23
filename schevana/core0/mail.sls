@@ -13,8 +13,8 @@
     *core0-facts* core0-frame-ns core0-display *core0-input-ns*
     *core0-input-pumped* *core0-input-wl* core0-input-set! core0-input-take!)
   (import (chezscheme)
-          (schevana base)
-          (schevana sdl))
+          (only (schevana base) define-state library-layer)
+          (only (schevana sdl) sdl-get-ticks-ns))
 
   (library-layer core0)
 

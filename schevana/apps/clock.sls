@@ -5,9 +5,11 @@
   (export draw-clock-face clock)
   (import (chezscheme)
           (only (schevana base) library-layer)
-          (schevana core)
+          (only (schevana core) after alpha define-app draw-line fill-box
+                fill-circle font-line-height invalidate! open-window pi
+                stroke-circle)
           (only (schevana kits fill) fill-glow)
-          (schevana kits text))
+          (only (schevana kits text) text-draw-centered))
 
   (library-layer apps)
 

@@ -28,9 +28,9 @@
     sdl-get-system-theme sdl-set-window-hit-test sdl-maximize-window
     sdl-restore-window sdl-minimize-window sdl-show-window-system-menu)
   (import (chezscheme)
-          (schevana base)
-          (schevana ffi)
-          (schevana sdl system))
+          (only (schevana base) at-load library-layer)
+          (only (schevana ffi) define-foreign define-foreign/collect-safe)
+          (only (schevana sdl system) sdl-library))
 
   (library-layer foundation)
 

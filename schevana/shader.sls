@@ -41,7 +41,8 @@
     shader-make define-compute-shader define-vertex-shader
     define-fragment-shader)
   (import (chezscheme)
-          (schevana base))
+          (only (schevana base) at-load define-made library-layer platform-mac?
+                string-join))
 
   (library-layer foundation)
 

@@ -61,23 +61,19 @@
     repl open-repl-window
     repl-record)
   (import (chezscheme)
-          (only (schevana base) at-load clamp condition->string define-hook
-                define-made define-state filter-map library-layer
-                string-contains-ci? string-join string-prefix? string-split
-                string-suffix?)
+          (only (schevana base) at-load clamp condition->string define-made
+                define-state filter-map library-layer string-contains-ci?
+                string-join string-prefix? string-split string-suffix?)
           (only (schevana core) *scale* *schevana-options* *source-texts*
                 *windows* *world-env* after alpha apps clipboard-get
-                close-window! color-default! core1-exported define-app
-                define-part fill-box find-window focused-window font-ascent
-                font-char-width font-line-height invalidate! keep-source-text!
-                kill! mix now-ms open-window override! palettes point-in? proc
-                request-frame! reset-style! set-palette! set-style! set-theme!
-                spawn stroke-box style styles theme theme-default theme-keys
-                theme-part theme-rule wallpapers window-frame-soon!
+                close-window! color-default! core1-exported define-app fill-box
+                focused-window font-ascent font-char-width font-line-height
+                invalidate! keep-source-text! kill! mix now-ms open-window
+                palettes point-in? request-frame! spawn stroke-box style styles
+                theme theme-keys theme-rule wallpapers window-frame-soon!
                 window-handlers window-ref window-set! window-title
                 window-title-set! windows with-place)
           (only (schevana desktop bell) bell)
-          (only (schevana kits app) app-launch!)
           (only (schevana kits complete) complete-wheel! complete-show
                 complete-text! complete-mouse-down! complete-pointer-at
                 complete-pointer! complete-key! complete-open! complete-narrow!
@@ -86,14 +82,13 @@
           (only (schevana kits edit) edit?)
           (only (schevana kits px) px-invert)
           (only (schevana kits text) text-ink text-shorten)
-          (only (schevana kits theme) theme-palette-preview theme-source)
           (only (schevana kits transcript) transcript-new
                 transcript-draw-scrollbar transcript-draw-style-color
                 transcript-draw-line transcript-fill-colors!
                 transcript-draw-scheme transcript-rows transcript-line-height
                 transcript-pad transcript-clear! transcript-add!
                 transcript-append! transcript-scroll-set! transcript-scroll
-                transcript-lines transcript)
+                transcript-lines)
           (only (schevana kits ui) ui-busy-frame-ms ui-draw-env-icon
                 ui-draw-tooltip ui-popup-place ui-tooltip-size ui-tip-ms
                 ui-draw-busy ui-busy-size)

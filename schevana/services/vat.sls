@@ -62,11 +62,11 @@
   (import (chezscheme)
           (only (schevana base) at-load define-state library-layer set-hook!)
           (only (schevana core) current-window in-window-theme invalidate!
-                post-core1! proc report-error! safe-call window window-crash!
+                post-core1! proc report-error! safe-call window-crash!
                 window-gone!)
           (only (schevana services crew) crew-stray)
           (only (schevana services env) env-register-kind! env-environment
-                env-children env-drop! env-find env-kind env-base env-path env))
+                env-children env-drop! env-find env-kind env-base env-path))
 
   (library-layer services)
 

@@ -32,12 +32,15 @@
     reset-style! override! theme-overrides set-scale! set-palette! set-accent!
     reset-theme!)
   (import (chezscheme)
-          (schevana base)
-          (schevana core theme-table)
-          (schevana core processes)
-          (schevana core fonts)
-          (schevana core draw)
-          (schevana core screen))
+          (only (schevana base) at-load define-hook define-made define-state
+                library-layer plist-keys plist-ref registry-add set-hook!)
+          (only (schevana core theme-table) *main-theme* *theme*
+                *theme-table-defaults* plist-has? plist-remove theme theme-part
+                theme-rule theme-unset)
+          (only (schevana core processes) request-frame! request-redraw!)
+          (only (schevana core fonts) font font-line-height)
+          (only (schevana core draw) fill-box mix theme-changed!)
+          (only (schevana core screen) screen-rescale! screen-system-theme))
 
   (library-layer core)
 

@@ -145,23 +145,23 @@
   (import (chezscheme)
           (only (schevana base) at-load clamp define-hook filter-map
                 library-layer list-index plist-ref string-prefix? string-split)
-          (only (schevana core) *input-step?* *scale* after alpha app apps
+          (only (schevana core) *input-step?* *scale* after alpha app
                 clipboard-get clipboard-set! close-window! color-default!
                 color-word content-rect core0-set-cursor! current-window
-                define-paint define-part define-shader-layout drag draw-line
+                define-paint define-part define-shader-layout draw-line
                 draw-polyline draw-scale draw-shadow draw-text fill-box
                 fill-circle fill-polygon fill-shader focus-window!
-                focused-window font font-char-width font-family
-                font-line-height font-size font-weight frame-insets
-                frame-regions get-font gpu-buffer-read! gpu-buffer-release!
-                gpu-buffer-set! gpu-list-new invalidate! make-gpu-buffer
-                maximized? mix new-window-position now-ms open-window pi
-                plist-remove point-in? proc record-list! resize-window! stipple
-                stroke-box stroke-circle text-width theme theme-default!
-                theme-font-rule theme-rule window-app window-content-size
-                window-frame-soon! window-handlers window-hover
-                window-modal-child window-props window-ref window-set! window-x
-                window-y window? windows with-clip with-place)
+                focused-window font font-char-width font-family font-line-height
+                font-size font-weight frame-insets frame-regions get-font
+                gpu-buffer-release! gpu-buffer-set! gpu-list-new invalidate!
+                make-gpu-buffer maximized? mix new-window-position now-ms
+                open-window pi plist-remove point-in? proc record-list!
+                resize-window! stipple stroke-box stroke-circle text-width theme
+                theme-default! theme-font-rule theme-rule window-app
+                window-content-size window-frame-soon! window-handlers
+                window-hover window-modal-child window-props window-ref
+                window-set! window-x window-y window? windows with-clip
+                with-place)
           (only (schevana kits app) app-launch! app-color)
           (only (schevana kits color) color-readable-on)
           (only (schevana kits edit) edit-layout-text edit-range edit-move
@@ -170,8 +170,7 @@
                 edit-layout-done? edit-layout-total edit-row-at edit-caret-x
                 edit-at edit-all edit-anchor make-edit edit-change edit-text
                 edit-row-last edit-row edit-layout-count edit-layout-extend!
-                edit-layout-of edit-wrap edit-layout-scan! edit-caret edit?
-                edit)
+                edit-layout-of edit-wrap edit-layout-scan! edit-caret edit?)
           (only (schevana kits px) px-invert)
           (only (schevana kits text) text-draw-centered text-widest text-fit))
 

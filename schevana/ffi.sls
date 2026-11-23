@@ -8,7 +8,8 @@
   (export
     load-first-library define-foreign define-foreign/collect-safe
     c-clock-gettime c-close c-string->string)
-  (import (chezscheme) (schevana base))
+  (import (chezscheme) (only (schevana base) define-made library-layer
+                             platform-mac? string-contains-ci? string-split))
 
   (library-layer foundation)
 

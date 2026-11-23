@@ -13,13 +13,17 @@
     load-file! load-user-folders! reload! program-world! look-load!
     *world-later* world-load-now!)
   (import (chezscheme)
-          (schevana base)
-          (schevana tree)
-          (schevana reload)
-          (schevana core0)
-          (schevana core theme-table)
-          (schevana core processes)
-          (schevana core loop)
+          (only (schevana base) condition->string define-made define-state
+                library-layer set-hook! string-prefix? string-suffix?)
+          (only (schevana tree) *schevana-root*)
+          (only (schevana reload) reload-import! reload-libraries! reload-mark!
+                reload-source)
+          (only (schevana core theme-table) world-value)
+          (only (schevana core processes) *reloading* core1-thread! current-proc
+                notify request-redraw! safely)
+          (only (schevana core loop) add-library-directory! collector-settle!
+                loop-stepped! path-full reload-ended! user-directory
+                user-library-directory)
           (only (schevana core theme) style-chain chain-ref theme-default)
           (only (schevana core platform) now-ms))
 
