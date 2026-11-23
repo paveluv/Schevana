@@ -57,6 +57,7 @@
           (only (schevana core) current-window in-window-theme invalidate!
                 post-core1! proc report-error! safe-call window-crash!
                 window-gone!)
+          (only (schevana kits repl) repl-value->string)
           (only (schevana services crew) crew-stray)
           (only (schevana services env) env-register-kind! env-environment
                 env-children env-drop! env-find env-kind env-base env-path))
@@ -326,15 +327,8 @@
                       (fold-left (lambda (texts v)
                                    (if (eq? v (void))
                                        texts
-                                       (cons (vat-text v) texts)))
+                                       (cons (repl-value->string v) texts)))
                                  texts vals))))))))
-
-  (define (vat-text v)
-    (let ([s (with-output-to-string (lambda () (pretty-print v)))])
-      (if (and (> (string-length s) 0)
-               (char=? (string-ref s (- (string-length s) 1)) #\newline))
-          (substring s 0 (- (string-length s) 1))
-          s)))
 
   (define (vat-condition-text c)
     (call-with-string-output-port

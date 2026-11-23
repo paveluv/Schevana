@@ -36,8 +36,8 @@
                 transcript-scroll-set! transcript-draw-view transcript-new
                 transcript-count transcript-add!)
           (only (schevana services env) env-root env-eval)
-          (only (schevana apps repl) repl-window-size read-input! value->string
-                repl-cont repl-prompt))
+          (only (schevana kits repl) repl-cont repl-prompt repl-read-input!
+                repl-value->string repl-window-size))
 
   (library-layer apps)
 
@@ -68,6 +68,15 @@
 
   (define-state *debug-repl-path* #f)
   (define (debug-repl-path! path) (set! *debug-repl-path* path))
+
+  ;; Reads a request's text with the kit's reader, which names it by
+  ;; *debug-repl-requests*, the count of the requests.
+  (define-state *debug-repl-requests* 0)
+
+  (define (debug-repl-read! text)
+    (set! *debug-repl-requests* (+ *debug-repl-requests* 1))
+    (repl-read-input! text
+                      (format "Debug REPL request ~a" *debug-repl-requests*)))
 
   ;; Returns where a session listens: in a folder only this user can read
   ;; ($XDG_RUNTIME_DIR), if there is one.
@@ -151,10 +160,10 @@
                                      (unless (eq? v (void))
                                        (set! vals
                                          (cons (debug-repl-clip
-                                                (value->string v))
+                                                (repl-value->string v))
                                                vals))))
                                    results))))
-                   (read-input! text))))
+                   (debug-repl-read! text))))
               (lambda (status value)
                 (let ([printed (debug-repl-clip (get-output-string out))]
                       [ms (- (now-ms) started)]

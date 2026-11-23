@@ -27,20 +27,22 @@
 
 (library (schevana apps repl)
   (export
-    repl-prompt repl-cont read-input! value->string repl-window-size repl)
+    repl)
   (import (chezscheme)
           (only (schevana base) at-load clamp condition->string define-made
                 define-state filter-map library-layer string-contains-ci?
                 string-join string-prefix? string-split string-suffix?)
+          (only (schevana kits repl) repl-cont repl-initial-cols
+                repl-initial-rows repl-prompt repl-read-input!
+                repl-value->string repl-window-size)
           (only (schevana core) *scale* *schevana-options* *source-texts*
                 *windows* *world-env* after apps clipboard-get close-window!
                 color-default! core1-exported define-app fill-box focused-window
-                font-ascent font-char-width font-line-height invalidate!
-                keep-source-text! kill! mix now-ms open-window palettes
-                point-in? request-frame! spawn stroke-box style styles theme
-                theme-keys theme-rule wallpapers window-frame-soon!
-                window-handlers window-ref window-set! window-title
-                window-title-set! windows with-place)
+                font-ascent font-char-width font-line-height invalidate! kill!
+                mix now-ms open-window palettes point-in? request-frame! spawn
+                stroke-box style styles theme theme-keys theme-rule wallpapers
+                window-frame-soon! window-handlers window-ref window-set!
+                window-title window-title-set! windows with-place)
           (only (schevana desktop bell) bell)
           (only (schevana kits complete) complete-wheel! complete-show
                 complete-text! complete-mouse-down! complete-pointer-at
@@ -180,9 +182,7 @@
 
   (define (repl-environment r) (env-environment (repl-env r)))
 
-  (define repl-prompt "λ> ")
   (define repl-waiting "↳  ")   ; before an input that waits its turn
-  (define repl-cont   "   ")
 
   ;;; ------------------------------------------------------------------
   ;;; transcript
@@ -243,31 +243,13 @@
   ;;; ------------------------------------------------------------------
   ;;; evaluation
 
-  ;; read-input! reads the forms of src, one more REPL input, with their
-  ;; places in it, so that what they define tells where it came from (its
-  ;; description, an error's place), and keeps src as the core keeps a
-  ;; loaded file's text. *repl-inputs* counts the inputs, to name each.
+  ;; Reads src, one more REPL input, with the kit's reader, which names it
+  ;; by *repl-inputs*, the count of the inputs.
   (define-state *repl-inputs* 0)
 
-  (define (read-input! src)
+  (define (repl-input-read! src)
     (set! *repl-inputs* (+ *repl-inputs* 1))
-    (let* ([name (format "REPL input ~a" *repl-inputs*)]
-           [sfd (make-source-file-descriptor
-                 name (open-bytevector-input-port (string->utf8 src)))]
-           [p (open-string-input-port src)])
-      (let loop ([pos 0] [acc '()])
-        (let-values ([(x end) (get-datum/annotations p sfd pos)])
-          (cond
-            [(not (eof-object? x)) (loop end (cons x acc))]
-            [(null? acc) '()]
-            [else (keep-source-text! name src) (reverse acc)])))))
-
-  (define (value->string v)
-    (let ([s (with-output-to-string (lambda () (pretty-print v)))])
-      (if (and (> (string-length s) 0)
-               (char=? #\newline (string-ref s (- (string-length s) 1))))
-          (substring s 0 (- (string-length s) 1))
-          s)))
+    (repl-read-input! src (format "REPL input ~a" *repl-inputs*)))
 
   ;; Echoes src into the transcript after the prompt, its other lines under
   ;; the first. Returns its first line, as the transcript holds it.
@@ -301,7 +283,7 @@
   (define (repl-run! r win src)
     (repl-running-set! r (repl-echo! r src))
     (let ([forms (guard (c [#t (repl-add! r 'error (condition->string c)) #f])
-                   (read-input! src))])
+                   (repl-input-read! src))])
       (when (and forms (pair? forms)) (repl-eval! r win forms))
       (unless (repl-proc r) (repl-next! r win))))
 
@@ -345,7 +327,8 @@
                       (lambda vals
                         (for-each (lambda (v)
                                     (unless (eq? v (void))
-                                      (repl-emit! r 'result (value->string v))))
+                                      (repl-emit! r 'result
+                                                  (repl-value->string v))))
                                   vals))))
                   forms)))
              (lambda (status value)
@@ -1324,17 +1307,6 @@
     (let-values ([(l top w h) (text-ink "()" 'mono)])
       (let ([middle (+ (font-ascent 'mono) top (/ h 2))])
         (/ (round (* *scale* (- middle (/ th 2)))) *scale*))))
-
-  ;; A new REPL opens with room for this many characters, like a terminal,
-  ;; whatever size the code font is.
-  (define repl-initial-cols 80)
-  (define repl-initial-rows 22)
-
-  (define (repl-window-size)
-    (cons (exact (ceiling (+ repl-pad repl-pad
-                             (* repl-initial-cols (font-char-width 'mono)))))
-          (exact (ceiling (+ repl-pad repl-pad
-                             (* repl-initial-rows (repl-line-height)))))))
 
   (define (repl-draw r win w h)
     (let* ([cw (font-char-width 'mono)]
