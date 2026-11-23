@@ -10,11 +10,12 @@
   (export
     platform-cpu-count *core0-platform* core0-platform-read!
     platform-report-ask! platform-reports-start! platform-reports-pump!
+    platform-reports? core0-look-ns
     platform-desktop-frameless? platform-sdl-wayland?
     platform-thread-interactive!)
   (import (chezscheme)
           (only (schevana base) define-made define-state library-layer
-                platform-mac? string-prefix?)
+                platform-mac? platform-windows? string-prefix?)
           (only (schevana ffi) c-clock-gettime c-close ffi-load-library)
           (only (schevana sdl) sdl-get-current-video-driver
                 sdl-get-num-logical-cpu-cores sdl-get-number-property
@@ -139,11 +140,13 @@
   (define (platform-report-ask! frame)
     (cond
       [(not (eqv? *wayland-presentation* 0))
-       (with-interrupts-disabled
-        (let ([proxy (wayland-marshal-2 *wayland-presentation* 1
-                                        wayland-feedback-interface 1 0
-                                        *wayland-surface* 0)])
-          (wayland-add-listener proxy wayland-feedback-listener frame)))]
+       ;; interrupts off without a winder, which would allocate
+       (disable-interrupts)
+       (wayland-add-listener
+        (wayland-marshal-2 *wayland-presentation* 1 wayland-feedback-interface
+                           1 0 *wayland-surface* 0)
+        wayland-feedback-listener frame)
+       (enable-interrupts)]
       [(not (eqv? *mac-layer* 0)) (mac-ask! frame)]))
 
   ;; Starts the reports for the window from now on, where its platform
@@ -824,9 +827,23 @@
                 (mac-reported! frame (fxvector-ref s (fx+ at 1)))
                 (fxvector-set! w i -1))))))))
 
-  ;; Takes the reports that came since the last look, without waiting.
+  ;; Takes the reports that came since the last look, without waiting. It
+  ;; runs at each of core0's looks, so interrupts go off without a winder,
+  ;; which would allocate.
   (define (platform-reports-pump!)
     (unless (eqv? *wayland-queue* 0)
-      (with-interrupts-disabled
-       (wayland-dispatch *wayland-display* *wayland-queue*)))
-    (unless (eqv? *mac-layer* 0) (mac-pump!))))
+      (disable-interrupts)
+      (wayland-dispatch *wayland-display* *wayland-queue*)
+      (enable-interrupts))
+    (unless (eqv? *mac-layer* 0) (mac-pump!)))
+
+  ;; Whether the screen reports on the window's frames.
+  (define (platform-reports?)
+    (not (and (eqv? *wayland-presentation* 0) (eqv? *mac-layer* 0))))
+
+  ;; How often core0 looks while it awaits a frame's GPU work or its
+  ;; report, in ns, which is how finely it sees them come: what a thread's
+  ;; timed wait keeps to. A quarter ms where the wait ends as asked to within
+  ;; a tenth of that (Linux's, 0.06 ms late at the median); a whole ms on
+  ;; Windows, where Chez rounds the wait to whole ms.
+  (define-made core0-look-ns (if (platform-windows?) 1000000 250000)))

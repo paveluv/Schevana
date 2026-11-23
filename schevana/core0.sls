@@ -54,9 +54,9 @@
     ;; from any thread: publishing a frame, whether the last one published
     ;; still waits, the frames given back, and what core0 read back
     gpu-publish! gpu-frame-waiting? gpu-frames-back! gpu-take-answers!
-    ;; whether core0 has a thread of its own; core1's wait, and the wake
-    ;; that ends it, from any thread; and quitting, as a job
-    core0-forked? core0-world-wait! core0-world-wake! core0-quit!
+    ;; whether core0 has a thread of its own; core1's wait, in ns, and the
+    ;; wake that ends it, from any thread; and quitting, as a job
+    core0-forked? core0-world-wait-ns! core0-world-wake! core0-quit!
     ;; Calls into SDL or core0's own state: safe only on core0's thread.
     ;; Until core0 has a thread of its own, the world steps it (core0-step!)
     ;; and boots it (says whose window it is, then opens, sizes and shows
@@ -72,7 +72,7 @@
           (only (schevana base) library-layer define-view)
           (only (schevana shader) shader shader-params)
           (only (schevana core0 mail) core0-display core0-frame-ns core0-forked?
-                core0-world-wait! core0-clock-ns)
+                core0-world-wait-ns! core0-clock-ns)
           (only (schevana core0 platform) platform-cpu-count)
           (only (schevana core0 present) core0-frame-report core0-refresh-ns!)
           (only (schevana core0 trace-file) core0-trace-dump!)

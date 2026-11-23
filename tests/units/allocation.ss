@@ -159,6 +159,31 @@
                (run-timers!)))
            (and later (= errors 1)))))
 
+;;; Core0's pacing parts: core1's wait and both wakes, and core0's sleep
+;;; woken before it, as each frame has them; and a step of core0's at which
+;;; nothing comes, as at each of its looks while frames flow, thousands a
+;;; second, with its window's facts read again as at each. The sleep takes
+;;; and gives up its lock with nothing to unwind: a winder would allocate,
+;;; and a second Ctrl-C, which drops core0's stack where it stands, would
+;;; run it.
+(fluid-let ([*core0-forked* #t] [*core0-world-woken* #f] [*core0-woken* #f])
+  (check "core1's wait, its wake and core0's, and core0's sleep woken \
+          before it, allocate nothing"
+         (= 0 (allocation-least 20 (lambda ()
+                                     (core0-world-wake!)
+                                     (core0-world-wait-ns! 1000000)
+                                     (core0-wake!)
+                                     (core0-sleep!))))))
+(fluid-let ([*core0-mode* 'sdl] [*core0-facts* *core0-facts*])
+  (let ([step (allocation-least 20 core0-step!)])
+    ;; 16: Chez 10.0.0 conses a pair for each collect-safe call into C,
+    ;; here SDL's poll of its queue
+    (check (format "a step of core0's at which nothing comes allocates \
+                    nothing but Chez's for its call into SDL's queue (~a \
+                    bytes)"
+                   step)
+           (<= step 16))))
+
 ;;; A library's procedures carry nothing. A variable of a library's own is
 ;;; held by every procedure that reads it, and by every procedure that
 ;;; calls one of those, so a closure made at run time that only calls one

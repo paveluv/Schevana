@@ -19,6 +19,7 @@
     sdl-set-window-position sdl-show-window sdl-get-window-size
     sdl-get-window-display-scale sdl-get-window-size-in-pixels
     sdl-get-display-for-window sdl-get-current-display-mode sdl-poll-event
+    sdl-wait-event-timeout sdl-push-event sdl-register-events
     sdl-start-text-input sdl-get-clipboard-text sdl-set-clipboard-text sdl-free
     sdl-create-system-cursor sdl-set-cursor sdl-set-window-fullscreen
     sdl-get-window-flags sdl-create-surface-from sdl-destroy-surface
@@ -89,6 +90,13 @@
   (define-foreign sdl-get-current-display-mode "SDL_GetCurrentDisplayMode"
     (unsigned-32) uptr)
   (define-foreign/collect-safe sdl-poll-event "SDL_PollEvent" (uptr) bool)
+  ;; Core0 waits here for events, in ms, while it awaits nothing of a
+  ;; frame's. An event pushed from another thread ends the wait; under
+  ;; Wayland that is a round trip to the compositor, which may hold it.
+  (define-foreign/collect-safe sdl-wait-event-timeout "SDL_WaitEventTimeout"
+    (uptr integer-32) bool)
+  (define-foreign/collect-safe sdl-push-event "SDL_PushEvent" (uptr) bool)
+  (define-foreign sdl-register-events "SDL_RegisterEvents" (int) unsigned-32)
   (define-foreign sdl-start-text-input "SDL_StartTextInput" (uptr) bool)
   (define-foreign sdl-get-clipboard-text "SDL_GetClipboardText" () uptr)
   (define-foreign sdl-set-clipboard-text "SDL_SetClipboardText" (string) bool)

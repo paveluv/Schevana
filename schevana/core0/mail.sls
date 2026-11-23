@@ -9,12 +9,14 @@
   (export
     core0-clock-ns *core0-jobs* core0-put! core0-take! core0-post!
     *core0-forked* core0-forked? *core0-world-mutex* *core0-ready*
-    *core0-woken* core0-world-wake! core0-world-wait! core0-ms core0-wake!
+    *core0-woken* *core0-waiting?* *core0-time* core0-world-wake!
+    core0-world-wait-ns! core0-wake! core0-wake-event-make! *core0-wake-type*
     *core0-facts* core0-frame-ns core0-display *core0-input-ns*
     *core0-input-pumped* *core0-input-wl* core0-input-set! core0-input-take!)
   (import (chezscheme)
-          (only (schevana base) define-state library-layer)
-          (only (schevana sdl) sdl-get-ticks-ns))
+          (only (schevana base) define-made define-state library-layer)
+          (only (schevana sdl) sdl-get-ticks-ns sdl-memset sdl-push-event
+                sdl-register-events))
 
   (library-layer core0)
 
@@ -57,32 +59,68 @@
   (define-state *core0-world-woken* #f)   ; under the mutex
   (define-state *core0-ready* (make-condition))   ; core0's own
   (define-state *core0-woken* #f)                 ; under the mutex
+  ;; whether core0 is in SDL's wait for events, under the mutex
+  (define-state *core0-waiting?* #f)
 
-  ;; Ends core1's current wait, or its next one. Called from any thread.
+  ;; A time record for each thread's timed waits, set again for each wait,
+  ;; so that a wait allocates nothing: core1's and core0's.
+  (define-made *core0-world-time* (make-time 'time-duration 0 0))
+  (define-made *core0-time* (make-time 'time-duration 0 0))
+
+  ;; Ends core1's current wait, or its next one. Called from any thread, in
+  ;; a handler's engine too (post-core1!): interrupts are off between the
+  ;; lock's two ends, so no engine ends there with the lock held. Nothing is
+  ;; allocated.
   (define (core0-world-wake!)
     (when *core0-forked*
-      (with-mutex *core0-world-mutex*
-        (set! *core0-world-woken* #t)
-        (condition-signal *core0-world-ready*))))
+      (disable-interrupts)
+      (mutex-acquire *core0-world-mutex*)
+      (set! *core0-world-woken* #t)
+      (condition-signal *core0-world-ready*)
+      (mutex-release *core0-world-mutex*)
+      (enable-interrupts)))
 
-  ;; Core1 waits up to ms milliseconds, or until it is woken.
-  (define (core0-world-wait! ms)
-    (with-mutex *core0-world-mutex*
-      (unless (or *core0-world-woken* (<= ms 0))
-        (condition-wait *core0-world-ready* *core0-world-mutex* (core0-ms ms)))
-      (set! *core0-world-woken* #f)))
+  ;; Core1 waits up to ns, a fixnum, or with no end when ns is #f; or until
+  ;; it is woken. Nothing is allocated.
+  (define (core0-world-wait-ns! ns)
+    (let ([t *core0-world-time*])
+      (when (and ns (fx> ns 0))
+        (set-time-second! t (fxquotient ns 1000000000))
+        (set-time-nanosecond! t (fxremainder ns 1000000000)))
+      (mutex-acquire *core0-world-mutex*)
+      (cond
+        [(or *core0-world-woken* (and ns (fx<= ns 0))) (void)]
+        [ns (condition-wait *core0-world-ready* *core0-world-mutex* t)]
+        [else (condition-wait *core0-world-ready* *core0-world-mutex*)])
+      (set! *core0-world-woken* #f)
+      (mutex-release *core0-world-mutex*)))
 
-  (define (core0-ms ms)
-    (make-time 'time-duration (* 1000000 (modulo ms 1000)) (quotient ms 1000)))
+  ;; The event that core0-wake! pushes to end SDL's wait, kept, with its
+  ;; type, which SDL gives as it starts (core0-wake-event-make!, from
+  ;; core0-window-init!); core0's pump passes over it.
+  (define-made *core0-wake-event* (foreign-alloc 128))   ; an SDL_Event
+  (define-state *core0-wake-type* 0)
+
+  (define (core0-wake-event-make!)
+    (set! *core0-wake-type* (sdl-register-events 1))
+    (sdl-memset *core0-wake-event* 0 128)
+    (foreign-set! 'unsigned-32 *core0-wake-event* 0 *core0-wake-type*))
 
   ;; Ends core0's current sleep, or its next one, when a job is posted or a
-  ;; frame published. Called from any thread; on core1's thread (without a
-  ;; thread of its own), core0 never sleeps.
+  ;; frame published. Called from any thread, in a handler's engine too,
+  ;; with interrupts off as in core0-world-wake!; on core1's thread (without
+  ;; a thread of its own), core0 never sleeps. Only an event ends SDL's
+  ;; wait, so there the wake's event is pushed.
   (define (core0-wake!)
     (when *core0-forked*
-      (with-mutex *core0-world-mutex*
-        (set! *core0-woken* #t)
-        (condition-signal *core0-ready*))))
+      (disable-interrupts)
+      (mutex-acquire *core0-world-mutex*)
+      (set! *core0-woken* #t)
+      (if *core0-waiting?*
+          (sdl-push-event *core0-wake-event*)
+          (condition-signal *core0-ready*))
+      (mutex-release *core0-world-mutex*)
+      (enable-interrupts)))
 
   ;; What SDL says about the window, as core0 last read it: #(flags w h pw
   ;; ph scale frame-ns display error-text system-theme). It is made again

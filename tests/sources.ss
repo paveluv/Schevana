@@ -268,7 +268,7 @@
 ;; left out: a library's exports and imports (file-forms), whose size
 ;; follows from what the library gives, and a change to either is
 ;; reviewed anyway.
-(define src-budget 39763)
+(define src-budget 39857)
 
 ;; The number of tokens in a datum as read; a list's end counts as none.
 (define (tokens x)
@@ -763,6 +763,8 @@
     "SDL_SubmitGPUCommandBuffer"
     "SDL_SubmitGPUCommandBufferAndAcquireFence"
     "SDL_PollEvent"
+    "SDL_WaitEventTimeout"
+    "SDL_PushEvent"
     "SDL_WaitForGPUFences"
     "SDL_WaitForGPUIdle"
     "SDL_SetGPUSwapchainParameters"))

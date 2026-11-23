@@ -15,10 +15,10 @@
 
 (library (schevana core0 present)
   (export
-    present-rows present-words *present-ring* *present-taken* present-taken!
+    present-rows present-words *present-ring* present-taken!
     present-acquiring! present-acquired! present-at core0-frame-report
     present-sent! present-reported! *present-refresh-said* core0-refresh-ns!
-    present-fence! present-poll!)
+    present-fence! present-poll! present-awaiting?)
   (import (chezscheme)
           (only (schevana base) define-state library-layer)
           (only (schevana sdl) sdl-query-gpu-fence sdl-release-gpu-fence)
@@ -63,10 +63,14 @@
            (begin (memory-order-acquire)
                   (fxvector-ref *present-ring* (fx+ at k))))))
 
+  ;; The newest frame sent to the screen.
+  (define-state *present-newest* 0)
+
   ;; Begins frame's row as core0 sends the frame; the caller asks the
   ;; screen to report on it (platform-report-ask!, (schevana core0
   ;; platform)).
   (define (present-sent! frame)
+    (set! *present-newest* frame)
     (let ([r *present-ring*] [at (present-at frame)])
       (fxvector-set! r (fx+ at 1) 0)
       (fxvector-set! r (fx+ at 2) (core0-clock-ns))
@@ -340,6 +344,25 @@
                           (fxvector-ref *present-fence-frames* oldest))
                      i
                      oldest))]))))
+
+  ;; Returns whether core0 awaits something of a frame at now, and so looks
+  ;; rather than waits for events (core0-sleep!): a fence not yet seen
+  ;; signaled; or, where the screen reports (reports?), the newest frame's
+  ;; report, for a second after it was sent. The reports come on core0's own
+  ;; queue, and SDL's wait for events doesn't end for them; a report that
+  ;; never comes keeps core0 looking for a second at most.
+  (define (present-awaiting? now reports?)
+    (or (let loop ([i 0])
+          (and (fx< i present-fence-slots)
+               (or (not (eqv? (vector-ref *present-fences* i) 0))
+                   (loop (fx+ i 1)))))
+        (let* ([r *present-ring*] [at (present-at *present-newest*)]
+               [sent (fxvector-ref r (fx+ at 2))])
+          (and reports?
+               (fx= (fxvector-ref r at) *present-newest*)
+               (fx= (fxvector-ref r (fx+ at 1)) 0)
+               (fx< 0 sent)
+               (fx< now (fx+ sent 1000000000))))))
 
   ;; Records the GPU times of the frames whose fences signaled since the
   ;; last look, and publishes the reports held too long

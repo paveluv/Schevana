@@ -46,18 +46,22 @@
                 sdl-set-window-hit-test sdl-set-window-icon
                 sdl-set-window-minimum-size sdl-set-window-position
                 sdl-set-window-size sdl-set-window-title sdl-show-window
-                sdl-show-window-system-menu sdl-start-text-input)
+                sdl-show-window-system-menu sdl-start-text-input
+                sdl-wait-event-timeout)
           (only (schevana core0 mail) *core0-facts* *core0-forked*
                 *core0-input-ns* *core0-input-pumped* *core0-input-wl*
-                *core0-jobs* *core0-ready* *core0-woken* *core0-world-mutex*
-                core0-clock-ns core0-input-set! core0-input-take! core0-ms
+                *core0-jobs* *core0-ready* *core0-time* *core0-waiting?*
+                *core0-wake-type* *core0-woken* *core0-world-mutex*
+                core0-clock-ns core0-input-set! core0-input-take!
+                core0-wake-event-make!
                 core0-post! core0-put! core0-take! core0-world-wake!)
           (only (schevana core0 trace) core0-trace!)
           (only (schevana core0 renderer) *renderer* renderer-device)
-          (only (schevana core0 present) *present-refresh-said* *present-taken*
-                present-poll! present-taken!)
-          (only (schevana core0 platform) core0-platform-read!
+          (only (schevana core0 present) *present-refresh-said*
+                present-awaiting? present-poll! present-taken!)
+          (only (schevana core0 platform) core0-look-ns core0-platform-read!
                 platform-desktop-frameless? platform-reports-pump!
+                platform-reports?
                 platform-reports-start! platform-sdl-wayland?
                 platform-thread-interactive!)
           (only (schevana core0 trace-file) core0-trace-start!
@@ -166,7 +170,8 @@
   (define (core0-window-init! driver)
     (when driver (sdl-set-hint "SDL_VIDEO_DRIVER" driver))
     (unless (sdl-init SDL_INIT_VIDEO)
-      (errorf 'core0-window-init! "SDL_Init failed: ~a" (sdl-get-error))))
+      (errorf 'core0-window-init! "SDL_Init failed: ~a" (sdl-get-error)))
+    (core0-wake-event-make!))
 
   ;; No window: the GPU draws to a target, on the windowless driver.
   (define (core0-window-headless!)
@@ -236,11 +241,14 @@
               (vector-ref f 4))))
 
   ;; Returns the size that get, one of SDL's size calls, gives, as (values
-  ;; w h).
+  ;; w h). Core0 reads it at each step, so the two places' addresses are
+  ;; kept, and nothing is allocated.
+  (define-made core0-size-w
+    (ftype-pointer-address (ftype-&ref core0-size (w) core0-size*)))
+  (define-made core0-size-h
+    (ftype-pointer-address (ftype-&ref core0-size (h) core0-size*)))
   (define (core0-size-from get)
-    (get *sdl-window*
-         (ftype-pointer-address (ftype-&ref core0-size (w) core0-size*))
-         (ftype-pointer-address (ftype-&ref core0-size (h) core0-size*)))
+    (get *sdl-window* core0-size-w core0-size-h)
     (values (ftype-ref core0-size (w) core0-size*)
             (ftype-ref core0-size (h) core0-size*)))
 
@@ -539,18 +547,23 @@
         (let ([buf *sdl-event*])
           (let loop ([more? (sdl-poll-event buf)] [acc '()] [types '()]
                      [first 0])
-            (if more?
-                (let ([type (foreign-ref 'unsigned-32 buf 0)]
-                      [e (sdl-event->list buf)])
-                  (loop (sdl-poll-event buf) (if e (cons e acc) acc)
-                        (cons type types)
-                        (if (and (eqv? first 0)
-                                 (memv type '(#x300 #x301 #x303 #x400 #x401
-                                              #x402 #x403)))
-                            (ftype-ref sdl-event-head (timestamp)
-                                       (make-ftype-pointer sdl-event-head buf))
-                            first)))
-                (values (reverse acc) (reverse types) first))))
+            (cond
+              [(not more?) (values (reverse acc) (reverse types) first)]
+              ;; core0's own wake (core0-wake!), nothing of the world's
+              [(eqv? (foreign-ref 'unsigned-32 buf 0) *core0-wake-type*)
+               (loop (sdl-poll-event buf) acc types first)]
+              [else
+               (let ([type (foreign-ref 'unsigned-32 buf 0)]
+                     [e (sdl-event->list buf)])
+                 (loop (sdl-poll-event buf) (if e (cons e acc) acc)
+                       (cons type types)
+                       (if (and (eqv? first 0)
+                                (memv type '(#x300 #x301 #x303 #x400 #x401
+                                             #x402 #x403)))
+                           (ftype-ref sdl-event-head (timestamp)
+                                      (make-ftype-pointer sdl-event-head
+                                                          buf))
+                           first)))])))
         (values '() '() 0)))
 
   ;; Takes when the oldest input since the last take came, by SDL's stamp,
@@ -641,13 +654,11 @@
   (define-state *core0-quit* #f)
   (define (core0-quit-now!) (set! *core0-quit* #t))
 
-  ;; How long core0 sleeps with nothing to do, which is the longest that
-  ;; input waits; while frames flow (one taken in the last 100 ms), 1 ms, so
-  ;; that core1's turn, which begins just in time for the screen, finds the
-  ;; newest input.
-  (define core0-idle-ms 4)
-  (define (core0-idle-ms-now)
-    (if (< (- (core0-clock-ns) *present-taken*) 100000000) 1 core0-idle-ms))
+  ;; How long core0 waits in SDL's wait for events, in ms, while it awaits
+  ;; nothing of a frame's: input ends the wait at once, and a job or a frame
+  ;; ends it by the event that core0-wake! pushes; a stalled core1 is seen
+  ;; this late (core0-trace-watch!).
+  (define core0-idle-ms 1000)
 
   ;; Core0's loop, on its own thread: it steps until core1 quits.
   (define (core0-loop!)
@@ -699,34 +710,39 @@
     (core0-window-start! mode w h full?)
     (core0-fork-loop! world))
 
-  ;; Core0 sleeps up to ms, or until it is woken. Its events don't wake it:
-  ;; it looks for them each time it wakes, so ms bounds how long input
-  ;; waits while nothing else comes (core0-idle-ms).
+  ;; Core0 sleeps until it is woken, or for a while. While it awaits a
+  ;; frame's GPU work or its report (present-awaiting?), it looks: a timed
+  ;; wait on its condition, core0-look-ns. With no window, 4 ms there too.
+  ;; Else it waits in SDL's own wait for events, which input ends at once,
+  ;; for up to core0-idle-ms. Only SDL's wait is traced: a look's trace
+  ;; would fill the trace's ring in seconds.
   ;;
-  ;; A second Ctrl-C before the first is answered makes Chez drop the first
-  ;; thread's stack where it stands (its noncontinuable interrupt), in the
-  ;; wait too, where the mutex has been given up. The unwinding then
-  ;; releases the mutex only if it is held, where with-mutex's release
-  ;; would raise an error and print it as the run ends.
-  (define-state *core0-sleeping* #f)   ; in the wait
-  (define (core0-sleep-release!)
-    (if *core0-sleeping*
-        (begin
-          (set! *core0-sleeping* #f)
-          (guard (c [#t (void)]) (mutex-release *core0-world-mutex*)))
-        (mutex-release *core0-world-mutex*)))
-  (define (core0-sleep! ms)
-    (dynamic-wind
-      (lambda () (mutex-acquire *core0-world-mutex*))
-      (lambda ()
-        (unless (or *core0-woken* (<= ms 0))
-          (core0-trace! 7 ms)
-          (set! *core0-sleeping* #t)
-          (condition-wait *core0-ready* *core0-world-mutex* (core0-ms ms))
-          (set! *core0-sleeping* #f)
-          (core0-trace! 8 0))
-        (set! *core0-woken* #f))
-      core0-sleep-release!))
+  ;; The lock is taken and given up by plain calls, with nothing to unwind,
+  ;; so the sleep allocates nothing. A second Ctrl-C before the first is
+  ;; answered makes Chez drop the first thread's stack where it stands (its
+  ;; noncontinuable interrupt), in the wait too, where the mutex has been
+  ;; given up; with nothing to unwind, no release of a mutex this thread
+  ;; doesn't hold is tried as the run ends.
+  (define (core0-sleep!)
+    (let ([look? (present-awaiting? (core0-clock-ns) (platform-reports?))]
+          [t *core0-time*])
+      (set-time-second! t 0)
+      (set-time-nanosecond! t (if look? core0-look-ns 4000000))
+      (mutex-acquire *core0-world-mutex*)
+      (cond
+        [*core0-woken* (void)]
+        [(or look? (not (eq? *core0-mode* 'sdl)))
+         (condition-wait *core0-ready* *core0-world-mutex* t)]
+        [else
+         (set! *core0-waiting?* #t)
+         (mutex-release *core0-world-mutex*)
+         (core0-trace! 7 core0-idle-ms)
+         (sdl-wait-event-timeout 0 core0-idle-ms)
+         (core0-trace! 8 0)
+         (mutex-acquire *core0-world-mutex*)
+         (set! *core0-waiting?* #f)])
+      (set! *core0-woken* #f)
+      (mutex-release *core0-world-mutex*)))
 
   ;; Core0's side, in its step: presents the frame published, if there is
   ;; one, and gives it back.
@@ -756,25 +772,27 @@
     (guard (c [#t (set! *core0-job-failed* (cons job c))])
       (apply (car job) (cdr job))))
 
-  ;; One step of core0's. It runs the jobs posted, in order; presents the
-  ;; frame published, if there is one; with none, and on a thread of its
-  ;; own, sleeps for up to core0-idle-ms, a sleep that a job or a frame
-  ;; ends; looks at the frames' GPU fences; reads the screen's reports and
-  ;; puts the events in the world's inbox, after reading again what the
-  ;; window says about itself (which it reads again all the same when no
-  ;; events came); and, with core1 on a thread of its own, watches core1
+  ;; One step of core0's. It runs the jobs posted, in order, traced if any
+  ;; came; presents the frame published, if there is one; with none, and on
+  ;; a thread of its own, sleeps (core0-sleep!), a sleep that a job or a
+  ;; frame ends; reads the screen's reports and puts the events in the
+  ;; world's inbox, after reading again what the window says about itself
+  ;; (which it reads again all the same when no events came); then looks at
+  ;; the frames' GPU fences, so that a frame seen done has the reports that
+  ;; came before it; and, with core1 on a thread of its own, watches core1
   ;; for a stall (core0-trace-watch!). The sleep comes before the pump, so
   ;; that input that came while core0 slept goes in before the next present
-  ;; can wait for the screen.
+  ;; can wait for the screen. A step at which nothing comes allocates
+  ;; nothing of its own: Chez conses a pair for its call into SDL's queue.
   (define (core0-step!)
     (let ([jobs (core0-take! *core0-jobs*)])
-      (core0-trace! 1 (length jobs))
+      (unless (null? jobs) (core0-trace! 1 (length jobs)))
       (for-each core0-run-job! jobs)
       (unless (eq? *core0-mode* 'none) (gpu-present-published!))
       (when (and *core0-forked* (not (unbox *gpu-published*)))
-        (core0-sleep! (core0-idle-ms-now)))
-      (present-poll!)
+        (core0-sleep!))
       (unless (core0-events-pumped!) (core0-facts-refresh! (pair? jobs)))
+      (present-poll!)
       (when *core0-forked* (core0-trace-watch!))))
 
   ;; Puts the events that came since the last pump into the world's inbox,

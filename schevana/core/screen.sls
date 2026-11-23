@@ -28,7 +28,7 @@
                 core0-window-icon! core0-window-maximized? core0-window-minimum!
                 core0-window-open! core0-window-resize! core0-window-scale
                 core0-window-show! core0-window-sizes core0-window-title!
-                core0-world-wait! gpu-frame-waiting?)
+                core0-world-wait-ns! gpu-frame-waiting?)
           (only (schevana core theme-table) theme theme-table-default!)
           (only (schevana core processes) request-redraw! with-profile-span)
           (only (schevana core draw) *canvas-h* *canvas-w* canvas-create!
@@ -313,13 +313,15 @@
   ;; latch.
   (define (screen-events wait-ms)
     (core0-trace! 20 wait-ms)
-    (cond [(not (core0-forked?)) (core0-step!)]
-          [(gpu-frame-waiting?)
-           (with-profile-span 'vsync-wait 'acquire (core0-world-wait! wait-ms))]
-          ;; until the next latch, the screen's, though input wakes it
-          [(and (pacer-wanted?) (pacer-on-latch?))
-           (with-profile-span 'vsync-wait 'latch (core0-world-wait! wait-ms))]
-          [else (core0-world-wait! wait-ms)])
+    (let ([ns (* wait-ms 1000000)])
+      (cond [(not (core0-forked?)) (core0-step!)]
+            [(gpu-frame-waiting?)
+             (with-profile-span 'vsync-wait 'acquire
+                                (core0-world-wait-ns! ns))]
+            ;; until the next latch, the screen's, though input wakes it
+            [(and (pacer-wanted?) (pacer-on-latch?))
+             (with-profile-span 'vsync-wait 'latch (core0-world-wait-ns! ns))]
+            [else (core0-world-wait-ns! ns)]))
     (core0-trace! 21 0)
     (let-values ([(events types) (core0-window-events)])
       (unless (null? types) (core0-trace! 27 (length types)))

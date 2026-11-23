@@ -268,15 +268,18 @@ least 1 ms a step.
 With a window, the screen sets the pace. Core0 presents frames on its own
 thread and holds at most two: the one it presents and one more. No tick
 runs while the last frame published waits for core0 to take it, which
-core0 does as the screen frees an image. After a tick whose frame the
-screen held, the next tick may come as soon as half a period later, once
-core0 has taken that frame. So each refresh gets a new frame, and never
-one drawn on a clock that drifts against the screen's. A window's
-`'frame` handler is told `t`, the time its frame should show: a refresh
-after the last frame's, and a few refreshes after the tick, so that what
-moves by `t` moves as evenly as the screen shows frames. While the window
-is hidden or covered no frame is drawn; input, timers and processes go
-on.
+core0 does as the screen frees an image. Between frames, core0 looks
+every quarter ms while it awaits a frame's GPU work or the screen's
+report on it; otherwise it waits in SDL's own wait for events, which
+input ends at once, and which a frame or a job ends by an event that
+core0 pushes (`core0-wake!`). After a tick whose frame the screen held,
+the next tick may come as soon as half a period later, once core0 has
+taken that frame. So each refresh gets a new frame, and never one drawn
+on a clock that drifts against the screen's. A window's `'frame` handler
+is told `t`, the time its frame should show: a refresh after the last
+frame's, and a few refreshes after the tick, so that what moves by `t`
+moves as evenly as the screen shows frames. While the window is hidden
+or covered no frame is drawn; input, timers and processes go on.
 
 Where the screen reports when the compositor latches a frame (on Wayland
 and on the Mac), a tick instead begins just in time, aimed at a latch,

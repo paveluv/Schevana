@@ -167,35 +167,6 @@
            (and (equal? (list-head ran 2) '(4 3))
                 (eq? (car *core0-job-failed*) raising)))))
 
-;;; Core0's sleep, unwound from inside its wait: a second Ctrl-C before
-;;; the first is answered makes Chez drop the first thread's stack where
-;;; it stands, even in the wait, where the mutex has been given up. Here is
-;;; the release that the unwinding runs, in each of the three places.
-(check "core0's sleep, dropped in its wait, unwinds without a word of the \
-        mutex it gave up, and releases the one it holds, in the wait or not"
-       (let ([held? (lambda ()   ; whether a release of the mutex succeeds
-                      (guard (c [#t #f])
-                        (mutex-release *core0-world-mutex*)
-                        #t))])
-         (and
-          ;; in the wait, with the mutex not this thread's: nothing is
-          ;; raised
-          (fluid-let ([*core0-sleeping* #t])
-            (guard (c [#t #f])
-              (core0-sleep-release!)
-              (not *core0-sleeping*)))
-          ;; in the wait's own frame, with the mutex still held: it is
-          ;; released
-          (fluid-let ([*core0-sleeping* #t])
-            (mutex-acquire *core0-world-mutex*)
-            (core0-sleep-release!)
-            (not (held?)))
-          ;; out of the wait: it is released, as with-mutex would do
-          (begin
-            (mutex-acquire *core0-world-mutex*)
-            (core0-sleep-release!)
-            (not (held?))))))
-
 (fluid-let ([*core0-inbox* (box '())])
   (core0-put! *core0-inbox* '(((key-down #\a ())) . (#x300)))
   (core0-put! *core0-inbox* '(((text "a")) . (#x303)))
@@ -256,25 +227,69 @@
                       events failed refresh-said))
             (equal? (cdr (assq 'app-id (inspect-core0))) "schevana")))
 
-;; Core0's sleep, on a thread of its own: a posted job or a published
-;; frame wakes it, at once or from its next sleep; its events never do, so
-;; a sleep with nothing to wake it lasts its whole time.
-(fluid-let ([*core0-forked* #t] [*core0-woken* #f])
+;; Core0's sleep, on a thread of its own, with a window and nothing of a
+;; frame's awaited: SDL's wait for events, which a posted job or a
+;; published frame ends, at once or from its next sleep, by an event it
+;; pushes; nothing else ends it, so a sleep with nothing to wake it lasts
+;; its whole time. Headless, SDL has no window to wait on, and looks at its
+;; queue each ms instead, which the pushed event ends all the same.
+(fluid-let ([*core0-forked* #t] [*core0-woken* #f] [*core0-mode* 'sdl]
+            [present-awaiting? (lambda (now reports?) #f)])
+  (core0-window-pump)                   ; SDL's queue, emptied
   (core0-wake!)
   (let ([t0 (now-ms)])
-    (core0-sleep! 1000)
+    (core0-sleep!)
     (let ([before (- (now-ms) t0)] [t1 (now-ms)])
-      (core0-sleep! 20)
+      (fluid-let ([core0-idle-ms 100]) (core0-sleep!))
       (let ([alone (- (now-ms) t1)] [t2 (now-ms)])
         (fork-thread (lambda ()
                        (sleep (make-time 'time-duration 30000000 0))
                        (core0-wake!)))
-        (core0-sleep! 1000)
-        (let ([during (- (now-ms) t2)])
-          (check (format "a wake ends core0's sleep, before it or during it, \
-                          and nothing else does (~a ~a ~a ms)"
-                         before alone during)
-                 (and (< before 100) (>= alone 15) (< 25 during 500))))))))
+        (core0-sleep!)
+        (let ([during (- (now-ms) t2)]
+              [types (let-values ([(events types first)
+                                   (core0-window-pump)])
+                       types)])
+          (check (format "a wake ends core0's wait for events, before it or \
+                          during it, by an event the pump passes over, and \
+                          nothing else ends it (~a ~a ~a ms, ~a)"
+                         before alone during types)
+                 (and (< before 100) (>= alone 80) (< 25 during 500)
+                      (null? types))))))))
+
+;; While core0 awaits a frame's GPU work or its report, it looks: its sleep
+;; is a timed wait on its condition, core0-look-ns, never SDL's.
+(fluid-let ([*core0-forked* #t] [*core0-woken* #f] [*core0-mode* 'sdl]
+            [present-awaiting? (lambda (now reports?) #t)])
+  (let ([t0 (now-ms)])
+    (core0-sleep!)
+    (let ([look (- (now-ms) t0)])
+      (check (format "while core0 awaits something of a frame, its sleep is \
+                      a look that ends by itself (~a ms, of ~a µs)"
+                     look (quotient core0-look-ns 1000))
+             (< look (quotient core0-idle-ms 2))))))
+
+;; Core1's wait, with core0 on a thread of its own: up to ns, or with no
+;; end (#f); at once when woken before it, and a wake ends it.
+(fluid-let ([*core0-forked* #t] [*core0-world-woken* #f])
+  (core0-world-wake!)
+  (let ([t0 (now-ns)])
+    (core0-world-wait-ns! 2000000000)
+    (let ([before (- (now-ns) t0)] [t1 (now-ns)])
+      (core0-world-wait-ns! 1500000)
+      (let ([alone (- (now-ns) t1)] [t2 (now-ns)])
+        (fork-thread (lambda ()
+                       (sleep (make-time 'time-duration 30000000 0))
+                       (core0-world-wake!)))
+        (core0-world-wait-ns! #f)
+        (let ([during (- (now-ns) t2)])
+          (check (format "core1's wait lasts its ns, a ms and a half, ends \
+                          at a wake before it or during it, and with no end \
+                          waits for one (~a ~a ~a µs)"
+                         (quotient before 1000) (quotient alone 1000)
+                         (quotient during 1000))
+                 (and (< before 100000000) (>= alone 1400000)
+                      (< 25000000 during 500000000))))))))
 
 ;; The process's end: whoever exits, core0 waits for the GPU first, since
 ;; a driver's threads may still be at work (lavapipe compiling a frame's

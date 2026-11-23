@@ -12,7 +12,7 @@
           (only (schevana base) define-hook define-made define-state
                 library-layer string-prefix? string-split)
           (only (schevana core0) core0-forked? core0-run! core0-trace!
-                core0-world-wait! core0-world-wake! gpu-frame-waiting?)
+                core0-world-wait-ns! core0-world-wake! gpu-frame-waiting?)
           (only (schevana core platform) now-ms now-ns)
           (only (schevana core processes) *dirty* *procs* *reloading*
                 core1-thread! kill! notify request-redraw! run-procs!
@@ -218,7 +218,7 @@
   ;; core1 waits for it.
   (define (schevana-end!)
     (if (core0-forked?)
-        (let wait () (core0-world-wait! 1000) (wait))
+        (let wait () (core0-world-wait-ns! #f) (wait))
         (exit 0)))
 
   (define (uptime-ms) (- (now-ms) *boot-ms*))
