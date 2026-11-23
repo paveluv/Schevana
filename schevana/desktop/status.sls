@@ -68,10 +68,6 @@
       (after (- 1000 (quotient (time-nanosecond t) 1000000))
              (lambda () (status-second!)))))
 
-  ;; one timer, which a reload doesn't add to
-  (at-load-once
-   (status-second!))
-
   (define (status-procs)
     (let ([n (length *procs*)])
       (and (> n 0) (format "⚙ ~a running" n))))
@@ -96,4 +92,9 @@
       (format "~a ~a ~a   ~2,'0d:~2,'0d:~2,'0d"
               (vector-ref day-names (date-week-day d)) (date-day d)
               (vector-ref ui-month-names (- (date-month d) 1))
-              (date-hour d) (date-minute d) (date-second d)))))
+              (date-hour d) (date-minute d) (date-second d))))
+
+  ;; One timer, which a reload doesn't add to. Its first call reads every
+  ;; segment at once, so it comes after all that they call.
+  (at-load-once
+   (status-second!)))

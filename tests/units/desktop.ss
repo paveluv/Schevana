@@ -309,3 +309,17 @@
              (and (member (at '()) shown)
                   (equal? minimized (list (at '(dim)))))))))
 (set! *apps* (remp (lambda (a) (eq? (app-name a) 'desktop-iconed)) *apps*))
+
+;; The status bar reads its segments as its library loads, so the first
+;; frames show them; a segment that raises shows as "⚠ name" instead. The
+;; library is loaded again from its source (test-library), which reads the
+;; segments again as it loads. (In the hacker edition test-library gives
+;; the world's library, read when the world booted, so there the check
+;; holds by itself.)
+(test-library '(schevana desktop status) 'st:)
+(check (format "the status bar reads every segment as it loads ~s"
+               st:*status-shown*)
+       (and (pair? st:*status-shown*)
+            (for-all (lambda (s)
+                       (not (equal? (cdr s) (format "⚠ ~a" (car s)))))
+                     st:*status-shown*)))
