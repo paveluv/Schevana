@@ -58,7 +58,9 @@ schevana/      the libraries below the world, each declaring its layer:
                px, menu, ...
   services/    long-lived state behind procedures: crew, env, pacer-lab,
                profile, theme-file, vat
-  styles/  palettes/  wallpapers/    the looks, one definition per library
+  styles/  palettes/  wallpapers/    the looks, one definition per library;
+               a look's parts, in the folder of its name (styles/open-look/,
+               styles/genera/)
   desktop/     the screen's own surfaces: wallpaper, bars, menu, toasts;
                keys, arranging windows, the file dialog; the desktop's
                start (main, start)

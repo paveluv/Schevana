@@ -52,6 +52,18 @@
 ;; The forwarders, and the names the tests' build gives.
 (load (string-append *schevana-root* "/tests/given.ss"))
 
+;; A library's parts, in the folder of its name ((schevana styles open-look
+;; fonts)), which "/" has only through the library that imports them:
+;; imported here as well, so that their names reach the tests too.
+(unless test-hacker?
+  (let ([loaded (library-list)])
+    (for-each (lambda (name)
+                (when (and (eq? (car name) 'schevana) (> (length name) 3)
+                           (member (list-head name (- (length name) 1))
+                                   loaded))
+                  (reload-import! core-env name)))
+              loaded)))
+
 (unless test-hacker?
   (reach-given! main-env)
   (reach-given! core-env)
