@@ -202,7 +202,7 @@
 
 ;; A full render of the screen now.
 (define (full-render)
-  (make-picture (screen-bytes) *canvas-pw* *canvas-ph*))
+  (make-picture (test-screen-bytes) *canvas-pw* *canvas-ph*))
 
 ;; Whether the screen is what a full render draws.
 (define (screen-whole?)

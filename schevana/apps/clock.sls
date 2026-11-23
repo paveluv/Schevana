@@ -2,7 +2,7 @@
 ;;; handler.
 
 (library (schevana apps clock)
-  (export draw-clock-face clock)
+  (export clock)
   (import (chezscheme)
           (only (schevana base) library-layer)
           (only (schevana core) after alpha define-app draw-line fill-box

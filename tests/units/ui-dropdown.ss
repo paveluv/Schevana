@@ -29,7 +29,7 @@
          (steps 2)
          (test-click! win 'd)
          (steps 1)
-         (let* ([open? (menu-open?)]
+         (let* ([open? (test-menu-open?)]
                 [labels (and open? (map car (filter pair?
                                                     (menu-entries *menu*))))]
                 [sel (and open? (menu-sel *menu*))]
@@ -54,7 +54,7 @@
              (invalidate! win)
              (steps 1)
              (ui-dropdown-test-press! key)
-             (let ([open? (menu-open?)])
+             (let ([open? (test-menu-open?)])
                (when open? (close-menu!))
                (steps 1)
                open?))
@@ -69,7 +69,7 @@
          (test-click! win 'd)
          (ui-dropdown-test-press! 'down)
          (ui-dropdown-test-press! 'return)
-         (let ([open? (menu-open?)])
+         (let ([open? (test-menu-open?)])
            (close-window! win)
            (and (eq? (unbox value) 'doing) (not open?)))))
 
@@ -82,7 +82,7 @@
          (let ([clicked (unbox value)])
            (test-click! win 'd)
            (ui-dropdown-test-press! 'escape)
-           (let ([open? (menu-open?)])
+           (let ([open? (test-menu-open?)])
              (close-window! win)
              (and (eq? clicked 'review) (not open?)
                   (eq? (unbox value) 'review))))))

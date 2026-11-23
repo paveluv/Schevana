@@ -184,9 +184,10 @@
 ;; A topic of a library by itself, which needs no world, says so in its
 ;; first form: (test-focus (schevana kits complete) ...). In the library
 ;; edition it runs with those libraries imported from the tests' build,
-;; and with the checks (tests/check.ss): the world is neither loaded nor
-;; booted. In the hacker edition, where every library is at the world's
-;; top level, it runs in the world, as any topic does.
+;; what each keeps to itself among their names (tests/given.ss), and with
+;; the checks (tests/check.ss): the world is neither loaded nor booted.
+;; In the hacker edition, where every library is at the world's top level,
+;; it runs in the world, as any topic does.
 (define-syntax test-focus (syntax-rules () [(_ . libraries) (void)]))
 (let ([form (call-with-input-file units-topic-file read)])
   (when (and (pair? form) (eq? (car form) 'test-focus)
@@ -198,6 +199,8 @@
       (test-build! root))
     (load (string-append *schevana-root* "/src/base.ss"))
     (eval `(import ,@(cdr form)))
+    (load (string-append *schevana-root* "/tests/given.ss"))
+    (reach-given! (interaction-environment))
     (load (string-append *schevana-root* "/tests/check.ss"))
     (load units-topic-file test-form-eval)
     (test-verdict!)))
@@ -252,7 +255,7 @@
   (when (or *dirty* (not screen-picture-kept)
             (not (= screen-picture-frames *frames-drawn*)))
     (set! screen-picture-kept
-      (make-picture (screen-bytes) *canvas-pw* *canvas-ph*))
+      (make-picture (test-screen-bytes) *canvas-pw* *canvas-ph*))
     (set! screen-picture-frames *frames-drawn*))
   screen-picture-kept)
 
@@ -316,7 +319,7 @@
        (bytevector=? (picture-bytes a) (picture-bytes b))))
 
 ;; The screen's pixels.
-(define (canvas-bytes) (screen-bytes))
+(define (canvas-bytes) (test-screen-bytes))
 
 ;;; ------------------------------------------------------------------ helpers
 ;;; What more than one topic uses.

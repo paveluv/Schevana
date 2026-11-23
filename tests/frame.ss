@@ -173,7 +173,7 @@
 
 ;; Returns the frame the world draws now, drawn straight into an image.
 (define (reference)
-  (make-picture (screen-bytes) *canvas-pw* *canvas-ph*))
+  (make-picture (test-screen-bytes) *canvas-pw* *canvas-ph*))
 
 ;; Returns Monitor's content in device pixels, (x0 y0 x1 y1), or #f when
 ;; Monitor isn't shown.
@@ -223,7 +223,7 @@
       (set! shots (+ shots 1))
       (printf "  ~a: ~a pixels differ from the reference\n" label n)
       (when (<= shots 3)
-        (png-write-screen (format "~a/differs-~a.png" out-dir shots))))
+        (test-png-write-screen (format "~a/differs-~a.png" out-dir shots))))
     (picture-free! ref)
     (= n 0)))
 
@@ -315,7 +315,7 @@
        (inject! `(mouse-down ,(+ (window-x g) 120) ,(+ (window-y g) 8) right 1)
                 `(mouse-up ,(+ (window-x g) 120) ,(+ (window-y g) 8) right))
        (steps 1)
-       (unless (menu-open?) (set! bad (cons 'no-window-menu bad)))
+       (unless (test-menu-open?) (set! bad (cons 'no-window-menu bad)))
        (try! 'window-menu)
        (close-menu!)
        (notify "A toast")
@@ -824,7 +824,7 @@
       (steps 1)
       (try! 'wheel))
     (click! 'menu 'status)
-    (unless (menu-open?) (set! bad (cons 'no-menu bad)))
+    (unless (test-menu-open?) (set! bad (cons 'no-menu bad)))
     (key! 'menu-closed 'escape)
     (click! 'calendar 'due)
     (key! 'calendar-key 'right)
@@ -877,7 +877,7 @@
 (define (tasks-scene pct)
   (set-theme! 'scale pct)
   (test-clear-world!)
-  (tasks-reset!)
+  (test-backlog!)
   (let* ([w (tasks)] [ui (window-ref w 'ui)] [bad '()])
     (define (try! label)
       (unless (matches-reference? (list pct label))
@@ -950,7 +950,7 @@
                         (lambda () (tasks-scene pct))))
           (frame-scales '(100 150 200)))
 (set-theme! 'scale 100)
-(tasks-reset!)
+(test-backlog!)
 
 ;;; The Tree: hover over its rows and twisties, a twisty that collapses
 ;;; and expands, keys that move the selection and expand, the wheel (rows
@@ -963,7 +963,7 @@
 (define (tree-scene pct)
   (set-theme! 'scale pct)
   (test-clear-world!)
-  (tasks-reset!)
+  (test-backlog!)
   (let* ([w (tasks)] [ui (window-ref w 'ui)] [bad '()])
     (define (try! label)
       (unless (matches-reference? (list pct label))
@@ -1050,7 +1050,7 @@
                         (lambda () (tree-scene pct))))
           (frame-scales '(100 150 200)))
 (set-theme! 'scale 100)
-(tasks-reset!)
+(test-backlog!)
 
 ;;; ------------------------------------------------------------------
 ;;; a long text
@@ -1065,7 +1065,7 @@
 (define (scan-scene pct)
   (set-theme! 'scale pct)
   (test-clear-world!)
-  (tasks-reset!)
+  (test-backlog!)
   (let* ([w (tasks)] [ui (window-ref w 'ui)] [v (window-ref w 'state)]
          [text (string-append
                 (apply string-append (make-list 60 "rows that are long, "))
@@ -1099,7 +1099,7 @@
                         (lambda () (scan-scene pct))))
           (frame-scales '(100 200)))
 (set-theme! 'scale 100)
-(tasks-reset!)
+(test-backlog!)
 
 ;; The description's editor, scrolled to its top with its caret at the
 ;; end, then maximized. Its first draw at the new width takes the bar's
@@ -1111,7 +1111,7 @@
 (define (caret-scene pct)
   (set-theme! 'scale pct)
   (test-clear-world!)
-  (tasks-reset!)
+  (test-backlog!)
   (let* ([w (tasks)] [v (window-ref w 'state)]
          [text (string-append
                 (apply string-append (make-list 30 "x\n"))
@@ -1145,7 +1145,7 @@
                         (lambda () (caret-scene pct))))
           (frame-scales '(100 200)))
 (set-theme! 'scale 100)
-(tasks-reset!)
+(test-backlog!)
 
 ;;; ------------------------------------------------------------------
 ;;; redefinition

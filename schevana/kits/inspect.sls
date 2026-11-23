@@ -7,46 +7,33 @@
 
 (library (schevana kits inspect)
   (export
-    inspect-kinds inspect-paints inspect-frames inspect-frame-ref
-    inspect-frame-report inspect-frame-shown? inspect-frame-sent
-    inspect-frame-missed inspect-frame-stamp-late inspect-frame-screen
-    inspect-frame-gpu inspect-frame-at inspect-frame-latency-from
-    inspect-frame-latency inspect-clock-moves inspect-frames-kept
-    inspect-frames-truth inspect-frames-truths inspect-refresh-grid
-    inspect-refresh-period inspect-refresh-estimated? inspect-refresh-of
-    inspect-refresh-time inspect-frame-refresh inspect-frame-target
-    inspect-refresh-latch inspect-frame-input inspect-list inspect-list-empty
-    inspect-last-bytes inspect-last-read! inspect-list-read! inspect-list-flat!
-    inspect-record-list inspect-span-lists inspect-list-facts
-    inspect-recordings inspect-list-owner inspect-list-part inspect-list-whose
-    inspect-list-lists inspect-copies inspect-owners inspect-sources
-    inspect-list-original inspect-list-basis inspect-copy-same?
-    inspect-list-copy inspect-runs-copied inspect-shows inspect-flat-size
-    inspect-flatten! inspect-label-spans inspect-list-tree inspect-list-count
-    inspect-list-labels inspect-list-bytes inspect-list-row inspect-list-runs
-    inspect-run-shader inspect-computes inspect-list-frame
-    inspect-list-left-out inspect-history make-inspect-history inspect-history?
-    inspect-history-slots inspect-history-newest inspect-history-newest-set!
-    inspect-history-flat inspect-history-flat-set! inspect-history-new
-    inspect-history-slot-empty inspect-history-add! inspect-history-slot
-    inspect-history-kept? inspect-history-ref inspect-history-copies
-    inspect-history-count inspect-history-bytes inspect-word inspect-pixels
-    inspect-clip inspect-glyph-char inspect-kind inspect-paint inspect-reach
-    inspect-record inspect-glyph-font inspect-glyph-spaces inspect-rows
-    inspect-what inspect-record-paint inspect-paint-text inspect-covers?
-    inspect-records-at inspect-label-at inspect-platform inspect-commit
-    inspect-packed-ref inspect-chez-version inspect-display-pixels
+    inspect-frames inspect-frame-ref inspect-frame-report inspect-frame-shown?
+    inspect-frame-sent inspect-frame-stamp-late inspect-frame-screen
+    inspect-frame-at inspect-frame-latency inspect-clock-moves
+    inspect-frames-kept inspect-frames-truth inspect-frames-truths
+    inspect-refresh-grid inspect-refresh-period inspect-refresh-estimated?
+    inspect-refresh-of inspect-refresh-time inspect-frame-refresh
+    inspect-frame-target inspect-refresh-latch inspect-frame-input inspect-list
+    inspect-list-empty inspect-record-list inspect-span-lists inspect-list-facts
+    inspect-list-owner inspect-list-part inspect-list-lists
+    inspect-list-original inspect-list-basis inspect-list-count
+    inspect-list-labels inspect-list-bytes inspect-list-runs inspect-computes
+    inspect-list-frame inspect-list-left-out inspect-history-newest
+    inspect-history-new inspect-history-add! inspect-history-ref
+    inspect-history-copies inspect-history-count inspect-history-bytes
+    inspect-word inspect-clip inspect-kind inspect-reach inspect-record
+    inspect-rows inspect-what inspect-record-paint inspect-paint-text
+    inspect-records-at inspect-label-at inspect-platform inspect-display-pixels
     inspect-display-hz inspect-platform-row inspect-device inspect-glyphs
-    inspect-gpu-objects inspect-gpu-held inspect-present-mode inspect-reload
-    inspect-world-later inspect-auto-loads
-    inspect-core0 inspect-pacer inspect-shader-constants inspect-shader-helpers
+    inspect-gpu-objects inspect-gpu-held inspect-present-mode inspect-core0
+    inspect-pacer inspect-shader-constants inspect-shader-helpers
     inspect-shader-fields inspect-preview-image inspect-preview-w
     inspect-preview-h inspect-preview-free! inspect-preview-bytes
-    inspect-preview! inspect-live inspect-preview-list! inspect-runs-upto
-    inspect-runs-without inspect-run-pieces inspect-list-paint!
-    inspect-record-pixels inspect-span-cost inspect-record-same?
-    inspect-span-changed inspect-record-run inspect-run-fragment
-    inspect-helpers-used inspect-shader-lines inspect-atlas-image)
+    inspect-preview! inspect-preview-list! inspect-list-paint! inspect-span-cost
+    inspect-record-same? inspect-span-changed inspect-record-run
+    inspect-run-fragment inspect-shader-lines inspect-atlas-image
+    inspect-list-tree inspect-recordings inspect-reload inspect-auto-loads
+    inspect-world-later)
   (import (chezscheme)
           (only (schevana base) define-made library-layer platform-cpu
                 platform-os string-join string-prefix? string-suffix?)
@@ -183,18 +170,6 @@
              (if (and m (> m 0)) 'late 'shown))]
       [(2) 'dropped]
       [else #f]))
-
-  ;; Returns how frame i's GPU work went: 'late when the frame came late and
-  ;; its work was seen done only after the refresh it missed; 'done when it
-  ;; was otherwise seen done; #f when it was not seen done.
-  (define (inspect-frame-gpu i)
-    (let ([done (inspect-frame-report i 6)])
-      (and done (> done 0)
-           (if (and (eq? (inspect-frame-screen i) 'late)
-                    (> done (+ (inspect-frame-report (- i 1) 3)
-                               (inspect-frame-report i 4))))
-               'late
-               'done))))
 
   ;; Returns when frame i reached point (now-ns), or #f. The points are: its
   ;; oldest input by SDL's stamp (sdl), by the compositor's own time (wl),
@@ -901,8 +876,6 @@
            [slot (and (>= n 0)
                       (vector-ref slots (modulo n (vector-length slots))))])
       (and slot (= (vector-ref slot 7) n) slot)))
-
-  (define (inspect-history-kept? h n) (and (inspect-history-slot h n) #t))
 
   ;; Returns frame n's list, flattened, while the frame is kept; or #f. Each
   ;; frame's list is its own, which asking for another frame doesn't touch.

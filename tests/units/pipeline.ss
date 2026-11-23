@@ -282,7 +282,7 @@
                                          (renderer-device r))
                                       (gpu-image-texture image)
                                       *canvas-pw* *canvas-ph*)]
-             [tree (screen-bytes)]
+             [tree (test-screen-bytes)]
              [differ (let loop ([i 0] [n 0])
                        (if (= i (bytevector-length tree))
                            n

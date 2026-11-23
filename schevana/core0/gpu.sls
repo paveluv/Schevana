@@ -28,14 +28,14 @@
     gpu-list-recording-set! gpu-list-labels gpu-list-labels-set!
     gpu-list-recorded gpu-list-recorded-set! gpu-list-took gpu-list-took-set!
     gpu-show-run? gpu-run-gone? gpu-compute-now! gpu-submit-computes!
-    gpu-reads-now! gpu-buffer-download! *gpu-facts* gpu-frame-root
-    gpu-frame-root-set! gpu-frame-number gpu-frame-number-set!
-    gpu-frame-table-set! gpu-frame-table-n-set! gpu-frame-pieces-set!
-    gpu-frame-jobs-set! gpu-frame-writes-set! gpu-frame-computes-set!
-    gpu-frame-mode-set! gpu-frame-in-flight-set! gpu-frame-earlier-set!
-    gpu-frame-shown? gpu-frame-shown?-set! gpu-frame-make *gpu-frame-back*
-    *gpu-published* *gpu-given-back* gpu-publish! gpu-frame-waiting?
-    gpu-frames-back! gpu-present! gpu-drawing->bytes)
+    gpu-reads-now! gpu-buffer-download! *gpu-facts* gpu-frame-root-set!
+    gpu-frame-number gpu-frame-number-set! gpu-frame-table-set!
+    gpu-frame-table-n-set! gpu-frame-pieces-set! gpu-frame-jobs-set!
+    gpu-frame-writes-set! gpu-frame-computes-set! gpu-frame-mode-set!
+    gpu-frame-in-flight-set! gpu-frame-earlier-set! gpu-frame-shown?
+    gpu-frame-shown?-set! gpu-frame-make *gpu-frame-back* *gpu-published*
+    *gpu-given-back* gpu-publish! gpu-frame-waiting? gpu-frames-back!
+    gpu-present! gpu-drawing->bytes)
   (import (chezscheme)
           (only (schevana base) at-load define-made define-state library-layer
                 string-contains-ci? string-join string-suffix?)

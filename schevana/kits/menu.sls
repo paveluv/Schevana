@@ -10,9 +10,9 @@
 
 (library (schevana kits menu)
   (export
-    menu make-menu menu? menu-x menu-y menu-items menu-sel menu-sel-set!
-    menu-filter menu-filter-set! menu-filter? menu-tag menu-label-text
-    menu-label-key menu-label-tab menu-label-width menu-entries)
+    menu make-menu menu-x menu-y menu-sel menu-sel-set! menu-filter
+    menu-filter-set! menu-filter? menu-tag menu-label-text menu-label-key
+    menu-label-width menu-entries)
   (import (chezscheme)
           (only (schevana base) library-layer string-contains-ci?)
           (only (schevana core) text-width))

@@ -19,6 +19,28 @@ it returns is the live thing, not a copy:
 (window-x w)                               ; => 40
 ```
 
+Every app opens the same way, by its name: `(repl)`, `(settings)`,
+`(tasks)`, `(monitor)`, `(pipeline)`, and, on a desktop started with the
+demos, `(boids)`, `(boids3d)`, `(life)`, `(sketch)`, `(springies)` and
+`(rings)`. What an app holds is live too. Tasks keeps its tasks as
+records, which its procedures find, read and change, and its window shows
+each change at once. With the demos it holds Schevana's backlog, which
+`demo/backlog.sls` enters with these same procedures:
+
+```scheme
+(tasks)
+(define t (find-task 12))
+(task-status t)                            ; => todo
+(set-task! 12 'status 'doing 'assignee "Claude")
+(task-assignee t)                          ; => "Claude"
+(map task-title (tasks-list 'status 'review))
+(task-blockers 13)                         ; what TASK-13 waits for
+(task-blocks 10)                           ; what waits for TASK-10
+(tasks-tree)                               ; all of it, as nested ids
+(move-task! 12 'done)
+(delete-task! 12)                          ; => #t
+```
+
 ## Redefining the world
 
 A `define` at "/" replaces what the world calls by name, from its next

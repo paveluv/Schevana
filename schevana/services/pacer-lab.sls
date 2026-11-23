@@ -12,22 +12,12 @@
 
 (library (schevana services pacer-lab)
   (export
-    pacer-lab-knobs pacer-lab-period-ms *pacer-lab-log-path* *pacer-lab-on?*
-    *pacer-lab-periods* *pacer-lab-trial* *pacer-lab-timer* pacer-lab-trial
-    make-pacer-lab-trial pacer-lab-trial? pacer-lab-trial-began-ms
-    pacer-lab-trial-began-s pacer-lab-trial-knobs pacer-lab-trial-counts
-    pacer-lab-trial-hist pacer-lab-trial-measured pacer-lab-trial-measured-set!
-    pacer-lab-bins pacer-lab-hist pacer-lab-hist-add! pacer-lab-quantile
-    pacer-lab-seconds pacer-lab-log! pacer-lab-period? pacer-lab-log-load!
-    pacer-lab-on! pacer-lab-on? *pacer-lab-seeded?* pacer-lab-draw
-    pacer-lab-begin! pacer-lab-end! pacer-lab-measure! pacer-lab-every-second!
-    pacer-lab-second! pacer-lab-now pacer-lab-periods pacer-lab-effect
-    make-pacer-lab-effect pacer-lab-effect? pacer-lab-effect-knob
+    pacer-lab-period-ms *pacer-lab-log-path* pacer-lab-log-load! pacer-lab-on!
+    pacer-lab-on? pacer-lab-now pacer-lab-periods pacer-lab-effect-knob
     pacer-lab-effect-value pacer-lab-effect-periods pacer-lab-effect-frames
     pacer-lab-effect-own pacer-lab-effect-theirs pacer-lab-effect-rate
     pacer-lab-effect-error pacer-lab-effect-p50 pacer-lab-effect-p99
-    pacer-lab-effect-verdict pacer-lab-effect-verdict-set! pacer-lab-effect-of
-    pacer-lab-effects)
+    pacer-lab-effect-verdict pacer-lab-effects)
   (import (chezscheme)
           (only (schevana base) define-state library-layer plist-ref)
           (only (schevana core) *frame-ring-n* *pacer-counts* after

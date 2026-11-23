@@ -23,32 +23,24 @@
 
 (library (schevana styles adwaita)
   (export
-    adwaita-em adwaita-luma adwaita-dark? adwaita-by-style adwaita-standalone
-    adwaita-header-height adwaita-insets adwaita-radius adwaita-button-kinds
-    adwaita-regions adwaita-draw-under adwaita-title adwaita-window-button
-    adwaita-window-glyph adwaita-draw-over adwaita-ring adwaita-ring-outside
-    adwaita-focus adwaita-box adwaita-button-content adwaita-button
-    adwaita-toggle-piece adwaita-button-size adwaita-check-box
-    adwaita-check-label adwaita-checkbox adwaita-checkbox-size
-    adwaita-radio-text-x adwaita-radio-size adwaita-radio adwaita-toggle
-    adwaita-toggle-size adwaita-toggle-track adwaita-slider adwaita-progress
-    adwaita-tab adwaita-tabs-size adwaita-label adwaita-surface adwaita-field
+    adwaita-em adwaita-insets adwaita-radius adwaita-regions adwaita-draw-under
+    adwaita-draw-over adwaita-ring adwaita-focus adwaita-button
+    adwaita-button-size adwaita-checkbox adwaita-checkbox-size
+    adwaita-radio-size adwaita-radio adwaita-toggle adwaita-toggle-size
+    adwaita-toggle-track adwaita-slider adwaita-progress adwaita-tab
+    adwaita-tabs-size adwaita-label adwaita-surface adwaita-field
     adwaita-text-box-areas adwaita-dropdown adwaita-dropdown-size
     adwaita-stepper-areas adwaita-chip adwaita-chip-size adwaita-card
     adwaita-card-radius adwaita-scrollbar-areas adwaita-scrollbar
     adwaita-table-header adwaita-table-row adwaita-table-divider
     adwaita-table-cell-inset adwaita-panel adwaita-highlight adwaita-separator
-    adwaita-tooltip-lines adwaita-tooltip-size adwaita-tooltip
-    adwaita-dialog-button-widths adwaita-dialog-size adwaita-dialog-areas
-    adwaita-dialog adwaita-scrim adwaita-calendar adwaita-day
-    adwaita-avatar-colors adwaita-avatar-index adwaita-avatar adwaita-busy
-    adwaita-nav-row adwaita-live-badge adwaita-suggestion adwaita-split
-    adwaita-rows-spacing adwaita-row-height adwaita-row-areas
-    adwaita-rows-radius adwaita-rows adwaita-row adwaita-status-title-font
+    adwaita-tooltip-size adwaita-tooltip adwaita-dialog-size
+    adwaita-dialog-areas adwaita-dialog adwaita-scrim adwaita-calendar
+    adwaita-day adwaita-avatar adwaita-busy adwaita-nav-row adwaita-live-badge
+    adwaita-suggestion adwaita-split adwaita-rows-spacing adwaita-row-height
+    adwaita-row-areas adwaita-rows-radius adwaita-rows adwaita-row
     adwaita-status-page-areas adwaita-status-page adwaita-banner-height
-    adwaita-banner adwaita-add-row-height adwaita-add-row adwaita-text-y
-    adwaita-text-height adwaita-text-top adwaita-text adwaita-text-in
-    adwaita-center adwaita-text-centered adwaita-lines)
+    adwaita-banner adwaita-add-row-height adwaita-add-row adwaita-text-y)
   (import (chezscheme)
           (only (schevana base) at-load clamp library-layer)
           (only (schevana core) alpha color-default! color-rgba define-style

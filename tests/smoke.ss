@@ -18,7 +18,7 @@
 (define (screen-picture)
   (when (or *dirty* (not screen-picture-kept)
             (not (= screen-picture-frames *frames-drawn*)))
-    (set! screen-picture-kept (screen-bytes))
+    (set! screen-picture-kept (test-screen-bytes))
     (set! screen-picture-frames *frames-drawn*))
   screen-picture-kept)
 
@@ -212,7 +212,7 @@
          (and (string=? "(toggle-" (repl-input r))
               (equal? (list-head (offered) 2)
                       '("toggle-shade!" "toggle-launcher!"))))
-  (png-write-screen (string-append out-dir "/completion.png"))
+  (test-png-write-screen (string-append out-dir "/completion.png"))
   (press! 'down)
   (press! 'return)
   (steps 1)
@@ -373,7 +373,7 @@
            [row-y (+ cy (list-ref box 5) (* 3/2 (complete-row-height)))])
       (move! row-x row-y)
       (let ([over (state)])
-        (png-write-screen (string-append out-dir "/completion-hover.png"))
+        (test-png-write-screen (string-append out-dir "/completion-hover.png"))
         (move! (+ cx cw -10) (+ cy 10))
         (let ([off (state)])
           (move! row-x row-y)
@@ -432,7 +432,7 @@
                 (string=? "(toggle-shade!" (repl-input r))
                 (>= (cadddr (complete-box c))
                     (+ 8 (complete-row-height) (complete-detail-height 0))))))
-  (png-write-screen (string-append out-dir "/completion-sole.png"))
+  (test-png-write-screen (string-append out-dir "/completion-sole.png"))
   (press! 'backspace)
   (steps 1)
   (check "the next key closes it and acts as usual"
@@ -441,7 +441,7 @@
   (fresh! "(zzqx")
   (press! 'tab)
   (steps 1)
-  (png-write-screen (string-append out-dir "/completion-none.png"))
+  (test-png-write-screen (string-append out-dir "/completion-none.png"))
   (type! "y")
   (steps 1)
   ;; A small window: the rows shrink so the list leaves the line in view.
@@ -456,7 +456,7 @@
               in view"
              (and box (< 0 (list-ref box 4) complete-rows)
                   (<= (+ (cadr box) (cadddr box)) line)))))
-  (png-write-screen (string-append out-dir "/completion-small.png"))
+  (test-png-write-screen (string-append out-dir "/completion-small.png"))
   (let* ([c (complete-of r)]
          [shown (and c (complete-box c) (list-ref (complete-box c) 4))])
     (press! 'tab)
@@ -490,7 +490,7 @@
                                              (* (list-ref box 4)
                                                 (complete-row-height))))])
                   (when (= k 1)
-                    (png-write-screen (string-append out-dir
+                    (test-png-write-screen (string-append out-dir
                                                "/completion-above.png")))
                   (press! 'tab)
                   (steps 1)
@@ -542,7 +542,7 @@
 (steps 20)
 (tile-windows!)
 (steps 2)
-(png-write-screen (string-append out-dir "/repl-modes.png"))
+(test-png-write-screen (string-append out-dir "/repl-modes.png"))
 (close-window! q)
 (close-window! (focused-window))
 (focus-window! r)
@@ -934,7 +934,7 @@
   (steps 2)
   (check "dragging the corner resizes" (= (window-w c) (+ w0 40))))
 
-(png-write-screen (string-append out-dir "/desktop.png"))
+(test-png-write-screen (string-append out-dir "/desktop.png"))
 
 ;; The launcher by F1, the desktop's menu, F11 and the icon are tested in
 ;; tests/units/desktop.ss.
@@ -946,7 +946,7 @@
 (monitor)
 (tile-windows!)
 (steps 3)
-(png-write-screen (string-append out-dir "/tiled.png"))
+(test-png-write-screen (string-append out-dir "/tiled.png"))
 (reset-theme!)
 
 ;; Window styles: the frame, its buttons and their actions come from the style.
@@ -989,7 +989,7 @@
   (move-window! (find-window 'life) 560 330)
   (focus-window! (find-window 'repl))
   (steps 2)
-  (png-write-screen
+  (test-png-write-screen
    (string-append out-dir "/style-" (symbol->string style) ".png"))
   (for-all (lambda (w) (not (window-error w))) (windows)))
 
@@ -1019,7 +1019,7 @@
            '(mouse-up 300 147 right))
   (steps 2)
   (check "so the right-button menu on its title closes it"
-         (and (menu-open?)
+         (and (test-menu-open?)
               (find (lambda (e)
                       (and (pair? e)
                            (string=? (menu-label-text (car e)) "Close")))
@@ -1048,7 +1048,7 @@
     (check "and its corner still resizes it" (= (window-w w) (+ w0 20)))))
 (set-palette! 'genera)
 (style-scene! 'genera)
-(png-write-screen (string-append out-dir "/style-genera-palette.png"))
+(test-png-write-screen (string-append out-dir "/style-genera-palette.png"))
 (check "genera's palette keeps its own panel text"
        (= (theme 'panel-text) #xffffff))
 (reset-theme!)
@@ -1160,7 +1160,7 @@
 (set-theme! 'window-style 'interlisp)
 (set-palette! 'interlisp)
 (style-scene! 'interlisp)
-(png-write-screen (string-append out-dir "/style-interlisp-palette.png"))
+(test-png-write-screen (string-append out-dir "/style-interlisp-palette.png"))
 (check "the interlisp style shades the desktop"
        (eq? (theme 'wallpaper) 'shade))
 (set-palette! 'nord)
@@ -1224,7 +1224,7 @@
 (reset-theme!)
 (set-style! 'mac)
 (steps 2)
-(png-write-screen (string-append out-dir "/settings-theme.png"))
+(test-png-write-screen (string-append out-dir "/settings-theme.png"))
 (click-ui! s '(style test-serif))
 (check "a style card switches the style, its palette, wallpaper and fonts \
         at once"
@@ -1277,7 +1277,7 @@
 (check "↺ drops one change" (= (theme 'corner-radius) 9))
 (scroll-to-ui! s '(option corner-radius))
 (drag-ui! s '(option corner-radius) 0)
-(png-write-screen (string-append out-dir "/settings-changed.png"))
+(test-png-write-screen (string-append out-dir "/settings-changed.png"))
 ;; The text size is on the Fonts tab. Pinned, it holds in every style that
 ;; honors it, and test-serif doesn't.
 (click-ui! s '(tab fonts))
@@ -1300,7 +1300,7 @@
                 (eq? (car (theme-source 'ui-font-size)) 'built-in)
                 (not (ui-find (settings-ui) '(option ui-font-size)))
                 (not (ui-find (settings-ui) '(pin ui-font-size)))))
-    (png-write-screen (string-append out-dir "/settings-fonts-unused.png"))
+    (test-png-write-screen (string-append out-dir "/settings-fonts-unused.png"))
     (set-style! 'mac)
     (steps 2)
     (click-ui! s '(pin ui-font-size))
@@ -1321,7 +1321,7 @@
 (check "lightness slider darkens it"
        (let-values ([(h sat l) (color->hsl (theme 'accent))])
          (< (abs (- l 0.25)) 0.02)))
-(png-write-screen (string-append out-dir "/settings-colors.png"))
+(test-png-write-screen (string-append out-dir "/settings-colors.png"))
 ;; Reset, after a dialog listing the changes; Save as new style.
 (click-ui! s '(tab theme))
 (click-ui! s '(style windows))
@@ -1329,7 +1329,7 @@
 (set-theme! 'bell 'screen)
 (steps 2)
 (click-ui! s 'reset-style)
-(png-write-screen (string-append out-dir "/settings-reset.png"))
+(test-png-write-screen (string-append out-dir "/settings-reset.png"))
 (let ([shown (and (ui-find (settings-ui) '(reset-dialog 1)) #t)])
   (click-ui! s '(reset-dialog 1))
   (check "Reset asks first, then forgets the style's changes"
@@ -1341,7 +1341,7 @@
 (click-ui! s 'save-style)
 (press! 'backspace)   ; the title is selected: typing replaces it
 (type! "My Windows")
-(png-write-screen (string-append out-dir "/settings-save.png"))
+(test-png-write-screen (string-append out-dir "/settings-save.png"))
 (press! 'return)
 (steps 2)
 (let ([file (string-append out-dir "/styles/my-windows.ss")])
@@ -1377,7 +1377,7 @@
 (scroll-to-ui! s '(option title-height))
 (drag-ui! s '(option title-height) 1)
 (check "title bar height follows" (= 44 (theme 'title-height)))
-(png-write-screen (string-append out-dir "/settings-behavior.png"))
+(test-png-write-screen (string-append out-dir "/settings-behavior.png"))
 (click-ui! s '(tab fonts))
 (click-ui! s '((option ui-font) "serif"))
 (scroll-to-ui! s '(option mono-font-size))
@@ -1403,7 +1403,7 @@
   (check "the settings pane scrolls when its content doesn't fit"
          (and (> (settings-st-pane-scroll (window-ref s 'state)) 0)
               (ui-find (window-ref s 'ui) 'pane-scrollbar))))
-(png-write-screen (string-append out-dir "/settings-fonts.png"))
+(test-png-write-screen (string-append out-dir "/settings-fonts.png"))
 (click-ui! s '(tab theme))
 (scroll-to-ui! s '(option title-height))
 (drag-ui! s '(option title-height) 0.5)
@@ -1441,7 +1441,7 @@
 (move-window! (find-window 'clock) 900 300)
 (click-ui! s '(tab theme))
 (steps 2)
-(png-write-screen (string-append out-dir "/paper.png"))
+(test-png-write-screen (string-append out-dir "/paper.png"))
 (focus-window! s)   ; the REPL above opened on top of it
 (click-ui! s '(tab display))
 (click-ui! s '(scale 200))
@@ -1449,7 +1449,7 @@
        (and (= 200 (theme 'scale)) (= *scale* 2.0)
             (= (screen-w) 1280) (= (canvas-pixel-width) 2560)))
 (steps 1)
-(png-write-screen (string-append out-dir "/scale-200.png"))
+(test-png-write-screen (string-append out-dir "/scale-200.png"))
 (click-ui! s '(scale 0))
 (check "and Auto follows the desktop again"
        (and (= 0 (theme 'scale)) (= *scale* 1.0) (= (canvas-pixel-width) 1280)))
@@ -1457,8 +1457,9 @@
 (reset-theme!)
 (close-window! s)
 
-;; Tasks: a task manager on the widget kit, driven by real events.
-(tasks-reset!)
+;; Tasks: a task manager on the widget kit, driven by real events, on the
+;; demos' backlog.
+(define backlog-size (test-backlog!))
 (define tw (tasks))
 (steps 2)
 (define tv (window-ref tw 'state))
@@ -1470,7 +1471,8 @@
 (define (column-of status)
   (filter (lambda (t) (eq? (task-status t) status)) *tasks*))
 (define (next-to t) (cadr (memq (find-task t) *tasks*)))
-(define (shot name) (png-write-screen (format "~a/tasks-~a.png" out-dir name)))
+(define (shot name)
+  (test-png-write-screen (format "~a/tasks-~a.png" out-dir name)))
 
 ;; Size Tasks by its own measures, not by a number that one font's widths
 ;; decide. Wide (at the screen's left) is the width at which its details
@@ -1501,8 +1503,8 @@
     (values (+ (ui-region-x r) (/ (ui-region-w r) 2))
             (+ (ui-region-y r) (/ (ui-region-h r) 2)))))
 
-(check "Tasks opens on the Board with the seed tasks"
-       (and (not (window-error tw)) (= (length tasks-seed) (length *tasks*))
+(check "Tasks opens on the Board with the backlog's tasks"
+       (and (not (window-error tw)) (= backlog-size (length *tasks*))
             (eq? (tasks-view-mode tv) 'board) (card-of 16)))
 (check "Tasks is single-instance" (eq? tw (tasks)))
 (shot "board")
@@ -1517,7 +1519,7 @@
 (define nt (selected))
 (check "n makes a task, selected with its title focused; typed at once, the \
         title is whole"
-       (and (= (+ 1 (length tasks-seed)) (length *tasks*)) nt
+       (and (= (+ 1 backlog-size) (length *tasks*)) nt
             (eq? (focus-id) 'title)
             (equal? (task-title nt) "Fix the toolbar")))
 (check "and its card, last in a long column, scrolled into view"
@@ -1701,7 +1703,7 @@
     (inject! `(mouse-move ,xg ,y1) `(mouse-down ,xg ,y1 right 1))
     (steps 1)
     (let ([ended? (and (not (ui-region-at tui (- xg cx) (- y1 cy)))
-                       (not (or (tasks-view-drag tv) (menu-open?))))])
+                       (not (or (tasks-view-drag tv) (test-menu-open?))))])
       (inject! `(mouse-up ,xg ,y1 right) `(mouse-up ,xg ,y1 left))
       (steps 2)
       (check "a right press during a drag ends it, the card where it was; \
@@ -1774,8 +1776,11 @@
 (steps 2)
 (check "/ focuses the search, which filters as you type"
        (and (eq? (focus-id) 'search)
-            (equal? (tasks-visible tv) (tasks-list 'search "sdl"))
-            (< 0 (length (tasks-visible tv)) 5)))
+            (let ([shown (tasks-visible tv)]
+                  [found (tasks-list 'search "sdl")])
+              (and (= (length shown) (length found))
+                   (for-all (lambda (t) (memq t found)) shown)
+                   (< 0 (length shown) (length *tasks*))))))
 (press! 'return)
 (steps 2)
 (check "Return leaves the search and selects the first match"
@@ -1808,11 +1813,11 @@
 (column-home! 'todo)
 (let-values ([(x y) (region-center (list 'card 13))])
   (tasks-click! x y 'right 1))
-(check "a right click on a card opens its menu" (menu-open?))
+(check "a right click on a card opens its menu" (test-menu-open?))
 (test-menu-click! "Duplicate")
 (define copy (selected))
 (check "Duplicate: a copy right after it, selected"
-       (and (= (+ 2 (length tasks-seed)) (length *tasks*))
+       (and (= (+ 2 backlog-size) (length *tasks*))
             (eq? (next-to 13) copy)
             (equal? (task-title copy)
                     (string-append (task-title (find-task 13)) " (copy)"))))
@@ -1980,7 +1985,7 @@
        (ui-find tui 'empty-clear))
 (shot "nothing")
 (click-ui! tw 'empty-clear)
-(tasks-reset!)
+(test-backlog!)
 
 ;; Dependencies. The details show what a task waits for, as chips that a
 ;; × removes, with Add's menu of the tasks that make no cycle, and what
@@ -2005,7 +2010,7 @@
 (press! 'return)
 (steps 2)
 (check "typed, the menu narrows, and Return adds that one"
-       (and (not (menu-open?))
+       (and (not (test-menu-open?))
             (equal? (task-blocked-by (find-task 14)) '(33 19))
             (ui-find tui '(blocked-by 19))))
 (click-ui! tw '(blocked-by remove 19))
@@ -2059,7 +2064,7 @@
                                          (task-label a) (task-label a)
                                          (task-label b) (task-label a))))))))
    (lambda ()
-     (when (menu-open?) (close-menu!))
+     (when (test-menu-open?) (close-menu!))
      (for-each delete-task! more)
      (set! *toasts* '())
      (tasks-select! tv #f)
@@ -2134,7 +2139,7 @@
                                          (ui-tree-index (tree-rows) 16)))])
   (tasks-click! x y 'right 1))
 (check "a right click on a row opens the task's menu"
-       (and (menu-open?) (eq? (selected) (find-task 16))))
+       (and (test-menu-open?) (eq? (selected) (find-task 16))))
 (press! 'escape)
 (steps 1)
 (let ([dim '()] [orig tasks-draw-node])
@@ -2255,7 +2260,7 @@
     (set! tw new)
     (set! tv (window-ref tw 'state))
     (set! tui (window-ref tw 'ui))))
-(tasks-reset!)
+(test-backlog!)
 (steps 2)
 
 ;; A narrow window: the details are a page.
@@ -2346,13 +2351,13 @@
   (press! 'return) (timed "added" 1)
   (press! 'escape) (timed "left" 1)
   (at! card 'right) (timed "the card's menu" 2)
-  (let ([menu? (menu-open?)])
+  (let ([menu? (test-menu-open?)])
     (press! 'escape) (timed "closed" 1)
     (press! 'delete) (timed "the dialog" 1)
     (let ([dialog? (ui-find tui '(confirm 1))])
       (press! 'escape) (timed "canceled" 1)
       (at! '(filter assignee)) (timed "the Assignee menu" 2)
-      (let ([menu-w (and (menu-open?)
+      (let ([menu-w (and (test-menu-open?)
                          (call-with-values (lambda () (menu-geometry *menu*))
                            (lambda (x y w h) w)))])
         (press! 'escape) (timed "closed" 1)

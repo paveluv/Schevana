@@ -27,39 +27,7 @@
 
 (library (schevana apps repl)
   (export
-    make-repl repl? repl-transcript repl-input repl-input-set! repl-point
-    repl-point-set! repl-history repl-history-set! repl-hist-pos
-    repl-hist-pos-set! repl-saved repl-saved-set! repl-proc repl-proc-set!
-    repl-pending repl-pending-set! repl-port repl-port-set! repl-blink
-    repl-blink-set! repl-blink-at repl-blink-at-set! repl-cols repl-cols-set!
-    repl-rows repl-rows-set! repl-queue repl-queue-set! repl-env repl-own?
-    repl-started repl-started-set! repl-pointer repl-pointer-set! repl-busy
-    repl-busy-set! repl-running repl-running-set! repl-looks repl-kind
-    repl-look repl-title repl-busy-ms repl-busy? repl-busy-words
-    repl-background repl-environment-of repl-environment repl-prompt
-    repl-waiting repl-cont repl-lines repl-scroll repl-scroll-set! repl-append!
-    repl-add! repl-window repl-invalidate! repl-emit! repl-drain!
-    make-repl-port *repl-inputs* read-input! value->string repl-echo!
-    repl-submit! repl-run! repl-next! repl-eval! repl-spawn! repl-note-core!
-    repl-send! repl-done! repl-stop! string-trim line-start line-end
-    scan-parens input-complete? matching-paren repl-insert! repl-delete!
-    repl-newline! repl-history-move! repl-up! repl-down! symbol-char?
-    *repl-source-docs* *repl-source-names* name-docs forget-doc! index-text!
-    skip-blank-and-comments comment-above form-definitions code-source
-    code-name doc-for name-description arity-description name-kind
-    completion-quoted completion-context command-position? quoted-choices
-    path-context import-set-forms form-head import-set-position?
-    library-context library-source-directories library-source-extensions
-    library-file-name library-choices library-file file-exports
-    library-description rank-choices repl-complete! refresh-completion!
-    carries-on? accept-completion! repl-accept! completion-description repl-key
-    repl-pointer! repl-over-busy? repl-mouse-down repl-blur repl-blink-soon!
-    repl-blink-next! repl-edit-key repl-text repl-pad repl-line-height
-    repl-mark-top repl-initial-cols repl-initial-rows repl-window-size
-    repl-draw repl-draw-busy repl-busy-tip-words repl-draw-busy-tip
-    repl-draw-cursor repl-examples! repl-banner! open-repl repl-define-exit!
-    repl open-repl-window
-    repl-record)
+    repl-prompt repl-cont read-input! value->string repl-window-size repl)
   (import (chezscheme)
           (only (schevana base) at-load clamp condition->string define-made
                 define-state filter-map library-layer string-contains-ci?

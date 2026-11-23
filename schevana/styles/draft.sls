@@ -11,9 +11,7 @@
 
 (library (schevana styles draft)
   (export
-    draft-arrow draft-pad draft-band draft-cell draft-edge draft-insets
-    draft-block-x draft-regions draft-baseline draft-label draft-arrowhead
-    draft-glyph draft-block draft-draw-under draft-drag-outline)
+    draft-insets draft-regions draft-draw-under draft-drag-outline)
   (import (chezscheme)
           (only (schevana base) at-load library-layer)
           (only (schevana core) alpha common-options define-style draw-text

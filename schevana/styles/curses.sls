@@ -15,8 +15,7 @@
 
 (library (schevana styles curses)
   (export
-    curses-cell curses-side curses-row curses-top curses-insets curses-regions
-    curses-title curses-text curses-draw-under)
+    curses-insets curses-regions curses-draw-under)
   (import (chezscheme)
           (only (schevana base) at-load library-layer)
           (only (schevana core) common-options define-style draw-scale

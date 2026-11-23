@@ -198,9 +198,8 @@
            (theme-file-save!)
            (equal? back gray))))
 
-(check "font-descent is the font's"
-       (and (= (font-descent 'ui) (vector-ref (font-metrics 'ui) 1))
-            (> (font-descent 'ui) 0)))
+(check "a font's descent is above its baseline's 0"
+       (> (vector-ref (font-metrics 'ui) 1) 0))
 
 ;; How many pixels of text drawn on white are neither white nor black.
 (define (gray-pixels font)
@@ -215,11 +214,6 @@
              [plain (font "DejaVu Sans" 12)])
          (and (not (eq? crisp plain)) (eq? crisp (font "DejaVu Sans" 12 'crisp))
               (zero? (gray-pixels crisp)) (> (gray-pixels plain) 0))))
-
-(check "px-fit cuts until the ink fits"
-       (let ([s (px-fit "A rather long window title" 60 'ui)])
-         (and (string-suffix? "…" s)
-              (let-values ([(l t w h) (text-ink s 'ui)]) (<= w 60)))))
 
 ;; Each window glyph and triangle inks inside its box and nowhere else.
 (check "ui-draw-glyph's window glyphs and triangles ink their box only"

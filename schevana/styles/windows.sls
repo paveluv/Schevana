@@ -4,8 +4,7 @@
 
 (library (schevana styles windows)
   (export
-    windows-button-width windows-radius windows-regions windows-draw-button
-    windows-draw-under windows-draw-over)
+    windows-radius windows-regions windows-draw-under windows-draw-over)
   (import (chezscheme)
           (only (schevana base) at-load library-layer)
           (only (schevana core) alpha define-style draw-text fill-box

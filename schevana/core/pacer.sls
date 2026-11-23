@@ -17,8 +17,7 @@
     frame-turn-soon! pacer-wanted? pacer-frame-ns pacer-period pacer-start
     pacer-on-latch? pacer-trial! pacer-margin wm-tick! pacer-tick!
     pacer-procs-ms pacer-wait-ms record-world! record-safely render-frame!
-    render-frames-back! render-answers! screen-bytes screen-bytes-then
-    pacer-rate!)
+    render-frames-back! render-answers! screen-bytes-then pacer-rate!)
   (import (chezscheme)
           (only (schevana base) at-load define-hook define-state library-layer)
           (only (schevana core0) *core0-mode* *gpu-facts* core0-forked?
@@ -36,9 +35,8 @@
           (only (schevana core fonts) *atlas-full?* *glyph-count* atlas-flush!)
           (only (schevana core draw) *canvas-ph* *canvas-pw* *canvas-ratio*
                 *rec-clip* *rec-cx0* *rec-cx1* *rec-cy0* *rec-cy1* *rec-den*
-                *rec-num* *rec-ox* *rec-oy* *rec-turn* drawing->bytes
-                drawing->bytes-then rec-begin! rec-present! rec-runs
-                rec-state-restore!))
+                *rec-num* *rec-ox* *rec-oy* *rec-turn* drawing->bytes-then
+                rec-begin! rec-present! rec-runs rec-state-restore!))
 
   (library-layer core)
 
@@ -733,12 +731,9 @@
               (gpu-frames-back!))
     (render-answers!))
 
-  ;; Returns the screen as it would be drawn now: its pixels, row after row,
-  ;; in premultiplied BGRA. This is what screenshots see; screen-bytes-then
-  ;; hands the pixels to then on core1, with nothing waiting.
-  (define (screen-bytes)
-    (drawing->bytes *canvas-pw* *canvas-ph* *canvas-ratio* record-world! #f))
-
+  ;; Hands then, on core1 and with nothing waiting, the screen as it would
+  ;; be drawn now: its pixels, row after row, in premultiplied BGRA. This is
+  ;; what screenshots see.
   (define (screen-bytes-then then)
     (drawing->bytes-then *canvas-pw* *canvas-ph* *canvas-ratio* record-world! #f
                          then)))

@@ -8,10 +8,7 @@
 
 (library (schevana services theme-file)
   (export
-    *theme-file-path* theme-file-hex theme-file-plain? theme-file-save!
-    *theme-file-save-pending* theme-file-save-soon! theme-file-valid-value?
-    theme-file-style theme-file-valid-plist theme-file-old->changes
-    theme-file-load-data! theme-file-load!)
+    theme-file-hex theme-file-plain? theme-file-load!)
   (import (chezscheme)
           (only (schevana base) define-state filter-map library-layer
                 plist-keys plist-ref set-hook!)

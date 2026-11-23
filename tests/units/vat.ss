@@ -2,6 +2,9 @@
 ;;; mailbox and a sandbox; jobs, their results delivered on core1, and
 ;;; killing them.
 
+;; Whether job j still waits to run or runs.
+(define (vat-test-pending? j) (and (memq j *vat-jobs*) #t))
+
 ;;; Vats ((schevana services vat)): threads with a mailbox and a sandbox;
 ;;; jobs, their results delivered on core1, and killing them.
 
@@ -30,13 +33,13 @@
                             (lambda (id)
                               (set! got (cons (list id (get-thread-id))
                                               got))))])
-         (and (vat-job-pending? j)
+         (and (vat-test-pending? j)
               (null? got)
               (vat-test-until (lambda () (pair? got)))
               (begin (steps 3) (= (length got) 1))
               (not (= (caar got) (get-thread-id)))
               (= (cadar got) (get-thread-id))
-              (not (vat-job-pending? j)))))
+              (not (vat-test-pending? j)))))
 
 (check "a vat keeps state in its sandbox: forms define it, and jobs by \
         name change it, in the order sent"
@@ -111,8 +114,8 @@
                           (string-contains-ci?
                            (condition->string (cdr (window-error w)))
                            "failed on purpose")
-                          (not (vat-job-pending? fail))
-                          (not (vat-job-pending? spin))
+                          (not (vat-test-pending? fail))
+                          (not (vat-test-pending? spin))
                           (not ran))])
              (close-window! w)
              ok))))
@@ -134,7 +137,7 @@
          (close-window! w)
          (vat-send! vat-test vat-test-add '(3 4)
                     (lambda (v) (set-box! after v)))
-         (and (not (exists vat-job-pending? (list spin queued closed)))
+         (and (not (exists vat-test-pending? (list spin queued closed)))
               (vat-test-until (lambda () (unbox after)))
               (= (unbox after) 7)
               (begin (steps 3) (not ran)))))
@@ -215,6 +218,6 @@
          (vat-drop! vat-test)
          (env-drop! e)
          (env-drop! (vat-env vat-test))
-         (and (not (vat-job-pending? j))
+         (and (not (vat-test-pending? j))
               (raises? (lambda () (vat-send! v vat-test-add '(1 1) #f)))
               (equal? (format "~s" v) "#<vat /vat-drop>"))))

@@ -24,23 +24,7 @@
 
 (library (schevana apps debug-repl)
   (export
-    make-debug-repl debug-repl? debug-repl-transcript debug-repl-listening
-    debug-repl-listening-set! debug-repl-path debug-repl-path-set!
-    debug-repl-clients debug-repl-clients-set! debug-repl-client
-    make-debug-repl-client debug-repl-client? debug-repl-client-fd
-    debug-repl-client-port debug-repl-client-get debug-repl-client-size
-    debug-repl-client-size-set! debug-repl-client-came debug-repl-client-proc
-    debug-repl-client-proc-set! debug-repl-client-answer
-    debug-repl-client-answer-set! debug-repl-client-sent
-    debug-repl-client-sent-set! *debug-repl-path* debug-repl-path!
-    debug-repl-default-path debug-repl-limit-ms debug-repl-read-ms
-    debug-repl-most-bytes debug-repl-most-lines debug-repl-most-clients
-    debug-repl-serve-ms debug-repl-buffer-bytes *debug-repl-buffer*
-    debug-repl-show! debug-repl-show-request! debug-repl-clip
-    debug-repl-answer! debug-repl-start! debug-repl-serve-client!
-    debug-repl-serve-soon! debug-repl-serve! debug-repl-listen!
-    debug-repl-close! debug-repl-open-window debug-repl
-    debug-repl-record)
+    debug-repl)
   (import (chezscheme)
           (only (schevana base) at-load condition->string define-state
                 library-layer string-join string-split)

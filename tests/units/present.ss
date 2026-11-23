@@ -3,6 +3,18 @@
 ;;; input they show ((schevana kits inspect)). Headless, nothing reports, so
 ;;; the test writes the reports as the screen's callbacks would.
 
+;; Returns how frame i's GPU work went: 'late when the frame came late and
+;; its work was seen done only after the refresh it missed; 'done when it
+;; was otherwise seen done; #f when it was not seen done.
+(define (present-test-frame-gpu i)
+  (let ([done (inspect-frame-report i 6)])
+    (and done (> done 0)
+         (if (and (eq? (inspect-frame-screen i) 'late)
+                  (> done (+ (inspect-frame-report (- i 1) 3)
+                             (inspect-frame-report i 4))))
+             'late
+             'done))))
+
 ;; Begins frame n's row as core0 does when it sends the frame at sent, with
 ;; no word from the screen yet.
 (define (present-test-sent! n sent)
@@ -76,9 +88,9 @@
               (eq? (inspect-frame-screen (+ i 3)) 'dropped)))
   (check "a late frame's GPU was late when its work was seen done only after \
           the refresh it missed; otherwise it was done in time"
-         (and (eq? (inspect-frame-gpu (+ i 1)) 'done)
-              (eq? (inspect-frame-gpu (+ i 2)) 'late)
-              (not (inspect-frame-gpu (+ i 3)))))
+         (and (eq? (present-test-frame-gpu (+ i 1)) 'done)
+              (eq? (present-test-frame-gpu (+ i 2)) 'late)
+              (not (present-test-frame-gpu (+ i 3)))))
   (check (format "a frame that shows input says how long after it it showed \
                   (~a ns); one that shows none says nothing"
                  (inspect-frame-latency (+ i 1)))

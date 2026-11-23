@@ -311,9 +311,6 @@
           (engine-block)
           (when (< (now-ms) until) (loop))))))
 
-  ;; Gives up the rest of this slice.
-  (define (yield) (when (current-proc) (engine-block)))
-
   ;; Inside a process, returns the values that something done elsewhere
   ;; hands to a then. (start done) begins that work, which calls (done v
   ;; ...) later on core1 (a read back from the GPU, a vat's job) or at once.

@@ -49,107 +49,7 @@
 
 (library (schevana apps pipeline)
   (export
-    pipeline-view make-pipeline-view pipeline-view? pipeline-view-ui
-    pipeline-view-history pipeline-view-river pipeline-view-ticks
-    pipeline-view-stage pipeline-view-stage-set! pipeline-view-shown
-    pipeline-view-shown-set! pipeline-view-held? pipeline-view-held?-set!
-    pipeline-view-looked pipeline-view-looked-set! pipeline-view-groups
-    pipeline-view-groups-set! pipeline-view-selected
-    pipeline-view-selected-set! pipeline-view-traced pipeline-view-traced-set!
-    pipeline-view-upto pipeline-view-upto-set! pipeline-view-image
-    pipeline-view-image-set! pipeline-view-back pipeline-view-back-set!
-    pipeline-view-flip? pipeline-view-flip?-set! pipeline-view-reach
-    pipeline-view-reach-set! pipeline-view-tick pipeline-view-tick-set!
-    pipeline-view-own pipeline-view-own-set! pipeline-view-tip
-    pipeline-view-tip-set! pipeline-view-every pipeline-view-every-set!
-    pipeline-view-tape pipeline-view-tape-set! pipeline-view-tape-of
-    pipeline-view-tape-of-set! pipeline-view-playing pipeline-view-playing-set!
-    pipeline-view-play-secs pipeline-view-play-secs-set! pipeline-view-zoom
-    pipeline-view-zoom-set! pipeline-view-center pipeline-view-center-set!
-    pipeline-view-loupe? pipeline-view-loupe?-set! pipeline-view-popped
-    pipeline-view-popped-set! pipeline-view-off pipeline-view-off-set!
-    pipeline-view-kept pipeline-view-kept-set! pipeline-view-kept-of
-    pipeline-view-kept-of-set! pipeline-view-kept-box
-    pipeline-view-kept-box-set! pipeline-view-look pipeline-view-look-set!
-    pipeline-view-painted pipeline-view-painted-set! pipeline-view-who
-    pipeline-view-who-set! pipeline-view-course pipeline-view-course-set!
-    pipeline-view-course-sort pipeline-view-course-sort-set!
-    pipeline-view-who-sort pipeline-view-who-sort-set!
-    pipeline-view-latency-words pipeline-view-latency-words-set!
-    pipeline-view-ticks-by-frame? pipeline-view-ticks-by-frame?-set!
-    pipeline-view-colors pipeline-period-ms pipeline-frames-kept
-    pipeline-river-rows pipeline-bar-px pipeline-show! pipeline-ms-over
-    pipeline-own-ms pipeline-look! pipeline-preview-on! pipeline-preview!
-    pipeline-preview-back! pipeline-flip! pipeline-tick-frame pipeline-hold!
-    pipeline-resume! pipeline-pick! pipeline-collector-levels
-    pipeline-collector-full-ns pipeline-collector-level pipeline-tick-drew?
-    pipeline-tick-frame-index pipeline-frame-tick pipeline-river-kept
-    pipeline-river-depth pipeline-draw-river-parts pipeline-draw-river-strips
-    pipeline-river-screen-tip pipeline-river-new pipeline-frame-on-way?
-    pipeline-river-starts pipeline-river-frame-at pipeline-frame-column
-    pipeline-dropped-between? pipeline-river-parts! pipeline-river-word
-    pipeline-river-rules pipeline-river-tip pipeline-river-text
-    pipeline-river-ticks-high pipeline-draw-river-tick-strips
-    pipeline-river-ticks-tips pipeline-river-ticks-new pipeline-tick-began
-    pipeline-river-ticks-of pipeline-river-ticks-ran pipeline-river-tick-word
-    pipeline-river-tick-rules pipeline-river-gutter pipeline-river-ticks-text
-    pipeline-river-tick-marked pipeline-stamp-late-ns pipeline-stamp-late?
-    pipeline-river-late-stamps pipeline-draw-river-pips pipeline-river-height
-    pipeline-river-fixed pipeline-river-heading-h pipeline-river-held-label
-    pipeline-river-live-tip pipeline-river-tick-choices
-    pipeline-river-tick-choice-size pipeline-river-inset pipeline-river-keys
-    pipeline-river-tick-keys pipeline-river-words pipeline-river-marked
-    pipeline-pick-refresh! pipeline-river-now pipeline-river-target
-    pipeline-river-frame-rules pipeline-river-span pipeline-drift-high
-    pipeline-drift-height pipeline-drift-reach pipeline-drift-x
-    pipeline-draw-drift pipeline-drift-pane pipeline-river-pane
-    pipeline-latency-words pipeline-latency-pane pipeline-latency-height
-    pipeline-timeline-lanes pipeline-timeline-refreshes
-    pipeline-timeline-height pipeline-clock-size pipeline-timeline-last
-    pipeline-timeline-end pipeline-draw-timeline pipeline-clock-frames
-    pipeline-clock-steps pipeline-clock-laps pipeline-clock-unit
-    pipeline-draw-refresh-clock pipeline-draw-clock-color
-    pipeline-latency-readout pipeline-draw-readout pipeline-tape-top
-    pipeline-tape-rules pipeline-tape-kinds pipeline-draw-tape-who
-    pipeline-draw-tape-lanes pipeline-draw-tape-stack pipeline-tape-lane-tips
-    pipeline-tape-new pipeline-tape-rows pipeline-tape-send! pipeline-tape-tip
-    pipeline-tape-marked pipeline-draw-upto! pipeline-tape-go!
-    pipeline-play-toggle! pipeline-play-tick! pipeline-draw-tape-at
-    pipeline-color-index pipeline-tape-keys pipeline-tape-height
-    pipeline-tape-pane pipeline-left-out pipeline-left-out-of
-    pipeline-show-span! pipeline-node-off? pipeline-kept pipeline-kept-box
-    pipeline-records-box pipeline-kept-below pipeline-kept-at
-    pipeline-kept-upto pipeline-tape-upto pipeline-records-at
-    pipeline-span-nodes pipeline-span-in pipeline-node-span
-    pipeline-span-node-at pipeline-selected-span pipeline-children
-    pipeline-node-first pipeline-node-count pipeline-node-name
-    pipeline-node-what pipeline-lists-text pipeline-list-changed? pipeline-ago
-    pipeline-trace! pipeline-select! pipeline-selected-place pipeline-place-row
-    pipeline-tree-selected pipeline-selected-text pipeline-tape-caption
-    pipeline-tree-open! pipeline-key pipeline-span-subject pipeline-drawing-ms
-    pipeline-who-rows pipeline-redraws pipeline-pixels-text pipeline-who-field
-    pipeline-who-cell pipeline-who-sorted pipeline-who-pane pipeline-painted
-    pipeline-changed-marks pipeline-course-tick pipeline-phase-ms
-    pipeline-render-ms pipeline-course-items pipeline-course-sorted
-    pipeline-course pipeline-course-pane pipeline-sort-next
-    pipeline-inside-record pipeline-value-text pipeline-inside-facts
-    pipeline-inside-pane pipeline-inside-lines pipeline-memory-pane
-    pipeline-atlas-view pipeline-draw-card pipeline-draw-paint
-    pipeline-draw-marks pipeline-draw-who-color pipeline-draw-who-name
-    pipeline-draw-share pipeline-draw-inset pipeline-draw-who-words
-    pipeline-draw-kind-words pipeline-draw-heat-word
-    pipeline-draw-changed-words pipeline-draw-course-bar pipeline-draw-source
-    pipeline-draw-memory-bar pipeline-draw-atlas pipeline-zoom-most
-    pipeline-zoom-step pipeline-loupe-size pipeline-loupe-zoom
-    pipeline-viewer-box pipeline-viewer-fit pipeline-viewer-zoom
-    pipeline-viewer-center pipeline-viewer-origin pipeline-viewer-pixel
-    pipeline-zoom-at! pipeline-loupe-caption pipeline-draw-viewer
-    pipeline-draw-loupe pipeline-draw-popped-out pipeline-viewer
-    pipeline-viewer-bar pipeline-looks pipeline-look-notes
-    pipeline-viewer-bar-height pipeline-pop-out! pipeline-popped-draw
-    pipeline-loupe-follow! pipeline-card-lines pipeline-mb
-    pipeline-screen-facts pipeline-lists-pane pipeline-image! pipeline-draw
-    pipeline-frame! pipeline)
+    pipeline)
   (import (chezscheme)
           (only (schevana base) clamp define-made library-layer list-index
                 string-join)
@@ -259,7 +159,6 @@
   ;; About 5 seconds at 60 Hz.
   (define pipeline-frames-kept 300)
   (define pipeline-river-rows 2048)
-  (define pipeline-bar-px 3)
 
   (define (pipeline-show! v l)
     (let ([place (pipeline-selected-place v)])

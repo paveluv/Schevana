@@ -11,8 +11,7 @@
 
 (library (schevana desktop mousedoc)
   (export
-    mouse-doc window-doc action-words mouse-doc-text mouse-doc-text*
-    mouse-doc-line *mouse-doc-shown* mouse-doc-frame)
+    mouse-doc mouse-doc-text mouse-doc-text* mouse-doc-line mouse-doc-frame)
   (import (chezscheme)
           (only (schevana base) at-load define-hook define-state library-layer
                 string-join)

@@ -1,5 +1,8 @@
 ;;; tests/units/surfaces.ss — surfaces and strips.
 
+;; Returns the status segments' strings as the top bar shows them.
+(define (surfaces-test-shown) (filter string? (map cdr *status-shown*)))
+
 ;;; surfaces and strips
 
 ;; With no surface registered (no desktop layer), the world draws its
@@ -118,7 +121,7 @@
               (let ([between (- asked added)])
                 (status-show!)
                 (steps 1)
-                (let ([shown (shown-status-strings)] [last asked])
+                (let ([shown (surfaces-test-shown)] [last asked])
                   (and (= added 1) (<= between 1)
                        (member (format "asked ~a" last) shown)
                        (= last (+ added between 1)))))))
@@ -167,6 +170,5 @@
   (check "and when it's due, the flash is gone"
          (not *bell*)))
 (check "the status clock has a timer of its own"
-       (and *status-timer?*
-            (exists (lambda (t) (<= (- (vector-ref t 0) (now-ms)) 1000))
-                    *timers*)))
+       (exists (lambda (t) (<= (- (vector-ref t 0) (now-ms)) 1000))
+               *timers*))

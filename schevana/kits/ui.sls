@@ -35,113 +35,74 @@
 
 (library (schevana kits ui)
   (export
-    ui-region make-ui-region ui-region? ui-region-id ui-region-x ui-region-y
-    ui-region-w ui-region-h ui-region-frame ui-region-on ui-region-focus
-    ui-region-tip ui-region-cursor ui-region-modal? ui-region-doc
-    ui-region-follow ui-state make-ui-state ui-state? ui-state-regions
-    ui-state-regions-set! ui-state-active ui-state-active-set!
-    ui-state-hover-id ui-state-hover-id-set! ui-state-mx ui-state-mx-set!
-    ui-state-my ui-state-my-set! ui-state-clicks ui-state-clicks-set!
-    ui-state-rest ui-state-rest-set! ui-state-clip ui-state-clip-set!
-    ui-state-focus ui-state-focus-set! ui-state-edit ui-state-edit-set!
-    ui-state-blink-at ui-state-blink-at-set! ui-state-reveal
-    ui-state-reveal-set! ui-state-popup ui-state-popup-set! ui-state-later
-    ui-state-later-set! ui-state-due ui-state-due-set! ui-state-woken
-    ui-state-woken-set! ui-state-fresh? ui-state-fresh?-set! ui-state-scans
-    ui-state-scans-set! ui-state-memo make-ui ui-memo ui-memo! ui-forget!
-    ui-tip-ms ui-blink-ms ui-cut ui-region! ui-area ui-live ui-region-in?
-    ui-region-at ui-find ui-live-region ui-hover? ui-active? ui-opt-flags
-    ui-flags ui-focus! ui-focused ui-edit ui-caret ui-tab! ui-due! ui-wake!
-    ui-woken! ui-frame ui-caret-on? ui-rest! ui-stale! ui-fresh! ui-layout-list
-    ui-held ui-hover! ui-mouse-down ui-mouse-move ui-follow! ui-mouse-up
-    ui-wheel ui-key ui-text ui-handlers ui-modal-on ui-pressable! ui-begin!
-    ui-later! ui-end! ui-menu-open! ui-menu-open-tag ui-open-menu!
-    ui-open-modal ui-wait-on-modal! ui-control-height ui-glyph-size
+    ui-region-x ui-region-y ui-region-h ui-region-frame ui-state-mx ui-state-my
+    ui-state-reveal ui-state-reveal-set! make-ui ui-memo ui-memo! ui-forget!
+    ui-tip-ms ui-region! ui-area ui-region-in? ui-find ui-hover? ui-active?
+    ui-flags ui-focus! ui-focused ui-edit ui-caret ui-due! ui-frame ui-stale!
+    ui-wheel ui-handlers ui-pressable! ui-begin! ui-later! ui-end! ui-menu-open!
+    ui-menu-open-tag ui-open-menu! ui-open-modal ui-control-height ui-glyph-size
     ui-small-glyph-size ui-gap ui-pad ui-popup-place ui-flow ui-toolbar
-    ui-date->day ui-day->date ui-week-day ui-days-in-month ui-add-months
-    ui-today ui-month-names ui-date-label ui-month-titles ui-next-midnight
-    ui-italic-of ui-draw-focus ui-draw-focus* ui-draw-field ui-draw-field*
-    ui-draw-glyph ui-draw-glyph* ui-frame-glyph ui-button ui-draw-button
-    ui-draw-button* ui-button-size ui-button-size* ui-segmented ui-stepper
-    ui-stepper-text? ui-stepper-size ui-breadcrumbs ui-nav ui-nav-row-height
-    ui-draw-nav-row ui-draw-nav-row* ui-slider ui-slider-height ui-draw-slider
-    ui-draw-slider* ui-checkbox ui-toggle ui-checkbox-box ui-draw-checkbox
-    ui-draw-checkbox* ui-checkbox-size ui-checkbox-size* ui-live-badge
-    ui-live-badge-back ui-live-badge-mark ui-live-badge-size
-    ui-live-badge-size* ui-draw-live-badge ui-draw-live-badge* ui-toggle-track
-    ui-draw-toggle ui-draw-toggle* ui-toggle-size ui-toggle-size* ui-radio
-    ui-radio-mark ui-radio-text-x ui-radio-size ui-radio-size* ui-draw-radio
-    ui-draw-radio* ui-tabs ui-draw-tab ui-draw-tab* ui-tabs-size ui-tabs-size*
-    ui-label-font ui-label-text ui-draw-label ui-draw-label* ui-label-size
-    ui-label-size* ui-label-lines ui-wrap-lines ui-draw-surface
+    ui-date->day ui-day->date ui-days-in-month ui-today ui-month-names
+    ui-date-label ui-next-midnight ui-italic-of ui-draw-focus ui-draw-focus*
+    ui-draw-field ui-draw-field* ui-draw-glyph ui-draw-glyph* ui-frame-glyph
+    ui-button ui-draw-button ui-draw-button* ui-button-size ui-button-size*
+    ui-segmented ui-stepper ui-breadcrumbs ui-nav ui-draw-nav-row
+    ui-draw-nav-row* ui-slider ui-slider-height ui-draw-slider ui-draw-slider*
+    ui-checkbox ui-toggle ui-checkbox-box ui-draw-checkbox ui-draw-checkbox*
+    ui-checkbox-size ui-checkbox-size* ui-live-badge ui-live-badge-back
+    ui-live-badge-mark ui-live-badge-size ui-live-badge-size* ui-draw-live-badge
+    ui-draw-live-badge* ui-toggle-track ui-draw-toggle ui-draw-toggle*
+    ui-toggle-size ui-toggle-size* ui-radio ui-radio-size ui-radio-size*
+    ui-draw-radio ui-draw-radio* ui-tabs ui-draw-tab ui-draw-tab* ui-tabs-size
+    ui-tabs-size* ui-label-font ui-label-text ui-draw-label ui-draw-label*
+    ui-label-size ui-label-size* ui-label-lines ui-wrap-lines ui-draw-surface
     ui-draw-surface* ui-surface-well-ring ui-text-y ui-text-y* ui-text-box-top
-    ui-text-box-areas
-    ui-text-box-areas* ui-text-box-inset ui-text-box-insets ui-text-box-size
-    ui-text-box-size* ui-text-layout ui-text-area-size ui-text-area-size*
-    ui-text-field ui-text-area ui-text-edit ui-text-box ui-draw-text-box
-    ui-draw-text-box* ui-caret-block-width ui-suggestion-list
-    ui-suggestion-row-height ui-draw-suggestion ui-draw-suggestion* ui-rank
-    ui-suggestions ui-scroll ui-scrollbar ui-reveal! ui-scrollbar-width
-    ui-scrollbar-inset ui-frame-scrollbar ui-scroll-step ui-scrollbar-areas
-    ui-scrollbar-areas* ui-draw-scrollbar ui-draw-scrollbar* ui-title-icon
-    ui-draw-env-icon ui-draw-env-icon* ui-busy-frame-ms ui-busy-size
-    ui-busy-size* ui-draw-busy ui-draw-busy* ui-split ui-draw-split
-    ui-draw-split* ui-side-panel-open? ui-side-panel-toggle! ui-side-panel
-    ui-side-panel-button ui-table-room ui-table-fit ui-table ui-table-step
-    ui-table-page ui-table-columns ui-table-filled ui-table-column-min
-    ui-table-divider-shown? ui-table-handles! ui-column-flags ui-column-tip
-    ui-table-headings! ui-table-call-with-clip ui-table-header-height
+    ui-text-box-areas ui-text-box-areas* ui-text-box-inset ui-text-box-size
+    ui-text-box-size* ui-text-area-size ui-text-area-size* ui-text-field
+    ui-text-area ui-draw-text-box* ui-draw-suggestion ui-draw-suggestion*
+    ui-rank ui-suggestions ui-scroll ui-scrollbar ui-reveal! ui-scrollbar-width
+    ui-scrollbar-inset ui-frame-scrollbar ui-scrollbar-areas ui-scrollbar-areas*
+    ui-draw-scrollbar ui-draw-scrollbar* ui-title-icon ui-draw-env-icon
+    ui-draw-env-icon* ui-busy-frame-ms ui-busy-size ui-busy-size* ui-draw-busy
+    ui-draw-busy* ui-split ui-draw-split ui-draw-split* ui-side-panel-toggle!
+    ui-side-panel ui-side-panel-button ui-table-room ui-table-fit ui-table
+    ui-table-step ui-table-page ui-table-columns ui-table-header-height
     ui-table-row-height ui-table-cell-inset ui-table-cell-inset* ui-draw-cell
     ui-draw-cell* ui-draw-table-header ui-draw-table-header*
     ui-draw-table-divider ui-draw-table-divider* ui-draw-table-row
-    ui-draw-table-row* ui-tree-row make-ui-tree-row ui-tree-row?
-    ui-tree-row-node ui-tree-row-depth ui-tree-row-parent ui-tree-row-kids?
-    ui-tree-row-expanded? ui-tree-rows ui-tree-index ui-tree-under?
-    ui-tree-step ui-tree-states ui-tree-expand! ui-tree-key ui-tree
-    ui-tree-row-height ui-tree-areas ui-tree-areas* ui-draw-tree-row
-    ui-draw-tree-row* ui-draw-dim ui-draw-dim* ui-draw-chip ui-draw-chip*
-    ui-chip-size ui-chip-size* ui-chip-areas ui-chip-areas* ui-chip-input
-    ui-chain-flags ui-chip-input-areas ui-chip-input-areas* ui-chip-input-size
-    ui-chip-input-size* ui-chips ui-chips-areas ui-chips-height ui-initials
-    ui-avatar-size ui-avatar-size* ui-draw-avatar ui-draw-avatar*
-    ui-draw-progress ui-draw-progress* ui-progress-height ui-bar-chart-under
-    ui-bar-chart ui-bar-chart-areas ui-bar-chart-areas* ui-bar-chart-bar
-    ui-draw-bar-chart ui-draw-bar-chart* ui-draw-bar-chart-rules make-ui-stream
-    ui-stream? ui-stream-rows ui-stream-columns ui-stream-strips
-    ui-stream-buffer ui-stream-buffer-set! ui-stream-palette
-    ui-stream-palette-set! ui-stream-sent ui-stream-sent-set! ui-stream-new
-    ui-stream-most ui-stream-words ui-stream-colors ui-stream-restart!
-    ui-stream-resend! ui-stream-release! ui-stream-send!
-    ui-stream-stack-words ui-stream-stack-column ui-stream-stack-color
-    ui-stream-bars ui-stream-lane ui-stream-lane* ui-stream-room
-    ui-stream-areas ui-stream-areas* ui-stream-count ui-stream-layout
-    ui-stream-seq-at ui-draw-stream ui-draw-stream* ui-stream ui-chart-points
-    ui-draw-sparkline ui-draw-sparkline* ui-draw-line-chart ui-draw-line-chart*
-    ui-draw-legend ui-draw-legend* ui-legend-key-width ui-legend-size
-    ui-legend-size* ui-draw-panel ui-draw-panel* ui-draw-highlight
-    ui-draw-highlight* ui-draw-highlight-over ui-draw-highlight-over*
-    ui-draw-separator ui-draw-separator* ui-draw-card ui-draw-card*
-    ui-tooltip-lines ui-tooltip-size ui-tooltip-size* ui-draw-tooltip
-    ui-draw-tooltip* ui-dropdown ui-draw-dropdown ui-draw-dropdown*
-    ui-dropdown-size ui-dropdown-size* ui-date-field ui-calendar
-    ui-calendar-cell ui-calendar-size ui-calendar-size* ui-calendar-areas
-    ui-calendar-areas* ui-draw-calendar ui-draw-calendar* ui-draw-day
-    ui-draw-day* ui-form ui-form-height ui-form-walk ui-dialog ui-under?
-    ui-sheet ui-dialog-box ui-dialog-button-widths ui-dialog-lines
-    ui-dialog-size ui-dialog-size* ui-dialog-areas ui-dialog-areas*
-    ui-draw-scrim ui-draw-scrim* ui-draw-dialog ui-draw-dialog*
-    ui-stream-record ui-joined-span ui-button-radius ui-linked
-    ui-draw-button-box ui-stepper-areas ui-stepper-areas* ui-toggle-track*
-    ui-rows ui-rows-height ui-row-spec-height ui-rows-heading ui-row
-    ui-switch-row ui-check-row ui-entry-row ui-rows-spacing ui-rows-spacing*
-    ui-row-height ui-row-height* ui-row-areas ui-row-areas* ui-rows-radius
-    ui-rows-radius* ui-draw-rows ui-draw-rows* ui-draw-row ui-draw-row*
-    ui-add-row ui-add-row-height ui-add-row-height* ui-draw-add-row
-    ui-draw-add-row* ui-status-page ui-status-page-areas ui-status-page-areas*
-    ui-draw-status-page ui-draw-status-page* ui-draw-centered-lines
-    ui-banner ui-banner-height ui-banner-height* ui-banner-areas
-    ui-banner-areas* ui-draw-banner ui-draw-banner* ui-card-radius
-    ui-card-radius*)
+    ui-draw-table-row* ui-tree-states ui-tree-expand! ui-tree-key ui-tree
+    ui-tree-areas ui-tree-areas* ui-draw-tree-row ui-draw-tree-row* ui-draw-dim
+    ui-draw-dim* ui-draw-chip ui-draw-chip* ui-chip-size ui-chip-size*
+    ui-chip-areas ui-chip-areas* ui-chip-input ui-chip-input-areas
+    ui-chip-input-areas* ui-chip-input-size ui-chip-input-size* ui-chips
+    ui-chips-height ui-initials ui-avatar-size ui-avatar-size* ui-draw-avatar
+    ui-draw-avatar* ui-draw-progress ui-draw-progress* ui-progress-height
+    ui-bar-chart ui-bar-chart-areas* ui-bar-chart-bar ui-draw-bar-chart*
+    ui-stream-rows ui-stream-sent ui-stream-new ui-stream-restart!
+    ui-stream-resend! ui-stream-release! ui-stream-send! ui-stream-lane*
+    ui-stream-room ui-stream-areas* ui-stream-count ui-stream-layout
+    ui-draw-stream* ui-stream ui-draw-sparkline ui-draw-sparkline*
+    ui-draw-line-chart ui-draw-line-chart* ui-draw-legend ui-draw-legend*
+    ui-legend-size ui-legend-size* ui-draw-panel ui-draw-panel*
+    ui-draw-highlight ui-draw-highlight* ui-draw-highlight-over
+    ui-draw-highlight-over* ui-draw-separator ui-draw-separator* ui-draw-card
+    ui-draw-card* ui-tooltip-lines ui-tooltip-size ui-tooltip-size*
+    ui-draw-tooltip ui-draw-tooltip* ui-dropdown ui-draw-dropdown
+    ui-draw-dropdown* ui-dropdown-size ui-dropdown-size* ui-date-field
+    ui-calendar-size ui-calendar-size* ui-calendar-areas ui-calendar-areas*
+    ui-draw-calendar ui-draw-calendar* ui-draw-day ui-draw-day* ui-form
+    ui-form-height ui-dialog ui-sheet ui-dialog-lines ui-dialog-size
+    ui-dialog-size* ui-dialog-areas ui-dialog-areas* ui-draw-scrim
+    ui-draw-scrim* ui-draw-dialog ui-draw-dialog* ui-joined-span
+    ui-button-radius ui-linked ui-stepper-areas ui-stepper-areas*
+    ui-toggle-track* ui-rows ui-rows-height ui-switch-row ui-check-row
+    ui-entry-row ui-rows-spacing ui-rows-spacing* ui-row-height ui-row-height*
+    ui-row-areas ui-row-areas* ui-rows-radius ui-rows-radius* ui-draw-rows
+    ui-draw-rows* ui-draw-row ui-draw-row* ui-add-row-height ui-add-row-height*
+    ui-draw-add-row ui-draw-add-row* ui-status-page ui-status-page-areas
+    ui-status-page-areas* ui-draw-status-page ui-draw-status-page* ui-banner
+    ui-banner-height ui-banner-height* ui-banner-areas ui-banner-areas*
+    ui-draw-banner ui-draw-banner* ui-card-radius ui-card-radius*)
   (import (chezscheme)
           (only (schevana base) at-load clamp define-hook filter-map
                 library-layer list-index plist-ref string-prefix? string-split)

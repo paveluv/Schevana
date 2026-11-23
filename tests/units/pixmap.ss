@@ -28,14 +28,20 @@
        (and (raises? (lambda () (make-pixmap 0 4)))
             (raises? (lambda () (make-pixmap 2.5 4)))))
 
-(check "make-pixmap and pixmap-fill! fill every pixel"
+;; Sets every pixel of pm to color, on the crew's threads, with the kit's
+;; own worklet.
+(define (pixmap-test-fill! pm color)
+  (pixmap-rows! pm 0 (pixmap-h pm) pixmap-fill-rows! (color->pixel color)
+                (pixmap-w pm)))
+
+(check "make-pixmap fills every pixel, and so does its worklet given rows"
        (let ([pm (make-pixmap 7 5 #x00ff00)])
          (define (all? px)
            (let ([p (pixmap-picture pm)])
              (for-all (lambda (i) (= (pixel-at p (mod i 7) (quotient i 7)) px))
                       (iota 35))))
          (and (all? #xff00ff00)
-              (begin (pixmap-fill! pm (alpha #xffffff 0.5))
+              (begin (pixmap-test-fill! pm (alpha #xffffff 0.5))
                      (all? #x80808080)))))
 
 ;; Paints rows y0 up to (not including) y1 of a w-wide pixmap's bytes, each
@@ -107,7 +113,7 @@
        (for-all
         (lambda (i)
           (let ([pm (make-pixmap 4 4)])
-            (pixmap-fill! pm #x123456)
+            (pixmap-test-fill! pm #x123456)
             (let ([img (image 60 40 1
                               (lambda ()
                                 (fill-box 0 0 60 40 #x000000)

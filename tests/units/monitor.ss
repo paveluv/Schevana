@@ -287,7 +287,7 @@
                     (> (vector-length (ui-memo ui '(consumers rows) '#()))
                        2))))
   (steps 1)
-  (png-write-screen (string-append out-dir "/monitor.png"))
+  (test-png-write-screen (string-append out-dir "/monitor.png"))
   (check "Monitor draws its graphs: a bar a tick, a row a consumer"
          (and (not (window-error m)) (pair? (bars))
               (ui-find ui (list 'monitor-kill (proc-id p)))
@@ -364,7 +364,7 @@
     (test-wait 5000 (lambda ()
                       (< (+ (car (ui-state-rest ui)) ui-tip-ms 100)
                          (now-ms))))
-    (png-write-screen (string-append out-dir "/monitor-tip.png"))
+    (test-png-write-screen (string-append out-dir "/monitor-tip.png"))
     (let ([tip (let ([rs (bars)]) (and (pair? rs) (ui-region-tip (car rs))))])
       (printf "  ~s\n" tip)
       (check "hovering a bar of Monitor's Ticks shows its tooltip: its \

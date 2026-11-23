@@ -439,7 +439,7 @@
 (check "Genera's square things at 150 % on whole device pixels: a Tasks \
         card's paper, Settings' font sample's box"
        (begin
-         (tasks-reset!)
+         (test-backlog!)
          (let ([crisp? (lambda (ps)
                          (for-all (lambda (p) (memv p '(#xff000000
                                                         #xffffffff)))
@@ -525,7 +525,7 @@
         the cards' view stops short of its well's ring, surface-well-ring)"
        (begin
          (set-style! 'genera)
-         (tasks-reset!)
+         (test-backlog!)
          (let* ([win (tasks)] [ui (window-ref win 'ui)])
            (focus-window! win)
            (steps 3)
@@ -584,9 +584,9 @@
                       `(mouse-down ,(+ (car f) 4) ,(+ (cadr f) 4) left 1)
                       `(mouse-up ,(+ (car f) 4) ,(+ (cadr f) 4) left))
              (steps 1)
-             (let ([listed (and (menu-open?)
+             (let ([listed (and (test-menu-open?)
                                 (map car (menu-items *menu*)))])
-               (when (menu-open?)
+               (when (test-menu-open?)
                  ((cdr (assoc "Alpha" (menu-items *menu*))))
                  (close-menu!))
                (let ([chosen (eq? *focus* a)])
@@ -723,7 +723,7 @@
                         (fluid-let ([draw-resize-grip
                                      (lambda (x y) (set! n (+ n 1)))])
                           (invalidate!)   ; windows keep what they drew
-                          (screen-bytes))
+                          (test-screen-bytes))
                         n)])
            (let* ([open (count)] [shaded (begin (shade-window! w) (count))])
              (close-window! w)
@@ -877,7 +877,7 @@
                        [draw-text (lambda (x y s . rest)
                                     (set! texts (cons s texts))
                                     (apply real x y s rest))])
-             (screen-bytes)))
+             (test-screen-bytes)))
          (set-style! 'mac)
          (close-window! w)
          (steps 1)

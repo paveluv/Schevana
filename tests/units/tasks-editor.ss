@@ -4,7 +4,7 @@
 ;;; description; Save (Ctrl+S) and Cancel (Escape, which asks first when
 ;;; there are changes); however it closes, Tasks goes on.
 
-(tasks-reset!)
+(test-backlog!)
 (define tasks-editor-test-text
   (apply string-append (make-list 200 "scroll the long text row ")))
 (define tasks-editor-test-task
@@ -212,4 +212,4 @@
          (close-window! tasks-editor-test-window)
          (steps 1)
          (not (memq ed (windows)))))
-(tasks-reset!)
+(test-backlog!)

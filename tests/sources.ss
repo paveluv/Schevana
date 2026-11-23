@@ -6,16 +6,17 @@
 ;;;
 ;;; Every line of every source file fits in 80 columns; no top-level name
 ;;; is defined in two files; the core stays within its budget of tokens;
-;;; above the core nothing calls C; each layer names only what
-;;; the layer below gives it; only a world namespace shares the whole world
-;;; with an environment; every file in a folder registers what it defines
-;;; (a kit's or a service's names start with its prefix; desktop/ defines
-;;; plain names); a style sets only settings that exist (built in, its
-;;; options' or its own); in the kits, the services, the desktop layer,
-;;; Tasks, Settings, Environments and the Pipeline only the drawing
-;;; procedures draw or name a color, and the edit kit never does; and only
-;;; styles call a part's built-in body. The suite is fast: it loads the
-;;; world but does not boot it.
+;;; above the core nothing calls C; each layer names only what the layer
+;;; below gives it; a library of Schevana's imports with only and names all
+;;; it imports, and every name a library exports is used; only a world
+;;; namespace shares the whole world with an environment; every file in a
+;;; folder registers what it defines (a kit's or a service's names start
+;;; with its prefix; desktop/ defines plain names); a style sets only
+;;; settings that exist (built in, its options' or its own); in the kits,
+;;; the services, the desktop layer, Tasks, Settings, Environments and the
+;;; Pipeline only the drawing procedures draw or name a color, and the edit
+;;; kit never does; and only styles call a part's built-in body. The suite
+;;; is fast: it loads the world but does not boot it.
 
 (define *schevana-root*
   (let ([dir (path-parent (path-parent (car (command-line))))])
@@ -635,31 +636,6 @@
 (check "in a library, no hook names what the library defines after it"
        (none? (apply append (map hook-faults all-library-files))))
 
-;; The docs name what the core gives for a person to use at a REPL, which
-;; no file of the world's may name.
-(define doc-texts
-  (map (lambda (f) (call-with-input-file (source-path f) get-string-all))
-       (cons "README.md"
-             (map (lambda (f) (string-append "docs/" f))
-                  (filter (lambda (f) (string-suffix? ".md" f))
-                          (directory-list (source-path "docs")))))))
-
-(check "every name the core gives the world, some file of the world's \
-        names, or the docs do"
-       (let ([named (make-eq-hashtable)])
-         (for-each (lambda (f)
-                     (for-each (lambda (s) (hashtable-set! named s #t))
-                               (symbols-in (file-forms f))))
-                   world-own-files)
-         (none? (map (lambda (n) (format "nothing names ~a" n))
-                     (remp (lambda (n)
-                             (or (hashtable-ref named n #f)
-                                 (exists (lambda (text)
-                                           (string-contains-ci?
-                                            text (symbol->string n)))
-                                         doc-texts)))
-                           (library-exports '(schevana core)))))))
-
 ;; src/base.ss belongs to every environment, a copy each, so it keeps no
 ;; state and calls no C. Neither does (schevana base), the basics'
 ;; library.
@@ -729,6 +705,385 @@
                                                      (file-forms f))))))
                             (remp (lambda (f) (member f core0-chain-files))
                                   world-files))))))
+
+;;; ------------------------------------------------------------------
+;;; imports and exports
+;;; A library of Schevana's (under schevana/) imports each of the tree's
+;;; libraries with only, naming what it uses, and uses every name it names;
+;;; a demo or a game imports them whole, as a program from outside would.
+;;; A library exports only what something uses: a library that imports it,
+;;; a program at the tree's root or in src/, or, where "/" has the
+;;; library's names (the world's libraries and the core's facade), the
+;;; docs or a lookup by name. The tests reach the rest by themselves
+;;; (tests/build.ss).
+
+;; The symbols that x names as code, each once. What's quoted is data, and
+;; in a quasiquote only what's unquoted is code; so are a layer's name, a
+;; case's labels, what a macro's patterns match and a record's fields.
+(define (code-references x)
+  (define (data x acc)
+    (cond [(and (pair? x) (memq (car x) '(unquote unquote-splicing)))
+           (code (cdr x) acc)]
+          [(pair? x) (data (cdr x) (data (car x) acc))]
+          [(vector? x) (fold-left (lambda (a y) (data y a)) acc
+                                  (vector->list x))]
+          [else acc]))
+  (define (codes xs acc)
+    (if (pair? xs) (codes (cdr xs) (code (car xs) acc)) acc))
+  (define (clauses cs acc)   ; a macro's: the fender and template are code
+    (if (pair? cs)
+        (clauses (cdr cs) (if (pair? (car cs)) (codes (cdar cs) acc) acc))
+        acc))
+  (define (code x acc)
+    (cond
+      [(symbol? x) (if (memq x acc) acc (cons x acc))]
+      [(vector? x) (fold-left (lambda (a y) (code y a)) acc (vector->list x))]
+      [(not (pair? x)) acc]
+      [(eq? (car x) 'quote) acc]
+      [(eq? (car x) 'quasiquote) (data (cdr x) acc)]
+      [(eq? (car x) 'library-layer) (code (car x) acc)]
+      [(and (eq? (car x) 'case) (pair? (cdr x)))
+       (fold-left (lambda (a c) (if (pair? c) (codes (cdr c) a) a))
+                  (code (cadr x) (code (car x) acc))
+                  (cddr x))]
+      [(and (eq? (car x) 'syntax-rules) (pair? (cdr x)))
+       (clauses (cddr x) (code (car x) acc))]
+      [(and (eq? (car x) 'syntax-case) (pair? (cdr x)) (pair? (cddr x)))
+       (clauses (cdddr x) (code (cadr x) (code (car x) acc)))]
+      [(and (eq? (car x) 'define-record-type) (pair? (cdr x)))
+       (fold-left (lambda (a c)
+                    (if (and (pair? c)
+                             (memq (car c) '(fields nongenerative sealed
+                                             opaque)))
+                        a
+                        (code c a)))
+                  (code (car x) acc)
+                  (cddr x))]
+      [else (code (cdr x) (code (car x) acc))]))
+  (code x '()))
+
+;; The quoted symbols in x: in a quote, and in a quasiquote's data.
+(define (quoted-symbols x)
+  (let walk ([x x] [quoted? #f] [acc '()])
+    (cond [(symbol? x) (if quoted? (cons x acc) acc)]
+          [(and (pair? x) (memq (car x) '(quote quasiquote)) (pair? (cdr x)))
+           (walk (cadr x) #t acc)]
+          [(and (pair? x) (memq (car x) '(unquote unquote-splicing)))
+           (walk (cdr x) #f acc)]
+          [(pair? x) (walk (cdr x) quoted? (walk (car x) quoted? acc))]
+          [(vector? x) (fold-left (lambda (a y) (walk y quoted? a)) acc
+                                  (vector->list x))]
+          [else acc])))
+
+;; The tree's libraries, each (file . library form).
+(define tree-forms
+  (map (lambda (f) (cons f (call-with-input-file (source-path f) read)))
+       all-library-files))
+
+(define (tree-file e) (car e))
+(define (tree-name e) (cadr (cdr e)))
+(define (tree-imports e) (cdr (cadddr (cdr e))))
+(define (tree-body e) (cddddr (cdr e)))
+
+;; The names an export clause gives, as the importers see them.
+(define (clause-exports clause)
+  (apply append
+         (map (lambda (s)
+                (cond [(symbol? s) (list s)]
+                      [(and (pair? s) (eq? (car s) 'rename))
+                       (map cadr (cdr s))]
+                      [else '()]))
+              (cdr clause))))
+
+;; The names an export clause gives as the library itself names them.
+(define (clause-own-names clause)
+  (apply append
+         (map (lambda (s)
+                (cond [(symbol? s) (list s)]
+                      [(and (pair? s) (eq? (car s) 'rename))
+                       (map car (cdr s))]
+                      [else '()]))
+              (cdr clause))))
+
+;; Returns the library an import spec names, and what it gives, as
+;; (name (exported . local) ...); #f for a library of Chez's own.
+;; exports-of returns a tree library's exports, or #f.
+(define (spec-names spec exports-of)
+  (let resolve ([s spec])
+    (define (inner f)
+      (let ([r (resolve (cadr s))]) (and r (cons (car r) (f (cdr r))))))
+    (cond
+      [(and (pair? s) (eq? (car s) 'only))
+       (inner (lambda (ps) (filter (lambda (p) (memq (cdr p) (cddr s))) ps)))]
+      [(and (pair? s) (eq? (car s) 'except))
+       (inner (lambda (ps) (remp (lambda (p) (memq (cdr p) (cddr s))) ps)))]
+      [(and (pair? s) (eq? (car s) 'prefix))
+       (inner (lambda (ps)
+                (map (lambda (p)
+                       (cons (car p)
+                             (string->symbol
+                              (string-append (symbol->string (caddr s))
+                                             (symbol->string (cdr p))))))
+                     ps)))]
+      [(and (pair? s) (eq? (car s) 'rename))
+       (inner (lambda (ps)
+                (map (lambda (p)
+                       (let ([m (assq (cdr p) (cddr s))])
+                         (if m (cons (car p) (cadr m)) p)))
+                     ps)))]
+      [(exports-of s) => (lambda (ns) (cons s (map (lambda (n) (cons n n))
+                                                   ns)))]
+      [else #f])))
+
+;; The import specs of a body's (export (import spec ...)): what the
+;; library gives again whole.
+(define (body-given body)
+  (apply append
+         (map (lambda (x)
+                (if (and (pair? x) (eq? (car x) 'export) (pair? (cdr x))
+                         (pair? (cadr x)) (eq? (caadr x) 'import))
+                    (cdadr x)
+                    '()))
+              body)))
+
+;; Each library's exports: its export clause's, and what its body gives
+;; again.
+(define tree-export-table
+  (let ([clauses (map (lambda (e)
+                        (cons (tree-name e) (clause-exports (caddr (cdr e)))))
+                      tree-forms)])
+    (map (lambda (e)
+           (cons (tree-name e)
+                 (append (cdr (assoc (tree-name e) clauses))
+                         (apply append
+                                (map (lambda (spec)
+                                       (map cdr
+                                            (cdr (spec-names
+                                                  spec
+                                                  (lambda (n)
+                                                    (let ([c (assoc n clauses)])
+                                                      (and c (cdr c))))))))
+                                     (body-given (tree-body e)))))))
+         tree-forms)))
+
+(define (tree-exports name)
+  (let ([e (assoc name tree-export-table)]) (and e (cdr e))))
+
+;; A macro that names something in its user's scope: define-part defines
+;; a hook there, so its user imports define-hook.
+(define implied-names '((define-part define-hook)))
+
+;; Returns what library e names as code, its export clause included (a
+;; facade gives again what it imports) and what its macros need.
+(define (library-references e)
+  (let ([named (append (code-references (tree-body e))
+                       (clause-own-names (caddr (cdr e))))])
+    (append (apply append (map (lambda (i) (if (memq (car i) named)
+                                               (cdr i)
+                                               '()))
+                               implied-names))
+            named)))
+
+;; Returns the problems with library e's imports of the tree's libraries:
+;; one imported whole, or a name it lists and never names.
+(define (import-problems e)
+  (let ([named (library-references e)])
+    (apply append
+           (map (lambda (spec)
+                  (let ([r (spec-names spec tree-exports)]
+                        [only (let strip ([s spec])
+                                (cond [(and (pair? s) (eq? (car s) 'prefix))
+                                       (strip (cadr s))]
+                                      [(and (pair? s) (eq? (car s) 'only)) s]
+                                      [else #f]))])
+                    (cond
+                      [(not r) '()]
+                      [(not only)
+                       (list (format "~a imports ~s whole" (tree-file e)
+                                     (car r)))]
+                      [else
+                       (map (lambda (p)
+                              (format "~a imports ~a from ~s and never names \
+                                       it" (tree-file e) (cdr p) (car r)))
+                            (remp (lambda (p) (memq (cdr p) named))
+                                  (cdr r)))])))
+                (tree-imports e)))))
+
+(check "a library of Schevana's imports each of the tree's libraries with \
+        only, and names every name it imports"
+       (none? (apply append
+                     (map import-problems
+                          (filter (lambda (e)
+                                    (string-prefix? "schevana/" (tree-file e)))
+                                  tree-forms)))))
+
+;; Whether "/" has library e's names: one of the world's (a library with
+;; no layer, or one above the core) or the core's facade.
+(define (world-visible? e)
+  (or (equal? (tree-name e) '(schevana core))
+      (not (memq (file-layer (tree-file e))
+                 '(foundation core0 recorder core)))))
+
+;; Returns the forms in file f, past a #! line; none if it holds no Scheme.
+(define (program-forms f)
+  (guard (c [#t '()])
+    (call-with-input-file (source-path f)
+      (lambda (p)
+        (when (eqv? (peek-char p) #\#) (get-line p))
+        (let loop ([acc '()])
+          (let ([x (read p)])
+            (if (eof-object? x) (reverse acc) (loop (cons x acc)))))))))
+
+;; Returns a table of the symbols in xs.
+(define (symbol-table xs)
+  (let ([t (make-eq-hashtable)])
+    (for-each (lambda (s) (hashtable-set! t s #t)) xs)
+    t))
+
+;; What the programs at the tree's root and in src/ name, by name too (a
+;; launcher names its library's main).
+(define program-names
+  (symbol-table
+   (apply append
+          (map (lambda (f) (symbols-in (program-forms f)))
+               (append test-launchers
+                       (map (lambda (f) (string-append "src/" f))
+                            (filter (lambda (f)
+                                      (string=? (path-extension f) "ss"))
+                                    (directory-list (source-path "src")))))))))
+
+;; The docs' pages, and what they show: in their scheme blocks, what the
+;; code names; in their prose, between backquotes, a call's head, or a
+;; name alone but on the pages about the core's insides and the platforms.
+(define doc-pages
+  (cons "README.md"
+        (map (lambda (f) (string-append "docs/" f))
+             (filter (lambda (f) (string-suffix? ".md" f))
+                     (sort string<? (directory-list (source-path "docs")))))))
+
+(define (doc-names-of page)
+  (let loop ([ls (file-lines page)] [block #f] [code '()] [prose '()])
+    (define (read-all text)
+      (let ([p (open-string-input-port text)])
+        (let next ([acc '()])
+          (let ([x (guard (c [#t (eof-object)]) (read p))])
+            (if (eof-object? x) (reverse acc) (next (cons x acc)))))))
+    (define (spans text)   ; what sits between backquotes
+      (let next ([i 0] [acc '()])
+        (let* ([a (let find ([k i])
+                    (cond [(>= k (string-length text)) #f]
+                          [(char=? (string-ref text k) #\`) k]
+                          [else (find (+ k 1))]))]
+               [b (and a (let find ([k (+ a 1)])
+                           (cond [(>= k (string-length text)) #f]
+                                 [(char=? (string-ref text k) #\`) k]
+                                 [else (find (+ k 1))])))])
+          (if b
+              (next (+ b 1) (cons (substring text (+ a 1) b) acc))
+              acc))))
+    (define (name code)
+      (let ([x (guard (c [#t #f]) (read (open-string-input-port code)))])
+        (cond [(and (pair? x) (symbol? (car x))) (list (car x))]
+              [(and (symbol? x)
+                    (not (member page '("docs/INTERNALS.md"
+                                        "docs/PLATFORMS.md"))))
+               (list x)]
+              [else '()])))
+    (cond
+      [(null? ls)
+       (append (code-references
+                (read-all (apply string-append (reverse code))))
+               (apply append
+                      (map name
+                           (spans (apply string-append (reverse prose))))))]
+      [(and (not block) (string-prefix? "```scheme" (car ls)))
+       (loop (cdr ls) 'scheme code prose)]
+      [(and (not block) (string-prefix? "```" (car ls)))
+       (loop (cdr ls) 'other code prose)]
+      [(and block (string=? (car ls) "```")) (loop (cdr ls) #f code prose)]
+      [(eq? block 'scheme)
+       (loop (cdr ls) block (cons (string-append (car ls) "\n") code) prose)]
+      [block (loop (cdr ls) block code prose)]
+      [else
+       (loop (cdr ls) block code (cons (string-append (car ls) "\n") prose))])))
+
+(define doc-names (symbol-table (apply append (map doc-names-of doc-pages))))
+
+;; What the tree's libraries look up in "/" by name: world-value's name;
+;; a symbol in a registry's form or a theme setting's, which names a
+;; procedure; a part's built-in body (name*), which its default names; and
+;; a symbol in a quasiquote's data, code made to be evaluated.
+(define by-name-forms
+  '(define-style define-palette define-wallpaper define-surface define-strip
+    theme-default! set-theme! override!))
+
+(define (by-name-references x)
+  (let walk ([x x] [acc '()])
+    (cond [(not (pair? x)) acc]
+          [(and (eq? (car x) 'world-value) (pair? (cdr x))
+                (pair? (cadr x)) (eq? (caadr x) 'quote) (pair? (cdadr x)))
+           (cons (cadadr x) acc)]
+          [(memq (car x) (cons 'quasiquote by-name-forms))
+           (append (quoted-symbols x) acc)]
+          [(and (eq? (car x) 'define-part) (pair? (cdr x)) (pair? (cadr x)))
+           (cons (string->symbol (format "~a*" (caadr x)))
+                 (walk (cddr x) acc))]
+          [else (walk (cdr x) (walk (car x) acc))])))
+
+(define by-name-names
+  (symbol-table
+   (apply append (map (lambda (e) (by-name-references (tree-body e)))
+                      tree-forms))))
+
+;; Returns each export that nothing uses, as "nothing uses n of library".
+(define (export-problems)
+  (let ([used (make-hashtable equal-hash equal?)])   ; (library . name)
+    (define (use! lib n) (hashtable-set! used (cons lib n) #t))
+    (for-each
+     (lambda (e)
+       (let ([named (library-references e)])
+         (for-each (lambda (spec)
+                     (let ([r (spec-names spec tree-exports)])
+                       (when r
+                         (for-each (lambda (p)
+                                     (when (memq (cdr p) named)
+                                       (use! (car r) (car p))))
+                                   (cdr r)))))
+                   (tree-imports e))))
+     tree-forms)
+    ;; what a body gives again is used where the library's own export is
+    (for-each
+     (lambda (e)
+       (for-each (lambda (spec)
+                   (let ([r (spec-names spec tree-exports)])
+                     (for-each (lambda (p)
+                                 (when (hashtable-ref used
+                                                      (cons (tree-name e)
+                                                            (cdr p))
+                                                      #f)
+                                   (use! (car r) (car p))))
+                               (cdr r))))
+                 (body-given (tree-body e))))
+     tree-forms)
+    (apply append
+           (map (lambda (e)
+                  (map (lambda (n)
+                         (format "nothing uses ~a of ~s" n (tree-name e)))
+                       (remp (lambda (n)
+                               (or (hashtable-ref used (cons (tree-name e) n)
+                                                  #f)
+                                   (hashtable-ref program-names n #f)
+                                   (and (world-visible? e)
+                                        (or (hashtable-ref doc-names n #f)
+                                            (hashtable-ref by-name-names n
+                                                           #f)))))
+                             (tree-exports (tree-name e)))))
+                tree-forms))))
+
+(check "every name a library exports is used: by a library that imports \
+        it, by a program at the tree's root or in src/, or, where \"/\" has \
+        it, by the docs or by a lookup by name"
+       (none? (export-problems)))
 
 ;;; ------------------------------------------------------------------
 ;;; sharing the whole world

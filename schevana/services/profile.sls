@@ -39,66 +39,20 @@
 
 (library (schevana services profile)
   (export
-    *profile-on?* *profile-tick-seconds* *profile-minutes* profile-tick-rate
-    profile-most-tick-seconds profile-most-minutes profile-tick-uses-kept
-    profile-detail-seconds profile-second-uses-most
-    profile-second-subjects-most profile-phase-names profile-phase-count
-    profile-phase-index *profile-none* profile-table make-profile-table
-    profile-table? profile-table-keys profile-table-parts profile-table-phases
-    profile-table-ns profile-table-calls profile-table-ticks
-    profile-table-longest profile-table-seen profile-table-this
-    profile-table-used profile-table-count profile-table-count-set!
-    profile-new-table profile-hash profile-slot! profile-fx+! profile-tally!
-    profile-clear-table! profile-kind profile-ring make-profile-ring
-    profile-ring? profile-ring-seqs profile-ring-fields profile-ring-phases
-    profile-new-ring profile-tick-fields profile-second-fields profile-field
-    profile-ring-ref profile-ring-set! profile-slot-of profile-new-entries
-    profile-put! *profile-ticks-ring* *profile-tick-uses*
-    *profile-seconds-ring* *profile-second-uses* *profile-second-subjects*
-    *profile-tick-oldest* *profile-tick-newest* *profile-tick-entries*
-    *profile-second-oldest* *profile-second-now* *profile-second-entries*
-    *profile-subject-entries* profile-stack-size *profile-keys* *profile-parts*
-    *profile-phase* *profile-start* *profile-inner* *profile-depth*
-    *profile-past* *profile-phase-ns* *profile-tick-table* *profile-tick-ns*
-    *profile-second-table* *profile-second-subject-table* *profile-gc-ns*
-    *profile-memory* *profile-frames* *profile-cpu* *profile-hidden-at*
-    *profile-thread* *profile-plain-collect* *profile-window-names*
-    *profile-process-names* profile-thread-id profile-ms profile-thread-cpu
-    profile-untimed? profile-begin! profile-open! profile-end! profile-close!
-    profile-close-at! profile-collect profile-end-step! profile-tick-done!
-    profile-name! profile-trim-ticks! profile-second-at! profile-second-done!
-    profile-core0-kept *profile-core0-at* *profile-core0-types*
-    *profile-core0-count* *profile-input* profile-core0-event!
-    profile-core0-about profile-flags-kept profile-flag-reach profile-flag
-    make-profile-flag profile-flag? profile-flag-seq profile-flag-date
-    profile-flag-ns profile-flag-period profile-flag-why profile-flag-phases
-    profile-flag-cpu profile-flag-shown profile-flag-shown-for
-    profile-flag-beside profile-flag-events profile-flag-notes *profile-flags*
-    *profile-flag-count* *profile-flag-log* *profile-flag-logged*
-    profile-flag-log-most profile-flag-check! profile-flag-keep!
-    profile-date-at profile-tick-row profile-tick-notes profile-flags
-    profile-flag-count profile-tick-why profile-ns-text profile-why-text
-    profile-flag-ticks-text profile-flag-ms-text profile-flag-row-text
-    profile-flag-clock profile-event-text profile-flag-before-text
-    profile-flag-lines profile-device-lines profile-flag-summary
-    profile-flag-write profile-flag-report profile-flag-log!
-    profile-flag-log-write! profile-on! profile-on? profile-history!
-    profile-clear! profile-ticks profile-seconds profile-newest-tick
-    profile-oldest-tick profile-tick-kept? profile-tick-ref profile-second-ref
-    profile-ref profile-tick-ns profile-tick-phase-ns profile-tick-end
-    profile-tick-ms profile-tick-phase-ms profile-second-phase-ms
-    profile-phase-ms profile-phase-ns profile-busy profile-tick-phases
-    profile-tick-late? profile-tick-held? profile-slow-ticks profile-subject
-    profile-subject-of profile-subject-name profile-use make-profile-use
-    profile-use? profile-use-subject profile-use-part profile-use-phase
-    profile-use-ms profile-use-calls profile-use-ticks profile-use-longest
-    profile-uses profile-tick-uses profile-second-uses profile-subject-is?
-    profile-node-ns profile-tick-node-ns profile-tick-node-ms
-    profile-second-node-ms profile-subject-ms profile-total make-profile-total
-    profile-total? profile-total-what profile-total-ms profile-total-ms-set!
-    profile-total-calls profile-total-calls-set! profile-total-ticks
-    profile-total-ticks-set! profile-total-longest profile-total-longest-set!
-    profile-total-parts profile-total-parts-set! profile-totals)
+    *profile-tick-seconds* *profile-minutes* profile-tick-rate profile-flag-ns
+    profile-flag-why *profile-flag-log* profile-flags profile-tick-why
+    profile-ns-text profile-why-text profile-flag-ticks-text profile-flag-clock
+    profile-flag-before-text profile-flag-lines profile-flag-summary
+    profile-flag-report profile-flag-log! profile-on! profile-on?
+    profile-history! profile-clear! profile-ticks profile-seconds
+    profile-newest-tick profile-oldest-tick profile-tick-kept? profile-tick-ref
+    profile-second-ref profile-tick-ns profile-tick-phase-ns profile-tick-ms
+    profile-tick-phases profile-tick-late? profile-tick-held? profile-slow-ticks
+    profile-subject-of profile-subject-name profile-use-subject
+    profile-use-phase profile-use-ms profile-tick-uses profile-tick-node-ns
+    profile-tick-node-ms profile-second-node-ms profile-total-what
+    profile-total-ms profile-total-calls profile-total-ticks
+    profile-total-longest profile-total-parts profile-totals)
   (import (chezscheme)
           (only (schevana base) at-load define-made define-state library-layer
                 set-hook! string-join)
@@ -803,8 +757,6 @@
                                     (modulo i profile-flags-kept))
                         acc))))))
 
-  (define (profile-flag-count) *profile-flag-count*)
-
   ;; What made tick seq late: the biggest single thing in it that could
   ;; have, among what profile-tick-late? counts, so never the screen's hold.
   ;; It is the wait for events, counted only past a period (up to a period,
@@ -1104,18 +1056,7 @@
   (define (profile-tick-phase-ns seq phase)
     (profile-phase-ns *profile-ticks-ring* seq phase))
 
-  (define (profile-tick-end seq) (profile-tick-ref seq 'end))
   (define (profile-tick-ms seq) (profile-tick-ref seq 'ms))
-
-  ;; The ms of phase (one of profile-phase-names) in a tick, or a second.
-  (define (profile-tick-phase-ms seq phase)
-    (profile-phase-ms *profile-ticks-ring* seq phase))
-
-  (define (profile-second-phase-ms seq phase)
-    (profile-phase-ms *profile-seconds-ring* seq phase))
-
-  (define (profile-phase-ms r seq phase)
-    (profile-ms (profile-phase-ns r seq phase)))
 
   (define (profile-phase-ns r seq phase)
     (let loop ([i 0])
@@ -1124,11 +1065,6 @@
                         (fx+ (fx* (profile-slot-of r seq) profile-phase-count)
                              i))
           (loop (fx+ i 1)))))
-
-  ;; A tick's time less its waits, in ms.
-  (define (profile-busy seq)
-    (- (profile-tick-ms seq) (profile-tick-phase-ms seq 'input-wait)
-       (profile-tick-phase-ms seq 'vsync-wait)))
 
   ;; Where tick seq's time went: ((phase . ns) ...) for every phase that
   ;; took any (the waits too), the most first. They add up to the tick's

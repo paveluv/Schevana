@@ -4,12 +4,11 @@
 
 (library (schevana kits png)
   (export
-    png-crc-table png-crc png-adler png-u32 png-chunk png-zlib png-write
-    png-write-drawing png-write-screen png-write-screen-then)
+    png-write-drawing png-write-screen-then)
   (import (chezscheme)
           (only (schevana base) define-made library-layer)
           (only (schevana core) canvas-pixel-height canvas-pixel-width
-                drawing->bytes screen-bytes screen-bytes-then))
+                drawing->bytes screen-bytes-then))
 
   (library-layer kits)
 
@@ -118,12 +117,8 @@
     (png-write path (drawing->bytes w h 1 thunk) w h))
 
   ;; Writes the screen as it is now to path, and returns path.
-  (define (png-write-screen path)
-    (png-write path (screen-bytes) (canvas-pixel-width) (canvas-pixel-height))
-    path)
-
-  ;; Like png-write-screen, but writes the file once core0 has drawn the
-  ;; screen, then calls then with path on core1, so nothing waits for it.
+  ;; Writes the screen to a PNG file at path once core0 has drawn it, then
+  ;; calls then with path on core1, so nothing waits for it.
   (define (png-write-screen-then path then)
     (let ([w (canvas-pixel-width)] [h (canvas-pixel-height)])
       (screen-bytes-then (lambda (bytes)

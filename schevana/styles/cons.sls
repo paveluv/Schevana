@@ -18,28 +18,20 @@
 
 (library (schevana styles cons)
   (export
-    cons-line cons-cell cons-left cons-gap cons-car-width cons-pairs
-    cons-regions cons-thin cons-ring! cons-pair-h! cons-pair! cons-dot-x
-    cons-dot-y cons-right! cons-down! cons-pointer! cons-sign! cons-nil!
-    cons-nil-h! cons-title-y cons-tint cons-draw-under cons-draw-over
-    cons-space cons-arrow cons-slot cons-tint-of cons-focus cons-button
-    cons-button-size cons-bool-width cons-bool! cons-checkbox
-    cons-checkbox-size cons-toggle cons-tab-car cons-tab cons-tabs-size
-    cons-mark-width cons-field cons-mark-room cons-text-box-areas cons-dropdown
-    cons-dropdown-size cons-chip-gap cons-chip-height cons-chip-x-side
-    cons-chip-car cons-chip-x-box cons-chip-car-width cons-chip cons-flag
-    cons-bend! cons-chip-size cons-chip-areas cons-chip-input-areas cons-card
-    cons-scrollbar-areas cons-scrollbar cons-slider cons-progress
-    cons-table-header cons-table-row cons-tree-row cons-surface cons-panel
-    cons-highlight cons-separator cons-tooltip cons-tooltip-size
-    cons-dialog-car cons-dialog-rest cons-dialog-size cons-dialog-areas
-    cons-dialog cons-scrim cons-day cons-avatar cons-tasks-column-insets
+    cons-regions cons-draw-under cons-draw-over cons-focus cons-button
+    cons-button-size cons-checkbox cons-checkbox-size cons-toggle cons-tab
+    cons-tabs-size cons-field cons-text-box-areas cons-dropdown
+    cons-dropdown-size cons-chip cons-chip-size cons-chip-areas
+    cons-chip-input-areas cons-card cons-scrollbar-areas cons-scrollbar
+    cons-slider cons-progress cons-table-header cons-table-row cons-tree-row
+    cons-surface cons-panel cons-highlight cons-separator cons-tooltip
+    cons-tooltip-size cons-dialog-size cons-dialog-areas cons-dialog cons-scrim
+    cons-day cons-avatar cons-tasks-column-insets
     cons-tasks-column-header-height cons-tasks-card-insets cons-tasks-card-pad
     cons-table-cell-inset cons-tasks-details-pad cons-tasks-link
-    cons-tasks-column cons-dashes! cons-tasks-slot cons-menu-areas
-    cons-draw-menu cons-menu-filter! cons-mouse-doc-text cons-draw-topbar
-    cons-taskbar-areas cons-draw-taskbar cons-toast-boxes cons-draw-toasts
-    cons-draw-wallpaper)
+    cons-tasks-column cons-tasks-slot cons-menu-areas cons-draw-menu
+    cons-mouse-doc-text cons-draw-topbar cons-taskbar-areas cons-draw-taskbar
+    cons-toast-boxes cons-draw-toasts cons-draw-wallpaper)
   (import (chezscheme)
           (only (schevana base) at-load clamp library-layer)
           (only (schevana core) *focus* *hover* *toasts* *windows* alpha

@@ -25,7 +25,7 @@
                      "emoji 😀 and a tab\tand spaces    end"
                      (make-string 40 #\λ) (make-string 60 #\i)
                      (make-string 26 #\W))
-               (begin (tasks-reset!) (map task-title *tasks*))
+               (begin (test-backlog!) (map task-title *tasks*))
                (let ([abc "aW i.λ東Ü\x301;😀-"])   ; made up, the same on each run
                  (map (lambda (i)
                         (list->string

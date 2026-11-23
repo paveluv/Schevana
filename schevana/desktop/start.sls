@@ -6,7 +6,7 @@
 
 (library (schevana desktop start)
   (export
-    *desktop-start-thunks* desktop-at-start! desktop-start!)
+    desktop-at-start! desktop-start!)
   (import (chezscheme)
           (only (schevana base) define-state library-layer)
           (only (schevana core) *schevana-options* *schevana-root* find-window

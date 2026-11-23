@@ -13,8 +13,7 @@
 ;;; (./desktop demo loads the demos).
 
 (library (schevana desktop main)
-  (export desktop-defaults desktop-size desktop-usage desktop-options
-          desktop-fork? desktop-later?
+  (export
           desktop-main)
   (import (chezscheme)
           (only (schevana base) library-layer string-prefix?)

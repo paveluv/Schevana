@@ -10,9 +10,7 @@
 
 (library (schevana styles slab)
   (export
-    slab-line slab-lift slab-gap slab-font slab-bar slab-key slab-margin
-    slab-room slab-insets slab-regions slab-under slab-title-y slab-glyph
-    slab-draw-key slab-draw-under)
+    slab-insets slab-regions slab-draw-under)
   (import (chezscheme)
           (only (schevana base) at-load library-layer)
           (only (schevana core) common-options define-style draw-text fill-box

@@ -87,7 +87,7 @@
                      `(mouse-up ,x 10 left))
             (steps 1)
             (let ([open? (launcher-open?)])
-              (when (menu-open?) (close-menu!))
+              (when (test-menu-open?) (close-menu!))
               (steps 1)
               open?))
           (let ([plain (list (opened-at 40) (opened-at 340))])
@@ -336,7 +336,7 @@
                      `(mouse-up ,x 10 left))
             (steps 1)
             (let ([open? (launcher-open?)])
-              (when (menu-open?) (close-menu!))
+              (when (test-menu-open?) (close-menu!))
               (steps 1)
               open?))
           (define-style test-big-bars "Test"

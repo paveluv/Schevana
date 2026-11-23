@@ -19,6 +19,48 @@
 (define (test-demos! . names)
   (load-sources! (map (lambda (name) (list 'demo name)) names)))
 
+;; Gives up the rest of the calling process's slice.
+(define (test-yield) (when (current-proc) (engine-block)))
+
+;; Whether a menu is open.
+(define (test-menu-open?) (and *menu* #t))
+
+;; Returns the screen as it would be drawn now: its pixels, row after row,
+;; in premultiplied BGRA, as a screenshot sees them.
+(define (test-screen-bytes)
+  (drawing->bytes *canvas-pw* *canvas-ph* *canvas-ratio* record-world! #f))
+
+;; Writes what the screen shows now to a PNG file at path; returns path.
+(define (test-png-write-screen path)
+  (png-write path (test-screen-bytes) (canvas-pixel-width)
+             (canvas-pixel-height))
+  path)
+
+;; Returns the ms of phase (one of profile-phase-names) in tick seq, as
+;; the profiler keeps it.
+(define (test-tick-phase-ms seq phase)
+  (profile-ms (profile-phase-ns *profile-ticks-ring* seq phase)))
+
+;; Gives Tasks the demos' backlog ((demo backlog)) as that demo enters it:
+;; the first call loads the demo, and each later one gives Tasks a copy of
+;; the tasks it entered, ids and all, in place of the tasks there, for a
+;; test to start from. Returns how many tasks it holds.
+(define test-backlog #f)   ; (next-id task ...), as the demo left them
+(define (test-backlog!)
+  (define (copy t)
+    (make-task (task-id t) (task-title t) (task-description t)
+               (task-status t) (task-kind t) (task-priority t)
+               (task-assignee t) (task-tags t) (task-due t)
+               (map (lambda (i) (cons (car i) (cdr i))) (task-checklist t))
+               (task-blocked-by t) (task-created t) (task-updated t)))
+  (unless test-backlog
+    (test-demos! 'backlog)
+    (set! test-backlog (cons *tasks-next-id* (map copy *tasks*))))
+  (set! *tasks* (map copy (cdr test-backlog)))
+  (set! *tasks-next-id* (car test-backlog))
+  (tasks-changed!)
+  (length *tasks*))
+
 ;; Evaluates library name again, with every library that imports it, as a
 ;; reload does when its file has changed, in either edition. Returns the
 ;; libraries evaluated again.
@@ -324,7 +366,7 @@
   (set! *cascade* 0)
   (set! *hover* #f)
   (set! *drag* #f)
-  (when (menu-open?) (close-menu!)))
+  (when (test-menu-open?) (close-menu!)))
 
 ;; Runs a scene: thunk, from a cleared world, setting up its own state. A
 ;; scene that raises fails under its name, and the next starts afresh.

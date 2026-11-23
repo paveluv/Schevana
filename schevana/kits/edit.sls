@@ -21,20 +21,12 @@
 
 (library (schevana kits edit)
   (export
-    edit make-edit edit? edit-text edit-caret edit-anchor edit-goal edit-change
-    edit-at edit-all edit-range edit-selection edit-splice edit-replace
-    edit-insert edit-erase edit-move edit-select edit-word-char? edit-word-left
-    edit-word-right edit-run edit-word-bounds edit-line-bounds edit-clean
-    edit-layout make-edit-layout edit-layout? edit-layout-text
-    edit-layout-text-set! edit-layout-width edit-layout-key edit-layout-measure
-    edit-layout-measure-set! edit-layout-starts edit-layout-starts-set!
-    edit-layout-count edit-layout-count-set! edit-layout-done?
-    edit-layout-done?-set! edit-layout-guess edit-layout-guess-set!
-    edit-layout-old edit-layout-old-set! edit-layout-of edit-difference
-    edit-search edit-layout-cut! edit-layout-recall edit-last edit-row-end
-    edit-paragraph-end edit-layout-step! edit-layout-extend! edit-layout-scan!
-    edit-layout-total edit-row* edit-row edit-row-last edit-row-at edit-caret-x
-    edit-index-at edit-vertical edit-key edit-wrap)
+    edit make-edit edit? edit-text edit-caret edit-anchor edit-change edit-at
+    edit-all edit-range edit-selection edit-insert edit-erase edit-move
+    edit-select edit-word-bounds edit-line-bounds edit-clean edit-layout-text
+    edit-layout-count edit-layout-done? edit-layout-of edit-layout-extend!
+    edit-layout-scan! edit-layout-total edit-row edit-row-last edit-row-at
+    edit-caret-x edit-index-at edit-key edit-wrap)
   (import (chezscheme)
           (only (schevana base) clamp library-layer))
 

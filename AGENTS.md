@@ -29,8 +29,9 @@ on a machine with 8 GB of memory.
 - A test asks nothing of a library: no export, hook, state or name that
   exists only for the test. The test framework reaches what it needs by
   itself. It builds the libraries the suites boot in its own way
-  (`tests/build.ss`): a library of a sealed layer exports every name it
-  defines, and a definition a test stands in for becomes a hook. A
+  (`tests/build.ss`): a library of Schevana's exports every name it
+  defines, under the prefix `test:` (`tests/given.ss` gives each its own
+  name again), and a definition a test stands in for becomes a hook. A
   demo's own names it reaches by stripping the library, as the hacker
   edition does (`test-library`, [tests/GUIDE.md](tests/GUIDE.md)).
 - A change in behavior comes with a test of it, written by the rules in
@@ -69,7 +70,7 @@ before it:
 | `schevana/styles/`, `schevana/palettes/`, `schevana/wallpapers/` | The looks: one definition per library, registered as the library runs (the registries are the core's: `define-style`, `define-palette`, `define-wallpaper`). |
 | `schevana/desktop/` | The screen's own surfaces and the desktop's behavior: the wallpaper, the bars, the menu, toasts, keys and arranging windows; and its start (`main.sls`, from the command line, and `start.sls`, once the world has loaded). |
 | `schevana/apps/` | The desktop's own apps (the REPL, Settings, Tasks, Monitor, Clock, ...), one per library, each defined with `define-app`. |
-| `demo/` | The demos, one library each, `(demo <name>)`, built on the core's facade. Each is an app the desktop adds when it is given the folder (`./desktop demo`: Boids, Life, Springies, ...); some are programs too, with a launcher at the root (`./rings-demo`). |
+| `demo/` | The demos, one library each, `(demo <name>)`, built on the core's facade. Each is an app the desktop adds when it is given the folder (`./desktop demo`: Boids, Life, Springies, ...), or what such a desktop starts with (the backlog, which enters Tasks' tasks as you would at a REPL); some are programs too, with a launcher at the root (`./rings-demo`). |
 | `games/` | The games, one library each, `(games <name>)`, built on the core's facade. A REPL loads one by its name (`(import (games fireflies))`, then `(fireflies)`), or the desktop loads them all when given the folder (`./desktop games`); each is a program too, with a launcher at the root (`./game-demo`). |
 
 - **The boot is a chain.** A launcher boots core0, then core1, which
@@ -138,8 +139,9 @@ before it:
   looks, the desktop, apps, demos, games) binds SDL, FreeType or
   fontconfig or calls a `foreign-…` procedure, and no binding is
   exported to the world: when the world needs something of C, the core
-  grows a primitive for it (`tests/sources.ss`). Core1 binds its own C
-  with `define-foreign`, which core0 gives it.
+  grows a primitive for it (`tests/sources.ss`). Core1 calls C through
+  the bindings below the layers (`(schevana ffi)`, `(schevana freetype)`,
+  `(schevana fontconfig)`), which any layer may import.
 - **The GPU layer speaks the world's terms.** Above core0, in the core
   too, nothing names SDL's GPU API, Vulkan, SPIR-V, Metal or MSL, so that
   another back end, or raw Vulkan, stays core0's business alone
@@ -171,8 +173,11 @@ before it:
   data, per window where it can.
 - **S3. Lifetime.** State that must outlive `(reload!)` is a
   `define-state` in a library, or a `defvar` in a file (the user's); a
-  cache may be a `define` that starts empty. A window's state lives in
-  the window (`window-ref`, `window-set!`), not in a global table.
+  cache may be a `define` that starts empty. What a world does once, when
+  a library first loads (starting a timer, giving an app its first
+  data), is an `at-load-once`, which a reload doesn't run again. A
+  window's state lives in the window (`window-ref`, `window-set!`), not
+  in a global table.
 - **S4. Threads.** Global state belongs to core1, the world's thread, and
   only core1 writes it. The exceptions are a service's own structures
   that threads share, which change only by `box-cas!` (core1's mail, the
@@ -218,6 +223,17 @@ before it:
   `(schevana services profile)`; a record named after the library may
   give `make-x` and `x?` (`tests/sources.ss`). A record whose name is also
   a procedure's name takes a different name (`repl-record`, the REPL's).
+- A library under `schevana/` imports each of the tree's libraries with
+  `only`, naming what it uses, and names every name it imports. A demo
+  or a game imports them whole, as a program from outside would
+  (`tests/sources.ss`).
+- A library exports only what something uses: a library that imports
+  it, a program at the tree's root or in `src/`, or, for a library whose
+  names "/" has (the world's and the core's facade), the docs or a lookup
+  by name (`world-value`, a procedure a style or a surface names). A name
+  nothing uses yet stays exported only if it makes a good example at a
+  REPL, and then the docs show it (`tests/sources.ss`). The tests reach
+  the rest by themselves.
 - American spelling everywhere: code, comments, UI text and documents
   (color, gray, center, neighbor, labeled).
 

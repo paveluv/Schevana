@@ -38,22 +38,13 @@
 
 (library (schevana services env)
   (export
-    env make-env env? env-name env-parent env-base env-environment env-anchor
-    env-shares env-setters env-children env-children-set! env-world?
-    env-world?-set! env-kind env-kind-set! env-may-fork env-may-fork-set!
-    env-dropped? env-dropped?-set! env-given env-log env-log-set! env-anchor-in
-    env-new *env-root* env-root env-worklets *env-generation* env-generation
-    *env-chez-names* env-path env-find env-on-core1 env-bases env-child
-    env-child-name env-parent-anchor env-forward! env-share! env-share-setter!
-    env-share-world! env-world-new env-unsynced env-sync! env-holder
-    env-binding env-eval env-load env-drop! *env-base-names* env-base-names
-    env-shared-names env-own-names env-give! env-give-syntax! env-given!
-    env-confined-libraries env-confined-extras env-confined-environment
-    env-give-records! env-own-uid env-confined-record-type env-log-max
-    env-listener env-console-names env-give-console! env-log-add! *env-kinds*
-    env-register-kind! env-kinds env-kind-ref env-forks env-kind-title
-    env-title env-private-names env-fork env-fork-check env-shares-check
-    env-give-fork!)
+    env env? env-name env-parent env-base env-environment env-children
+    env-world? env-kind env-dropped? env-log env-root env-worklets
+    env-generation env-path env-find env-child env-child-name env-share!
+    env-share-setter! env-unsynced env-sync! env-holder env-binding env-eval
+    env-load env-drop! env-shared-names env-own-names env-register-kind!
+    env-kinds env-kind-ref env-forks env-kind-title env-title env-fork
+    env-shares-check)
   (import (chezscheme)
           (only (schevana base) at-load define-made define-state filter-map
                 forwarder-to library-layer plist-ref registry-add string-split)
@@ -398,14 +389,9 @@
 
   ;; Binds e's name to value, which e's parent made for it (its fork, an
   ;; app's narrowed procedure, a stub), and lists it with e's shared names
-  ;; with note, which says what it is ("its own fork"). env-give-syntax!
-  ;; gives a macro by its transformer.
+  ;; with note, which says what it is ("its own fork").
   (define (env-give! e name value note)
     (define-top-level-value name value (env-environment e))
-    (env-given! e name note))
-
-  (define (env-give-syntax! e name transformer note)
-    (define-top-level-syntax name transformer (env-environment e))
     (env-given! e name note))
 
   (define (env-given! e name note)

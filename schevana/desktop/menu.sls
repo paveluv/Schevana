@@ -14,15 +14,9 @@
 
 (library (schevana desktop menu)
   (export
-    *menu* *menu-blink* *menu-held-at* *menu-under* menu-item-height
-    menu-open? open-menu! close-menu! menu-areas menu-areas*
-    placed-menu-areas menu-geometry point-in-menu? menu-entry-at
-    menu-select-next! menu-activate! menu-run! menu-phase menu-blink!
-    menu-mouse-move menu-request! menu-mouse-down menu-key menu-text
-    menu-draw menu-draw-placed draw-menu draw-menu* menu-entry-flags
-    draw-menu-filter menu-box menu-at menu-mouse menu-double-press menu-takes
-    launcher-items launcher-open? open-launcher! toggle-launcher!
-    open-window-menu open-window-menu* shades?)
+    menu-item-height open-menu! menu-areas menu-areas* menu-draw draw-menu
+    draw-menu* menu-box menu-at menu-mouse menu-takes launcher-open?
+    open-launcher! toggle-launcher! open-window-menu open-window-menu*)
   (import (chezscheme)
           (only (schevana base) at-load clamp define-hook define-state
                 library-layer plist-ref set-hook!)
@@ -97,8 +91,6 @@
     #f)   ; the entry under the pointer, shown pressed while held
 
   (define (menu-item-height) (theme 'menu-item-height))
-
-  (define (menu-open?) (and *menu* #t))
 
   (define (open-menu! x y items . opts)
     (set! *menu* (make-menu x y items 0 "" (plist-ref opts 'filter #f)

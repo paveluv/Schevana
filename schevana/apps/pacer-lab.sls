@@ -6,8 +6,6 @@
 
 (library (schevana apps pacer-lab)
   (export
-    pacer-lab-value-text pacer-lab-number pacer-lab-verdict-text pacer-lab-cell
-    pacer-lab-now-text pacer-lab-log-text pacer-lab-effects-of draw-pacer-lab
     pacer-lab)
   (import (chezscheme)
           (only (schevana base) library-layer plist-ref string-join)

@@ -9,9 +9,7 @@
 
 (library (schevana styles lambda)
   (export
-    lambda-slant lambda-rule lambda-gap lambda-tab-height lambda-mark-size
-    lambda-button-width lambda-pad lambda-insets lambda-tab lambda-regions
-    lambda-draw-mark lambda-lean lambda-draw-button lambda-draw-under)
+    lambda-insets lambda-regions lambda-draw-under)
   (import (chezscheme)
           (only (schevana base) at-load library-layer)
           (only (schevana core) alpha common-options define-style draw-line

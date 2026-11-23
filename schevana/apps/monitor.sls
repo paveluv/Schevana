@@ -33,17 +33,8 @@
 
 (library (schevana apps monitor)
   (export
-    monitor-phases monitor-consumer-seconds monitor-listed-seconds
-    monitor-bar-px monitor-tick-choices monitor-minute-choices monitor-ms
-    monitor-ring-rows monitor-ticks-stream monitor-ticks-tip monitor-late-tip
-    monitor-consumers-tip monitor-tick-history-tip monitor-tick-word
-    monitor-ns-text monitor-tick-phase-ns monitor-range monitor-bars-order
-    monitor-clock-text monitor-clock-zero monitor-subject? monitor-window?
-    monitor-part? monitor-live monitor-title monitor-subject-label
-    monitor-labels monitor-part-label monitor-node-type monitor-tick-tip
-    monitor-count monitor-span-text monitor-input-text monitor-world-facts
-    monitor-draw-facts monitor-platform-groups monitor-draw-platform
-    monitor-draw-overview monitor)
+    monitor-phases monitor-ns-text monitor-tick-phase-ns monitor-clock-zero
+    monitor-tick-tip monitor)
   (import (chezscheme)
           (only (schevana base) define-made library-layer string-join)
           (only (schevana core) *canvas-h* *canvas-w* *frame-ms* *last-error*

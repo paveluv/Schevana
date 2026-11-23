@@ -1,5 +1,8 @@
 ;;; tests/units/profile.ss — the profiler ((schevana services profile)).
 
+;; Returns when tick seq ended, in ms.
+(define (profile-test-tick-end seq) (profile-tick-ref seq 'end))
+
 ;;; the profiler ((schevana services profile))
 
 ;; Life, whose window this file opens.
@@ -40,7 +43,7 @@
 
 ;; Returns the ms of every one of a tick's phases.
 (define (profile-test-phases tick)
-  (map (lambda (p) (profile-tick-phase-ms tick p))
+  (map (lambda (p) (test-tick-phase-ms tick p))
        (vector->list profile-phase-names)))
 
 ;; Returns the bytes allocated while thunk runs, as (statistics) counts
@@ -132,15 +135,15 @@
                                   (profile-test-busy 3)))))))))]
               [use (lambda (k) (profile-use-ms
                                 (car (profile-test-uses s k))))])
-         (and (< 0.5 (profile-tick-phase-ms s 'input-wait) 1.5)
+         (and (< 0.5 (test-tick-phase-ms s 'input-wait) 1.5)
               (< 1.5 (use 'render) 2.5)
               (< 2.5 (use 'profile-test-inner) 3.5)
               (eq? (profile-use-phase (car (profile-test-uses
                                             s 'profile-test-inner)))
                    'render)
               (profile-test-near?
-               (+ (profile-tick-phase-ms s 'render)
-                  (profile-tick-phase-ms s 'gc))
+               (+ (test-tick-phase-ms s 'render)
+                  (test-tick-phase-ms s 'gc))
                (apply + (map profile-use-ms (profile-tick-uses s))))
               (profile-test-near? (apply + (profile-test-phases s))
                                   (profile-tick-ms s)))))
@@ -159,8 +162,8 @@
          (and (pair? waits)
               (for-all (lambda (u) (eq? (profile-use-phase u) 'vsync-wait))
                        waits)
-              (< 1.9 (profile-tick-phase-ms s 'vsync-wait) 2.1)
-              (zero? (profile-tick-phase-ms s 'other)))))
+              (< 1.9 (test-tick-phase-ms s 'vsync-wait) 2.1)
+              (zero? (test-tick-phase-ms s 'other)))))
 
 (let ([life-win (life)])
   (move-window! life-win 600 300)
@@ -175,7 +178,7 @@
                      (and (profile-test-near? (apply + (profile-test-phases s))
                                               (profile-tick-ms s))
                           (profile-test-near?
-                           (+ (profile-tick-phase-ms s 'input-wait)
+                           (+ (test-tick-phase-ms s 'input-wait)
                               (apply + (map profile-use-ms uses)))
                            (profile-tick-ms s))
                           (for-all (lambda (u) (>= (profile-use-ms u) 0))
@@ -248,7 +251,7 @@
                      (and (= (length u) 1)
                           (= (profile-use-calls (car u)) 1)
                           (> (profile-use-ms (car u))
-                             (* 0.8 (profile-tick-phase-ms s 'procs))))))
+                             (* 0.8 (test-tick-phase-ms s 'procs))))))
                  ss)
                 (exists (lambda (s) (pair? (profile-test-uses s p))) real)))))
 
@@ -275,7 +278,7 @@
               (pair? (profile-test-uses requested 'gc))
               (eq? (profile-use-phase (car (profile-test-uses requested 'gc)))
                    'event)
-              (> (profile-tick-phase-ms requested 'gc) 0)
+              (> (test-tick-phase-ms requested 'gc) 0)
               (> (profile-tick-ref requested 'gc-ms) 0))))
 
 (let* ([w (open-window "Inner"
@@ -288,7 +291,7 @@
        [p (spawn "inner"
                  (lambda ()
                    (let loop ()
-                     (safely 'profile-test-process (lambda () (yield)))
+                     (safely 'profile-test-process (lambda () (test-yield)))
                      (loop))))])
   (check "a span inside an engine (a handler, a process) is not timed: its \
           time is its handler's or its process's"
@@ -326,7 +329,7 @@
          (and (null? others) (= (length deep) 1)
               (profile-test-near? (apply + (profile-test-phases (car deep)))
                                   (profile-tick-ms (car deep)))
-              (>= (profile-tick-phase-ms (car deep) 'render) 1))))
+              (>= (test-tick-phase-ms (car deep) 'render) 1))))
 
 (check "a raise out of a span, caught in its parent, leaves it open: the \
         ends after it close a span each, the innermost, the step's end the \
@@ -379,7 +382,7 @@
                               'frame (lambda (win at)
                                        (window-frame-soon! win)
                                        (invalidate! win)))]
-              [p (spawn "kept?" (lambda () (let loop () (yield) (loop))))]
+              [p (spawn "kept?" (lambda () (let loop () (test-yield) (loop))))]
               [w-ptr (weak-cons w #f)] [p-ptr (weak-cons p #f)])
          (steps 5)
          (let ([subjects (list (profile-subject-of w) (profile-subject-of p))]
@@ -432,10 +435,12 @@
          (define (within? seconds)   ; the ticks kept span that, ± a second
            (let ([ss (profile-ticks)])
              (and (pair? ss)
-                  (> (profile-tick-end (car (last-pair ss)))
-                     (- (profile-tick-end (car ss)) (* 1000 (+ seconds 1))))
-                  (< (profile-tick-end (car (last-pair ss)))
-                     (- (profile-tick-end (car ss)) (* 1000 (- seconds 1)))))))
+                  (> (profile-test-tick-end (car (last-pair ss)))
+                     (- (profile-test-tick-end (car ss))
+                        (* 1000 (+ seconds 1))))
+                  (< (profile-test-tick-end (car (last-pair ss)))
+                     (- (profile-test-tick-end (car ss))
+                        (* 1000 (- seconds 1)))))))
          (set! now-ns (lambda () fake))
          (profile-clear!)
          (profile-history! 30 1)
@@ -581,7 +586,7 @@
               [lines (profile-flag-lines f)])
          (for-each (lambda (l) (printf "  ~a\n" l)) lines)
          (and (= (length flags) 1)
-              (= (profile-flag-count) 1)
+              (= *profile-flag-count* 1)
               (equal? (profile-flag-why f) '(asleep 14000000))
               (= (profile-flag-ns f) 35000000)
               (equal? (map cadr (profile-flag-beside f))
@@ -668,7 +673,7 @@
                        (do ([i 0 (+ i 1)]) ((= i (+ profile-flags-kept 6)))
                          (with-profile-span 'step #f
                            (profile-test-pass! 30)))))]
-              [count (profile-flag-count)]
+              [count *profile-flag-count*]
               [summary (profile-flag-summary)])
          (profile-clear!)
          (printf "  shown for ~a, gone ~a, still ~a, ~a kept of ~a\n"

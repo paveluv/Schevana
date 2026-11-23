@@ -16,9 +16,7 @@
     ;; the records it holds, and a frame belongs to the world from
     ;; gpu-frame-make (or gpu-frames-back!) until gpu-publish!.
     ;; compiled shaders
-    shader make-shader shader-name shader-stage shader-coords shader-params
-    shader-source shader-code shader-price shader-target shader-entry
-    shader-group-x shader-uniforms shader-words
+    shader shader-params
     ;; lists, and the runs that show them; only the recorder has their
     ;; recordings
     gpu-list-id gpu-list-labels gpu-list-labels-set! gpu-list-recorded
@@ -53,11 +51,9 @@
     core0-set-cursor! clipboard-set! core0-trace-dump! core0-refresh-ns!
     ;; records a step of the calling thread, on that thread's own ring
     core0-trace!
-    ;; from any thread: the mailbox's wake, which ends core0's wait;
-    ;; publishing a frame, whether the last one published still waits, the
-    ;; frames given back, and what core0 read back
-    core0-wake! gpu-publish! gpu-frame-waiting? gpu-frames-back!
-    gpu-take-answers!
+    ;; from any thread: publishing a frame, whether the last one published
+    ;; still waits, the frames given back, and what core0 read back
+    gpu-publish! gpu-frame-waiting? gpu-frames-back! gpu-take-answers!
     ;; whether core0 has a thread of its own; core1's wait, and the wake
     ;; that ends it, from any thread; and quitting, as a job
     core0-forked? core0-world-wait! core0-world-wake! core0-quit!
@@ -68,22 +64,15 @@
     core0-app-id! core0-own-frame! core0-step! core0-window-headless!
     core0-window-open!
     core0-window-show! core0-window-close! core0-window-resize!
-    ;; The clock and the CPU count, from any thread, and the means to bind
-    ;; one's own C calls ((schevana ffi)).
-    core0-clock-ns platform-cpu-count load-first-library define-foreign
-    c-clock-gettime c-close c-string->string
+    ;; the clock and the CPU count, from any thread
+    core0-clock-ns platform-cpu-count
     ;; runs core0 on this thread, and the world on a thread of its own
     core0-run!)
   (import (chezscheme)
           (only (schevana base) library-layer define-view)
-          (only (schevana ffi) load-first-library define-foreign c-clock-gettime
-                c-close c-string->string)
-          (only (schevana shader) shader make-shader shader-name shader-stage
-                shader-coords shader-params shader-source shader-code
-                shader-price shader-target shader-entry shader-group-x
-                shader-uniforms shader-words)
-          (only (schevana core0 mail) core0-display core0-frame-ns core0-wake!
-                core0-forked? core0-world-wait! core0-clock-ns)
+          (only (schevana shader) shader shader-params)
+          (only (schevana core0 mail) core0-display core0-frame-ns core0-forked?
+                core0-world-wait! core0-clock-ns)
           (only (schevana core0 platform) platform-cpu-count)
           (only (schevana core0 present) core0-frame-report core0-refresh-ns!)
           (only (schevana core0 trace-file) core0-trace-dump!)

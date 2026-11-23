@@ -15,8 +15,7 @@
                 platform-linux? platform-mac? platform-windows? platform-x86-64?
                 string-prefix?)
           (only (schevana ffi) c-clock-gettime)
-          (only (schevana core0) *core0-platform* c-clock-gettime
-                core0-clock-ns))
+          (only (schevana core0) *core0-platform* core0-clock-ns))
 
   (library-layer core)
 

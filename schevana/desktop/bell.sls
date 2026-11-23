@@ -4,7 +4,7 @@
 
 (library (schevana desktop bell)
   (export
-    *bell* draw-bell-flash draw-bell-flash* bell-draw bell-box bell-end! bell)
+    draw-bell-flash* bell-draw bell-box bell)
   (import (chezscheme)
           (only (schevana base) at-load define-hook define-state library-layer)
           (only (schevana core) *focus* after define-part define-surface

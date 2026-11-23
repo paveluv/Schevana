@@ -3,8 +3,7 @@
 
 (library (schevana styles mac)
   (export
-    draw-resize-grip mac-radius mac-regions mac-glyph mac-draw-under mac-title
-    mac-draw-over)
+    mac-radius mac-regions mac-draw-under mac-draw-over)
   (import (chezscheme)
           (only (schevana base) at-load library-layer)
           (only (schevana core) alpha color-default! define-style draw-line

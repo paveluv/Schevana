@@ -11,14 +11,11 @@
 
 (library (schevana kits pixmap)
   (export
-    pixmap make-pixmap-record pixmap? pixmap-width pixmap-height pixmap-image
-    pixmap-w pixmap-h make-pixmap pixmap-set! pixmap-set-pixel! pixmap-rows!
-    pixmap-fill-rows! pixmap-fill! pixmap-draw)
+    make-pixmap pixmap-set! pixmap-set-pixel! pixmap-rows! pixmap-draw)
   (import (chezscheme)
           (only (schevana base) library-layer)
           (only (schevana core) define-worklet draw-image gpu-image-id
-                gpu-image-make rec-image-rows! rec-pixel-set! worklet
-                worklet-spread)
+                gpu-image-make rec-image-rows! rec-pixel-set! worklet-spread)
           (only (schevana kits color) color->pixel))
 
   (library-layer kits)
@@ -68,10 +65,6 @@
     (let ([end (fx* 4 (fx* y1 w))])
       (do ([i (fx* 4 (fx* y0 w)) (fx+ i 4)]) ((fx= i end))
         (bytevector-u32-native-set! bytes i px))))
-
-  (define (pixmap-fill! pm color)
-    (pixmap-rows! pm 0 (pixmap-h pm) pixmap-fill-rows! (color->pixel color)
-                  (pixmap-w pm)))
 
   ;; Draws the pixmap scaled to w × h (by default, its own size), each pixel
   ;; a sharp block at its size or bigger (draw-image).

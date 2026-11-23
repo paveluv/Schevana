@@ -9,8 +9,7 @@
 
 (library (schevana styles fold)
   (export
-    fold-margin fold-mark fold-gap fold-depth fold-insets fold-regions
-    fold-baseline fold-shape! fold-sheet! fold-flap! fold-draw-under)
+    fold-insets fold-regions fold-draw-under)
   (import (chezscheme)
           (only (schevana base) at-load library-layer)
           (only (schevana core) alpha common-options define-style draw-text

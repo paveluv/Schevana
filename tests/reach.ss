@@ -49,39 +49,9 @@
 ;; into; the core has only what the recorder's facade gives.
 (unless test-hacker? (eval '(import (schevana recorder bytes)) main-env))
 
-;; Returns a forwarder to id's binding that a set! goes through, and so
-;; does a fluid-let's.
-(define (reach-forwarder id)
-  (make-variable-transformer
-   (lambda (x)
-     (syntax-case x (set!)
-       [(set! _ v) #`(set! #,id v)]
-       [_ (identifier? x) id]
-       [(_ . rest) #`(#,id . rest)]))))
+;; The forwarders, and the names the tests' build gives.
+(load (string-append *schevana-root* "/tests/given.ss"))
 
-;; Whether n is a name the tests' build gives (tests/build.ss): test:name.
-(define (reach-given? n)
-  (let ([s (symbol->string n)])
-    (and (> (string-length s) 5) (string=? (substring s 0 5) "test:"))))
-
-;; Defines in env, under its plain name, each name that the build gives
-;; (test:name) of the libraries imported into env, unless env has that
-;; name already: these are what a library keeps to itself.
-(define (reach-given! env)
-  (let ([anchor (environment-anchor env)] [had (make-eq-hashtable)]
-        [names (environment-symbols env)])
-    (for-each (lambda (n) (hashtable-set! had n #t)) names)
-    (for-each
-     (lambda (n)
-       (when (reach-given? n)
-         (let* ([s (symbol->string n)]
-                [bare (string->symbol (substring s 5 (string-length s)))])
-           (unless (hashtable-ref had bare #f)
-             (hashtable-set! had bare #t)
-             (define-top-level-syntax bare
-               (reach-forwarder (datum->syntax anchor n))
-               env)))))
-     names)))
 (unless test-hacker?
   (reach-given! main-env)
   (reach-given! core-env)

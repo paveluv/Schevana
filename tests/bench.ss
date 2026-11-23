@@ -104,7 +104,7 @@
   (set! *cascade* 0)
   (set! *hover* #f)
   (set! *drag* #f)
-  (when (menu-open?) (close-menu!)))
+  (when (test-menu-open?) (close-menu!)))
 
 (define (lifes! layout)
   (do ([i 0 (+ i 1)]) ((= i 30)) (life))
@@ -387,7 +387,7 @@
   (screen! 1920 1080 200)
   (clear-world!)
   (fixed-status!)
-  (tasks-reset!)
+  (test-backlog!)
   (let* ([win (tasks)] [ui (window-ref win 'ui)])
     (define (at id)   ; the middle of region id on the screen
       (let ([r (ui-find ui id)])
@@ -452,7 +452,7 @@
 ;; Makes the seed and 2,000 tasks in chains after it; returns the first
 ;; chain's top.
 (define (chained-tasks!)
-  (tasks-reset!)
+  (test-backlog!)
   (let ([base *tasks-next-id*] [now (tasks-now)])
     (set! *tasks*
       (append *tasks*
@@ -478,7 +478,7 @@
   (screen! 1920 1080 200)
   (clear-world!)
   (fixed-status!)
-  (let* ([top (if chained? (chained-tasks!) (begin (tasks-reset!)
+  (let* ([top (if chained? (chained-tasks!) (begin (test-backlog!)
                                                    (find-task 13)))]
          [win (tasks)] [v (window-ref win 'state)] [ui (window-ref win 'ui)])
     (maximize-window! win)
@@ -506,7 +506,7 @@
                                         '(wheel 0 -1)
                                         '(wheel 0 1))))))])
       (close-window! win)
-      (tasks-reset!)
+      (test-backlog!)
       (list key-core1 space-core1 wheel-core1 rows))))
 
 (define tree-rounds 3)
@@ -601,7 +601,7 @@
   (screen! 1920 1080 200)
   (clear-world!)
   (fixed-status!)
-  (tasks-reset!)
+  (test-backlog!)
   (let* ([win (tasks)] [v (window-ref win 'state)] [tui (window-ref win 'ui)]
          [title (long-text 'words 65535 1000)]
          [t (add-task! title 'status 'review)]

@@ -3,7 +3,7 @@
 
 (library (schevana desktop screenshot)
   (export
-    save-screenshot! next-screenshot-path)
+    save-screenshot!)
   (import (chezscheme)
           (only (schevana base) library-layer)
           (only (schevana core) notify)

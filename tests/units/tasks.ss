@@ -1,6 +1,9 @@
 ;;; tests/units/tasks.ss — Tasks' own procedures, tested with no window, and
 ;;; its window.
 
+;; Tasks' tasks: the demos' backlog.
+(test-backlog!)
+
 (define (mk id title status kind priority who tags due . description)
   (make-task id title (if (pair? description) (car description) "") status
              kind priority who tags due '() '() 0 id))
@@ -198,34 +201,6 @@
              (delete-task! t)
              ok))))
 
-(check "the seed's long descriptions: the README and the kit's source \
-        cut to the most, the backlog as one paragraph and a base64 \
-        blob with no spaces, the same at every seeding; with the files \
-        gone, the paragraph"
-       (let* ([text (lambda (what) (tasks-seed-text what))]
-              [readme (call-with-input-file
-                        (string-append *schevana-root* "/README.md")
-                        get-string-all)]
-              [has? (lambda (s c)
-                      (exists (lambda (i) (char=? (string-ref s i) c))
-                              (iota (string-length s))))]
-              [blob (text 'blob)] [paragraph (text 'changelog)]
-              [gone (fluid-let ([*schevana-root* "/no/such/tree"])
-                      (text 'readme))])
-         (and (equal? (text 'readme)
-                      (substring readme 0 (min (string-length readme)
-                                               tasks-description-max)))
-              (= 65536 (string-length (text 'kit-source)))
-              (= 65536 (string-length paragraph) (string-length blob))
-              (not (has? paragraph #\newline)) (not (has? blob #\space))
-              ;; ";;; (schevana k", the kit's first bytes
-              (string-prefix? "Ozs7IChzY2hldmFuYSBr" blob)
-              (equal? blob (text 'blob)) (equal? gone paragraph)
-              (for-all (lambda (id)
-                         (<= (string-length (task-description (find-task id)))
-                             tasks-description-max))
-                       '(27 28 29 30)))))
-
 (check "a tooltip and a dialog show at most six lines of a long text, the \
         last cut with …"
        (let ([long (apply string-append (make-list 300 "words "))])
@@ -307,7 +282,7 @@
                   (equal? (ids (hashtable-ref (tasks-inverse ts) 3 '()))
                           '(1 4)))))))
 
-(check "the seed's links: no cycle; (tasks-tree) nests what each task waits \
+(check "the backlog's links: no cycle; (tasks-tree) nests what each task waits \
         for, a shared blocker under its first waiter and its id under the \
         others; Add offers what would make no cycle, nor is done"
        (let ([tree (tasks-tree)] [choices (map task-id (tasks-blocker-choices
@@ -340,24 +315,8 @@
                          (memq (find-task 16) blocks) (not (eq? moved order))
                          (eq? (find-task 16)
                               (car (last-pair (tasks-in 'review moved)))))])
-           (tasks-reset!)
+           (test-backlog!)
            ok)))
-
-(check "the seed's tasks were created over the last three weeks, in the \
-        order of their ids, and none was updated before it was created"
-       (begin
-         (tasks-reset!)
-         (let ([now (tasks-now)] [ts (list-sort (lambda (a b)
-                                                  (< (task-id a) (task-id b)))
-                                                *tasks*)])
-           (and (for-all (lambda (t)
-                           (<= (- now (* 21 86400)) (task-created t)
-                               (task-updated t) now))
-                         ts)
-                (let loop ([ts ts])
-                  (or (null? (cdr ts))
-                      (and (< (task-created (car ts)) (task-created (cadr ts)))
-                           (loop (cdr ts)))))))))
 
 (check "Add's menu: the choices whose id or title holds what was typed, \
         the one it names by id first, as many as there is room for, the \
@@ -405,14 +364,14 @@
            (let ([texts (texts-drawn
                          (lambda () (tasks-draw-node 0 0 400 30 '() t #f)))])
              (- (car (cadr texts)) (car (car texts)))))
-         (let ([seed (room)])
+         (let ([two (room)])
            (set! *tasks-next-id* 1234)
            (let* ([new (add-task! "Four digits")] [wide (room)])
              (delete-task! new)
              (set! *tasks-next-id* next)
-             (and (= seed (+ 8 (text-width "TASK-000" 'mono-small)))
+             (and (= two (+ 8 (text-width "TASK-000" 'mono-small)))
                   (>= wide (+ 8 (text-width "TASK-1234" 'mono-small)))
-                  (= (room) seed))))))
+                  (= (room) two))))))
 
 (check "a later row's title keeps at least half its room: the note where \
         its own row is gets shorter, then goes, as the cell narrows"
@@ -421,7 +380,7 @@
               [short (text-width "↑ TASK-13" 'ui-small)]
               [w (lambda (room)   ; the cell's width for that room
                    (+ room (* 2 (ui-table-cell-inset)) 8
-                      (text-width "TASK-100" 'mono-small)))]   ; the seed's
+                      (text-width "TASK-100" 'mono-small)))]   ; the backlog's
               [shown (lambda (room)   ; returns (title-shown note ...)
                        (cdr (strings-drawn
                              (lambda ()
@@ -508,7 +467,7 @@
                                   (lambda (n) (words-of (* 10 n)))
                                   (lambda (n) (make-string (* 10 n) #\W)))))
                      '(board list tree))])
-    (tasks-reset!)
+    (test-backlog!)
     (close-window! w)
     (steps 2)
     (check (format "a keystroke in Tasks measures as many characters with a \
@@ -520,9 +479,9 @@
                     counts))))
 
 ;;; The view's keys and commands, with no window: a view of the test's own
-;;; over the seed.
+;;; over the backlog.
 
-(tasks-reset!)
+(test-backlog!)
 (let ([v (tasks-view-new (make-ui))])
   (define (key! k . mods) (tasks-key v k mods))
   (define (column status) (tasks-in status (tasks-visible v)))
@@ -634,7 +593,7 @@
                                          TASK-10"
                                         (task-label born))))
                   (null? free))))))
-(tasks-reset!)
+(test-backlog!)
 
 ;;; What the view shows of a task, with no window: its tips, its cut
 ;;; titles, the toolbar's widths, a filter's label, the empty states.
@@ -684,7 +643,7 @@
            (set-task! 13 'tags '("render" "a-much-longer-tag-name"))
            (set-task! 9 'assignee name)
            (let ([long (widths)])
-             (tasks-reset!)
+             (test-backlog!)
              (and (equal? before long)
                   (<= (text-width (tasks-quoted name) 'ui)
                       (* 20 (font-line-height 'ui)))
@@ -732,7 +691,7 @@
              (tasks-clear-filters! v)
              (for-each delete-task! (map task-id *tasks*))
              (let ([none (offers)])
-               (tasks-reset!)
+               (test-backlog!)
                (and (equal? none-match '(#t #f)) (equal? none '(#f #t))))))))
 
 ;;; The Tree's selection, with no window.
@@ -754,7 +713,7 @@
                (move-task! 13 'doing)
                (let ([fell (tasks-tree-node v)])
                  (tasks-select! v #f)
-                 (tasks-reset!)
+                 (test-backlog!)
                  (and (equal? picked '(31 (17 . 31)))
                       (equal? opened '(31 31))
                       (equal? fell 31)))))))
@@ -771,5 +730,5 @@
              (let ([ok (and (not (memq shared *tasks*))
                             (null? (task-blocked-by a))
                             (null? (task-blocked-by b)) (eq? sel b))])
-               (tasks-reset!)
+               (test-backlog!)
                ok)))))

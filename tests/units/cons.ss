@@ -23,7 +23,7 @@
                                     columns))
                 (tasks-draw-column* x y w h flags status label count)))
             (set-style! 'test-chain)
-            (tasks-reset!)
+            (test-backlog!)
             (let* ([win (tasks)] [ui (window-ref win 'ui)])
               (focus-window! win)
               (steps 3)
@@ -164,7 +164,7 @@
                                (entry 0) (entry 1))])
                  (equal? r (list (list ink bg) (list ink) '(#f #t) ink bg))))
              (lambda ()
-               (when (menu-open?) (close-menu!))
+               (when (test-menu-open?) (close-menu!))
                (steps 1)
                (set-style! 'mac))))))
 
@@ -211,7 +211,7 @@
         well's edge, its top level with the first card's"
        (begin
          (set-style! 'cons)
-         (tasks-reset!)
+         (test-backlog!)
          (let* ([win (tasks)] [ui (window-ref win 'ui)])
            (focus-window! win)
            (steps 3)

@@ -162,11 +162,11 @@ of a library, the test framework finds by itself:
 - In the library edition, the suites boot the libraries as
   `tests/build.ss` builds them: the build changes each library as Chez
   expands it, both when it compiles into a cache of the build's own and
-  when a reload evaluates it again. A library of a sealed layer (core0's,
-  the recorder's, the core's, and the foundation below them), unless it
-  is a facade, gives the tests every name it defines (but a plain
-  `define` it also `set!`s, which Chez can't export), and the tests use
-  each by its own name (`*pacer-margin*`, `gpu-frame!`). A definition
+  when a reload evaluates it again. Every library of Schevana's (under
+  `schevana/`), unless it is a facade, gives the tests every name it
+  defines (but a plain `define` it also `set!`s, which Chez can't
+  export), and the tests use each by its own name (`*pacer-margin*`,
+  `gpu-frame!`, `tasks-wide-width`; `tests/given.ss`). A definition
   listed in `test-stand-ins`, which the tests stand in for, becomes a
   hook, so that a `fluid-let` or a `set!` of it reaches every call
   (`now-ms`, `bell`, SDL's calls); the definition itself compiles as the
@@ -175,7 +175,9 @@ of a library, the test framework finds by itself:
   to be set like any other.
 - A demo, which the suites' world doesn't load: `(test-demos! 'life)`
   loads it into the world, as the desktop does when it is given the demos'
-  folder, for a test that opens the demo's window.
+  folder, for a test that opens the demo's window. `(test-backlog!)` gives
+  Tasks the demos' backlog (`demo/backlog.sls`), the same at every call,
+  for a test that starts from those tasks.
 - A library that the world doesn't boot, such as a demo, and its own
   names: `(test-library '(demo boids) 'bo:)` (`tests/reach.ss`) strips the
   library, as the hacker edition strips every library, and evaluates its

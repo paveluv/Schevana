@@ -1,6 +1,11 @@
 ;;; tests/units/pacer.ss — the pacer: exactly one tick per period while the
 ;;; work fits.
 
+;; Returns tick seq's time less its waits, in ms.
+(define (pacer-test-busy seq)
+  (- (profile-tick-ms seq) (test-tick-phase-ms seq 'input-wait)
+     (test-tick-phase-ms seq 'vsync-wait)))
+
 ;;; The pacer: exactly one tick per period while the work fits.
 
 ;; Records that the screen held core1 while advance! moved the clock: a
@@ -566,7 +571,7 @@
                         'key (lambda (win k mods) (pacer-test-advance! 2)))])
   (focus-window! win)
   (let* ([on #f]
-         [profiled (profile-busy
+         [profiled (pacer-test-busy
                     (car (profile-test-ticks
                           (lambda ()
                             (pacer-test-on-fake-clock
@@ -592,8 +597,8 @@
                              (lambda ()
                                (pacer-test-advance! 100)
                                (schevana-step! 0))))))])
-           (and (= (profile-tick-phase-ms seq 'vsync-wait) 7)
-                (zero? (profile-tick-phase-ms seq 'render))
+           (and (= (test-tick-phase-ms seq 'vsync-wait) 7)
+                (zero? (test-tick-phase-ms seq 'render))
                 (zero? *frame-ms*))))
   (check "steps between ticks sum into the tick they lead up to"
          (pacer-test-on-fake-clock

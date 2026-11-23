@@ -9,6 +9,7 @@
 
   (library-layer foundation)
 
-  ;; the three libraries' exports, as this library's own
-  (export (import (schevana sdl system) (schevana sdl window)
-                  (schevana sdl gpu))))
+  ;; the three libraries' exports, as this library's own, but the library
+  ;; that the other two bind their calls from
+  (export (import (except (schevana sdl system) sdl-library)
+                  (schevana sdl window) (schevana sdl gpu))))

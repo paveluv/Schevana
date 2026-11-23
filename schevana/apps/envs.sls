@@ -23,37 +23,7 @@
 
 (library (schevana apps envs)
   (export
-    envs-view make-envs-view envs-view? envs-view-ui envs-view-selected
-    envs-view-selected-set! envs-view-query envs-view-query-set!
-    envs-view-names envs-view-names-set! envs-view-names-query
-    envs-view-names-query-set! envs-view-sheet envs-view-sheet-set!
-    envs-view-kind envs-view-kind-set! envs-view-name envs-view-name-set!
-    envs-view-shares envs-view-shares-set! envs-view-draft envs-view-draft-set!
-    envs-view-folder envs-view-folder-set! envs-view-repl? envs-view-repl?-set!
-    envs-view-error envs-view-error-set! envs-view-memo envs-view-memo-set!
-    envs-view-facts envs-label envs-kind-doc envs-base-words envs-facts
-    envs-holder envs-all envs-why-not envs-actions envs-act! envs-open-share!
-    envs-open-load! envs-open-sheet! envs-open-fork! envs-memo envs-select!
-    envs-share-words envs-sheet-shares envs-shares envs-fork! envs-load!
-    envs-drop! envs-trim envs-draw-icon envs-draw-name-cell envs-draw-head
-    envs-columns envs-matches? envs-tree envs-cell-text envs-menu!
-    envs-fact-rows envs-follows-row envs-pool-rows envs-vat-rows
-    envs-names-columns envs-names-text envs-names
-    envs-inspector envs-sheet-width envs-error-rows envs-share-row
-    envs-close-sheet! envs-fork-sheet envs-drop-dialog envs-picker
-    make-envs-picker envs-picker? envs-picker-holder envs-picker-target
-    envs-picker-action envs-picker-on-done envs-picker-ui envs-picker-picked
-    envs-picker-picked-set! envs-picker-current envs-picker-current-set!
-    envs-picker-filter envs-picker-filter-set! envs-picker-scope
-    envs-picker-scope-set! envs-picker-kind envs-picker-kind-set!
-    envs-picker-error envs-picker-error-set! envs-picker-listed
-    envs-picker-listed-set! envs-picker-kinds envs-open-picker!
-    envs-picker-names envs-name-kind envs-picker-kind-of envs-picker-shown
-    envs-picker-shared envs-picker-toggle! envs-picker-set! envs-picked-shares
-    envs-picked-chip envs-chip-picked envs-picker-done!
-    envs-picker-names-columns envs-picker-list envs-picker-side
-    envs-picker-setters envs-picker-draw envs-picker-key envs-picker-text
-    envs-toolbar envs-draw envs-key envs-text envs-natural-size envs)
+    envs)
   (import (chezscheme)
           (only (schevana base) condition->string filter-map library-layer
                 list-index string-contains-ci? string-join string-split)

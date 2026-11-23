@@ -14,41 +14,7 @@
 
 (library (schevana apps settings)
   (export
-    settings-tabs settings-present-choices settings-scale-choices
-    settings-text-keys settings-group-of settings-options-in settings-behaviors
-    settings-typefaces settings-st make-settings-st settings-st?
-    settings-st-tab settings-st-tab-set! settings-st-key settings-st-key-set!
-    settings-st-scroll settings-st-scroll-set! settings-st-hex
-    settings-st-hex-set! settings-st-hsl settings-st-hsl-set!
-    settings-st-pane-scroll settings-st-pane-scroll-set! settings-own-options
-    settings-option settings-owner-option settings-key-label settings-applies?
-    settings-style-title settings-pinned? settings-changed? settings-set!
-    settings-pin! settings-source-words settings-choice-label
-    settings-choice-value settings-hex-digits settings-wallpaper-title
-    settings-value-words *settings-style-directory* settings-style-name
-    settings-make-directory! settings-datum save-style-as!
-    settings-sidebar-width settings-color-row-height settings-color-list-width
-    settings-hsl-label-width settings-hsl-readout-width settings-hex-width
-    settings-marks-width settings-color-editor-width settings-natural-width
-    settings-natural-height settings-label-width settings-readout-width
-    settings-card-label-height settings-card-width settings-card-height
-    settings-pane-height settings-shown? settings-card-grid settings-heading
-    settings-section settings-row settings-revert settings-marks
-    settings-control-height settings-choice settings-control settings-row-label
-    settings-option-row settings-unused-row settings-group settings-draw-card
-    draw-style-preview settings-draw-preview-content settings-press-focus!
-    settings-style-card settings-palettes settings-draw-swatch settings-accent
-    settings-style-bar settings-save-row settings-theme-tab
-    settings-override-words settings-overrides settings-color-rows
-    settings-draw-steps settings-draw-color-row settings-draw-big-swatch
-    settings-colors settings-parse-hex settings-color-editor
-    settings-draw-font-sample settings-fonts settings-display
-    settings-paths settings-layer-rank
-    settings-path-facts
-    settings-library-file settings-search-row settings-path-choose
-    settings-path-added! settings-sidebar
-    settings-pane-scrollbar
-    settings-reveal! settings-draw settings-key settings-wheel settings)
+    save-style-as! settings)
   (import (chezscheme)
           (only (schevana base) at-load clamp define-made filter-map
                 library-layer library-layer-names list-index plist-keys

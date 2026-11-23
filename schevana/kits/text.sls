@@ -48,8 +48,8 @@
                           (max y1 (+ ay (* h scale)))))))))))
 
   ;; Returns (values ascent descent) of font as its face gives them, in
-  ;; logical pixels and unrounded (the core's font-ascent and font-descent
-  ;; are whole numbers).
+  ;; logical pixels and unrounded (the core's font metrics are whole
+  ;; numbers).
   (define (text-face-extent font)
     (let* ([f (get-font font)] [ff (font-ready f)]
            [scale (/ (font-size f) (font-file-upem ff))])

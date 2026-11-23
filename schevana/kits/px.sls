@@ -8,12 +8,11 @@
 
 (library (schevana kits px)
   (export
-    px-bevel px-bits px-fit px-invert px-bitmap-text)
+    px-bevel px-bits px-invert px-bitmap-text)
   (import (chezscheme)
           (only (schevana base) library-layer plist-ref)
-          (only (schevana core) add-box fill-box font invert-box)
-          (only (schevana kits color) color->pixel)
-          (only (schevana kits text) text-ink text-fit))
+          (only (schevana core) add-box fill-box invert-box)
+          (only (schevana kits color) color->pixel))
 
   (library-layer kits)
 
@@ -67,12 +66,6 @@
                  (when color (fill-box (+ x i) (+ y j) (- end i) 1 color))
                  (loop end))))))
        rows (iota (length rows)))))
-
-  ;; Returns str, cut short with "…" until its ink fits in w (ZacOS's
-  ;; truncation).
-  (define (px-fit str w font)
-    (text-fit str w font
-              (lambda (s) (let-values ([(l t iw ih) (text-ink s font)]) iw))))
 
   ;; Swaps ink and paper in the rectangle, as the Lisp machines' XOR did, so
   ;; that what is drawn there shows in reverse video, in any palette. A

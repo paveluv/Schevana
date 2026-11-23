@@ -3,10 +3,9 @@
 ;;; not undo an unbind-key! you made.
 
 (library (schevana desktop keys)
-  (export
-    default-global-keys install-default-keys! *default-keys-installed?*)
+  (export)
   (import (chezscheme)
-          (only (schevana base) at-load define-made define-state library-layer)
+          (only (schevana base) at-load-once define-made library-layer)
           (only (schevana core) *focus* *global-keys* bind-key!
                 minimize-window! toggle-fullscreen! toggle-maximize!)
           (only (schevana kits app) app-launch!)
@@ -36,10 +35,8 @@
                   (bind-key! (car b) (cdr b))))
               default-global-keys))
 
-  ;; A world that already has bindings when this state is made (a world from
-  ;; before this file, which installed its keys at boot) keeps its keys.
-  (define-state *default-keys-installed?* (pair? *global-keys*))
-  (at-load
-   (unless *default-keys-installed?*
-     (install-default-keys!)
-     (set! *default-keys-installed?* #t))))
+  ;; A world that already has bindings when this library first loads keeps
+  ;; its keys.
+  (at-load-once
+   (unless (pair? *global-keys*)
+     (install-default-keys!))))

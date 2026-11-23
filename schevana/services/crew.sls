@@ -42,20 +42,7 @@
 
 (library (schevana services crew)
   (export
-    crew-fuel crew-core1-ms crew-idle-wait crew-nap crew-wait-spins crew-region
-    make-crew-region crew-region? crew-region-start crew-region-end
-    crew-region-chunk crew-region-proc crew-region-args crew-region-next
-    crew-region-running crew-region-error crew-region-cancelled
-    crew-region-deadline crew-region-process crew-default-size *crew-size*
-    *crew-workers* *crew-regions* *crew-mutex* *crew-wake* crew-worker
-    make-crew-worker crew-worker? crew-worker-index crew-worker-region
-    crew-worker-region-set! crew-worker-escape crew-worker-escape-set!
-    crew-worker-call crew-size crew-size-set! crew-ensure! crew-fork!
-    crew-worker-step! crew-join! crew-leave! crew-failed! crew-error!
-    crew-left! crew-wake! crew-timer! crew-add! crew-cancelled? crew-open?
-    crew-open-region crew-done? crew-push! crew-remove! crew-prune! crew-claim!
-    crew-calls! crew-take-part! crew-wait! crew-stray crew-stray-among crew-for
-    crew-for* crew-map-chunk crew-map)
+    crew-size crew-size-set! crew-stray crew-for crew-for* crew-map)
   (import (chezscheme)
           (only (schevana base) define-made define-state library-layer
                 set-hook!)

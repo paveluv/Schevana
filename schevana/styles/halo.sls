@@ -8,9 +8,8 @@
 
 (library (schevana styles halo)
   (export
-    halo-pill-height halo-top halo-edge halo-drop halo-insets halo-bleed
-    halo-radius halo-margin halo-regions halo-pills halo-stroke-boxes
-    halo-pill-boxes halo-ink halo-glyph halo-draw-under halo-draw-over)
+    halo-insets halo-bleed halo-radius halo-regions halo-draw-under
+    halo-draw-over)
   (import (chezscheme)
           (only (schevana base) at-load library-layer)
           (only (schevana core) alpha define-style draw-polyline fill-box

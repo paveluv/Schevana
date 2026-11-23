@@ -69,7 +69,7 @@
     *pacer-depth* *pacer-made* *pacer-late-run* *pacer-late-chain*
     *pacer-gpu-taught* *pacer-between?* pacer-busy-ms pacer-peak-ms! pacer-rate
     pacer-rate! pacer-ticks pacer-period pacer-start pacer-trial! pacer-margin
-    screen-bytes screen-bytes-then
+    screen-bytes-then
     ;; (schevana core screen): the screen core0 shows, and what the host's
     ;; desktop knows it by
     system-scale-percent fullscreen? set-fullscreen! toggle-fullscreen!
@@ -225,8 +225,7 @@
                 clip-row-y0 clip-row-y1)
           (only (schevana core pacer) frame-ring-rows frame-ring-words
                 pacer-busy-ms pacer-peak-ms! pacer-rate pacer-rate! pacer-ticks
-                pacer-start pacer-trial! pacer-margin screen-bytes
-                screen-bytes-then)
+                pacer-start pacer-trial! pacer-margin screen-bytes-then)
           (only (schevana core screen) system-scale-percent fullscreen?
                 set-fullscreen! toggle-fullscreen! screen-set-icon!
                 screen-set-title! screen-set-app-id! screen-set-least!

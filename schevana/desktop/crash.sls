@@ -5,7 +5,7 @@
 
 (library (schevana desktop crash)
   (export
-    draw-crash-panel draw-crash-panel* draw-wrapped-text wrap-lines)
+    draw-crash-panel draw-crash-panel*)
   (import (chezscheme)
           (only (schevana base) condition->string define-hook library-layer
                 string-split)

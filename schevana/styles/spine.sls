@@ -8,8 +8,7 @@
 
 (library (schevana styles spine)
   (export
-    spine-width spine-cell spine-radius spine-insets spine-regions spine-colors
-    spine-glyph spine-draw-button spine-rules spine-draw-under spine-draw-over)
+    spine-radius spine-insets spine-regions spine-draw-under spine-draw-over)
   (import (chezscheme)
           (only (schevana base) at-load library-layer)
           (only (schevana core) alpha app define-style draw-text fill-box

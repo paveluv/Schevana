@@ -23,31 +23,7 @@
 
 (library (schevana desktop file-dialog)
   (export
-    file-dialog make-file-dialog file-dialog? file-dialog-parent
-    file-dialog-on-pick file-dialog-on-cancel file-dialog-types
-    file-dialog-picks file-dialog-ui
-    file-dialog-folder file-dialog-folder-set! file-dialog-back
-    file-dialog-back-set! file-dialog-forward file-dialog-forward-set!
-    file-dialog-selected file-dialog-selected-set! file-dialog-name
-    file-dialog-name-set! file-dialog-filter file-dialog-filter-set!
-    file-dialog-type file-dialog-type-set! file-dialog-hidden?
-    file-dialog-hidden?-set! file-dialog-sort file-dialog-sort-set!
-    file-dialog-listing file-dialog-listing-set! file-dialog-memo
-    file-dialog-memo-set! file-dialog-done? file-dialog-done?-set!
-    file-dialog-entry make-file-dialog-entry file-dialog-entry?
-    file-dialog-entry-name file-dialog-entry-path file-dialog-entry-dir?
-    file-dialog-entry-size file-dialog-entry-changed file-dialog-join
-    file-dialog-above file-dialog-home file-dialog-resolve file-dialog-clean
-    file-dialog-crumbs file-dialog-size-label file-dialog-date-label
-    file-dialog-size file-dialog-read file-dialog-entries file-dialog-shown
-    file-dialog-go! file-dialog-show! file-dialog-back! file-dialog-forward!
-    file-dialog-up! file-dialog-target file-dialog-choice file-dialog-open!
-    file-dialog-pick! file-dialog-cancel! file-dialog-closed!
-    file-dialog-choices draw-file-dialog-icon draw-file-dialog-icon*
-    draw-file-dialog-name draw-file-dialog-name* file-dialog-toolbar
-    file-dialog-places file-dialog-columns file-dialog-list file-dialog-menu!
-    file-dialog-footer file-dialog-draw file-dialog-key file-dialog-text
-    open-file-dialog)
+    draw-file-dialog-icon* draw-file-dialog-name* open-file-dialog)
   (import (chezscheme)
           (only (schevana base) define-hook library-layer list-index plist-ref
                 string-contains-ci? string-prefix? string-split string-suffix?)

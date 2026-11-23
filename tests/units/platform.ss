@@ -4,6 +4,12 @@
 ;;; screen's times, each read on the clock that fits it; and the trace
 ;;; (schevana/core0/trace.sls). Each check holds on any platform.
 
+;; Returns the calling thread's class, as the OS gives it (a Mac's
+;; QOS_CLASS_…), or #f where there's none.
+(define (platform-test-thread-class)
+  (and mac-system-loaded?
+       ((foreign-procedure "qos_class_self" () unsigned-int))))
+
 (define (platform-test-one-of preds)
   (<= (length (filter (lambda (p) (p)) preds)) 1))
 
@@ -280,9 +286,11 @@
        (let* ([out (box #f)]
               [t (fork-thread
                   (lambda ()
-                    (let ([before (platform-thread-class)])
+                    (let ([before (platform-test-thread-class)])
                       (platform-thread-interactive!)
-                      (set-box! out (list before (platform-thread-class))))))])
+                      (set-box! out
+                                (list before
+                                      (platform-test-thread-class))))))])
          (thread-join t)
          (if (platform-mac?)
              (equal? (unbox out) '(#x15 #x21))

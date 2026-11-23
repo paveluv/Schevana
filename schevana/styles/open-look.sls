@@ -30,17 +30,7 @@
 #!chezscheme
 (library (schevana styles open-look)
   (export
-    open-look-size-near open-look-size open-look-by-size open-look-3d?
-    open-look-arm open-look-header open-look-top open-look-corner
-    open-look-button-w open-look-button-h open-look-pin-w open-look-pin-h
-    open-look-ascent open-look-footer-h open-look-footer-base open-look-pop-up?
-    open-look-gadget open-look-insets open-look-regions open-look-hsv
-    open-look-rgb open-look-shade open-look-glyph open-look-box
-    open-look-menu-mark open-look-draw-band open-look-draw-lines
-    open-look-draw-corners open-look-draw-button open-look-draw-pin
-    open-look-cut open-look-fit-title open-look-text open-look-draw-title
-    open-look-draw-footer open-look-draw-under open-look-font-glyph
-    open-look-fonts)
+    open-look-insets open-look-regions open-look-draw-under)
   (import (chezscheme)
           (only (schevana base) at-load library-layer)
           (only (schevana core) color-default! define-style draw-text fill-box

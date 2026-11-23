@@ -5,12 +5,9 @@
 
 (library (schevana desktop status)
   (export
-    *status-segments* add-status-segment! remove-status-segment! *status-shown*
-    refresh-status! shown-status-strings *status-timer?* *status-second*
-    status-show! status-second! status-procs status-memory status-busy
-    day-names status-clock)
+    add-status-segment! remove-status-segment! *status-shown*)
   (import (chezscheme)
-          (only (schevana base) at-load define-state library-layer)
+          (only (schevana base) at-load-once define-state library-layer)
           (only (schevana core) *procs* after pacer-peak-ms!
                 platform-process-bytes request-frame! safe-call)
           (only (schevana kits ui) ui-month-names))
@@ -49,9 +46,6 @@
                               (lambda (c) (format "⚠ ~a" (car s))))))
            *status-segments*)))
 
-  (define (shown-status-strings) (filter string? (map cdr *status-shown*)))
-
-  (define-state *status-timer?* #f)   ; its timer is set: a reload sets no other
   (define-state *status-second* #f)   ; the wall clock's second last shown
 
   ;; Reads the status again and asks for a frame that shows it.
@@ -74,10 +68,9 @@
       (after (- 1000 (quotient (time-nanosecond t) 1000000))
              (lambda () (status-second!)))))
 
-  (at-load
-   (unless *status-timer?*
-     (set! *status-timer?* #t)
-     (status-second!)))
+  ;; one timer, which a reload doesn't add to
+  (at-load-once
+   (status-second!))
 
   (define (status-procs)
     (let ([n (length *procs*)])

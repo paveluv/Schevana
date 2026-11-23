@@ -18,11 +18,9 @@
 
 (library (schevana styles gnome)
   (export
-    gnome-activities-width gnome-topbar-areas gnome-clock-text
-    gnome-status-strings gnome-draw-topbar gnome-dash-sizes gnome-taskbar-areas
-    gnome-dash-icon gnome-draw-taskbar gnome-toast-boxes gnome-draw-toasts
-    gnome-shell-menu? gnome-menu-choice gnome-menu-label-width gnome-menu-areas
-    gnome-shell-panel gnome-menu-filter gnome-draw-menu gnome-draw-wallpaper)
+    gnome-topbar-areas gnome-draw-topbar gnome-taskbar-areas gnome-draw-taskbar
+    gnome-toast-boxes gnome-draw-toasts gnome-menu-areas gnome-draw-menu
+    gnome-draw-wallpaper)
   (import (chezscheme)
           (only (schevana base) at-load clamp filter-map library-layer
                 string-suffix?)

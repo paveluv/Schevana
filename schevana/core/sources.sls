@@ -394,9 +394,6 @@
     (collector-settle!)
     (notify "Sources reloaded" 'green))
 
-  ;; The world's libraries, by their names.
-  (define (world-libraries) (filter pair? (world-entries)))
-
   ;; The world's sources in load order, read again from what loads
   ;; (auto-loads): a library by its name, a file by its path.
   (define (world-entries) (apply append (map auto-load-entries (auto-loads))))

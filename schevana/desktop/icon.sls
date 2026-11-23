@@ -5,10 +5,8 @@
 
 (library (schevana desktop icon)
   (export
-    draw-app-icon draw-app-icon* update-app-icon! desktop-data-home
-    desktop-entry-files make-directories! write-app-icon!
-    install-desktop-entry! uninstall-desktop-entry! *icon-update-pending*
-    *icon-version* icon-follow-theme! update-app-icon-soon!)
+    draw-app-icon draw-app-icon* update-app-icon! install-desktop-entry!
+    uninstall-desktop-entry! icon-follow-theme!)
   (import (chezscheme)
           (only (schevana base) define-hook define-state library-layer)
           (only (schevana core) *schevana-root* *theme-version* after alpha

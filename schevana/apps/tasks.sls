@@ -9,7 +9,10 @@
 ;;;   (set-task! 12 'status 'review)     (move-task! 12 'done)
 ;;;   (set-task! 13 'blocked-by '(10 31))   ; 13 waits for 10 and 31
 ;;;   (task-blockers 13)  (task-blocks 10)  (tasks-tree)
-;;;   (delete-task! 12)                  (tasks-reset!)
+;;;   (delete-task! 12)
+;;;
+;;; Tasks starts with none; the demos' backlog ((demo backlog), with
+;;; ./desktop demo) enters Schevana's own this way.
 ;;;
 ;;; A task may wait for others (blocked-by), never in a cycle; the Tree
 ;;; shows under each task what it waits for.
@@ -23,82 +26,23 @@
 
 (library (schevana apps tasks)
   (export
-    task make-task task? task-id task-title task-title-set! task-description
-    task-description-set! task-status task-status-set! task-kind task-kind-set!
-    task-priority task-priority-set! task-assignee task-assignee-set! task-tags
-    task-tags-set! task-due task-due-set! task-checklist task-checklist-set!
-    task-blocked-by task-blocked-by-set! task-created task-updated
-    task-updated-set! tasks-statuses tasks-kinds tasks-priorities *tasks*
-    *tasks-next-id* tasks-description-max task-label tasks-now tasks-trim
-    tasks-date? tasks-setters tasks-normalize tasks-update! tasks-cycle-text
-    tasks-done-note task-set! tasks-new! tasks-place! tasks-duplicate!
-    tasks-remove! tasks-generation tasks-kept tasks-changed! tasks-rank
-    tasks-index tasks-in tasks-choices tasks-words tasks-same-name? tasks-names
-    tasks-tags tasks-match? tasks-found-memo tasks-found? tasks-sorted
-    tasks-move tasks-slot tasks-neighbor tasks-tag tasks-overdue?
-    tasks-due-label tasks-time-label tasks-board-order tasks-ordered
-    tasks-id-table tasks-by-id tasks-blockers-of tasks-blocks-of tasks-blocked?
-    tasks-cycle tasks-inverse tasks-inverted tasks-waiters
-    tasks-blocker-choices tasks-forest tasks-whole-forest tasks-largest-id
-    find-task tasks-get tasks-list add-task! set-task! move-task! delete-task!
-    task-blockers task-blocks tasks-tree tasks-seed tasks-seed-links
-    tasks-seed-text tasks-base64 tasks-reset! tasks-view make-tasks-view
-    tasks-view? tasks-view-ui tasks-view-mode tasks-view-mode-set!
-    tasks-view-query tasks-view-query-set! tasks-view-kind tasks-view-kind-set!
-    tasks-view-priority tasks-view-priority-set! tasks-view-assignee
-    tasks-view-assignee-set! tasks-view-tag tasks-view-tag-set!
-    tasks-view-done? tasks-view-done?-set! tasks-view-sort tasks-view-sort-set!
-    tasks-view-selected tasks-view-selected-set! tasks-view-page?
-    tasks-view-page?-set! tasks-view-confirm tasks-view-confirm-set!
-    tasks-view-drag tasks-view-drag-set! tasks-view-reveal?
-    tasks-view-reveal?-set! tasks-view-tag-draft tasks-view-tag-draft-set!
-    tasks-view-item-draft tasks-view-item-draft-set! tasks-view-editor
-    tasks-view-editor-set! tasks-view-node tasks-view-node-set! tasks-drag
-    make-tasks-drag tasks-drag? tasks-drag-task tasks-drag-px tasks-drag-py
-    tasks-drag-gx tasks-drag-gy tasks-drag-x tasks-drag-x-set! tasks-drag-y
-    tasks-drag-y-set! tasks-drag-moving? tasks-drag-moving?-set!
-    tasks-drag-status tasks-drag-status-set! tasks-drag-before
-    tasks-drag-before-set! tasks-view-new tasks-matcher tasks-visible
-    tasks-shown-statuses tasks-columns tasks-rows tasks-sort-by!
-    tasks-filtered? tasks-clear-filters! tasks-select! tasks-node-task
-    tasks-tree-node tasks-pick! tasks-tree-open! tasks-narrow?
-    tasks-edit-title! tasks-new-task! tasks-peers tasks-delete! tasks-menu
-    tasks-details-width tasks-column-min-width tasks-column-width
-    tasks-column-header-height tasks-column-header-height* tasks-details-pad
-    tasks-details-pad* tasks-card-pad tasks-card-pad* tasks-column-insets
-    tasks-column-insets* tasks-card-insets tasks-card-insets*
-    tasks-list-min-width tasks-page-width tasks-avatar-size tasks-mark-size
-    tasks-natural-size tasks-min-size tasks-wide-width tasks-layout
-    tasks-shown-title tasks-quoted tasks-card-title tasks-card-tags
-    tasks-card-size tasks-title-cut? tasks-id-width tasks-mark-room
-    tasks-title-room tasks-node-room tasks-fit-columns tasks-list-columns
-    tasks-tree-columns tasks-tip tasks-waits-text tasks-draw-mark
-    tasks-draw-mark* tasks-draw-title tasks-draw-due tasks-draw-due*
-    tasks-draw-due-of tasks-draw-card tasks-draw-column tasks-draw-column*
-    tasks-draw-slot tasks-draw-slot* tasks-draw-link tasks-draw-link*
-    tasks-draw-cell tasks-draw-node tasks-draw-cheat-sheet tasks-filter
-    tasks-toolbar-items tasks-toolbar tasks-board tasks-column tasks-card
-    tasks-table tasks-tree-view tasks-details tasks-without tasks-details-head
-    tasks-details-form tasks-chip-label tasks-menu-room tasks-blocker-entries
-    tasks-add-blocker! tasks-details-checklist tasks-details-description
-    tasks-details-body tasks-empty tasks-dialog tasks-draw tasks-editor
-    make-tasks-editor tasks-editor? tasks-editor-view tasks-editor-task
-    tasks-editor-ui tasks-editor-text tasks-editor-text-set!
-    tasks-editor-original tasks-editor-confirm tasks-editor-confirm-set!
-    tasks-editor-lines tasks-editor-lines-set! tasks-editor-size
-    tasks-open-editor! tasks-close-editor! tasks-editor-closed!
-    tasks-editor-save! tasks-editor-cancel! tasks-editor-key
-    tasks-editor-line-column tasks-editor-status tasks-editor-draw
-    tasks-board-step! tasks-move-to! tasks-shift-status! tasks-shift-order!
-    tasks-key tasks-text tasks tasks-carried tasks-reopen!)
+    task-title task-status task-assignee tasks-description-max find-task
+    tasks-list add-task! set-task! move-task! delete-task! task-blockers
+    task-blocks tasks-tree tasks-column-header-height
+    tasks-column-header-height* tasks-details-pad tasks-details-pad*
+    tasks-card-pad tasks-card-pad* tasks-column-insets tasks-column-insets*
+    tasks-card-insets tasks-card-insets* tasks-mark-size tasks-draw-mark
+    tasks-draw-mark* tasks-draw-due tasks-draw-due* tasks-draw-column
+    tasks-draw-column* tasks-draw-slot tasks-draw-slot* tasks-draw-link
+    tasks-draw-link* tasks)
   (import (chezscheme)
           (only (schevana base) at-load clamp define-hook define-made
                 define-state filter-map library-layer list-index plist-keys
                 plist-ref string-contains-ci? string-join string-prefix?
                 string-split)
-          (only (schevana core) *schevana-root* after alpha close-window!
-                content-rect current-window define-app define-part draw-text
-                fill-box fill-circle fill-polygon find-window focus-window! font
+          (only (schevana core) after alpha close-window! content-rect
+                current-window define-app define-part draw-text fill-box
+                fill-circle fill-polygon find-window focus-window! font
                 font-line-height invalidate! new-window-position notify
                 open-window point-in? resize-window! screen-h stroke-box
                 text-width theme window-content-size window-handlers window-ref
@@ -117,18 +61,17 @@
                 ui-checkbox-size ui-chip-input ui-chip-input-size ui-date-field
                 ui-suggestions ui-form ui-region-h ui-region-y ui-region-x
                 ui-find ui-chips ui-chips-height ui-control-height ui-tree
-                ui-tree-expand! ui-table ui-table-columns ui-table-room
-                ui-flags ui-region! ui-scroll ui-reveal! ui-surface-well-ring
-                ui-later! ui-draw-label ui-toolbar ui-label-size ui-toggle
-                ui-text-field ui-tabs ui-button ui-toggle-size ui-dropdown-size
+                ui-tree-expand! ui-table ui-table-columns ui-table-room ui-flags
+                ui-region! ui-scroll ui-reveal! ui-surface-well-ring ui-later!
+                ui-draw-label ui-toolbar ui-label-size ui-toggle ui-text-field
+                ui-tabs ui-button ui-toggle-size ui-dropdown-size
                 ui-text-box-size ui-tabs-size ui-button-size ui-dropdown
                 ui-draw-dim ui-draw-surface ui-draw-progress ui-draw-glyph
                 ui-progress-height ui-draw-chip ui-draw-avatar ui-avatar-size
                 ui-draw-card ui-card-radius ui-table-fit ui-table-cell-inset
                 ui-chip-size ui-wrap-lines ui-pad ui-gap ui-scrollbar-inset
-                ui-open-menu! ui-focus! ui-forget! ui-day->date ui-today
-                ui-date-label ui-month-names ui-date->day ui-stale!
-                ui-days-in-month))
+                ui-open-menu! ui-focus! ui-forget! ui-today ui-date-label
+                ui-month-names ui-date->day ui-stale! ui-days-in-month))
 
   (library-layer apps)
 
@@ -165,7 +108,7 @@
   (define tasks-priorities
     '((urgent . "Urgent") (high . "High") (normal . "Normal") (low . "Low")))
 
-  (define-state *tasks* #f)          ; every task, in board order
+  (define-state *tasks* '())         ; every task, in board order
   (define-state *tasks-next-id* 1)   ; ids are never reused
 
   ;; The most characters a description holds: a longer one from the REPL
@@ -845,240 +788,6 @@
                                    b)))
                         (task-blocked-by (hashtable-ref by-id id #f))))))
              roots))))
-
-  ;; Schevana's own backlog, in board order within each column: (id status
-  ;; kind priority assignee tags due checklist title description). due is
-  ;; in days from today, a checklist item paired with #t is done, and a
-  ;; description that is a symbol is made when the backlog is seeded (see
-  ;; tasks-seed-text).
-  (define tasks-seed
-    '((16 todo bug high "Claude" ("perf" "render") -2 ()
-       "Theme change takes 67 ms at 200%"
-       "Every theme change paints the wallpaper again, so dragging a color \
-        slider in Settings shows about 15 frames a second at 200%.")
-      (11 todo feature high #f ("style" "kit") 21
-       ("List every drawing procedure" "Parts and derived styles"
-        "Port Settings" "Restyle Tasks under every style")
-       "Style system: one look for windows, bars, menus and widgets"
-       "Styles change only the windows today. One look should reach the top \
-        bar, the taskbar, menus, toasts and every widget, and a derived style \
-        should take a few lines.")
-      (12 todo feature normal "Pavel" ("persistence") #f ()
-       "Persistence: keep tasks, windows and app state across restarts"
-       "No persistence yet: everything lives on the heap. fasl-write of app \
-        state is a natural first step.")
-      (13 todo feature normal #f ("render" "gpu") #f
-       ("Each window in its own image" "Compose on the CPU" "Compose on the GPU"
-        "(set-compositor! 'gpu) at the REPL")
-       "GPU composer: per-window images composed on the GPU"
-       "Every window drawn into an image of its own, only when it changes, and \
-        the images composed: on the CPU first, then on the GPU.")
-      (31 todo feature normal #f ("render") #f ()
-       "Each window drawn into an image of its own"
-       "A window draws into its own picture, only when it changes; a frame \
-        then composes the pictures, on the CPU, instead of drawing every \
-        window under its rectangle again.")
-      (14 todo feature normal "Claude" ("apps") #f ()
-       "Inspector app: browse any live value"
-       "Click through records, hashtables, procedures and their sources, \
-        windows and processes.")
-      (22 todo feature normal #f ("apps") #f ()
-       "AI agent app that reads window contents"
-       "An assistant in a window that reads what the other windows show and \
-        acts through the REPL.")
-      (15 todo feature normal #f ("repl") #f ()
-       "REPL: selection and copy"
-       "The transcript cannot be selected or copied yet. The kit's text \
-        editing could serve it.")
-      (17 todo bug normal #f ("perf" "render") #f ()
-       "Menus and toasts redraw the whole screen"
-       "While a menu or a toast shows, every frame is the whole screen; their \
-        own extents would be enough.")
-      (18 todo bug low #f ("perf") #f ()
-       "Tiled windows redraw with the clock every second"
-       "Windows whose extent reaches into the top bar are drawn again with the \
-        clock: 30 tiled Life windows take 7.5 ms a second at 200%.")
-      (19 todo feature low #f ("apps" "threads") #f ()
-       "Fractal explorer"
-       "Deep zoom into the Mandelbrot set on every core, refined \
-        progressively, with a flight mode and a Julia inset.")
-      (20 todo feature low #f ("apps" "threads") #f ()
-       "Smoke: stable fluids you push with the mouse"
-       "A stable-fluids solver on all cores; drag to push the smoke around.")
-      (21 todo feature low #f ("apps" "threads") #f ()
-       "Galaxies on all cores"
-       "Thousands of stars pulling at each other, the forces computed in \
-        parallel.")
-      (26 todo feature low #f ("apps") #f ()
-       "A text editor app"
-       "Open, edit and save files in a window, on the kit's text area.")
-      (23 todo chore low #f ("portability") #f ()
-       "Try the macOS and Windows libraries"
-       "Their names are in ffi.ss but have not been tried. macOS needs the \
-        loop on the process's first thread, which it already is.")
-      (24 todo feature low #f ("repl") #f ()
-       "Namespaces for apps"
-       "Apps all share one environment. REPLs can be private or pure; apps \
-        could be kept apart the same way.")
-      (27 todo chore low "Pavel" ("docs") #f ()
-       "Proofread the README" readme)
-      (28 todo chore low #f ("kit" "docs") #f ()
-       "Read the widget kit through, comments first" kit-source)
-      (29 todo chore low "Claude" ("docs") #f ()
-       "Changelog: the backlog as one long paragraph" changelog)
-      (30 todo bug normal #f ("perf") #f ()
-       "Find out what the pasted base64 is" blob)
-      (9 doing feature high "Claude" ("apps" "kit") 5
-       (("Focus and Tab" . #t) ("Text editing" . #t)
-                               "Dropdowns and the calendar"
-        "Drag and drop" "Tests and screenshots")
-       "Tasks app and its widget kit"
-       "A task manager that gathers the widgets the style system must cover: \
-        text fields, dropdowns, tables, chips, a calendar, dialogs and \
-        tooltips.")
-      (33 doing feature high "Claude" ("apps" "kit") 3 ()
-       "Task dependencies and a tree widget"
-       "Tasks wait for other tasks, never in a cycle, and a Tree view shows \
-        what each one waits for, on a tree widget in the kit that a file \
-        browser or the Inspector can use too.")
-      (10 doing feature high "Pavel" ("threads") 14 ()
-       "Threads spec: worker pool, jobs, parallel-for"
-       "Jobs on a pool of workers, results handed back to core1, \
-        pixmaps filled in parallel. Threads only when measured.")
-      (7 review chore urgent "Pavel" ("sdl" "core0") 1
-       ("HiDPI at 200% on GNOME" "Typing with an IME"
-        ("Clipboard both ways" . #t) "Full screen and back"
-        ("Resize while drawing" . #t))
-       "Check SDL3 in a real window"
-       "Everything SDL3 does was tried against a stand-in. Try it on a real \
-        desktop before trusting it.")
-      (8 review chore low "Pavel" ("style" "genera") #f ()
-       "Match Genera's margins to the 1986 manuals"
-       "Check the margins and the label in the bottom-left corner against the \
-        manuals' figures.")
-      (1 done chore normal "Claude" ("sdl" "core0") #f ()
-       "Switch from SDL2 to SDL3"
-       "Fractional wheel steps add up to whole ones, and the app id names the \
-        window for the desktop.")
-      (2 done feature normal "Claude" ("style") #f ()
-       "Add nine window styles"
-       "Cons, Curses, Draft, Fold, Halo, Lambda, Reticle, Slab and Spine, one \
-        file each in styles/.")
-      (3 done feature high "Claude" ("render" "perf") #f ()
-       "Redraw only what changed"
-       "A change says where it shows; a frame draws only that box, compares \
-        its rows with the screen and uploads the ones that differ.")
-      (4 done chore normal "Claude" ("structure") #f ()
-       "Split the world into folders, at 80 columns"
-       "Kits, styles, palettes, wallpapers and apps are folders, one \
-        definition per file, loaded in file-name order.")
-      (5 done feature high "Claude" ("render") #f ()
-       "HiDPI: draw from outlines at any scale"
-       "Everything is drawn from outlines at the scale, so text and shapes \
-        stay sharp at 125, 150 or 200%.")
-      (6 done feature normal "Claude" ("repl") #f ()
-       "REPL completion with docs"
-       "Tab lists the names that fit where the cursor is, with each one's \
-        arguments and the comment above its definition.")
-      (32 done feature high "Claude" ("kit" "perf") #f ()
-       "Edit kit: text that costs nothing to type into"
-       "Text editing is a kit of its own, and a text's rows are computed only \
-        as far as they show: a keystroke in 64k characters costs what one in \
-        an empty box does.")))
-
-  ;; What the seed's tasks wait for: (id blocker ...).
-  (define tasks-seed-links
-    '((11 9) (13 31 10) (17 31) (18 31) (19 10) (20 10) (21 10) (22 14) (14 33)
-      (33 9) (15 32) (26 32) (23 7)))
-
-  ;; Returns one of the seed's long descriptions, made when the backlog is
-  ;; seeded: real text from the tree's own files, the README and the widget
-  ;; kit's source; the backlog itself as one paragraph; and a base64 blob,
-  ;; with no spaces at all. Each holds at most tasks-description-max
-  ;; characters; a file that cannot be read gives the backlog's paragraph
-  ;; instead.
-  (define (tasks-seed-text what)
-    (define (file f)
-      (guard (c [#t (tasks-seed-text 'changelog)])
-        (call-with-input-file (string-append *schevana-root* "/" f)
-          get-string-all)))
-    (define (round-of k)   ; every task with a description, once
-      (apply string-append
-             (map (lambda (e)
-                    (apply (lambda (id status kind priority who tags due
-                                       checklist title description)
-                             (if (string? description)
-                                 (format "Round ~a, TASK-~a (~a, ~a): ~a. ~a " k
-                                         id kind priority title description)
-                                 ""))
-                           e))
-                  tasks-seed)))
-    (tasks-normalize
-     'tasks-reset! 'description
-     (case what
-       [(readme) (file "README.md")]
-       [(kit-source) (file "schevana/kits/ui.sls")]
-       [(changelog)
-        (let loop ([k 1] [acc '()] [n 0])
-          (if (>= n tasks-description-max)
-              (apply string-append (reverse acc))
-              (let ([r (round-of k)])
-                (loop (+ k 1) (cons r acc) (+ n (string-length r))))))]
-       [(blob)   ; enough of the kit's bytes for the most characters
-        (let* ([bv (string->utf8 (file "schevana/kits/ui.sls"))]
-               [n (min (bytevector-length bv) (* 3/4 tasks-description-max))]
-               [cut (make-bytevector n)])
-          (bytevector-copy! bv 0 cut 0 n)
-          (tasks-base64 cut))])))
-
-  ;; Returns bv in base64.
-  (define (tasks-base64 bv)
-    (let ([abc "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz\
-                0123456789+/"]
-          [n (bytevector-length bv)] [o (open-output-string)])
-      (do ([i 0 (+ i 3)]) ((>= i n) (get-output-string o))
-        (let ([v (fold-left (lambda (v k)
-                              (+ (* v 256) (if (< (+ i k) n)
-                                               (bytevector-u8-ref bv (+ i k))
-                                               0)))
-                            0 '(0 1 2))])
-          (for-each (lambda (k)   ; six bits per digit, = past the end
-                      (write-char
-                       (if (<= k (- n i))
-                           (string-ref abc (fxand 63 (fxsra v (- 18 (* 6 k)))))
-                           #\=)
-                       o))
-                    '(0 1 2 3))))))
-
-  ;; Restores the seed backlog: its tasks created over the last three
-  ;; weeks, in the order of their ids, most of the done ones first.
-  (define (tasks-reset!)
-    (let* ([now (tasks-now)] [today (ui-date->day (ui-today))] [day 86400]
-           [apart (quotient (* 21 day) (+ 1 (length tasks-seed)))])
-      (set! *tasks*
-        (map (lambda (s)
-               (apply (lambda (id status kind priority who tags due checklist
-                                  title description)
-                        (let ([created (+ (- now (* 21 day)) (* id apart))])
-                          (make-task id title
-                                     (if (symbol? description)
-                                         (tasks-seed-text description)
-                                         description)
-                                     status kind priority who tags
-                                     (and due (ui-day->date (+ today due)))
-                                     (tasks-normalize 'tasks-reset! 'checklist
-                                                      checklist)
-                                     (cond [(assv id tasks-seed-links) => cdr]
-                                           [else '()])
-                                     created
-                                     (min now (+ created
-                                                 (* 3600
-                                                    (+ 1
-                                                       (mod (* id 7) 17))))))))
-                      s))
-             tasks-seed))
-      (set! *tasks-next-id* (+ 1 (apply max (map car tasks-seed))))
-      (tasks-changed!)))
 
   ;;; ---------------------------------------------------------------- view
 
@@ -2873,13 +2582,12 @@
                 (let ([new (parameterize ([new-window-position at]) (tasks))])
                   (resize-window! new cw ch)))))))))
 
-  ;; Seeds the heap on first load. A reload that changed task's fields
-  ;; loses no task: each is carried over, and the windows that held the
-  ;; old ones, or an old view, open again.
+  ;; A reload that changed task's fields loses no task: each is carried
+  ;; over, and the windows that held the old ones, or an old view, open
+  ;; again.
   (at-load
    (let ([win (find-window 'tasks)])
      (cond
-       [(not (and (list? *tasks*) (for-all record? *tasks*))) (tasks-reset!)]
        [(not (for-all task? *tasks*))
         (set! *tasks* (map tasks-carried *tasks*))
         (tasks-reopen!)]

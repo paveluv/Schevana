@@ -20,8 +20,7 @@
 
 (library (schevana kits host)
   (export
-    host-main host-look host-window! host-hit-regions host-edge host-corner
-    host-act!)
+    host-main)
   (import (chezscheme)
           (only (schevana base) filter-map library-layer platform-mac?
                 platform-windows?)

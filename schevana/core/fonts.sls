@@ -33,7 +33,7 @@
                 fc-default-substitute fc-font-match fc-get-version fc-name-parse
                 fc-pattern-destroy fc-pattern-get-integer fc-pattern-get-string)
           (only (schevana core theme-table) theme)
-          (only (schevana core0) c-string->string gpu-atlas-side))
+          (only (schevana core0) gpu-atlas-side))
 
   (library-layer core)
 
@@ -302,7 +302,6 @@
             m))))
 
   (define (font-ascent f) (vector-ref (font-metrics f) 0))
-  (define (font-descent f) (vector-ref (font-metrics f) 1))
   (define (font-line-height f) (vector-ref (font-metrics f) 2))
   (define (font-char-width f) (vector-ref (font-metrics f) 3))
 

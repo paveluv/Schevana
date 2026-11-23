@@ -8,9 +8,8 @@
 
 (library (schevana desktop topbar)
   (export
-    topbar-height topbar-box topbar-areas topbar-areas* placed-topbar-areas
-    topbar-draw draw-topbar draw-topbar* topbar-at topbar-mouse topbar-frame
-    topbar-doc)
+    topbar-height topbar-box topbar-areas topbar-areas* topbar-draw draw-topbar
+    draw-topbar* topbar-at topbar-mouse topbar-frame topbar-doc)
   (import (chezscheme)
           (only (schevana base) at-load define-hook library-layer)
           (only (schevana core) *focus* *hover* alpha chrome-height

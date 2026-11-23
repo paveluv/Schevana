@@ -14,15 +14,11 @@
 
 (library (schevana kits transcript)
   (export
-    transcript make-transcript transcript? transcript-lines
-    transcript-lines-set! transcript-count transcript-count-set!
-    transcript-open? transcript-open?-set! transcript-scroll
-    transcript-scroll-set! transcript-new transcript-max-lines transcript-pad
-    transcript-line-height transcript-clear! transcript-push!
+    transcript-lines transcript-count transcript-scroll transcript-scroll-set!
+    transcript-new transcript-pad transcript-line-height transcript-clear!
     transcript-append! transcript-add! transcript-rows transcript-fill-colors!
-    transcript-keywords transcript-draw-style-color transcript-draw-scheme
-    transcript-draw-line transcript-draw-entry-colors transcript-draw-scrollbar
-    transcript-draw-view)
+    transcript-draw-style-color transcript-draw-scheme transcript-draw-line
+    transcript-draw-scrollbar transcript-draw-view)
   (import (chezscheme)
           (only (schevana base) at-load clamp library-layer string-split)
           (only (schevana core) color-default! draw-text font-char-width

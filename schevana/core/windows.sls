@@ -42,8 +42,8 @@
     minimize-window! set-geometry! move-window! resize-window! restore-window!
     toggle-maximize! window-action! shaded? unshade-window! toggle-shade!
     window-at screen-at resize-kinds window-region *global-keys* bind-key!
-    window-frame-soon! draw-window window-hover draw-window*
-    surfaces maximize-window! unbind-key!)
+    window-frame-soon! window-hover draw-window* surfaces maximize-window!
+    unbind-key!)
   (import (chezscheme)
           (only (schevana base) at-load clamp condition->string define-hook
                 define-state library-layer plist-ref registry-add set-hook!

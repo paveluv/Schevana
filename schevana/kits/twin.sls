@@ -6,7 +6,7 @@
 (library (schevana kits twin)
   (export
     twin-wrap twin-fl->fx twin-fx-ref twin-fl-ref twin-fx-set! twin-fl-set!
-    twin-var twin-op twin-in-order twin-form twin-procedures twin-procedure)
+    twin-procedure)
   (import (chezscheme)
           (only (schevana base) define-made library-layer)
           (only (schevana core) shader-coords shader-params shader-stage

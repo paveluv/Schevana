@@ -33,9 +33,12 @@
 ;; (./desktop --headless), here on this thread. This environment stays
 ;; the tests' own (tests/reach.ss), except in the hacker edition, where it
 ;; is the world. A demo is loaded only where a test uses it (test-demos!,
-;; test-library).
+;; test-library). The desktop's options come from its main library, which
+;; keeps them to itself: in the library edition the tests' build gives
+;; them as test:desktop-options (tests/build.ss).
 (define test-options
-  (schevana-call test-hacker? '(schevana desktop main) 'desktop-options
+  (schevana-call test-hacker? '(schevana desktop main)
+                 (if test-hacker? 'desktop-options 'test:desktop-options)
                  '("--headless")))
 (parameterize ([interaction-environment (interaction-environment)])
   (schevana-call test-hacker? '(schevana core sources) 'core1-boot!

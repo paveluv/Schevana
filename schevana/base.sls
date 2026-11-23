@@ -5,7 +5,8 @@
 
 (library (schevana base)
   (export
-    library-layer library-layer-names at-load define-state define-view
+    library-layer library-layer-names at-load at-load-once define-state
+    define-view
     define-settable define-made
     define-hook
     set-hook!
@@ -227,6 +228,34 @@
         [(_ name init)
          (with-syntax ([g (datum->syntax #'name (state-symbol #'name))])
            #'(define-global name g init #t))])))
+
+  ;; Returns the symbol that an at-load-once form x keeps its flag under,
+  ;; fixed by the file x is in and its forms, so that the library, evaluated
+  ;; again, finds it.
+  (meta define (once-symbol x)
+    (let* ([a (syntax->annotation x)]
+           [s (and a (annotation-source a))])
+      (gensym "once"
+              (format "schevana-once ~a ~x"
+                      (if s
+                          (source-file-descriptor-path (source-object-sfd s))
+                          "")
+                      (equal-hash (syntax->datum x))))))
+
+  ;; (at-load-once form ...) runs expressions among a library's definitions,
+  ;; as at-load does, but only when the library first loads in the world,
+  ;; not when a reload evaluates it again: what a world does once, such as
+  ;; starting a timer or giving an app its first data. Forms that change
+  ;; are new ones, and run at the next reload.
+  (define-syntax at-load-once
+    (lambda (x)
+      (syntax-case x ()
+        [(k form ...)
+         (with-syntax ([g (datum->syntax #'k (once-symbol x))])
+           #'(begin
+               (define-global done g #f #t)
+               (define at-load-done
+                 (unless done (set! done #t) form ... (void)))))])))
 
   ;; (define-view name state) gives state under another name, to read and
   ;; never to set: how a library passes on a state it imports. A set! of

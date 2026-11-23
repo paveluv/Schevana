@@ -4,7 +4,8 @@
 ;;; in the program's "/"). One of them, the checklist, is a plain script:
 ;;; its .sh gives scheme-script the tree as its library folder. On the
 ;;; desktop (with its folder auto-loaded), each demo's library (demo/)
-;;; registers its app, which opens a window that draws.
+;;; registers its app, which opens a window that draws, and the backlog
+;;; enters Tasks' tasks.
 
 ;; Runs launcher (a file at the tree's root: one of Schevana's launchers,
 ;; or a shell script) headless, with args and with HOME set to a scratch
@@ -114,8 +115,9 @@
                   file is no folder to load ~s"
                  (auto-load-entries dir))
          (and (equal? (auto-load-entries dir)
-                      '((demo boids) (demo boids3d) (demo life)
-                        (demo rings) (demo sketch) (demo springies)))
+                      '((demo backlog) (demo boids) (demo boids3d)
+                        (demo life) (demo rings) (demo sketch)
+                        (demo springies)))
               ;; made absolute, as the tree's root may not be (".")
               (string-suffix? "/demo" (car (last-pair (auto-loads))))
               (for-all (lambda (app) (memq app (apps)))
@@ -128,6 +130,42 @@
               (guard (c [#t #t])
                 (auto-load! (string-append *schevana-root* "/README.md"))
                 #f))))
+
+;; The backlog, entered with Tasks' own procedures as the folder loaded:
+;; its tasks in their columns, with the ids they were entered with (TASK-25
+;; deleted again), what each waits for, and four long descriptions: the
+;; README, the kit's source cut to the most a description holds, the
+;; titles as one paragraph, and the start of the kit in base64, with no
+;; space. A reload that evaluates it again enters nothing.
+(check "the backlog enters Schevana's tasks once, as the folder loads, in \
+        their columns and with their links, four with long descriptions; \
+        a reload enters none"
+       (let* ([ids (lambda (status) (map task-id (tasks-list 'status status)))]
+              [text (lambda (id) (task-description (find-task id)))]
+              [readme (call-with-input-file
+                        (string-append *schevana-root* "/README.md")
+                        get-string-all)]
+              [has? (lambda (s c)
+                      (exists (lambda (i) (char=? (string-ref s i) c))
+                              (iota (string-length s))))]
+              [entered (length *tasks*)])
+         (test-reload-library! '(demo backlog))
+         (and (= entered (length *tasks*) 32)
+              (not (find-task 25))
+              (equal? (ids 'todo) '(16 11 12 13 31 14 22 15 17 18 19 20 21 26
+                                    23 24 27 28 29 30))
+              (equal? (ids 'doing) '(9 33 10))
+              (equal? (ids 'review) '(7 8))
+              (equal? (ids 'done) '(1 2 3 4 5 6 32))
+              (equal? (task-blocked-by (find-task 13)) '(31 10))
+              (equal? (text 27)
+                      (substring readme 0 (min (string-length readme)
+                                               tasks-description-max)))
+              (= 65536 (string-length (text 28)) (string-length (text 29))
+                 (string-length (text 30)))
+              (not (has? (text 29) #\newline)) (not (has? (text 30) #\space))
+              ;; ";;; (schevana k", the kit's first bytes
+              (string-prefix? "Ozs7IChzY2hldmFuYSBr" (text 30)))))
 
 ;; A folder of the test's own files, read again at (reload!): a file added
 ;; since then loads, and one taken away is let go; folders inside it are

@@ -23,21 +23,10 @@
 
 (library (schevana kits complete)
   (export
-    complete make-complete complete? complete-context complete-start
-    complete-items complete-sel complete-sel-set! complete-top
-    complete-top-set! complete-message complete-box complete-box-set!
-    complete-hover complete-hover-set! *complete-open* complete-rows
-    complete-max-items complete-of complete-close! complete-open! complete-say!
-    complete-page complete-move! complete-page! complete-tab! complete-narrow!
-    complete-shared complete-key! complete-text! complete-wheel!
-    complete-mouse-down! complete-pointer! complete-pointer-at complete-item-at
-    make-complete-source complete-source? complete-source-text
-    complete-source-heads complete-source-codes complete-source-mask
-    complete-separator? complete-slot complete-source-of *complete-sources*
-    complete-source complete-codes-within? complete-align complete-search
-    complete-score complete-less? complete-rank complete-row-height
-    complete-detail-height complete-show complete-rows-y complete-kinds-width
-    complete-doc-lines complete-size complete-draw-list complete-source-record)
+    complete-context complete-start complete-of complete-close! complete-open!
+    complete-tab! complete-narrow! complete-key! complete-text! complete-wheel!
+    complete-mouse-down! complete-pointer! complete-pointer-at complete-rank
+    complete-show)
   (import (chezscheme)
           (only (schevana base) clamp define-made define-state filter-map
                 library-layer set-hook! string-prefix?)

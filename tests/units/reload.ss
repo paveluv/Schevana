@@ -63,7 +63,7 @@
                          (lambda ()
                            (let loop ()
                              (set! slices (+ slices 1))
-                             (yield)
+                             (test-yield)
                              (loop))))])
   (set! probe-counts (lambda () (list ticks draws timers slices (length keys))))
   (let again ()
@@ -80,7 +80,7 @@
                       (lambda ()
                         (let loop ()
                           (when *reloading* (set! late-held (+ late-held 1)))
-                          (yield)
+                          (test-yield)
                           (loop))))])
     (let loop ()
       (when (and (memq p (procs)) (< n 5000))
@@ -179,7 +179,7 @@
   (let ([p (spawn "reload"
                   (lambda ()
                     (guard (c [#t (set! caught? #t)]) (reload!))
-                    (let loop () (yield) (loop))))])
+                    (let loop () (test-yield) (loop))))])
     (let loop ([n 0])
       (unless (or caught? (> n 3000)) (test-step!) (loop (+ n 1))))
     (steps 2)
@@ -201,7 +201,7 @@
                   (lambda ()
                     (reload!)
                     (set! state *reloading*)
-                    (let loop () (yield) (loop))))]
+                    (let loop () (test-yield) (loop))))]
         [w (open-window "Ticks" 'open window-frame-soon!
                                 'frame (lambda (win at)
                                          (window-frame-soon! win)

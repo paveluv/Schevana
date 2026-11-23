@@ -16,9 +16,8 @@
 
 (library (schevana styles interlisp)
   (export
-    interlisp-ink interlisp-bar interlisp-strip interlisp-margin
     interlisp-insets interlisp-regions interlisp-draw-under interlisp-draw-over
-    interlisp-scrollbar interlisp-dashes interlisp-drag-outline)
+    interlisp-scrollbar interlisp-drag-outline)
   (import (chezscheme)
           (only (schevana base) at-load define-made library-layer)
           (only (schevana core) color-default! common-options define-style

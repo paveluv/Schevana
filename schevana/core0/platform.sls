@@ -619,12 +619,6 @@
                           int)
        mac-class-interactive 0)))
 
-  ;; The calling thread's class, as the OS gives it (a Mac's QOS_CLASS_…),
-  ;; or #f where there's none.
-  (define (platform-thread-class)
-    (and mac-system-loaded?
-         ((foreign-procedure "qos_class_self" () unsigned-int))))
-
   ;;; ---- the Mac's
   ;;; Metal calls a drawable's presented handlers when it was shown, or
   ;;; when it never will be: its presentedTime gives seconds in Apple's host

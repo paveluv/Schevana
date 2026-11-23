@@ -6,8 +6,7 @@
 
 (library (schevana desktop taskbar)
   (export
-    taskbar-height taskbar-box taskbar-areas taskbar-areas*
-    placed-taskbar-areas taskbar-hint taskbar-doc-line taskbar-draw
+    taskbar-height taskbar-box taskbar-areas taskbar-areas* taskbar-draw
     draw-taskbar draw-taskbar* taskbar-at taskbar-mouse taskbar-doc
     taskbar-frame)
   (import (chezscheme)

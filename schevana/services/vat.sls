@@ -9,7 +9,7 @@
 ;;;                                        the pool's threads
 ;;;   (vat-repl! v forms 72 show-lines show-error)   evaluates forms as a
 ;;;                                        REPL does, printing the values
-;;;   (vat-job-pending? j)   (vat-job-kill! j)   (vat-drop! v)
+;;;   (vat-job-kill! j)   (vat-drop! v)
 ;;;   (vat-of e)                           the vat whose sandbox is e
 ;;;   (vat-drop-env! e)                    drops e, its children and their
 ;;;                                        vats
@@ -49,16 +49,9 @@
 
 (library (schevana services vat)
   (export
-    vat-fuel vat-idle-ns vat make-vat vat? vat-env vat-mailbox vat-mutex
-    vat-wake vat-threads vat-threads-set! vat-dropped vat-job make-vat-job
-    vat-job? vat-job-vat vat-job-kind vat-job-proc vat-job-args vat-job-then
-    vat-job-window vat-job-fail vat-job-killed *vat-jobs* *vat-all* *vat-pool*
-    *vat-pool-size* vat-current vat-start! vat-new vat-of vat-threads-of
-    vat-env-kind vat-jobs-of vat-flag-up! vat-resize! vat-pool vat-pool-size
-    vat-pool-size-set! vat-drop! vat-drop-env! vat-fork! vat-step! vat-wake!
-    vat-put! vat-take! vat-send! vat-eval! vat-repl! vat-post! vat-job-pending?
-    vat-job-kill! vat-window-gone! vat-run! vat-call vat-show vat-text
-    vat-condition-text vat-timer! vat-deliver! vat-handle)
+    vat vat? vat-job? vat-job-kind vat-job-window vat-of vat-threads-of
+    vat-env-kind vat-jobs-of vat-pool vat-pool-size vat-pool-size-set! vat-drop!
+    vat-drop-env! vat-send! vat-eval! vat-repl! vat-job-kill!)
   (import (chezscheme)
           (only (schevana base) at-load define-state library-layer set-hook!)
           (only (schevana core) current-window in-window-theme invalidate!
@@ -277,8 +270,6 @@
       (vat-put! v j)
       (vat-wake! v)
       j))
-
-  (define (vat-job-pending? j) (and (memq j *vat-jobs*) #t))
 
   (define (vat-job-kill! j)
     (set! *vat-jobs* (remq j *vat-jobs*))

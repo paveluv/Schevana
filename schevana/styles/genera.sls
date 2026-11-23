@@ -21,24 +21,20 @@
 
 (library (schevana styles genera)
   (export
-    genera-label-height genera-label-y genera-insets genera-regions
-    genera-draw-under genera-draw-over genera-line genera-who-line-areas
-    genera-draw-who-line genera-who-state genera-busy-size genera-busy
-    genera-mouse-doc-text genera-same genera-hover
-    genera-box genera-text-y genera-focus genera-button genera-button-size
-    genera-choice-side genera-choice-box genera-checkbox genera-checkbox-size
-    genera-toggle genera-toggle-size genera-tab genera-tabs-size genera-field
-    genera-text-box-areas genera-text-box-size genera-dropdown
-    genera-dropdown-size genera-chip genera-chip-size genera-chip-areas
-    genera-card genera-scrollbar-areas genera-scrollbar genera-slider
-    genera-progress genera-table-header genera-table-row genera-tree-row
-    genera-dim genera-surface genera-panel genera-highlight
-    genera-highlight-over genera-separator genera-tooltip genera-tooltip-size
-    genera-dialog-strip genera-dialog-size genera-dialog-areas genera-dialog
-    genera-scrim genera-calendar-cell genera-calendar-areas
-    genera-calendar-size genera-calendar genera-day genera-5x5
-    genera-lozenge-width genera-lozenge genera-avatar-size genera-avatar
-    genera-tasks-mark genera-tasks-due genera-tasks-slot)
+    genera-insets genera-regions genera-draw-under genera-draw-over
+    genera-who-line-areas genera-draw-who-line genera-busy-size genera-busy
+    genera-mouse-doc-text genera-focus genera-button genera-button-size
+    genera-checkbox genera-checkbox-size genera-toggle genera-toggle-size
+    genera-tab genera-tabs-size genera-field genera-text-box-areas
+    genera-text-box-size genera-dropdown genera-dropdown-size genera-chip
+    genera-chip-size genera-chip-areas genera-card genera-scrollbar-areas
+    genera-scrollbar genera-slider genera-progress genera-table-header
+    genera-table-row genera-tree-row genera-dim genera-surface genera-panel
+    genera-highlight genera-highlight-over genera-separator genera-tooltip
+    genera-tooltip-size genera-dialog-size genera-dialog-areas genera-dialog
+    genera-scrim genera-calendar-areas genera-calendar-size genera-calendar
+    genera-day genera-5x5 genera-avatar-size genera-avatar genera-tasks-mark
+    genera-tasks-due genera-tasks-slot)
   (import (chezscheme)
           (only (schevana base) at-load clamp define-made library-layer
                 string-join)

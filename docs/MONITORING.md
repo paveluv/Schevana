@@ -82,14 +82,19 @@ that the flags outlive the run.
 ## Inside the frame
 
 `schevana/kits/inspect.sls` reads what the core keeps about frames, the
-GPU and the platform, and returns it as plain data, which the Pipeline
-draws.
+GPU, the platform and what loads, and returns it as plain data, which the
+Pipeline draws.
 
 ```scheme
 (inspect-platform)                         ; the OS, CPU, Chez, the display
 (inspect-pacer)                            ; when frames are due
 (inspect-core0)                            ; core0's side: sizes, jobs, events
 (inspect-gpu-held)                         ; what the GPU holds
+(inspect-list-tree)                        ; the lists the last frame shows
+(inspect-recordings #f)                    ; what frames are drawn from
+(inspect-reload)                           ; what the last reload evaluated
+(inspect-auto-loads)                       ; what loads with the world
+(inspect-world-later)                      ; what still waits to load
 ```
 
 ## From outside

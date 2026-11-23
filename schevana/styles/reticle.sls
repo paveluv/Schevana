@@ -10,10 +10,7 @@
 
 (library (schevana styles reticle)
   (export
-    reticle-margin reticle-pad reticle-font reticle-insets reticle-k
-    reticle-snap reticle-px reticle-glyph reticle-regions reticle-caps
-    reticle-track reticle-label reticle-draw-label reticle-corners
-    reticle-draw-button reticle-draw-under reticle-drag-outline)
+    reticle-insets reticle-regions reticle-draw-under reticle-drag-outline)
   (import (chezscheme)
           (only (schevana base) at-load library-layer)
           (only (schevana core) common-options define-style draw-scale
