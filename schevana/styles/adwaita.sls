@@ -62,127 +62,93 @@
 
   (library-layer looks)
 
-  ;; The dark style is a palette whose window is dark.
+  ;; The theme keys of Adwaita's own, with their defaults.
   (at-load
-   (theme-default! 'adwaita-dark (theme-rule (< (adwaita-luma 'bg-1) 0.5))))
+   ;; The dark style is a palette whose window is dark.
+   (theme-default! 'adwaita-dark (theme-rule (< (adwaita-luma 'bg-1) 0.5)))
 
-  ;; The surfaces, which the Adwaita palettes give exactly
-  ;; (_defaults.scss:39-88); under another palette, its window's color is
-  ;; lightened as GNOME's dark style lightens it: a header bar by 5 % of
-  ;; white, a card by 8 %, a popover by 10 %, and a sidebar by a step
-  ;; toward the text.
-  (at-load
-   (color-default! 'adwaita-headerbar (theme-rule (mix 'bg-1 #xffffff 0.05))))
-  (at-load
-   (color-default! 'adwaita-card (theme-rule (mix 'bg-1 #xffffff 0.08))))
-  (at-load
-   (color-default! 'adwaita-popover (theme-rule (mix 'bg-1 #xffffff 0.1))))
-  (at-load
+   ;; The surfaces, which the Adwaita palettes give exactly
+   ;; (_defaults.scss:39-88); under another palette, its window's color is
+   ;; lightened as GNOME's dark style lightens it: a header bar by 5 % of
+   ;; white, a card by 8 %, a popover by 10 %, and a sidebar by a step
+   ;; toward the text.
+   (color-default! 'adwaita-headerbar (theme-rule (mix 'bg-1 #xffffff 0.05)))
+   (color-default! 'adwaita-card (theme-rule (mix 'bg-1 #xffffff 0.08)))
+   (color-default! 'adwaita-popover (theme-rule (mix 'bg-1 #xffffff 0.1)))
    (color-default! 'adwaita-dialog
                    (theme-rule (adwaita-by-style (theme 'bg-1)
-                                                 (theme 'adwaita-popover)))))
-  (at-load
-   (color-default! 'adwaita-sidebar (theme-rule (mix 'bg-1 'text 0.06))))
-  ;; A knob: white mixed 80 % into the view (_colors.scss:98).
-  (at-load
-   (color-default! 'adwaita-slider (theme-rule (mix #xffffff 'bg-0 0.2))))
-  (at-load
-   (color-default! 'adwaita-destructive (theme-rule (theme 'red))))
-  ;; The accent and the destructive red as text (_defaults.scss:25-36):
-  ;; the accent's is GNOME's link color (_colors.scss:79), and its focus
-  ;; ring's color.
-  (at-load
+                                                 (theme 'adwaita-popover))))
+   (color-default! 'adwaita-sidebar (theme-rule (mix 'bg-1 'text 0.06)))
+   ;; A knob: white mixed 80 % into the view (_colors.scss:98).
+   (color-default! 'adwaita-slider (theme-rule (mix #xffffff 'bg-0 0.2)))
+   (color-default! 'adwaita-destructive (theme-rule (theme 'red)))
+   ;; The accent and the destructive red as text (_defaults.scss:25-36):
+   ;; the accent's is GNOME's link color (_colors.scss:79), and its focus
+   ;; ring's color.
    (color-default! 'adwaita-link
-                   (theme-rule (adwaita-standalone 'accent (adwaita-dark?)))))
-  (at-load
+                   (theme-rule (adwaita-standalone 'accent (adwaita-dark?))))
    (color-default! 'adwaita-destructive-ink
                    (theme-rule (adwaita-standalone 'adwaita-destructive
-                                                   (adwaita-dark?)))))
-  ;; A toggle group's chosen toggle (_defaults.scss:113-119).
-  (at-load
+                                                   (adwaita-dark?))))
+   ;; A toggle group's chosen toggle (_defaults.scss:113-119).
    (color-default! 'adwaita-toggle
                    (theme-rule (adwaita-by-style #xffffff
-                                                 (alpha #xffffff 0.2)))))
-  ;; The shades: a header bar's line (_defaults.scss:52), a boxed list's
-  ;; line between rows (71), a sidebar's border (60), and what dims the
-  ;; window under a dialog, which is the shade at twice its alpha (87,
-  ;; widgets/_dialogs.scss:72-74).
-  (at-load
+                                                 (alpha #xffffff 0.2))))
+   ;; The shades: a header bar's line (_defaults.scss:52), a boxed list's
+   ;; line between rows (71), a sidebar's border (60), and what dims the
+   ;; window under a dialog, which is the shade at twice its alpha (87,
+   ;; widgets/_dialogs.scss:72-74).
    (color-default! 'adwaita-headerbar-shade
-                   (theme-rule (alpha #x000006 (adwaita-by-style 0.12 0.36)))))
-  (at-load
+                   (theme-rule (alpha #x000006 (adwaita-by-style 0.12 0.36))))
    (color-default! 'adwaita-card-shade
-                   (theme-rule (alpha #x000006 (adwaita-by-style 0.07 0.36)))))
-  (at-load
+                   (theme-rule (alpha #x000006 (adwaita-by-style 0.07 0.36))))
    (color-default! 'adwaita-sidebar-border
-                   (theme-rule (alpha #x000006 (adwaita-by-style 0.07 0.36)))))
-  (at-load
+                   (theme-rule (alpha #x000006 (adwaita-by-style 0.07 0.36))))
    (color-default! 'adwaita-dim
-                   (theme-rule (alpha #x000006 (adwaita-by-style 0.14 0.5)))))
-  ;; An overlay scroll bar's outline (_defaults.scss:88).
-  (at-load
+                   (theme-rule (alpha #x000006 (adwaita-by-style 0.14 0.5))))
+   ;; An overlay scroll bar's outline (_defaults.scss:88).
    (color-default! 'adwaita-scrollbar-outline
                    (theme-rule (adwaita-by-style #xffffff
-                                                 (alpha #x00000c 0.95)))))
-  ;; A tooltip's (widgets/_tooltip.scss:5), the same in both styles.
-  (at-load
-   (color-default! 'adwaita-tooltip (alpha #x000006 0.8)))
-  ;; A toast's, the same in both styles (_colors.scss:106).
-  (at-load
-   (color-default! 'adwaita-toast #x505053))
-  ;; GNOME Shell's dark style: its menus' color, text, dimmed text (the fg
-  ;; mixed half into the bg) and border (shell _colors.scss:12-13, 39,
-  ;; 52); a menu item under the pointer and pressed (widgets/
-  ;; _popovers.scss:5, _drawing.scss:381-390); a notification's card
-  ;; (_message-list.scss:94); and the dash and its tiles, lighter under the
-  ;; pointer and while chosen (_colors.scss:49, widgets/_dash.scss:57-68).
-  (at-load
-   (color-default! 'adwaita-shell-bg #x36363a))
-  (at-load
-   (color-default! 'adwaita-shell-text #xffffff))
-  (at-load
-   (color-default! 'adwaita-shell-dim #x9b9b9d))
-  (at-load
-   (color-default! 'adwaita-shell-border #x424247))
-  (at-load
-   (color-default! 'adwaita-shell-hover #x53535a))
-  (at-load
-   (color-default! 'adwaita-shell-pressed #x58585f))
-  (at-load
-   (color-default! 'adwaita-shell-card #x54545a))
-  (at-load
-   (color-default! 'adwaita-dash #x38383b))
-  (at-load
-   (color-default! 'adwaita-dash-hover #x49494d))
-  (at-load
-   (color-default! 'adwaita-dash-checked #x4c4c4f))
-  (at-load
-   (color-default! 'adwaita-dash-text #xfafafb))
-  ;; The overview behind the Shell's app grid, the system's base color
-  ;; (shell _colors.scss:20, widgets/_overview.scss:7-9); a tile on it under
-  ;; the pointer, a flat button lightened 7 % (widgets/_app-grid.scss:21-25,
-  ;; _drawing.scss:160-196, 342-371); and the search entry, the system's
-  ;; text mixed 9 % into its bg (_common.scss:337-345, _drawing.scss:85-129,
-  ;; _default-colors.scss:33, _colors.scss:46).
-  (at-load
-   (color-default! 'adwaita-overview #x222226))
-  (at-load
-   (color-default! 'adwaita-overview-hover #x333339))
-  (at-load
-   (color-default! 'adwaita-overview-entry #x404045))
+                                                 (alpha #x00000c 0.95))))
+   ;; A tooltip's (widgets/_tooltip.scss:5), the same in both styles.
+   (color-default! 'adwaita-tooltip (alpha #x000006 0.8))
+   ;; A toast's, the same in both styles (_colors.scss:106).
+   (color-default! 'adwaita-toast #x505053)
+   ;; GNOME Shell's dark style: its menus' color, text, dimmed text (the fg
+   ;; mixed half into the bg) and border (shell _colors.scss:12-13, 39,
+   ;; 52); a menu item under the pointer and pressed (widgets/
+   ;; _popovers.scss:5, _drawing.scss:381-390); a notification's card
+   ;; (_message-list.scss:94); and the dash and its tiles, lighter under the
+   ;; pointer and while chosen (_colors.scss:49, widgets/_dash.scss:57-68).
+   (color-default! 'adwaita-shell-bg #x36363a)
+   (color-default! 'adwaita-shell-text #xffffff)
+   (color-default! 'adwaita-shell-dim #x9b9b9d)
+   (color-default! 'adwaita-shell-border #x424247)
+   (color-default! 'adwaita-shell-hover #x53535a)
+   (color-default! 'adwaita-shell-pressed #x58585f)
+   (color-default! 'adwaita-shell-card #x54545a)
+   (color-default! 'adwaita-dash #x38383b)
+   (color-default! 'adwaita-dash-hover #x49494d)
+   (color-default! 'adwaita-dash-checked #x4c4c4f)
+   (color-default! 'adwaita-dash-text #xfafafb)
+   ;; The overview behind the Shell's app grid, the system's base color
+   ;; (shell _colors.scss:20, widgets/_overview.scss:7-9); a tile on it under
+   ;; the pointer, a flat button lightened 7 % (widgets/_app-grid.scss:21-25,
+   ;; _drawing.scss:160-196, 342-371); and the search entry, the system's
+   ;; text mixed 9 % into its bg (_common.scss:337-345, _drawing.scss:85-129,
+   ;; _default-colors.scss:33, _colors.scss:46).
+   (color-default! 'adwaita-overview #x222226)
+   (color-default! 'adwaita-overview-hover #x333339)
+   (color-default! 'adwaita-overview-entry #x404045)
 
-  ;; The style's own settings: a title-1 text, 181 % bold (widgets/
-  ;; _labels.scss:35-38), for a status page; the radius of a button (9:
-  ;; _common.scss:8), 12 in an alert, which a dialog's place gives; the
-  ;; header bar, flat as a toolbar view has it, or raised (widgets/
-  ;; _toolbars.scss:259-314); and which window buttons are shown.
-  (at-load
-   (theme-default! 'adwaita-title-1 (theme-font-rule 'ui 12 'bold)))
-  (at-load
-   (theme-default! 'adwaita-button-radius 9))
-  (at-load
-   (theme-default! 'adwaita-header 'flat))
-  (at-load
+   ;; The style's own settings: a title-1 text, 181 % bold (widgets/
+   ;; _labels.scss:35-38), for a status page; the radius of a button (9:
+   ;; _common.scss:8), 12 in an alert, which a dialog's place gives; the
+   ;; header bar, flat as a toolbar view has it, or raised (widgets/
+   ;; _toolbars.scss:259-314); and which window buttons are shown.
+   (theme-default! 'adwaita-title-1 (theme-font-rule 'ui 12 'bold))
+   (theme-default! 'adwaita-button-radius 9)
+   (theme-default! 'adwaita-header 'flat)
    (theme-default! 'adwaita-window-buttons 'close))
 
   ;;; ------------------------------------------------------------------
