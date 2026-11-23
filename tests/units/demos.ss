@@ -35,8 +35,9 @@
             (and (eqv? (car run) 0)
                  (string-contains-ci? (cdr run) "pixels")
                  (not (string-contains-ci? (cdr run) "crashed"))))))
- '("window-demo.sh" "rings-demo" "game-demo")
- '("a host app made of widgets, a plain script" "drawing alone" "a game"))
+ '("window-demo.sh" "rings-demo" "game-demo" "prism-relay")
+ '("a host app made of widgets, a plain script" "drawing alone" "a game"
+   "a game in a host's window, which solves its first chamber"))
 
 ;; The checklist in a style of Schevana's own that is also a desktop's
 ;; look (Cons draws the desktop's bars too), chosen by host-main's --style:

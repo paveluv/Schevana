@@ -1,0 +1,15 @@
+#!/usr/bin/env scheme-script
+;;; prism-relay — starts Prism Relay, a game built on the core, as an app of
+;;; the host's desktop: its window is the host's, with no Schevana desktop
+;;; around it ((games prism-relay)). The same game opens on Schevana's
+;;; desktop too: ./desktop games, or (import (games prism-relay)) and
+;;; (prism-relay) at a REPL.
+;;;
+;;;   ./prism-relay [--style NAME] [--headless]
+
+(import (chezscheme))
+
+(let ([root (path-parent (car (command-line)))])
+  (load (string-append (if (string=? root "") "." root) "/src/launch.ss"))
+  ((eval 'schevana-launch) root '(games prism-relay) 'prism-relay-main
+   (command-line-arguments)))

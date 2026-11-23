@@ -86,11 +86,12 @@ brew install spirv-tools
 | `--install-desktop` | installs a `.desktop` file, for the icon (below) |
 | `--uninstall-desktop` | removes it |
 
-Three demos are programs of their own on the core, with no desktop, each
+Four demos are programs of their own on the core, with no desktop, each
 with a launcher beside `./desktop` (below); with `--headless`, each draws
 with no window and reports what it read back. On the desktop,
-`./desktop demo` adds Rings as an app, and a REPL loads the game by its
-name: `(import (games fireflies))`, then `(fireflies)`. The checklist is a
+`./desktop demo` adds Rings as an app, `./desktop games` adds the games,
+and a REPL loads a game by its name: `(import (games fireflies))`, then
+`(fireflies)`. The checklist is a
 plain script with no library of its own: `window-demo.ss` imports what it
 needs and opens its window, and `window-demo.sh` runs it with the tree as
 Chez's library folder, while Chez compiles each library into the
@@ -99,6 +100,7 @@ launchers' cache as it is imported.
 | Launcher | What it runs |
 | --- | --- |
 | `./game-demo` | Fireflies, a game that has the whole screen to itself |
+| `./prism-relay` | Prism Relay, a game of mirrors and light on the host's desktop, whose chambers are made from their numbers, each with more to search than the one before |
 | `./window-demo.sh` | a checklist made with the widget kit, an app on the host's desktop: it takes the host's look (Adwaita on GNOME), or any of Schevana's styles with `--style NAME` |
 | `./rings-demo` | drawing alone, with no windows: six paints of the shader language at once (ripples, plasma, a Julia set, metaballs, cells and fire) |
 

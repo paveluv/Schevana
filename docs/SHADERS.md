@@ -435,4 +435,5 @@ comes back to the CPU.
 | `schevana/kits/inspect.sls` | `inspect-shader-…`, `inspect-computes` |
 | `demo/boids3d/shaders.sls` | the shaders of Boids 3D, an app that is all shaders: three compute shaders and a paint |
 | `demo/rings.sls` | six paints: waves, sines, a Julia set's bounded loop, metaballs, Voronoi cells, and noise of hashed whole numbers (fire); helpers they share (`define-shader-helpers`) |
+| `games/prism-relay/glass.sls` | the paint of Prism Relay, a game: a board drawn from a buffer of a word a cell (its tile, and the light on each side), with pulses that keep their phase along the light |
 | `tests/units/shader.ss` | the device and the twin held to the same answers |

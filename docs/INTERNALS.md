@@ -67,9 +67,10 @@ schevana/      the libraries below the world, each declaring its layer:
   apps/        the desktop's own apps: the REPL, Settings, Tasks, Clock, ...
 demo/          the demos, one library each: Boids, Life, Springies, Rings,
                ...; some have launchers at the root
-games/         the games, one library each: Fireflies; a REPL loads one
-               by its name, (import (games fireflies)), and each has a
-               launcher at the root
+games/         the games, one library each: Fireflies, Prism Relay (its
+               parts in games/prism-relay/); a REPL loads one by its
+               name, (import (games fireflies)), and each has a launcher
+               at the root
 ```
 
 ## The boot chain
