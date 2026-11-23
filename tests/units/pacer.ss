@@ -131,10 +131,13 @@
 ;;; (phase . ns), where its refreshes fall; (reports . #f), a screen that
 ;;; says nothing, core0 sending each frame as it's published; (mailbox .
 ;;; #t), one that holds nothing, the newest frame done in time showing and
-;;; the one it replaced dropped; (full . #t), a window with no room, each
-;;; frame given back unsent; (away from . to), ms with no refresh;
-;;; (descent . #t), the descent a run's start owes taken, where the loop's
-;;; checks have none due.
+;;; the one it replaced dropped; (deep . #t), two images queued, as GNOME's
+;;; with three in flight, the acquire returning once the frame two before
+;;; has shown; (full . #t), a window with no room, each frame given back
+;;; unsent; (away from . to), ms with no refresh; (hung . #t), that time a
+;;; hang, the word of the refresh before it in as it ends; (descent . #t),
+;;; the descent a run's start owes taken, where the loop's checks have none
+;;; due.
 (define pacer-test-ways '())
 (define (pacer-test-way key default)
   (let ([w (assq key pacer-test-ways)]) (if w (cdr w) default)))
@@ -170,6 +173,17 @@
         (pacer-test-refresh-from (+ r 1))
         r)))
 
+;; When the screen's word of a refresh at x is in: then; but the one before
+;; a time away that is a hang comes as it ends, as GNOME's, its loop held.
+(define (pacer-test-word-at x)
+  (let ([away (pacer-test-way 'away #f)] [ms 1000000])
+    (if (and away (pacer-test-way 'hung #f)
+             (<= (- (* (car away) ms) (pacer-test-period))
+                 (- x pacer-test-base)
+                 (* (car away) ms)))
+        (+ pacer-test-base (* (cdr away) ms))
+        x)))
+
 ;; A frame published (rec-present!): what core0 and the screen will do with
 ;; it, each word of its report in at its time. => its number
 (define (pacer-test-publish!)
@@ -180,9 +194,13 @@
     (set! pacer-test-n n)
     (if (pacer-test-way 'full #f)
         (set! pacer-test-backs (cons n pacer-test-backs))
-        (let* ([returned (if (or mailbox? (not reports?))
-                             taken
-                             (max taken pacer-test-last))]
+        (let* ([returned (cond [(or mailbox? (not reports?)) taken]
+                               [(not (pacer-test-way 'deep #f))
+                                (max taken pacer-test-last)]
+                               [(and (pair? pacer-test-shows)
+                                     (pair? (cdr pacer-test-shows)))
+                                (max taken (cdadr pacer-test-shows))]
+                               [else taken])]
                [done (+ returned 1000000)]
                [at (pacer-test-refresh-from (+ done 4000000))]
                [shown (and reports?
@@ -203,9 +221,10 @@
                        (= (cdar pacer-test-shows) shown))
               (pacer-test-report! (caar pacer-test-shows) 1 2 shown)
               (set! pacer-test-shows (cdr pacer-test-shows)))
-            (pacer-test-report! n 1 1 shown)
-            (pacer-test-report! n 3 shown shown)
-            (pacer-test-report! n 4 (pacer-test-period) shown)
+            (pacer-test-report! n 1 1 (pacer-test-word-at shown))
+            (pacer-test-report! n 3 shown (pacer-test-word-at shown))
+            (pacer-test-report! n 4 (pacer-test-period)
+                                (pacer-test-word-at shown))
             (set! pacer-test-last shown)
             (set! pacer-test-shows (cons (cons n shown) pacer-test-shows)))))
     n))
@@ -258,10 +277,17 @@
         (set! *pacer-probed* pacer-test-t))
       (pacer-test-reported
        (lambda ()
+         ;; core0 says how it presents, as of a screen's
          (fluid-let ([rec-present! pacer-test-publish!]
                      [screen-events pacer-test-events]
                      [gpu-frame-waiting?
                       (lambda () (> pacer-test-taken pacer-test-t))]
+                     [*gpu-facts*
+                      (cons (cons 'present-mode
+                                  (if (pacer-test-way 'mailbox #f)
+                                      'mailbox
+                                      'vsync))
+                            *gpu-facts*)]
                      [*core0-forked* #t]
                      [*timers* '()])
            (thunk))))))
@@ -558,6 +584,25 @@
                   timers)"
                  (cadddr r) (car (cddddr r)))
          (and (<= (cadddr r) 3) (> (car (cddddr r)) 20))))
+
+;; as GNOME stalls at 120 Hz now and then: frames queued, then six
+;; refreshes taken by nothing, its word of the one before them held till
+;; their end
+(let* ([r (pacer-test-lock 2000 1000 1050 0 '(deep . #t) '(hung . #t)
+                           '(slow . 1/2))]
+       [ts (caddr r)] [shows (list-ref r 5)]
+       [n (min (length ts) (length shows))]
+       [frames (filter (lambda (f)
+                         (< (* 1000 1000000) (cdr f) (* 1300 1000000)))
+                       (map cons (list-head ts n) (list-head shows n)))]
+       [late (filter (lambda (f) (> (- (cdr f) (car f)) 500000)) frames)])
+  (check (format "by VSync, two images queued, when the screen takes nothing \
+                  for six refreshes and holds its word of the one before, \
+                  only two frames show late, those it queued (~a ms): with \
+                  two frames out it said nothing of, the turn after them \
+                  waits for its word, and every frame after shows at its t"
+                 (map (lambda (f) (/ (- (cdr f) (car f)) 1e6)) late))
+         (and (= (length late) 2) (> (length frames) 10))))
 
 (let ([r (pacer-test-lock 3000 0 0 100000)])
   (check (format "a screen a little faster than it says still gets a frame \
@@ -1133,6 +1178,54 @@
               (and (= gate (+ T (* 8 p)))
                    (= slot (+ T (* 9 p)))
                    (eq? begin #t)))))))
+
+(check "by VSync, a frame out that the screen has said nothing of a \
+        refresh and a half after its aim showed at neither refresh, nor \
+        will those behind it: the next turn begins two refreshes later; \
+        not before then (one that missed a refresh shows at the next), nor \
+        by Mailbox, nor once its report is in though core0 holds it back; \
+        eight refreshes past its aim, it begins at once"
+       (let ([r pacer-test-r] [T pacer-test-T] [ms 1000000])
+         ;; => when the next turn begins, or #t: now; with a stamp, the
+         ;; first out's report in, held back
+         (define (turn now mode . stamp)
+           (pacer-test-rows
+            (lambda ()
+              (fluid-let ([*gpu-facts* (cons (cons 'present-mode mode)
+                                             *gpu-facts*)])
+                (do ([i 7 (- i 1)]) ((< i 1))
+                  (pacer-test-flow-row! (- T (* i r)) (* 3 ms) r))
+                ;; out: aimed at T, begun 4 ms before the refresh before
+                ;; it, done 7 ms before its aim; the one behind it alike;
+                ;; and the newest, begun 6 ms after T, done 8 ms before
+                ;; its own
+                (let ([n (pacer-test-row! (- T r (* 4 ms)) (- T r (* 4 ms))
+                                          T (- T (* 7 ms)) 'out r)])
+                  (when (pair? stamp)
+                    (pacer-test-report! n 10 (car stamp) 0)))
+                (pacer-test-row! (- T (* 4 ms)) (- T (* 4 ms))
+                                 (+ T r) (+ T (* 3 ms)) 'out r)
+                (pacer-test-row! (+ T (* 6 ms)) (+ T (* 6 ms)) (+ T r r)
+                                 (+ T (* 12 ms)) 'out r)
+                (set! *pacer-wanted?* #t)
+                (pacer-decide! now)))))
+         (let ([before (turn (+ T (* 14 ms)) 'vsync)]
+               [after (turn (+ T (* 16 ms)) 'vsync)]
+               [mailbox (turn (+ T (* 16 ms)) 'mailbox)]
+               [held (turn (+ T (* 16 ms)) 'vsync (+ T r))]
+               [stuck (turn (+ T (* 12 r)) 'vsync)])
+           (printf "  begins ~a, ~a, ~a, ~a ms after T; ~a\n"
+                   (and (number? before) (/ (- before T) 1e6))
+                   (and (number? after) (/ (- after T) 1e6))
+                   (and (number? mailbox) (/ (- mailbox T) 1e6))
+                   (and (number? held) (/ (- held T) 1e6))
+                   stuck)
+           (and (number? before) (number? after)
+                (> before (+ T (* 16 ms)))
+                (= (- after before) (* 2 r))
+                (eqv? mailbox before)
+                (eqv? held before)
+                (eq? stuck #t)))))
 
 (check "a report stamped two seconds ahead of the clock gives no hold and is \
         not the grid: the wait it leaves has an end within nine refreshes"

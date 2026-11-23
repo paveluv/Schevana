@@ -9,13 +9,14 @@
 ;;; refresh reported, or our own a 512th fast; the work is the largest of
 ;;; the last eight rows'. A turn waits while the newest frame's GPU work is
 ;;; not seen done (eight refreshes at most), aims at the first refresh the
-;;; frames out leave it, and begins a hold, a margin, the work and a slack
-;;; before it. The hold, how long before a refresh GPU work must be seen
-;;; done, is the one number learned: from the first frame shown, lowered by
-;;; one shown in time with less lead, raised by a pair of clean misses, and
-;;; tried lower once in a few minutes, one probe frame at a time. The
-;;; margin is the screen's: its cutoff moves, and a frame done just over
-;;; the hold still misses now and then.
+;;; frames out leave it (by VSync, one the screen said nothing of a refresh
+;;; past its aim takes none gone half a refresh), and begins a hold, a
+;;; margin, the work and a slack before it. The hold, how long before a
+;;; refresh GPU work must be seen done, is the one number learned: from the
+;;; first frame shown, lowered by one shown in time with less lead, raised
+;;; by a pair of clean misses, and tried lower once in a few minutes, one
+;;; probe frame at a time. The margin is the screen's: its cutoff moves, and
+;;; a frame done just over the hold still misses now and then.
 
 ;; One descent begun a period, ns: the few minutes a repeated refresh may be
 ;; risked in.
@@ -110,8 +111,9 @@
                 (fx+ k (fx* frame-ring-words (fxmodulo i frame-ring-rows)))))
 
 ;; Word k of row i's report, core0's: 1 its kind, 3 the refresh that showed
-;; it, 4 that refresh's length, 6 done, 7 taken, 8 and 9 the screen's hold;
-;; 0 till core0 has written it.
+;; it, 4 that refresh's length, 6 done, 7 taken, 8 and 9 the screen's hold,
+;; 10 the screen's stamp, in as the report comes, though core0 holds back
+;; one that says a refresh was missed; 0 till core0 has written it.
 (define (pacer-seen i k) (or (core0-frame-report (pacer-own i 6) k) 0))
 
 ;; 0 out, 1 shown, 2 dropped, 3 back.
@@ -269,20 +271,34 @@
 ;; The grid's refresh at or after x: v a refresh, s its step.
 (define (pacer-ceiling x v s) (fx- v (fx* s (fxdiv (fx- v x) s))))
 
+;; The screen takes the frames sent in order, one a refresh: VSync's.
+(define (pacer-fifo?)
+  (let ([mode (assq 'present-mode *gpu-facts*)])
+    (and mode (eq? (cdr mode) 'vsync))))
+
 ;; The chain: the refresh the newest frame out takes, from row i on, S the
-;; newest reported.
-(define (pacer-chain i n S v s need)
+;; newest reported. No frame out the screen has said nothing of a refresh
+;; past its aim takes a refresh before gone (ns): while it takes them in
+;; order, one it was silent on didn't show there, and those behind it wait.
+;; A compositor that stalls holds the next turn so, its frame drawn for the
+;; refresh it can make; for eight refreshes past a frame's aim at most, as
+;; the gate waits. One that missed only its own refresh shows at the next,
+;; its stamp in by then: the frames behind it stay a refresh deep, and the
+;; next turn's frame has that refresh to spare while the compositor's
+;; cutoff moves.
+(define (pacer-chain i n S v s need gone)
   (if (fx< i n)
       (pacer-chain
        (fx+ i 1) n
        (if (fx= (pacer-kind i) 0)
-           (fxmax (fx+ S s)
-                  (let ([done (pacer-seen i 6)])
-                    (if (fx> done 0)
-                        (pacer-ceiling (fx+ done need) v s)
-                        (pacer-own i 13))))
+           (let ([aim (pacer-own i 13)] [done (pacer-seen i 6)])
+             (fxmax (fx+ S s)
+                    (if (fx> done 0) (pacer-ceiling (fx+ done need) v s) aim)
+                    (if (and (fx= (pacer-seen i 10) 0) (fx> gone (fx+ aim s)))
+                        (pacer-ceiling (fxmin gone (fx+ aim (fx* 8 s))) v s)
+                        0)))
            S)
-       v s need)
+       v s need gone)
       S))
 
 ;; Row i is out, its GPU work not seen done.
@@ -355,8 +371,15 @@
                  [need (fx- h slack)]
                  [F (fx+ s
                          (cond
+                           ;; half a refresh on with no word, a refresh
+                           ;; is gone, as a frame shown is on time within
+                           ;; it
                            [(fx>= reported 0)
-                            (fxmax (pacer-chain (fx+ reported 1) n v v s need)
+                            (fxmax (pacer-chain
+                                    (fx+ reported 1) n v v s need
+                                    (if (pacer-fifo?)
+                                        (fx- now (fxquotient s 2))
+                                        0))
                                    (pacer-ceiling
                                     (fx- *pacer-t* (fxquotient s 2)) v s))]
                            ;; with no reports, an acquire the screen held

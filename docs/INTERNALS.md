@@ -192,10 +192,23 @@ refreshes at most: core0 wakes the world when it sees it done. Each frame
 on its way takes the first refresh a hold less the slack after its GPU
 work, one after the frame before it; the next tick aims at the refresh
 after that, and begins the hold, the margin, the work and the slack before
-it. A window's `'frame` is told `t`, the refresh it aims at: when its frame
-will show. Past a refresh of work the next tick begins as soon as the GPU
-work is done, aimed at the refresh it can still make; none is skipped.
-Processes run till the next tick's planned begin, at least 1 ms a step.
+it. By VSync, the screen takes frames in order, so a frame on its way that
+it has said nothing of a refresh and a half after its aim (no report, not
+even one core0 holds back for saying a refresh was missed) showed at
+neither refresh, and the frames behind it wait too: while a compositor
+takes nothing, the next tick is put off a refresh at a time, eight past
+the frame's aim at most, and its frame is drawn for the refresh it can
+make once the compositor takes frames again, not for one long gone (GNOME
+stalls 40 to 60 ms now and then, and holds back its word of the refresh
+before: of the frames queued then, only those already sent show late). A
+frame that missed one refresh shows at the next, its report in by then:
+the frames behind it stay a refresh deep for a few ticks, a refresh to
+spare while the compositor's cutoff moves, where drained at once the next
+frame missed again. A window's `'frame` is told `t`, the refresh it aims
+at: when its frame will show. Past a refresh of work the next tick begins
+as soon as the GPU work is done, aimed at the refresh it can still make;
+none is skipped. Processes run till the next tick's planned begin, at
+least 1 ms a step.
 
 The hold, how long before a refresh a frame's GPU work must be seen done,
 is the one thing learned, from the screen's reports. The first frame shown
