@@ -1773,6 +1773,46 @@
                           not in yet, the same (~a; ~a)" reported late)
                  (and (= reported (max 1001 soonest))
                       (= late reported)))))
+      ;; the frame before shown at 999, and this one meant for 1000 (its
+      ;; tick aimed at the latch in 999): on its way when the River is
+      ;; drawn, then shown 12 refreshes late, as when the compositor takes
+      ;; nothing for a while and the frames it queued move the River's now
+      ;; on several refreshes at once
+      (let* ([m (inspect-frame-ref (- i 1) 6)]
+             [at0 (present-at m)]
+             [saved (map (lambda (k) (fxvector-ref r (+ at0 k))) (iota 10))]
+             [aimed (inspect-frame-ref i 13)]
+             [river (pipeline-view-river v)]
+             [word (lambda (k) (list-ref (test-stream-row river k) parts-n))])
+        (fxvector-set! r at0 m)
+        (fxvector-set! r (+ at0 1) 1)
+        (fxvector-set! r (+ at0 3) (- shown p))
+        (fxvector-set! r (+ at0 4) p)
+        (fxvector-set! r (+ at0 5) 999)
+        (fxvector-set! r (+ at 1) 0)
+        (frame-ring-set! n 13 (inspect-refresh-time g 999))
+        (ui-stream-restart! river)
+        (pipeline-river-send! v (inspect-refresh-grid) 1003 1002 990)
+        (let ([way (word 1000)])
+          (fxvector-set! r (+ at 1) 1)
+          (fxvector-set! r (+ at 3) (+ shown (* 12 p)))
+          (fxvector-set! r (+ at 5) 1012)
+          (pipeline-river-send! v (inspect-refresh-grid) 1013 1012 990)
+          (let ([words (map word '(1000 1004 1011 1012))])
+            (fxvector-set! r (+ at 3) shown)
+            (fxvector-set! r (+ at 5) 1000)
+            (frame-ring-set! n 13 aimed)
+            (for-each (lambda (k v) (fxvector-set! r (+ at0 k) v))
+                      (iota 10) saved)
+            (ui-stream-restart! river)
+            (ui-stream-restart! (pipeline-view-ticks v))
+            (pipeline-view-river-open-set! v 0)
+            (check (format "a refresh the River drew with its frame on its \
+                            way is drawn again when the screen's word comes, \
+                            however far the River's now moved meanwhile: the \
+                            frame before shown again there, red (~a; ~a)"
+                           way words)
+                   (and (= way 0) (equal? words '(2 2 2 1)))))))
       ;; this frame still on its way, its latch a refresh before it shows,
       ;; 10 ms in
       (fluid-let ([*pacer-latch-phase* 10000000])
