@@ -6,8 +6,8 @@
 
 (library (schevana ffi)
   (export
-    load-first-library define-foreign define-foreign/collect-safe
-    c-clock-gettime c-close c-string->string)
+    load-first-library ffi-load-library define-foreign
+    define-foreign/collect-safe c-clock-gettime c-close c-string->string)
   (import (chezscheme) (only (schevana base) define-made library-layer
                              platform-mac? string-contains-ci? string-split))
 
@@ -45,13 +45,37 @@
       (cond
         [(null? ns)
          (errorf 'load-first-library "could not load any of ~s" names)]
-        [(guard (c [#t #f]) (load-shared-object (car ns)) #t) (car ns)]
+        [(ffi-load-library (car ns)) (car ns)]
         [else (loop (cdr ns))])))
 
   ;; The C library's procedures are the process's own: they are found once
   ;; the process is loaded as a shared object, which every binding made
   ;; here waits for.
   (define ffi-process (load-shared-object #f))
+
+  ;; A Mac's dlopen, and its flags there: RTLD_NOW with RTLD_GLOBAL, so
+  ;; that a library's names are found through the process.
+  (define-made ffi-mac-dlopen
+    (and (platform-mac?)
+         (begin
+           ffi-process   ; before any binding is made
+           (foreign-procedure "dlopen" (string int) uptr))))
+  (define ffi-mac-dlopen-flags #xA)
+
+  ;; Loads the shared library name, so that its procedures can be bound.
+  ;; Returns whether it loaded. On a Mac it calls dlopen itself, and the
+  ;; bindings find the library's names through the process. Chez's
+  ;; load-shared-object keeps each library's handle in a list that its
+  ;; collector reads as objects, which is safe only while a handle looks
+  ;; like a fixnum or an immediate (the process's own on a Mac, -2, looks
+  ;; like an immediate), and macOS's handle for a library of its shared
+  ;; cache need not: libobjc's ends in binary 100, as no object's pointer
+  ;; does. Once the heap has grown over the address that such a handle
+  ;; names, a full collection ends the process ("illegal type").
+  (define (ffi-load-library name)
+    (if (platform-mac?)
+        (not (eqv? 0 (ffi-mac-dlopen name ffi-mac-dlopen-flags)))
+        (guard (c [#t #f]) (load-shared-object name) #t)))
 
   ;; Like foreign-procedure, except that `double` arguments accept any real
   ;; number, and `bool` is C's one-byte bool (SDL3's), passed and returned

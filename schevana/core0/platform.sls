@@ -15,7 +15,7 @@
   (import (chezscheme)
           (only (schevana base) define-made define-state library-layer
                 platform-mac? string-prefix?)
-          (only (schevana ffi) c-clock-gettime c-close)
+          (only (schevana ffi) c-clock-gettime c-close ffi-load-library)
           (only (schevana sdl) sdl-get-current-video-driver
                 sdl-get-num-logical-cpu-cores sdl-get-number-property
                 sdl-get-pointer-property sdl-get-string-property sdl-get-version
@@ -219,7 +219,7 @@
   ;;; off, so that no engine's timer leaves through a C frame.
 
   (define-made wayland-loaded?
-    (guard (c [#t #f]) (load-shared-object "libwayland-client.so.0") #t))
+    (ffi-load-library "libwayland-client.so.0"))
 
   (define-syntax define-wayland
     (syntax-rules ()
@@ -603,10 +603,7 @@
   ;;; core1 asks for core0's class. Elsewhere this does nothing.
 
   (define-made mac-system-loaded?
-    (and (platform-mac?)
-         (guard (c [#t #f])
-           (load-shared-object "/usr/lib/libSystem.B.dylib")
-           #t)))
+    (and (platform-mac?) (ffi-load-library "/usr/lib/libSystem.B.dylib")))
 
   ;; QOS_CLASS_USER_INTERACTIVE
   (define mac-class-interactive #x21)
@@ -634,10 +631,7 @@
   ;;; the layer's pool, which holds three.
 
   (define-made mac-objc-loaded?
-    (and (platform-mac?)
-         (guard (c [#t #f])
-           (load-shared-object "/usr/lib/libobjc.A.dylib")
-           #t)))
+    (and (platform-mac?) (ffi-load-library "/usr/lib/libobjc.A.dylib")))
 
   (define-syntax define-objc
     (syntax-rules ()

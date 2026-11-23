@@ -295,3 +295,25 @@
          (if (platform-mac?)
              (equal? (unbox out) '(#x15 #x21))
              (equal? (unbox out) '(#f #f)))))
+
+;; Returns the handles of the libraries that Chez's load-shared-object
+;; loaded, as its collector sees them: the cars of a list that Chez keeps
+;; and traces. A handle is no object, so the list is read as memory: in
+;; 64-bit Chez a pair's pointer ends in binary 001, with its car 7 bytes
+;; past it and its cdr 15. Nothing is collected meanwhile, so no pair
+;; moves.
+(define (platform-test-kept-handles)
+  (with-interrupts-disabled
+   (let loop ([p ((foreign-procedure "(cs)foreign_dynamic_table" () uptr))]
+              [acc '()])
+     (if (= 1 (bitwise-and p 7))
+         (loop (foreign-ref 'uptr p 15) (cons (foreign-ref 'uptr p 7) acc))
+         acc))))
+
+(check "Chez's collector takes no loaded library's handle for a pointer: \
+        each handle Chez keeps, the process's own at least, ends as a \
+        fixnum does or as an immediate does"
+       (let ([handles (platform-test-kept-handles)])
+         (and (pair? handles)
+              (for-all (lambda (h) (memv (bitwise-and h 7) '(0 6)))
+                       handles))))
