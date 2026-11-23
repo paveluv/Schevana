@@ -22,6 +22,7 @@
                 gpu-buffer-gone?-set! gpu-buffer-id gpu-buffer-size
                 gpu-frame-computes-set! gpu-frame-in-flight-set!
                 gpu-frame-jobs-set! gpu-frame-make gpu-frame-mode-set!
+                gpu-frame-next gpu-frame-next-set!
                 gpu-frame-pieces-set! gpu-frame-table-n-set!
                 gpu-frame-table-set! gpu-frame-waiting? gpu-image-gone?-set!
                 gpu-image-id gpu-list-id gpu-usage-sampler gpu-usage-target
@@ -302,21 +303,21 @@
 
   ;;; ---------------------------------------------------------------- frames
 
-  ;; The frames core0 gave back, to fill again.
-  (define-state *gpu-frames-free* '())
+  ;; The frames core0 gave back, to fill again, linked by their own link
+  ;; (#f for none).
+  (define-state *gpu-frames-free* #f)
 
   (define (gpu-frame-free! f)
-    (set! *gpu-frames-free* (cons f *gpu-frames-free*)))
+    (gpu-frame-next-set! f *gpu-frames-free*)
+    (set! *gpu-frames-free* f))
 
   ;; Core1's side of publishing: fills a frame, and hands on with it what
   ;; core1 asked of the GPU since the last time. The recorder gives it the
   ;; writes (rec-lend!). Returns the frame.
   (define (gpu-publish table table-n pieces mode in-flight)
-    (let ([f (if (pair? *gpu-frames-free*)
-                 (let ([f (car *gpu-frames-free*)])
-                   (set! *gpu-frames-free* (cdr *gpu-frames-free*))
-                   f)
-                 (gpu-frame-make))])
+    (let ([f (let ([f *gpu-frames-free*])
+               (cond [f (set! *gpu-frames-free* (gpu-frame-next f)) f]
+                     [else (gpu-frame-make)]))])
       (let-values ([(jobs computes) (gpu-take-asks!)])
         (gpu-frame-jobs-set! f jobs)
         (gpu-frame-computes-set! f computes))

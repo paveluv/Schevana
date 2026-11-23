@@ -9,12 +9,14 @@
   (import (chezscheme)
           (only (schevana base) define-state library-layer)
           (only (schevana tree) *schevana-root*)
-          (only (schevana core0 mail) core0-clock-ns core0-post!)
+          (only (schevana core0 mail) *core0-world-waiting?* core0-clock-ns
+                core0-post!)
           (only (schevana core0 trace) *core0-trace-dir* *core0-trace-rings*
                 *core0-trace-thread* core0-trace-rows)
           (only (schevana core0 present) *present-ring* core0-frame-report
                 present-rows present-words)
-          (only (schevana core0 platform) *core0-platform*))
+          (only (schevana core0 platform) *core0-platform* core0-look-ns)
+          (only (schevana core0 gpu) *gpu-present-mode*))
 
   (library-layer core0)
 
@@ -22,7 +24,8 @@
   (define core0-trace-names
     '#(#f step take acquire acquired submit back sleep woke pump shown
        dropped gpu-done slow-pump event #f #f #f #f #f
-       wait waited tick draw publish collect collected events gc gced))
+       wait waited tick draw publish collect collected events gc gced
+       mode))
 
   ;; Turns the trace on from now on, if the checkout has a .work folder. It
   ;; is called on core0's thread, as the window opens.
@@ -58,12 +61,14 @@
 
   ;; Called on each of core0's steps when core1 runs on a thread of its own.
   ;; If core1's newest step is older than core0-trace-stall-ns, it writes the
-  ;; trace, saying which step that was.
+  ;; trace, saying which step that was. A core1 in its wait, which may last
+  ;; as long as it likes, is not stalled.
   (define (core0-trace-watch!)
     (when *core0-trace-dir*
       (let ([v (vector-ref *core0-trace-rings* 2)]
             [n (unbox (vector-ref *core0-trace-rings* 3))])
-        (unless (or (fx= n 0) (fx= n *core0-trace-stalled*))
+        (unless (or (fx= n 0) (fx= n *core0-trace-stalled*)
+                    *core0-world-waiting?*)
           (let ([at (fx* 4 (fxmodulo (fx- n 1) core0-trace-rows))])
             (memory-order-acquire)
             (when (eqv? (fxvector-ref v at) (fx- n 1))
@@ -104,6 +109,10 @@
                (fprintf p "# Schevana's trace, ~a~%# ~s~%" (date-and-time d)
                         *core0-platform*)
                (when why (fprintf p "# written as ~a~%" why))
+               ;; so that a step's number that is a time can be placed
+               (fprintf p "# presents by ~a, looks every ~,3f ms; the first \
+                           step at ~a ns on the clock~%"
+                        *gpu-present-mode* (/ core0-look-ns 1e6) t0)
                (fprintf p "# steps: ms since the first, thread, step, number~%")
                (for-each
                 (lambda (r)

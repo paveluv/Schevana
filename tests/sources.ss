@@ -268,7 +268,7 @@
 ;; left out: a library's exports and imports (file-forms), whose size
 ;; follows from what the library gives, and a change to either is
 ;; reviewed anyway.
-(define src-budget 39857)
+(define src-budget 40007)
 
 ;; The number of tokens in a datum as read; a list's end counts as none.
 (define (tokens x)
@@ -1340,6 +1340,8 @@
     (core0-take! memory-order-acquire)
     (gpu-publish! memory-order-release)
     (gpu-present-published! memory-order-acquire)
+    (gpu-give-back! memory-order-release)
+    (gpu-frames-back! memory-order-acquire)
     (gpu-send-writes! memory-order-release)
     (gpu-present! memory-order-release)
     (core0-frame-report memory-order-acquire)

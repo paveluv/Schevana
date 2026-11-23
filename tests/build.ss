@@ -59,7 +59,8 @@
     ((schevana core gpu) gpu-frame-free!)
     ((schevana core loop) collector-tick! collector-settle!)
     ((schevana core pacer)
-     pacer-period pacer-start pacer-procs-ms render-frames-back!)
+     pacer-period pacer-start pacer-procs-ms render-frames-back!
+     pacer-latch! pacer-frame-back! frame-ring-set!)
     ((schevana core platform) platform-process-bytes now-ns now-ms)
     ((schevana core processes) request-frame! notify report-error!)
     ((schevana core screen) screen-events)

@@ -22,7 +22,8 @@
           (only (schevana base) at-load define-hook define-state library-layer)
           (only (schevana core0) *core0-mode* *gpu-facts* core0-forked?
                 core0-frame-ns core0-frame-report core0-hidden? core0-trace!
-                gpu-frame-number gpu-frame-shown? gpu-frame-waiting?
+                gpu-frame-next gpu-frame-number gpu-frame-shown?
+                gpu-frame-waiting?
                 gpu-frames-back! gpu-take-answers!)
           (only (schevana recorder) rec-last-sizes)
           (only (schevana core theme-table) *pacer-trial* pacer-knob
@@ -713,22 +714,24 @@
                 (safely 'readback (lambda () ((car answer) (cdr answer)))))
               (gpu-take-answers!)))
 
-  ;; Takes the frames core0 gave back: each is told to the pacer and marked
-  ;; in its row as having reached the screen or not; it is counted if it
-  ;; did, and otherwise a frame is asked for again. Then each thing core0
-  ;; read back is handed to its then.
+  ;; Takes the frames core0 gave back, oldest first, from the chain they
+  ;; come on, newest first: each is told to the pacer and marked in its row
+  ;; as having reached the screen or not; it is counted if it did, and
+  ;; otherwise a frame is asked for again. Then each thing core0 read back
+  ;; is handed to its then.
   (define (render-frames-back!)
-    (for-each (lambda (f)
-                (let ([shown? (gpu-frame-shown? f)])
-                  (set! *frame-back* (gpu-frame-number f))
-                  (pacer-frame-back! shown?)
-                  (pacer-latch! (gpu-frame-number f))
-                  (frame-ring-set! (gpu-frame-number f) 5 (if shown? 1 2))
-                  (if shown?
-                      (set! *frames-drawn* (+ *frames-drawn* 1))
-                      (request-frame!))
-                  (gpu-frame-free! f)))
-              (gpu-frames-back!))
+    (let back ([f (gpu-frames-back!)])
+      (when f
+        (back (gpu-frame-next f))
+        (let ([shown? (gpu-frame-shown? f)])
+          (set! *frame-back* (gpu-frame-number f))
+          (pacer-frame-back! shown?)
+          (pacer-latch! (gpu-frame-number f))
+          (frame-ring-set! (gpu-frame-number f) 5 (if shown? 1 2))
+          (if shown?
+              (set! *frames-drawn* (+ *frames-drawn* 1))
+              (request-frame!))
+          (gpu-frame-free! f))))
     (render-answers!))
 
   ;; Hands then, on core1 and with nothing waiting, the screen as it would

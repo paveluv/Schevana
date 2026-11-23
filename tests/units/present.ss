@@ -487,6 +487,25 @@
               (present-test-awaiting? (+ sent 2000000000) sent #f 1 #t)
               (present-test-awaiting? sent sent #t 1 #t))))
 
+;; Returns how much later frame 3002001's row says its acquire returned,
+;; when it was sent with one that returned at 5 ms, after a submit that
+;; began took ns before.
+(define (present-test-submit took)
+  (let ([n 3002001])
+    (fluid-let ([*present-acquired* 5000000] [*present-newest* 0])
+      (present-sent! n)
+      (fluid-let ([*present-submitting* (- (core0-clock-ns) took)])
+        (present-submitted! n core0-look-ns))
+      (- (core0-frame-report n 9) 5000000))))
+
+(check "a submit that held core0 longer than a look is the screen's, as an \
+        acquire's hold is: the row's acquire returns that much later; a \
+        shorter one is the submit's own work"
+       (let ([long (present-test-submit (* 4 core0-look-ns))]
+             [short (present-test-submit (quotient core0-look-ns 2))])
+         (and (<= (* 4 core0-look-ns) long (+ (* 4 core0-look-ns) 50000000))
+              (= short 0))))
+
 (check "input that asked for no frame shows in none: the next frame says \
         nothing of it"
        (begin

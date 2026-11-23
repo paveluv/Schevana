@@ -29,7 +29,7 @@
     gpu-frame-make gpu-frame-table-set! gpu-frame-table-n-set!
     gpu-frame-pieces-set! gpu-frame-jobs-set! gpu-frame-computes-set!
     gpu-frame-mode-set! gpu-frame-in-flight-set! gpu-frame-number
-    gpu-frame-shown?
+    gpu-frame-shown? gpu-frame-next gpu-frame-next-set!
     ;; What core0 reports about itself, in variables it sets whole: another
     ;; thread reads each one whole (Chez lets no thread see an object half
     ;; made), but not in step with the others, since ARM keeps no order
@@ -88,6 +88,7 @@
                 gpu-frame-pieces-set! gpu-frame-jobs-set!
                 gpu-frame-computes-set! gpu-frame-mode-set!
                 gpu-frame-in-flight-set! gpu-frame-number gpu-frame-shown?
+                gpu-frame-next gpu-frame-next-set!
                 gpu-publish! gpu-frames-back! gpu-take-answers!)
           (only (schevana core0 window) core0-flag-names core0-event-name
                 core0-flags core0-error-text core0-step-state

@@ -286,8 +286,9 @@ and on the Mac), a tick instead begins just in time, aimed at a latch,
 and at a later latch than the tick before it aimed at, so the screen's
 queue never grows. The tick begins a lead before that latch. The lead is
 what frames took lately from their tick to core0's sending them, leaving
-out the screen's time (an acquire the screen held, and the wait for core0
-that the frame before held), plus a margin. When a frame shows late
+out the screen's time (an acquire the screen held, or a submit that took
+longer than a look, and the wait for core0 that the frame before held),
+plus a margin. When a frame shows late
 though it was sent about the margin before its latch, the margin grows by
 a step. When a frame shows late though it was sent well before its latch,
 the compositor missed the refresh, and the pacer learns nothing from it,
@@ -321,7 +322,8 @@ On Wayland, core0 asks the compositor to report on each frame it presents
 (`wp_presentation`): when the frame showed and how long a refresh is, or
 that the frame was dropped. On a Mac, Metal calls a drawable's presented
 handlers with the time it was shown. X11 and headless runs report nothing
-yet.
+yet; a headless frame's GPU work is taken as done as core0 gives the
+frame back.
 
 A compositor says which of the system's clocks its times are on, and it
 may be wrong: GNOME over NVIDIA's driver says the monotonic clock but
@@ -414,11 +416,13 @@ that core0 learns as SDL and the GPU start; what has run where is in
 In a checkout with a `.work` folder, and with a window, core0 and core1
 record their steps around each frame (take, acquire, submit, tick, draw,
 publish, collect) in rings of their own, with each event pump that held
-core0 for more than 2 ms and each collection. The last two minutes or so
-of them, with the screen's reports and a line saying why, are written to
-`.work/traces/trace-<date>-<time>.txt` when the window closes, on Ctrl-C
-in the terminal, when core1 goes 5 s without a step, or on
-`(core0-trace-dump!)`.
+core0 for more than 2 ms, each collection and each change of present
+mode. The last two minutes or so of them, with the screen's reports, are
+written to `.work/traces/trace-<date>-<time>.txt` when the window closes,
+on Ctrl-C in the terminal, when core1 goes 5 s without a step (but not
+while it waits), or on `(core0-trace-dump!)`. The file's head says why it
+was written, how the window presents, how often core0 looks, and when
+the first step came on the clock.
 
 ## The GPU
 

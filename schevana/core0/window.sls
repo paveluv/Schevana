@@ -66,7 +66,7 @@
                 platform-thread-interactive!)
           (only (schevana core0 trace-file) core0-trace-start!
                 core0-trace-watch! core0-trace-write!)
-          (only (schevana core0 gpu) *gpu-given-back* *gpu-published*
+          (only (schevana core0 gpu) *gpu-published* gpu-give-back!
                 gpu-claim-window! gpu-frame-number gpu-frame-shown?-set!
                 gpu-idle! gpu-open! gpu-present! gpu-reads-now!
                 gpu-submit-computes! gpu-windowless-kind gpu-windowless-video))
@@ -762,7 +762,7 @@
         ;; the input that came while the acquire held core0, read before
         ;; core1 hears that the frame is back and may begin its next turn
         (core0-events-pumped!)
-        (core0-put! *gpu-given-back* f)
+        (gpu-give-back! f)
         (core0-trace! 6 (gpu-frame-number f))
         ;; given back, with what it read: core1 takes them at once, whether
         ;; or not a frame follows

@@ -9,7 +9,8 @@
   (export
     core0-clock-ns *core0-jobs* core0-put! core0-take! core0-post!
     *core0-forked* core0-forked? *core0-world-mutex* *core0-ready*
-    *core0-woken* *core0-waiting?* *core0-time* core0-world-wake!
+    *core0-woken* *core0-waiting?* *core0-world-waiting?* *core0-time*
+    core0-world-wake!
     core0-world-wait-ns! core0-wake! core0-wake-event-make! *core0-wake-type*
     *core0-facts* core0-frame-ns core0-display *core0-input-ns*
     *core0-input-pumped* *core0-input-wl* core0-input-set! core0-input-take!)
@@ -59,8 +60,10 @@
   (define-state *core0-world-woken* #f)   ; under the mutex
   (define-state *core0-ready* (make-condition))   ; core0's own
   (define-state *core0-woken* #f)                 ; under the mutex
-  ;; whether core0 is in SDL's wait for events, under the mutex
+  ;; whether core0 is in SDL's wait for events, and whether core1 is in its
+  ;; wait, both under the mutex
   (define-state *core0-waiting?* #f)
+  (define-state *core0-world-waiting?* #f)
 
   ;; A time record for each thread's timed waits, set again for each wait,
   ;; so that a wait allocates nothing: core1's and core0's.
@@ -88,11 +91,13 @@
         (set-time-second! t (fxquotient ns 1000000000))
         (set-time-nanosecond! t (fxremainder ns 1000000000)))
       (mutex-acquire *core0-world-mutex*)
+      (set! *core0-world-waiting?* #t)
       (cond
         [(or *core0-world-woken* (and ns (fx<= ns 0))) (void)]
         [ns (condition-wait *core0-world-ready* *core0-world-mutex* t)]
         [else (condition-wait *core0-world-ready* *core0-world-mutex*)])
       (set! *core0-world-woken* #f)
+      (set! *core0-world-waiting?* #f)
       (mutex-release *core0-world-mutex*)))
 
   ;; The event that core0-wake! pushes to end SDL's wait, kept, with its

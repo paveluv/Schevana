@@ -184,6 +184,20 @@
                    step)
            (<= step 16))))
 
+;;; A frame's way back, by its own link, and onto core1's chain to fill
+;;; again; and core0's hold of a frame with no window, on a thread of its
+;;; own, a frame each refresh.
+(let ([f (gpu-frame-make)])
+  (fluid-let ([*gpu-frames-free* #f])
+    (check "a frame given back, taken back and kept to fill again allocates \
+            nothing"
+           (= 0 (allocation-least 20 (lambda ()
+                                       (gpu-give-back! f)
+                                       (gpu-frame-free! (gpu-frames-back!))
+                                       (set! *gpu-frames-free* #f)))))))
+(check "core0's hold of a frame with no window allocates nothing"
+       (= 0 (allocation-least 5 gpu-headless-hold!)))
+
 ;;; A library's procedures carry nothing. A variable of a library's own is
 ;;; held by every procedure that reads it, and by every procedure that
 ;;; calls one of those, so a closure made at run time that only calls one

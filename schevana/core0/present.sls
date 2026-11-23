@@ -16,7 +16,8 @@
 (library (schevana core0 present)
   (export
     present-rows present-words *present-ring* present-taken!
-    present-acquiring! present-acquired! present-at core0-frame-report
+    present-acquiring! present-acquired! present-submitting!
+    present-submitted! present-done! present-at core0-frame-report
     present-sent! present-reported! *present-refresh-said* core0-refresh-ns!
     present-fence! present-poll! present-awaiting?)
   (import (chezscheme)
@@ -36,22 +37,26 @@
   ;; shown at came, by the screen's clock (core0-clock-ns); the refresh's
   ;; length (ns); that refresh's number; when its GPU work was seen done
   ;; (core0-clock-ns; 0 for not yet); when core0 took it from core1, and when
-  ;; its acquire of a swapchain image began and returned (core0-clock-ns);
-  ;; the screen's own stamp of its showing (core0-clock-ns; 0 for none); and
-  ;; the last look that found its GPU work not yet done (core0-clock-ns; 0
-  ;; for none). "Seen done" tells only when core0 looked, which an acquire
-  ;; that the screen holds can delay; the last look tells that the work was
-  ;; still going then.
+  ;; its acquire of a swapchain image began and returned, with the submit's
+  ;; hold added (core0-clock-ns); the screen's own stamp of its showing
+  ;; (core0-clock-ns; 0 for none); and the last look that found its GPU work
+  ;; not yet done (core0-clock-ns; 0 for none). "Seen done" tells only when
+  ;; core0 looked, which an acquire that the screen holds can delay; the
+  ;; last look tells that the work was still going then. With no window, a
+  ;; frame has a row too, its GPU work done as it goes back.
   (define-state *present-ring* (make-fxvector (* present-rows present-words) 0))
 
-  ;; When core0 took the frame it is presenting now from core1, and when it
-  ;; asked for an image for that frame and got one.
+  ;; When core0 took the frame it is presenting now from core1, when it
+  ;; asked for an image for that frame and got one, and when it began to
+  ;; submit it.
   (define-state *present-taken* 0)
   (define-state *present-acquiring* 0)
   (define-state *present-acquired* 0)
+  (define-state *present-submitting* 0)
   (define (present-taken!) (set! *present-taken* (core0-clock-ns)))
   (define (present-acquiring!) (set! *present-acquiring* (core0-clock-ns)))
   (define (present-acquired!) (set! *present-acquired* (core0-clock-ns)))
+  (define (present-submitting!) (set! *present-submitting* (core0-clock-ns)))
 
   (define (present-at frame) (fx* present-words (fxmodulo frame present-rows)))
 
@@ -83,6 +88,21 @@
       (fxvector-set! r (fx+ at 11) 0)
       (memory-order-release)
       (fxvector-set! r at frame)))
+
+  ;; Records that frame was submitted. A screen may hold core0 in the
+  ;; submit in the acquire's place, so a submit that took longer than a
+  ;; look (core0-look-ns, which the caller gives as look) is the screen's,
+  ;; as the acquire's hold is, and the row's acquire returns that much
+  ;; later. A shorter one is the submit's own work (Mesa on Intel: 58 µs at
+  ;; the median, most of them over a tenth of a look). Core1 reads it once
+  ;; the frame is given back, after this.
+  (define (present-submitted! frame look)
+    (let ([at (present-at frame)]
+          [took (fx- (core0-clock-ns) *present-submitting*)])
+      (when (and (fx> took look)
+                 (fx= (fxvector-ref *present-ring* at) frame))
+        (fxvector-set! *present-ring* (fx+ at 9)
+                       (fx+ *present-acquired* took)))))
 
   ;; Takes the screen's report on frame: dropped (kind 2), or shown (kind 1)
   ;; at stamp (core0-clock-ns), at a refresh that the screen keeps steady
@@ -363,6 +383,13 @@
                (fx= (fxvector-ref r (fx+ at 1)) 0)
                (fx< 0 sent)
                (fx< now (fx+ sent 1000000000))))))
+
+  ;; Records that frame's GPU work was seen done, now: with no window, as
+  ;; the frame goes back.
+  (define (present-done! frame)
+    (let ([at (present-at frame)])
+      (when (fx= (fxvector-ref *present-ring* at) frame)
+        (fxvector-set! *present-ring* (fx+ at 6) (core0-clock-ns)))))
 
   ;; Records the GPU times of the frames whose fences signaled since the
   ;; last look, and publishes the reports held too long
