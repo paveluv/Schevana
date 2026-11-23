@@ -1372,12 +1372,13 @@
 ;;; choose a color: parts (define-part), procedures named like a drawing
 ;;; primitive (draw-…, fill-…) or ui-draw-…, complete-draw-…,
 ;;; tasks-draw-…, settings-draw-…, envs-draw-…, pipeline-draw-…,
-;;; text-draw-… and transcript-draw-…, and the defaults they give
-;;; (theme-default!, color-default!: a style may give its own). No other
-;;; top-level form calls a drawing primitive or quotes a theme color key
-;;; (except 'text, which is also an event's name), so a style restyles all
-;;; they draw. The edit kit never draws. And outside styles/ nothing calls
-;;; a part's built-in body (name*): a style's own part would be passed by.
+;;; text-draw-…, transcript-draw-… and profile-draw-… (a table of colors
+;;; a chart draws with), and the defaults they give (theme-default!,
+;;; color-default!: a style may give its own). No other top-level form
+;;; calls a drawing primitive or quotes a theme color key (except 'text,
+;;; which is also an event's name), so a style restyles all they draw.
+;;; The edit kit never draws. And outside styles/ nothing calls a part's
+;;; built-in body (name*): a style's own part would be passed by.
 
 (define seam-files
   (append (filter (lambda (f) (member (world-folder f)
@@ -1447,7 +1448,7 @@
                  (exists (lambda (p) (string-prefix? p (symbol->string name)))
                          '("ui-draw-" "complete-draw-" "tasks-draw-"
                            "settings-draw-" "envs-draw-" "pipeline-draw-"
-                           "text-draw-" "transcript-draw-"))))
+                           "text-draw-" "transcript-draw-" "profile-draw-"))))
         (and (pair? form)
              (memq (car form) '(define-part theme-default! color-default!))
              #t))))

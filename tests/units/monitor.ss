@@ -31,13 +31,13 @@
          (let* ([seq (profile-newest-tick)]
                 [phases (profile-tick-phases seq)]
                 [index (lambda (p) (list-index (lambda (q) (eq? (car q) p))
-                                               monitor-phases))]
+                                               profile-draw-phases))]
                 [order (monitor-bars-order (list seq))]
                 ;; the tick ended at 12:00:03.400 of the day
                 [zero (- (+ (* 1000 (+ (* 12 3600) 3)) 400)
                          (quotient (profile-tick-ns seq 'end) 1000000))]
-                [tip (monitor-tick-tip seq zero 16666666)]
-                [late (monitor-tick-tip seq zero 3000000)]
+                [tip (profile-tick-tip seq zero 16666666)]
+                [late (profile-tick-tip seq zero 3000000)]
                 [lines (list (format "tick ~a, ended 12:00:03.400" seq)
                              "16 ms, in time (a tick is 16.7 ms)"
                              "waiting for input 10 ms" "render 3 ms"
@@ -49,8 +49,8 @@
                                  (vsync-wait . 2000000) (tick . 1000000)))
                 (= (profile-tick-ns seq 'ns) (apply + (map cdr phases)))
                 ;; every phase of the profiler's is a series of the bars
-                (= (length monitor-phases) profile-phase-count)
-                (for-all (lambda (p) (assq p monitor-phases))
+                (= (length profile-draw-phases) profile-phase-count)
+                (for-all (lambda (p) (assq p profile-draw-phases))
                          (vector->list profile-phase-names))
                 ;; 14 ms count: the wait for input, but not the screen's
                 ;; 2 ms, which aren't core1's; so it is late for periods
@@ -89,7 +89,7 @@
            (let ([seq (profile-newest-tick)])
              (ui-stream-send! ring seq seq (monitor-tick-word (pacer-period)))
              (let ([row (list-head (test-stream-row ring seq)
-                                   (length monitor-phases))])
+                                   (length profile-draw-phases))])
                (steps 3)
                (let ([crashed (window-error m)])
                  (ui-stream-release! ring)

@@ -32,17 +32,15 @@
 ;;; charts, tree, tables and labels.
 
 (library (schevana apps monitor)
-  (export
-    monitor-phases monitor-ns-text monitor-tick-phase-ns monitor-clock-zero
-    monitor-tick-tip monitor)
+  (export monitor)
   (import (chezscheme)
           (only (schevana base) define-made library-layer string-join)
           (only (schevana core) *canvas-h* *canvas-w* *frame-ms* *last-error*
                 *scale* *timers* apps clipboard-set! core0-frame-ns
                 current-style define-app fill-box find-proc find-style
-                find-surface find-window focus-window! focused-window
-                font-char-width font-line-height invalidate! kill! now-ms now-ns
-                open-window pacer-busy-ms pacer-period pacer-rate pacer-ticks
+                find-window focus-window! focused-window font-char-width
+                font-line-height invalidate! kill! now-ms open-window
+                pacer-busy-ms pacer-period pacer-rate pacer-ticks
                 platform-process-bytes proc-id proc-name proc-started proc-ticks
                 proc-wake proc? procs style-title text-width theme uptime-ms
                 window-app window-error window-frame-soon! window-h window-id
@@ -61,36 +59,24 @@
                 ui-table ui-draw-cell ui-table-header-height
                 ui-table-row-height ui-button ui-button-size ui-draw-label
                 ui-label-size ui-stream-new)
-          (only (schevana services profile) profile-flags profile-flag-summary
-                *profile-flag-log* profile-flag-lines profile-flag-ticks-text
-                profile-flag-before-text profile-flag-why profile-flag-ns
-                profile-ns-text profile-flag-clock profile-second-ref
-                profile-total-calls profile-total-longest profile-total-ticks
-                profile-second-node-ms profile-tick-node-ns profile-tick-kept?
-                profile-oldest-tick profile-total-parts profile-subject-of
-                profile-history! profile-clear! profile-on! *profile-minutes*
+          (only (schevana services profile) profile-clock-zero
+                profile-draw-phases profile-ms-label profile-ns-label
+                profile-subject-label profile-subject-labels
+                profile-subject-live profile-subject? profile-tick-band-ns
+                profile-tick-tip profile-window-subject? profile-flags
+                profile-flag-summary *profile-flag-log* profile-flag-lines
+                profile-flag-ticks-text profile-flag-before-text
+                profile-flag-why profile-flag-ns profile-ns-text
+                profile-flag-clock profile-second-ref profile-total-calls
+                profile-total-longest profile-total-ticks profile-second-node-ms
+                profile-tick-node-ns profile-tick-kept? profile-oldest-tick
+                profile-total-parts profile-subject-of profile-history!
+                profile-clear! profile-on! *profile-minutes*
                 *profile-tick-seconds* profile-seconds profile-newest-tick
-                profile-on? profile-tick-why profile-why-text
-                profile-tick-held? profile-totals profile-total-ms
-                profile-total-what profile-tick-phases profile-tick-ns
-                profile-subject-name profile-tick-phase-ns profile-tick-late?
-                profile-tick-rate))
+                profile-on? profile-why-text profile-totals profile-total-ms
+                profile-total-what profile-tick-late? profile-tick-rate))
 
   (library-layer apps)
-
-  ;; A bar's phases: all of the profiler's (profile-phase-names), so that
-  ;; they add up to the whole tick. Each is (phase color . label), its color
-  ;; one of the kit's chart series, the two waits in its muted colors.
-  (define monitor-phases
-    '((event chart-1 . "events")
-      (timers chart-2 . "timers")
-      (procs chart-3 . "processes")
-      (tick chart-4 . "ticks")
-      (render chart-5 . "render")
-      (gc chart-7 . "collector")
-      (other chart-8 . "other")
-      (input-wait chart-muted-1 . "waiting for input")
-      (vsync-wait chart-muted-2 . "waiting for the screen")))
 
   ;; How many seconds the Consumers sum over.
   (define monitor-consumer-seconds 5)
@@ -110,9 +96,6 @@
   (define monitor-minute-choices
     '(("1 min" . 1) ("10 min" . 10) ("30 min" . 30) ("1 h" . 60)))
 
-  (define (monitor-ms ms)
-    (if (< ms 9.995) (format "~,2f" ms) (format "~,1f" ms)))
-
 
   ;;; ---------------------------------------------------------------- bars
   ;;; The Ticks' bars are a stream (the kit's ui-stream): a new tick costs a
@@ -121,7 +104,7 @@
   (define monitor-ring-rows 2048)
 
   (define (monitor-ticks-stream)
-    (ui-stream-new monitor-ring-rows (length monitor-phases)
+    (ui-stream-new monitor-ring-rows (length profile-draw-phases)
                    '(("late" chart-flag))))
 
   ;; Tooltips that explain the Ticks where they are shown. Each is made
@@ -141,32 +124,18 @@
             profile-tick-rate))
 
   ;; A tick's row of the stream: each phase's µs, in the order of
-  ;; monitor-phases, then 1 if it came late, else 0. Returns the procedure
+  ;; profile-draw-phases, then 1 if it came late, else 0. Returns the procedure
   ;; ui-stream-send! calls for each number of a row.
   (define (monitor-tick-word period)
     (lambda (seq j)
-      (if (< j (length monitor-phases))
-          (quotient (monitor-tick-phase-ns seq j) 1000)
+      (if (< j (length profile-draw-phases))
+          (quotient (profile-tick-band-ns seq j) 1000)
           (if (profile-tick-late? seq period) 1 0))))
 
   ;;; ---------------------------------------------------------------- data
 
-  ;; ns as text ("250 ms", "1.6 ms", "3.2 s"), rounded to a tenth with
-  ;; integer arithmetic.
-  (define (monitor-ns-text ns)
-    (let* ([s? (>= ns 1000000000)]
-           [t (quotient (+ ns (if s? 50000000 50000))
-                        (if s? 100000000 100000))])
-      (format "~a~a ~a" (quotient t 10)
-              (if (zero? (remainder t 10)) "" (format ".~a" (remainder t 10)))
-              (if s? "s" "ms"))))
-
   ;;; The Ticks: one bar for each tick kept, named by its seq and read in
   ;;; place from the profiler's ring, in whole ns.
-
-  ;; The ns that tick seq spent in phase j (an index into monitor-phases).
-  (define (monitor-tick-phase-ns seq j)
-    (profile-tick-phase-ns seq (car (list-ref monitor-phases j))))
 
   ;; The fixnums from a to z, z included.
   (define (monitor-range a z)
@@ -176,101 +145,35 @@
   ;; The phases in the order the bars stack them, for the ticks seqs. The
   ;; work phases come first, the one that spent the most over all the ticks
   ;; first (at the bottom), so that the bands run on from bar to bar; then
-  ;; the waits, in the order of monitor-phases, so that a bar past the
+  ;; the waits, in the order of profile-draw-phases, so that a bar past the
   ;; graph's top loses a wait, never work. A phase that spent nothing is
   ;; left out (and so is left out of the legend). Returns indexes into
-  ;; monitor-phases.
+  ;; profile-draw-phases.
   (define (monitor-bars-order seqs)
     (let* ([totals (filter (lambda (t) (fx> (cdr t) 0))
                            (map (lambda (j)
                                   (cons j (fold-left
                                            (lambda (ns seq)
-                                             (fx+ ns (monitor-tick-phase-ns
+                                             (fx+ ns (profile-tick-band-ns
                                                       seq j)))
                                            0 seqs)))
-                                (iota (length monitor-phases))))]
+                                (iota (length profile-draw-phases))))]
            [wait? (lambda (t)
-                    (memq (car (list-ref monitor-phases (car t)))
+                    (memq (car (list-ref profile-draw-phases (car t)))
                           '(input-wait vsync-wait)))])
       (map car (append (list-sort (lambda (x y) (fx> (cdr x) (cdr y)))
                                   (remp wait? totals))
                        (filter wait? totals)))))
 
-  ;; A time of day from ms since midnight: "12:00:03.400".
-  (define (monitor-clock-text ms)
-    (let ([two (lambda (n) (if (< n 10) (format "0~a" n) (format "~a" n)))]
-          [ms (mod ms 86400000)])
-      (format "~a:~a:~a.~a" (two (quotient ms 3600000))
-              (two (remainder (quotient ms 60000) 60))
-              (two (remainder (quotient ms 1000) 60))
-              (let ([m (remainder ms 1000)])
-                (cond [(< m 10) (format "00~a" m)]
-                      [(< m 100) (format "0~a" m)]
-                      [else (format "~a" m)])))))
-
-  ;; The time of day, in ms since midnight, at which the profiler's clock
-  ;; (now-ns) read 0, as the wall clock tells it now.
-  (define (monitor-clock-zero)
-    (let ([d (current-date)] [ns (now-ns)])
-      (- (+ (* 3600000 (date-hour d)) (* 60000 (date-minute d))
-            (* 1000 (date-second d)) (quotient (date-nanosecond d) 1000000))
-         (quotient ns 1000000))))
-
-  ;; Whether s is one of the subjects Monitor lists: (window . id),
-  ;; (process . id), a surface's name, or gc.
-  (define (monitor-subject? s)
-    (or (pair? s) (eq? s 'gc) (and (symbol? s) (find-surface s) #t)))
-
-  (define (monitor-window? s) (and (pair? s) (eq? (car s) 'window)))
-
   ;; A row's node is a subject or one of its parts, (subject part phase).
   (define (monitor-part? node) (and (pair? node) (pair? (cdr node))))
-
-  ;; A subject's window or process while it lives, found by its id; #f once
-  ;; it is closed or ended (or for a surface or the collector).
-  (define (monitor-live s)
-    (and (pair? s)
-         (if (monitor-window? s) (find-window (cdr s)) (find-proc (cdr s)))))
-
-  ;; A window's title (or the one it had, once closed), or a process's name.
-  (define (monitor-title s)
-    (let ([live (monitor-live s)])
-      (cond [(and live (monitor-window? s)) (window-title live)]
-            [live (proc-name live)]
-            [else (or (profile-subject-name s)
-                      (format "~a ~a" (car s) (cdr s)))])))
-
-  (define (monitor-subject-label s)
-    (let ([live (monitor-live s)])
-      (cond [(not (pair? s)) (if (eq? s 'gc) "Collector" (format "~a" s))]
-            [(monitor-window? s)
-             (if live (monitor-title s)
-                 (format "~a (closed)" (monitor-title s)))]
-            [else (format "~a (process ~a~a)" (monitor-title s) (cdr s)
-                          (if live "" ", ended"))])))
-
-  ;; The labels of subjects, as ((subject . label) ...): a window's title
-  ;; (the one it had, once closed), with its id where another window among
-  ;; them has the same title; a process's name and id; a surface's name.
-  (define (monitor-labels subjects)
-    (let ([titles (map (lambda (s) (and (monitor-window? s) (monitor-title s)))
-                       subjects)])
-      (map (lambda (s t)
-             (cons s
-                   (if (and t (> (length (filter (lambda (o) (equal? o t))
-                                                 titles))
-                                 1))
-                       (format "~a (window ~a~a)" t (cdr s)
-                               (if (monitor-live s) "" ", closed"))
-                       (monitor-subject-label s))))
-           subjects titles)))
 
   ;; A part's label: a handler's kind, a window's frame, or a phase of a
   ;; surface or of the collector (the collector's own phase, gc, is outside
   ;; the others).
   (define (monitor-part-label subject part phase)
     (cond [part (symbol->string part)]
-          [(monitor-window? subject) "frame"]
+          [(profile-window-subject? subject) "frame"]
           [(eq? phase 'gc) "outside the phases"]
           [(eq? subject 'gc) (format "during ~a" phase)]
           [(eq? phase 'render) "draw"]
@@ -281,52 +184,12 @@
   (define (monitor-node-type node)
     (cond [(monitor-part? node)
            (cond [(cadr node) "handler"]
-                 [(monitor-window? (car node)) "frame"]
+                 [(profile-window-subject? (car node)) "frame"]
                  [else "phase"])]
-          [(monitor-window? node) "window"]
+          [(profile-window-subject? node) "window"]
           [(pair? node) "process"]
           [(eq? node 'gc) "collector"]
           [else "surface"]))
-
-  ;; A bar's tooltip, saying where tick seq's time went, one line for each
-  ;; fact: when it ended (zero is the time of day at the clock's 0), how
-  ;; long it took and whether it came late (period is in ns), why if it did,
-  ;; its phases (profile-tick-phases) and its three largest consumers, the
-  ;; largest first.
-  (define (monitor-tick-tip seq zero period)
-    (let* ([ns (profile-tick-ns seq 'ns)]
-           [phases (filter (lambda (p) (>= (cdr p) 50000))   ; 0.1 ms as shown
-                           (profile-tick-phases seq))]
-           [top (filter (lambda (t)
-                          (and (monitor-subject? (profile-total-what t))
-                                         (>= (profile-total-ms t) 0.05)))
-                        (profile-totals (list seq) #t))]
-           [top (list-head top (min 3 (length top)))]
-           [labels (monitor-labels (map profile-total-what top))])
-      (define (list-of items)   ; a line for each (name . text)
-        (apply string-append
-               (map (lambda (x) (format "\n~a ~a" (car x) (cdr x))) items)))
-      (string-append
-       (format "tick ~a, ended ~a\n" seq
-               (monitor-clock-text
-                (+ zero (quotient (profile-tick-ns seq 'end) 1000000))))
-       (format "~a, ~a (a tick is ~a)" (monitor-ns-text ns)
-               (cond [(profile-tick-late? seq period) "late"]
-                     [(profile-tick-held? seq period) "held by the screen"]
-                     [else "in time"])
-               (monitor-ns-text period))
-       (if (profile-tick-late? seq period)
-           (format "\n~a" (profile-why-text (profile-tick-why seq period)))
-           "")
-       (list-of (map (lambda (p)
-                       (cons (cddr (assq (car p) monitor-phases))
-                             (monitor-ns-text (cdr p))))
-                     phases))
-       (list-of (map (lambda (t)
-                       (cons (cdr (assoc (profile-total-what t) labels))
-                             (format "~a ms"
-                                     (monitor-ms (profile-total-ms t)))))
-                     top)))))
 
   ;;; ---------------------------------------------------------------- the app
 
@@ -749,7 +612,7 @@
       ;; up by itself.
       (define (consumers seconds)
         (define (latest n)
-          (filter (lambda (t) (monitor-subject? (profile-total-what t)))
+          (filter (lambda (t) (profile-subject? (profile-total-what t)))
                   (profile-totals (list-head seconds
                                              (min n (length seconds))))))
         (remember 'consumers
@@ -768,11 +631,11 @@
                                                  (profile-total-parts t)))))
                         listed)
               (list (latest monitor-consumer-seconds) roots
-                    (monitor-labels roots)
+                    (profile-subject-labels roots)
                     (max 1 (min monitor-consumer-seconds (length seconds))))))))
       (define (label-of s seconds)
         (let ([l (assoc s (caddr (consumers seconds)))])
-          (if l (cdr l) (monitor-subject-label s))))
+          (if l (cdr l) (profile-subject-label s))))
       ;; Draws a bar for each tick that fits, the newest at the right, with
       ;; the phases stacked in the order of what they spent. The scale goes
       ;; up to two of the pacer's periods (a longer tick reaches the top),
@@ -785,8 +648,8 @@
              [(top) (* 2 period)]
              ;; in the rows' units, µs
              [(rules) (list (cons (quotient period 1000)
-                                  (monitor-ns-text period))
-                            (cons (quotient top 1000) (monitor-ns-text top)))]
+                                  (profile-ns-label period))
+                            (cons (quotient top 1000) (profile-ns-label top)))]
              [(newest) (newest-tick)]
              [(oldest) (profile-oldest-tick)]
              ;; as many bars as fit to the right of the scale
@@ -799,7 +662,8 @@
                           (if newest
                               (monitor-range (- newest count -1) newest)
                               '()))))]
-             [(keys) (append (map (lambda (j) (cdr (list-ref monitor-phases j)))
+             [(keys) (append (map (lambda (j)
+                                  (cdr (list-ref profile-draw-phases j)))
                                   order)
                              (if selected
                                  (list (cons 'chart-share
@@ -810,14 +674,15 @@
                                  '()))]
              [(kw kh) (ui-legend-size keys)]
              [(gh) (- h kh 4)]
-             [(zero) (monitor-clock-zero)])
+             [(zero) (profile-clock-zero)])
           (when newest
             (ui-stream-send! ring oldest newest (monitor-tick-word period)))
           (let ([hover
                  (ui-stream
                   ui 'monitor-ticks ring x y w gh newest oldest
                   (quotient top 1000) rules
-                  (map (lambda (j) (cons j (cadr (list-ref monitor-phases j))))
+                  (map (lambda (j)
+                       (cons j (cadr (list-ref profile-draw-phases j))))
                        order)
                   monitor-bar-px
                   'tip (lambda (seq)
@@ -847,7 +712,7 @@
       ;; Tick seq's tooltip, computed once.
       (define (tip-of seq zero period)
         (or (hashtable-ref tips seq #f)
-            (let ([text (monitor-tick-tip seq zero period)])
+            (let ([text (profile-tick-tip seq zero period)])
               (when (> (hashtable-size tips) 64) (hashtable-clear! tips))
               (hashtable-set! tips seq text)
               text)))
@@ -902,7 +767,7 @@
                        ,(format "The most milliseconds it took in one tick: \
                                  past a tick's period (~a), it alone held the \
                                  next tick back"
-                                (monitor-ns-text (pacer-period))))
+                                (profile-ns-label (pacer-period))))
                   (calls "calls/s" ,num right
                          "How many times a second it ran: a handler called, \
                           a frame drawn, a process's turn")
@@ -969,7 +834,7 @@
                                    (monitor-part-label s (cadr node)
                                                        (caddr node))
                                    (label-of s seconds))]
-                        [live (monitor-live s)]
+                        [live (profile-subject-live s)]
                         [id (and live (cdr s))]
                         [kill? (and live (not (monitor-part? node))
                                     (proc? live))]
@@ -1001,13 +866,15 @@
                                 'danger #t 'quiet #t)))]
                 [(type) (ui-draw-cell cx cy cw ch '(dim)
                                       (monitor-node-type node))]
-                [(rate) (number (monitor-ms (if t (/ (profile-total-ms t) span)
-                                                0.0)))]
+                [(rate) (number (profile-ms-label
+                                 (if t (/ (profile-total-ms t) span) 0.0)))]
                 [(avg) (number (if (and t (> (profile-total-ticks t) 0))
-                                   (monitor-ms (/ (profile-total-ms t)
-                                                  (profile-total-ticks t)))
+                                   (profile-ms-label
+                                    (/ (profile-total-ms t)
+                                       (profile-total-ticks t)))
                                    "–"))]
-                [(max) (number (if t (monitor-ms (profile-total-longest t))
+                [(max) (number (if t
+                                   (profile-ms-label (profile-total-longest t))
                                    "–"))]
                 [(calls) (number (if t
                                      (let ([c (/ (profile-total-calls t) span)])
@@ -1050,7 +917,7 @@
                                       (mb (at latest 'allocated))))
                         (cons 'chart-7
                               (format "collector ~a ms/s, ~a collections/s"
-                                      (monitor-ms (at latest 'gc-ms))
+                                      (profile-ms-label (at latest 'gc-ms))
                                       (at latest 'gcs))))
                   (list (cons 'chart-8 "heap")
                         (cons 'chart-1 "allocated a second")

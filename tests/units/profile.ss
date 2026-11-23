@@ -207,7 +207,7 @@
                      1000
                      (lambda () (profile-test-ticks (lambda () (steps 10)))))]
                 [ts (filter (lambda (t)
-                              (monitor-subject? (profile-total-what t)))
+                              (profile-subject? (profile-total-what t)))
                             (profile-totals ss #t))])
            (crew-size-set! size)
            (close-window! slow)
@@ -409,7 +409,7 @@
        [c (open-window "Single" 'size '(100 . 60))]
        [seen (steps 1)]   ; the profiler takes their titles
        [subjects (map profile-subject-of (list a b c))]
-       [labels (monitor-labels subjects)])
+       [labels (profile-subject-labels subjects)])
   (close-window! a)
   (check "two windows of one title get their ids in Monitor's labels, a \
           closed one says so, and a title of its own stays plain"
@@ -418,7 +418,7 @@
                        (format "Twin (window ~a)" (window-id b))
                        "Single")))
   (check "and once one of them is closed"
-         (equal? (map cdr (monitor-labels subjects))
+         (equal? (map cdr (profile-subject-labels subjects))
                  (list (format "Twin (window ~a, closed)" (window-id a))
                        (format "Twin (window ~a)" (window-id b))
                        "Single")))

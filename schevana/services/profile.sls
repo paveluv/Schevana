@@ -39,19 +39,21 @@
 
 (library (schevana services profile)
   (export
-    *profile-tick-seconds* *profile-minutes* profile-tick-rate profile-flag-ns
-    profile-flag-why *profile-flag-log* profile-flags profile-tick-why
+    profile-draw-phases profile-tick-band-ns profile-ns-label profile-ms-label
+    profile-clock-zero profile-subject? profile-window-subject?
+    profile-subject-live profile-subject-label profile-subject-labels
+    profile-tick-tip *profile-tick-seconds* *profile-minutes* profile-tick-rate
+    profile-flag-ns profile-flag-why *profile-flag-log* profile-flags
     profile-ns-text profile-why-text profile-flag-ticks-text profile-flag-clock
     profile-flag-before-text profile-flag-lines profile-flag-summary
     profile-flag-report profile-flag-log! profile-on! profile-on?
     profile-history! profile-clear! profile-ticks profile-seconds
     profile-newest-tick profile-oldest-tick profile-tick-kept? profile-tick-ref
     profile-second-ref profile-tick-ns profile-tick-phase-ns profile-tick-ms
-    profile-tick-phases profile-tick-late? profile-tick-held? profile-slow-ticks
-    profile-subject-of profile-subject-name profile-use-subject
-    profile-use-phase profile-use-ms profile-tick-uses profile-tick-node-ns
-    profile-tick-node-ms profile-second-node-ms profile-total-what
-    profile-total-ms profile-total-calls profile-total-ticks
+    profile-tick-phases profile-tick-late? profile-slow-ticks profile-subject-of
+    profile-use-subject profile-use-phase profile-use-ms profile-tick-uses
+    profile-tick-node-ns profile-tick-node-ms profile-second-node-ms
+    profile-total-what profile-total-ms profile-total-calls profile-total-ticks
     profile-total-longest profile-total-parts profile-totals)
   (import (chezscheme)
           (only (schevana base) at-load define-made define-state library-layer
@@ -59,7 +61,8 @@
           (only (schevana core) *frame-ring-n* *frames-drawn* *gpu-facts*
                 *pacer-between?* *profile-span* collector-declining?
                 core0-error-text core0-event-name core0-flag-names core0-flags
-                core0-hidden? find-proc find-window focused-window in-engine?
+                core0-hidden? find-proc find-surface find-window focused-window
+                in-engine?
                 now-ns pacer-period platform-machine-load proc-id proc-name
                 proc? procs rec-count report-error! screen-event-seen!
                 thread-cpu-ns window-id window-title window? windows)
@@ -1325,6 +1328,158 @@
               (profile-total-parts-set! t (most-first (profile-total-parts t)))
               t)
             (vector->list (hashtable-values totals))))))
+
+  ;;; ---------------------------------------------------------------- shown
+  ;;; The ticks as an app shows them (Monitor's Ticks, the Pipeline's river):
+  ;;; their phases as bands in their colors and words, a tick's time in
+  ;;; each, the subjects that spent it named as a person reads them, a
+  ;;; tick's tooltip, and times as text.
+
+  ;; A bar's phases: all of the profiler's (profile-phase-names), so that
+  ;; they add up to the whole tick. Each is (phase color . label), its color
+  ;; one of the kit's chart series, the two waits in its muted colors.
+  (define profile-draw-phases
+    '((event chart-1 . "events")
+      (timers chart-2 . "timers")
+      (procs chart-3 . "processes")
+      (tick chart-4 . "ticks")
+      (render chart-5 . "render")
+      (gc chart-7 . "collector")
+      (other chart-8 . "other")
+      (input-wait chart-muted-1 . "waiting for input")
+      (vsync-wait chart-muted-2 . "waiting for the screen")))
+
+  ;; The ns that tick seq spent in band j: the phase at index j of
+  ;; profile-draw-phases, as a chart stacks them.
+  (define (profile-tick-band-ns seq j)
+    (profile-tick-phase-ns seq (car (list-ref profile-draw-phases j))))
+
+  ;; ns as text ("250 ms", "1.6 ms", "3.2 s"), rounded to a tenth with
+  ;; integer arithmetic.
+  (define (profile-ns-label ns)
+    (let* ([s? (>= ns 1000000000)]
+           [t (quotient (+ ns (if s? 50000000 50000))
+                        (if s? 100000000 100000))])
+      (format "~a~a ~a" (quotient t 10)
+              (if (zero? (remainder t 10)) "" (format ".~a" (remainder t 10)))
+              (if s? "s" "ms"))))
+
+  ;; ms as a label's number, with no unit: "2.35", or "12.3" from 10 on.
+  (define (profile-ms-label ms)
+    (if (< ms 9.995) (format "~,2f" ms) (format "~,1f" ms)))
+
+  ;; A time of day from ms since midnight: "12:00:03.400".
+  (define (profile-clock-text ms)
+    (let ([two (lambda (n) (if (< n 10) (format "0~a" n) (format "~a" n)))]
+          [ms (mod ms 86400000)])
+      (format "~a:~a:~a.~a" (two (quotient ms 3600000))
+              (two (remainder (quotient ms 60000) 60))
+              (two (remainder (quotient ms 1000) 60))
+              (let ([m (remainder ms 1000)])
+                (cond [(< m 10) (format "00~a" m)]
+                      [(< m 100) (format "0~a" m)]
+                      [else (format "~a" m)])))))
+
+  ;; The time of day, in ms since midnight, at which the profiler's clock
+  ;; (now-ns) read 0, as the wall clock tells it now.
+  (define (profile-clock-zero)
+    (let ([d (current-date)] [ns (now-ns)])
+      (- (+ (* 3600000 (date-hour d)) (* 60000 (date-minute d))
+            (* 1000 (date-second d)) (quotient (date-nanosecond d) 1000000))
+         (quotient ns 1000000))))
+
+  ;; Whether s is a subject an app lists (Monitor's Consumers): (window .
+  ;; id), (process . id), a surface's name, or gc.
+  (define (profile-subject? s)
+    (or (pair? s) (eq? s 'gc) (and (symbol? s) (find-surface s) #t)))
+
+  (define (profile-window-subject? s) (and (pair? s) (eq? (car s) 'window)))
+
+  ;; A subject's window or process while it lives, found by its id; #f once
+  ;; it is closed or ended (or for a surface or the collector).
+  (define (profile-subject-live s)
+    (and (pair? s)
+         (if (profile-window-subject? s)
+             (find-window (cdr s))
+             (find-proc (cdr s)))))
+
+  ;; A window's title (or the one it had, once closed), or a process's name.
+  (define (profile-subject-title s)
+    (let ([live (profile-subject-live s)])
+      (cond [(and live (profile-window-subject? s)) (window-title live)]
+            [live (proc-name live)]
+            [else (or (profile-subject-name s)
+                      (format "~a ~a" (car s) (cdr s)))])))
+
+  ;; A subject as a person reads it: a window's title, a process's name and
+  ;; id, a surface's name or the collector, saying when it is closed or
+  ;; ended.
+  (define (profile-subject-label s)
+    (let ([live (profile-subject-live s)])
+      (cond [(not (pair? s)) (if (eq? s 'gc) "Collector" (format "~a" s))]
+            [(profile-window-subject? s)
+             (if live (profile-subject-title s)
+                 (format "~a (closed)" (profile-subject-title s)))]
+            [else (format "~a (process ~a~a)" (profile-subject-title s) (cdr s)
+                          (if live "" ", ended"))])))
+
+  ;; The labels of subjects, as ((subject . label) ...): a window's title
+  ;; (the one it had, once closed), with its id where another window among
+  ;; them has the same title; a process's name and id; a surface's name.
+  (define (profile-subject-labels subjects)
+    (let ([titles (map (lambda (s)
+                         (and (profile-window-subject? s)
+                              (profile-subject-title s)))
+                       subjects)])
+      (map (lambda (s t)
+             (cons s
+                   (if (and t (> (length (filter (lambda (o) (equal? o t))
+                                                 titles))
+                                 1))
+                       (format "~a (window ~a~a)" t (cdr s)
+                               (if (profile-subject-live s) "" ", closed"))
+                       (profile-subject-label s))))
+           subjects titles)))
+
+  ;; A bar's tooltip, saying where tick seq's time went, one line for each
+  ;; fact: when it ended (zero is the time of day at the clock's 0), how
+  ;; long it took and whether it came late (period is in ns), why if it did,
+  ;; its phases (profile-tick-phases) and its three largest consumers, the
+  ;; largest first.
+  (define (profile-tick-tip seq zero period)
+    (let* ([ns (profile-tick-ns seq 'ns)]
+           [phases (filter (lambda (p) (>= (cdr p) 50000))   ; 0.1 ms as shown
+                           (profile-tick-phases seq))]
+           [top (filter (lambda (t)
+                          (and (profile-subject? (profile-total-what t))
+                               (>= (profile-total-ms t) 0.05)))
+                        (profile-totals (list seq) #t))]
+           [top (list-head top (min 3 (length top)))]
+           [labels (profile-subject-labels (map profile-total-what top))])
+      (define (list-of items)   ; a line for each (name . text)
+        (apply string-append
+               (map (lambda (x) (format "\n~a ~a" (car x) (cdr x))) items)))
+      (string-append
+       (format "tick ~a, ended ~a\n" seq
+               (profile-clock-text
+                (+ zero (quotient (profile-tick-ns seq 'end) 1000000))))
+       (format "~a, ~a (a tick is ~a)" (profile-ns-label ns)
+               (cond [(profile-tick-late? seq period) "late"]
+                     [(profile-tick-held? seq period) "held by the screen"]
+                     [else "in time"])
+               (profile-ns-label period))
+       (if (profile-tick-late? seq period)
+           (format "\n~a" (profile-why-text (profile-tick-why seq period)))
+           "")
+       (list-of (map (lambda (p)
+                       (cons (cddr (assq (car p) profile-draw-phases))
+                             (profile-ns-label (cdr p))))
+                     phases))
+       (list-of (map (lambda (t)
+                       (cons (cdr (assoc (profile-total-what t) labels))
+                             (format "~a ms"
+                                     (profile-ms-label (profile-total-ms t)))))
+                     top)))))
 
   ;; Loading this library (at boot, or in a reload) sets the hooks as
   ;; *profile-on?* says, and drops the open spans.

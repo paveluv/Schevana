@@ -1273,7 +1273,7 @@
     (check "Course lays out a tick: its phases in order, render as each \
             drawer's draw and the rest, then what's left of the period"
            (and items (not (window-error w))
-                (let ([order (map car monitor-phases)]
+                (let ([order (map car profile-draw-phases)]
                       [phases (map cadddr (of 'phase))])
                   (equal? phases
                           (filter (lambda (p) (memq p phases)) order)))
@@ -1592,10 +1592,10 @@
                                          (monitor-tick-word (pacer-period)))
                         (ui-stream-sent ring))]
                 [row (list-head (test-stream-row ring newest)
-                                (length monitor-phases))]
+                                (length profile-draw-phases))]
                 [want (map (lambda (j)
-                             (quotient (monitor-tick-phase-ns newest j) 1000))
-                           (iota (length monitor-phases)))])
+                             (quotient (profile-tick-band-ns newest j) 1000))
+                           (iota (length profile-draw-phases)))])
            (profile-on! was)
            (ui-stream-release! ring)
            (and (= sent newest) (equal? row want)))))
@@ -1790,7 +1790,7 @@
                       (or (< before latch)
                           (and (near? ready 7000) (> compositor 0)))))))
       (let* ([seq (pipeline-frame-tick i)]
-             [phases (length monitor-phases)]
+             [phases (length profile-draw-phases)]
              [k-ran (and seq (inspect-refresh-of g (pipeline-tick-began seq)))]
              [ran (and seq (pipeline-river-ticks-ran g k-ran))]
              [starts (pipeline-river-starts g 990)]
@@ -1803,7 +1803,7 @@
                                  (fold-left
                                   (lambda (sum seq)
                                     (+ sum (quotient
-                                            (monitor-tick-phase-ns seq j)
+                                            (profile-tick-band-ns seq j)
                                             1000)))
                                   0 seqs))
                                (iota phases)))]

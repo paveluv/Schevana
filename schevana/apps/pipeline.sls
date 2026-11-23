@@ -103,9 +103,9 @@
           (only (schevana services profile) profile-use-subject profile-use-ms
                 profile-use-phase profile-tick-uses profile-tick-late?
                 profile-tick-phase-ns profile-tick-ns profile-subject-of
-                profile-newest-tick profile-tick-node-ms profile-tick-kept?)
-          (only (schevana apps monitor) monitor-tick-phase-ns monitor-phases
-                monitor-ns-text monitor-clock-zero monitor-tick-tip))
+                profile-newest-tick profile-tick-node-ms profile-tick-kept?
+                profile-tick-band-ns profile-draw-phases profile-ns-label
+                profile-clock-zero profile-tick-tip))
 
   (library-layer apps)
 
@@ -557,8 +557,8 @@
                            "to core1's tick" "core1" "in the box" "core0"
                            "the GPU")))
              (if (and seq (profile-tick-kept? seq))
-                 (string-append "\n\n" (monitor-tick-tip seq
-                                                         (monitor-clock-zero)
+                 (string-append "\n\n" (profile-tick-tip seq
+                                                         (profile-clock-zero)
                                                          (pacer-period)))
                  ""))))))
 
@@ -583,10 +583,10 @@
            periods, and came late."
           (format "A collection ran in a tick here: the longer it took, the \
                    brighter, at its brightest from ~a."
-                  (monitor-ns-text pipeline-collector-full-ns))))
+                  (profile-ns-label pipeline-collector-full-ns))))
 
   (define (pipeline-river-ticks-new)
-    (ui-stream-new pipeline-river-rows (length monitor-phases)
+    (ui-stream-new pipeline-river-rows (length profile-draw-phases)
                    pipeline-draw-river-tick-strips))
 
   ;; When tick seq's own work began (on now-ns's clock): after its wait for
@@ -622,13 +622,13 @@
   ;; refresh k: its ticks' phases summed (in µs), then whether one came
   ;; late, then the collector's level, by the longest collection.
   (define (pipeline-river-tick-word g by-frame? starts ran)
-    (let ([phases (length monitor-phases)] [period (pacer-period)])
+    (let ([phases (length profile-draw-phases)] [period (pacer-period)])
       (lambda (k j)
         (let ([seqs (pipeline-river-ticks-of g k by-frame? starts ran)])
           (cond
             [(< j phases)
              (fold-left (lambda (sum seq)
-                          (+ sum (quotient (monitor-tick-phase-ns seq j) 1000)))
+                          (+ sum (quotient (profile-tick-band-ns seq j) 1000)))
                         0 seqs)]
             [(= j phases)
              (if (exists (lambda (seq) (profile-tick-late? seq period)) seqs)
@@ -667,7 +667,7 @@
                  (map (lambda (seq at)
                         (string-append
                          (if (= at 0) "" "\n\n")
-                         (monitor-tick-tip seq (monitor-clock-zero) period)
+                         (profile-tick-tip seq (profile-clock-zero) period)
                          (if (> (profile-tick-ns seq 'gcs) 0)
                              (format "\ncollected for ~,2f ms"
                                      (/ (profile-tick-ns seq 'gc-ns) 1e6))
@@ -783,7 +783,7 @@
     (filter cdr (cdr pipeline-draw-river-parts)))
 
   (define (pipeline-river-tick-keys)
-    (map cdr monitor-phases))
+    (map cdr profile-draw-phases))
 
   (define (pipeline-river-words v g)
     (let ([tick (pipeline-view-tick v)] [held? (pipeline-view-held? v)])
@@ -1039,7 +1039,7 @@
                  (quotient (* pipeline-river-ticks-high r) 1000)
                  tick-rules*
                  (map (lambda (phase j) (cons j (cadr phase)))
-                      monitor-phases (iota (length monitor-phases)))
+                      profile-draw-phases (iota (length profile-draw-phases)))
                  1
                  'fit 'whole
                  'doc '((L . "Go back to this tick"))
@@ -2280,7 +2280,7 @@
                0.0 uses))
 
   ;; What a tick spent, in order, as (name ms kind detail) each. Kind is
-  ;; phase (detail a phase of monitor-phases), total (render's whole, its
+  ;; phase (detail a phase of profile-draw-phases), total (render's whole, its
   ;; parts after it), drawer (detail its span's node: its draw, within
   ;; render), gpu (the rest of render: the list to the GPU and its wait) or
   ;; idle (what's left of the period).
@@ -2318,7 +2318,7 @@
                                                      'gpu 'render))))])))
                         (remp (lambda (p) (memq (car p)
                                                 '(input-wait vsync-wait)))
-                              monitor-phases)))]
+                              profile-draw-phases)))]
            [busy (fold-left (lambda (m it)
                               (if (eq? (caddr it) 'total) m (+ m (cadr it))))
                             0.0 stages)])
@@ -2730,10 +2730,10 @@
         (let* ([it (car items)]
                [sw (* w (/ (cadr it) whole))]
                [color (case (caddr it)
-                        [(phase) (cadr (assq (cadddr it) monitor-phases))]
+                        [(phase) (cadr (assq (cadddr it) profile-draw-phases))]
                         [(drawer) (pipeline-draw-who-color
                                    (pipeline-color-index v (cadddr it)))]
-                        [(gpu) (mix (cadr (assq 'render monitor-phases))
+                        [(gpu) (mix (cadr (assq 'render profile-draw-phases))
                                     'bg-0 0.45)]
                         [else (alpha 'text-faint 0.15)])])
           (fill-box at y (max 0 (- sw 1)) h color 2)
