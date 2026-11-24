@@ -601,9 +601,11 @@
 
 ;; As GNOME stalls at 120 Hz now and then: frames queued, then six
 ;; refreshes that take nothing, with the screen's word on the one before
-;; them held until they end.
+;; them held until they end. The start's descent is owed, as at a run's
+;; start: the first hold, a frame's in a flow, holds the time it waited
+;; in the queue, and only a descent finds the screen's own.
 (let* ([r (pacer2-test-lock 2000 1000 1050 0 '(deep . #t) '(hung . #t)
-                           '(slow . 1/2))]
+                           '(slow . 1/2) '(descent . #t))]
        [ts (caddr r)] [shows (list-ref r 5)]
        [n (min (length ts) (length shows))]
        [frames (filter (lambda (f)
@@ -873,9 +875,10 @@
          (set! *pacer2-probed* pacer2-test-T)
          (thunk))))))
 
-(check "the first frame shown gives the hold; one in time with less lead \
-        lowers it, never under the floor; one with more lead, or late, \
-        leaves it"
+(check "the first frame shown in a flow, the frame before it shown at the \
+        refresh before, gives the hold; one in time with less lead lowers \
+        it, never under the floor; one with more lead, late, or after a \
+        pause, leaves it"
        (let ([r pacer2-test-r] [T pacer2-test-T] [ms 1000000])
          (pacer2-test-rows
           (lambda ()
@@ -883,14 +886,16 @@
               (apply pacer2-test-flow-row! (+ T (* k r)) lead r shown)
               (pacer2-test-judge! (+ T (* (+ k 1) r)))
               (pacer2-state 'hold))
-            (let* ([first (row! 0 (* 6 ms))]
+            (let* ([alone (row! -1 (* 2 ms))]
+                   [first (row! 0 (* 6 ms))]
                    [closer (row! 1 (* 5 ms))]
-                   [more (row! 2 (* 7 ms))]
-                   [late (row! 3 (* 4 ms) (+ T (* 4 r)))]
+                   [paused (row! 3 (* 1 ms))]
+                   [more (row! 4 (* 7 ms))]
+                   [late (row! 5 (* 4 ms) (+ T (* 6 r)))]
                    [floored (begin (set! *pacer2-floor* (* 9/2 ms))
-                                   (row! 5 (* 3 ms)))])
-              (equal? (list first closer more late floored)
-                      (list (* 6 ms) (* 5 ms) (* 5 ms) (* 5 ms)
+                                   (row! 7 (* 3 ms)))])
+              (equal? (list alone first closer paused more late floored)
+                      (list 0 (* 6 ms) (* 5 ms) (* 5 ms) (* 5 ms) (* 5 ms)
                             (* 9/2 ms))))))))
 
 (check "a clean miss alone is the compositor's; a pair raises the hold a \
@@ -909,6 +914,8 @@
                 (pacer2-test-flow-row! (+ T (* k r)) x r (+ T (* (+ k 1) r)))
                 (pacer2-test-judge! (+ T (* (+ k 2) r)))
                 (list (pacer2-state 'hold) (pacer2-state 'soft?)))
+              ;; a frame before the first, so that it comes in a flow
+              (pacer2-test-flow-row! (- T r) (* 6 ms) r)
               (pacer2-test-flow-row! T (* 6 ms) r)
               (pacer2-test-judge! (+ T r))
               (let* ([alone (miss! 1 (* 7 ms))]
@@ -1016,6 +1023,8 @@
              [L core0-look-ns])
          (pacer2-test-rows
           (lambda ()
+            ;; a frame before the first, so that it comes in a flow
+            (pacer2-test-flow-row! (- T r) (* 9 ms) r)
             (pacer2-test-flow-row! T (* 9 ms) r)
             (pacer2-test-judge! (+ T r))
             (set! *pacer2-proven* (* 7 ms))

@@ -380,8 +380,12 @@ step.
 
 The hold, how long before a refresh a frame's GPU work must be seen
 done, is the one thing the second pacer learns, from the screen's
-reports. The first frame shown gives it; a frame shown in time with less
-lead lowers it, never under the floor that a descent leaves. A frame
+reports. The first frame shown in a flow gives it, the frame before it
+shown at the refresh before: a compositor that had nothing to show takes
+a frame at once, and may stamp it with the refresh before it was sent
+(GNOME over NVIDIA's driver does), so a frame after a pause says nothing
+of the hold. A frame shown in time with less lead, in a flow too, lowers
+it, never under the floor that a descent leaves. A frame
 that missed its refresh although it began on plan, its GPU work was done
 the hold before the refresh, and the frame before it was shown, is a
 clean miss. One alone is the compositor's. Two within the sixteen rows

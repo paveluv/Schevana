@@ -171,6 +171,17 @@
            (let ([x (fx- aim (pacer2-seen i 6))])
              (and (fx<= (pacer2-hold-of i) x) x)))))
 
+  ;; Returns whether row i came in a flow: the frame before it was shown
+  ;; at the refresh before. A compositor that had nothing to show takes a
+  ;; frame at once, and may stamp it with the refresh before it was sent,
+  ;; so such a frame tells nothing of the hold that frames in a flow need.
+  (define (pacer2-flowing? i lo)
+    (and (fx> i lo)
+         (fx= (pacer2-kind (fx- i 1)) 1)
+         (let ([r (pacer2-refresh i)])
+           (fx<= (fx- (pacer2-seen i 3) (pacer2-seen (fx- i 1) 3))
+                 (fx+ r (fxquotient r 2))))))
+
   (define (pacer2-missed-before? i lo)
     (let loop ([j lo])
       (and (fx< j i) (or (pacer2-missed j lo) (loop (fx+ j 1))))))
@@ -203,12 +214,13 @@
                    (fx> (fxabs (fx- r (pacer2-refresh (fx- i 1))))
                         (fxquotient r 64)))
           (pacer2-relearn! now))
-        ;; the first frame shown gives the hold; one in time with less lead
-        ;; lowers it, never under the floor, and not while a descent tries
-        ;; it. A lead is over 0, and no stamp is more than a refresh ahead
-        ;; of the clock.
+        ;; the first frame shown in a flow gives the hold; one in time with
+        ;; less lead lowers it, never under the floor, and not while a
+        ;; descent tries it. A lead is over 0, and no stamp is more than a
+        ;; refresh ahead of the clock.
         (let ([a (fxmax *pacer2-floor* (fx- S done))])
           (when (and (fx< 0 done S) (fx<= S (fx+ now r))
+                     (pacer2-flowing? i lo)
                      (or (fx= *pacer2-hold* 0)
                          (and in-time? (fx= *pacer2-proven* 0)
                               (fx< a *pacer2-hold*))))
