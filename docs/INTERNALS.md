@@ -114,7 +114,10 @@ in file-name order:
 The desktop's apps wait: they load after the screen shows, one at each
 quiet step of the loop (a step that drew no frame and wants none), or one
 a second while frames flow (`*world-later*`). The desktop loads the two
-apps it opens first at once (`world-load-now!`). As it begins to compile
+apps it opens first at once (`world-load-now!`). An app asks for a frame
+as it registers, and the launcher, its menu or its grid, reads the apps
+anew at each frame, so one opened before the apps have loaded shows each
+as it comes. As it begins to compile
 each library into its cache, a launcher prints its name, so a first boot
 shows its progress.
 

@@ -296,6 +296,49 @@
                     (and (not opened) pressed open? (not again) typed
                          (equal? erased '("" #t)))))))))))
 
+;; Registers an app named name and titled title, as each of the desktop's
+;; apps does when it loads after the first frame.
+(define (desktop-test-late-app! name title)
+  (register-app! name title (lambda () #f) #f))
+
+(check "an app that loads while the launcher is open shows in it at the \
+        next frame, one after another: in the menu, among the others by \
+        title and filtered as they are, and in the grid"
+       (fluid-let ([*apps* *apps*])
+         (let ([labels (lambda ()
+                         (filter string? (map (lambda (e)
+                                                (and (pair? e) (car e)))
+                                              (menu-entries *menu*))))])
+           (open-launcher! 100 100)
+           (steps 1)
+           (let ([before (labels)])
+             (desktop-test-late-app! 'desktop-test-late "Late Test App")
+             (steps 1)
+             (let ([after (labels)])
+               (test-type! "late")
+               (steps 1)
+               (let ([typed (labels)])
+                 (close-menu!)
+                 (steps 1)
+                 (let* ([grid (desktop-test-grid
+                              (lambda ()
+                                (toggle-launcher!)
+                                (steps 1)
+                                (desktop-test-late-app! 'desktop-test-later
+                                                        "Later Test App")
+                                (steps 1)
+                                (map car (app-grid-entries))))]
+                        ;; the apps' titles but the grid's late one
+                        [titles (sort string<?
+                                      (remove "Later Test App"
+                                              (map app-title *apps*)))])
+                   (and (not (member "Late Test App" before))
+                        (equal? (list-head after (length titles)) titles)
+                        (member "Late Test App" typed)
+                        (for-all (lambda (t) (string-contains-ci? t "late"))
+                                 typed)
+                        (member "Later Test App" grid)))))))))
+
 ;;; ------------------------------------------------------------------
 ;;; the apps' icons in the launcher and the taskbar
 

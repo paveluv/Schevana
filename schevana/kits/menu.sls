@@ -13,8 +13,8 @@
   (export
     menu make-menu menu-x menu-y menu-sel menu-sel-set! menu-filter
     menu-filter-set! menu-filter? menu-tag menu-label-text menu-label-key
-    menu-label-width menu-entries menu-entry-action menu-entry-icon
-    menu-icon-size)
+    menu-label-width menu-entries menu-filtered menu-entry-action
+    menu-entry-icon menu-icon-size)
   (import (chezscheme)
           (only (schevana base) at-load library-layer string-contains-ci?)
           (only (schevana core) font-line-height text-width theme
@@ -76,10 +76,14 @@
   ;; entries), that makes the entries from what is typed.
   (define (menu-entries m)
     (let ([f (menu-filter m)] [items (menu-items m)])
-      (cond [(procedure? items) (items f)]
-            [(string=? f "") items]
-            [else (filter (lambda (e)
-                            (and (pair? e)
-                                 (string-contains-ci? (menu-label-text (car e))
-                                                      f)))
-                          items)]))))
+      (if (procedure? items) (items f) (menu-filtered items f))))
+
+  ;; Returns the entries of items whose text contains f, or all of them
+  ;; when f is empty.
+  (define (menu-filtered items f)
+    (if (string=? f "")
+        items
+        (filter (lambda (e)
+                  (and (pair? e)
+                       (string-contains-ci? (menu-label-text (car e)) f)))
+                items))))

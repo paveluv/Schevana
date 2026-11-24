@@ -16,7 +16,7 @@
                 fullscreen? new-window-position quit! reload! spawn theme
                 theme-default! toggle-fullscreen!)
           (only (schevana kits app) app-launch!)
-          (only (schevana kits menu) menu-label-text)
+          (only (schevana kits menu) menu-filtered menu-label-text)
           (only (schevana kits ui) ui-draw-app-icon ui-menu-open-tag)
           (only (schevana desktop app-grid) app-grid-open? close-app-grid!
                 open-app-grid!)
@@ -84,10 +84,13 @@
           [else #f]))
 
   ;; Opens the launcher's menu at (x, y); at, if given, is where the apps'
-  ;; windows open.
+  ;; windows open. Its entries are made anew each time the menu reads them,
+  ;; so that while the apps still load, each one shows in the open menu as
+  ;; it comes (an app's registering asks for a frame).
   (define (open-launcher! x y . at)
-    (open-menu! x y (launcher-items (and (pair? at) (car at)))
-                'filter #t 'tag 'launcher))
+    (let ([at (and (pair? at) (car at))])
+      (open-menu! x y (lambda (f) (menu-filtered (launcher-items at) f))
+                  'filter #t 'tag 'launcher)))
 
   (define (toggle-launcher!)
     (case (launcher-open?)
