@@ -49,19 +49,26 @@
                       (null? *world-later*)
                       (not *world-loading*))))))))
 
-;; An entry that takes a while to load, 300 ms of the machine's clock.
+;; An entry that loads until the check lets it go by making a file, or 10
+;; s of the machine's clock at most, so that it loads as long as the check
+;; needs however slowly the world turns.
+(define later-release (string-append later-dir "/release"))
 (define later-slow
   (let ([path (string-append later-dir "/slow.ss")])
     (call-with-output-file path
       (lambda (p)
-        (write '(let ([end (+ (real-time) 300)])
-                  (let loop () (when (< (real-time) end) (loop))))
+        (write `(let ([end (+ (real-time) 10000)])
+                  (let loop ()
+                    (unless (or (file-exists? ,later-release)
+                                (> (real-time) end))
+                      (loop))))
                p))
       'replace)
     path))
 
 ;; The process is switched out as any is: while an entry loads, the world
 ;; goes on, its turns and frames too.
+(when (file-exists? later-release) (delete-file later-release))
 (fluid-let ([*world-later* (list later-slow)] [*world-loading* #f]
             [*world-loader* #f])
   (world-later-start!)
@@ -69,6 +76,7 @@
   (let ([ticks (pacer-ticks)])
     (do ([k 0 (+ k 1)]) ((= k 3)) (request-frame!) (steps 1))
     (let ([loading *world-loading*] [turns (- (pacer-ticks) ticks)])
+      (call-with-output-file later-release (lambda (p) (void)))
       (test-wait 10000 (lambda () (not *world-loader*)))
       (check (format "while an entry loads, the world goes on: ~a turns, \
                       the entry still loading (~a)"
