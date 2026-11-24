@@ -9,7 +9,7 @@
   (export
     *theme* *main-theme* theme-rule? theme-rule theme-unset call-with-theme
     theme theme-keys world-value theme-part plist-has? plist-remove
-    *theme-table-defaults* theme-table-default! *pacer-trial* pacer-knob)
+    *theme-table-defaults* theme-table-default!)
   (import (chezscheme)
           (only (schevana base) define-hook define-made define-state
                 library-layer))
@@ -94,14 +94,4 @@
     (set! *theme-table-defaults*
       (cons* key value (plist-remove *theme-table-defaults* key)))
     (unless (hashtable-contains? *theme* key)
-      (hashtable-set! *theme* key value)))
-
-  ;; The pacer's choices are settings that a person may change live
-  ;; ((schevana core theme)), unless a trial holds them. The trial is an
-  ;; alist, ((key . value) ...), that the pacer lab sets through
-  ;; pacer-trial! ((schevana services pacer-lab)); it is never saved with
-  ;; the look. (pacer-knob key) reads the trial first, then the theme.
-  (define-state *pacer-trial* '())
-
-  (define (pacer-knob key)
-    (let ([t (assq key *pacer-trial*)]) (if t (cdr t) (theme key)))))
+      (hashtable-set! *theme* key value))))

@@ -56,8 +56,8 @@ schevana/      the libraries below the world, each declaring its layer:
                  reload!
   kits/        libraries that are pure, or almost: ui, edit, text, color,
                px, menu, ...
-  services/    long-lived state behind procedures: crew, env, pacer-lab,
-               profile, theme-file, vat
+  services/    long-lived state behind procedures: crew, env, profile,
+               theme-file, vat
   styles/  palettes/  wallpapers/    the looks, one definition per library;
                a look's parts, in the folder of its name (styles/adwaita/,
                styles/cons/, styles/genera/, styles/open-look/)
@@ -305,10 +305,7 @@ are judged with none that slow, the pacer forgets what it learned and
 starts again. On a Mac the margin fades over a minute; elsewhere it stays.
 These choices are settings, read live: `pacer-margin-start`,
 `pacer-margin-step`, `pacer-miss-own`, `pacer-lead-fade`,
-`pacer-margin-fade` and `frames-in-flight`. The Pacer Lab, `(pacer-lab)`,
-tries values of them on Schevana itself while it is in use, ten minutes
-each, and logs how many frames came late with each, in
-`~/.schevana.d/pacer-lab.ss`.
+`pacer-margin-fade` and `frames-in-flight`.
 
 How a frame reaches the screen is the `present-mode` setting, in
 Settings' Display tab or `(override! 'present-mode 'mailbox)`, chosen

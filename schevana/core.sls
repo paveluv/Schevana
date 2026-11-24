@@ -22,7 +22,7 @@
     platform-process-bytes platform-machine-load now-ns now-ms thread-cpu-ns
     ;; (schevana core theme-table): the settings in effect, which drawing reads
     theme-rule? theme-rule call-with-theme theme theme-keys theme-part
-    *pacer-trial* plist-has? plist-remove
+    plist-has? plist-remove
     ;; (schevana core processes): processes, errors, toasts, worklets, and
     ;; what is asked of the loop
     proc-wait in-engine? current-proc make-timeout-condition safe-call safely
@@ -68,7 +68,7 @@
     *pacer-lead* *pacer-counts* *pacer-aimed* *pacer-floor* *pacer-latch-phase*
     *pacer-depth* *pacer-made* *pacer-late-run* *pacer-late-chain*
     *pacer-gpu-taught* *pacer-between?* pacer-busy-ms pacer-peak-ms! pacer-rate
-    pacer-rate! pacer-ticks pacer-period pacer-start pacer-trial! pacer-margin
+    pacer-rate! pacer-ticks pacer-period pacer-start pacer-margin
     screen-bytes-then pacer2?
     ;; (schevana core pacer2): the second pacer's period and state
     pacer2-period pacer2-state
@@ -227,7 +227,7 @@
                 clip-row-y0 clip-row-y1)
           (only (schevana core pacer) frame-ring-rows frame-ring-words
                 pacer-busy-ms pacer-peak-ms! pacer-rate pacer-rate! pacer-ticks
-                pacer-start pacer-trial! pacer-margin screen-bytes-then pacer2?)
+                pacer-start pacer-margin screen-bytes-then pacer2?)
           (only (schevana core pacer2) pacer2-period pacer2-state)
           (only (schevana core screen) system-scale-percent fullscreen?
                 set-fullscreen! toggle-fullscreen! screen-set-icon!
@@ -280,8 +280,7 @@
           (prefix (only (schevana tree) *schevana-root*) core:)
           (prefix (only (schevana core platform) platform-process-bytes now-ns
                         now-ms) core:)
-          (prefix (only (schevana core theme-table) world-value
-                        *pacer-trial*) core:)
+          (prefix (only (schevana core theme-table) world-value) core:)
           (prefix (only (schevana core processes) in-engine? current-proc
                         *toasts* notify *last-error* report-error! *procs*
                         *worklet-environment* request-frame! *timers*
@@ -332,7 +331,6 @@
   (define-view now-ns core:now-ns)
   (define-view now-ms core:now-ms)
   (define-view world-value core:world-value)
-  (define-view *pacer-trial* core:*pacer-trial*)
   (define-view in-engine? core:in-engine?)
   (define-view current-proc core:current-proc)
   (define-view *toasts* core:*toasts*)

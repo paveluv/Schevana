@@ -21,7 +21,7 @@
     frame-ticked! frame-input-came! frame-input-drop! pacer-waited!
     pacer-step-done! pacer-busy-ms pacer-peak-ms! pacer-rate pacer-ticks
     frame-turn-soon! pacer-wanted? pacer-frame-ns pacer-period pacer-start
-    pacer-on-latch? pacer-trial! pacer-margin wm-tick! pacer-tick!
+    pacer-on-latch? pacer-margin wm-tick! pacer-tick!
     pacer-procs-ms pacer-wait-ms record-world! record-safely render-frame!
     render-frames-back! render-answers! screen-bytes-then pacer-rate!
     pacer2? pacer-turn-begun!)
@@ -33,8 +33,7 @@
                 gpu-frame-waiting?
                 gpu-frames-back! gpu-take-answers!)
           (only (schevana recorder) rec-last-sizes)
-          (only (schevana core theme-table) *pacer-trial* pacer-knob
-                theme-table-default!)
+          (only (schevana core theme-table) theme theme-table-default!)
           (only (schevana core platform) now-ms now-ns
                 platform-pacer-margin-fade)
           (only (schevana core processes) *dirty* *frame-generation* *timers*
@@ -235,7 +234,7 @@
 
   ;; Returns whether the loop asks the second pacer ((schevana core
   ;; pacer2)), as the setting pacer says.
-  (define (pacer2?) (eqv? (pacer-knob 'pacer) 2))
+  (define (pacer2?) (eqv? (theme 'pacer) 2))
 
   ;; Counts the time from since until now as a wait, for input or for the
   ;; screen.
@@ -416,15 +415,9 @@
   (define (pacer-count! k)
     (fxvector-set! *pacer-counts* k (fx+ 1 (fxvector-ref *pacer-counts* k))))
 
-  ;; Starts a trial ('() for none), and forgets what the pacer learned under
-  ;; the one before.
-  (define (pacer-trial! alist)
-    (set! *pacer-trial* alist)
-    (pacer-relearn!))
-
   ;; A choice that is a fraction of refresh r, or a number of seconds, as ns.
-  (define (pacer-of-refresh key r) (exact (floor (* (pacer-knob key) r))))
-  (define (pacer-seconds key) (exact (floor (* (pacer-knob key) 1000000000))))
+  (define (pacer-of-refresh key r) (exact (floor (* (theme key) r))))
+  (define (pacer-seconds key) (exact (floor (* (theme key) 1000000000))))
 
   ;; The margin, as the screen taught it, or else where it starts. It fades
   ;; as pacer-margin-fade says, which by default is the platform's: in a

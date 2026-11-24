@@ -45,7 +45,7 @@
                 *pacer-depth* *pacer-due* *pacer-floor* *pacer-frame-ns*
                 *pacer-gpu-taught* *pacer-latch* *pacer-latch-phase*
                 *pacer-late-chain* *pacer-late-run* *pacer-lead* *pacer-made*
-                *pacer-shown?* *pacer-trial* *rec-label-at* *rec-labels*
+                *pacer-shown?* *rec-label-at* *rec-labels*
                 *schevana-root* *shader-constants* *shader-fields*
                 *shader-helpers* *windows* clip-row-parent clip-row-radius
                 clip-row-rx0 clip-row-rx1 clip-row-ry0 clip-row-ry1
@@ -1358,7 +1358,6 @@
       (lead . ,*pacer-lead*)
       (margin . ,(pacer-margin (core0-frame-ns)))
       (counts . ,(fxvector->list *pacer-counts*))
-      (trial . ,*pacer-trial*)
       (made . ,*pacer-made*)
       (late . ,*pacer-late-run*)
       (chain . ,*pacer-late-chain*)

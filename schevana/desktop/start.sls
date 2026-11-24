@@ -14,7 +14,6 @@
                 schevana-end! schevana-run! screen-w world-after-load!
                 world-load-now!)
           (only (schevana kits app) app-launch!)
-          (only (schevana services pacer-lab) pacer-lab-log-load!)
           (only (schevana services profile) profile-flag-log!)
           (only (schevana services theme-file) theme-file-load!)
           (only (schevana desktop icon) update-app-icon!
@@ -59,9 +58,6 @@
       (schevana-boot! (option 'mode) (car size) (cdr size)
                       (option 'full-screen?)))
     (update-app-icon!)
-    ;; The pacer lab is turned on again if it was on
-    ;; ((schevana services pacer-lab)).
-    (pacer-lab-log-load!)
     ;; The first apps, launched through the registry: their launchers' names
     ;; are defined later than this file, with the apps, which load after the
     ;; screen shows; these two are loaded first.

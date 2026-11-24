@@ -48,7 +48,7 @@
                 rec-bytes-copies rec-count rec-drawing->bytes rec-earlier-add!
                 rec-extra! rec-extra-at rec-extra-ref rec-extra-u32! rec-freeze!
                 rec-into-list! rec-lend! rec-write!)
-          (only (schevana core theme-table) pacer-knob theme theme-part
+          (only (schevana core theme-table) theme theme-part
                 theme-table-default!)
           (only (schevana core platform) now-ns)
           (only (schevana core processes) *profile-span* report-error!
@@ -1484,7 +1484,7 @@
       ;; those copies
       (let ([f (gpu-publish (rec-take-table!) (rec-table-bytes)
                             (rec-take-atlas-pieces!) (theme 'present-mode)
-                            (pacer-knob 'frames-in-flight))])
+                            (theme 'frames-in-flight))])
         (rec-lend! f)
         f)))
 

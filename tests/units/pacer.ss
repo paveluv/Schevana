@@ -1290,16 +1290,3 @@
                 (= *pacer-late-chain* 0) (not *pacer-gpu-taught*)
                 (= *pacer-lead* (quotient r 4))
                 (= (pacer-margin r) 0)))))
-
-(check "a trial holds the pacer's choices before the settings, which it \
-        leaves as they are, and starts it learning anew"
-       (let ([r (core0-frame-ns)] [overrides (theme-overrides)])
-         (fluid-let ([*pacer-margin* 5000000])
-           (pacer-trial! '((pacer-margin-start . 1/4)))
-           (let ([held (list (pacer-margin r) (pacer-knob 'pacer-margin-step)
-                             (theme 'pacer-margin-start))])
-             (pacer-trial! '())
-             (and (equal? held (list (quotient r 4) (theme 'pacer-margin-step)
-                                     0))
-                  (= (pacer-margin r) 0)
-                  (equal? (theme-overrides) overrides))))))
