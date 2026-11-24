@@ -1,7 +1,8 @@
 ;;; (games prism-relay glass) — the paint that draws the bench from its ray
 ;;; map ((games prism-relay board)): etched glass, silver mirrors on round
 ;;; mounts, violet half-silvered ones, amber crystals, the source, the ring,
-;;; and the light, with pulses running along it from the source.
+;;; and the light, with pulses running along it from the source. A solved
+;;; chamber's light turns gold, and the ring bursts.
 
 (library (games prism-relay glass)
   (export prism-glass prism-swing-ease)
@@ -29,11 +30,16 @@
   ;; pixels wide. The mirror at swing-cell is drawn turned by swing (from 0
   ;; to 1 of its quarter turn) from the leaning the map gives it. surge is
   ;; where the light's flourish runs, in cells from the source, or less than
-  ;; 0 for none; solved is 1 once the chamber is solved.
+  ;; 0 for none; solved is 1 once the chamber is solved, and the light
+  ;; turns gold where the flourish has passed. ring is the ring's cell, and
+  ;; burst the time since the flourish reached it, in seconds, or less than
+  ;; 0 before: a wave runs out from the ring through the glass, and rays
+  ;; flare from it and settle to a glow that stays.
   (define-paint (prism-glass x y)
     ([cells fx-buffer] [cols fixnum] [rows fixnum] [pitch flonum]
      [selected fixnum] [hover fixnum] [phase flonum] [swing-cell fixnum]
-     [swing flonum] [surge flonum] [solved fixnum])
+     [swing flonum] [surge flonum] [solved fixnum] [ring fixnum]
+     [burst flonum])
     (define (band d w) (clamp01 (fl+ 0.5 (fl* pitch (fl- w d)))))
     ;; A glow fades out before the cell's edge, d cells from its middle,
     ;; since the next cell doesn't draw it.
@@ -61,6 +67,14 @@
            [tile (fxand word 255)] [sides (fxand (fxsrl word 8) 65535)]
            [far (fixnum->flonum (fxand (fxsrl word 24) 255))]
            [lit? (not (fx= sides 0))])
+      ;; A leg's distance from the source, mod 4, at a point along cells
+      ;; out from the middle; and the whole distance, from the cell's
+      ;; first light.
+      (define (leg-at leg along)
+        (fl+ (fixnum->flonum (fxand leg 3))
+             (if (fx= 0 (fxand leg 4)) (fl- along) along)))
+      (define (leg-whole at)
+        (fl+ at (fl* 4.0 (flround (fl* 0.25 (fl- far at))))))
       ;; The light of one side's leg at a point along cells out from the
       ;; middle and across cells off its line. The pulses keep their
       ;; phase from cell to cell, and the flourish brightens the light
@@ -68,11 +82,10 @@
       (define (leg-light leg along across)
         (if (fx= leg 0)
             0.0
-            (let* ([at (fl+ (fixnum->flonum (fxand leg 3))
-                            (if (fx= 0 (fxand leg 4)) (fl- along) along))]
+            (let* ([at (leg-at leg along)]
                    [wave (flcos (fl- (fl* 1.5707963 at) phase))]
                    [pulse (clamp01 (fl- (fl* 4.0 wave) 3.0))]
-                   [whole (fl+ at (fl* 4.0 (flround (fl* 0.25 (fl- far at)))))]
+                   [whole (leg-whole at)]
                    [ahead (flabs (fl- whole surge))]
                    [rush (if (fl< surge 0.0)
                              0.0
@@ -89,8 +102,22 @@
           (if (fl< ahead 0.0)
               (leg-light leg 0.0 r)
               (leg-light leg ahead off))))
-      (let* ([beam (flmax (side-light 0 u av) (side-light 1 v au)
-                          (side-light 2 (fl- u) av) (side-light 3 (fl- v) au))]
+      ;; How gold a side's leg has turned, from 0 to 1: a solved chamber's
+      ;; light turns as the flourish passes.
+      (define (side-gold side ahead)
+        (let ([leg (fxand 15 (fxsrl sides (fx* 4 side)))])
+          (if (or (fx= solved 0) (fx= leg 0))
+              0.0
+              (clamp01 (fl* 2.0 (fl- surge (leg-whole
+                                           (leg-at leg (flmax ahead 0.0)))))))))
+      (let* ([east (side-light 0 u av)] [south (side-light 1 v au)]
+             [west (side-light 2 (fl- u) av)] [north (side-light 3 (fl- v) au)]
+             [beam (flmax east south west north)]
+             [charged (flmax (fl* east (side-gold 0 u))
+                             (fl* south (side-gold 1 v))
+                             (fl* west (side-gold 2 (fl- u)))
+                             (fl* north (side-gold 3 (fl- v))))]
+             [cool (fl- beam charged)]
              [half? (or (fx= tile prism-half-slash)
                         (fx= tile prism-half-backslash))]
              [mirror? (or half? (fx= tile prism-slash)
@@ -175,10 +202,56 @@
              [plate (fl+ 0.045
                          (fl* 0.022 (fl- 1.0 (fl/ gy (fixnum->flonum rows))))
                          (fl* 0.045 (band (flabs (fl- edge 0.48)) 0.006))
-                         (fl* 0.02 (clamp01 (fl- 1.0 (fl* 1.6 r r)))))])
-        (ink (fl+ 0.036 plate (fl* 0.58 steel) gold (fl* 0.36 beam) cursor
-                  (fl* 0.8 violet))
-             (fl+ 0.079 plate (fl* 0.87 steel) (fl* 0.62 gold) beam
-                  (fl* 0.79 cursor) (fl* 0.62 violet))
-             (fl+ 0.108 plate steel (fl* 0.19 gold) (fl* 0.91 beam)
-                  (fl* 0.45 cursor) violet))))))
+                         (fl* 0.02 (clamp01 (fl- 1.0 (fl* 1.6 r r)))))]
+             [burst? (and (fl>= burst 0.0) (fx>= ring 0))]
+             ;; where the pixel is from the ring's middle, in cells
+             [bx (fl- gx (fixnum->flonum (fxmod ring cols)) 0.5)]
+             [by (fl- gy (fixnum->flonum (fxquotient ring cols)) 0.5)]
+             [bd (flsqrt (fl+ (fl* bx bx) (fl* by by)))]
+             ;; 1 as the burst starts, down to 0 a little over a second on
+             [flash (if burst? (clamp01 (fl- 1.0 (fl* 0.8 burst))) 0.0)]
+             ;; The wave: a sharp front 11 cells a second out from the ring,
+             ;; with a softer wake, that lights the seams between the cells
+             ;; and glints on the mirrors as it passes.
+             [wave
+              (if burst?
+                  (let ([ahead (fl- bd (fl* 11.0 burst))])
+                    (fl* flash flash
+                         (if (fl> ahead 0.0)
+                             (clamp01 (fl- 1.0 (fl* 5.0 ahead)))
+                             (clamp01 (fl+ 1.0 (fl* 0.8 ahead))))
+                         (fl+ 0.2 steel
+                              (fl* 0.8 (clamp01
+                                        (fl- 1.0 (fl* 12.0 (fl- 0.5 edge))))))))
+                  0.0)]
+             ;; Twelve rays turning slowly around the ring: cos 12θ, from
+             ;; the cosine of the pixel's angle about it, by doubling twice
+             ;; and tripling. They reach far as the burst starts, then
+             ;; settle.
+             [rays
+              (if burst?
+                  (let* ([spin (fl/ phase 12.0)]
+                         [c (fl/ (fl+ (fl* bx (flcos spin))
+                                      (fl* by (flsin spin)))
+                                 (flmax bd 0.001))]
+                         [c2 (fl- (fl* 2.0 c c) 1.0)]
+                         [c4 (fl- (fl* 2.0 c2 c2) 1.0)]
+                         [c12 (fl* c4 (fl- (fl* 4.0 c4 c4) 3.0))]
+                         [spoke (clamp01 (fl* 2.5 (fl- c12 0.5)))]
+                         [reach (fl+ 1.7 (fl* 6.0 flash
+                                             (clamp01 (fl* 4.0 burst))))])
+                    (fl+ (fl* (fl+ 0.28 (fl* 0.9 flash)) spoke spoke
+                              (clamp01 (fl- 1.0 (fl/ bd reach)))
+                              (clamp01 (fl* 4.0 (fl- bd 0.36))))
+                         (fl/ (fl+ 0.05 (fl* 0.5 flash))
+                              (fl+ 1.0 (fl* 1.5 bd bd)))))
+                  0.0)]
+             [warm (fl+ wave rays)])
+        (ink (fl+ 0.036 plate (fl* 0.58 steel) gold (fl* 0.36 cool) charged
+                  cursor (fl* 0.8 violet) warm)
+             (fl+ 0.079 plate (fl* 0.87 steel) (fl* 0.62 gold) cool
+                  (fl* 0.76 charged) (fl* 0.79 cursor) (fl* 0.62 violet)
+                  (fl* 0.82 warm))
+             (fl+ 0.108 plate steel (fl* 0.19 gold) (fl* 0.91 cool)
+                  (fl* 0.36 charged) (fl* 0.45 cursor) violet
+                  (fl* 0.5 warm)))))))

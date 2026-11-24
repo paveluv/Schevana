@@ -27,10 +27,12 @@
           (games prism-relay generator)
           (games prism-relay glass))
 
-  ;; How long a mirror takes to swing, and how fast the flourish runs
-  ;; along the light once a chamber is solved, in cells a second.
+  ;; How long a mirror takes to swing. Once a chamber is solved, the
+  ;; flourish runs along the light at least so many cells a second, and
+  ;; reaches the ring in at most so many seconds, however long the way.
   (define prism-swing-ns 160000000)
   (define prism-surge-speed 16.0)
+  (define prism-surge-most 0.6)
 
   ;;; ------------------------------------------------------------ chambers
 
@@ -69,6 +71,7 @@
     (window-set! win 'solved? #f)
     (window-set! win 'swing-cell -1)
     (window-set! win 'surge-start #f)
+    (window-set! win 'burst-start #f)
     (prism-chamber-ready! win))
 
   ;; Goes step chambers on, among those reached: those opened and the one
@@ -89,6 +92,9 @@
       (window-set! win 'swing-cell -1)
       (window-set! win 'surge-start #f)
       (window-set! win 'surge -1.0)
+      (window-set! win 'ring (or (prism-ring-at board) -1))
+      (window-set! win 'burst-start #f)
+      (window-set! win 'burst -1.0)
       (prism-show! win (prism-update! win))))
 
   ;; Traces the window's board, keeps what its light reaches, and returns
@@ -103,9 +109,12 @@
       rays))
 
   ;; Hands the GPU the ray map, and keeps how far the light goes, which is
-  ;; where the flourish ends.
+  ;; where the flourish ends, and how far it goes to the ring, where the
+  ;; burst starts.
   (define (prism-show! win rays)
-    (let ([glass (window-ref win 'glass)])
+    (let ([glass (window-ref win 'glass)] [ring (window-ref win 'ring)])
+      (when (>= ring 0)
+        (window-set! win 'ring-far (fxsrl (fxvector-ref rays ring) 24)))
       (let loop ([i 0] [reach 0])
         (if (= i (fxvector-length rays))
             (window-set! win 'reach reach)
@@ -153,8 +162,8 @@
                                     (window-ref win 'cols)))
       (when (window-ref win 'solved?) (window-set! win 'surge-start t))))
 
-  ;; Moves the pulses, the swinging mirror and the flourish on to the
-  ;; frame shown at t.
+  ;; Moves the pulses, the swinging mirror, the flourish and the burst on
+  ;; to the frame shown at t.
   (define (prism-frame! win t)
     (window-set! win 'phase (* 2.0 pi (/ (mod t 2000000000) 2e9)))
     (when (>= (window-ref win 'swing-cell) 0)
@@ -164,14 +173,21 @@
           (if (>= p 1)
               (prism-settle! win t)
               (window-set! win 'swing (prism-swing-ease (inexact p)))))))
-    (let ([start (window-ref win 'surge-start)])
+    (let ([start (window-ref win 'surge-start)]
+          [far (window-ref win 'ring-far)])
       (when start
-        (let ([front (* prism-surge-speed (/ (- t start) 1e9))])
+        (let ([front (* (max prism-surge-speed (/ far prism-surge-most))
+                        (/ (- t start) 1e9))])
+          (when (and (>= front far) (not (window-ref win 'burst-start)))
+            (window-set! win 'burst-start t))
           (if (> front (+ (window-ref win 'reach) 4))
               (begin
                 (window-set! win 'surge-start #f)
                 (window-set! win 'surge 1000.0))
               (window-set! win 'surge (inexact front))))))
+    (let ([start (window-ref win 'burst-start)])
+      (when start
+        (window-set! win 'burst (inexact (/ (- t start) 1e9)))))
     (window-frame-soon! win))
 
   ;;; ------------------------------------------------------------ the screen
@@ -249,13 +265,52 @@
     (or (find (lambda (s) (<= (text-width s font) width)) texts)
         (car (last-pair texts))))
 
+  ;; The banner shows this long after the burst starts, and takes this long
+  ;; to fade in, in seconds.
+  (define prism-banner-after 0.15)
+  (define prism-banner-fade 0.35)
+
+  ;; Returns how the chamber's turns compare with its par.
+  (define (prism-verdict turns par)
+    (cond [(= turns par) "At par"]
+          [(= turns (+ par 1)) "One turn over par"]
+          [else (format "~a turns over par" (- turns par))]))
+
+  ;; Draws the banner of a solved chamber on the bench at (x, y), w by h:
+  ;; in the middle of the half away from the ring, so that the burst shows,
+  ;; fading in and rising into place as the burst goes on.
+  (define (prism-draw-banner win x y w h)
+    (let* ([n (window-ref win 'chamber)]
+           [rows (window-ref win 'rows)]
+           [low? (< (quotient (window-ref win 'ring) (window-ref win 'cols))
+                    (/ rows 2))]
+           [a (max 0.0 (min 1.0 (/ (- (window-ref win 'burst)
+                                     prism-banner-after)
+                                  prism-banner-fade)))]
+           [title (prism-fitting (list (format "Chamber ~a complete" (+ n 1))
+                                       "Complete")
+                                 (- w 40) 'big)]
+           [verdict (prism-verdict (window-ref win 'turns)
+                                   (window-ref win 'par))]
+           [big (font-line-height 'big)] [ui (font-line-height 'ui)]
+           [bw (+ 48 (max (text-width title 'big) (text-width verdict 'ui)))]
+           [bh (+ 30 big ui)]
+           [bx (+ x (/ (- w bw) 2))]
+           [by (+ y (/ (- (/ h 2) bh) 2) (if low? (/ h 2) 0)
+                  (* 10 (- 1 a) (- 1 a)))])
+      (fill-box bx by bw bh (alpha 'bg-0 (* 0.82 a)) 12)
+      (stroke-box bx by bw bh (alpha 'orange (* 0.9 a)) 1.5 12)
+      (draw-text (+ bx (/ (- bw (text-width title 'big)) 2)) (+ by 12) title
+                 (alpha 'text a) 'big)
+      (draw-text (+ bx (/ (- bw (text-width verdict 'ui)) 2)) (+ by 16 big)
+                 verdict (alpha 'orange a) 'ui)))
+
   (define (prism-draw win w h)
     (let*-values ([(cols rows) (values (window-ref win 'cols)
                                        (window-ref win 'rows))]
                   [(x y cell foot) (prism-layout w h cols rows)])
       (let* ([n (window-ref win 'chamber)] [board (window-ref win 'board)]
-             [turns (window-ref win 'turns)] [par (window-ref win 'par)]
-             [status (prism-status win)]
+             [par (window-ref win 'par)] [status (prism-status win)]
              [best (hashtable-ref (window-ref win 'best) n #f)]
              [done? (and board (window-ref win 'solved?))]
              [small (font-line-height 'ui-small)])
@@ -284,7 +339,10 @@
                          (window-ref win 'swing) (window-ref win 'surge)
                          (if (and done? (< (window-ref win 'swing-cell) 0))
                              1
-                             0))))
+                             0)
+                         (window-ref win 'ring) (window-ref win 'burst))
+            (when (and done? (> (window-ref win 'burst) prism-banner-after))
+              (prism-draw-banner win x y (* cell cols) (* cell rows)))))
         (cond
           [(not board)
            (draw-text 14 (+ foot 2)
@@ -292,14 +350,15 @@
           [done?
            (fill-box 12 foot (- w 24) (- h foot 6) (mix 'bg-0 'accent 0.18) 6)
            (draw-text 22 (+ foot 3)
-                      (cond [(= turns par) "Relay complete, at par"]
-                            [(= turns (+ par 1))
-                             "Relay complete, one turn over par"]
-                            [else (format "Relay complete, ~a turns over par"
-                                          (- turns par))])
+                      (format "Click or press Enter for chamber ~a" (+ n 2))
                       'text 'ui)
            (draw-text 22 (+ foot 5 (font-line-height 'ui))
-                      (format "Click or press Enter for chamber ~a" (+ n 2))
+                      (prism-fitting
+                       '("R plays it again · [ ] go back to the chambers \
+                          reached"
+                         "R plays it again · [ ] go back"
+                         "R plays it again")
+                       (- w 44) 'ui-small)
                       'text-dim 'ui-small)]
           [else
            (draw-text 14 (+ foot 2)
@@ -412,6 +471,10 @@
       'surge -1.0
       'surge-start #f
       'reach 0
+      'ring -1
+      'ring-far 0
+      'burst -1.0
+      'burst-start #f
       'open (lambda (win) (prism-go! win 0) (window-frame-soon! win))
       'frame (lambda (win t) (prism-frame! win t))
       'draw (lambda (win w h) (prism-draw win w h))

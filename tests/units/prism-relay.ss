@@ -85,6 +85,47 @@
 
 (define (pr-green win i) (pr-channel win i 8 0 0))
 
+;; Returns the window's picture.
+(define (pr-picture win)
+  (let-values ([(w h) (window-content-size win)])
+    (image w h 1 (lambda () (pr:prism-draw win w h)))))
+
+;; Calls (f x y) for each pixel of the window's bench from (c0, r0) to
+;; (c1, r1), in cells, and returns the sum of what it returns.
+(define (pr-sum-over win c0 r0 c1 r1 f)
+  (let*-values ([(w h) (window-content-size win)]
+                [(x y cell foot) (pr:prism-layout w h (window-ref win 'cols)
+                                                  (window-ref win 'rows))])
+    (let ([x0 (exact (ceiling (+ x (* c0 cell))))]
+          [x1 (exact (floor (+ x (* c1 cell))))]
+          [y1 (exact (floor (+ y (* r1 cell))))])
+      (let loop ([px x0] [py (exact (ceiling (+ y (* r0 cell))))] [sum 0])
+        (cond [(>= py y1) sum]
+              [(>= px x1) (loop x0 (+ py 1) sum)]
+              [else (loop (+ px 1) py (+ sum (f px py)))])))))
+
+;; Returns the mean red of the picture over the window's bench from
+;; (c0, r0) to (c1, r1), in cells.
+(define (pr-red win pic c0 r0 c1 r1)
+  (let ([n (pr-sum-over win c0 r0 c1 r1 (lambda (x y) 1))])
+    (/ (pr-sum-over win c0 r0 c1 r1
+                    (lambda (x y) (fxand 255 (fxsrl (pixel-at pic x y) 16))))
+       (max n 1))))
+
+;; Returns how many pixels of the window's bench from (c0, r0) to (c1, r1)
+;; differ between pictures a and b by more than 48 in a channel.
+(define (pr-changed win a b c0 r0 c1 r1)
+  (pr-sum-over win c0 r0 c1 r1
+    (lambda (x y)
+      (let ([p (pixel-at a x y)] [q (pixel-at b x y)])
+        (if (exists (lambda (shift)
+                      (> (abs (- (fxand 255 (fxsrl p shift))
+                                 (fxand 255 (fxsrl q shift))))
+                         48))
+                    '(0 8 16))
+            1
+            0)))))
+
 ;;; ------------------------------------------------------------ the light
 
 (check "Light leaves the source the way it faces, turns at mirrors, goes \
@@ -306,6 +347,49 @@
       (close-window! dark)
       (close-window! solved)
       ok)))
+
+(check "The ring bursts only once the flourish has reached it, and the \
+        burst goes on from there"
+  (let ([win (pr-open-on (pr-chamber '(2) ">./" "..." "..*" "..O"))])
+    (pr:prism-turn! win 2)
+    (let* ([settled (pr-steps-until
+                     (lambda () (< (window-ref win 'swing-cell) 0)) 300)]
+           [early (and (< (window-ref win 'surge) (window-ref win 'ring-far))
+                       (not (window-ref win 'burst-start)))]
+           [started (pr-steps-until
+                     (lambda () (window-ref win 'burst-start)) 300)]
+           [reached (>= (window-ref win 'surge) (window-ref win 'ring-far) 1)]
+           [first (window-ref win 'burst)]
+           [later (begin (steps 3) (window-ref win 'burst))])
+      (let ([ok (and settled early started reached (>= first 0.0)
+                     (> later first) (not (window-error win)))])
+        (close-window! win)
+        ok))))
+
+(check "A solved chamber's light turns gold; its ring's burst lights the \
+        glass, then settles to a glow that stays; and a banner shows in \
+        the half of the bench away from the ring"
+  ;; red, which the cyan light has little of and gold has much; the ring
+  ;; is in the bottom half, the banner in the top
+  (let ([win (pr-open-on (pr-chamber '(2) ">./" "..." "..*" "..O"))])
+    (window-set! win 'phase 0.0)
+    (let ([cyan (pr-channel win 1 16 0 0)])
+      (pr:prism-turn! win 2)
+      (pr-steps-until (lambda () (= 1000.0 (window-ref win 'surge))) 600)
+      (window-set! win 'phase 0.0)
+      (let* ([at (lambda (burst)
+                   (window-set! win 'burst burst)
+                   (pr-picture win))]
+             [none (at -1.0)] [gold (pr-channel win 1 16 0 0)]
+             [flaring (at 0.2)] [glowing (at 3.0)]
+             [ok (and (> gold (+ cyan 60))
+                      (> (pr-red win flaring 0 2 3 4)
+                         (+ (pr-red win glowing 0 2 3 4) 10))
+                      (> (pr-red win glowing 0 2 3 4)
+                         (+ (pr-red win none 0 2 3 4) 3))
+                      (> (pr-changed win none glowing 0.6 0 2.4 2) 30))])
+        (close-window! win)
+        ok))))
 
 (check "Once a chamber is solved, a click anywhere opens the next, and a \
         click on a chamber's dot goes back to it"

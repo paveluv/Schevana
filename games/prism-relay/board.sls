@@ -18,7 +18,7 @@
 (library (games prism-relay board)
   (export prism-neighbor prism-turnable? prism-turned prism-trace!
           prism-trace prism-cell-lit? prism-tally prism-solved?
-          prism-next-optic prism-optic-toward)
+          prism-ring-at prism-next-optic prism-optic-toward)
   (import (chezscheme))
 
   ;; Directions run clockwise from east: 0 east, 1 south, 2 west, 3 north.
@@ -56,6 +56,13 @@
     (let loop ([i 0])
       (cond [(fx= i (string-length board)) #f]
             [(prism-source-way (string-ref board i)) i]
+            [else (loop (fx+ i 1))])))
+
+  ;; Returns the ring's cell, or #f.
+  (define (prism-ring-at board)
+    (let loop ([i 0])
+      (cond [(fx= i (string-length board)) #f]
+            [(char=? (string-ref board i) #\O) i]
             [else (loop (fx+ i 1))])))
 
   ;; The ray map has a word for each cell: its tile's code in the low byte;
