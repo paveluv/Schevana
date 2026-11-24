@@ -72,7 +72,8 @@ widest of some strings.
 
 A font may be a bitmap font, its pixels drawn by hand at one size, as the
 mimicked styles' originals had (the Interlisp style draws all of its text
-in Medley's own). `define-bitmap-font` registers one by name: its pixel
+in Medley's own, and OPEN LOOK its fixed parts in OLGX's glyph fonts, as
+OLGX does). `define-bitmap-font` registers one by name: its pixel
 size, ascent and descent, then its glyphs, each a character, its advance,
 where its bits begin (right of the pen and above the baseline), its
 width, and its rows from the top, the leftmost pixel in a row's highest

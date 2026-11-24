@@ -16,10 +16,11 @@
 ;;; button, the default one ringed, a glyph alone in an abbreviated button,
 ;;; and an inactive one grayed over. Everything comes in OPEN LOOK's four
 ;;; sizes, 10, 12, 14 and 19 point, whichever is nearest the text size. The
-;;; fixed parts are OLGX's own glyphs (its fonts, a part of their own:
-;;; (schevana styles open-look fonts), under their notice) pixel for pixel,
-;;; the numbers are olwm's (winframe.c), and the shades follow OLGX's
-;;; arithmetic, translated from Sun's code, whose notice goes with it:
+;;; fixed parts are OLGX's own glyphs pixel for pixel, drawn as text in its
+;;; glyph fonts as OLGX draws them (the fonts are a part of their own,
+;;; (schevana styles open-look fonts), under their notice), the numbers are
+;;; olwm's (winframe.c), and the shades follow OLGX's arithmetic,
+;;; translated from Sun's code, whose notice goes with it:
 ;;;
 ;;;   (c) Copyright 1989, 1990, 1991 Sun Microsystems, Inc. Sun design
 ;;;   patents pending in the U.S. and foreign countries. OPEN LOOK is a
@@ -38,9 +39,10 @@
     open-look-button-size)
   (import (chezscheme)
           (only (schevana base) at-load library-layer)
-          (only (schevana core) color-default! define-style draw-text fill-box
-                font font-ascent rgb stipple stroke-box text-width theme
-                theme-rule window-h window-ref window-title window-w)
+          (only (schevana core) color-default! define-bitmap-font define-style
+                draw-text fill-box font font-ascent rgb stipple stroke-box
+                text-width theme theme-rule window-h window-ref window-title
+                window-w with-clip)
           (only (schevana kits color) color->fixnum)
           (only (schevana kits text) text-within)
           (only (schevana kits ui) ui-draw-focus ui-draw-glyph ui-glyph-size)
@@ -171,31 +173,17 @@
   ;;; ------------------------------------------------------------------
   ;;; OLGX's drawing
 
-  ;; Draws glyph name of the size's font with its top-left pixel at (x, y):
-  ;; its set pixels in color, each run in a row as one box. If cut is given,
-  ;; the glyph is cut to the cw × ch window that olwm draws it in (at 19
-  ;; point some glyphs are a pixel larger than their windows).
+  ;; Draws glyph name with its top-left pixel at (x, y), in color: its
+  ;; character, as text in the size's glyph font, as OLGX draws it. If cut
+  ;; is given, the glyph is cut to the cw × ch window that olwm draws it in
+  ;; (at 19 point some glyphs are a pixel larger than their windows).
   (define (open-look-glyph x y name color . cut)
-    (let ([g (open-look-font-glyph (open-look-size) name)])
-      (when g
-        (let ([w (if (pair? cut) (min (car g) (car cut)) (car g))]
-              [n (if (pair? cut) (cadr cut) (cadr g))])
-          (let rows ([rs (cddr g)] [j 0])
-            (unless (or (null? rs) (>= j n))
-              (let ([on? (lambda (i) (and (< i w)
-                                          (fxbit-set? (car rs)
-                                                      (- (car g) 1 i))))])
-                (let run ([i 0])
-                  (cond
-                    [(>= i w) (void)]
-                    [(on? i)
-                     (let end ([e (+ i 1)])
-                       (if (on? e)
-                           (end (+ e 1))
-                           (begin (fill-box (+ x i) (+ y j) (- e i) 1 color)
-                                  (run e))))]
-                    [else (run (+ i 1))])))
-              (rows (cdr rs) (+ j 1))))))))
+    (let ([s (open-look-glyph-string name)])
+      (when s
+        (if (pair? cut)
+            (with-clip (x y (car cut) (cadr cut))
+              (draw-text x y s color 'open-look-glyph-font))
+            (draw-text x y s color 'open-look-glyph-font)))))
 
   ;; olgx_draw_box (ol_draw.c:42-118): the top and left lines in ul, the
   ;; bottom and right ones in lr, which gets the top right pixel; and fill
@@ -411,7 +399,8 @@
   (define (open-look-glyph-across x y name n color)
     (let ([g (open-look-font-glyph (open-look-size) name)])
       (when (and g (> n 0))
-        (let rows ([rs (cddr g)] [j 0] [from #f])   ; from: the run's first
+        ;; from is the first row of the run being read, if one is
+        (let rows ([rs (list-tail g 5)] [j 0] [from #f])
           (let ([on? (and (pair? rs) (= (car rs) 1))])
             (cond
               [(and on? (not from)) (rows (cdr rs) (+ j 1) j)]
@@ -566,6 +555,11 @@
   (at-load
    (color-default! 'open-look-inactive (stipple 'window-bg #f ".#" "#.")))
 
+  ;; OLGX's glyph fonts, registered as the style loads.
+  (at-load
+   (for-each (lambda (f) (define-bitmap-font (car f) (cdr f)))
+             open-look-fonts))
+
   (at-load
    (define-style open-look "OPEN LOOK"
      'options '(palette
@@ -582,6 +576,11 @@
      'ui-font-size 12
      'open-look-depth '3d
      'open-look-focus 'band
+     ;; OLGX's glyph font for the size, which the fixed parts are drawn in
+     'open-look-glyph-font (theme-rule
+                            (let ([n (open-look-size)])
+                              (font (format "OPEN LOOK Glyph ~a" n) n
+                                    'crisp)))
      'frame-insets 'open-look-insets
      'frame-regions 'open-look-regions
      'frame-under 'open-look-draw-under

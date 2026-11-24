@@ -219,10 +219,11 @@ has none, the widget its designers would have made:
   when pulled out, and it has no corners, as XView's pop-ups keep their
   size. A window's `'footer`, a string or `(left . right)`, shows under
   the pane. Everything comes in OPEN LOOK's four sizes, 10, 12, 14 and 19
-  point, whichever is nearest the text size: OLGX's glyph fonts drawn
-  pixel for pixel, olwm's numbers, and the 3D shades that OLGX takes from
-  the window color (`open-look-window`): BG2 is 90 % of its value, BG3
-  50 %, and the highlight 120 %. Drawn where olwm's own screenshots have
+  point, whichever is nearest the text size: OLGX's glyph fonts, in which
+  its fixed parts are drawn as text, pixel for pixel, as OLGX draws them,
+  olwm's numbers, and the 3D shades that OLGX takes from the window color
+  (`open-look-window`): BG2 is 90 % of its value, BG3 50 %, and the
+  highlight 120 %. Drawn where olwm's own screenshots have
   their frames, at every size in 2D and 3D, its frames match olwm's to the
   pixel but for three pixels at 14 and 19 point, where olwm's corner shows
   the desktop through. Its buttons are OLGX's as XView drew them, on panes

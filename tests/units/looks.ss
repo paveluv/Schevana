@@ -1061,7 +1061,8 @@
         pushpin two sizes, 10's as 12's and 14's as 19's"
        (let* ([glyph open-look-font-glyph]
               [wh (lambda (size name)
-                    (let ([g (glyph size name)]) (list (car g) (cadr g))))])
+                    (let ([g (glyph size name)])
+                      (list (list-ref g 4) (length (list-tail g 5)))))])
          (and (equal? (map (lambda (s) (wh s 'ul-resize-outline))
                            '(10 12 14 19))
                       '((10 10) (11 11) (12 12) (14 14)))
@@ -1074,6 +1075,61 @@
               (not (glyph 12 'no-such-glyph))
               (equal? (map open-look-size-near '(9 12 13 15 20))
                       '(10 12 12 14 19)))))
+
+;; Returns the rows of OLGX's glyph name at size as text, o for a set bit
+;; and . for the rest, with a column of . after it, h rows in all.
+(define (looks-test-glyph-rows size name h)
+  (let* ([g (open-look-font-glyph size name)]
+         [w (list-ref g 4)]
+         [rows (list-tail g 5)])
+    (map (lambda (y)
+           (list->string
+            (map (lambda (x)
+                   (if (and (< x w) (< y (length rows))
+                            (logbit? (- w 1 x) (list-ref rows y)))
+                       #\o
+                       #\.))
+                 (iota (+ w 1)))))
+         (iota h))))
+
+(check "OPEN LOOK draws each of OLGX's glyphs as text in the size's glyph \
+        font, pixel for pixel: all fifty at each of the four sizes, side by \
+        side, light the bits of their data and nothing else"
+       (let* ([names (map car open-look-glyph-strings)]
+              [drawn
+               (lambda (size)
+                 (let* ([gs (map (lambda (n) (open-look-font-glyph size n))
+                                 names)]
+                        [ws (map (lambda (g) (+ 1 (list-ref g 4))) gs)]
+                        [w (apply + ws)]
+                        [h (apply max (map (lambda (g)
+                                             (length (list-tail g 5)))
+                                           gs))]
+                        [want (apply map string-append
+                                     (map (lambda (n)
+                                            (looks-test-glyph-rows size n h))
+                                          names))]
+                        [got
+                         (pixel-rows
+                          (image w h 1
+                                 (lambda ()
+                                   (fill-box 0 0 w h #x000000)
+                                   (let loop ([ns names] [ws ws] [x 0])
+                                     (unless (null? ns)
+                                       (open-look-glyph x 0 (car ns) #xffffff)
+                                       (loop (cdr ns) (cdr ws)
+                                             (+ x (car ws)))))))
+                          '((#xff000000 . #\.) (#xffffffff . #\o)))])
+                   (equal? got want)))])
+         (set-style! 'open-look)
+         (let ([r (map (lambda (size)
+                         (set-theme! 'ui-font-size size)
+                         (drawn size))
+                       '(10 12 14 19))])
+           (reset-style!)
+           (set-style! 'mac)
+           (printf "  ~s\n" r)
+           (equal? r '(#t #t #t #t)))))
 
 (check "OPEN LOOK's frame is olwm's at each size: arms of 5, 5, 6 and 6, \
         23, 25, 29 and 35 above the pane, a footer's 16, 18, 21 and 27 \
@@ -1458,14 +1514,16 @@
 (check "OPEN LOOK has OLGX's button glyphs: an end's top-left piece as \
         tall as the button, 2D's right end a pixel wider for the shadow, \
         and each middle a pixel wide, drawn as long as the run"
-       (let ([g open-look-font-glyph] [sizes '(10 12 14 19)])
-         (and (equal? (map (lambda (s) (cadr (g s 'button-ul))) sizes)
+       (let* ([g open-look-font-glyph] [sizes '(10 12 14 19)]
+              [w (lambda (s name) (list-ref (g s name) 4))])
+         (and (equal? (map (lambda (s) (length (list-tail (g s 'button-ul) 5)))
+                           sizes)
                       '(18 20 22 28))
-              (equal? (map (lambda (s) (car (g s 'button-outline-right-endcap)))
+              (equal? (map (lambda (s) (w s 'button-outline-right-endcap))
                            sizes)
                       '(9 10 12 19))
               (for-all (lambda (s)
-                         (for-all (lambda (m) (= 1 (car (g s m))))
+                         (for-all (lambda (m) (= 1 (w s m)))
                                   '(button-top-1 button-bottom-1 button-fill-1
                                     dflt-button-middle-1
                                     button-outline-middle-1

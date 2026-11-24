@@ -184,6 +184,15 @@
               (= (font-line-height f) 5) (= (font-ascent f) 4)
               (= (font-char-width f) 6))))
 
+(define-bitmap-font "Test Marks" '(3 3 0 (65 4 0 3 3 #b111 #b101 #b111)))
+
+(check "a bitmap font with neither an M nor a slug is measured: its \
+        character width, the M's, is 0, and its own characters advance as \
+        the data says, not by a pitch, which an M would give"
+       (let ([f (font "Test Marks" 3 'crisp)])
+         (and (eqv? (font-char-width f) 0.0)
+              (= (text-width "AA" f) 8))))
+
 (check "a bitmap font draws its bits, each a square of device pixels at \
         200%, and a character it lacks draws its slug"
        (let* ([f (font "Test Bits" 5 'crisp)]

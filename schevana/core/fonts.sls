@@ -163,7 +163,8 @@
   ;; The face of bitmap font name: its units are its pixels, so its pixel
   ;; size is its units per em, and its handle is its glyphs by character.
   ;; It is fixed-pitch when the ASCII characters all advance alike, so that
-  ;; its columns stay even as a fixed-pitch FreeType face's do.
+  ;; its columns stay even as a fixed-pitch FreeType face's do, and it has
+  ;; an M, which a pitch is measured by.
   (define (bitmap-face name)
     (let* ([data (hashtable-ref *bitmap-fonts* name #f)]
            [glyphs (make-eqv-hashtable)]
@@ -189,7 +190,7 @@
         (when slug (fxvector-set! notdef 0 (cadr slug)))
         (make-font-file name glyphs (car data) (cadr data) (- (caddr data))
                         (+ (cadr data) (caddr data))
-                        (and (pair? ascii)
+                        (and (assv 77 ascii)
                              (for-all (lambda (g) (= (cadr g) (cadar ascii)))
                                       ascii))
                         pages notdef -1))))
@@ -392,7 +393,9 @@
                  [m (vector (whole (font-file-ascender ff))
                             (whole (- (font-file-descender ff)))
                             (whole (font-file-height ff))
-                            (flceiling (/ (font-advance f ff #x4D) 256.0)))])
+                            (flceiling (fl/ (fixnum->flonum
+                                              (font-advance f ff #x4D))
+                                             256.0)))])
             (font-cache-set! f m)
             m))))
 
