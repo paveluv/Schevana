@@ -339,6 +339,36 @@
                                  typed)
                         (member "Later Test App" grid)))))))))
 
+;; The busy marks drawn, each its flags, in a style that keeps them.
+(define desktop-test-busy-seen '())
+(define (desktop-test-busy x y w h flags ms)
+  (set! desktop-test-busy-seen (cons flags desktop-test-busy-seen)))
+
+(check "while the world's apps still load, the top bar's spinner turns right \
+        after the launcher, a busy mark on a bar, and the title moves on to \
+        make room; once nothing waits or loads, neither"
+       (with-test-styles
+        (lambda ()
+          (define-style test-spinner "Test"
+            'ui-draw-busy 'desktop-test-busy)
+          (set-style! 'test-spinner)
+          (set! desktop-test-busy-seen '())
+          (steps 1)
+          (let ([plain (placed-topbar-areas)] [idle desktop-test-busy-seen])
+            (fluid-let ([*world-later* '("waiting.ss")])
+              (invalidate!)
+              (steps 1)
+              (let* ([loading (placed-topbar-areas)]
+                     [drawn desktop-test-busy-seen]
+                     [l (assq 'launcher plain)] [s (assq 'loading loading)]
+                     [t0 (assq 'title plain)] [t1 (assq 'title loading)])
+                (and (null? idle) (not (assq 'loading plain))
+                     s (member '(bar) drawn)
+                     (= (cadr s) (+ (cadr l) (cadddr l)))
+                     (= (cadr t1) (+ (cadr t0) (cadddr s)))
+                     (= (+ (cadr t1) (cadddr t1))
+                        (+ (cadr t0) (cadddr t0))))))))))
+
 ;;; ------------------------------------------------------------------
 ;;; the apps' icons in the launcher and the taskbar
 

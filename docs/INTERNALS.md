@@ -119,7 +119,8 @@ what it loads until its library registers it. The desktop loads the two
 apps it opens first at once (`world-load-now!`). An app asks for a frame
 as it registers, and the launcher, its menu or its grid, reads the apps
 anew at each frame, so one opened before the apps have loaded shows each
-as it comes. As it begins to compile each library into its cache, a
+as it comes, and while they load, a spinner turns in the top bar after
+its launcher. As it begins to compile each library into its cache, a
 launcher prints its name, so a first boot shows its progress.
 
 Only the core calls C. No binding reaches "/", and `tests/sources.ss`

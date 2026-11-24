@@ -155,7 +155,7 @@
     (draw-text x y (string (string-ref "|/-\\"
                                        (mod (quotient ms (ui-busy-frame-ms))
                                             4)))
-               'text 'mono)
+               (if (memq 'bar flags) 'panel-text 'text) 'mono)
     (when (memq 'hover flags) (genera-hover x y w h)))
 
   ;; "Mouse-L: Move; Mouse-R: Window menu."

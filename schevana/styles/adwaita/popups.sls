@@ -215,20 +215,22 @@
   ;; The spinner (AdwSpinner: adw-spinner-paintable.c:18-35, 288-374): a
   ;; ring of the text at 15 % and an arc of the text, round at its ends,
   ;; going round once in 1.2 s while its length grows and shrinks; 2.5 wide
-  ;; at a radius of 8 and 7 at 32, in proportion between them.
+  ;; at a radius of 8 and 7 at 32, in proportion between them. On a bar
+  ;; (flags: bar), in the bar's ink.
   (define (adwaita-busy x y w h flags ms)
     (let* ([r (min 32 (/ (min w h) 2))]
            [lw (+ 2.5 (* 4.5 (clamp (/ (- r 8) 24) 0 1)))]
            [rr (- r (/ lw 2))] [cx (+ x (/ w 2))] [cy (+ y (/ h 2))]
            [a0 (+ (* 2 pi (/ (mod ms 1200) 1200.0)) (* 0.35 pi))]
            [len (* pi (+ 0.5 (* 0.4 (sin (* 2 pi (/ (mod ms 2400) 2400.0))))))])
-      (stroke-circle cx cy rr (alpha 'text 0.15) lw)
-      (draw-polyline (map (lambda (i)
-                            (let ([a (+ a0 (* len (/ i 15)))])
-                              (cons (+ cx (* rr (cos a)))
-                                    (+ cy (* rr (sin a))))))
-                          (iota 16))
-                     'text lw)))
+      (let ([ink (if (memq 'bar flags) 'panel-text 'text)])
+        (stroke-circle cx cy rr (alpha ink 0.15) lw)
+        (draw-polyline (map (lambda (i)
+                              (let ([a (+ a0 (* len (/ i 15)))])
+                                (cons (+ cx (* rr (cos a)))
+                                      (+ cy (* rr (sin a))))))
+                            (iota 16))
+                       ink lw))))
 
   ;; A navigation sidebar's row (widgets/_sidebars.scss:92-163): 6 in from
   ;; the sides, 9 round; chosen, the text at 10 % (13 % under the pointer),

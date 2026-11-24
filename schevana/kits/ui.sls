@@ -2604,11 +2604,14 @@
     (let ([s (ui-glyph-size)]) (values s s)))
 
   ;; Draws the mark at ms (now): a spinner of eight spokes in a circle, with
-  ;; the brightest moving on by one spoke every busy-frame-ms. flags: hover.
+  ;; the brightest moving on by one spoke every busy-frame-ms. flags: hover;
+  ;; bar, on a bar, in the bar's ink (panel-text).
   (define-part (ui-draw-busy x y w h flags ms)
     (let* ([r (/ (min w h) 2)] [cx (+ x (/ w 2))] [cy (+ y (/ h 2))]
            [lead (mod (quotient ms (max 1 (ui-busy-frame-ms))) 8)]
-           [ink (if (memq 'hover flags) 'text 'text-dim)]
+           [ink (cond [(memq 'bar flags) 'panel-text]
+                      [(memq 'hover flags) 'text]
+                      [else 'text-dim])]
            [lw (max 1.5 (* r 0.22))])
       (do ([i 0 (+ i 1)]) ((= i 8))
         (let ([a (* pi (/ i 4))]
