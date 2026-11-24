@@ -83,6 +83,43 @@
                             (eq? loaded 'mailbox) (not dropped)
                             (eq? (theme 'present-mode) 'vsync)))))))))))
 
+(check "Settings' Display tab chooses the pacer, the second marked \
+        experimental: the choice holds in every style and saves, and the \
+        first, the default, drops it"
+       (let ()
+         (define (press! ui win id)
+           (let-values ([(cx cy cw ch) (content-rect win)])
+             (let* ([r (ui-find ui id)]
+                    [x (exact (round (+ cx (ui-region-x r)
+                                        (/ (ui-region-w r) 2))))]
+                    [y (exact (round (+ cy (ui-region-y r)
+                                        (/ (ui-region-h r) 2))))])
+               (inject! `(mouse-down ,x ,y left 1) `(mouse-up ,x ,y left))
+               (steps 3))))
+         (let* ([win (settings)] [ui (window-ref win 'ui)])
+           (steps 3)
+           (press! ui win '(tab display))
+           (let ([first (theme 'pacer)])
+             (press! ui win '(pacer 2))
+             (let ([chosen (list (theme 'pacer) (pacer2?))]
+                   [elsewhere (begin (set-style! 'genera) (theme 'pacer))]
+                   [marked (car (find (lambda (c) (eqv? (cdr c) 2))
+                                      settings-pacer-choices))])
+               (set-style! 'mac)
+               (theme-file-save!)
+               (override! 'pacer)
+               (theme-file-load!)
+               (let ([loaded (theme 'pacer)])
+                 (steps 3)
+                 (press! ui win '(pacer 1))
+                 (let ([dropped (settings-pinned? 'pacer)])
+                   (close-window! win)
+                   (steps 2)
+                   (and (eqv? first 1) (equal? chosen '(2 #t))
+                        (eqv? elsewhere 2) (eqv? loaded 2)
+                        (string-contains-ci? marked "experimental")
+                        (not dropped) (eqv? (theme 'pacer) 1)))))))))
+
 (check "a detached window is a window in its style that is not on screen"
        (let ([w (detached-window "Away" 'size '(200 . 100)
                                  'window-style 'genera)])

@@ -319,7 +319,8 @@ one that isn't shown yet.
 A second pacer, `(schevana core pacer2)`, can take the first one's place,
 for comparing the two. The setting `pacer` says which one the loop asks:
 1, the one above, by default, or 2. It is read live, and saved with the
-look:
+look. Settings' Display tab chooses it (Pacing, the second marked
+experimental), and so does a REPL:
 
 ```scheme
 (override! 'pacer 2)                       ; the second pacer from now on

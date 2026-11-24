@@ -69,6 +69,11 @@
   ;; offers.
   (define settings-present-choices '(("VSync" . vsync) ("Mailbox" . mailbox)))
 
+  ;; Which pacer begins the world's turns: the first, or the second, which
+  ;; is still experimental.
+  (define settings-pacer-choices
+    '(("Pacer 1" . 1) ("Pacer 2 (experimental)" . 2)))
+
   ;; Percentages for the display's scale; 0 follows the desktop.
   (define settings-scale-choices
     '(("Auto" . 0) ("100%" . 100) ("125%" . 125) ("150%" . 150) ("175%" . 175)
@@ -1052,7 +1057,7 @@
                      "How big everything is drawn, full screen, and how \
                       frames are shown."))]
            [label-w (settings-label-width '("Scale" "Full screen"
-                                            "Presenting"))]
+                                            "Presenting" "Pacing"))]
            [h (ui-control-height)]
            [segmented-w (lambda (choices)
                           (* (length choices)
@@ -1086,28 +1091,56 @@
             (let ([offered (cdr (assq 'present-modes *gpu-facts*))])
               (filter (lambda (c) (memq (cdr c) offered))
                       settings-present-choices))])
-      (if (< (length present-choices) 2)
-          y
-          (let ([y (settings-row
-                    ui x (+ y 18) w label-w "Presenting" '(dim) h
-                    (if stack? (+ w 1) (segmented-w present-choices)) 0
-                    (lambda (sx sy sw)
-                      (ui-segmented
-                       ui 'present-mode sx sy
-                       (min (max 160 (segmented-w present-choices)) sw)
-                       h present-choices (theme 'present-mode)
-                       ;; an Override: it is the window's, whatever the style
-                       (lambda (v)
-                         (if (eq? v (theme-default 'present-mode))
-                             (override! 'present-mode)
-                             (override! 'present-mode v))))))])
-            (+ 22 (ui-draw-label x (+ y 10) w 0 '(hint wrap)
-                                 "VSync: core1 waits its turn for the screen, \
-                                  and a frame that misses it shows as a flag \
-                                  in Monitor. Mailbox: core1 seldom waits, and \
-                                  a newer frame replaces one not shown yet. \
-                                  That leaves no trace here, so fewer flags \
-                                  needn't mean fewer missed frames."))))))
+      (settings-pacing
+       ui x
+       (if (< (length present-choices) 2)
+           y
+           (let ([y (settings-row
+                     ui x (+ y 18) w label-w "Presenting" '(dim) h
+                     (if stack? (+ w 1) (segmented-w present-choices)) 0
+                     (lambda (sx sy sw)
+                       (ui-segmented
+                        ui 'present-mode sx sy
+                        (min (max 160 (segmented-w present-choices)) sw)
+                        h present-choices (theme 'present-mode)
+                        ;; an Override: it is the window's, whatever the style
+                        (lambda (v)
+                          (if (eq? v (theme-default 'present-mode))
+                              (override! 'present-mode)
+                              (override! 'present-mode v))))))])
+             (+ 22 (ui-draw-label x (+ y 10) w 0 '(hint wrap)
+                                  "VSync: core1 waits its turn for the \
+                                   screen, and a frame that misses it shows \
+                                   as a flag in Monitor. Mailbox: core1 \
+                                   seldom waits, and a newer frame replaces \
+                                   one not shown yet. That leaves no trace \
+                                   here, so fewer flags needn't mean fewer \
+                                   missed frames."))))
+       w label-w)))
+
+  ;; The Display tab's choice of pacer, from y; an Override, as presenting
+  ;; is, since it is the window's whatever the style. Returns the y below.
+  (define (settings-pacing ui x y w label-w)
+    (let* ([h (ui-control-height)]
+           [seg-w (* (length settings-pacer-choices)
+                     (+ 34 (text-widest (map car settings-pacer-choices)
+                                        'ui)))]
+           [y (settings-row
+               ui x (+ y 18) w label-w "Pacing" '(dim) h
+               (if (< (- w label-w) seg-w) (+ w 1) seg-w) 0
+               (lambda (sx sy sw)
+                 (ui-segmented ui 'pacer sx sy (min (max 160 seg-w) sw) h
+                               settings-pacer-choices (theme 'pacer)
+                               (lambda (v)
+                                 (if (eqv? v (theme-default 'pacer))
+                                     (override! 'pacer)
+                                     (override! 'pacer v))))))])
+      (+ 22 (ui-draw-label x (+ y 10) w 0 '(hint wrap)
+                           "Pacer 1 keeps each frame to the compositor's \
+                            latch. Pacer 2 aims each frame at a refresh, and \
+                            learns from the screen's reports how early its \
+                            work must be done: its frames show sooner, but it \
+                            is new, and its rules may still change."))))
 
   ;;; ------------------------------------------------------------------
   ;;; paths
