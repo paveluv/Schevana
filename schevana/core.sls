@@ -84,8 +84,8 @@
     load-user-init! user-directory schevana-boot! collector-declining? inject!
     source-files *source-texts* keep-source-text! load-file!
     load-user-folders! reload! core1-run core1-boot! look-load!
-    world-load-now! *world-later* auto-load! auto-load-forget! auto-loads
-    *auto-loads* auto-load-layer world-app-file? world-after-load!
+    world-load-now! *world-later* *world-loading* auto-load! auto-load-forget!
+    auto-loads *auto-loads* auto-load-layer world-app-file? world-after-load!
     auto-load-entries library-file-layer path-full add-library-directory!
     ;; (schevana core theme): the theme, styles, palettes, wallpapers and
     ;; parts
@@ -310,7 +310,8 @@
                         current-window invalidate! *apps* new-window-position
                         *global-keys* window-gone!) core:)
           (prefix (only (schevana core sources) *world-env* *schevana-options*
-                        *world-later* *auto-loads* *source-texts*)
+                        *world-later* *world-loading* *auto-loads*
+                        *source-texts*)
                   core:))
 
   (library-layer core facade)
@@ -326,6 +327,7 @@
   (define-view *schevana-root* core:*schevana-root*)
   (define-view *screen-least* core:*screen-least*)
   (define-view *world-later* core:*world-later*)
+  (define-view *world-loading* core:*world-loading*)
   (define-view *auto-loads* core:*auto-loads*)
   (define-view platform-process-bytes core:platform-process-bytes)
   (define-view now-ns core:now-ns)

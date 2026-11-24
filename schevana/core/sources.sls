@@ -11,7 +11,7 @@
     auto-load-forget! auto-load-entries auto-load-layer library-file-layer
     world-app-file? world-after-load! *source-texts* keep-source-text!
     load-file! load-user-folders! reload! program-world! look-load!
-    *world-later* world-load-now!)
+    *world-later* *world-loading* world-load-now!)
   (import (chezscheme)
           (only (schevana base) condition->string define-made define-state
                 library-layer set-hook! string-prefix? string-suffix?)
@@ -20,12 +20,11 @@
                 reload-source)
           (only (schevana core theme-table) world-value)
           (only (schevana core processes) *reloading* core1-thread! current-proc
-                notify request-redraw! safely)
+                notify request-redraw! safely spawn)
           (only (schevana core loop) add-library-directory! collector-settle!
                 collector-tick! loop-stepped! path-full reload-ended!
                 user-directory user-library-directory)
-          (only (schevana core theme) style-chain chain-ref theme-default)
-          (only (schevana core platform) now-ms))
+          (only (schevana core theme) style-chain chain-ref theme-default))
 
   (library-layer core)
 
@@ -314,24 +313,26 @@
                 (if (and *world-later?* (world-app-file? f))
                     (set! *world-later* (append *world-later* (list f)))
                     (safely f (lambda () (load-sources! (list f))))))
-              (apply append (map auto-load-entries (user-folders)))))
+              (apply append (map auto-load-entries (user-folders))))
+    (world-later-start!))
 
   ;;; The parts of the world that load after the screen shows (core1-boot!'s
-  ;;; later?: the desktop's apps) load one entry per quiet step, a step that
-  ;;; drew no frame and wants none, so that the first frame waits for none
-  ;;; of them and no frame waits for one; while frames flow, one loads each
-  ;;; second anyway. An entry asked for before its turn loads at once
-  ;;; (world-load-now!). Once none waits, the next quiet step settles the
-  ;;; world, as the boot does: what loaded late moves into the oldest
-  ;;; generation, and only such a collection gives back to the system what
-  ;;; loading left over (in the hacker edition, compiling it from source).
+  ;;; later?: the desktop's apps) load in a process of their own, one entry
+  ;;; after another, as any job runs: switched out as any process is, so
+  ;;; that the world goes on meanwhile and a frame waits for none of them.
+  ;;; An entry asked for before its turn loads at once (world-load-now!).
+  ;;; Once none waits, a quiet step settles the world, as the boot does:
+  ;;; what loaded late moves into the oldest generation, and only such a
+  ;;; collection gives back to the system what loading left over (in the
+  ;;; hacker edition, compiling it from source).
 
   ;; The entries waiting, in load order; whether the world was booted with
-  ;; some waiting (then the user's apps wait too); and when an entry last
-  ;; loaded.
+  ;; some waiting (then the user's apps wait too); the entry that the
+  ;; loading process loads now, or #f; and that process, or #f.
   (define-state *world-later* '())
   (define-state *world-later?* #f)
-  (define-state *world-later-ms* 0)
+  (define-state *world-loading* #f)
+  (define-state *world-loader* #f)
 
   ;; Whether an entry has loaded since the world was last settled.
   (define-state *world-unsettled?* #f)
@@ -348,10 +349,46 @@
     (and (member entry *world-later*)
          (begin
            (set! *world-later* (remove entry *world-later*))
-           (set! *world-later-ms* (now-ms))
-           (set! *world-unsettled?* #t)
-           (safely entry (lambda () (load-sources! (list entry))))
+           (world-load-entry! entry)
            #t)))
+
+  ;; Loads entry into "/", on core1 or in the loading process. Unlike a
+  ;; reload, it holds nothing still: what loads is new, and nothing calls
+  ;; it until its library registers it. An app registers as its define-app
+  ;; runs, which may come before the rest of its library has; a press on it
+  ;; in those few ms may meet a name not yet set, and reports it.
+  (define (world-load-entry! entry)
+    (set! *world-unsettled?* #t)
+    (safely entry
+            (lambda ()
+              (parameterize ([interaction-environment *world-env*])
+                (load-source entry)
+                (collector-tick!)))))
+
+  ;; Starts the process that loads the waiting entries, unless one runs.
+  ;; It takes each entry off the queue as it begins it, so that
+  ;; world-load-now! never loads it twice, and names it in *world-loading*
+  ;; till it has loaded, so that what waits for all of the world waits for
+  ;; it too.
+  (define (world-later-start!)
+    (when (and (pair? *world-later*) (not *world-loader*))
+      (set! *world-loader*
+        (spawn "loading the apps"
+               (lambda ()
+                 (let loop ()
+                   (when (pair? *world-later*)
+                     (let ([entry (car *world-later*)])
+                       (set! *world-later* (cdr *world-later*))
+                       (set! *world-loading* entry)
+                       (world-load-entry! entry)
+                       (set! *world-loading* #f)
+                       (loop)))))
+               (lambda (status value)
+                 (set! *world-loading* #f)
+                 (set! *world-loader* #f))))))
+
+  ;; Whether nothing of the world waits to load or loads now.
+  (define (world-loaded?) (and (null? *world-later*) (not *world-loading*)))
 
   ;; Thunks to run, in order, once all of the world has loaded, the entries
   ;; that waited too; a thunk runs at once if none waits. Code that names
@@ -361,21 +398,21 @@
   (define-state *world-loaded-thunks* '())
 
   (define (world-after-load! thunk)
-    (if (null? *world-later*)
+    (if (world-loaded?)
         (thunk)
         (set! *world-loaded-thunks*
           (append *world-loaded-thunks* (list thunk)))))
 
+  ;; Once all of the world has loaded, the thunks that waited for it run;
+  ;; then a quiet step settles the world, since a settle takes longer than
+  ;; a frame.
   (set-hook! (loop-stepped! quiet?)
     (cond
-      [(and (pair? *world-later*)
-            (or quiet? (>= (- (now-ms) *world-later-ms*) 1000)))
-       (world-load-now! (car *world-later*))]
-      [(and (null? *world-later*) (pair? *world-loaded-thunks*))
+      [(and (world-loaded?) (pair? *world-loaded-thunks*))
        (let ([ts *world-loaded-thunks*])
          (set! *world-loaded-thunks* '())
          (for-each (lambda (t) (safely 'loaded t)) ts))]
-      [(and *world-unsettled?* (null? *world-later*) quiet?)
+      [(and *world-unsettled?* (world-loaded?) quiet?)
        (set! *world-unsettled?* #f)
        (collector-settle!)]))
 
@@ -440,8 +477,8 @@
            [wait? (if (pair? later?) (car later?) (lambda (e) #f))])
       (set! *world-later* (filter wait? entries))
       (set! *world-later?* (pair? later?))
-      (set! *world-later-ms* (now-ms))
-      (load-sources! (remp wait? entries)))
+      (load-sources! (remp wait? entries))
+      (world-later-start!))
     (reload-mark!)
     (source-libraries-keep! (library-list)))
 

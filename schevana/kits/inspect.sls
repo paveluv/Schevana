@@ -38,7 +38,8 @@
   (import (chezscheme)
           (only (schevana base) define-made library-layer platform-cpu
                 platform-os string-join string-prefix? string-suffix?)
-          (only (schevana core) *world-later* auto-loads *atlas-row* *atlas-y*
+          (only (schevana core) *world-later* *world-loading* auto-loads
+                *atlas-row* *atlas-y*
                 *canvas-ph* *canvas-pw* *canvas-ratio* *font-specs* *frame-ring*
                 *frame-ring-n* *glyph-count* *gpu-bytes-made* *gpu-computes*
                 *gpu-facts* *gpu-held-gone* *pacer-aimed* *pacer-counts*
@@ -1309,8 +1310,10 @@
   (define (inspect-reload) (reload-facts))
 
   ;; Returns what of the world still waits to load after the screen has
-  ;; shown ((schevana core sources)): its entries, in order.
-  (define (inspect-world-later) *world-later*)
+  ;; shown ((schevana core sources)): its entries, in order, the one that
+  ;; loads now first.
+  (define (inspect-world-later)
+    (if *world-loading* (cons *world-loading* *world-later*) *world-later*))
 
   ;; Returns every file and folder that loads with the world, in order.
   (define (inspect-auto-loads) (auto-loads))

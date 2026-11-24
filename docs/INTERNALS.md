@@ -111,15 +111,16 @@ in file-name order:
 (length (source-files))                    ; the world's files, not libraries
 ```
 
-The desktop's apps wait: they load after the screen shows, one at each
-quiet step of the loop (a step that drew no frame and wants none), or one
-a second while frames flow (`*world-later*`). The desktop loads the two
+The desktop's apps wait: they load after the screen shows, one after
+another, in a process of their own ("loading the apps", `*world-later*`)
+that is switched out as any process is, so the world goes on meanwhile.
+Unlike a reload, a load there holds nothing still, since nothing calls
+what it loads until its library registers it. The desktop loads the two
 apps it opens first at once (`world-load-now!`). An app asks for a frame
 as it registers, and the launcher, its menu or its grid, reads the apps
 anew at each frame, so one opened before the apps have loaded shows each
-as it comes. As it begins to compile
-each library into its cache, a launcher prints its name, so a first boot
-shows its progress.
+as it comes. As it begins to compile each library into its cache, a
+launcher prints its name, so a first boot shows its progress.
 
 Only the core calls C. No binding reaches "/", and `tests/sources.ss`
 checks that no folder names one, nor anything of the core's that it isn't
