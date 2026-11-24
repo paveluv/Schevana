@@ -384,31 +384,35 @@ reports. The first frame shown in a flow gives it, the frame before it
 shown at the refresh before: a compositor that had nothing to show takes
 a frame at once, and may stamp it with the refresh before it was sent
 (GNOME over NVIDIA's driver does), so a frame after a pause says nothing
-of the hold. A frame shown in time with less lead, in a flow too, lowers
-it, never under the floor that a descent leaves. A frame
-that missed its refresh although it began on plan, its GPU work was done
-the hold before the refresh, and the frame before it was shown, is a
-clean miss. One alone is the compositor's. Two within the sixteen rows
-raise the hold a look over the lead that failed, never past the margin
-over the hold the frame was planned with (more lead than that failed by
-no cutoff: the compositor held a refresh, or the GPU was slow). Another
-before any frame is in time raises it a refresh, which owes a descent.
+of the hold. After that, the hold falls only by a descent, since one
+frame that made it with less lead says nothing of the refreshes the
+compositor is busier for. A frame that missed its refresh although it
+began on plan, its GPU work was done the hold before the refresh, and
+the frame before it was shown, is a clean miss. One alone is the
+compositor's. Two within three seconds, however many frames came
+between, raise the hold a look over the lead that failed, never past the
+margin over the hold the frame was planned with (more lead than that
+failed by no cutoff: the compositor held a refresh, or the GPU was
+slow). A refresh the compositor loses on its own comes about one in 700,
+while a refresh that it is busier for (another window's caret, blinking
+every 600 ms) makes a miss again and again, and a refresh shown again
+shows more than a little latency does. Another miss before any frame is
+in time raises the hold a refresh, which owes a descent.
 Every three minutes, once eight frames in a row were in time and on
 plan, a descent tries the hold lower: one probe frame at a time, a look
 under what it has proven, with the frames around it at that. A probe in
 time proves a look lower, and the next frame probes. A probe's first
 clean miss counts as a miss alone, and the next frame probes the same
 hold; the second ends the descent, with the hold two looks over the
-larger lead of the two that failed, never over where the descent began,
-and the floor a look over that lead. A refresh of another length starts
-all of it over. Each verdict goes into the trace with its frame. With no
-reports nothing is learned, and an acquire that the screen held leaves a
-refresh out of the pacer's own grid where three frames are in flight. A
-tick waits for its planned begin only on a grid that something holds in
-place, a refresh reported or a tick aimed: at a run's start with no
-reports, or once the first pacer has run, the grid is drawn from now,
-and a begin on it would move on with now and never come, so the tick
-begins at once.
+larger lead of the two that failed, never over where the descent began.
+A refresh of another length starts all of it over. Each verdict goes
+into the trace with its frame. With no reports nothing is learned, and
+an acquire that the screen held leaves a refresh out of the pacer's own
+grid where three frames are in flight. A tick waits for its planned
+begin only on a grid that something holds in place, a refresh reported
+or a tick aimed: at a run's start with no reports, or once the first
+pacer has run, the grid is drawn from now, and a begin on it would move
+on with now and never come, so the tick begins at once.
 
 ## What the screen reports
 

@@ -268,7 +268,7 @@
 ;; left out: a library's exports and imports (file-forms), whose size
 ;; follows from what the library gives, and a change to either is
 ;; reviewed anyway.
-(define src-budget 41469)
+(define src-budget 41445)
 
 ;; The number of tokens in a datum as read; a list's end counts as none.
 (define (tokens x)

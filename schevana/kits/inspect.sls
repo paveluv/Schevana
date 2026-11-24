@@ -1386,7 +1386,7 @@
         (ticks . ,(pacer-ticks))
         (look . ,core0-look-ns)
         ,@(map (lambda (key) (cons key (pacer2-state key)))
-               '(t aim plan hold floor proven probe probe-miss probed soft?
+               '(t aim plan hold proven probe probe-miss probed soft? missed
                  judged waited)))))
 
   ;; Returns the last sixteen rows as the second pacer reads them, the

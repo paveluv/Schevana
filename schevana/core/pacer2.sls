@@ -48,22 +48,30 @@
   ;; 120).
   (define (pacer2-margin p) (fxquotient p 16))
 
+  ;; Two clean misses this close are a pair, ns. A refresh that the
+  ;; compositor loses on its own comes about one in 700 (GNOME's, 0.15%),
+  ;; so its own misses seldom come this close, while a cutoff that its
+  ;; busier refreshes move (another window's caret, blinking every 600 ms)
+  ;; misses again well within it. It is wider than that needs: a refresh
+  ;; shown again shows more than a ms of latency does.
+  (define pacer2-pair-ns 3000000000)
+
   ;; What the rows can't give: the last turn's time, its aim; the hold (0
-  ;; while not known), and the floor that a closer call stops at (0 for
-  ;; none); while a descent is in course, the hold proven (0 for none), the
-  ;; aim of its probe out (0 for none) and the lead a probe missed by (0
-  ;; for none), and when the last descent began; whether the last raise was
-  ;; a look and no frame has been in time since; the rows judged, of
+  ;; while not known); while a descent is in course, the hold proven (0
+  ;; for none), the aim of its probe out (0 for none) and the lead a probe
+  ;; missed by (0 for none), and when the last descent began; whether the
+  ;; last raise was a look and no frame has been in time since; the aim of
+  ;; the last clean miss (0 for none); the rows judged, of
   ;; *frame-ring-n*; the begin the loop sleeps to (0 for none); and this
   ;; turn's aim and plan, for its frame's row (0 for none).
   (define-state *pacer2-t* 0)
   (define-state *pacer2-hold* 0)
-  (define-state *pacer2-floor* 0)
   (define-state *pacer2-proven* 0)
   (define-state *pacer2-probe* 0)
   (define-state *pacer2-probe-miss* 0)
   (define-state *pacer2-probed* (- pacer2-descent-ns))
   (define-state *pacer2-soft?* #f)
+  (define-state *pacer2-missed* 0)
   (define-state *pacer2-judged* 0)
   (define-state *pacer2-waited* 0)
   (define-state *pacer2-aim* 0)
@@ -90,12 +98,12 @@
   ;; a descent may begin at now.
   (define (pacer2-relearn! now)
     (set! *pacer2-hold* 0)
-    (set! *pacer2-floor* 0)
     (set! *pacer2-proven* 0)
     (set! *pacer2-probe* 0)
     (set! *pacer2-probe-miss* 0)
     (set! *pacer2-probed* (fx- now pacer2-descent-ns))
-    (set! *pacer2-soft?* #f))
+    (set! *pacer2-soft?* #f)
+    (set! *pacer2-missed* 0))
 
   ;; Forgets everything, as at a run's start: the rows so far are passed
   ;; over.
@@ -182,10 +190,6 @@
            (fx<= (fx- (pacer2-seen i 3) (pacer2-seen (fx- i 1) 3))
                  (fx+ r (fxquotient r 2))))))
 
-  (define (pacer2-missed-before? i lo)
-    (let loop ([j lo])
-      (and (fx< j i) (or (pacer2-missed j lo) (loop (fx+ j 1))))))
-
   ;; Returns whether rows i-7 to i were all read, in time and begun on
   ;; their plans: a flow.
   (define (pacer2-settled? i lo)
@@ -214,23 +218,25 @@
                    (fx> (fxabs (fx- r (pacer2-refresh (fx- i 1))))
                         (fxquotient r 64)))
           (pacer2-relearn! now))
-        ;; the first frame shown in a flow gives the hold; one in time with
-        ;; less lead lowers it, never under the floor, and not while a
-        ;; descent tries it. A lead is over 0, and no stamp is more than a
-        ;; refresh ahead of the clock.
-        (let ([a (fxmax *pacer2-floor* (fx- S done))])
-          (when (and (fx< 0 done S) (fx<= S (fx+ now r))
-                     (pacer2-flowing? i lo)
-                     (or (fx= *pacer2-hold* 0)
-                         (and in-time? (fx= *pacer2-proven* 0)
-                              (fx< a *pacer2-hold*))))
-            (set! *pacer2-hold* a))))
+        ;; the first frame shown in a flow gives the hold; after that it
+        ;; falls only by a descent, a look at a time, since a frame that made
+        ;; it with less lead says nothing of the refreshes the compositor is
+        ;; busier for. A lead is over 0, and no stamp is more than a refresh
+        ;; ahead of the clock.
+        (when (and (fx= *pacer2-hold* 0) (fx< 0 done S) (fx<= S (fx+ now r))
+                   (pacer2-flowing? i lo))
+          (set! *pacer2-hold* (fx- S done))))
       (core0-trace!
        19
        (fx+ (fx* 8 (pacer2-own i 6))
-            (let ([probe? (pacer2-probe? i)]
-                  [x (and (not in-time?) (pacer2-missed i lo))])
+            (let* ([probe? (pacer2-probe? i)]
+                   [x (and (not in-time?) (pacer2-missed i lo))]
+                   [aim (pacer2-own i 13)]
+                   [pair? (and x (fx> *pacer2-missed* 0)
+                               (fx<= (fx- aim *pacer2-missed*)
+                                     pacer2-pair-ns))])
               (when probe? (set! *pacer2-probe* 0))
+              (when x (set! *pacer2-missed* aim))
               (cond
                 [in-time?
                  (set! *pacer2-soft?* #f)
@@ -247,7 +253,6 @@
                          (fx>= (fx- now *pacer2-probed*) pacer2-descent-ns)
                          (pacer2-settled? i lo))
                     (set! *pacer2-proven* *pacer2-hold*)
-                    (set! *pacer2-floor* 0)
                     (set! *pacer2-probe-miss* 0)
                     (set! *pacer2-probed* now)
                     7]
@@ -257,26 +262,25 @@
                 ;; any frame's alone may be: the next frame probes the same
                 ;; hold. The second lands the hold two looks over the
                 ;; larger lead of the two that failed (one whose work ran
-                ;; long failed with less), never over where it began; a
-                ;; closer call stops a look over that lead
+                ;; long failed with less), never over where it began
                 [(and probe? (fx= *pacer2-probe-miss* 0))
                  (set! *pacer2-probe-miss* x)
                  2]
                 [probe?
-                 (let ([x (fxmax x *pacer2-probe-miss*)])
-                   (set! *pacer2-hold*
-                     (fxmin *pacer2-hold* (fx+ x (fx* 2 look))))
-                   (set! *pacer2-floor* (fx+ x look)))
+                 (set! *pacer2-hold*
+                   (fxmin *pacer2-hold*
+                          (fx+ (fxmax x *pacer2-probe-miss*) (fx* 2 look))))
                  (set! *pacer2-proven* 0)
                  3]
-                ;; one clean miss alone is the compositor's; a pair raises
-                ;; the hold a look over the lead that failed, never past
-                ;; the margin over the hold it was planned with (more lead
-                ;; failed by no cutoff: the compositor held a refresh, or
-                ;; the GPU was slow); and a miss after that, no frame in
-                ;; time between, raises it a refresh, which owes a
-                ;; descent. A raise ends a descent in course.
-                [(or *pacer2-soft?* (pacer2-missed-before? i lo))
+                ;; one clean miss alone is the compositor's; a pair, two
+                ;; within pacer2-pair-ns, raises the hold a look over the
+                ;; lead that failed, never past the margin over the hold it
+                ;; was planned with (more lead failed by no cutoff: the
+                ;; compositor held a refresh, or the GPU was slow); and a
+                ;; miss after that, no frame in time between, raises it a
+                ;; refresh, which owes a descent. A raise ends a descent in
+                ;; course.
+                [(or *pacer2-soft?* pair?)
                  (set! *pacer2-hold*
                    (if *pacer2-soft?*
                        (fx+ x r)
@@ -507,12 +511,12 @@
     (case key
       [(t) *pacer2-t*]
       [(hold) *pacer2-hold*]
-      [(floor) *pacer2-floor*]
       [(proven) *pacer2-proven*]
       [(probe) *pacer2-probe*]
       [(probe-miss) *pacer2-probe-miss*]
       [(probed) *pacer2-probed*]
       [(soft?) *pacer2-soft?*]
+      [(missed) *pacer2-missed*]
       [(aim) *pacer2-aim*]
       [(plan) *pacer2-plan*]
       [(judged) *pacer2-judged*]

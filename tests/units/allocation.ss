@@ -226,7 +226,7 @@
   (row! 14 (+ T (* 14 r)) (- (+ T (* 14 r)) (* 4 ms)) (+ T (* 15 r)))
   (row! 15 (+ T (* 16 r)) (- (+ T (* 16 r)) (* 5 ms)) (+ T (* 17 r)))
   (pacer2-forget!)
-  (fluid-let ([*pacer2-t* 0] [*pacer2-hold* 0] [*pacer2-floor* 0]
+  (fluid-let ([*pacer2-t* 0] [*pacer2-hold* 0] [*pacer2-missed* 0]
               [*pacer2-proven* 0] [*pacer2-probe* 0]
               [*pacer2-probe-miss* 0] [*pacer2-probed* T]
               [*pacer2-soft?* #f] [*pacer2-waited* 0] [*pacer2-aim* 0]
@@ -239,6 +239,7 @@
                         (set! *pacer2-judged* lo)
                         (set! *pacer2-hold* (* 3 ms))
                         (set! *pacer2-soft?* #f)
+                        (set! *pacer2-missed* 0)
                         (pacer2-decide! now)))]
            [raised *pacer2-hold*]
            [planning (allocation-least 20
