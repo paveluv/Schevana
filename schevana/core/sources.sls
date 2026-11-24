@@ -272,7 +272,7 @@
     (if (pair? f)
         (begin
           (unless (member f *world-imported*)
-            (reload-import! *world-env* f)
+            (reload-import! *world-env* f f)
             (set! *world-imported* (cons f *world-imported*)))
           (invoke-library f))
         (load-file! (source-path f))))
@@ -526,7 +526,8 @@
                      (interaction-environment)
                      (copy-environment (scheme-environment) #t))])
       (set! *world-env* world)
-      (unless (schevana-hacker?) (reload-import! world '(schevana core)))
+      (unless (schevana-hacker?)
+        (reload-import! world '(schevana core) '(schevana core)))
       (interaction-environment world)
       (apply load-world! later?)
       world)))

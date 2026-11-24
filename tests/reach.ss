@@ -25,7 +25,7 @@
 (define core-env
   (if test-hacker? main-env (copy-environment (scheme-environment) #t)))
 (unless test-hacker?
-  (for-each (lambda (lib) (reload-import! core-env lib))
+  (for-each (lambda (lib) (reload-import! core-env lib lib))
             '((schevana tree) (schevana core platform)
               (schevana core theme-table)
               (schevana core processes) (schevana core gpu)
@@ -61,7 +61,7 @@
                 (when (and (eq? (car name) 'schevana) (> (length name) 3)
                            (member (list-head name (- (length name) 1))
                                    loaded))
-                  (reload-import! core-env name)))
+                  (reload-import! core-env name name)))
               loaded)))
 
 (unless test-hacker?

@@ -154,7 +154,8 @@ would fill: what a frame draws (`record-world!`), where an event goes
 evaluated, and after it every library that imports it (Chez links a
 library to the instance of each library it was evaluated against). It
 imports them again wherever they were imported (in "/", that is the
-core's facade), and then loads the world's files. A library's states stay
+core's facade and the world's libraries; at a REPL, what was imported
+there, by `env-eval`), and then loads the world's files. A library's states stay
 (`define-state`); its made values and hooks are made again, and whatever
 sets a hook sets it again; a closure made before keeps the code it was
 made with. Core0's libraries, and all that they import, stay as they were

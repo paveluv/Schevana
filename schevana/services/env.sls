@@ -50,7 +50,8 @@
                 forwarder-to library-layer plist-ref registry-add string-split)
           (only (schevana core) *worklet-environment* *world-env*
                 core1-exported core1-thread? invalidate! load-file!
-                worklet-base-environment))
+                worklet-base-environment)
+          (only (schevana reload) reload-import!))
 
   (library-layer services)
 
@@ -293,12 +294,30 @@
   ;; Evaluates form, or loads path, in e, with interaction-environment bound
   ;; to e's environment, so that defvar, eval and load inside mean e. What a
   ;; confined e writes to its console meanwhile also goes to the caller's
-  ;; output (a REPL's).
+  ;; output (a REPL's). An import in the world or a namespace is kept
+  ;; (reload-import!), so that (reload!) evaluates its libraries again when
+  ;; their files change, and imports them again in e.
   (define (env-eval e form)
     (env-sync! e)
     (parameterize ([interaction-environment (env-environment e)]
                    [env-listener (cons e (current-output-port))])
-      (eval form (env-environment e))))
+      (if (and (pair? form) (eq? (car form) 'import)
+               (memq (env-base e) '(#f chez)))
+          (for-each (lambda (set)
+                      (reload-import! (env-environment e)
+                                      (env-import-library set) set))
+                    (cdr form))
+          (eval form (env-environment e)))))
+
+  ;; Returns the library that an import set names: the set itself when it
+  ;; is a library's name (without its version), else the one inside only,
+  ;; except, prefix, rename or for; library wraps a name that starts with
+  ;; one of those words.
+  (define (env-import-library set)
+    (case (car set)
+      [(only except prefix rename for) (env-import-library (cadr set))]
+      [(library) (filter symbol? (cadr set))]
+      [else (filter symbol? set)]))
 
   (define (env-load e path)
     (env-sync! e)

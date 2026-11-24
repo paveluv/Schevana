@@ -305,7 +305,8 @@
   (write! "c" (c 'held))
   (parameterize ([library-directories (cons (cons dir dir)
                                             (library-directories))])
-    (reload-import! e '(units reload a) '(units reload b) '(units reload c))
+    (for-each (lambda (name) (reload-import! e name name))
+              '((units reload a) (units reload b) (units reload c)))
     (in-e '(begin (ura-bump!) (ura-bump!)))
     (let* ([before (in-e '(urb-val))]
            [made (in-e 'ura-made)]
@@ -327,3 +328,40 @@
                     (not (eq? (in-e 'ura-made) made))
                     (eq? (in-e '(urc-val)) 'held)
                     (equal? (cdr (assq 'last (inspect-reload))) order)))))))
+
+;;; An import typed at a REPL (env-eval, in the world or a namespace) is
+;;; kept as reload-import! keeps one: its library is marked as it reads at
+;;; the import, so a reload evaluates it again once its file changes, even
+;;; before any reload, and imports it again there through the same import
+;;; set. The hacker edition splices a library that the world imports into
+;;; "/" instead, and its own reload splices it again.
+(unless test-hacker?
+  (let* ([dir (string-append out-dir "/reload-env-import")]
+         [write-d! (lambda (value)
+                     (call-with-output-file
+                       (string-append dir "/units/reload/d.sls")
+                       (lambda (p)
+                         (write `(library (units reload d)
+                                   (export urd-val)
+                                   (import (chezscheme))
+                                   (define (urd-val) ',value))
+                                p)
+                         (newline p))
+                       'replace))]
+         [e (env-child (env-root) 'units-reload 'chez)])
+    (system (format "rm -rf '~a' && mkdir -p '~a/units/reload'" dir dir))
+    (write-d! 'old)
+    (parameterize ([library-directories (cons (cons dir dir)
+                                              (library-directories))])
+      (env-eval e '(import (prefix (units reload d) d:)))
+      (let ([before (env-eval e '(d:urd-val))])
+        (write-d! 'new)
+        (let* ([order (reload-libraries! '())]
+               [after (env-eval e '(d:urd-val))])
+          (env-drop! e)
+          (check "a library imported at a REPL, whose file changes after \
+                  the import, is evaluated again by the next reload, and \
+                  the REPL's environment has it again, under its prefix"
+                 (and (eq? before 'old)
+                      (equal? order '((units reload d)))
+                      (eq? after 'new))))))))

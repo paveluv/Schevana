@@ -2,8 +2,9 @@
 ;;; changed is evaluated again from its source, and so is every library
 ;;; that imports it, after it, since Chez links each library to the
 ;;; instance it was evaluated against. Then each environment that imported
-;;; one of them through reload-import! imports it again, since the old
-;;; instance would raise an error there. A library's states stay
+;;; one of them through reload-import! (the world, and a REPL's, whose
+;;; env-eval imports so) imports it again, since the old instance would
+;;; raise an error there. A library's states stay
 ;;; (define-state), its made values and hooks are made again, and the
 ;;; library that sets a hook sets it again, since it imports the hook. A
 ;;; closure made before the reload keeps the code it was made with.
@@ -24,9 +25,9 @@
   ;; by name: a library whose file now differs has changed.
   (define-state *reload-texts* (make-hashtable equal-hash equal?))
 
-  ;; The environments that reload-import! imported libraries into, each as
-  ;; an ephemeron pair of the environment and its libraries, so that an
-  ;; environment nobody holds is let go.
+  ;; What reload-import! imported, each as an ephemeron pair of the
+  ;; environment and (library . import set), so that an environment nobody
+  ;; holds is let go.
   (define-state *reload-imports* '())
 
   ;; What the last reload evaluated again, in order.
@@ -98,21 +99,21 @@
                   (map reload-name (library-list))
                   names)))
 
-  ;; Imports the libraries into environment, as an import form does
-  ;; there, and keeps them, so that a reload imports them again. What
-  ;; loaded with them is marked too, so that a reload sees a change to a
-  ;; part of theirs (a library's own, in the folder of its name): the walk
-  ;; stops at a library marked before, whose imports were marked with it.
-  (define (reload-import! environment . names)
-    (eval `(import ,@names) environment)
-    (let mark ([names names])
-      (for-each (lambda (name)
-                  (unless (hashtable-contains? *reload-texts* name)
-                    (reload-mark! name)
-                    (mark (reload-requires name))))
-                names))
+  ;; Imports set, an import set that names library, into environment, as
+  ;; an import form does there, and keeps it, so that a reload that
+  ;; evaluates library again imports set there again. The library is
+  ;; marked as it reads now, so that a reload sees a later change, and so is
+  ;; what loaded with it, so that a reload sees a change to a part of its
+  ;; (a library's own, in the folder of its name): the walk stops at a
+  ;; library marked before, whose imports were marked with it.
+  (define (reload-import! environment library set)
+    (eval `(import ,set) environment)
+    (let mark ([name library])
+      (unless (hashtable-contains? *reload-texts* name)
+        (reload-mark! name)
+        (for-each mark (reload-requires name))))
     (set! *reload-imports*
-          (cons (ephemeron-cons environment names)
+          (cons (ephemeron-cons environment (cons library set))
                 (filter (lambda (e) (not (bwp-object? (car e))))
                         *reload-imports*))))
 
@@ -172,11 +173,9 @@
                                   (reload-text (reload-source name))))
                 order)
       (for-each (lambda (e)
-                  (unless (bwp-object? (car e))
-                    (let ([names (filter (lambda (n) (member n order))
-                                         (cdr e))])
-                      (unless (null? names)
-                        (eval `(import ,@names) (car e))))))
+                  (unless (or (bwp-object? (car e))
+                              (not (member (cadr e) order)))
+                    (eval `(import ,(cddr e)) (car e))))
                 *reload-imports*)
       (set! *reload-last* order)
       order))

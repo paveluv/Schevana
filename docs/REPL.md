@@ -149,11 +149,21 @@ compiles a library when it is first imported, into a file beside its
 source (`math.so` beside `math.sls`), which it loads again until the
 source changes; the hacker edition compiles it in memory.
 
-Two things differ from Schevana's own code. A library is loaded once per
-session: after editing one, `load` its file again and import it again,
-since `(reload!)` doesn't. And an import adds the library's names to the
-environment it runs in, so a library that exports a name Schevana also
-defines changes what that name means in what you type afterwards; `(only
-…)` or `(prefix … acme:)` keep the two apart. A sandbox has no `import`,
-since a library may name anything, and a sandbox holds only what it is
-given.
+A library imported at a REPL changes with its file at `(reload!)`, as
+Schevana's own do: the reload evaluates it again, with the libraries that
+import it, and imports it again in that REPL's environment, through the
+same `only` or `prefix`. What was made before the reload keeps the code it
+was made with, so a game's window that was already open plays on as it
+was, and a new one has the change:
+
+```scheme no-run
+(import (games prism-relay))
+(reload!)                                  ; after editing its files
+(prism-relay)                              ; a window with the new code
+```
+
+An import adds the library's names to the environment it runs in, so a
+library that exports a name Schevana also defines changes what that name
+means in what you type afterwards; `(only …)` or `(prefix … acme:)` keep
+the two apart. A sandbox has no `import`, since a library may name
+anything, and a sandbox holds only what it is given.
