@@ -1074,6 +1074,21 @@
          (let ([s (let ([p (core0-frame-ns)]) (- p (quotient p 512)))])
            (and (= (aim-with 3) (+ T s s)) (= (aim-with 2) (+ T s))))))
 
+(check "with no reports and no aim yet (a run's start, or the first pacer's \
+        turns since the last), a turn begins at once, though the frames' \
+        work would plan it later: a begin on a grid drawn from now would \
+        move on with now and never come"
+       (let ([T pacer2-test-T] [ms 1000000] [p (core0-frame-ns)])
+         (pacer2-test-rows
+          (lambda ()
+            ;; eight frames before, 3 ms of work each, their GPU work done,
+            ;; and nothing reported
+            (do ([k 0 (+ k 1)]) ((= k 8))
+              (let ([b (- T (* (- 8 k) p))])
+                (pacer2-test-row! b b (+ b p) (+ b (* 3 ms)) 'out p)))
+            (let ([turn (pacer2-test-turn! T)])
+              (and turn (= (car turn) T)))))))
+
 (check "a turn waits while the newest frame's GPU work isn't seen done, \
         eight refreshes at most; then, its frame still in the slot, a \
         refresh at a time; else it begins"

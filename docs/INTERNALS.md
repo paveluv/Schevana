@@ -399,7 +399,12 @@ larger lead of the two that failed, never over where the descent began,
 and the floor a look over that lead. A refresh of another length starts
 all of it over. Each verdict goes into the trace with its frame. With no
 reports nothing is learned, and an acquire that the screen held leaves a
-refresh out of the pacer's own grid where three frames are in flight.
+refresh out of the pacer's own grid where three frames are in flight. A
+tick waits for its planned begin only on a grid that something holds in
+place, a refresh reported or a tick aimed: at a run's start with no
+reports, or once the first pacer has run, the grid is drawn from now,
+and a begin on it would move on with now and never come, so the tick
+begins at once.
 
 ## What the screen reports
 

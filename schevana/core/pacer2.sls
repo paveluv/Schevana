@@ -425,8 +425,12 @@
                            (fx+ most slack))])
               (cond
                 ;; work over a refresh begins the next turn as the gate
-                ;; opens: that turn, not the ones after it that draw nothing
+                ;; opens: that turn, not the ones after it that draw nothing.
+                ;; A grid that no report and no aim holds in place is drawn
+                ;; from now, and a begin on it would move on with now, never
+                ;; to come: such a turn begins at once.
                 [(and (fx< now B) (fx< now F)
+                      (or (fx>= reported 0) (fx> *pacer2-t* 0))
                       (or (fx< last s)
                           (fx> *pacer2-t* (pacer2-own (fx- n 1) 13))))
                  (set! *pacer2-waited* B)
