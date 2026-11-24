@@ -42,7 +42,7 @@
                           'menu-choose 'menu-hover 'bell 'title-double-click
                           'scrollbar-side 'scrollbar-show 'scrollbar-width)
                       '(outline interlisp-drag-outline release outline window
-                        none left hover 24))
+                        none outside hover 24))
               (equal? (of 'spine 'title-double-click 'title-wheel)
                       '(maximize none))
               (equal? (of 'mac 'drag-feedback 'bell 'mouse-doc)
@@ -625,6 +625,60 @@
                (and (equal? ink (list i i i))
                     (equal? shaded (list i p i))))))))
 
+(check "an Interlisp window shrinks to Medley's title-bar icon: a bar of \
+        ink as tall as the title font's line and 8 wider than the title, at \
+        the window's top left near the screen's top left and at its bottom \
+        right near the bottom right; the middle button expands it"
+       (let-values ([(dx dy dw dh) (desktop-rect)])
+         (let* ([a (open-window "Shrunk" 'size '(300 . 160)
+                                'pos (cons (+ dx 40) (+ dy 30))
+                                'window-style 'interlisp)]
+                [b (open-window "Shrunk too" 'size '(300 . 160)
+                                'pos (cons (- (+ dx dw) 360)
+                                           (- (+ dy dh) 220))
+                                'window-style 'interlisp)]
+                [icon (lambda (w) (find (lambda (i)
+                                          (eq? (window-ref i 'icon-for) w))
+                                        (windows)))])
+           (steps 1)
+           (minimize-window! a)
+           (minimize-window! b)
+           (steps 2)
+           (let* ([ia (icon a)] [ib (icon b)]
+                  [wide (lambda (w)
+                          (in-window-theme w
+                            (lambda ()
+                              (max 26 (+ 8 (exact (ceiling
+                                                   (text-width
+                                                    (window-title w)
+                                                    'ui-small))))))))]
+                  [sized (and ia (= (window-w ia) (wide a))
+                              (= (window-h ia)
+                                 (in-window-theme a
+                                   (lambda ()
+                                     (exact (round (font-line-height
+                                                    'ui-small)))))))]
+                  [corners (and ia ib
+                                (= (window-x ia) (window-x a))
+                                (= (window-y ia) (window-y a))
+                                (= (+ (window-x ib) (window-w ib))
+                                   (+ (window-x b) (window-w b)))
+                                (= (+ (window-y ib) (window-h ib))
+                                   (+ (window-y b) (window-h b))))]
+                  [ink (and ia (canvas-pixel (+ (window-x ia) 1)
+                                             (+ (window-y ia) 1)))])
+             (let ([x (+ (window-x ia) 2)] [y (+ (window-y ia) 2)])
+               (inject! `(mouse-move ,x ,y) `(mouse-down ,x ,y middle 1)
+                        `(mouse-up ,x ,y middle)))
+             (steps 2)
+             (let ([expanded (and (eq? (window-state a) 'normal)
+                                  (not (icon a)))])
+               (close-window! a)
+               (close-window! b)
+               (steps 2)
+               (printf "  ~s\n" (list sized corners ink expanded))
+               (and sized corners (eqv? ink #xff000000) expanded))))))
+
 (check "Adwaita's column view heading is a button's: at least 24 high, and \
         3 above and below"
        (with-style 'adwaita
@@ -782,12 +836,16 @@
                 (for-all reads-as-symbol? names)
                 (eq? (cadr form) '|12|)))))
 
-(check "the square styles honor every common option but the corner radius"
-       (for-all (lambda (st)
-                  (let ([fixed (with-style st (lambda () (theme 'fixed)))])
-                    (and (equal? fixed '(corner-radius))
-                         (not (memq 'title-height fixed)))))
-                '(cons curses draft fold interlisp lambda reticle slab)))
+(check "the square styles honor every common option but the corner radius, \
+        and Interlisp, which draws no shadow, the shadow too"
+       (and (for-all (lambda (st)
+                       (let ([fixed (with-style st (lambda () (theme 'fixed)))])
+                         (and (equal? fixed '(corner-radius))
+                              (not (memq 'title-height fixed)))))
+                     '(cons curses draft fold lambda reticle slab))
+            (let ([fixed (with-style 'interlisp (lambda () (theme 'fixed)))])
+              (and (= (length fixed) 2) (memq 'corner-radius fixed)
+                   (memq 'shadow fixed) #t))))
 
 ;; A rounded rectangle's top-left pixel, drawn in style st: ink where the
 ;; corner is square, nothing where it is round.

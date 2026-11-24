@@ -132,7 +132,11 @@
       (mouse-doc "Show what the mouse buttons do" bool)
       (scrollbar-show "Scroll bars" (("Always" . always) ("On hover" . hover)))
       (scrollbar-side "Scroll bar side"
-       (("Right" . right) ("Left" . left) ("Outside" . outside)))))
+       (("Right" . right) ("Left" . left) ("Outside" . outside)))
+      (minimize-to "Minimized windows"
+       (("In the taskbar" . taskbar) ("Icons" . icons)))
+      (desk-icon-expand "Open an icon"
+       (("Double-click" . double-click) ("Middle button" . middle)))))
 
   (define settings-typefaces
     '(("Sans" . "sans-serif") ("Serif" . "serif") ("Mono" . "monospace")))

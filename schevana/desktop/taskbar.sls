@@ -14,8 +14,8 @@
           (only (schevana core) *focus* *hover* *windows* alpha chrome-height
                 define-part define-strip define-surface draw-line draw-text
                 fill-box font-line-height screen-h screen-w text-width
-                theme-default! theme-rule visible? window-id window-title
-                window? with-place world-value)
+                theme-default! theme-rule visible? window-id window-ref
+                window-title window? with-place world-value)
           (only (schevana kits text) text-fit text-widest)
           (only (schevana kits ui) ui-draw-window-icon)
           (only (schevana desktop bar) bar-mouse bar-at)
@@ -47,7 +47,10 @@
   ;; window, from left to right: ((hint x y w h) (window x y w h) ...).
   (define-part (taskbar-areas h hint)
     (let* ([w (screen-w)] [y0 (- (screen-h) h)]
-           [ws (sort (lambda (a b) (< (window-id a) (window-id b))) *windows*)]
+           ;; a minimized window's icon ((schevana desktop icons)) has no
+           ;; button of its own
+           [ws (sort (lambda (a b) (< (window-id a) (window-id b)))
+                     (remp (lambda (w) (window-ref w 'icon-for)) *windows*))]
            [n (length ws)]
            [button-w (lambda (hint-w)
                        (if (zero? n)
@@ -78,13 +81,15 @@
 
   ;; Draws the bar in the bars' place with the style's draw-taskbar, which
   ;; is called by name and handed what it shows.
+  ;; A style with no taskbar (height 0) has nothing drawn there.
   (define (taskbar-draw)
     (with-place 'bar
       (lambda ()
         (let ([h (taskbar-height)])
-          ((world-value 'draw-taskbar) h (taskbar-areas h taskbar-hint)
-                                       (launcher-open?) (taskbar-doc-line)
-                                       *status-shown* taskbar-hint)))))
+          (unless (zero? h)
+            ((world-value 'draw-taskbar) h (taskbar-areas h taskbar-hint)
+                                         (launcher-open?) (taskbar-doc-line)
+                                         *status-shown* taskbar-hint))))))
 
   ;; Draws the bar, h high, at the screen's bottom, in its areas
   ;; (taskbar-areas). open? is the launcher's form while it is open, menu or

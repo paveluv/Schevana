@@ -968,7 +968,8 @@
   (with-style 'interlisp
     (lambda ()
       (let ([line (exact (round (font-line-height 'ui-small)))])
-        (list 4 (+ 2 (max 15 (- (title-height) 15) (+ 2 line))) 4 4)))))
+        ;; the left takes the outside scroll bar's 24 too
+        (list 28 (+ 2 (max 15 (- (title-height) 15) (+ 2 line))) 4 4)))))
 
 (define (click-button! win kind)
   (let ([b (assq kind (frame-regions win))])
@@ -1012,9 +1013,9 @@
   (let-values ([(l t r b) (frame-insets w)])
     (check "interlisp has Medley's border of 4 (2 of ink, 2 of paper), a \
             title strip of Medley's 15 pixels or the title font's line, and \
-            no buttons"
+            no buttons: its only region is the scroll bar's, beside it"
            (and (equal? (list l t r b) (test-interlisp-insets))
-                (null? (frame-regions w)))))
+                (equal? (map car (frame-regions w)) '(scrollbar)))))
   (inject! '(mouse-move 300 147) '(mouse-down 300 147 right 1)
            '(mouse-up 300 147 right))
   (steps 2)

@@ -153,7 +153,16 @@ widget's parts:
   chose, or `#f`;
 - `(toast-boxes)`, which returns where each toast goes, and `(draw-toasts
   boxes)`; and `(draw-wallpaper w h)`, which fills the desktop with
-  `fill-wallpaper`.
+  `fill-wallpaper`;
+- `(desk-icon-size win)`, `(desk-icon-place win w h)` and
+  `(draw-desk-icon win w h flags)`: the icon of a minimized window `win`
+  where the style's `minimize-to` is `icons`. The first two return the
+  icon's size and where a new one goes, as two values each; the third
+  draws it in a box `w` × `h`, with `focused` among its flags while the
+  icon has the keyboard. An icon is a small window of the desktop's,
+  which a left drag moves and a double click opens (the middle button,
+  where `desk-icon-expand` is `middle`), and which comes back where it
+  was put. Interlisp's is Medley's title-bar icon.
 
 A container draws what is inside it within its place (`with-place`): a
 text box's `field`, a table's `list`, a `dialog`, a `tooltip`, a `menu`,
@@ -178,9 +187,11 @@ has none, the widget its designers would have made:
 
 - **Interlisp**, from Medley's window system sources (MIT licensed): a
   border of 2 pixels of ink and 2 of paper, a black title strip, Medley's
-  #x8822 desktop, scroll bars at the left that show while the pointer is
-  over the view, a dashed outline while a window is dragged, and menus
-  that choose on release.
+  #x8822 desktop with no bars on the screen, scroll bars beside the window
+  that show while the pointer is over the view, a gray outline while a
+  window is dragged, Medley's menus (centered words in a 1-pixel outline,
+  choosing on release) and window menu (Close, Bury, Redisplay, Shrink),
+  and a minimized window shrunk to Medley's title-bar icon.
 - **Genera**, built to the margins its 1986 manuals specify: the window's
   label sits in its bottom-left corner, and you drag the window by it. The
   style covers the whole screen: there is no top bar, and at the bottom
@@ -328,6 +339,7 @@ Among them are `title-double-click` (`maximize`, `shade`, `none`),
 `title-wheel`, `drag-feedback` (`live`, `outline`), `frame-edge` and
 `frame-corner` (the resize edges), `raise-on-click`, `menu-choose`
 (`click`, `release`), `launcher-form` (`menu`, `grid`), `scrollbar-side`
-and `scrollbar-show`, and the bell
+and `scrollbar-show`, `minimize-to` (`taskbar`, `icons`) and
+`desk-icon-expand` (`double-click`, `middle`), and the bell
 (`bell`: `none`, `screen` or `window`), which `(bell)` rings. A style
 chooses each of them; the built-in styles show what they can do.

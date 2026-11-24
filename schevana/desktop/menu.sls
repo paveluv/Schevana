@@ -23,13 +23,14 @@
                 library-layer plist-ref set-hook!)
           (only (schevana core) *mouse-button* *mouse-x* *mouse-y* after
                 close-window! define-part define-surface desktop-rect
-                draw-text fill-box font font-char-width font-line-height
-                frame-regions minimize-window! notify now-ms point-in?
+                draw-text fill-box focus-window! font font-char-width
+                font-line-height frame-regions minimize-window! notify now-ms
+                point-in?
                 report-error! request-frame! safe-call screen-h screen-w
                 shaded? text-width theme theme-default! theme-rule
                 toggle-maximize! toggle-shade! window-action! window-at
-                window-region window-setting window-state with-clip with-place
-                world-value)
+                window-ref window-region window-setting window-state with-clip
+                with-place world-value)
           (only (schevana kits menu) make-menu menu-x menu-y menu-sel
                 menu-sel-set! menu-filter menu-filter-set! menu-filter?
                 menu-tag menu-label-text menu-label-key menu-label-width
@@ -385,10 +386,24 @@
   ;; Opens a window's menu, on a right click on its title or a press on a
   ;; frame's menu button (the window manager calls the part), or on a right
   ;; click on its taskbar button. It offers Shade when the window's style
-  ;; shades windows.
+  ;; shades windows, and Restore when the window is minimized. An icon's menu
+  ;; ((schevana desktop icons)) opens its window or closes both.
   (define-part (open-window-menu win x y)
+    (let ([main (window-ref win 'icon-for)])
+      (if main
+          (open-menu! x y
+                      `(("Open" . ,(lambda () (focus-window! main)))
+                        separator
+                        ("Close" . ,(lambda () (close-window! win))))
+                      'tag (cons 'window win))
+          (open-window-menu-of win x y))))
+
+  (define (open-window-menu-of win x y)
     (open-menu! x y
-                `(("Bind to $w for the REPL"
+                `(,@(if (eq? (window-state win) 'minimized)
+                        `(("Restore" . ,(lambda () (focus-window! win))))
+                        '())
+                  ("Bind to $w for the REPL"
                    . ,(lambda ()
                         (define-top-level-value '$w win)
                         (notify (format "$w = ~s" win))))

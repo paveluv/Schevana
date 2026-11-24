@@ -40,8 +40,9 @@
     frame-bleed content-rect window-content-size window-local window-call
     window-crash! window-modal-child focus-window! close-window!
     minimize-window! set-geometry! move-window! resize-window! restore-window!
-    toggle-maximize! window-action! shaded? unshade-window! toggle-shade!
-    window-at screen-at resize-kinds window-region *global-keys* bind-key!
+    toggle-maximize! window-action! window-drag-move! shaded? unshade-window!
+    toggle-shade! window-at screen-at resize-kinds window-region *global-keys*
+    bind-key!
     window-frame-soon! window-hover draw-window* surfaces maximize-window!
     unbind-key!)
   (import (chezscheme)
@@ -990,6 +991,13 @@
            (set! *drag* (make-drag region win button x y
                                    (window-x win) (window-y win)
                                    (window-w win) (window-h win))))])))
+
+  ;; Starts moving win with the pointer, as a left press on its title does:
+  ;; a window with no frame (a desktop icon) moves by its content.
+  (define (window-drag-move! win)
+    (set! *drag* (make-drag 'move win 'left *mouse-x* *mouse-y*
+                            (window-x win) (window-y win) 0 0))
+    (core0-set-cursor! 'move))
 
   (define (wm-mouse-up x y button)
     (let ([d *drag*])

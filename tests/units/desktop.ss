@@ -425,3 +425,73 @@
             (for-all (lambda (s)
                        (not (equal? (cdr s) (format "⚠ ~a" (car s)))))
                      st:*status-shown*)))
+
+;; The icon of a minimized window w, or #f.
+(define (desktop-test-icon w)
+  (find (lambda (i) (eq? (window-ref i 'icon-for) w)) (windows)))
+
+;; Presses at the middle of window i: button, clicks, then where the
+;; pointer goes before the release (dx, dy).
+(define (desktop-test-press! i button clicks dx dy)
+  (let ([x (+ (window-x i) (quotient (window-w i) 2))]
+        [y (+ (window-y i) (quotient (window-h i) 2))])
+    (inject! `(mouse-move ,x ,y) `(mouse-down ,x ,y ,button ,clicks)
+             `(mouse-move ,(+ x dx) ,(+ y dy))
+             `(mouse-up ,(+ x dx) ,(+ y dy) ,button))
+    (steps 2)))
+
+(check "with minimize-to icons, a minimized window becomes an icon at the \
+        desktop's bottom left, with no taskbar button; a double click opens \
+        the window and closes the icon; an icon moved comes back where it \
+        was put; closing an icon closes its window; with the taskbar again, \
+        an icon closes"
+       (begin
+         (set-theme! 'minimize-to 'icons)
+         (let ([w (open-window "Iconified" 'size '(200 . 100)
+                               'pos '(300 . 200))])
+           (steps 1)
+           (minimize-window! w)
+           (steps 2)
+           (let* ([i (desktop-test-icon w)]
+                  [placed
+                   (and i
+                        (let-values ([(dx dy dw dh) (desktop-rect)])
+                          (and (= (window-x i) (+ dx 8))
+                               (= (+ (window-y i) (window-h i) 8)
+                                  (+ dy dh)))))]
+                  [no-button (and i (not (assq i (taskbar-areas
+                                                  (taskbar-height) ""))))])
+             (desktop-test-press! i 'left 1 0 0)
+             (desktop-test-press! i 'left 2 0 0)
+             (let ([opened (and (eq? (window-state w) 'normal)
+                                (not (desktop-test-icon w)))])
+               (minimize-window! w)
+               (steps 2)
+               (desktop-test-press! (desktop-test-icon w) 'left 1 40 -30)
+               (let* ([i (desktop-test-icon w)]
+                      [moved (cons (window-x i) (window-y i))])
+                 (focus-window! w)
+                 (steps 2)
+                 (minimize-window! w)
+                 (steps 2)
+                 (let ([back (let ([i (desktop-test-icon w)])
+                               (cons (window-x i) (window-y i)))])
+                   (close-window! (desktop-test-icon w))
+                   (steps 2)
+                   (let ([closed (not (memq w (windows)))]
+                         [v (open-window "Back to the taskbar"
+                                         'size '(200 . 100))])
+                     (steps 1)
+                     (minimize-window! v)
+                     (steps 2)
+                     (let ([had (and (desktop-test-icon v) #t)])
+                       (set-theme! 'minimize-to 'taskbar)
+                       (steps 2)
+                       (let ([gone (not (desktop-test-icon v))])
+                         (close-window! v)
+                         (reset-theme!)
+                         (steps 1)
+                         (printf "  ~s\n" (list placed no-button opened
+                                               moved back closed had gone))
+                         (and placed no-button opened
+                              (equal? moved back) closed had gone)))))))))))

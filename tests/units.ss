@@ -225,7 +225,8 @@
   (with-style 'interlisp
     (lambda ()
       (let ([line (exact (round (font-line-height 'ui-small)))])
-        (list 4 (+ 2 (max 15 (- (title-height) 15) (+ 2 line))) 4 4)))))
+        ;; the left takes the outside scroll bar's 24 too
+        (list 28 (+ 2 (max 15 (- (title-height) 15) (+ 2 line))) 4 4)))))
 
 ;;; ------------------------------------------------------------------ images
 

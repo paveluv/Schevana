@@ -119,8 +119,8 @@
     window-content-size window-local window-call window-crash!
     window-modal-child focus-window! close-window! minimize-window!
     maximize-window! set-geometry! move-window! resize-window!
-    restore-window! toggle-maximize! window-action! shaded? unshade-window!
-    toggle-shade! window-at screen-at resize-kinds
+    restore-window! toggle-maximize! window-action! window-drag-move! shaded?
+    unshade-window! toggle-shade! window-at screen-at resize-kinds
     window-region *global-keys* bind-key! unbind-key! window-frame-soon!
     window-hover
     draw-window*
@@ -268,7 +268,8 @@
                 focus-window! close-window! minimize-window! maximize-window!
                 set-geometry!
                 move-window! resize-window! restore-window! toggle-maximize!
-                window-action! shaded? unshade-window! toggle-shade! window-at
+                window-action! window-drag-move! shaded? unshade-window!
+                toggle-shade! window-at
                 screen-at resize-kinds window-region bind-key! unbind-key!
                 window-frame-soon! window-hover draw-window*)
           (only (schevana core sources) core1-exported load-user-init!

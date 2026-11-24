@@ -57,8 +57,10 @@ The Interlisp style (`schevana/styles/interlisp.sls`) and its desktop
 gray (`schevana/wallpapers/shade.sls`) follow Medley Interlisp's sources
 (Interlisp.org's `medley` repository): the window's border, title strip
 and title shade, the scroll bar, the ghost box that Move and Shape drag,
-and WINDOWBACKGROUNDSHADE, each cited in the code by file and line
-(WINDOW:137, WINDOW:1551-1646). They are used under this license:
+the menus, the window menu and the icon of a shrunk window, and
+WINDOWBACKGROUNDSHADE, each cited in the code by file and line
+(WINDOW:137, WINDOW:1551-1646, MENU:806-1040, WINDOWICON:51-108). They
+are used under this license:
 
 MIT License
 
