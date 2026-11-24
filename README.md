@@ -1,6 +1,6 @@
 # Schevana
 
-![Schevana: a REPL and a Clock in the Spine style](docs/screenshot.png)
+![Schevana: a REPL defining a compute shader, and a Clock, in the Spine style](docs/screenshot.png)
 
 A Lisp Machine-style desktop that lives inside one window and is written
 entirely in Chez Scheme. Every window, color, key binding, status-bar segment,
@@ -57,14 +57,14 @@ platform are in [docs/INSTALL.md](docs/INSTALL.md).
 The same libraries run in one of two editions:
 
 - The **library edition**, the default, loads Schevana's libraries
-  compiled into `.cache/`, so the world loads quickly (about 0.2 s here),
+  compiled into `.cache/`, so the world loads quickly (about 0.26 s here),
   and it keeps each library's internals to itself: an app sees what the
   core's facade and the kits export. It is the edition for writing apps.
 - The **hacker edition** (`./desktop --hacker`) splices every library
   into "/" from its source at each start, so it loads more slowly (about
   1.7 s), but it exposes every name, internals included, to see and
   redefine live: the full redefinability Schevana had before v2. Its heap
-  is slightly smaller too (89 MB live after a collection, against 97 MB).
+  is slightly smaller too (94 MB live after a collection, against 96 MB).
 
 ## The REPL
 
@@ -142,8 +142,22 @@ What Schevana takes from others, and under which terms, is in
 - There's no text editor app yet.
 - Windows and their state are lost on exit: only the look is kept.
 - It runs on Linux and on a Mac; I haven't tried Windows yet.
+- Keys are written into each widget and app, so they can't be rebound,
+  and they differ here and there: a REPL copies with Ctrl+Shift+C (its
+  Ctrl+C stops what runs), and Ctrl+A selects all in a text field but
+  goes to the line's start in a REPL.
 
 After v2, I plan to make the profiler profile memory properly. It now
 sees how long the collector ran and how much was allocated in all, but
 not what allocates, by window, process and procedure, or what each
 collection costs.
+
+I also plan keymaps. Everything a key does will be an action with a name
+and a short description, at every level (a widget, an app, a window, the
+desktop), and a keymap will say which keys reach which actions. Settings
+and a REPL will choose the keymap (Standard, the keys of Windows and
+GNOME, or Emacs, and later Vim) and rebind keys, and every key that a
+menu or a hint shows will come from it. A REPL's input will then move
+into a field of its own at the bottom of its window, growing with its
+lines, with the history above it scrolling on its own, and Ctrl+C will
+copy there as it does everywhere else.
