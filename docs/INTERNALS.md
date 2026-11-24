@@ -40,8 +40,8 @@ schevana/      the libraries below the world, each declaring its layer:
                  report-error!; the profiler's hook; worklets
     gpu          the GPU layer in the world's terms: images, buffers,
                  lists, compute runs
-    fonts        fonts found by fontconfig, glyphs drawn by FreeType, the
-                 atlas, measuring text
+    fonts        fonts found by fontconfig, glyphs drawn by FreeType, bitmap
+                 fonts a look registers, the atlas, measuring text
     draw         the drawing procedures, colors, stipples, gradients,
                  clips, images and paints, all written as records
     pacer        when frames are due, and what became of each

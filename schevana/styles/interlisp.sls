@@ -16,7 +16,11 @@
 ;;; bars are 24 pixels wide, beside the window, shown on hover. There are no
 ;;; bars on the screen, and the desktop is Medley's shade alone. A minimized
 ;;; window shrinks to its icon, a bar of ink with the title, near where the
-;;; window was; the left button moves it, the middle one expands it. Ink is
+;;; window was; the left button moves it, the middle one expands it. All of
+;;; its text is in Medley's own fonts, bitmaps drawn a font pixel to a
+;;; logical pixel ((schevana styles interlisp fonts)): Gacha 10 for code and
+;;; the REPL, Helvetica 10 for titles, menus and the rest, and Helvetica 12
+;;; bold for headings (FONTPROFILE:186-225). Ink is
 ;;; the theme's text color and paper the window's background, so any palette
 ;;; gets the inverse-video look.
 
@@ -30,8 +34,9 @@
   (import (chezscheme)
           (only (schevana base) at-load clamp define-made library-layer)
           (only (schevana core) close-window! color-default! common-options
-                define-style desktop-rect draw-text fill-box fill-wallpaper
-                focus-window! font-line-height invalidate! invert-box
+                define-bitmap-font define-style desktop-rect draw-text fill-box
+                fill-wallpaper focus-window! font font-line-height invalidate!
+                invert-box
                 minimize-window! notify screen-h screen-w stipple stroke-box
                 text-width theme theme-rule title-height window-action!
                 window-bg window-h window-ref window-title window-w window-x
@@ -40,7 +45,8 @@
                 menu-filter menu-filter? menu-label-text menu-tag menu-x
                 menu-y)
           (only (schevana kits ui) ui-draw-highlight ui-frame-scrollbar
-                ui-menu-open! ui-scrollbar-areas))
+                ui-menu-open! ui-scrollbar-areas)
+          (schevana styles interlisp fonts))
 
   (library-layer looks)
 
@@ -244,6 +250,11 @@
    (color-default! 'interlisp-scroll-shade
                    (stipple 'text 'window-bg "#..." "...." "..#." "....")))
 
+  ;; Medley's fonts, registered as the style loads.
+  (at-load
+   (for-each (lambda (f) (define-bitmap-font (car f) (cdr f)))
+             interlisp-fonts))
+
   ;; The style's own palette, over Medley's dashed gray (the shade
   ;; wallpaper).
   (at-load
@@ -252,7 +263,26 @@
      ;; every common option but the radius
      'corner-radius 0
      'shadow 0
-     'options (remq 'shadow (remq 'corner-radius (map car common-options)))
+     ;; Medley's fonts are its own, each at its one size
+     'options (remp (lambda (o)
+                      (memq o '(corner-radius shadow ui-font ui-font-size
+                                mono-font mono-font-size)))
+                    (map car common-options))
+     'ui-font "Medley Helvetica 10"
+     'ui-font-size 10
+     'mono-font "Medley Gacha 10"
+     'mono-font-size 10
+     'ui (font "Medley Helvetica 10" 10 'crisp)
+     'ui-small (font "Medley Helvetica 10" 10 'crisp)
+     'ui-italic (font "Medley Helvetica 10" 10 'crisp)
+     'ui-bold (font "Medley Helvetica 10 Bold" 10 'crisp)
+     'ui-small-bold (font "Medley Helvetica 10 Bold" 10 'crisp)
+     'title (font "Medley Helvetica 10 Bold" 10 'crisp)
+     'heading (font "Medley Helvetica 12 Bold" 12 'crisp)
+     'big (font "Medley Helvetica 10 Bold" 20 'crisp)
+     'mono (font "Medley Gacha 10" 10 'crisp)
+     'mono-small (font "Medley Gacha 10" 10 'crisp)
+     'mono-bold (font "Medley Gacha 10" 10 'crisp)
      'palette 'interlisp
      'wallpaper 'shade
      'frame-insets 'interlisp-insets

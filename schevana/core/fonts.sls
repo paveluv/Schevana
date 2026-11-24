@@ -9,6 +9,11 @@
 ;;; A glyph is drawn once for each size and quarter-pixel phase used, on
 ;;; first use, into one atlas (FreeType takes about 1 µs). A record holds the
 ;;; glyph's number, and a table on the GPU maps that to its place.
+;;;
+;;; A bitmap font (define-bitmap-font) is a face made from bits, which a
+;;; look gives as data: its tables are made from the data, and its glyphs
+;;; are its bits, each a square of device pixels, so that measuring and
+;;; drawing it are as measuring and drawing any font.
 
 (library (schevana core fonts)
   (export
@@ -20,7 +25,7 @@
     glyph-row-character *glyph-table* *glyph-count* *glyph-table-dirty?*
     *atlas-y* *atlas-row* *atlas-pieces* *atlas-full?* atlas-place!
     atlas-flush! *stipple-tiles*
-    glyph-row-ref font-glyph-pages font-glyph)
+    glyph-row-ref font-glyph-pages font-glyph *bitmap-fonts* define-bitmap-font)
   (import (chezscheme)
           (only (schevana base) at-load define-made define-state library-layer
                 platform-mac?)
@@ -133,8 +138,99 @@
           ("monospace" . "DejaVu Sans Mono,Menlo"))
         '()))
 
-  ;; Returns where fontconfig finds this family: (file . index in it).
+  ;;; ---------------------------------------------------------- bitmaps
+  ;;; (define-bitmap-font name data) registers a bitmap font, which a font
+  ;;; whose family is name draws. data is (pixel-size ascent descent glyph
+  ;;; ...), each glyph (char advance left top width row ...): char a
+  ;;; character's code, or #f for what a character the font lacks draws;
+  ;;; left and top where its bits begin, right of the pen and above the
+  ;;; baseline; its rows from the top, each a number whose highest of width
+  ;;; bits is the leftmost pixel. A space is (char advance). At the pixel
+  ;;; size, a font pixel is a logical pixel.
+
+  (define-state *bitmap-fonts* (make-hashtable string-hash string=?))
+
+  ;; Returns the page of a face's table that holds character c, making it.
+  (define (font-page pages c)
+    (or (vector-ref pages (fxsrl c 8))
+        (let ([p (make-fxvector (fx* 5 256) -1)])
+          (vector-set! pages (fxsrl c 8) p)
+          p)))
+
+  (define (define-bitmap-font name data)
+    (hashtable-set! *bitmap-fonts* name data))
+
+  ;; The face of bitmap font name: its units are its pixels, so its pixel
+  ;; size is its units per em, and its handle is its glyphs by character.
+  ;; It is fixed-pitch when the ASCII characters all advance alike, so that
+  ;; its columns stay even as a fixed-pitch FreeType face's do.
+  (define (bitmap-face name)
+    (let* ([data (hashtable-ref *bitmap-fonts* name #f)]
+           [glyphs (make-eqv-hashtable)]
+           [pages (make-vector font-page-count #f)]
+           [notdef (make-fxvector 5 0)])
+      (for-each
+       (lambda (g)
+         (hashtable-set! glyphs (car g) g)
+         (when (car g)
+           (let ([page (font-page pages (car g))]
+                 [at (fx* 5 (fxand (car g) 255))]
+                 [ink (cddr g)])
+             (fxvector-set! page at (cadr g))
+             (unless (null? ink)
+               (fxvector-set! page (fx+ at 1) (car ink))
+               (fxvector-set! page (fx+ at 2) (cadr ink))
+               (fxvector-set! page (fx+ at 3) (caddr ink))
+               (fxvector-set! page (fx+ at 4) (length (cdddr ink)))))))
+       (cdddr data))
+      (let ([slug (hashtable-ref glyphs #f #f)]
+            [ascii (filter (lambda (g) (and (car g) (<= 32 (car g) 126)))
+                           (cdddr data))])
+        (when slug (fxvector-set! notdef 0 (cadr slug)))
+        (make-font-file name glyphs (car data) (cadr data) (- (caddr data))
+                        (+ (cadr data) (caddr data))
+                        (and (pair? ascii)
+                             (for-all (lambda (g) (= (cadr g) (cadar ascii)))
+                                      ascii))
+                        pages notdef -1))))
+
+  ;; Draws bitmap face ff's glyph for c (or its slug) into the atlas, at k
+  ;; device pixels to a font pixel: each device pixel takes the bit nearest
+  ;; it, so that at a whole k a font pixel is a k × k square. Its phase is
+  ;; always 0, its pixels being whole. Returns its number, or -1 if it has
+  ;; no ink.
+  (define (bitmap-glyph-make f ff num den c)
+    (let* ([g (or (hashtable-ref (font-file-handle ff) c #f)
+                  (hashtable-ref (font-file-handle ff) #f #f))]
+           [ink (if g (cddr g) '())])
+      (if (or (null? ink) (null? (cdddr ink)))
+          -1
+          (let* ([k (/ (* (font-size f) num) (* (font-file-upem ff) den))]
+                 [bw (caddr ink)] [rows (list->vector (cdddr ink))]
+                 [bh (vector-length rows)]
+                 [w (max 1 (exact (round (* bw k))))]
+                 [h (max 1 (exact (round (* bh k))))]
+                 [bytes (make-bytevector (* w h) 0)])
+            (do ([y 0 (+ y 1)]) ((= y h))
+              (let ([row (vector-ref rows (min (- bh 1) (floor (/ y k))))])
+                (do ([x 0 (+ x 1)]) ((= x w))
+                  (when (logbit? (- bw 1 (min (- bw 1) (floor (/ x k)))) row)
+                    (bytevector-u8-set! bytes (+ (* y w) x) 255)))))
+            (let ([place (atlas-place! w h bytes)] [n *glyph-count*])
+              (set! *glyph-count* (+ n 1))
+              (glyph-row-set! n (car place) (cdr place) w h
+                              (exact (round (* (car ink) k)))
+                              (exact (round (* (cadr ink) k))) c)
+              n)))))
+
+  ;; Returns where fontconfig finds this family: (file . index in it); or,
+  ;; for a bitmap font's name, (name . bitmap).
   (define (font-file-match family slant weight)
+    (if (hashtable-contains? *bitmap-fonts* family)
+        (cons family 'bitmap)
+        (font-file-find family slant weight)))
+
+  (define (font-file-find family slant weight)
     (let* ([own (assoc family font-generic-families)]
            [name (format "~a:slant=~a:weight=~a" (if own (cdr own) family)
                          (if (eq? slant 'italic) 100 0)
@@ -157,54 +253,53 @@
   (define (font-file-open where)
     (let ([key (format "~a#~a" (car where) (cdr where))])
       (or (hashtable-ref *font-files* key #f)
-          (begin
-            (unless (zero? (ft-new-face *ft-library* (car where) (cdr where)
-                                        *ft-scratch*))
-              (errorf 'font "FreeType can't read ~a" (car where)))
-            (let* ([h (ftype-ref ft-scratch (pointer) ft-scratch*)]
-                   [pages (make-vector font-page-count #f)])
-              (define face (make-ftype-pointer ft-face h))
-              ;; A character's numbers, read from the glyph just loaded.
-              (define (metrics! page i)
-                (let ([g (ft-face-slot h)] [at (fx* 5 i)])
-                  (fxvector-set! page at
-                                 (ftype-ref ft-slot (metrics advance) g))
-                  (fxvector-set! page (fx+ at 1)
-                                 (ftype-ref ft-slot (metrics left) g))
-                  (fxvector-set! page (fx+ at 2)
-                                 (ftype-ref ft-slot (metrics top) g))
-                  (fxvector-set! page (fx+ at 3)
-                                 (ftype-ref ft-slot (metrics width) g))
-                  (fxvector-set! page (fx+ at 4)
-                                 (ftype-ref ft-slot (metrics height) g))))
-              (ftype-set! ft-scratch (glyph) ft-scratch* 0)
-              (let loop ([c (ft-get-first-char h *ft-scratch*)])
-                (unless (zero? (ftype-ref ft-scratch (glyph) ft-scratch*))
-                  (when (zero? (ft-load-char h c ft-load-no-scale))
-                    (let* ([n (fxsrl c 8)]
-                           [page (or (vector-ref pages n)
-                                     (let ([p (make-fxvector (fx* 5 256) -1)])
-                                       (vector-set! pages n p)
-                                       p))])
-                      (metrics! page (fxand c 255))))
-                  (loop (ft-get-next-char h c *ft-scratch*))))
-              ;; what a character the face doesn't have draws: its .notdef
-              (let ([notdef (make-fxvector 5 0)])
-                (when (zero? (ft-load-char h 0 ft-load-no-scale))
-                  (fxvector-set! notdef 0
-                                 (ftype-ref ft-slot (metrics advance)
-                                            (ft-face-slot h))))
-                (let ([ff (make-font-file
-                           (car where) h
-                           (max 1 (ftype-ref ft-face (upem) face))
-                           (ftype-ref ft-face (ascender) face)
-                           (ftype-ref ft-face (descender) face)
-                           (ftype-ref ft-face (height) face)
-                           (logtest (ftype-ref ft-face (flags) face)
-                                    ft-face-flag-fixed-width)
-                           pages notdef -1)])
-                  (hashtable-set! *font-files* key ff)
-                  ff)))))))
+          (let ([ff (if (eq? (cdr where) 'bitmap)
+                        (bitmap-face (car where))
+                        (freetype-face where))])
+            (hashtable-set! *font-files* key ff)
+            ff))))
+
+  (define (freetype-face where)
+    (unless (zero? (ft-new-face *ft-library* (car where) (cdr where)
+                                *ft-scratch*))
+      (errorf 'font "FreeType can't read ~a" (car where)))
+    (let* ([h (ftype-ref ft-scratch (pointer) ft-scratch*)]
+           [pages (make-vector font-page-count #f)])
+      (define face (make-ftype-pointer ft-face h))
+      ;; A character's numbers, read from the glyph just loaded.
+      (define (metrics! page i)
+        (let ([g (ft-face-slot h)] [at (fx* 5 i)])
+          (fxvector-set! page at
+                         (ftype-ref ft-slot (metrics advance) g))
+          (fxvector-set! page (fx+ at 1)
+                         (ftype-ref ft-slot (metrics left) g))
+          (fxvector-set! page (fx+ at 2)
+                         (ftype-ref ft-slot (metrics top) g))
+          (fxvector-set! page (fx+ at 3)
+                         (ftype-ref ft-slot (metrics width) g))
+          (fxvector-set! page (fx+ at 4)
+                         (ftype-ref ft-slot (metrics height) g))))
+      (ftype-set! ft-scratch (glyph) ft-scratch* 0)
+      (let loop ([c (ft-get-first-char h *ft-scratch*)])
+        (unless (zero? (ftype-ref ft-scratch (glyph) ft-scratch*))
+          (when (zero? (ft-load-char h c ft-load-no-scale))
+            (metrics! (font-page pages c) (fxand c 255)))
+          (loop (ft-get-next-char h c *ft-scratch*))))
+      ;; what a character the face doesn't have draws: its .notdef
+      (let ([notdef (make-fxvector 5 0)])
+        (when (zero? (ft-load-char h 0 ft-load-no-scale))
+          (fxvector-set! notdef 0
+                         (ftype-ref ft-slot (metrics advance)
+                                    (ft-face-slot h))))
+        (make-font-file
+         (car where) h
+         (max 1 (ftype-ref ft-face (upem) face))
+         (ftype-ref ft-face (ascender) face)
+         (ftype-ref ft-face (descender) face)
+         (ftype-ref ft-face (height) face)
+         (logtest (ftype-ref ft-face (flags) face)
+                  ft-face-flag-fixed-width)
+         pages notdef -1))))
 
   ;;; ---------------------------------------------------------------- fonts
   ;;; A font is a setting: the theme's roles ('ui, 'mono, 'title, ...) are
@@ -430,11 +525,16 @@
             g)
           g)))
 
-  ;; Draws FreeType's glyph at its phase into the atlas. Returns its number,
-  ;; or -1 if it has no ink.
+  ;; Draws the glyph at its phase into the atlas: FreeType's, or a bitmap
+  ;; face's. Returns its number, or -1 if it has no ink.
   (define (font-glyph-make f num den c phase)
-    (let* ([ff (font-ready f)]
-           [h (font-file-handle ff)]
+    (let ([ff (font-ready f)])
+      (if (hashtable? (font-file-handle ff))
+          (bitmap-glyph-make f ff num den c)
+          (freetype-glyph-make f ff num den c phase))))
+
+  (define (freetype-glyph-make f ff num den c phase)
+    (let* ([h (font-file-handle ff)]
            [size (exact (round (* 64 (font-size f) (/ num den))))])
       (unless (= size (font-file-size ff))
         (ft-set-char-size h 0 size 72 72)

@@ -39,7 +39,8 @@
     ;; (schevana core fonts): fonts and text
     font-file-upem font-file-ascender font-file-descender font-file-pages
     font-library-versions make-font*
-    *font-specs* font get-font font-advance font-ascent
+    *font-specs* *bitmap-fonts* define-bitmap-font font get-font
+    font-advance font-ascent
     font-line-height font-char-width font-ready text-width *glyph-count*
     *atlas-y* *atlas-row* glyph-row-ref font-family font-size font-sized
     font-weight glyph-row-character glyph-row-h glyph-row-left glyph-row-top
@@ -206,7 +207,7 @@
                 font-ascent font-line-height font-char-width
                 font-ready glyph-row-ref font-family font-size font-sized
                 font-weight glyph-row-character glyph-row-h glyph-row-left
-                glyph-row-top glyph-row-w)
+                glyph-row-top glyph-row-w define-bitmap-font)
           (only (schevana core draw) pi canvas-pixel-width canvas-pixel-height
                 rgb alpha stipple stipple? linear-gradient radial-gradient
                 color-rgba mix color-word rec-variant record-list! fill-box
@@ -288,8 +289,8 @@
                         *profile-span* worklet-spread) core:)
           (prefix (only (schevana core gpu) *gpu-bytes-made* *gpu-held-gone*
                         *gpu-computes*) core:)
-          (prefix (only (schevana core fonts) *font-specs* text-width
-                        *glyph-count* *atlas-y* *atlas-row*) core:)
+          (prefix (only (schevana core fonts) *font-specs* *bitmap-fonts*
+                        text-width *glyph-count* *atlas-y* *atlas-row*) core:)
           (prefix (only (schevana core draw) *canvas-w* *canvas-h* *scale*
                         *canvas-ratio* *canvas-pw* *canvas-ph* *rec-labels*
                         *rec-label-at* draw-text) core:)
@@ -348,6 +349,7 @@
   (define-view *gpu-held-gone* core:*gpu-held-gone*)
   (define-view *gpu-computes* core:*gpu-computes*)
   (define-view *font-specs* core:*font-specs*)
+  (define-view *bitmap-fonts* core:*bitmap-fonts*)
   (define-view text-width core:text-width)
   (define-view *glyph-count* core:*glyph-count*)
   (define-view *atlas-y* core:*atlas-y*)

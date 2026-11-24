@@ -679,6 +679,21 @@
                (printf "  ~s\n" (list sized corners ink expanded))
                (and sized corners (eqv? ink #xff000000) expanded))))))
 
+(check "Interlisp's text is in Medley's fonts, at their pixel sizes: Gacha \
+        10 for code, 7 wide and 14 high, Helvetica 10 for the rest, 13 \
+        high, so that its title strip is Medley's 15"
+       (let ([of (with-style 'interlisp
+                   (lambda ()
+                     (list (font-family (get-font 'mono))
+                           (font-family (get-font 'ui-small))
+                           (font-family (get-font 'heading))
+                           (font-char-width 'mono) (font-line-height 'mono)
+                           (font-line-height 'ui-small))))])
+         (printf "  ~s\n" of)
+         (and (equal? of '("Medley Gacha 10" "Medley Helvetica 10"
+                           "Medley Helvetica 12 Bold" 7.0 14 13))
+              (= (cadr (test-interlisp-insets)) 17))))
+
 (check "Adwaita's column view heading is a button's: at least 24 high, and \
         3 above and below"
        (with-style 'adwaita
@@ -837,15 +852,18 @@
                 (eq? (cadr form) '|12|)))))
 
 (check "the square styles honor every common option but the corner radius, \
-        and Interlisp, which draws no shadow, the shadow too"
+        and Interlisp, which draws no shadow and has Medley's own fonts, not \
+        the shadow nor the fonts' options"
        (and (for-all (lambda (st)
                        (let ([fixed (with-style st (lambda () (theme 'fixed)))])
                          (and (equal? fixed '(corner-radius))
                               (not (memq 'title-height fixed)))))
                      '(cons curses draft fold lambda reticle slab))
             (let ([fixed (with-style 'interlisp (lambda () (theme 'fixed)))])
-              (and (= (length fixed) 2) (memq 'corner-radius fixed)
-                   (memq 'shadow fixed) #t))))
+              (and (= (length fixed) 6)
+                   (for-all (lambda (k) (memq k fixed))
+                            '(corner-radius shadow ui-font ui-font-size
+                              mono-font mono-font-size))))))
 
 ;; A rounded rectangle's top-left pixel, drawn in style st: ink where the
 ;; corner is square, nothing where it is round.

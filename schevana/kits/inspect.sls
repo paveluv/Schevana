@@ -25,6 +25,7 @@
     inspect-rows inspect-what inspect-record-paint inspect-paint-text
     inspect-records-at inspect-label-at inspect-platform inspect-display-pixels
     inspect-display-hz inspect-platform-row inspect-device inspect-glyphs
+    inspect-bitmap-fonts
     inspect-gpu-objects inspect-gpu-held inspect-present-mode inspect-core0
     inspect-pacer inspect-pacer2 inspect-pacer-rows inspect-shader-constants
     inspect-shader-helpers
@@ -39,7 +40,7 @@
           (only (schevana base) define-made library-layer platform-cpu
                 platform-os string-join string-prefix? string-suffix?)
           (only (schevana core) *world-later* *world-loading* auto-loads
-                *atlas-row* *atlas-y*
+                *atlas-row* *atlas-y* *bitmap-fonts*
                 *canvas-ph* *canvas-pw* *canvas-ratio* *font-specs* *frame-ring*
                 *frame-ring-n* *glyph-count* *gpu-bytes-made* *gpu-computes*
                 *gpu-facts* *gpu-held-gone* *pacer-aimed* *pacer-counts*
@@ -1288,6 +1289,15 @@
     `((glyphs . ,(- *glyph-count* 1))
       (atlas-side . ,gpu-atlas-side)
       (atlas-used . ,(/ (+ *atlas-y* *atlas-row*) (inexact gpu-atlas-side)))))
+
+  ;; Returns the bitmap fonts registered (define-bitmap-font), by name: each
+  ;; (name pixel-size ascent descent glyphs), its slug among its glyphs.
+  (define (inspect-bitmap-fonts)
+    (let-values ([(names data) (hashtable-entries *bitmap-fonts*)])
+      (sort (lambda (a b) (string<? (car a) (car b)))
+            (map (lambda (name d)
+                   (list name (car d) (cadr d) (caddr d) (length (cdddr d))))
+                 (vector->list names) (vector->list data)))))
 
   ;; Returns what is held on the GPU for frames, ((name kind . bytes) ...),
   ;; as core0 says it.

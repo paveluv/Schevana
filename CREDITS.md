@@ -59,8 +59,12 @@ gray (`schevana/wallpapers/shade.sls`) follow Medley Interlisp's sources
 and title shade, the scroll bar, the ghost box that Move and Shape drag,
 the menus, the window menu and the icon of a shrunk window, and
 WINDOWBACKGROUNDSHADE, each cited in the code by file and line
-(WINDOW:137, WINDOW:1551-1646, MENU:806-1040, WINDOWICON:51-108). They
-are used under this license:
+(WINDOW:137, WINDOW:1551-1646, MENU:806-1040, WINDOWICON:51-108). Its
+fonts in `schevana/styles/interlisp/fonts.sls` are Medley's display fonts,
+generated from its `fonts/medleydisplayfonts` (Gacha 10, Helvetica 10 and
+its bold, Helvetica 12 bold, with characters from Terminal 10 and Modern
+10 and 12), and that file carries the notice too. They are used under this
+license:
 
 MIT License
 

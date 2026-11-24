@@ -191,7 +191,9 @@ has none, the widget its designers would have made:
   that show while the pointer is over the view, a gray outline while a
   window is dragged, Medley's menus (centered words in a 1-pixel outline,
   choosing on release) and window menu (Close, Bury, Redisplay, Shrink),
-  and a minimized window shrunk to Medley's title-bar icon.
+  a minimized window shrunk to Medley's title-bar icon, and all of its
+  text in Medley's own bitmap fonts: Gacha 10 for code, Helvetica 10 for
+  the rest ([DRAWING.md](DRAWING.md#text)).
 - **Genera**, built to the margins its 1986 manuals specify: the window's
   label sits in its bottom-left corner, and you drag the window by it. The
   style covers the whole screen: there is no top bar, and at the bottom

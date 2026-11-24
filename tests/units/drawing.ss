@@ -162,3 +162,73 @@
               (not (gpu-run-drawable? (run later)))
               (begin (gpu-image-release! made)
                      (not (gpu-run-drawable? (run made)))))))
+
+;;; bitmap fonts: a face made from bits, measured and drawn as any font
+
+;; Five-pixel glyphs, each 6 wide: A, B, M and a space, and the slug, which
+;; a character the font lacks draws.
+(define-bitmap-font "Test Bits"
+  '(5 4 1
+    (#f 4 1 4 2 #b11 #b11 #b11 #b11 #b11)
+    (32 6)
+    (65 6 0 4 5 #b00100 #b01010 #b11111 #b10001)
+    (66 6 0 4 5 #b11110 #b10001 #b11110 #b10001)
+    (77 6 0 4 5 #b10001 #b11011 #b10101 #b10001)))
+
+(check "a bitmap font is measured from its data: its advances, at its pixel \
+        size and at twice it, its line and its ascent, and a fixed pitch, \
+        its characters' advances being alike"
+       (let ([f (font "Test Bits" 5 'crisp)] [g (font "Test Bits" 10 'crisp)])
+         (and (= (text-width "AB A?" f) 30)
+              (= (text-width "AB A?" g) 60)
+              (= (font-line-height f) 5) (= (font-ascent f) 4)
+              (= (font-char-width f) 6))))
+
+(check "a bitmap font draws its bits, each a square of device pixels at \
+        200%, and a character it lacks draws its slug"
+       (let* ([f (font "Test Bits" 5 'crisp)]
+              [at (lambda (s)
+                    (pixel-rows (image (* 12 s) (* 6 s) s
+                                       (lambda ()
+                                         (fill-box 0 0 12 6 #x000000)
+                                         (draw-text 0 0 "A?" #xffffff f)))
+                                '((#xff000000 . #\.) (#xffffffff . #\#))))]
+              [one '("..#....##..." ".#.#...##..." "#####..##..."
+                     "#...#..##..." ".......##..." "............")]
+              [twice (apply append
+                            (map (lambda (r)
+                                   (let ([d (list->string
+                                             (apply append
+                                                    (map (lambda (c) (list c c))
+                                                         (string->list r))))])
+                                     (list d d)))
+                                 one))]
+              [drawn (list (at 1) (at 2))])
+         (printf "  ~s\n" drawn)
+         (equal? drawn (list one twice))))
+
+;; Returns the bytes thunk allocates, the least over a few calls after one
+;; to warm up.
+(define (drawing-test-bytes thunk)
+  (thunk)
+  (let loop ([i 0] [least #f])
+    (if (= i 5)
+        least
+        (let ([b0 (+ (bytes-allocated) (bytes-deallocated))])
+          (thunk)
+          (let ([b (- (+ (bytes-allocated) (bytes-deallocated)) b0)])
+            (loop (+ i 1) (if least (min least b) b)))))))
+
+(check "drawing a line in a bitmap font, once its glyphs are made, \
+        allocates no more than in a FreeType font: only the flonum that \
+        draw-text returns"
+       (let* ([of (lambda (f)
+                    (drawing-test-bytes
+                     (lambda ()
+                       (rec-begin! 1)
+                       (draw-text 10 10 "AB MAB AB M" 'text f)
+                       (rec-begin! 1))))]
+              [bits (of (font "Test Bits" 5 'crisp))]
+              [ui (of 'ui)])
+         (printf "  ~a bytes, ~a in the ui font\n" bits ui)
+         (= bits ui)))

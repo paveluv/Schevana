@@ -70,6 +70,34 @@ same at any scale. `text-ink` returns the box that a string's ink covers,
 measured from the pen on the baseline, and `text-widest` the width of the
 widest of some strings.
 
+A font may be a bitmap font, its pixels drawn by hand at one size, as the
+mimicked styles' originals had (the Interlisp style draws all of its text
+in Medley's own). `define-bitmap-font` registers one by name: its pixel
+size, ascent and descent, then its glyphs, each a character, its advance,
+where its bits begin (right of the pen and above the baseline), its
+width, and its rows from the top, the leftmost pixel in a row's highest
+bit; `#f` is what a character it lacks draws. A font of that family draws
+it, a font pixel to a logical pixel at the pixel size, each pixel a square
+at any whole scale; it is measured and drawn as any font is:
+
+```scheme
+(define-bitmap-font "Chevrons"
+  '(5 5 0
+    (#f 6 1 5 4 #b1111 #b1111 #b1111 #b1111 #b1111)
+    (32 6)
+    (60 6 0 5 5 #b00011 #b01100 #b10000 #b01100 #b00011)
+    (62 6 0 5 5 #b11000 #b00110 #b00001 #b00110 #b11000)))
+(define chevrons (font "Chevrons" 15 'crisp))      ; three times its size
+(define (draw-chevrons win w h)
+  (fill-box 0 0 w h 'bg-1)
+  (draw-text 20 20 "<> <>?" 'accent chevrons))     ; ? is the slug
+(open-window "Chevrons" 'size '(240 . 70) 'draw draw-chevrons)
+(text-width "<>" chevrons)                         ; => 36.0
+(inspect-bitmap-fonts)
+```
+
+A bitmap font is always drawn at whole pixels, so it is given `'crisp`.
+
 ## Clips, moves and turns
 
 These are forms written around the drawing they change, not procedures
