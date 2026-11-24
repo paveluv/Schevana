@@ -15,8 +15,9 @@
                 text-width theme visible? window-id window-title window?
                 with-clip)
           (only (schevana kits menu) menu-entries menu-entry-icon
-                menu-filter menu-filter? menu-icon-size menu-label-key
-                menu-label-text menu-label-width menu-x menu-y)
+                menu-entry-ready? menu-filter menu-filter? menu-icon-size
+                menu-label-key menu-label-text menu-label-width menu-x
+                menu-y)
           (only (schevana kits text) text-draw-centered text-fit)
           (only (schevana kits ui) ui-draw-field ui-draw-panel ui-text-box-areas
                 ui-control-height ui-draw-window-icon)
@@ -101,7 +102,9 @@
                           [icon (menu-entry-icon e)]
                           [key (menu-label-key label)]
                           [kw (if key (+ (text-width key font) 12) 0)]
-                          [ink (if tint 'window-bg (theme 'menu-ink))])
+                          [ink (cond [tint 'window-bg]
+                                     [(menu-entry-ready? e) (theme 'menu-ink)]
+                                     [else (theme 'menu-ink-unready)])])
                      (when (and icon (> is 0))
                        (icon (+ px tx) (+ y (/ (- c is) 2)) is '()))
                      (draw-text (+ px tx icons) (+ y (/ (- c lh) 2))

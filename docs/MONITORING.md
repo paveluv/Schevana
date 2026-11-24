@@ -103,7 +103,8 @@ Pipeline draws.
 
 `(debug-repl)` opens a window that lets something outside Schevana, such
 as a debugger or an agent, evaluate Scheme in the running world, and
-shows each request and answer as they come. The window is the switch:
+shows each request and answer as they come (select them with the mouse,
+and Ctrl+C or a right click copies them). The window is the switch:
 the socket exists only while the window is open, at
 `$XDG_RUNTIME_DIR/schevana-debug.sock`, and only its owner can use it.
 

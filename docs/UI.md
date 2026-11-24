@@ -312,7 +312,13 @@ content; the style decides where the bar is and when it shows.
 
 `ui-open-menu!` opens a menu at a point in the window, each entry a
 `(label . thunk)`, or `(label thunk icon)` with an icon drawn as an app's
-is ([WINDOWS.md](WINDOWS.md#apps)). A dialog is drawn over the window at
+is ([WINDOWS.md](WINDOWS.md#apps)); an entry whose thunk is `#f` shows
+faint and can't be chosen. `ui-open-text-menu!` opens the menu that a
+right click opens on text: Copy, given the text selected (or `#f` where
+nothing can be selected), and Paste, given a procedure that takes the
+clipboard's text (or `#f` where nothing can be typed). A text field and a
+text area open it themselves, and so do the REPL and the Debug REPL,
+whose text is selected with the mouse. A dialog is drawn over the window at
 `ui-end!`, so it is a widget too: the app draws it for as long as its own
 state says the dialog is open. Return presses the dialog's last button, and Escape or a
 press outside the dialog calls `on-dismiss`, its last argument.

@@ -40,7 +40,8 @@
     ui-tip-ms ui-region! ui-area ui-region-in? ui-find ui-hover? ui-active?
     ui-flags ui-focus! ui-focused ui-edit ui-caret ui-due! ui-frame ui-stale!
     ui-wheel ui-handlers ui-pressable! ui-begin! ui-later! ui-end! ui-menu-open!
-    ui-menu-open-tag ui-open-menu! ui-open-modal ui-control-height ui-glyph-size
+    ui-menu-open-tag ui-open-menu! ui-open-text-menu! ui-open-modal
+    ui-control-height ui-glyph-size
     ui-small-glyph-size ui-gap ui-pad ui-popup-place ui-flow ui-toolbar
     ui-date->day ui-day->date ui-days-in-month ui-today ui-month-names
     ui-date-label ui-next-midnight ui-italic-of ui-draw-focus ui-draw-focus*
@@ -140,7 +141,8 @@
                 edit-at edit-all edit-anchor make-edit edit-change edit-text
                 edit-row-last edit-row edit-layout-count edit-layout-extend!
                 edit-layout-of edit-wrap edit-layout-scan! edit-caret edit?)
-          (only (schevana kits menu) menu-entry-action menu-entry-icon)
+          (only (schevana kits menu) menu-entry-action menu-entry-icon
+                menu-entry-ready?)
           (only (schevana kits px) px-invert)
           (only (schevana kits text) text-draw-centered text-widest text-fit))
 
@@ -474,7 +476,8 @@
 
   ;; A press. A left press focuses a region that takes typing (focus
   ;; click), leaves the focus as it is on Tab stops and keep regions, and
-  ;; clears it elsewhere; then the region gets the press. While the left
+  ;; clears it elsewhere; a right press focuses only a region that takes
+  ;; typing; then the region gets the press. While the left
   ;; button holds a region, another button's press goes to that region (a
   ;; card ends its drag). button and clicks are optional (the tests leave
   ;; them out). Returns whether a region was hit.
@@ -492,6 +495,10 @@
             [else (ui-focus! ui #f)])
           (ui-state-clicks-set! ui clicks)
           (ui-state-active-set! ui (and r (ui-region-on r) r)))
+        ;; a right press gives the keyboard only to what a click would (a
+        ;; text box, whose text menu it opens), and leaves it elsewhere
+        (when (and (eq? button 'right) r (eq? (ui-region-focus r) 'click))
+          (ui-focus! ui (ui-region-id r)))
         (ui-state-hover-id-set! ui (and r (ui-region-id r)))
         (ui-rest! ui +inf.0 x y)
         (when (and r (ui-region-on r))
@@ -718,19 +725,20 @@
 
   ;; Calls ui-menu-open! at a point of the current window's content. Each
   ;; entry's thunk runs with current-window set to this window, then marks
-  ;; the ui stale; once the window is closed, an entry does nothing. With
-  ;; 'filter, entries may be (lambda (filter) entries), the menu's own
-  ;; filtering.
+  ;; the ui stale (ui may be #f, for an app that draws without the kit);
+  ;; once the window is closed, an entry does nothing. An entry that can't
+  ;; be chosen now (its thunk #f) stays so. With 'filter, entries may be
+  ;; (lambda (filter) entries), the menu's own filtering.
   (define (ui-open-menu! ui x y entries . opts)
     (let ([win (current-window)])
       (define (wrap es)
         (map (lambda (e)
-               (if (pair? e)
+               (if (menu-entry-ready? e)
                    (let ([run (lambda ()
                                 (when (memq win (windows))
                                   (parameterize ([current-window win])
                                     ((menu-entry-action e)))
-                                  (ui-stale! ui)
+                                  (when ui (ui-stale! ui))
                                   (invalidate! win)))]
                          [icon (menu-entry-icon e)])
                      (if icon (list (car e) run icon) (cons (car e) run)))
@@ -742,6 +750,33 @@
                    (lambda (f) (wrap (entries f)))
                    (wrap entries))
                opts))))
+
+  ;; Opens the menu that a right press opens on text, at (x, y) of the
+  ;; current window's content: Copy where the text can be selected, and
+  ;; Paste where it can be typed in. copy is the text selected ("" for none,
+  ;; when Copy shows but can't be chosen), or #f where nothing can be
+  ;; selected; paste is a procedure that takes the clipboard's text, or #f
+  ;; where nothing can be typed (with the clipboard empty, Paste can't be
+  ;; chosen). opts: 'copy-key and 'paste-key, the keys shown beside them
+  ;; (Ctrl+C and Ctrl+V; a REPL's Ctrl+C stops what runs).
+  (define (ui-open-text-menu! ui x y copy paste . opts)
+    (let ([clip (if paste (clipboard-get) "")])
+      (ui-open-menu!
+       ui x y
+       (append
+        (if copy
+            (list (cons (string-append "Copy\t"
+                                       (plist-ref opts 'copy-key "Ctrl+C"))
+                        (and (not (string=? copy ""))
+                             (lambda () (clipboard-set! copy)))))
+            '())
+        (if paste
+            (list (cons (string-append "Paste\t"
+                                       (plist-ref opts 'paste-key "Ctrl+V"))
+                        (and (not (string=? clip ""))
+                             (lambda () (paste (clipboard-get))))))
+            '()))
+       'tag 'text)))
 
   ;;; ------------------------------------------------------------------
   ;;; modal windows
@@ -2116,21 +2151,36 @@
       (ui-region! ui id x y w h 'focus 'click 'cursor 'ibeam
         'tip (plist-ref opts 'tip #f)
         'doc (plist-ref opts 'doc '((L . "Place the caret")
-                                     (L2 . "Select a word")))
+                                     (L2 . "Select a word")
+                                     (R . "Copy, Paste")))
         'on (lambda (ev)
               (case (car ev)
                 [(press)
-                 (and (eq? (list-ref ev 3) 'left)
-                      (let ([i (index-at (cadr ev) (caddr ev))])
-                        (apply!
-                         (case (list-ref ev 4)
-                           [(1) (edit-at text i)]
-                           [(2) (let-values ([(lo hi) (edit-word-bounds text
-                                                                        i)])
-                                  (edit-select (current) lo hi))]
-                           [else (let-values ([(lo hi) (edit-line-bounds text
-                                                                         i)])
-                                   (edit-select (current) lo hi))]))))]
+                 (case (list-ref ev 3)
+                   [(left)
+                    (let ([i (index-at (cadr ev) (caddr ev))])
+                      (apply!
+                       (case (list-ref ev 4)
+                         [(1) (edit-at text i)]
+                         [(2) (let-values ([(lo hi) (edit-word-bounds text i)])
+                                (edit-select (current) lo hi))]
+                         [else (let-values ([(lo hi) (edit-line-bounds text
+                                                                       i)])
+                                 (edit-select (current) lo hi))])))]
+                   ;; the text menu, on what is selected; a press outside
+                   ;; the selection places the caret first
+                   [(right)
+                    (let ([i (index-at (cadr ev) (caddr ev))])
+                      (let-values ([(lo hi) (edit-range (current))])
+                        (unless (and (< lo hi) (<= lo i) (< i hi))
+                          (apply! (edit-at text i))))
+                      (ui-open-text-menu!
+                       ui (cadr ev) (caddr ev) (edit-selection (current))
+                       (lambda (s)
+                         (apply! (edit-insert (current) (edit-clean s lines?)
+                                              most))))
+                      #t)]
+                   [else #f])]
                 [(drag)
                  (and (eqv? (cadddr ev) 1)
                       (apply! (edit-move (current)

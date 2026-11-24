@@ -3,7 +3,10 @@
 Everything in Schevana is a live value in a running Chez Scheme, and the
 REPL is how you reach it. A REPL is a window: Ctrl+Shift+R opens one, and
 so does `(repl)`. This page is about what happens to what you type; the
-REPL's own keys and completion are explained in its tooltips.
+REPL's own keys and completion are explained in its tooltips. Its text
+is selected with the mouse (two clicks select a word, three a line), and
+Ctrl+Shift+C copies it, since Ctrl+C stops what runs; a right click
+offers Copy and Paste.
 
 ## The world is data
 

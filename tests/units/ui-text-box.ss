@@ -141,3 +141,51 @@
                 (equal? (unbox text)
                         (string-append (make-string 15 #\a)
                                        (make-string 5 #\c)))))))
+
+;; The open menu's entries, each label with whether it can be chosen now.
+(define (ui-text-box-test-menu)
+  (and *menu* (map (lambda (e) (cons (car e) (menu-entry-ready? e)))
+                   (menu-entries *menu*))))
+
+(check "a right press on a field gives it the keyboard and opens the text \
+        menu: Paste, while the clipboard has text, types it; Copy, once \
+        there is a selection, copies it, and a press inside the selection \
+        keeps it"
+       (let-values ([(win field area entered) (ui-text-box-test-window)])
+         (define (right! . dx)
+           (let-values ([(x y) (apply test-point win 'f dx)])
+             (inject! `(mouse-move ,x ,y) `(mouse-down ,x ,y right 1)
+                      `(mouse-up ,x ,y right))
+             (steps 1)))
+         (steps 2)
+         (clipboard-set! "menu")
+         (right!)
+         (let ([focus (ui-focused (window-ref win 'ui))]
+               [empty (ui-text-box-test-menu)])
+           (menu-activate! 1)
+           (steps 2)
+           (let ([pasted (unbox field)])
+             (ui-text-box-test-press! #\a 'ctrl)
+             (clipboard-set! "")
+             (let* ([ui (window-ref win 'ui)]
+                    [r (test-region ui 'f)]
+                    [a (car (ui-text-box-areas (ui-region-x r) (ui-region-y r)
+                                               (ui-region-w r) (ui-region-h r)
+                                               '(field)))]
+                    ;; between "me" and "nu", in the field's own font
+                    [x (+ (- (list-ref a 1) (ui-region-x r))
+                          (text-width "me" (list-ref a 5)))])
+               (right! 'at (exact (round x)))
+               (let ([selected (ui-text-box-test-menu)])
+                 (menu-activate! 0)
+                 (steps 2)
+                 (let ([copied (clipboard-get)])
+                   (close-window! win)
+                   (printf "  ~s\n" (list focus empty pasted selected copied))
+                   (and (eq? focus 'f)
+                        (equal? empty '(("Copy\tCtrl+C" . #f)
+                                        ("Paste\tCtrl+V" . #t)))
+                        (equal? pasted "menu")
+                        (equal? selected '(("Copy\tCtrl+C" . #t)
+                                           ("Paste\tCtrl+V" . #f)))
+                        (equal? copied "menu")))))))))

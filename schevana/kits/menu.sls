@@ -4,7 +4,9 @@
 ;;; (window . win), or a dropdown's). An entry is (label . thunk), (label
 ;;; thunk icon) with an icon (a procedure (x y s flags) that draws it in an
 ;;; s-square, as an app's icon is drawn), or 'separator; a label may end in
-;;; a tab and the key that does the same thing: "Close\tCtrl+Shift+W". The
+;;; a tab and the key that does the same thing: "Close\tCtrl+Shift+W". An
+;;; entry whose thunk is #f can't be chosen now (Copy with nothing
+;;; selected): it shows, faint, and is passed over (menu-entry-ready?). The
 ;;; desktop shows one menu at a time ((schevana desktop menu)): it opens the
 ;;; menu and takes its keys and the pointer. A style lays a menu out and
 ;;; draws it (menu-areas, draw-menu), reading it with the procedures here.
@@ -14,7 +16,7 @@
     menu make-menu menu-x menu-y menu-sel menu-sel-set! menu-filter
     menu-filter-set! menu-filter? menu-tag menu-label-text menu-label-key
     menu-label-width menu-entries menu-filtered menu-entry-action
-    menu-entry-icon menu-icon-size)
+    menu-entry-ready? menu-entry-icon menu-icon-size)
   (import (chezscheme)
           (only (schevana base) at-load library-layer string-contains-ci?)
           (only (schevana core) font-line-height text-width theme
@@ -53,6 +55,15 @@
 
   (define (menu-entry-icon e)
     (and (pair? (cdr e)) (caddr e)))
+
+  ;; Returns whether e is an entry that can be chosen now: not a separator,
+  ;; and with a thunk.
+  (define (menu-entry-ready? e)
+    (and (pair? e) (menu-entry-action e) #t))
+
+  ;; What an entry that can't be chosen now is drawn in.
+  (at-load
+   (theme-default! 'menu-ink-unready 'text-faint))
 
   ;; Returns the side of the icons that m's entries show in font: its line
   ;; height, or 0 when none of them has an icon or the style shows none

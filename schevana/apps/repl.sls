@@ -37,8 +37,8 @@
                 repl-value->string repl-window-size)
           (only (schevana core) *scale* *schevana-options* *source-texts*
                 *windows* *world-env* after alpha apps clipboard-get
-                close-window! color-default! core1-exported define-app
-                draw-line draw-polyline fill-box focused-window
+                clipboard-set! close-window! color-default! core1-exported
+                define-app draw-line draw-polyline fill-box focused-window
                 font-ascent font-char-width font-line-height invalidate! kill!
                 mix now-ms open-window palettes point-in? request-frame! spawn
                 stroke-box style styles theme theme-keys theme-rule wallpapers
@@ -59,7 +59,10 @@
                 transcript-draw-scheme transcript-rows transcript-line-height
                 transcript-pad transcript-clear! transcript-add!
                 transcript-append! transcript-scroll-set! transcript-scroll
-                transcript-lines)
+                transcript-lines transcript-end transcript-placing!
+                transcript-place! transcript-point transcript-press!
+                transcript-drag! transcript-release! transcript-selection
+                transcript-more)
           (only (schevana kits ui) ui-busy-frame-ms ui-draw-env-icon
                 ui-draw-tooltip ui-popup-place ui-tooltip-size ui-tip-ms
                 ui-draw-busy ui-busy-size ui-icon-grid ui-icon-ink)
@@ -1189,11 +1192,43 @@
       (and b at (point-in? (car at) (cdr at) (car b) (cadr b) (caddr b)
                            (cadddr b)))))
 
-  ;; A press goes to the completion list; the REPL has no other use for it.
+  ;; A press goes to the completion list first. Else it selects text
+  ;; (transcript-press!): the left button begins a selection, and one
+  ;; click on the input moves the cursor there; the right one opens the
+  ;; text menu, Copy, and Paste at the cursor.
   (define (repl-mouse-down r)
     (lambda (win x y button clicks)
-      (complete-mouse-down! r x y button
-                            (lambda (item) (repl-accept! r item)))))
+      (or (complete-mouse-down! r x y button
+                                (lambda (item) (repl-accept! r item)))
+          (let ([t (repl-transcript r)])
+            (when (transcript-press! t x y button clicks
+                                     (lambda (s)
+                                       (repl-paste! r s)
+                                       (invalidate! win))
+                                     'copy-key "Ctrl+Shift+C")
+              (when (and (eq? button 'left) (= clicks 1))
+                (repl-point-at! r (transcript-point t x y)))
+              (invalidate! win))))))
+
+  ;; Moves the cursor to position p of the lines drawn (transcript-point),
+  ;; where it is one of the input's: the input's lines are the last drawn,
+  ;; after the transcript and the waiting inputs, each after its prompt.
+  (define (repl-point-at! r p)
+    (let* ([t (repl-transcript r)]
+           [lines (string-split (repl-input r) #\newline)]
+           [k (and p (- (car p) (transcript-end t)
+                        (- (length (transcript-more t)) (length lines))))])
+      (when (and k (<= 0 k) (< k (length lines)))
+        (let ([start (fold-left + 0 (map (lambda (l) (+ 1 (string-length l)))
+                                         (list-head lines k)))])
+          (repl-point-set! r (+ start
+                                (min (string-length (list-ref lines k))
+                                     (max 0 (- (cdr p) 3)))))))))
+
+  ;; Types s at the cursor, as pasted: without the carriage returns of a
+  ;; text copied elsewhere.
+  (define (repl-paste! r s)
+    (repl-insert! r (list->string (remv #\return (string->list s)))))
 
   ;; Losing the keyboard closes the list or popup: a click on another
   ;; window or on the desktop, a key or a call that focuses another window,
@@ -1230,6 +1265,11 @@
     (repl-blink-at-set! r (now-ms))
     (let ([s (repl-input r)] [p (repl-point r)] [ctrl? (memq 'ctrl mods)])
       (cond
+        ;; Ctrl+Shift+C copies what is selected, as a terminal's does,
+        ;; since Ctrl+C stops what runs
+        [(and ctrl? (memq 'shift mods) (eqv? key #\c))
+         (let ([sel (transcript-selection (repl-transcript r))])
+           (unless (string=? sel "") (clipboard-set! sel)))]
         ;; Ctrl+C stops the running form and drops the inputs waiting, as
         ;; a terminal's interrupt flushes its type-ahead (they are in the
         ;; history)
@@ -1249,8 +1289,7 @@
         [(and ctrl? (eqv? key #\u)) (repl-delete! r (line-start s p) p)]
         [(or (and ctrl? (eqv? key #\v))
              (and (eq? key 'insert) (memq 'shift mods)))
-         (repl-insert! r (list->string
-                          (remv #\return (string->list (clipboard-get)))))]
+         (repl-paste! r (clipboard-get))]
         [ctrl? (void)]
         [else
          (case key
@@ -1379,8 +1418,19 @@
       (repl-rows-set! r rows)
       (repl-scroll-set! r (clamp (repl-scroll r) 0 (max 0 (- total rows))))
       (fill-box 0 0 w h (repl-background r))
+      ;; The lines after the transcript's, the waiting inputs and the input,
+      ;; are numbered on from its (transcript-end), their texts handed in
+      ;; order for what is selected of them.
+      (transcript-placing! (repl-transcript r) pad cw lh cols
+                           (reverse (map (lambda (e)
+                                           (if (eq? (car e) 'edit)
+                                               (cadr e)
+                                               (cdr e)))
+                                         (append input-entries waiting))))
       ;; Lay out bottom-up; while everything fits, hang it from the top instead.
       (let loop ([entries (append input-entries waiting (repl-lines r))]
+                 [n (+ (transcript-end (repl-transcript r))
+                       (length input-entries) (length waiting) -1)]
                  [bottom (if (< total rows) (+ pad (* total lh)) (- h pad))]
                  [skip (repl-scroll r)])
         (when (and (pair? entries) (> bottom 0))
@@ -1390,8 +1440,10 @@
                  [k (transcript-rows (string-length text) cols)]
                  [shown (- k (min skip k))])
             (if (= shown 0)
-                (loop (cdr entries) bottom (- skip k))
+                (loop (cdr entries) (- n 1) bottom (- skip k))
                 (let ([top (- bottom (* shown lh))])
+                  (transcript-place! (repl-transcript r) n top shown
+                                     (string-length text))
                   (cond
                     [edit?
                      (let* ([start (caddr e)]
@@ -1448,7 +1500,7 @@
                      (transcript-draw-line pad top text
                                            (transcript-draw-style-color (car e))
                                            cols 0 shown cw lh)])
-                  (loop (cdr entries) top 0))))))
+                  (loop (cdr entries) (- n 1) top 0))))))
       (transcript-draw-scrollbar (repl-transcript r) w h rows total)
       (repl-draw-busy r win mark cw th mark-top)
       (let ([c (complete-of r)] [e (repl-env r)])
@@ -1632,7 +1684,12 @@
                       (unless (and p (= x (car p)) (= y (cadr p)))
                         (repl-pointer-set! r (list x y (now-ms)))
                         (when (repl-busy r) (invalidate! win))))
-                    (when (repl-pointer! r win) (invalidate! win)))
+                    (let* ([dragged (transcript-drag! (repl-transcript r)
+                                                      x y)]
+                           [moved (repl-pointer! r win)])
+                      (when (or dragged moved) (invalidate! win))))
+      'mouse-up (lambda (win x y button)
+                  (transcript-release! (repl-transcript r)))
       'blur (repl-blur r)
       'focus (lambda (win) (repl-blink-soon! r win))
       ;; drains what its evaluation printed, while it runs or has output

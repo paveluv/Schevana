@@ -77,10 +77,11 @@ meanwhile.
 Every example in [docs/](docs/) works as written on a desktop started
 with the demos (`./desktop demo`). Copy it from your browser or editor
 and paste it into a REPL with Ctrl+V, which reads the system clipboard;
-take a page's examples in the order the page gives them. (I'll add
-copying from a REPL to the system clipboard soon.) A test runs them all,
-each page in such a world (`tests/units/docs.ss`). The kinds of REPL, and
-what a `define` does in each, are in [docs/REPL.md](docs/REPL.md).
+take a page's examples in the order the page gives them. A test runs
+them all, each page in such a world (`tests/units/docs.ss`). A REPL's
+text is selected with the mouse, and Ctrl+Shift+C copies it (Ctrl+C
+stops what runs); a right click offers Copy and Paste. The kinds of REPL,
+and what a `define` does in each, are in [docs/REPL.md](docs/REPL.md).
 
 ## The guide
 
@@ -138,8 +139,7 @@ What Schevana takes from others, and under which terms, is in
 
 ## Known gaps, and after v2
 
-- The REPL has no selection or copy, though Ctrl+V pastes from outside,
-  and there's no text editor app yet.
+- There's no text editor app yet.
 - Windows and their state are lost on exit: only the look is kept.
 - It runs on Linux and on a Mac; I haven't tried Windows yet.
 

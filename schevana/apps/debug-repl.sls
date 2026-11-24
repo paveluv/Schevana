@@ -28,14 +28,16 @@
   (import (chezscheme)
           (only (schevana base) at-load condition->string define-state
                 library-layer string-join string-split)
-          (only (schevana core) after alpha define-app draw-line
-                draw-polyline fill-box fill-circle find-window focus-window!
-                invalidate! kill! now-ms open-window socket-accept socket-close
-                socket-listen socket-read socket-write spawn stroke-box style)
+          (only (schevana core) after alpha clipboard-set! define-app
+                draw-line draw-polyline fill-box fill-circle find-window
+                focus-window! invalidate! kill! now-ms open-window
+                socket-accept socket-close socket-listen socket-read
+                socket-write spawn stroke-box style)
           (only (schevana desktop start) desktop-at-start!)
           (only (schevana kits transcript) transcript-scroll
                 transcript-scroll-set! transcript-draw-view transcript-new
-                transcript-count transcript-add!)
+                transcript-count transcript-add! transcript-press!
+                transcript-drag! transcript-release! transcript-selection)
           (only (schevana services env) env-root env-eval)
           (only (schevana kits repl) repl-cont repl-prompt repl-read-input!
                 repl-value->string repl-window-size)
@@ -302,6 +304,22 @@
                    (transcript-scroll-set!
                     t (max 0 (+ (transcript-scroll t) (* 3 dy)))))
                  (invalidate! win))
+        ;; its text can be selected and copied, as a REPL's; nothing is
+        ;; typed here, so the text menu has no Paste
+        'cursor 'ibeam
+        'mouse-down (lambda (win x y button clicks)
+                      (when (transcript-press! (debug-repl-transcript d) x y
+                                               button clicks #f)
+                        (invalidate! win)))
+        'mouse-move (lambda (win x y)
+                      (when (transcript-drag! (debug-repl-transcript d) x y)
+                        (invalidate! win)))
+        'mouse-up (lambda (win x y button)
+                    (transcript-release! (debug-repl-transcript d)))
+        'key (lambda (win key mods)
+               (when (and (memq 'ctrl mods) (eqv? key #\c))
+                 (let ([s (transcript-selection (debug-repl-transcript d))])
+                   (unless (string=? s "") (clipboard-set! s)))))
         ;; served every few ms, seen or not, until the window closes
         'open (lambda (win) (debug-repl-serve-soon! d win))
         'close (lambda (win) (debug-repl-close! d))

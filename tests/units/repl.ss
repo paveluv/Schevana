@@ -1,7 +1,8 @@
 ;;; tests/units/repl.ss — the REPL asks for frames only while it has
 ;;; something to show (an evaluation's output and its busy mark); its caret
 ;;; blinks by a timer, and its title follows its environment. Tab always
-;;; completes: it never inserts a space, wherever the cursor is.
+;;; completes: it never inserts a space, wherever the cursor is. Its text is
+;;; selected with the mouse, copied and pasted.
 
 (for-each close-window! (windows))
 
@@ -181,3 +182,71 @@
                 #t))
     (when game (close-window! game)))
   (close-window! win))
+
+;; The point on screen of position p, (line . index), of the lines t last
+;; placed in win: in the character's left quarter, which reads as before
+;; it whatever the font.
+(define (repl-test-point win t p)
+  (let* ([g (transcript-grid t)] [x0 (vector-ref g 0)] [cw (vector-ref g 1)]
+         [lh (vector-ref g 2)] [cols (vector-ref g 3)]
+         [placed (find (lambda (pl) (= (car pl) (car p)))
+                       (transcript-placed t))])
+    (let-values ([(cx cy w h) (content-rect win)])
+      (values (exact (floor (+ cx x0 (* cw (remainder (cdr p) cols))
+                               (/ cw 4))))
+              (exact (floor (+ cy (cadr placed)
+                               (* lh (quotient (cdr p) cols)) (/ lh 2))))))))
+
+(let* ([win (repl 'private)] [r (window-ref win 'state)]
+       [t (repl-transcript r)])
+  (repl-add! r 'output "alpha beta")
+  (repl-add! r 'output "gamma delta")
+  (focus-window! win)
+  (steps 2)
+  (let* ([n (- (transcript-end t) 1)] [m (- n 1)])
+    (define (mouse! kind p . more)
+      (let-values ([(x y) (repl-test-point win t p)])
+        (inject! `(mouse-move ,x ,y)
+                 (case kind
+                   [(down) `(mouse-down ,x ,y ,@more)]
+                   [(up) `(mouse-up ,x ,y left)]
+                   [else `(mouse-move ,x ,y)]))
+        (steps 1)))
+    ;; from "beta" of one line to after "gamma" of the next
+    (mouse! 'down (cons m 6) 'left 1)
+    (mouse! 'move (cons n 5))
+    (mouse! 'up (cons n 5))
+    (let ([dragged (transcript-selection t)])
+      (inject! '(key-down #\c (ctrl shift)))
+      (steps 1)
+      (let ([copied (clipboard-get)])
+        (mouse! 'down (cons n 8) 'left 2)
+        (mouse! 'up (cons n 8))
+        (let ([word (transcript-selection t)])
+          (mouse! 'down (cons n 0) 'right 1)
+          (let ([menu (and *menu*
+                           (map (lambda (e)
+                                  (cons (car e) (menu-entry-ready? e)))
+                                (menu-entries *menu*)))])
+            (menu-activate! 1)
+            (steps 2)
+            (let ([pasted (repl-input r)] [end (transcript-end t)])
+              ;; the input's first line, after its prompt
+              (mouse! 'down (cons end 5) 'left 1)
+              (mouse! 'up (cons end 5))
+              (let ([point (repl-point r)])
+                (close-window! win)
+                (check (format "a press and a drag select a REPL's text \
+                                across lines, which Ctrl+Shift+C copies; two \
+                                clicks select a word; a right press opens \
+                                the text menu, whose Paste types at the \
+                                cursor; a click on the input moves the \
+                                cursor there ~s"
+                               (list dragged copied word menu pasted point))
+                       (and (equal? dragged "beta\ngamma")
+                            (equal? copied "beta\ngamma")
+                            (equal? word "delta")
+                            (equal? menu '(("Copy\tCtrl+Shift+C" . #t)
+                                           ("Paste\tCtrl+V" . #t)))
+                            (equal? pasted "beta\ngamma")
+                            (= point 2)))))))))))

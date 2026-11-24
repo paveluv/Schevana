@@ -70,13 +70,11 @@
 (let ([win (debug-repl)])
   (steps 2)
   (check "the socket is there while the window is open, for its owner alone; \
-          a second call shows the same window; nothing there takes keys"
+          a second call shows the same window; nothing there is typed in"
          (and (file-exists? debug-repl-test-path)
               (= (logand (get-mode debug-repl-test-path) #o077) 0)
               (eq? (debug-repl) win)
-              (let ([hs (window-handlers win)])
-                (not (or (hashtable-contains? hs 'key)
-                         (hashtable-contains? hs 'text))))))
+              (not (hashtable-contains? (window-handlers win) 'text))))
   (check "a request evaluates in the world, and its value comes back as text"
          (let ([a (debug-repl-test-ask "(define debug-repl-test-x 40) \
                                         (+ debug-repl-test-x 2)")])
@@ -127,6 +125,25 @@
                              (null? (debug-repl-clients
                                      (window-ref win 'state)))))
                 (eq? (car (debug-repl-test-ask "1")) 'ok))))
+  (let* ([t (debug-repl-transcript (window-ref win 'state))]
+         [placed (car (transcript-placed t))]
+         [g (transcript-grid t)])
+    (let-values ([(cx cy w h) (content-rect win)])
+      (let ([x (exact (floor (+ cx (vector-ref g 0) 2)))]
+            [y (exact (floor (+ cy (cadr placed) 2)))])
+        (inject! `(mouse-move ,x ,y) `(mouse-down ,x ,y right 1))
+        (steps 1)
+        (let ([menu (and *menu* (map (lambda (e)
+                                       (cons (car e) (menu-entry-ready? e)))
+                                     (menu-entries *menu*)))])
+          (close-menu!)
+          (steps 1)
+          (check (format "its text can be selected and copied, but nothing \
+                          is typed there: a right press's text menu is Copy \
+                          alone, which can't be chosen with nothing \
+                          selected ~s"
+                         menu)
+                 (equal? menu '(("Copy\tCtrl+C" . #f))))))))
   (check "closing the window closes the socket, and takes it away"
          (begin
            (close-window! win)

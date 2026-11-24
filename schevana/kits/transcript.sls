@@ -11,6 +11,16 @@
 ;;; A line's style says how it is drawn: input and request lines are Scheme
 ;;; after a prompt of three characters, faint for input and in accent for a
 ;;; request; the other styles have a color each (transcript-draw-style-color).
+;;;
+;;; Its text can be selected and copied: a press and a drag select it, two
+;;; clicks a word and three a line, and a right press opens the text menu
+;;; (transcript-press!). Each draw records which lines it placed where
+;;; (transcript-place!), and the pointer is read against that. A position
+;;; is (line . index): the line's number, counted from the first line ever
+;;; added, so that the lines the oldest end loses move no position, and a
+;;; character's index in it. An app that shows lines after t's (a REPL's
+;;; input) numbers them on from (transcript-end t), and hands their texts,
+;;; in order, to transcript-placing!.
 
 (library (schevana kits transcript)
   (export
@@ -18,32 +28,47 @@
     transcript-new transcript-pad transcript-line-height transcript-clear!
     transcript-append! transcript-add! transcript-rows transcript-fill-colors!
     transcript-draw-style-color transcript-draw-scheme transcript-draw-line
-    transcript-draw-scrollbar transcript-draw-view)
+    transcript-draw-scrollbar transcript-draw-view transcript-end
+    transcript-placing! transcript-place! transcript-point transcript-press!
+    transcript-drag! transcript-release! transcript-selection transcript-more)
   (import (chezscheme)
           (only (schevana base) at-load clamp library-layer string-split)
-          (only (schevana core) alpha color-default! draw-text
+          (only (schevana core) alpha color-default! draw-text fill-box
                 font-char-width font-line-height style theme theme-rule)
-          (only (schevana kits ui) ui-draw-scrollbar ui-scrollbar-width))
+          (only (schevana kits ui) ui-draw-scrollbar ui-open-text-menu!
+                ui-scrollbar-width))
 
   (library-layer kits)
 
   (define-record-type transcript
-    (nongenerative schevana-transcript)
+    (nongenerative schevana-transcript-2)
     (fields (mutable lines)    ; newest first: ((style . text) ...)
             (mutable count)
             (mutable open?)    ; is the newest line unterminated output?
-            (mutable scroll))) ; visual rows scrolled back from the bottom
+            (mutable scroll)   ; visual rows scrolled back from the bottom
+            (mutable dropped)  ; how many lines the oldest end has lost
+            (mutable sel)      ; what is selected, (anchor . end), or #f
+            (mutable held?)    ; does a left press select as it moves?
+            (mutable placed)   ; the lines last drawn: ((line top rows len) ...)
+            (mutable grid)     ; their grid, #(x cw lh cols), or #f
+            (mutable more)))   ; the texts of the lines drawn after t's
 
-  (define (transcript-new) (make-transcript '() 0 #f 0))
+  (define (transcript-new) (make-transcript '() 0 #f 0 0 #f #f '() #f '()))
 
   (define transcript-max-lines 4000)
   (define transcript-pad 10)
   (define (transcript-line-height) (+ 3 (font-line-height 'mono)))
 
   (define (transcript-clear! t)
+    (transcript-dropped-set! t (transcript-end t))
     (transcript-lines-set! t '())
     (transcript-count-set! t 0)
-    (transcript-open?-set! t #f))
+    (transcript-open?-set! t #f)
+    (transcript-sel-set! t #f)
+    (transcript-placed-set! t '()))
+
+  ;; Returns the number that a line added next would have.
+  (define (transcript-end t) (+ (transcript-dropped t) (transcript-count t)))
 
   (define (transcript-push! t style text)
     (transcript-lines-set! t (cons (cons style text) (transcript-lines t)))
@@ -51,6 +76,7 @@
     (when (> (transcript-count t) (+ transcript-max-lines 500))
       (transcript-lines-set! t (list-head (transcript-lines t)
                                           transcript-max-lines))
+      (transcript-dropped-set! t (- (transcript-end t) transcript-max-lines))
       (transcript-count-set! t transcript-max-lines)))
 
   ;; Appends text that may contain newlines. Output can arrive in pieces, so
@@ -208,6 +234,163 @@
                                       (max 1 (- total rows)))))
                            size))))
 
+  ;;; ------------------------------------------------------------ selection
+
+  ;; Begins a draw's placing of lines, on a grid of cols characters cw wide
+  ;; from x, and rows lh high. more: the texts of the lines that the draw
+  ;; shows after t's, in order (a REPL's input), numbered on from
+  ;; (transcript-end t).
+  (define (transcript-placing! t x cw lh cols . more)
+    (transcript-placed-set! t '())
+    (transcript-grid-set! t (vector x cw lh cols))
+    (transcript-more-set! t (if (pair? more) (car more) '())))
+
+  ;; Records that line n, of len characters, shows its first rows rows from
+  ;; top, and draws what of it is selected; called before its text is drawn.
+  (define (transcript-place! t n top rows len)
+    (transcript-placed-set! t (cons (list n top rows len)
+                                    (transcript-placed t)))
+    (transcript-draw-selection t n top rows len))
+
+  (define (transcript-before? a b)
+    (or (< (car a) (car b)) (and (= (car a) (car b)) (< (cdr a) (cdr b)))))
+
+  ;; Returns what is selected as (start . end), in order, or #f for nothing.
+  (define (transcript-range t)
+    (let ([s (transcript-sel t)])
+      (and s (not (equal? (car s) (cdr s)))
+           (if (transcript-before? (cdr s) (car s)) (cons (cdr s) (car s)) s))))
+
+  ;; Fills what of line n is selected, of its first rows rows from top, as a
+  ;; text box shows its selection (text-selection: a fill, or an
+  ;; underline). A selection that goes on past the line's end takes a cell
+  ;; more, the line's break.
+  (define (transcript-draw-selection t n top rows len)
+    (let ([r (transcript-range t)] [g (transcript-grid t)])
+      (when (and r g (<= (caar r) n (cadr r)))
+        (let ([x0 (vector-ref g 0)] [cw (vector-ref g 1)] [lh (vector-ref g 2)]
+              [cols (vector-ref g 3)]
+              [a (if (= n (caar r)) (cdar r) 0)]
+              [b (if (= n (cadr r)) (cddr r) (+ len 1))])
+          (do ([row 0 (+ row 1)]) ((= row rows))
+            (let ([lo (max a (* row cols))] [hi (min b (* (+ row 1) cols))])
+              (when (< lo hi)
+                (let ([x (+ x0 (* cw (- lo (* row cols))))]
+                      [y (+ top (* row lh))] [w (* cw (- hi lo))])
+                  (if (eq? (theme 'text-selection) 'underline)
+                      (fill-box x (+ y lh -1) w 1 'text)
+                      (fill-box x y w lh 'selection))))))))))
+
+  ;; Returns the position at (x, y) among the lines last drawn: before the
+  ;; character there, or after it in its right half; above them all, the
+  ;; topmost's start, and below, the lowest's end. #f with none drawn.
+  (define (transcript-point t x y)
+    (let ([g (transcript-grid t)] [placed (transcript-placed t)])
+      (and g (pair? placed)
+           (let* ([x0 (vector-ref g 0)] [cw (vector-ref g 1)]
+                  [lh (vector-ref g 2)] [cols (vector-ref g 3)]
+                  [hit (find (lambda (p)
+                               (and (<= (cadr p) y)
+                                    (< y (+ (cadr p) (* (caddr p) lh)))))
+                             placed)])
+             (if hit
+                 (let ([row (exact (floor (/ (- y (cadr hit)) lh)))]
+                       [col (clamp (exact (round (/ (- x x0) cw))) 0 cols)])
+                   (cons (car hit) (min (cadddr hit) (+ (* row cols) col))))
+                 (let ([top (fold-left (lambda (a p)
+                                         (if (< (cadr p) (cadr a)) p a))
+                                       (car placed) placed)]
+                       [low (fold-left (lambda (a p)
+                                         (if (> (cadr p) (cadr a)) p a))
+                                       (car placed) placed)])
+                   (if (< y (cadr top))
+                       (cons (car top) 0)
+                       (cons (car low) (cadddr low)))))))))
+
+  ;; Returns the text of line n: one of t's, else one of the lines drawn
+  ;; after them; #f for none.
+  (define (transcript-line-text t n)
+    (let ([i (- (transcript-end t) 1 n)] [more (transcript-more t)])
+      (cond [(and (>= i 0) (< i (transcript-count t)))
+             (cdr (list-ref (transcript-lines t) i))]
+            [(< i 0) (let ([k (- -1 i)])
+                       (and (< k (length more)) (list-ref more k)))]
+            [else #f])))
+
+  ;; Returns the text selected, its lines joined by line breaks, or "".
+  (define (transcript-selection t)
+    (let ([r (transcript-range t)])
+      (if r
+          (let loop ([n (caar r)] [acc '()])
+            (if (> n (cadr r))
+                (apply string-append (reverse acc))
+                (let* ([text (or (transcript-line-text t n) "")]
+                       [len (string-length text)]
+                       [a (min len (if (= n (caar r)) (cdar r) 0))]
+                       [b (min len (if (= n (cadr r)) (cddr r) len))])
+                  (loop (+ n 1)
+                        (cons (string-append (if (= n (caar r)) "" "\n")
+                                             (substring text a (max a b)))
+                              acc)))))
+          "")))
+
+  ;; Returns the bounds of the word, or else of the run of other characters,
+  ;; at position p of text: a word is what lies between spaces and Scheme's
+  ;; delimiters.
+  (define (transcript-word text p)
+    (let* ([n (string-length text)] [i (min (cdr p) (max 0 (- n 1)))]
+           [word? (lambda (c) (not (or (char-whitespace? c)
+                                       (memv c '(#\( #\) #\[ #\] #\" #\;
+                                                 #\' #\` #\,)))))]
+           [kind (and (< i n) (word? (string-ref text i)))])
+      (let ([lo (let back ([j i])
+                  (if (and (> j 0) (< j n)
+                           (eq? (word? (string-ref text (- j 1))) kind))
+                      (back (- j 1))
+                      j))]
+            [hi (let on ([j i])
+                  (if (and (< j n) (eq? (word? (string-ref text j)) kind))
+                      (on (+ j 1))
+                      j))])
+        (cons (cons (car p) lo) (cons (car p) (max hi (min n (+ lo 1))))))))
+
+  ;; A press at (x, y) of the lines last drawn. The left button's one click
+  ;; begins a selection, which follows the pointer till the release
+  ;; (transcript-drag!, transcript-release!), two clicks select a word and
+  ;; three the line; the right one opens the text menu: Copy, and Paste
+  ;; where paste is given (a procedure that takes the clipboard's text).
+  ;; opts: ui-open-text-menu!'s. Returns whether it took the press.
+  (define (transcript-press! t x y button clicks paste . opts)
+    (let ([p (transcript-point t x y)])
+      (and p
+           (case button
+             [(left)
+              (transcript-held?-set! t (= clicks 1))
+              (transcript-sel-set!
+               t
+               (case clicks
+                 [(1) (cons p p)]
+                 [(2) (transcript-word (or (transcript-line-text t (car p)) "")
+                                       p)]
+                 [else (let ([text (or (transcript-line-text t (car p)) "")])
+                         (cons (cons (car p) 0)
+                               (cons (car p) (string-length text))))]))
+              #t]
+             [(right)
+              (apply ui-open-text-menu! #f x y (transcript-selection t) paste
+                     opts)
+              #t]
+             [else #f]))))
+
+  ;; Moves the selection's end to (x, y) while a left press holds it.
+  ;; Returns whether it moved.
+  (define (transcript-drag! t x y)
+    (let ([s (transcript-sel t)] [p (transcript-point t x y)])
+      (and (transcript-held? t) s p (not (equal? p (cdr s)))
+           (begin (transcript-sel-set! t (cons (car s) p)) #t))))
+
+  (define (transcript-release! t) (transcript-held?-set! t #f))
+
   ;; Draws all of t in the box w × h, laid out from the bottom up, but hung
   ;; from the top while everything fits.
   (define (transcript-draw-view t w h)
@@ -222,7 +405,9 @@
                              0 (transcript-lines t))])
       (transcript-scroll-set! t (clamp (transcript-scroll t) 0
                                        (max 0 (- total rows))))
+      (transcript-placing! t pad cw lh cols)
       (let loop ([entries (transcript-lines t)]
+                 [n (- (transcript-end t) 1)]
                  [bottom (if (< total rows) (+ pad (* total lh)) (- h pad))]
                  [skip (transcript-scroll t)])
         (when (and (pair? entries) (> bottom 0))
@@ -230,10 +415,11 @@
                  [k (transcript-rows (string-length (cdr e)) cols)]
                  [shown (- k (min skip k))])
             (if (= shown 0)
-                (loop (cdr entries) bottom (- skip k))
+                (loop (cdr entries) (- n 1) bottom (- skip k))
                 (let ([top (- bottom (* shown lh))])
+                  (transcript-place! t n top shown (string-length (cdr e)))
                   (transcript-draw-line pad top (cdr e)
                                         (transcript-draw-entry-colors e)
                                         cols 0 shown cw lh)
-                  (loop (cdr entries) top 0))))))
+                  (loop (cdr entries) (- n 1) top 0))))))
       (transcript-draw-scrollbar t w h rows total))))

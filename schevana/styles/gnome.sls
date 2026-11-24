@@ -31,8 +31,8 @@
                 screen-w stroke-box text-width theme theme-rule visible?
                 wallpaper-shown window-id window? with-clip)
           (only (schevana kits menu) menu-entries menu-entry-icon
-                menu-filter menu-filter? menu-icon-size menu-label-key
-                menu-label-text menu-tag menu-x menu-y)
+                menu-entry-ready? menu-filter menu-filter? menu-icon-size
+                menu-label-key menu-label-text menu-tag menu-x menu-y)
           (only (schevana kits text) text-draw-centered text-fit)
           (only (schevana kits ui) ui-control-height ui-draw-app-icon
                 ui-draw-glyph ui-draw-panel ui-draw-window-icon ui-glyph-size)
@@ -376,7 +376,10 @@
                                                     0)
                                                 (if chosen? (+ 12 g) 0)))
                                         'ui)
-                              ink 'ui)
+                              (if (menu-entry-ready? (vector-ref es what))
+                                  ink
+                                  dim)
+                              'ui)
                    (when chosen?
                      (ui-draw-glyph (- (+ x w) 18 g) (+ y (/ (- h g) 2))
                                     g g (list (cons 'ink ink)) 'check)))

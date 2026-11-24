@@ -33,8 +33,8 @@
           (only (schevana kits menu) make-menu menu-x menu-y menu-sel
                 menu-sel-set! menu-filter menu-filter-set! menu-filter?
                 menu-tag menu-label-text menu-label-key menu-label-width
-                menu-entries menu-entry-action menu-entry-icon
-                menu-icon-size)
+                menu-entries menu-entry-action menu-entry-ready?
+                menu-entry-icon menu-icon-size)
           (only (schevana kits px) px-invert)
           (only (schevana kits ui) ui-menu-open-tag ui-menu-open!
                 ui-draw-highlight ui-draw-separator ui-draw-panel))
@@ -167,14 +167,16 @@
         (let loop ([i (if (zero? dir) 0 (+ (menu-sel *menu*) dir))] [tries 0])
           (when (< tries n)
             (let ([i (mod i n)])
-              (if (pair? (vector-ref es i))
+              (if (menu-entry-ready? (vector-ref es i))
                   (menu-sel-set! *menu* i)
                   (loop (+ i (if (zero? dir) 1 dir)) (+ tries 1)))))))
       (request-frame!)))
 
   (define (menu-activate! i)
     (let ([es (menu-entries *menu*)])
-      (when (and i (< i (length es)) (pair? (list-ref es i)) (not *menu-blink*))
+      (when (and i (>= i 0) (< i (length es))
+                 (menu-entry-ready? (list-ref es i))
+                 (not *menu-blink*))
         (let ([thunk (menu-entry-action (list-ref es i))])
           (if (> (theme 'menu-blink) 0)
               (begin (set! *menu-blink* (list (now-ms) i thunk))
@@ -201,8 +203,15 @@
                       (lambda () (menu-blink!)))]
               [else (set! *menu-blink* #f) (menu-run! (caddr b))]))))
 
+  ;; An entry that can't be chosen now shows no highlight under the
+  ;; pointer: nothing is chosen while the pointer is on it.
   (define (menu-mouse-move x y)
-    (let ([i (menu-entry-at x y)] [at *menu-held-at*])
+    (let* ([at *menu-held-at*]
+           [i (let ([i (menu-entry-at x y)])
+                (and i (if (menu-entry-ready? (list-ref (menu-entries *menu*)
+                                                        i))
+                           i
+                           -1)))])
       (when (and i (not (= i (menu-sel *menu*))))
         (menu-sel-set! *menu* i)
         (request-frame!))
@@ -276,7 +285,9 @@
                       [icon (menu-entry-icon e)]
                       [text (menu-label-text label)]
                       [key (menu-label-key label)]
-                      [ink (theme (cond [(not sel?) 'menu-ink]
+                      [ink (theme (cond [(not (menu-entry-ready? e))
+                                         'menu-ink-unready]
+                                        [(not sel?) 'menu-ink]
                                         [(and (memq 'outline flags)
                                               (memq 'pressed flags))
                                          'menu-ink-pressed]

@@ -580,7 +580,8 @@
                 (equal? close '((L . "Close")))
                 (equal? button '((L . "Button")))
                 (equal? text '((L . "Place the caret")
-                               (L2 . "Select a word")))
+                               (L2 . "Select a word")
+                               (R . "Copy, Paste")))
                 (equal? taskbar '((L . "Focus or minimize") (M . "Close")
                                   (R . "Window menu")))
                 (equal? desktop '((L . "Unfocus") (R . "Apps")))))))
@@ -1205,6 +1206,32 @@
              (and (same 'sort-up 'up) (same 'sort-down 'down)
                   (not (window-error w))
                   (equal? doc '((L . "Edit me"))))))))
+
+(check "an entry with no action can't be chosen now: the menu's first \
+        selection and the keys pass over it, the pointer on it highlights \
+        nothing, and a click on it runs nothing and leaves the menu open"
+       (let ([ran '()])
+         (open-menu! 300 300
+                     (list (cons "Two" #f)
+                           (cons "One" (lambda () (set! ran (cons 1 ran))))
+                           (cons "Three" (lambda () (set! ran (cons 3 ran))))))
+         (steps 1)
+         (let ([first (menu-sel *menu*)])
+           (menu-select-next! 1)
+           (menu-select-next! 1)
+           (let ([wrapped (menu-sel *menu*)])
+             (let-values ([(x y) (menu-entry-point "Two")])
+               (inject! `(mouse-move ,x ,y))
+               (steps 1)
+               (let ([under (menu-sel *menu*)])
+                 (inject! `(mouse-down ,x ,y left 1) `(mouse-up ,x ,y left))
+                 (steps 1)
+                 (let ([open? (test-menu-open?)])
+                   (close-menu!)
+                   (steps 1)
+                   (printf "  ~s\n" (list first wrapped under open? ran))
+                   (and (= first 1) (= wrapped 1) (= under -1) open?
+                        (null? ran)))))))))
 
 (check "a menu shows the key that does what an entry does, at its right, \
         and filters by the entry's text alone; the launcher can take a \
