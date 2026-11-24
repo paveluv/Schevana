@@ -111,6 +111,26 @@
            (and (= p50 p99 (inspect-frame-latency (+ i 1)))
                 (= missed 1)))))
 
+(check "a frame's row keeps when the screen's word on it reached core0, \
+        shown or dropped, as the pacer reads how late words come; sent \
+        again, it has none"
+       (let ([n 3003001] [p (core0-frame-ns)])
+         (present-test-fresh
+          (lambda ()
+            (let ([t (core0-clock-ns)])
+              (present-test-sent! n t)
+              (present-test-sent! (+ n 1) t)
+              (let ([before (core0-clock-ns)])
+                (present-test-reported! n 1 (+ t p) p p)
+                (present-test-reported! (+ n 1) 2 0 p p)
+                (let ([after (core0-clock-ns)]
+                      [came (list (core0-frame-report n 12)
+                                  (core0-frame-report (+ n 1) 12))])
+                  (fluid-let ([*present-newest* *present-newest*])
+                    (present-sent! n))
+                  (and (for-all (lambda (c) (<= before c after)) came)
+                       (= 0 (core0-frame-report n 12))))))))))
+
 (check "a report taken over by a later frame's says nothing of the earlier"
        (let ([n (inspect-frame-ref present-test-first 6)])
          (not (core0-frame-report (+ n present-rows) 1))))

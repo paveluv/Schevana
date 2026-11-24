@@ -360,23 +360,28 @@ asks for). Each frame on its way takes the first refresh a hold, less
 the slack, after its GPU work is done, one after the frame before it;
 the next tick aims at the refresh after that, and begins the hold, the
 margin, the work and the slack before it. With VSync the screen takes
-frames in order, so a frame on its way that it has said nothing of a
-refresh and a half after its aim (no report, not even one that core0
-holds back for saying a refresh was missed) showed at neither refresh,
-and the frames behind it wait too. While a compositor takes nothing,
-the next tick is put off a refresh at a time, eight past the frame's
-aim at most, and its frame is drawn for the refresh it can make once
-the compositor takes frames again, not for one long gone (GNOME stalls
-40 to 60 ms now and then, and holds back its word on the refresh before:
-of the frames queued then, only those already sent show late). A frame
-that missed one refresh shows at the next, its report in by then, and
-the frames behind it stay a refresh deep for a few ticks: a refresh to
-spare while the compositor's cutoff moves. A window's `'frame` handler
-is told `t`, the refresh the tick aims at, which is when its frame will
-show. Past a refresh of work, the next tick begins as soon as the GPU
-work is done, aimed at the refresh it can still make; none is skipped.
-Processes run until the next tick's planned begin, and at least 1 ms a
-step.
+frames in order, so a frame on its way that it has said nothing of (no
+report, not even one that core0 holds back for saying a refresh was
+missed) by the time its word would be in, had it shown a refresh late,
+showed at neither refresh, and the frames behind it wait too. That time
+is a refresh after its aim and the longest that any of the last sixteen
+words took to reach core0 after its stamp, at least half a refresh:
+GNOME over NVIDIA's driver sent its words 6 ms after the showing at 60
+Hz in one run and 14 ms in the next, and a frame that missed a refresh
+must not count as lost while its word is on the way. While a compositor
+takes nothing, the next tick is put off a refresh at a time, eight past
+the frame's aim at most, and its frame is drawn for the refresh it can
+make once the compositor takes frames again, not for one long gone
+(GNOME stalls 40 to 60 ms now and then, and holds back its word on the
+refresh before: of the frames queued then, only those already sent show
+late). A frame that missed one refresh shows at the next, its report in
+by then, and the frames behind it stay a refresh deep for a few ticks: a
+refresh to spare while the compositor's cutoff moves. A window's
+`'frame` handler is told `t`, the refresh the tick aims at, which is
+when its frame will show. Past a refresh of work, the next tick begins
+as soon as the GPU work is done, aimed at the refresh it can still make;
+none is skipped. Processes run until the next tick's planned begin, and
+at least 1 ms a step.
 
 The hold, how long before a refresh a frame's GPU work must be seen
 done, is the one thing the second pacer learns, from the screen's

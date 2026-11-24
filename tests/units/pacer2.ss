@@ -55,7 +55,8 @@
 
 (define (pacer2-test-report! n k v at)
   (let ([r (or (hashtable-ref pacer2-test-reports n #f)
-               (let ([r (cons (make-fxvector 12 0) (make-fxvector 12 0))])
+               (let ([r (cons (make-fxvector present-words 0)
+                              (make-fxvector present-words 0))])
                  (hashtable-set! pacer2-test-reports n r)
                  r))])
     (fxvector-set! (car r) k v)
@@ -1183,6 +1184,43 @@
                 (eqv? mailbox before)
                 (eqv? held before)
                 (eq? stuck #t)))))
+
+(check "where the screen's words come late, a frame out that it has said \
+        nothing of is taken as shown at neither refresh only once its \
+        word, had it shown a refresh late, would be in: no sooner than the \
+        refresh after its aim and the longest any recent word took"
+       (let ([r pacer2-test-r] [T pacer2-test-T] [ms 1000000])
+         ;; => when the next turn begins; the words on the frames before
+         ;; came late ms after their showing
+         (define (turn now late)
+           (pacer2-test-rows
+            (lambda ()
+              (fluid-let ([*gpu-facts* (cons (cons 'present-mode 'vsync)
+                                             *gpu-facts*)])
+                (do ([i 7 (- i 1)]) ((< i 1))
+                  (let* ([aim (- T (* i r))]
+                         [n (pacer2-test-flow-row! aim (* 3 ms) r)])
+                    (pacer2-test-report! n 10 aim 0)
+                    (pacer2-test-report! n 12 (+ aim late) 0)))
+                ;; out as in the check before: aimed at T, the one behind
+                ;; it alike, and the newest
+                (pacer2-test-row! (- T r (* 4 ms)) (- T r (* 4 ms))
+                                 T (- T (* 7 ms)) 'out r)
+                (pacer2-test-row! (- T (* 4 ms)) (- T (* 4 ms))
+                                 (+ T r) (+ T (* 3 ms)) 'out r)
+                (pacer2-test-row! (+ T (* 6 ms)) (+ T (* 6 ms)) (+ T r r)
+                                 (+ T (* 12 ms)) 'out r)
+                (set! *pacer-wanted?* #t)
+                (pacer2-decide! now)))))
+         (let ([prompt (turn (+ T (* 16 ms)) (* 1 ms))]
+               [before (turn (+ T (* 14 ms)) (* 1 ms))]
+               [waiting (turn (+ T (* 16 ms)) (* 9 ms))]
+               [gone (turn (+ T (* 20 ms)) (* 9 ms))])
+           (and (number? prompt) (number? before) (number? waiting)
+                (number? gone)
+                (= (- prompt before) (* 2 r))
+                (= waiting before)
+                (= (- gone before) (* 2 r))))))
 
 (check "a report stamped two seconds ahead of the clock gives no hold and is \
         not the grid: the wait it leaves has an end within nine refreshes"

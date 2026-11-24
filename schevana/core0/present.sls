@@ -32,7 +32,7 @@
   (library-layer core0)
 
   (define present-rows 8192)
-  (define present-words 12)
+  (define present-words 13)
   ;; A row holds: the frame's number; its kind (0 sent, 1 shown, 2
   ;; dropped); when it was sent (core0-clock-ns); when the refresh it was
   ;; shown at came, by the screen's clock (core0-clock-ns); the refresh's
@@ -40,11 +40,12 @@
   ;; (core0-clock-ns; 0 for not yet); when core0 took it from core1, and when
   ;; its acquire of a swapchain image began and returned, with the submit's
   ;; hold added (core0-clock-ns); the screen's own stamp of its showing
-  ;; (core0-clock-ns; 0 for none); and the last look that found its GPU work
-  ;; not yet done (core0-clock-ns; 0 for none). "Seen done" tells only when
-  ;; core0 looked, which an acquire that the screen holds can delay; the
-  ;; last look tells that the work was still going then. With no window, a
-  ;; frame has a row too, its GPU work done as it goes back.
+  ;; (core0-clock-ns; 0 for none); the last look that found its GPU work
+  ;; not yet done (core0-clock-ns; 0 for none); and when the screen's word
+  ;; on it reached core0 (core0-clock-ns; 0 for none). "Seen done" tells
+  ;; only when core0 looked, which an acquire that the screen holds can
+  ;; delay; the last look tells that the work was still going then. With
+  ;; no window, a frame has a row too, its GPU work done as it goes back.
   (define-state *present-ring* (make-fxvector (* present-rows present-words) 0))
 
   ;; When core0 took the frame it is presenting now from core1, when it
@@ -87,6 +88,7 @@
       (fxvector-set! r (fx+ at 9) *present-acquired*)
       (fxvector-set! r (fx+ at 10) 0)
       (fxvector-set! r (fx+ at 11) 0)
+      (fxvector-set! r (fx+ at 12) 0)
       (memory-order-release)
       (fxvector-set! r at frame)))
 
@@ -112,6 +114,7 @@
   (define (present-reported! frame kind stamp refresh)
     (let ([at (present-at frame)])
       (when (fx= (fxvector-ref *present-ring* at) frame)
+        (fxvector-set! *present-ring* (fx+ at 12) (core0-clock-ns))
         (if (fx= kind 1)
             (present-shown! frame at stamp (fx> refresh 0))
             (present-publish! at kind)))))

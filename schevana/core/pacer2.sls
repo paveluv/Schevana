@@ -126,8 +126,8 @@
   ;; Returns word k of row i's report, core0's: 1 its kind, 3 the refresh
   ;; that showed it, 4 that refresh's length, 6 done, 7 taken, 8 and 9 the
   ;; screen's hold, 10 the screen's stamp, in as the report comes, though
-  ;; core0 holds back one that says a refresh was missed; 0 until core0 has
-  ;; written it.
+  ;; core0 holds back one that says a refresh was missed, 12 when the
+  ;; report came; 0 until core0 has written it.
   (define (pacer2-seen i k) (or (core0-frame-report (pacer2-own i 6) k) 0))
 
   ;; Returns row i's kind: 0 out, 1 shown, 2 dropped, 3 back.
@@ -333,6 +333,21 @@
          v s need gone)
         S))
 
+  ;; Returns how long the screen's word on a frame may take after its
+  ;; showing, ns: the longest that a stamp of the rows lo to n took to
+  ;; reach core0, and two looks; at least half a refresh s. A compositor
+  ;; may send its words late, and at a rate it changes: GNOME over NVIDIA's
+  ;; driver, 6 ms after the showing at 60 Hz in one run and 14 in the next.
+  (define (pacer2-word-delay lo n s)
+    (let loop ([i lo] [most (fxquotient s 2)])
+      (if (fx< i n)
+          (loop (fx+ i 1)
+                (let ([stamp (pacer2-seen i 10)] [came (pacer2-seen i 12)])
+                  (if (fx< 0 stamp came)
+                      (fxmax most (fx+ (fx- came stamp) (fx* 2 core0-look-ns)))
+                      most)))
+          most)))
+
   ;; Returns whether row i is out, its GPU work not yet seen done.
   (define (pacer2-out? i)
     (and (fx>= i 0) (fx= (pacer2-kind i) 0) (fx= (pacer2-seen i 6) 0)))
@@ -412,14 +427,15 @@
                    [need (fx- h slack)]
                    [F (fx+ s
                            (cond
-                             ;; half a refresh on with no word, a refresh
-                             ;; is gone, as a frame shown is on time within
-                             ;; it
+                             ;; a refresh is gone once the screen's word on
+                             ;; a frame shown there would be in, as long as
+                             ;; its words take (at least half a refresh: a
+                             ;; frame shown is on time within it)
                              [(fx>= reported 0)
                               (fxmax (pacer2-chain
                                       (fx+ reported 1) n v v s need
                                       (if (pacer2-fifo?)
-                                          (fx- now (fxquotient s 2))
+                                          (fx- now (pacer2-word-delay lo n s))
                                           0))
                                      (pacer2-ceiling
                                       (fx- *pacer2-t* (fxquotient s 2)) v s))]

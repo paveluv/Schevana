@@ -1395,8 +1395,9 @@
   ;; in the slot), how long the screen held core0 for it, when its GPU work
   ;; was seen done (0 for not yet), its kind (out, shown, dropped, or back:
   ;; the window had no room), the refresh that showed it and that
-  ;; refresh's length (0 for none reported), and which pacer planned it.
-  ;; Times are in ns.
+  ;; refresh's length (0 for none reported), when the screen's word on it
+  ;; reached core0 (0 for not yet), and which pacer planned it. Times are
+  ;; in ns.
   (define (inspect-pacer-rows)
     (let* ([n *frame-ring-n*] [lo (max 0 (- n 16))])
       (map (lambda (k)
@@ -1417,6 +1418,7 @@
                                 [else 'out])))
                  (shown . ,(seen 3))
                  (refresh . ,(seen 4))
+                 (came . ,(seen 12))
                  (pacer . ,(inspect-frame-ref i 15)))))
            (iota (- n lo)))))
 
