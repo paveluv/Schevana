@@ -2455,13 +2455,20 @@
 
   ;; A scroll bar at x y w h for a view, view high, that shows content from
   ;; off on: a press on the thumb or beside it, and a drag, set the offset
-  ;; by calling (set-off! off).
+  ;; by calling (set-off! off). The thumb travels along the style's track,
+  ;; the whole bar unless its areas give one (Genera's, between its end
+  ;; boxes).
   (define (ui-scrollbar ui id x y w h off content view set-off!)
     (let* ([most (max 0 (- content view))]
            [start (/ off content)] [size (/ view content)]
-           [thumb (cdr (assq 'thumb (ui-scrollbar-areas x y w h start size)))])
+           [areas (ui-scrollbar-areas x y w h start size)]
+           [thumb (cdr (assq 'thumb areas))]
+           [track (assq 'track areas)]
+           [track-y (if track (caddr track) y)]
+           [track-h (if track (list-ref track 4) h)])
       (define (thumb-to! ty)
-        (set-off! (clamp (* most (/ (- ty y) (max 1 (- h (cadddr thumb)))))
+        (set-off! (clamp (* most (/ (- ty track-y)
+                                    (max 1 (- track-h (cadddr thumb)))))
                          0 most))
         #t)
       (ui-region! ui id x y w h 'focus 'keep 'doc '((L . "Scroll")) 'on
@@ -2538,8 +2545,9 @@
   ;; How far one wheel step scrolls: three lines.
   (define (ui-scroll-step) (* 3 (font-line-height 'ui)))
 
-  ;; start and size are the view's top and height as fractions of the
-  ;; content.
+  ;; Returns the bar's areas, each (name x y w h): its thumb, and the track
+  ;; the thumb travels along if that is not the whole bar. start and size
+  ;; are the view's top and height as fractions of the content.
   (define-part (ui-scrollbar-areas x y w h start size)
     (let ([th (min h (max (* 2 (font-line-height 'ui)) (* size h)))])
       (list (list 'thumb x

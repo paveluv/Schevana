@@ -100,3 +100,39 @@
                  (and (<= (abs (- paged (* page lh))) 1)
                       (<= (abs (- ended (- (* 60 lh) th))) 1)
                       (= homed 0))))))))
+
+(check "where the style's thumb travels along a track shorter than the bar \
+        (Genera's, between its end boxes), a press on the thumb leaves the \
+        view where it is, and a drag moves it as far as the track says"
+       (begin
+         (set-style! 'genera)
+         (let ([win (ui-scroll-test-window)])
+           (steps 2)
+           (ui-scroll-test-wheel! win -2)
+           (let*-values ([(ui) (window-ref win 'ui)]
+                         [(before) (ui-scroll-test-off win)]
+                         [(cx cy cw ch) (content-rect win)]
+                         [(f) (ui-region-frame (test-region ui '(v bar)))]
+                         [(areas) (ui-scrollbar-areas (car f) (cadr f)
+                                                      (caddr f) (cadddr f)
+                                                      (/ before 1000) 1/5)]
+                         [(thumb) (cdr (assq 'thumb areas))]
+                         [(track) (cdr (assq 'track areas))]
+                         [(x) (exact (round (+ cx (car f) (/ (caddr f) 2))))]
+                         [(y) (exact (round (+ cy (cadr thumb)
+                                               (/ (cadddr thumb) 2))))])
+             (inject! `(mouse-move ,x ,y) `(mouse-down ,x ,y left 1)
+                      `(mouse-up ,x ,y left))
+             (steps 2)
+             (let ([pressed (ui-scroll-test-off win)])
+               (inject! `(mouse-down ,x ,y left 1) `(mouse-move ,x ,(+ y 20))
+                        `(mouse-up ,x ,(+ y 20) left))
+               (steps 2)
+               (let ([dragged (ui-scroll-test-off win)]
+                     [want (+ before (* 20 (/ 800 (- (cadddr track)
+                                                     (cadddr thumb)))))])
+                 (close-window! win)
+                 (set-style! 'mac)
+                 (printf "  ~s\n" (list before pressed dragged want))
+                 (and (> before 0) (= pressed before)
+                      (<= (abs (- dragged want)) 1))))))))

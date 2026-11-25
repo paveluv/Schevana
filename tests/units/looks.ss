@@ -543,6 +543,23 @@
              (set-style! 'mac)
              (for-all (lambda (p) (= p ink)) ps)))))
 
+(check "the CADR's progress bar is a line of its small font high, so that \
+        its percentage shows: ink in the bar at 37 %"
+       (with-style 'cadr
+         (lambda ()
+           (let* ([h (ui-progress-height)]
+                  [ink (color->pixel 'text)]
+                  [p (image 80 h 1
+                            (lambda ()
+                              (fill-box 0 0 80 h 'window-bg)
+                              (ui-draw-progress 0 0 80 h '() 37/100)))]
+                  [inked (exists (lambda (y)
+                                   (exists (lambda (x) (= (pixel-at p x y) ink))
+                                           (iota 80)))
+                                 (iota h))])
+             (printf "  ~a high, ~a\n" h inked)
+             (and (>= h (font-line-height 'ui-small)) inked)))))
+
 (check "Settings' chosen color row shows its swatch in its own color over \
         Genera's inverse video, its ring a stipple of ink and paper"
        (with-style 'genera

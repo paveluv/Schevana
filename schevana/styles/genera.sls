@@ -428,7 +428,8 @@
            [th (min l (max w (* size l)))])
       (list (list 'thumb x
                   (+ y e (if (< size 1) (* (- l th) (/ start (- 1 size))) 0))
-                  w th))))
+                  w th)
+            (list 'track x (+ y e) w l))))
 
   (define (genera-scrollbar x y w h flags start size)
     (let ([e (min w (floor (/ h 3)))]

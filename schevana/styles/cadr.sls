@@ -24,7 +24,7 @@
   (import (chezscheme)
           (only (schevana base) at-load library-layer)
           (only (schevana core) define-style fill-box font-line-height stipple
-                theme-font-rule with-clip)
+                theme-font-rule theme-rule with-clip)
           (only (schevana kits text) text-draw-centered)
           (only (schevana kits ui) ui-scrollbar-areas))
 
@@ -94,4 +94,6 @@
      'scrollbar-show 'hover
      'ui-draw-slider 'cadr-slider
      'ui-draw-progress 'cadr-progress
+     ;; a bar a line of the small font high, so that its percentage shows
+     'progress-height (theme-rule (font-line-height 'ui-small))
      'ui-draw-scrim 'cadr-scrim)))
