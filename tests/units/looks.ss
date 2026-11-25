@@ -1955,3 +1955,101 @@
              (set-style! 'mac)
              (printf "  ~s\n" (hashtable-size seen))
              (and (= (hashtable-size seen) 2) (= corner ink))))))
+
+;; The CADR's menus, from its menu code (System 99's menu.lisp, mouse.lisp).
+(define (cadr-menu-entries)
+  (list (cons "Alpha\tCtrl+A" void) (cons "Beta\tCtrl+Shift+B" void)
+        (cons "Gamma" void)))
+
+(check "a CADR menu is its entries' names alone (no keys, no filter until \
+        something is typed), boxed only under the mouse, and it goes once \
+        the mouse leaves it by more than 25 pixels"
+       (begin
+         (set-style! 'cadr)
+         (inject! '(mouse-move 10 10))
+         (steps 1)
+         (open-menu! 300 300 (cadr-menu-entries) 'filter #t 'tag 'cadr-test)
+         (steps 1)
+         (let* ([areas (placed-menu-areas *menu*)]
+                [box (map (lambda (v) (exact (floor v))) (cdar areas))]
+                [a0 (map (lambda (v) (exact (floor v)))
+                         (cdr (assv 0 areas)))]
+                [row-x (car a0)] [row-y (cadr a0)]
+                [mid (list (+ row-x (quotient (caddr a0) 2))
+                           (+ row-y (quotient (cadddr a0) 2)))]
+                [no-filter? (not (assq 'filter areas))]
+                [words-only?   ; the row's ink has no gap as wide as a key's
+                 (let* ([ink (color->pixel 'text)]
+                        [cols (filter
+                               (lambda (cx)
+                                 (exists (lambda (dy)
+                                           (= (canvas-pixel cx (+ row-y dy))
+                                              ink))
+                                         (iota (cadddr a0))))
+                               (map (lambda (i) (+ (car box) 2 i))
+                                    (iota (- (caddr box) 4))))])
+                   (let loop ([cs cols] [best 0])
+                     (if (or (null? cs) (null? (cdr cs)))
+                         (< best 16)
+                         (loop (cdr cs)
+                               (max best (- (cadr cs) (car cs) 1))))))]
+                [start (menu-sel *menu*)])
+           (inject! `(mouse-move ,(car mid) ,(cadr mid)))
+           (steps 1)
+           (let ([over (menu-sel *menu*)])
+             ;; out of the menu by 10 pixels: none chosen, still open
+             (inject! `(mouse-move ,(- (car box) 10) ,(cadr mid)))
+             (steps 1)
+             (let ([near (and *menu* (menu-sel *menu*))])
+               ;; by 40: the menu goes
+               (inject! `(mouse-move ,(- (car box) 40) ,(cadr mid)))
+               (steps 1)
+               (let ([gone? (not *menu*)])
+                 (close-menu!)
+                 (open-menu! 300 300 (cadr-menu-entries) 'filter #t
+                             'tag 'cadr-test)
+                 (inject! '(text "b"))
+                 (steps 1)
+                 (let* ([areas (placed-menu-areas *menu*)]
+                        [typed? (and (assq 'filter areas) #t)]
+                        [shown (map car (menu-entries *menu*))])
+                   (close-menu!)
+                   (set-style! 'mac)
+                   (steps 1)
+                   (let ([r (list no-filter? words-only? start over near gone?
+                                  typed? (length shown))])
+                     (printf "  ~s\n" r)
+                     (equal? r '(#t #t -1 0 -1 #t #t 1))))))))))
+
+(check "a CADR menu opens on the entry last chosen from menus of its kind: \
+        its words under the pointer; with none yet, centered on it"
+       (begin
+         (set-style! 'cadr)
+         (set! *menu-last-choices* '())
+         (inject! '(mouse-move 500 400))
+         (steps 1)
+         (open-menu! 500 400 (cadr-menu-entries) 'tag 'cadr-kind)
+         (let* ([box (cdar (placed-menu-areas *menu*))]
+                [center (list (+ (car box) (quotient (caddr box) 2))
+                              (+ (cadr box) (quotient (cadddr box) 2)))])
+           (inject! `(mouse-move ,(car center) ,(+ (cadr center) 0)))
+           ;; choose Beta by its area
+           (let* ([a (cdr (assv 1 (placed-menu-areas *menu*)))])
+             (menu-activate! 1)
+             (let ([chosen (not *menu*)])
+               (open-menu! 500 400 (cadr-menu-entries) 'tag 'cadr-kind)
+               (let ([at (menu-entry-at 500 400)])
+                 (close-menu!)
+                 (open-menu! 500 400 (cadr-menu-entries) 'tag 'other)
+                 (let* ([box (cdar (placed-menu-areas *menu*))]
+                        [c (list (+ (car box) (quotient (caddr box) 2))
+                                 (+ (cadr box) (quotient (cadddr box) 2)))])
+                   (close-menu!)
+                   (set! *menu-last-choices* '())
+                   (set-style! 'mac)
+                   (steps 1)
+                   (let ([r (list chosen at
+                                  (<= (abs (- (car c) 500)) 1)
+                                  (<= (abs (- (cadr c) 400)) 1))])
+                     (printf "  ~s\n" r)
+                     (equal? r '(#t 1 #t #t))))))))))

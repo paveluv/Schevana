@@ -140,6 +140,18 @@
      'menu-highlight 'text
      'menu-highlight-extra 1
      'menu-highlight-outset 0
+     ;; a menu is its items' names alone (:MENU-DRAW, menu.lisp:719-749),
+     ;; chosen with any button and no typing (:MOUSE-BUTTONS, :CHOOSE,
+     ;; menu.lisp:579-609), boxed only under the mouse (:MOUSE-MOVES,
+     ;; menu.lisp:623-684); it opens on the item last chosen
+     ;; (:CENTER-AROUND, menu.lisp:816-828) and goes once the mouse leaves
+     ;; it by more than 25 pixels (HYSTERETIC-WINDOW-MIXIN,
+     ;; mouse.lisp:871-890)
+     'menu-keys #f
+     'menu-filter-hint #f
+     'menu-select-first #f
+     'menu-open-at 'last-choice
+     'menu-leave-distance 25
      'menu-hint-font (font "CADR HL12 Italic" 14 'crisp)
      ;; the widgets
      'genera-hover-nudge 1

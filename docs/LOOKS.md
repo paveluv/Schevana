@@ -171,14 +171,18 @@ its own, under `'places`, to color what sits there, an app's own cells
 included. Plain settings cover the rest: a text's caret (`text-caret`:
 `bar` or `block`) and its selection (`text-selection`: `fill` or
 `underline`), a section label's font and case, how a menu's entries are
-aligned (`menu-align`) and how the chosen one shows (`menu-highlight`:
-its row, its text's cell, or a box around its ink), whether shapes are
-smoothed (`drawing-antialias`; not on a screen one bit deep), how what
-can't be used fades (`disabled-fade`: the share of its ink a mark keeps,
-or, on a screen one bit deep, the stipple it is drawn through, and the
-color `text-disabled` for its words), whether glows are drawn
-(`fill-glow`) and how much a surface takes on a hue (`surface-tint`), and
-the like.
+aligned (`menu-align`), whether their keys show (`menu-keys`), how the
+chosen one shows (`menu-highlight`: its row, its text's cell, or a box
+around its ink), whether one is chosen before the pointer is over it
+(`menu-select-first`), where the menu opens (`menu-open-at`: its corner
+at the point, or the entry last chosen there under it) and how far the
+pointer may leave it before it closes (`menu-leave-distance`), whether
+shapes are smoothed (`drawing-antialias`; not on a screen one bit deep),
+how what can't be used fades (`disabled-fade`: the share of its ink a
+mark keeps, or, on a screen one bit deep, the stipple it is drawn
+through, and the color `text-disabled` for its words), whether glows are
+drawn (`fill-glow`) and how much a surface takes on a hue
+(`surface-tint`), and the like.
 
 Every place that shows an app draws its icon ([WINDOWS.md](WINDOWS.md#apps)):
 the launcher, the taskbar or the dash, the app grid, and the title bar

@@ -95,7 +95,8 @@
   ;; are a character cell and its VSP below)
   (at-load
    (theme-default! 'menu-text-top #f))
-  ;; the filter's hint, its font (#f for the menu's), and whether a menu
+  ;; the filter's hint (#f for none: the filter's row shows only once
+  ;; something is typed), its font (#f for the menu's), and whether a menu
   ;; that filters is at least as wide as the hint
   (at-load
    (theme-default! 'menu-filter-hint "Type to filter…"))
@@ -107,6 +108,25 @@
   ;; or floor (down, as the CADR's centering truncated)
   (at-load
    (theme-default! 'menu-snap-text #f))
+  ;; whether an entry's key shows at its right (the Lisp machines' menus
+  ;; are words alone)
+  (at-load
+   (theme-default! 'menu-keys #t))
+  ;; whether a menu opens with its first entry chosen, which the keys then
+  ;; move; #f: nothing is chosen but the entry under the pointer, and
+  ;; leaving the entries chooses none (the CADR's box under the mouse)
+  (at-load
+   (theme-default! 'menu-select-first #t))
+  ;; where a menu opens: its corner at the point (corner), or with the
+  ;; entry last chosen from a menu of its kind (a dropdown's current one)
+  ;; under the point, and centered on the point when there is none
+  ;; (last-choice, the CADR's :CENTER-AROUND)
+  (at-load
+   (theme-default! 'menu-open-at 'corner))
+  ;; how far the pointer may leave a menu it has been in before the menu
+  ;; closes, or #f to stay open until a press (the CADR's hysteresis)
+  (at-load
+   (theme-default! 'menu-leave-distance #f))
 
   (define-state *menu-blink*
     #f)   ; (start-ms entry thunk) while a chosen entry blinks
@@ -117,21 +137,89 @@
   (define-state *menu-held-at* #f)
   (define-state *menu-under*
     #f)   ; the entry under the pointer, shown pressed while held
+  (define-state *menu-entered*
+    #f)   ; whether the pointer has been in the open menu
+  ;; ((kind . label) ...): the label last chosen from each kind of menu
+  ;; (menu-kind), for one that opens on its last choice
+  (define-state *menu-last-choices* '())
+
+  ;; Returns what menus share a last choice: a tag's kind (window, for
+  ;; every window's menu), the tag itself, or #f for none.
+  (define (menu-kind m)
+    (let ([tag (menu-tag m)]) (if (pair? tag) (car tag) tag)))
 
   (define (menu-item-height) (theme 'menu-item-height))
 
   (define (open-menu! x y items . opts)
-    (set! *menu* (make-menu x y items 0 "" (plist-ref opts 'filter #f)
-                            (plist-ref opts 'tag #f)))
-    (set! *menu-blink* #f)   ; an old menu's blink ends with it
-    (set! *menu-held-at*
-      (and *mouse-button*
-           (list *mouse-x* *mouse-y* (menu-entry-at *mouse-x* *mouse-y*))))
-    (set! *menu-under* #f)
-    (menu-select-next! 0)
-    (let ([i (plist-ref opts 'selected #f)])   ; a dropdown's current entry
-      (when i (menu-sel-set! *menu* i)))
-    (request-frame!))
+    (let ([filter? (plist-ref opts 'filter #f)] [tag (plist-ref opts 'tag #f)]
+          [current (plist-ref opts 'selected #f)])   ; a dropdown's
+      (set! *menu* (make-menu x y items 0 "" filter? tag))
+      (when (eq? (theme 'menu-open-at) 'last-choice)
+        (let-values ([(x y) (menu-open-point *menu* x y current)])
+          (set! *menu* (make-menu x y items 0 "" filter? tag))))
+      (set! *menu-blink* #f)   ; an old menu's blink ends with it
+      (set! *menu-held-at*
+        (and *mouse-button*
+             (list *mouse-x* *mouse-y*
+                   (menu-entry-at *mouse-x* *mouse-y*))))
+      (set! *menu-under* #f)
+      (set! *menu-entered* (point-in-menu? *mouse-x* *mouse-y*))
+      (if (theme 'menu-select-first)
+          (begin (menu-select-next! 0)
+                 (when current (menu-sel-set! *menu* current)))
+          (menu-sel-set! *menu* (menu-ready-at *mouse-x* *mouse-y*)))
+      (request-frame!)))
+
+  ;; Returns where menu m, asked to open at (x, y), goes so that the entry
+  ;; last chosen from its kind (or current, an index) has the box around
+  ;; its words at the point, the pixel before them and its row's top just
+  ;; above it, as the CADR puts it (:CENTER-AROUND, menu.lisp:816-828), or,
+  ;; with none, so that the menu's center is on the point.
+  (define (menu-open-point m x y current)
+    (let* ([areas (placed-menu-areas m)] [box (cdar areas)]
+           [es (menu-entries m)]
+           [last (let ([c (assq (menu-kind m) *menu-last-choices*)])
+                   (and c (menu-kind m) (cdr c)))]
+           [i (or current
+                  (and last
+                       (let loop ([es es] [i 0])
+                         (cond [(null? es) #f]
+                               [(and (pair? (car es))
+                                     (equal? (caar es) last))
+                                i]
+                               [else (loop (cdr es) (+ i 1))]))))]
+           [a (and i (assv i (cdr areas)))])
+      (if a
+          (apply (lambda (ex ey ew eh)
+                   (let ([tx (with-place 'menu
+                               (lambda ()
+                                 (menu-text-left m ex ew
+                                                 (text-width
+                                                  (menu-label-text
+                                                   (car (list-ref es i)))
+                                                  (theme 'menu-font)))))])
+                     (values (- x (- tx 1 (car box)))
+                             (- y (- ey (cadr box)) 1))))
+                 (cdr a))
+          (values (- x (quotient (caddr box) 2))
+                  (- y (quotient (cadddr box) 2))))))
+
+  ;; Returns the index of the entry under (px, py) that can be chosen, or
+  ;; -1, which is none.
+  (define (menu-ready-at px py)
+    (let ([i (menu-entry-at px py)])
+      (if (and i (menu-entry-ready? (list-ref (menu-entries *menu*) i)))
+          i
+          -1)))
+
+  ;; Returns where an entry's words start in its row at x, w wide, when
+  ;; they are tw wide: centered in the room left of the keys (menu-align
+  ;; center), or menu-text-x in, after the icons.
+  (define (menu-text-left m x w tw)
+    (if (eq? (theme 'menu-align) 'center)
+        (let ([icons (menu-icon-room m)])
+          (+ x icons (/ (- w icons (menu-key-room m) tw) 2)))
+        (+ x (theme 'menu-text-x) (menu-icon-room m))))
 
   (define (close-menu!)
     (set! *menu* #f)
@@ -154,7 +242,7 @@
   ;; none. (Text at the left needs no column: each entry's key goes at the
   ;; right, past its own text.)
   (define (menu-key-room m)
-    (if (eq? (theme 'menu-align) 'center)
+    (if (and (theme 'menu-keys) (eq? (theme 'menu-align) 'center))
         (let ([w (fold-left (lambda (acc e)
                               (let ([k (and (pair? e)
                                             (menu-label-key (car e)))])
@@ -171,13 +259,18 @@
   (define-part (menu-areas m)
     (let* ([es (menu-entries m)] [ih (theme 'menu-item-height)]
            [sh (theme 'menu-separator-height)] [pad (theme 'menu-pad)]
-           [head (if (menu-filter? m) (+ ih 8) 0)]
+           [head (if (and (menu-filter? m)
+                          (or (theme 'menu-filter-hint)
+                              (not (string=? (menu-filter m) ""))))
+                     (+ ih 8)
+                     0)]
            [icons (menu-icon-room m)] [keys (menu-key-room m)]
            [w (fold-left (lambda (acc e)
                            (if (pair? e)
                                (max acc (+ (theme 'menu-width-extra)
                                            (* 2 (theme 'menu-text-x)) icons
-                                           (if (> keys 0)
+                                           (if (or (> keys 0)
+                                                   (not (theme 'menu-keys)))
                                                (+ keys
                                                   (text-width
                                                    (menu-label-text (car e))
@@ -185,7 +278,8 @@
                                                (menu-label-width
                                                 (car e) (theme 'menu-font)))))
                                acc))
-                         (if (and (menu-filter? m) (theme 'menu-fit-filter))
+                         (if (and (menu-filter? m) (theme 'menu-fit-filter)
+                                  (theme 'menu-filter-hint))
                              (max (theme 'menu-min-width)
                                   (+ 32 (text-width (theme 'menu-filter-hint)
                                                     (menu-hint-font))))
@@ -197,7 +291,7 @@
            [y (let-values ([(dx dy dw dh) (desktop-rect)])
                 (clamp (menu-y m) (+ 2 dy) (- (screen-h) h 4)))])
       (cons (list 'menu x y w h)
-            (append (if (menu-filter? m)
+            (append (if (> head 0)
                         (list (list 'filter (+ x 6) (+ y 6) (- w 12) ih))
                         '())
                     (let loop ([es es] [i 0] [ey (+ y pad head)])
@@ -241,7 +335,13 @@
       (when (and i (>= i 0) (< i (length es))
                  (menu-entry-ready? (list-ref es i))
                  (not *menu-blink*))
-        (let ([thunk (menu-entry-action (list-ref es i))])
+        (let ([thunk (menu-entry-action (list-ref es i))]
+              [kind (menu-kind *menu*)])
+          (when kind
+            (set! *menu-last-choices*
+              (cons (cons kind (car (list-ref es i)))
+                    (remp (lambda (c) (eq? (car c) kind))
+                          *menu-last-choices*))))
           (if (> (theme 'menu-blink) 0)
               (begin (set! *menu-blink* (list (now-ms) i thunk))
                      (menu-blink!))
@@ -272,19 +372,35 @@
   (define (menu-mouse-move x y)
     (let* ([at *menu-held-at*]
            [i (let ([i (menu-entry-at x y)])
-                (and i (if (menu-entry-ready? (list-ref (menu-entries *menu*)
-                                                        i))
-                           i
-                           -1)))])
-      (when (and i (not (= i (menu-sel *menu*))))
-        (menu-sel-set! *menu* i)
-        (request-frame!))
-      (when (and at (> (+ (abs (- x (car at))) (abs (- y (cadr at)))) 4)
-                 (not (eqv? i (caddr at))))
-        (set! *menu-held-at* #f))
-      (unless (eqv? i *menu-under*)   ; held, the pressed look follows
-        (set! *menu-under* i)
-        (when *mouse-button* (menu-request!)))))
+                (cond [i (menu-ready-at x y)]
+                      ;; off the entries, none, where only the pointer
+                      ;; chooses
+                      [(theme 'menu-select-first) #f]
+                      [else -1]))])
+      (menu-leave-check x y)
+      (when *menu*   ; still open
+        (when (and i (not (= i (menu-sel *menu*))))
+          (menu-sel-set! *menu* i)
+          (request-frame!))
+        (when (and at (> (+ (abs (- x (car at))) (abs (- y (cadr at)))) 4)
+                   (not (eqv? i (caddr at))))
+          (set! *menu-held-at* #f))
+        (unless (eqv? i *menu-under*)   ; held, the pressed look follows
+          (set! *menu-under* i)
+          (when *mouse-button* (menu-request!))))))
+
+  ;; Closes the menu once the pointer, having been in it, is further from
+  ;; it than menu-leave-distance (HYSTERETIC-WINDOW-MIXIN,
+  ;; mouse.lisp:871-890).
+  (define (menu-leave-check x y)
+    (let ([d (theme 'menu-leave-distance)])
+      (when d
+        (let-values ([(mx my mw mh) (menu-geometry *menu*)])
+          (cond [(point-in-menu? x y) (set! *menu-entered* #t)]
+                [(and *menu-entered*
+                      (or (< x (- mx d)) (>= x (+ mx mw d))
+                          (< y (- my d)) (>= y (+ my mh d))))
+                 (close-menu!)])))))
 
   ;; Asks for a frame of the menu's own box.
   (define (menu-request!)
@@ -358,10 +474,7 @@
                                          'menu-ink-pressed]
                                         [else 'menu-ink-selected]))])
                  (let* ([tw (text-width text font)]
-                        [tx (menu-snap (if (eq? (theme 'menu-align) 'center)
-                                           (+ x icons
-                                              (/ (- w icons keys tw) 2))
-                                           (+ x (theme 'menu-text-x) icons)))]
+                        [tx (menu-snap (menu-text-left m x w tw))]
                         [ty (menu-snap (if (theme 'menu-text-top)
                                            y
                                            (+ y (/ (- h lh) 2))))]
@@ -385,7 +498,7 @@
                    (draw-text tx ty text ink font))
                  ;; the key that does the same, at the right, in the font
                  ;; of faint text whether or not the entry is chosen
-                 (when key
+                 (when (and key (theme 'menu-keys))
                    (draw-text (menu-snap (- (+ x w) (theme 'menu-text-x)
                                             (text-width key kf)))
                               (menu-snap
