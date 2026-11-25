@@ -989,8 +989,10 @@
   (define (inspect-glyph-char l i)
     (glyph-row-ref (inspect-word l i rec-glyph-number) glyph-row-character))
 
+  ;; Returns a record's kind, the low 3 bits of its head: the fourth says
+  ;; whether it is crisp (rec-crisp-bit).
   (define (inspect-kind l i)
-    (vector-ref inspect-kinds (fxand (inspect-word l i rec-row-head) 15)))
+    (vector-ref inspect-kinds (fxand (inspect-word l i rec-row-head) 7)))
 
   (define (inspect-paint l i)
     (vector-ref inspect-paints

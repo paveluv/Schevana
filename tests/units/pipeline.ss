@@ -130,6 +130,27 @@
                                      (exact (round (* 55 *scale*))))
                  '(0))))
 
+(check "a crisp record, as a screen one bit deep draws (Genera's), reads \
+        back by its kind and its paint, like any other"
+       (let* ([l (pipeline-test-list
+                  (lambda ()
+                    (with-style 'genera
+                      (lambda ()
+                        (fill-box 0 0 8 8 'text)
+                        (draw-line 0 0 10 0 'text 2)
+                        (fill-polygon '((0 . 0) (10 . 0) (0 . 10)) 'text)
+                        (fill-box 0 0 8 8 (stipple 'text #f "#."))))))]
+              [records (map (lambda (i) (inspect-record l i))
+                            (iota (inspect-list-count l)))]
+              [of (lambda (key)
+                    (map (lambda (r) (pipeline-test-field r key)) records))])
+         (and (for-all (lambda (i)
+                         (fxlogtest (inspect-word l i rec-row-head)
+                                    rec-crisp-bit))
+                       (iota (inspect-list-count l)))
+              (equal? (of 'kind) '(box segment polygon box))
+              (equal? (of 'paint) '(solid solid solid stipple)))))
+
 (check "the variant a record needs: the plain one for a box or glyph in a \
         solid color; one for a line, a shadow or a paint; the full one for a \
         line or shadow in a gradient or stipple"
@@ -1980,6 +2001,23 @@
                      (fold-left + 0 (map (lambda (r)
                                            (if (gpu-show-run? r) 0 (cadddr r)))
                                          runs))))))))
+
+(check "the Pipeline shows a frame of a screen one bit deep (Genera, the \
+        CADR)"
+       (let ([errors
+              (map (lambda (style)
+                     (set-style! style)
+                     (let ([w (pipeline)])
+                       (do ([k 0 (+ k 1)]) ((= k 4)) (request-frame!) (steps 1))
+                       (let ([e (window-error w)])
+                         (close-window! w)
+                         (steps 1)
+                         (and e (condition->string (cdr e))))))
+                   '(genera cadr))])
+         (set-style! 'mac)
+         (steps 1)
+         (printf "  ~s\n" errors)
+         (equal? errors '(#f #f))))
 
 (check "the Pipeline's Pop out says closing its window brings it back"
        (let ([w (pipeline)])
