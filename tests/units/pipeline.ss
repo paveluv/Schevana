@@ -2002,6 +2002,78 @@
                                            (if (gpu-show-run? r) 0 (cadddr r)))
                                          runs))))))))
 
+(check "the collector's strip shows each of its levels in more ink than the \
+        last in Genera and the CADR, and in nothing but ink and paper; in \
+        Mac, each in a color of its own"
+       (let ([s (pipeline-river-ticks-new)] [n pipeline-collector-levels]
+             [phases (length profile-draw-phases)])
+         ;; the pixels of each level's bar in the strip, the faintest first
+         (define (bars style)
+           (with-style style
+             (lambda ()
+               (let*-values
+                   ([(count areas) (ui-stream-layout s 0 0 400 100 n 1 '() 1
+                                                     #t)]
+                    [(px py pw ph) (apply values (cdr (assq 'plot areas)))]
+                    [(lane gap) (apply values (cdr (assq 'lane areas)))])
+                 (let* ([img (image 400 100 1
+                                    (lambda ()
+                                      (ui-draw-stream 0 0 400 100 '() s areas
+                                                      count n 1 '() '() '()
+                                                      #f)))]
+                        [pixels
+                         (lambda (i)
+                           (let-values ([(bx bw) (ui-bar-chart-bar areas count
+                                                                   i)])
+                             (apply append
+                                    (map (lambda (y)
+                                           (map (lambda (x)
+                                                  (pixel-at
+                                                   img
+                                                   (+ 2 x (exact (ceiling bx)))
+                                                   (+ 1 y
+                                                      (exact (ceiling
+                                                              (+ py lane))))))
+                                                (iota 24)))
+                                         (iota 8)))))]
+                        [all (map pixels (iota count))])
+                   (picture-free! img)
+                   (list all (color->pixel 'text)
+                         (color->pixel 'window-bg)))))))
+         (ui-stream-send! s 1 n (lambda (seq j)
+                                  (if (= j (+ phases 1)) seq 0)))
+         (let* ([ink (lambda (style)
+                       (apply (lambda (all text paper)
+                                (and (for-all
+                                      (lambda (ps)
+                                        (for-all (lambda (p)
+                                                   (memv p (list text paper)))
+                                                 ps))
+                                      all)
+                                     (map (lambda (ps)
+                                            (length
+                                             (filter (lambda (p) (= p text))
+                                                     ps)))
+                                          all)))
+                              (bars style)))]
+                [mac (car (bars 'mac))]
+                [r (list (ink 'genera) (ink 'cadr))])
+           (ui-stream-release! s)
+           (printf "  ~s\n" r)
+           (and (for-all (lambda (counts)
+                           (and counts
+                                (= (length counts) n)
+                                (apply < counts)
+                                (= (list-ref counts (- n 1)) (* 24 8))))
+                         r)
+                (for-all (lambda (ps) (for-all (lambda (p) (= p (car ps))) ps))
+                         mac)
+                (= n (length (fold-left (lambda (acc ps)
+                                          (if (memv (car ps) acc)
+                                              acc
+                                              (cons (car ps) acc)))
+                                        '() mac)))))))
+
 (check "the Pipeline shows a frame of a screen one bit deep (Genera, the \
         CADR)"
        (let ([errors

@@ -298,8 +298,9 @@
   ;;; the time since is red, at the top; with nothing due, the column is
   ;;; empty. Over the bars is the screen's word on each refresh.
 
-  ;; How bright a tick's collection is drawn: a level by its time, faint
-  ;; however short, and brightest from pipeline-collector-full-ns on.
+  ;; How strong a tick's collection is drawn: a level by its time (the
+  ;; kit's, chart-level-1 to chart-level-8), faint however short, and the
+  ;; strongest from pipeline-collector-full-ns on.
   (define pipeline-collector-levels 8)
   (define pipeline-collector-full-ns 2000000)
 
@@ -574,19 +575,16 @@
   ;; a tick came late and when a collection ran.
   (define pipeline-river-ticks-high 2)
 
-  (define-made pipeline-draw-river-tick-strips
-    `(("late" chart-flag)
-      ("collector"
-       ,@(map (lambda (i)
-                (alpha 'chart-7
-                       (+ 0.2 (* 0.8 (/ i (- pipeline-collector-levels 1.0))))))
-              (iota pipeline-collector-levels)))))
+  (define pipeline-draw-river-tick-strips
+    '(("late" chart-flag)
+      ("collector" chart-level-1 chart-level-2 chart-level-3 chart-level-4
+                   chart-level-5 chart-level-6 chart-level-7 chart-level-8)))
 
   (define-made pipeline-river-ticks-tips
     (list "Red: core1's own work in a tick here took more than one and a half \
            periods, and came late."
           (format "A collection ran in a tick here: the longer it took, the \
-                   brighter, at its brightest from ~a."
+                   stronger its mark, the strongest from ~a."
                   (profile-ns-label pipeline-collector-full-ns))))
 
   (define (pipeline-river-ticks-new)

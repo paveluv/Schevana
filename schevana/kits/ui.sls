@@ -127,7 +127,8 @@
                 app app-icon app-title clipboard-get clipboard-set!
                 close-window!
                 color-default! color-word content-rect core0-set-cursor!
-                current-window define-paint define-part define-shader-layout
+                current-window define-paint define-part define-shader-constant
+                define-shader-layout
                 draw-line draw-polyline draw-scale draw-shadow draw-text
                 fill-box fill-circle fill-polygon fill-shader focus-window!
                 focused-window font font-char-width font-family font-line-height
@@ -135,7 +136,8 @@
                 gpu-buffer-release! gpu-buffer-set! gpu-list-new invalidate!
                 make-gpu-buffer maximized? mix new-window-position now-ms
                 open-window pi plist-remove point-in? proc record-list!
-                resize-window! stipple stroke-box stroke-circle text-width theme
+                resize-window! stipple stipple? stroke-box stroke-circle
+                text-width theme
                 theme-default! theme-font-rule theme-rule window-app
                 window-content-size window-frame-soon! window-handlers
                 window-hover window-modal-child window-props window-ref
@@ -1295,7 +1297,7 @@
                       (remp (lambda (f) (memq f '(hover pressed))) flags)
                       flags)]
            [on? (lambda (f) (memq f flags))]
-           [ink (lambda (c) (if (on? 'disabled) (alpha c 0.5) c))]
+           [ink (lambda (c) (if (on? 'disabled) (ui-fade c) c))]
            [hot? (or (on? 'hover) (on? 'pressed))]
            [fill (cond [(on? 'primary)
                         (cond [(on? 'pressed) 'primary-pressed]
@@ -2853,9 +2855,9 @@
        (with-translation (x y) (with-scale ((/ s 24)) body ...))]))
 
   ;; Returns color c as an icon drawn with flags shows it: faded when they
-  ;; hold dim or disabled.
+  ;; hold dim or disabled (ui-fade).
   (define (ui-icon-ink flags c)
-    (if (or (memq 'dim flags) (memq 'disabled flags)) (alpha c 0.5) c))
+    (if (or (memq 'dim flags) (memq 'disabled flags)) (ui-fade c) c))
 
   ;; Draws the icon of the app named name in the s-square at x, y: the
   ;; app's own, or its tile.
@@ -2901,11 +2903,7 @@
                     [(private) (values 'folder 'accent-2)]
                     [(pure) (values 'folder 'green)]
                     [else (values 'folder 'text-dim)])])
-      (ui-draw-glyph x y s s
-                     (list (cons 'ink (if (or (memq 'dim flags)
-                                              (memq 'disabled flags))
-                                          (alpha ink 0.55)
-                                          ink)))
+      (ui-draw-glyph x y s s (list (cons 'ink (ui-icon-ink flags ink)))
                      glyph)))
 
   ;; An app says that its window is at work by the window's 'busy (the words
@@ -4091,7 +4089,9 @@
   ;;; in any palette. A mark behind a bar, a share of the bars, the
   ;;; reference lines and a flag over a bar are chart-mark, chart-share,
   ;;; chart-rule and chart-flag; a mark that says all is well is chart-ok, a
-  ;;; quiet color, so that a flag stands out from it.
+  ;;; quiet color, so that a flag stands out from it. A mark that says how
+  ;;; much (how long a collection took, say) is chart-level-1, the faintest,
+  ;;; to chart-level-8: chart-7 from a fifth to the whole of it.
 
   (at-load
    (color-default! 'chart-1 'yellow))
@@ -4124,6 +4124,22 @@
    (color-default! 'chart-flag 'red))
   (at-load
    (color-default! 'chart-ok (alpha 'green 0.55)))
+  (at-load
+   (color-default! 'chart-level-1 (alpha 'chart-7 7/35)))
+  (at-load
+   (color-default! 'chart-level-2 (alpha 'chart-7 11/35)))
+  (at-load
+   (color-default! 'chart-level-3 (alpha 'chart-7 15/35)))
+  (at-load
+   (color-default! 'chart-level-4 (alpha 'chart-7 19/35)))
+  (at-load
+   (color-default! 'chart-level-5 (alpha 'chart-7 23/35)))
+  (at-load
+   (color-default! 'chart-level-6 (alpha 'chart-7 27/35)))
+  (at-load
+   (color-default! 'chart-level-7 (alpha 'chart-7 31/35)))
+  (at-load
+   (color-default! 'chart-level-8 (alpha 'chart-7 1)))
 
   ;; A stacked bar chart, one bar per value (a step, say), the newest at the
   ;; right. bars, oldest first, are (segments . share): segments are ((color
@@ -4340,9 +4356,9 @@
       (ui-stream-buffer-set! s (make-gpu-buffer (* (ui-stream-rows s)
                                                    (ui-stream-words s))))
       (ui-stream-palette-set! s (make-gpu-buffer
-                                 (+ 1 (* ui-stream-stack-words
-                                         (ui-stream-columns s))
-                                    (ui-stream-colors s)))))
+                                 (ui-stream-color-at
+                                  s (+ (ui-stream-columns s)
+                                       (ui-stream-colors s))))))
     (when (< newest (ui-stream-sent s)) (ui-stream-sent-set! s -1))
     (let ([rows (ui-stream-rows s)] [words (ui-stream-words s)]
           [columns (ui-stream-columns s)] [buffer (ui-stream-buffer s)]
@@ -4363,16 +4379,56 @@
                      [(eqv? v 0) 0]
                      [else (+ v (list-ref bases (- j columns)))]))))))))
 
-  ;; From the right, one bar per moment; up each bar, its columns as the
-  ;; palette stacks them; over the bars, the strips.
-  ;; The palette's first rows are the stack, from the bottom up: which
-  ;; column, and its color.
-  (define-shader-layout ui-stream-stack palette (column color))
+  ;; The palette is what the bars are drawn in: the stack, from the bottom
+  ;; up, as its columns' numbers, with room for every column; then the
+  ;; colors, the stack's in its order, again with room for every column, and
+  ;; after them the strips'.
+  ;; A color is its word; or, for a stipple, its ink's word, its paper's,
+  ;; how many cells it has across and down (none for a plain color), and a
+  ;; word for each of its rows, the row's first cell in the lowest bit.
+  (define-shader-layout ui-stream-color palette (ink paper across down))
+  (define ui-stream-color-most-rows 16)
+  (define ui-stream-color-most-across 32)
+  (define-shader-constant ui-stream-color-room
+    (+ ui-stream-color-words ui-stream-color-most-rows))
 
+  ;; Returns where the palette's color i is.
+  (define (ui-stream-color-at s i)
+    (+ (ui-stream-columns s) (* i ui-stream-color-room)))
+
+  ;; Sets the palette's color i: a color, or #f, which draws nothing. A
+  ;; stipple of more cells than there is room for is drawn as the gray it
+  ;; comes to.
+  (define (ui-stream-color! s i color)
+    (let* ([c (let given ([c color]) (if (symbol? c) (given (theme c)) c))]
+           [rows (if (stipple? c) (cdddr c) '())]
+           [cells? (and (pair? rows)
+                        (<= (length rows) ui-stream-color-most-rows)
+                        (<= (string-length (car rows))
+                            ui-stream-color-most-across))]
+           [at (ui-stream-color-at s i)]
+           [set (lambda (j v)
+                  (gpu-buffer-set! (ui-stream-palette s) (+ at j) v))]
+           [word (lambda (c) (if c (color-word c) 0))])
+      (set ui-stream-color-ink (word (if cells? (cadr c) c)))
+      (set ui-stream-color-across (if cells? (string-length (car rows)) 0))
+      (when cells?
+        (set ui-stream-color-paper (word (caddr c)))
+        (set ui-stream-color-down (length rows))
+        (for-each (lambda (row j)
+                    (set (+ ui-stream-color-words j)
+                         (fold-right (lambda (cell bits)
+                                       (+ bits bits
+                                          (if (char=? cell #\#) 1 0)))
+                                     0 (string->list row))))
+                  rows (iota (length rows))))))
+
+  ;; From the right, one bar per moment; up each bar, its columns as the
+  ;; palette stacks them; over the bars, the strips. A stipple's cells are
+  ;; logical pixels, counted from the box's corner.
   (define-paint (ui-stream-bars x y)
     ([moments fx-buffer]
-     [palette fx-buffer]   ; ui-stream-stack's rows, with room for every column;
-                           ; after them, the strips' colors
+     [palette fx-buffer]
      [stacked fixnum]      ; how many entries the stack holds
      [columns fixnum]      ; the numbers a row starts with
      [rows fixnum]         ; the ring's rows
@@ -4387,41 +4443,59 @@
      [strips fixnum]
      [strip-h fixnum]      ; a strip's height, its gap included
      [strip-gap fixnum]
-     [bars-at fixnum])     ; where the bars' room starts, under the strips
+     [bars-at fixnum]      ; where the bars' room starts, under the strips
+     [cell flonum])        ; a stipple's cell, in device pixels
     (let* ([d (fl- (fl- (fixnum->flonum w) 0.5) (fixnum->flonum x))]
            [col (flonum->fixnum (flfloor (fl/ d bar)))]
            [within (fl- d (fl* (fixnum->flonum col) bar))]
            [row (fx* (fxmod (fx- newest col) rows) row-words)]
            [lanes (fx* strips strip-h)])
       (define (spent k)
-        (fx-ref moments
-                (fx+ row
-                     (ui-stream-stack-column (fx* k ui-stream-stack-words)))))
-      (cond
-        [(or (fx>= col shown) (fl< within gap)) 0]
-        [(fx< y bars-at)
-         (if (fx< y lanes)
-             (let ([mark (fx-ref moments
-                                 (fx+ row
-                                      (fx+ columns (fxquotient y strip-h))))])
-               (if (or (fx= mark 0)
-                       (fx>= (fxmod y strip-h) (fx- strip-h strip-gap)))
-                   0
-                   (fx-ref palette
-                           (fx+ (fx* columns ui-stream-stack-words)
-                                (fx- mark 1)))))
-             0)]
-        [else
-         (let ([at (fl* (fl/ (fl- (fixnum->flonum (fx- h y)) 0.5)
-                             (fixnum->flonum (fx- h bars-at)))
-                        (fixnum->flonum top))])
-           (do-bounded 12
-               ([k 0 (fx+ k 1)]
-                [sum (spent 0) (fx+ sum (spent (fx+ k 1)))])
-             ((or (fx>= k stacked) (fl> (fixnum->flonum sum) at))
-              (if (fx>= k stacked)
-                  0
-                  (ui-stream-stack-color (fx* k ui-stream-stack-words))))))])))
+        (fx-ref moments (fx+ row (fx-ref palette k))))
+      ;; which of a stipple's n cells device pixel d is in, as the core's
+      ;; tiles have it
+      (define (cell-at d n)
+        (fxmod (fx- (flonum->fixnum
+                     (flceiling (fl/ (fl+ (fixnum->flonum d) 0.5) cell)))
+                    1)
+               n))
+      (let* ([color   ; which of the palette's, -1 for none
+              (cond
+                [(or (fx>= col shown) (fl< within gap)) -1]
+                [(fx< y bars-at)
+                 (if (fx< y lanes)
+                     (let ([mark (fx-ref moments
+                                         (fx+ row columns
+                                              (fxquotient y strip-h)))])
+                       (if (or (fx= mark 0)
+                               (fx>= (fxmod y strip-h)
+                                     (fx- strip-h strip-gap)))
+                           -1
+                           (fx+ columns (fx- mark 1))))
+                     -1)]
+                [else
+                 (let ([at (fl* (fl/ (fl- (fixnum->flonum (fx- h y)) 0.5)
+                                     (fixnum->flonum (fx- h bars-at)))
+                                (fixnum->flonum top))])
+                   (do-bounded 12
+                       ([k 0 (fx+ k 1)]
+                        [sum (spent 0) (fx+ sum (spent (fx+ k 1)))])
+                     ((or (fx>= k stacked) (fl> (fixnum->flonum sum) at))
+                      (if (fx>= k stacked) -1 k))))])]
+             [at (fx+ columns (fx* color ui-stream-color-room))])
+        (cond
+          [(fx< color 0) 0]
+          [(or (fx= (ui-stream-color-across at) 0)
+               (fx= 1
+                    (fxand 1
+                           (fxsrl (fx-ref palette
+                                          (fx+ at ui-stream-color-words
+                                               (cell-at
+                                                y
+                                                (ui-stream-color-down at))))
+                                  (cell-at x (ui-stream-color-across at))))))
+           (ui-stream-color-ink at)]
+          [else (ui-stream-color-paper at)]))))
 
   ;; Returns a strip's height and the space clear under it: a labeled strip
   ;; takes a line.
@@ -4525,23 +4599,12 @@
       (when (and newest (ui-stream-buffer s))
         (let ([palette (ui-stream-palette s)] [scale (draw-scale)])
           (for-each (lambda (entry k)
-                      (let ([row (* k ui-stream-stack-words)])
-                        (gpu-buffer-set! palette (+ row ui-stream-stack-column)
-                                         (car entry))
-                        (gpu-buffer-set! palette (+ row ui-stream-stack-color)
-                                         (if (cdr entry)
-                                             (color-word (cdr entry))
-                                             0))))
+                      (gpu-buffer-set! palette k (car entry))
+                      (ui-stream-color! s k (cdr entry)))
                     stack (iota (length stack)))
-          (fold-left (lambda (at strip)
-                       (for-each (lambda (color i)
-                                   (gpu-buffer-set!
-                                    palette
-                                    (+ (* ui-stream-stack-words columns) at i)
-                                    (color-word color)))
-                                 (cdr strip) (iota (length (cdr strip))))
-                       (+ at (length (cdr strip))))
-                     0 strips)
+          (for-each (lambda (color i) (ui-stream-color! s (+ columns i) color))
+                    (apply append (map cdr strips))
+                    (iota (ui-stream-colors s)))
           (fill-shader px py pw ph ui-stream-bars
                        (ui-stream-buffer s) palette (length stack) columns
                        (ui-stream-rows s) (ui-stream-words s)
@@ -4552,7 +4615,8 @@
                        (length strips)
                        (exact (round (* scale lane-h)))
                        (exact (round (* scale lane-gap)))
-                       (exact (round (* scale (ui-stream-room strips)))))))
+                       (exact (round (* scale (ui-stream-room strips))))
+                       (inexact scale))))
       (when over (over areas count))
       (ui-draw-bar-chart-rules x (list (cons 'plot (cdr (assq 'bars areas))))
                                top rules)
@@ -5252,7 +5316,8 @@
            [areas (ui-row-areas x y w h
                                 (if prefix (plist-ref opts 'prefix-width 0) 0)
                                 sw)]
-           [t (cdr (assq 'title areas))])
+           [t (cdr (assq 'title areas))]
+           [flags (ui-opt-flags opts '(disabled selected))])
       (if on-press
           (ui-pressable! ui rid x y w h on-press '(#\space return) opts
                          '((L . "Choose")))
@@ -5262,12 +5327,13 @@
                           (append (if first? '(first) '())
                                   (if last? '(last) '())
                                   (if on-press '(activatable) '())
-                                  (ui-opt-flags opts '(disabled selected))))
+                                  flags))
                    (and (not body) title) (and (not body) subtitle)
                    (car t) (caddr t))
       (when prefix (apply prefix (cdr (assq 'prefix areas))))
       (when body (apply body t))
-      (when suffix (apply suffix (cdr (assq 'suffix areas))))))
+      (when suffix (apply suffix (cdr (assq 'suffix areas))))
+      (when (memq 'selected flags) (ui-draw-highlight-over x y w h '()))))
 
   ;; A row whose switch says whether something is on (a switch row): a
   ;; press anywhere on the row switches it. opts: 'subtitle, and a row's.
@@ -5355,16 +5421,19 @@
   (define-part (ui-add-row-height) (ui-row-height "" #f))
 
   ;; The row that adds one: its flags are a row's, and a plus and its label
-  ;; go where a row's title goes, in the accent.
+  ;; go where a row's title goes, in the accent, or as what can't be used.
   (define-part (ui-draw-add-row x y w h flags label)
     (let* ([t (cdr (assq 'title (ui-row-areas x y w h 0 0)))]
            [g (ui-glyph-size)] [lh (font-line-height 'ui)]
            [tx (car t)] [lx (+ tx g (ui-gap))])
       (ui-draw-row x y w h flags #f #f tx (caddr t))
-      (ui-draw-glyph tx (+ y (/ (- h g) 2)) g g '((ink . accent)) 'plus)
+      (ui-draw-glyph tx (+ y (/ (- h g) 2)) g g
+                     (cons '(ink . accent)
+                           (if (memq 'disabled flags) '(disabled) '()))
+                     'plus)
       (draw-text lx (ui-text-y (+ y (/ (- h lh) 2)) 'ui)
                  (text-fit label (max 0 (- (+ tx (caddr t)) lx)) 'ui)
-                 (if (memq 'disabled flags) (alpha 'accent 0.5) 'accent)
+                 (if (memq 'disabled flags) 'text-disabled 'accent)
                  'ui)))
 
   ;; The corner radius of the box of rows.
@@ -5384,7 +5453,7 @@
     (let* ([on? (lambda (f) (memq f flags))]
            [lh (font-line-height 'ui)] [sh (font-line-height 'ui-small)]
            [th (if subtitle (+ lh 2 sh) lh)] [ty (+ y (/ (- h th) 2))]
-           [ink (lambda (c) (if (on? 'disabled) (alpha c 0.5) c))])
+           [ink (lambda (c) (if (on? 'disabled) 'text-disabled c))])
       (cond [(on? 'selected) (fill-box x y w h 'selection)]
             [(and (on? 'activatable) (on? 'pressed)) (fill-box x y w h 'bg-3)]
             [(and (on? 'activatable) (on? 'hover)) (fill-box x y w h 'bg-2)])

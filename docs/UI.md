@@ -401,7 +401,11 @@ calls the app with a bar's index when it is pressed; `ui-stream` draws
 bars that keep coming, their numbers kept on the GPU, as Monitor's ticks
 are drawn. A series is drawn in the color the app gives it. The kit's
 `chart-1` to `chart-8` are settings taken from the palette's hues, so a
-style can give its own: Genera, which has no color, gives stipples.
+style can give its own: Genera, which has no color, gives stipples, which
+a stream's paint draws too (those of up to 16 rows of 32 cells; a larger
+one comes out as a flat gray). `chart-level-1` to `chart-level-8` say how
+much of something a mark stands for, from faint to strong: a hue that
+fills in, and in Genera a stipple.
 
 ## Boards, cards and marks
 

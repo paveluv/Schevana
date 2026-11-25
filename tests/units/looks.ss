@@ -311,6 +311,30 @@
          (and (equal? (at 'genera) '(ink ink paper))
               (eq? (caddr (at 'mac)) 'ink))))
 
+(check "Genera's row of a boxed list: its 2-pixel box when chosen; a \
+        1-pixel box inside its rules under the mouse, where a press does \
+        something and while it can be used"
+       (let ([at (lambda (flags)   ; which pixels of its left end are ink
+                   (with-style 'genera
+                     (lambda ()
+                       (let* ([img (image 100 30 1
+                                          (lambda ()
+                                            (fill-box 0 0 100 30 'window-bg)
+                                            (ui-draw-row 0 0 100 30 flags #f #f
+                                                         10 80)))]
+                              [ink (filter (lambda (x)
+                                             (= (pixel-at img x 15)
+                                                (color->pixel 'text)))
+                                           (iota 10))])
+                         (picture-free! img)
+                         ink))))])
+         (let ([r (map at '((activatable) (activatable hover)
+                            (activatable pressed) (hover)
+                            (activatable hover disabled)
+                            (activatable hover selected)))])
+           (printf "  ~s\n" r)
+           (equal? r '(() (3) (3) () () (0 1))))))
+
 (check "a table calls ui-draw-highlight-over on its chosen row after the \
         row's cells, and on no other"
        (with-test-styles
@@ -1985,7 +2009,6 @@
            ;; clear of both borders, which are 2 pixels
            (and r (> (car r) 3) (> (cadr r) 3)))))
 
-
 ;; What only the mouse shows on the Lisp machines is the box around what it
 ;; is over; a part that had no box of its own there now has one, and
 ;; Interlisp's default button, its accent its ink, still changes under the
@@ -2201,12 +2224,31 @@
                                   (gray (cdr g))))
                        grays))))
 
+;; Draws, 120 by 24 at (4, y), a stream of one bar of every chart color,
+;; under strips of the rest.
+(define (looks-test-stream y flags)
+  (let* ([colors '(chart-1 chart-2 chart-3 chart-4 chart-5 chart-6 chart-7
+                   chart-8 chart-muted-1 chart-muted-2)]
+         [n (length colors)]
+         [s (ui-stream-new 16 n '((#f chart-ok chart-flag chart-mark)
+                                  (#f chart-level-1 chart-level-2
+                                      chart-level-3 chart-level-4
+                                      chart-level-5 chart-level-6
+                                      chart-level-7 chart-level-8)))])
+    (ui-stream-send! s 0 11 (lambda (seq j)
+                              (cond [(< j n) 1]
+                                    [(= j n) (mod seq 4)]
+                                    [else (mod seq 9)])))
+    (let-values ([(count areas) (ui-stream-layout s 4 y 120 24 11 0 '() 1 #t)])
+      (ui-draw-stream 4 y 120 24 flags s areas count 11 n '()
+                      (map cons (iota n) colors) '() #f))))
+
 (check "in P4, Genera and the CADR draw their widgets in its ink and its \
         paper alone, whatever their state"
        (let* ([w 120] [h 24]
               [states '(() (hover) (pressed) (disabled) (focused) (selected)
                         (checked) (primary) (primary hover)
-                        (primary disabled) (checked disabled))]
+                        (primary disabled) (checked disabled) (dim))]
               [parts (list
                       (lambda (y fl) (ui-draw-button 4 y w h fl "Word" 'plus))
                       (lambda (y fl) (ui-draw-checkbox 4 y w h fl "Word"))
@@ -2217,7 +2259,19 @@
                       (lambda (y fl) (ui-draw-dropdown 4 y w h fl "Word"))
                       (lambda (y fl) (ui-draw-chip 4 y w h fl "Word"))
                       (lambda (y fl) (ui-draw-slider 4 y w h fl 1/3 #f))
-                      (lambda (y fl) (ui-draw-progress 4 y w h fl 1/3)))]
+                      (lambda (y fl) (ui-draw-progress 4 y w h fl 1/3))
+                      (lambda (y fl)
+                        (ui-draw-row 4 y w h (cons 'activatable fl) "Word" #f
+                                     8 (- w 8)))
+                      (lambda (y fl)
+                        (ui-draw-row 4 y w h fl #f "Word" 8 (- w 8)))
+                      (lambda (y fl)
+                        (ui-draw-add-row 4 y w h (cons 'activatable fl)
+                                         "Word"))
+                      (lambda (y fl)
+                        (fill-box 4 y h h (ui-icon-ink fl 'accent)))
+                      (lambda (y fl) (ui-draw-env-icon 4 y h fl 'sandbox))
+                      looks-test-stream)]
               [pw (+ w 8)] [ph (* (length states) (+ h 8))])
          (define (two-colors? draw)
            (let* ([img (image pw ph 1

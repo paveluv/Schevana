@@ -201,6 +201,59 @@
            (ui-stream-release! s)
            ok)))
 
+(check "a stream draws a stipple in its bars and its strips as a box does, \
+        its cells counted from the plot's corner, at any scale; one of more \
+        rows than it has room for is drawn as the gray it comes to"
+       (let ([pattern (stipple #xff0000 #x00ff00 "##.." "...#" "#.#.")]
+             [clear (stipple #x0000ff #f "#.." ".#.")]
+             [tall (apply stipple #xff0000 #x00ff00
+                          (append (make-list 10 "#.") (make-list 7 "##")))])
+         ;; how many pixels of a stream of one bar, as high as its plot,
+         ;; under a strip, both in color, aren't as want fills the plot, 3
+         ;; in from its edges (the well's corners, the bar's gap)
+         (define (wrong scale color want)
+           (let ([s (ui-stream-new 16 1 (list (list #f color)))]
+                 [at (lambda (v) (exact (round (* scale v))))])
+             (define (inside n) (map (lambda (i) (+ i (at 3)))
+                                     (iota (- (at n) (* 2 (at 3))))))
+             (ui-stream-send! s 0 0 (lambda (seq j) (if (= j 0) 10 1)))
+             (let*-values
+                 ([(count areas) (ui-stream-layout s 0 0 60 44 0 0 '() 1 #t)]
+                  [(px py pw ph) (apply values (cdr (assq 'plot areas)))])
+               (let* ([shown (image (at 60) (at 44) scale
+                                    (lambda ()
+                                      (ui-draw-stream 0 0 60 44 '() s areas
+                                                      count 0 10 '()
+                                                      (list (cons 0 color))
+                                                      '() #f)))]
+                      [filled (image (at pw) (at ph) scale
+                                     (lambda ()
+                                       (fill-box 0 0 pw ph 'bg-0)
+                                       (fill-box 0 0 pw ph want)))]
+                      [n (fold-left
+                          (lambda (n y)
+                            (fold-left
+                             (lambda (n x)
+                               (if (= (pixel-at shown (+ (at px) x)
+                                                (+ (at py) y))
+                                      (pixel-at filled x y))
+                                   n
+                                   (+ n 1)))
+                             n (inside pw)))
+                          0 (inside ph))])
+                 (picture-free! shown)
+                 (picture-free! filled)
+                 (ui-stream-release! s)
+                 n))))
+         (let ([r (map (lambda (scale)
+                         (list (wrong scale pattern pattern)
+                               (wrong scale clear clear)
+                               (wrong scale 'chart-muted-2 'chart-muted-2)
+                               (wrong scale tall (mix tall tall 0))))
+                       '(1 1.25 1.5 2))])
+           (printf "  ~s\n" r)
+           (equal? r (make-list 4 '(0 0 0 0))))))
+
 ;; Fitted, all of a stream's moments go across its width, with bars
 ;; narrower than a pixel if that is what it takes.
 (check "a stream fitted shows every moment from oldest to newest, the oldest \

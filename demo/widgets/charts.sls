@@ -91,22 +91,30 @@
                               (ui-draw-legend x y cw lh '() keys)
                               (+ y lh 6))])
                 (+ gap
-                   (legend (legend (legend y
-                                           '((chart-1 . "chart-1")
-                                             (chart-2 . "chart-2")
-                                             (chart-3 . "chart-3")
-                                             (chart-4 . "chart-4")
-                                             (chart-5 . "chart-5")))
-                                   '((chart-6 . "chart-6")
-                                     (chart-7 . "chart-7")
-                                     (chart-8 . "chart-8")
-                                     (chart-muted-1 . "chart-muted-1")
-                                     (chart-muted-2 . "chart-muted-2")))
-                           '((chart-mark . "chart-mark")
-                             (chart-share . "chart-share")
-                             (chart-rule . "chart-rule")
-                             (chart-flag . "chart-flag")
-                             (chart-ok . "chart-ok")))))]
+                   (fold-left legend y
+                     '(((chart-1 . "chart-1")
+                        (chart-2 . "chart-2")
+                        (chart-3 . "chart-3")
+                        (chart-4 . "chart-4")
+                        (chart-5 . "chart-5"))
+                       ((chart-6 . "chart-6")
+                        (chart-7 . "chart-7")
+                        (chart-8 . "chart-8")
+                        (chart-muted-1 . "chart-muted-1")
+                        (chart-muted-2 . "chart-muted-2"))
+                       ((chart-mark . "chart-mark")
+                        (chart-share . "chart-share")
+                        (chart-rule . "chart-rule")
+                        (chart-flag . "chart-flag")
+                        (chart-ok . "chart-ok"))
+                       ((chart-level-1 . "chart-level-1")
+                        (chart-level-2 . "2")
+                        (chart-level-3 . "3")
+                        (chart-level-4 . "4")
+                        (chart-level-5 . "5")
+                        (chart-level-6 . "6")
+                        (chart-level-7 . "7")
+                        (chart-level-8 . "8"))))))]
            [y (widgets-heading x y w "Avatars")]
            [y (let loop ([names '("Ada Lovelace" "Alan Turing" "Grace Hopper"
                                   "John McCarthy" "Claude")]

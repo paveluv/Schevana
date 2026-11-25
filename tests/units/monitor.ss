@@ -164,7 +164,7 @@
                              (string-prefix? "chart-" (symbol->string k)))
                            color-keys)]
              [listed (apply append (map cdr (theme 'color-groups)))])
-         (and (= (length keys) 15)
+         (and (= (length keys) 23)
               (for-all
                (lambda (s)
                  (with-style (style-name s)

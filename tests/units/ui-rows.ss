@@ -214,6 +214,54 @@
     (close-window! win)
     (reverse seen)))
 
+(check "a row that can't be used has its words in text-disabled, the row \
+        that adds one too, its plus drawn as a disabled glyph"
+       (let* ([seen '()] [see! (lambda (what) (set! seen (cons what seen)))]
+              [draw (lambda (flags)
+                      (set! seen '())
+                      (fluid-let ([draw-text
+                                   (lambda (x y s color . f)
+                                     (see! (list s color))
+                                     x)]
+                                  [ui-draw-glyph
+                                   (lambda (x y w h flags name)
+                                     (see! (cons name flags)))])
+                        (picture-free!
+                         (image 300 100 1
+                                (lambda ()
+                                  (ui-draw-row 0 0 300 44 flags "T" "S" 10 200)
+                                  (ui-draw-add-row 0 50 300 44 flags "A")))))
+                      (reverse seen))]
+              [r (list (draw '(activatable)) (draw '(activatable disabled)))])
+         (printf "  ~s\n" r)
+         (equal? r '((("T" text) ("S" text-dim) (plus (ink . accent))
+                      ("A" accent))
+                     (("T" text-disabled) ("S" text-disabled)
+                      (plus (ink . accent) disabled)
+                      ("A" text-disabled))))))
+
+(check "a box of rows calls ui-draw-highlight-over on its chosen row, after \
+        what the row holds, and on no other"
+       (let* ([seen '()]
+              [row (lambda (k . opts)
+                     (cons* k #f 20
+                            (lambda (x y w h) (set! seen (cons k seen)))
+                            opts))]
+              [win (fluid-let ([ui-draw-highlight-over
+                                (lambda (x y w h flags)
+                                  (set! seen (cons 'over seen)))])
+                     (let ([win (test-kit-window "Rows"
+                                  (lambda (ui w h)
+                                    (set! seen '())
+                                    (ui-rows ui 'rows 20 20 300
+                                             (list (row "a")
+                                                   (row "b" 'selected #t)
+                                                   (row "c")))))])
+                       (steps 2)
+                       win))])
+         (close-window! win)
+         (equal? (reverse seen) '("a" "b" over "c"))))
+
 (check "a segmented choice's pieces are flagged segment; with no gap they \
         are one group, their inner sides joined; tabs say which is first \
         and which last"

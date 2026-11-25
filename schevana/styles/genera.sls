@@ -29,7 +29,8 @@
     genera-text-box-size genera-dropdown genera-dropdown-size genera-chip
     genera-chip-size genera-chip-areas genera-card genera-scrollbar-areas
     genera-scrollbar genera-slider genera-progress genera-table-header
-    genera-table-row genera-tree-row genera-dim genera-surface genera-panel
+    genera-table-row genera-tree-row genera-row genera-dim genera-surface
+    genera-panel
     genera-highlight genera-highlight-over genera-separator genera-tooltip
     genera-tooltip-size genera-dialog-size genera-dialog-areas genera-dialog
     genera-scrim genera-calendar-areas genera-calendar-size genera-calendar
@@ -63,8 +64,8 @@
                 ui-text-box-top ui-scrollbar-width ui-control-height
                 ui-draw-focus ui-draw-glyph ui-glyph-size ui-busy-frame-ms
                 ui-italic-of ui-wrap-lines ui-fade ui-live-badge-mark
-                ui-live-badge-back ui-draw-radio* ui-radio-text-x
-                ui-banner-areas))
+                ui-live-badge-back ui-draw-radio* ui-draw-row*
+                ui-radio-text-x ui-banner-areas))
 
   (library-layer looks)
 
@@ -642,6 +643,17 @@
     (cond [(memq 'selected flags) (genera-box x y w h 2)]
           [(memq 'hover flags) (genera-hover x y w h)]))
 
+  ;; A row of a boxed list: its words and its rule, chosen as a table's row
+  ;; is (its inside inverted once it holds what it holds), and, where a
+  ;; press on it does something, boxed under the mouse, inside its rules.
+  (define (genera-row x y w h flags title subtitle tx tw)
+    (ui-draw-row* x y w h
+                  (remp (lambda (f) (memq f '(hover pressed selected))) flags)
+                  title subtitle tx tw)
+    (cond [(memq 'selected flags) (genera-box x y w h 2)]
+          [(and (memq 'activatable flags) (genera-hot? flags))
+           (genera-hover (+ x 3) (+ y 3) (- w 6) (- h 6))]))
+
   ;; A tree shown by indentation, as FSEdit's (WB Fig. 39); a node's
   ;; triangle, from the MOUSE font, points right when closed and down when
   ;; open.
@@ -1162,6 +1174,7 @@
      'ui-draw-table-header 'genera-table-header
      'ui-draw-table-row 'genera-table-row
      'ui-draw-tree-row 'genera-tree-row
+     'ui-draw-row 'genera-row
      'ui-draw-dim 'genera-dim
      'ui-draw-surface 'genera-surface
      'ui-draw-panel 'genera-panel
@@ -1201,6 +1214,17 @@
      'chart-mark 'genera-gray
      'chart-flag 'text
      'chart-ok (stipple 'text #f "#..." "...." "...." "....")
+     ;; how much, in eighths of ink: the CADR's grays (scrman.lisp:437-443,
+     ;; MIT), HES-GRAY, 25%-GRAY, 50%-GRAY and 75%-GRAY, and what lies
+     ;; between them
+     'chart-level-1 (stipple 'text #f "#..." "...." "..#." "....")
+     'chart-level-2 (stipple 'text #f "#..." "..#." ".#.." "...#")
+     'chart-level-3 (stipple 'text #f "#.#." ".#.." "#.#." "...#")
+     'chart-level-4 (stipple 'text #f ".#" "#.")
+     'chart-level-5 (stipple 'text #f ".#.#" "#.##" ".#.#" "###.")
+     'chart-level-6 (stipple 'text #f ".###" "##.#" "#.##" "###.")
+     'chart-level-7 (stipple 'text #f ".###" "####" "##.#" "####")
+     'chart-level-8 'text
      ;; the feel
      'title-double-click 'none
      ;; a window moves and reshapes by a rectangle, not its contents
