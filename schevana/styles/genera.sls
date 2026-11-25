@@ -34,7 +34,9 @@
     genera-tooltip-size genera-dialog-size genera-dialog-areas genera-dialog
     genera-scrim genera-calendar-areas genera-calendar-size genera-calendar
     genera-day genera-5x5 genera-avatar-size genera-avatar genera-mark
-    genera-due genera-board-slot genera-italic-of genera-draw-wallpaper)
+    genera-due genera-board-slot genera-italic-of genera-draw-wallpaper
+    genera-menu-grid-heading genera-menu-grid-item genera-inline-choice
+    genera-inline-choice-size genera-keycap genera-choice-grid-cell)
   (import (chezscheme)
           (only (schevana base) at-load clamp define-made library-layer
                 string-join string-suffix?)
@@ -726,6 +728,56 @@
       (fill-box (+ x b) (- (+ y h) b (genera-dialog-strip) 1) (- w b b) 1
                 'text)))
 
+  ;; The kit's grids, key caps and inline choices, as the Lisp machines'
+  ;; menus and accept-values drew them (PUI's choose-variable-values): a
+  ;; menu's heading in its italic, its choices its menu's entries, boxed
+  ;; under the mouse and reversed when chosen; a value among its fellows
+  ;; in bold; a key in a lozenge of the 5X5 (shwarm.lisp:675-700); a
+  ;; matrix's cell a choice box.
+  (define (genera-menu-grid-heading x y w h flags label)
+    (text-draw-centered x y w h label 'text
+                        (or (theme 'menu-hint-font)
+                            (genera-italic-of (get-font (theme 'menu-font))))))
+
+  (define (genera-menu-grid-item x y w h flags label)
+    (let* ([f (theme 'menu-font)] [text (text-fit label (- w 4) f)]
+           [sel? (memq 'selected flags)]
+           [tx (genera-text-x x w text f)] [ty (genera-text-y y h f)])
+      (when sel? (fill-box x y w h 'text))
+      (when (and (not (memq 'disabled flags))
+                 (or (memq 'hover flags) (memq 'pressed flags)))
+        (genera-hover-text x y w h tx ty text f))
+      (draw-text tx ty text
+                 (cond [sel? 'window-bg] [(memq 'disabled flags) 'text-faint]
+                       [else 'text])
+                 f)
+      (when (memq 'focused flags) (ui-draw-focus x y w h flags 0))))
+
+  (define (genera-inline-choice x y w h flags label)
+    (let* ([f (theme (if (memq 'selected flags)
+                         'genera-choice-bold
+                         'genera-choice-font))]
+           [tx (genera-text-x x w label f)] [ty (genera-text-y y h f)])
+      (when (or (memq 'hover flags) (memq 'pressed flags))
+        (genera-hover-text x y w h tx ty label f))
+      (draw-text tx ty label 'text f)
+      (when (memq 'focused flags) (ui-draw-focus x y w h flags 0))))
+
+  (define (genera-inline-choice-size label)
+    (values (+ 8 (text-width label (theme 'genera-choice-bold)))
+            (ui-control-height)))
+
+  (define (genera-keycap x y w h flags label)
+    (when (or (memq 'hover flags) (memq 'pressed flags))
+      (genera-hover x y w h))
+    (genera-lozenge (+ x (floor (/ (- w (genera-lozenge-width label)) 2)))
+                    (+ y (floor (/ (- h 9) 2))) label 'text)
+    (when (memq 'focused flags) (ui-draw-focus x y w h flags 0)))
+
+  (define (genera-choice-grid-cell x y w h flags)
+    (let ([s (genera-choice-side)] [p (theme 'genera-choice-padding)])
+      (genera-checkbox (+ x (/ (- w s) 2) (- p)) y (+ s p p) h flags #f)))
+
   ;; Nothing under a dialog: a temporary window neither deexposes nor grays
   ;; the window below it (PUI p.1929).
   (define (genera-scrim x y w h flags) (void))
@@ -1001,6 +1053,12 @@
      'genera-choice-heavy #f
      'genera-margin-choice #f
      'ui-draw-button 'genera-button
+     'ui-draw-menu-grid-heading 'genera-menu-grid-heading
+     'ui-draw-menu-grid-item 'genera-menu-grid-item
+     'ui-draw-inline-choice 'genera-inline-choice
+     'ui-inline-choice-size 'genera-inline-choice-size
+     'ui-draw-keycap 'genera-keycap
+     'ui-draw-choice-grid-cell 'genera-choice-grid-cell
      'ui-button-size 'genera-button-size
      'ui-draw-checkbox 'genera-checkbox
      'ui-checkbox-size 'genera-checkbox-size

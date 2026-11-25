@@ -24,8 +24,9 @@ it returns is the live thing, not a copy:
 
 Every app opens the same way, by its name: `(repl)`, `(settings)`,
 `(tasks)`, `(monitor)`, `(pipeline)`, and, on a desktop started with the
-demos, `(boids)`, `(boids3d)`, `(life)`, `(sketch)`, `(springies)` and
-`(rings)`. What an app holds is live too. Tasks keeps its tasks as
+demos, `(boids)`, `(boids3d)`, `(life)`, `(sketch)`, `(springies)`,
+`(rings)` and `(widgets)`, every widget of the kit in every state, to
+look at a style by. What an app holds is live too. Tasks keeps its tasks as
 records, which its procedures find, read and change, and its window shows
 each change at once. With the demos it holds Schevana's backlog, which
 `demo/backlog.sls` enters with these same procedures:

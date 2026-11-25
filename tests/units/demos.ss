@@ -114,17 +114,17 @@
   (check (format "a folder auto-loaded joins the library search and loads \
                   its libraries, by their names from the tree: the demos' \
                   apps register, Boids, Life and the rest among them, and \
-                  Boids 3D's parts are no entries; a file is no folder to \
-                  load ~s"
+                  Boids 3D's and Widgets' parts are no entries; a file is \
+                  no folder to load ~s"
                  (auto-load-entries dir))
          (and (equal? (auto-load-entries dir)
                       '((demo backlog) (demo boids) (demo boids3d)
                         (demo life) (demo rings) (demo sketch)
-                        (demo springies)))
+                        (demo springies) (demo widgets)))
               ;; made absolute, as the tree's root may not be (".")
               (string-suffix? "/demo" (car (last-pair (auto-loads))))
               (for-all (lambda (app) (memq app (apps)))
-                       '(boids boids3d life rings sketch springies))
+                       '(boids boids3d life rings sketch springies widgets))
               ;; a folder of the library search, which a file can't be
               (exists (lambda (d)
                         (equal? (path-full (if (pair? d) (car d) d))

@@ -61,8 +61,13 @@
     ui-text-box-areas ui-text-box-areas* ui-text-box-inset ui-text-box-size
     ui-text-box-size* ui-text-area-size ui-text-area-size* ui-text-field
     ui-text-area ui-draw-text-box* ui-draw-suggestion ui-draw-suggestion*
-    ui-disabled ui-rank ui-suggestions ui-scroll ui-scroll-wide ui-scrollbar
-    ui-scrollbar-across ui-reveal! ui-scrollbar-width
+    ui-disabled ui-menu-grid ui-draw-menu-grid-panel*
+    ui-draw-menu-grid-heading* ui-draw-menu-grid-item* ui-choice-grid
+    ui-draw-choice-grid-label* ui-draw-choice-grid-cell* ui-keycap
+    ui-draw-keycap* ui-inline-choices ui-draw-inline-choice*
+    ui-inline-choice-size* ui-split-stacked ui-rank ui-suggestions ui-scroll
+    ui-scroll-wide ui-scrollbar ui-scrollbar-across ui-reveal!
+    ui-scrollbar-width
     ui-scrollbar-inset ui-frame-scrollbar ui-scrollbar-areas ui-scrollbar-areas*
     ui-draw-scrollbar ui-draw-scrollbar* ui-title-icon ui-icon-grid ui-icon-ink
     ui-draw-app-icon ui-draw-window-icon ui-draw-app-tile*
@@ -2905,33 +2910,51 @@
   ;; click on the line goes back to at. The line's handle, from y and h
   ;; high, goes over the panes: it is laid out at ui-end!, after them.
   (define (ui-split ui id x y w h at lo hi)
-    (let* ([most (max lo (- w hi))]
-           [left (clamp (ui-memo ui (list id 'at) at) lo most)]
-           [line (+ x left)])
+    (ui-split-of ui id x y w h at lo hi #f))
+
+  ;; The same of two panes one above the other: returns the top pane's
+  ;; height in y..y+h, the bottom one at least hi high. The line is the
+  ;; style's, transposed.
+  (define (ui-split-stacked ui id x y w h at lo hi)
+    (ui-split-of ui id x y w h at lo hi #t))
+
+  (define (ui-split-of ui id x y w h at lo hi stacked?)
+    (let* ([room (if stacked? h w)] [from (if stacked? y x)]
+           [most (max lo (- room hi))]
+           [first (clamp (ui-memo ui (list id 'at) at) lo most)]
+           [line (+ from first)])
       (ui-later! ui
         (lambda (ww wh)
-          (ui-region! ui id (- line 3) y 6 h 'focus 'keep 'cursor 'resize-ew
-            'doc '((L . "Resize the panes") (L2 . "Back to their widths"))
+          (ui-region! ui id
+            (if stacked? x (- line 3)) (if stacked? (- line 3) y)
+            (if stacked? w 6) (if stacked? 6 h)
+            'focus 'keep 'cursor (if stacked? 'resize-ns 'resize-ew)
+            'doc '((L . "Resize the panes") (L2 . "Back to their sizes"))
             'on
             (lambda (ev)
-              (case (car ev)
-                [(press)
-                 (and (eq? (list-ref ev 3) 'left)
-                      (begin
-                        (if (>= (list-ref ev 4) 2)
-                            (hashtable-delete! (ui-state-memo ui) (list id 'at))
-                            (ui-memo! ui (list id 'grab) (- (cadr ev) line)))
-                        #t))]
-                [(drag)
-                 (let ([new (clamp (exact (round (- (cadr ev) x
-                                                    (ui-memo ui (list id 'grab)
-                                                             0))))
-                                   lo most)])
-                   (and (< (cadddr ev) 2) (not (= new left))
-                        (begin (ui-memo! ui (list id 'at) new) #t)))]
-                [else #f])))
-          (ui-draw-split line y h (ui-flags ui id))))
-      left))
+              (let ([p (if stacked? (caddr ev) (cadr ev))])
+                (case (car ev)
+                  [(press)
+                   (and (eq? (list-ref ev 3) 'left)
+                        (begin
+                          (if (>= (list-ref ev 4) 2)
+                              (hashtable-delete! (ui-state-memo ui)
+                                                 (list id 'at))
+                              (ui-memo! ui (list id 'grab) (- p line)))
+                          #t))]
+                  [(drag)
+                   (let ([new (clamp (exact (round (- p from
+                                                      (ui-memo ui
+                                                               (list id 'grab)
+                                                               0))))
+                                     lo most)])
+                     (and (< (cadddr ev) 2) (not (= new first))
+                          (begin (ui-memo! ui (list id 'at) new) #t)))]
+                  [else #f]))))
+          (if stacked?
+              (with-transpose (ui-draw-split line x w (ui-flags ui id)))
+              (ui-draw-split line y h (ui-flags ui id)))))
+      first))
 
   ;; The line between two panes at x, which a drag moves: it shows under the
   ;; pointer and while dragged (flags hover, pressed); at rest, the panes'
@@ -2939,6 +2962,142 @@
   (define-part (ui-draw-split x y h flags)
     (when (or (memq 'hover flags) (memq 'pressed flags))
       (fill-box (- x 1) y 2 h 'accent)))
+
+  ;;; ---------------------------------------------------------------- grids
+  ;;; The Lisp machines' menus of columns and their choice matrices (TV's
+  ;;; multiple-choice menus, Genera's accept-values), made of the kit's
+  ;;; parts so that every style draws them its own way.
+
+  ;; A menu of columns, each a heading over its choices: columns is
+  ;; ((heading (label . value) ...) ...) and selected the values chosen. A
+  ;; press on a choice calls (on-change selected) with the new list, as
+  ;; opts' 'policy says: single (that one value), multiple (each on and
+  ;; off), or columns (one in each column). 'enabled? (value) is false for
+  ;; a choice not to be had now; 'row-height. Returns the grid's bottom.
+  (define (ui-menu-grid ui id x y w columns selected on-change . opts)
+    (let* ([h (plist-ref opts 'row-height (ui-control-height))]
+           [policy (plist-ref opts 'policy 'single)]
+           [enabled? (plist-ref opts 'enabled? (lambda (v) #t))]
+           [n (length columns)] [cw (/ w (max n 1))]
+           [rows (fold-left (lambda (r c) (max r (length c))) 0 columns)]
+           [height (+ 8 (* rows h))])
+      (ui-draw-menu-grid-panel x y w height '())
+      (for-each
+       (lambda (column c)
+         (let ([cx (+ x (* c cw))])
+           (ui-draw-menu-grid-heading (+ cx 4) (+ y 4) (- cw 8) h '()
+                                      (car column))
+           (for-each
+            (lambda (entry r)
+              (let* ([value (cdr entry)] [on? (and (member value selected) #t)]
+                     [rid (list id c r)] [ey (+ y 4 (* (+ r 1) h))]
+                     [off? (not (enabled? value))])
+                (ui-pressable! ui rid (+ cx 4) ey (- cw 8) h
+                  (lambda ()
+                    (on-change
+                     (case policy
+                       [(multiple)
+                        (if on? (remove value selected) (cons value selected))]
+                       [(columns)
+                        (cons value
+                              (filter (lambda (v)
+                                        (not (member v (map cdr (cdr column)))))
+                                      selected))]
+                       [else (list value)])))
+                  '(#\space return) (list 'disabled off?) '((L . "Choose")))
+                (ui-draw-menu-grid-item (+ cx 4) ey (- cw 8) h
+                                        (apply ui-flags ui rid
+                                               (append
+                                                (if on? '(selected) '())
+                                                (if off? '(disabled) '())))
+                                        (car entry))))
+            (cdr column) (iota (length (cdr column))))))
+       columns (iota n))
+      (+ y height)))
+
+  (define-part (ui-draw-menu-grid-panel x y w h flags)
+    (ui-draw-panel x y w h (cons 'menu flags)))
+  (define-part (ui-draw-menu-grid-heading x y w h flags label)
+    (ui-draw-label x y w h (append '(group center) flags) label))
+  (define-part (ui-draw-menu-grid-item x y w h flags label)
+    (ui-draw-button x y w h flags label #f))
+
+  ;; A matrix of choices, rows by columns, each cell a box to tick:
+  ;; (checked? row column) and (on-change row column on?). opts: 'enabled?
+  ;; (row column), false for a cell not to be had, which is left blank, or
+  ;; drawn disabled with 'show-unavailable; 'heading over the rows' names,
+  ;; 'label-width, 'row-height. Returns the matrix's bottom.
+  (define (ui-choice-grid ui id x y w rows columns checked? on-change . opts)
+    (let* ([h (plist-ref opts 'row-height (ui-control-height))]
+           [name-w (plist-ref opts 'label-width (* w 9/25))]
+           [cw (/ (- w name-w) (max 1 (length columns)))]
+           [enabled? (plist-ref opts 'enabled? (lambda (r c) #t))]
+           [show? (plist-ref opts 'show-unavailable #f)])
+      (ui-draw-choice-grid-label x y name-w h '(group)
+                                 (plist-ref opts 'heading "Item"))
+      (for-each (lambda (label c)
+                  (ui-draw-choice-grid-label (+ x name-w (* c cw)) y cw h
+                                             '(group center) label))
+                columns (iota (length columns)))
+      (for-each
+       (lambda (label r)
+         (let ([ry (+ y (* (+ r 1) h))])
+           (ui-draw-choice-grid-label x ry name-w h '() label)
+           (do ([c 0 (+ c 1)]) ((= c (length columns)))
+             (let* ([on (enabled? r c)] [on? (checked? r c)]
+                    [rid (list id r c)] [bx (+ x name-w (* c cw))])
+               (when (or on show?)
+                 (ui-pressable! ui rid bx ry cw h
+                                (lambda () (on-change r c (not on?)))
+                                '(#\space) (list 'disabled (not on))
+                                '((L . "Toggle the choice")))
+                 (ui-draw-choice-grid-cell
+                  bx ry cw h
+                  (apply ui-flags ui rid
+                         (append (if on? '(checked) '())
+                                 (if on '() '(disabled))))))))))
+       rows (iota (length rows)))
+      (+ y (* h (+ 1 (length rows))))))
+
+  (define-part (ui-draw-choice-grid-label x y w h flags label)
+    (ui-draw-label x y w h flags label))
+  (define-part (ui-draw-choice-grid-cell x y w h flags)
+    (let-values ([(cw ch) (ui-checkbox-size "")])
+      (ui-draw-checkbox (+ x (/ (- w cw) 2)) y cw h flags #f)))
+
+  ;; A key cap: a button that does action, and answers to keys (as
+  ;; ui-pressable! takes them) while it has the keyboard, labeled with the
+  ;; key; a style draws it as its keys look (Genera's, in a lozenge).
+  (define (ui-keycap ui id x y w h label action keys)
+    (ui-pressable! ui id x y w h action keys '() (list (cons 'L label)))
+    (ui-draw-keycap x y w h (ui-flags ui id) label))
+
+  (define-part (ui-draw-keycap x y w h flags label)
+    (ui-draw-button x y w h flags label #f))
+
+  ;; A choice of a few values shown all at once, in a row from x, the
+  ;; current one marked (Genera's accept-values: the words, the current
+  ;; one bold): choices ((label . value) ...). A press on one calls
+  ;; (on-select value). Returns where the row ends.
+  (define (ui-inline-choices ui id x y h choices current on-select)
+    (let loop ([cs choices] [cx x] [i 0])
+      (if (null? cs)
+          cx
+          (let*-values ([(c) (car cs)] [(rid) (list id i)]
+                        [(cw ch) (ui-inline-choice-size (car c))])
+            (ui-pressable! ui rid cx y cw h (lambda () (on-select (cdr c)))
+                           '(#\space return) '() '((L . "Choose")))
+            (ui-draw-inline-choice cx y cw h
+                                   (apply ui-flags ui rid
+                                          (if (equal? (cdr c) current)
+                                              '(selected)
+                                              '()))
+                                   (car c))
+            (loop (cdr cs) (+ cx cw 4) (+ i 1))))))
+
+  (define-part (ui-draw-inline-choice x y w h flags label)
+    (ui-draw-button x y w h flags label #f))
+  (define-part (ui-inline-choice-size label) (ui-button-size label #f))
 
   ;;; --------------------------------------------------------------- side panel
   ;;; What an app shows beside its work, for those who want it: controls,
