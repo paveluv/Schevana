@@ -1396,10 +1396,10 @@
 
   ;; The wheel goes to the kit's widgets (a dialog, a scroll bar), else
   ;; scrolls the color list under the pointer, else the pane.
-  (define (settings-wheel ui st dy)
+  (define (settings-wheel ui st dy dx)
     (let ([r (and (eq? (settings-st-tab st) 'colors) (ui-find ui 'color-list))])
       (cond
-        [(ui-wheel ui dy)]
+        [(ui-wheel ui dy dx)]
         [(and r (ui-region-in? r (ui-state-mx ui) (ui-state-my ui)))
          (settings-st-scroll-set!
           st (max 0 (- (settings-st-scroll st)
@@ -1446,5 +1446,5 @@
                     (ui-handlers ui 'key (lambda (win key mods)
                                            (settings-key st win key mods)))
                     (list 'wheel (lambda (win dx dy)
-                                   (settings-wheel ui st dy)
+                                   (settings-wheel ui st dy dx)
                                    (invalidate! win))))))))))

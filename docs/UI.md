@@ -283,6 +283,30 @@ A scroll view's body draws its content starting at `top`, and returns
 the y where the content ends. The wheel and the scroll bar move the
 content; the style decides where the bar is and when it shows.
 
+Content wider than its view scrolls sideways too in `ui-scroll-wide`,
+whose body takes `left` and `top` and returns where the content ends, as
+`(values right bottom)`. A bar across the view's bottom moves it
+sideways, as does the wheel turned sideways. That bar is the style's own
+bar at the side, transposed (`ui-scrollbar-across`), so every style has
+one in its own look; a style that wants to draw it differently finds
+`across` among the flags its `ui-draw-scrollbar` part is handed.
+
+```scheme
+(let ([ui (make-ui)])
+  (apply open-window "Wide" 'size '(240 . 160)
+    'draw (lambda (win w h)
+            (ui-begin! ui)
+            (ui-scroll-wide ui 'v 0 0 w h
+              (lambda (left top)
+                (do ([i 0 (+ i 1)]) ((= i 40))
+                  (draw-text left (+ top (* i 20))
+                             (format "Line ~a, which runs on and on" i)
+                             'text 'ui))
+                (values (+ left 400) (+ top 800))))
+            (ui-end! ui w h))
+    (ui-handlers ui)))
+```
+
 ## Menus, dialogs and tooltips
 
 ```scheme

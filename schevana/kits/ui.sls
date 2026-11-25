@@ -61,7 +61,8 @@
     ui-text-box-areas ui-text-box-areas* ui-text-box-inset ui-text-box-size
     ui-text-box-size* ui-text-area-size ui-text-area-size* ui-text-field
     ui-text-area ui-draw-text-box* ui-draw-suggestion ui-draw-suggestion*
-    ui-rank ui-suggestions ui-scroll ui-scrollbar ui-reveal! ui-scrollbar-width
+    ui-rank ui-suggestions ui-scroll ui-scroll-wide ui-scrollbar
+    ui-scrollbar-across ui-reveal! ui-scrollbar-width
     ui-scrollbar-inset ui-frame-scrollbar ui-scrollbar-areas ui-scrollbar-areas*
     ui-draw-scrollbar ui-draw-scrollbar* ui-title-icon ui-icon-grid ui-icon-ink
     ui-draw-app-icon ui-draw-window-icon ui-draw-app-tile*
@@ -131,7 +132,8 @@
                 window-content-size window-frame-soon! window-handlers
                 window-hover window-modal-child window-props window-ref
                 window-set! window-title window-x window-y window? windows
-                with-clip with-place with-scale with-translation)
+                with-clip with-place with-scale with-translation
+                with-transpose)
           (only (schevana kits app) app-find app-launch! app-color)
           (only (schevana kits color) color-readable-on)
           (only (schevana kits edit) edit-layout-text edit-range edit-move
@@ -419,7 +421,7 @@
 
   ;;; ---------------------------------------------------------------- events
   ;;; A region's on receives (press x y button clicks), (drag x y clicks),
-  ;;; (release x y), (key key mods), (text str) and (wheel dy), and returns
+  ;;; (release x y), (key key mods), (text str) and (wheel dy dx), and returns
   ;;; true when it handled the event.
 
   (define (ui-stale! ui) (ui-state-fresh?-set! ui #f))
@@ -553,13 +555,13 @@
       (invalidate! (current-window))))
 
   ;; The wheel is offered to each live region under the pointer, topmost
-  ;; first.
-  (define (ui-wheel ui dy)
+  ;; first, as (wheel dy dx): dx where it turns sideways.
+  (define (ui-wheel ui dy dx)
     (ui-rest! ui +inf.0)
     (let ([x (ui-state-mx ui)] [y (ui-state-my ui)])
       (and (exists (lambda (r)
                      (and (ui-region-on r) (ui-region-in? r x y)
-                          ((ui-region-on r) (list 'wheel dy))))
+                          ((ui-region-on r) (list 'wheel dy dx))))
                    (ui-live ui))
            (begin (ui-stale! ui) #t))))
 
@@ -610,7 +612,7 @@
             'mouse-up (lambda (win x y button)
                         (ui-fresh! ui)
                         (ui-mouse-up ui x y button))
-            'wheel (lambda (win dx dy) (ui-fresh! ui) (ui-wheel ui dy))
+            'wheel (lambda (win dx dy) (ui-fresh! ui) (ui-wheel ui dy dx))
             'key (lambda (win k mods) (ui-fresh! ui) (ui-key ui k mods key))
             'text (lambda (win str) (ui-fresh! ui) (ui-text ui str text))
             'frame (lambda (win t) (ui-frame ui win))
@@ -2381,28 +2383,63 @@
   ;; The bar lies over the content, which never reflows for it; content
   ;; that keeps clear of it asks how far (ui-scrollbar-inset).
   (define (ui-scroll ui id x y w h body)
-    (let ([off (car (ui-memo ui id '(0 . 0)))]
-          [clip (ui-state-clip ui)])
+    (ui-scroll-view ui id x y w h body #f))
+
+  ;; A scroll view whose content may be wider than it, too: body is (lambda
+  ;; (left top) ...), and returns where the content ends as (values right
+  ;; bottom). A bar across the view's bottom scrolls it sideways (the
+  ;; style's own bar, transposed), as does the wheel turned sideways; where
+  ;; both bars show, the one at the side stops short of the one across.
+  (define (ui-scroll-wide ui id x y w h body)
+    (ui-scroll-view ui id x y w h body #t))
+
+  (define (ui-scroll-view ui id x y w h body wide?)
+    (let* ([xid (and wide? (list id 'across))]
+           [off (car (ui-memo ui id '(0 . 0)))]
+           [offx (if wide? (car (ui-memo ui xid '(0 . 0))) 0)]
+           [clip (ui-state-clip ui)])
       (ui-region! ui id x y w h 'on
         (lambda (ev)
           (and (eq? (car ev) 'wheel)
                (let* ([m (ui-memo ui id '(0 . 0))]
                       [new (clamp (- (car m) (* (cadr ev) (ui-scroll-step)))
                                   0 (cdr m))])
-                 (and (not (= new (car m)))
-                      (begin (ui-memo! ui id (cons new (cdr m))) #t))))))
+                 (cond
+                   [(not (= new (car m)))
+                    (ui-memo! ui id (cons new (cdr m)))
+                    #t]
+                   [(and wide? (pair? (cddr ev)))
+                    (let* ([m (ui-memo ui xid '(0 . 0))]
+                           [new (clamp (+ (car m)
+                                          (* (caddr ev) (ui-scroll-step)))
+                                       0 (cdr m))])
+                      (and (not (= new (car m)))
+                           (begin (ui-memo! ui xid (cons new (cdr m))) #t)))]
+                   [else #f])))))
       (let ([before (ui-state-regions ui)])
         (ui-state-clip-set! ui (call-with-values
                                  (lambda () (ui-cut x y w h clip))
                                  list))
-        (let* ([bottom (with-clip (x y w h) (body (- y off)))]
+        (let* ([ends (with-clip (x y w h)
+                       (if wide?
+                           (call-with-values
+                             (lambda () (body (- x offx) (- y off)))
+                             cons)
+                           (body (- y off))))]
+               [bottom (if wide? (cdr ends) ends)]
                [content (- bottom (- y off))]
                [most (max 0 (- content h))]
                [now (car (ui-memo ui id '(0 . 0)))]
-               [new (clamp now 0 most)])
+               [new (clamp now 0 most)]
+               [wide (if wide? (- (car ends) (- x offx)) w)]
+               [mostx (max 0 (- wide w))]
+               [newx (if wide? (clamp (car (ui-memo ui xid '(0 . 0))) 0 mostx)
+                         0)])
           (ui-state-clip-set! ui clip)
           (ui-memo! ui id (cons new most))
-          (unless (= new off) (invalidate! (current-window)))
+          (when wide? (ui-memo! ui xid (cons newx mostx)))
+          (unless (and (= new off) (= newx offx))
+            (invalidate! (current-window)))
           ;; A region drawn in the view that asks to be revealed is shown a
           ;; gap clear of the edges, where a focus ring around it shows
           ;; whole.
@@ -2429,14 +2466,17 @@
                          (assq 'scrollbar (frame-regions win)))]
                  [out? (and r #t)]   ; the whole region its frame leaves
                  [bw (if out? (list-ref r 3) (ui-scrollbar-width))]
-                 [hover (and win (window-hover win))])
+                 [hover (and win (window-hover win))]
+                 [always? (eq? (theme 'scrollbar-show) 'always)]
+                 [over? (and (eq? hover 'content) (ui-hover? ui x y w h))]
+                 [xbid (and wide? (list id 'across 'bar))]
+                 [across? (and wide? (> wide w)
+                               (or always? over? (ui-active? ui xbid)))]
+                 [aw (if across? (ui-scrollbar-width) 0)])
             (when (and (> content h)
-                       (or (eq? (theme 'scrollbar-show) 'always)
+                       (or always?
                            (ui-active? ui bid)
-                           (if out?
-                               (eq? hover 'scrollbar)
-                               (and (eq? hover 'content)
-                                    (ui-hover? ui x y w h)))))
+                           (if out? (eq? hover 'scrollbar) over?)))
               ;; Outside, the bar takes the whole region (in the content's
               ;; coordinates).
               (let-values ([(bx by bh)
@@ -2445,13 +2485,21 @@
                                   (values (- (cadr r) l) (- (caddr r) t)
                                           (list-ref r 4)))
                                 (values (if (eq? side 'left) x (- (+ x w) bw))
-                                        y h))])
+                                        y (- h aw)))])
                 (ui-scrollbar ui bid bx by bw bh new content h
                               (lambda (off) (ui-memo! ui id (cons off most))))
                 (when out?   ; for the frame's over pass: ui-frame-scrollbar
                   (hashtable-set! (window-props win) 'scrollbar
                                   (list bx by bw bh (ui-flags ui bid)
-                                        (/ new content) (/ h content)))))))))))
+                                        (/ new content) (/ h content))))))
+            (when across?
+              ;; it stops short of a bar at the side, inside the view
+              (let ([side? (and (not out?) (> content h)
+                                (or always? over? (ui-active? ui bid)))])
+                (ui-scrollbar-across
+                 ui xbid (if (and side? (eq? side 'left)) (+ x bw) x)
+                 (- (+ y h) aw) (if side? (- w bw) w) aw newx wide w
+                 (lambda (off) (ui-memo! ui xid (cons off mostx)))))))))))
 
   ;; A scroll bar at x y w h for a view, view high, that shows content from
   ;; off on: a press on the thumb or beside it, and a drag, set the offset
@@ -2459,37 +2507,67 @@
   ;; the whole bar unless its areas give one (Genera's, between its end
   ;; boxes).
   (define (ui-scrollbar ui id x y w h off content view set-off!)
+    (ui-scrollbar-of ui id x y w h off content view set-off! #f))
+
+  ;; A scroll bar across, at x y w h, for a view view wide over content
+  ;; that wide: the style's bar at the side, transposed, its areas and its
+  ;; drawing with x and y traded (the flags then hold across).
+  (define (ui-scrollbar-across ui id x y w h off content view set-off!)
+    (ui-scrollbar-of ui id x y w h off content view set-off! #t))
+
+  ;; Returns the areas of a bar across at x y w h: the style's areas for a
+  ;; bar at the side, transposed.
+  (define (ui-scrollbar-areas-across x y w h start size)
+    (map (lambda (a)
+           (list (car a) (caddr a) (cadr a) (list-ref a 4) (cadddr a)))
+         (ui-scrollbar-areas y x h w start size)))
+
+  (define (ui-scrollbar-of ui id x y w h off content view set-off! across?)
     (let* ([most (max 0 (- content view))]
            [start (/ off content)] [size (/ view content)]
-           [areas (ui-scrollbar-areas x y w h start size)]
+           [areas (if across?
+                      (ui-scrollbar-areas-across x y w h start size)
+                      (ui-scrollbar-areas x y w h start size))]
            [thumb (cdr (assq 'thumb areas))]
            [track (assq 'track areas)]
-           [track-y (if track (caddr track) y)]
-           [track-h (if track (list-ref track 4) h)])
-      (define (thumb-to! ty)
-        (set-off! (clamp (* most (/ (- ty track-y)
-                                    (max 1 (- track-h (cadddr thumb)))))
-                         0 most))
+           ;; along the bar: where the thumb starts and how long it is, and
+           ;; the same of the track it travels
+           [t0 (if across? (car thumb) (cadr thumb))]
+           [tl (if across? (caddr thumb) (cadddr thumb))]
+           [k0 (cond [(not track) (if across? x y)]
+                     [across? (cadr track)]
+                     [else (caddr track)])]
+           [kl (cond [(not track) (if across? w h)]
+                     [across? (cadddr track)]
+                     [else (list-ref track 4)])])
+      (define (thumb-to! p)
+        (set-off! (clamp (* most (/ (- p k0) (max 1 (- kl tl)))) 0 most))
         #t)
       (ui-region! ui id x y w h 'focus 'keep 'doc '((L . "Scroll")) 'on
         (lambda (ev)
           (case (car ev)
             [(press)
              (and (eq? (list-ref ev 3) 'left)
-                  (let* ([py (caddr ev)] [ty (cadr thumb)]
-                         [grab (if (<= ty py (+ ty (cadddr thumb)))
-                                   (- py ty)
-                                   (/ (cadddr thumb) 2))])
+                  (let* ([p (if across? (cadr ev) (caddr ev))]
+                         [grab (if (<= t0 p (+ t0 tl)) (- p t0) (/ tl 2))])
                     (ui-memo! ui (list id 'grab) grab)
-                    (thumb-to! (- py grab))))]
-            [(drag) (thumb-to! (- (caddr ev) (ui-memo ui (list id 'grab) 0)))]
+                    (thumb-to! (- p grab))))]
+            [(drag) (thumb-to! (- (if across? (cadr ev) (caddr ev))
+                                  (ui-memo ui (list id 'grab) 0)))]
             ;; The wheel scrolls as over the view, since an outside bar lies
-            ;; over no view.
-            [(wheel) (let ([new (clamp (- off (* (cadr ev) (ui-scroll-step)))
-                                       0 most)])
-                       (and (not (= new off)) (begin (set-off! new) #t)))]
+            ;; over no view; over a bar across, turned either way.
+            [(wheel)
+             (let* ([d (if (and across? (pair? (cddr ev)))
+                           (- (cadr ev) (caddr ev))
+                           (cadr ev))]
+                    [new (clamp (- off (* d (ui-scroll-step))) 0 most)])
+               (and (not (= new off)) (begin (set-off! new) #t)))]
             [else #f])))
-      (ui-draw-scrollbar x y w h (ui-flags ui id) start size)))
+      (if across?
+          (with-transpose
+            (ui-draw-scrollbar y x h w (cons 'across (ui-flags ui id))
+                               start size))
+          (ui-draw-scrollbar x y w h (ui-flags ui id) start size))))
 
   ;; Scrolls view id so that [top, bottom) of its content is in view (its
   ;; top first), and invalidates the window when the offset moved. The

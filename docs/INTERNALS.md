@@ -217,8 +217,8 @@ and reported, and it has no fuel limit.
 
 The screen is a tree of lists of records. A list is a flat run of 32-byte
 records of whole numbers, written by the drawing procedures;
-`with-clip`, `with-translation`, `with-scale`, `with-turn` and
-`with-label` are forms, which allocate no closure for a call. One shader
+`with-clip`, `with-translation`, `with-scale`, `with-turn`,
+`with-transpose` and `with-label` are forms, which allocate no closure for a call. One shader
 on the GPU reads the records, in one instanced draw for each run of
 records that are alike, and in variants: a run of boxes and text in solid
 colors draws with none of the code for lines, shadows, gradients,

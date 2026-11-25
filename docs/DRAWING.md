@@ -117,6 +117,9 @@ that take a thunk, so they allocate nothing.
   (with-translation (240 100)
     (with-turn (0.5)
       (fill-box -30 -10 60 20 'orange)))           ; turned about (240, 100)
+  (with-translation (280 20)
+    (with-transpose
+      (fill-box 0 0 8 30 'accent)))                ; 30 wide and 8 high
   (with-label ("legend")                           ; named in the Pipeline
     (draw-text 20 130 "a label names what's drawn" 'text-dim 'ui)))
 (open-window "Framed" 'size '(320 . 160) 'draw draw-framed)
@@ -125,7 +128,11 @@ that take a thunk, so they allocate nothing.
 A clip's edges, like a box's, lie on whole device pixels, so the edge it
 cuts is crisp at any scale. A turn is in radians, clockwise on the
 screen: lines and polygons turn by any angle, boxes become polygons, and
-text turns only by a quarter turn counterclockwise.
+text turns only by a quarter turn counterclockwise. A transpose trades x
+for y, as in a mirror along the line x = y, so that a box stays a box (a
+style's vertical scroll bar is drawn across this way, its light still
+from the top left): boxes, lines, polygons, circles and clips trade, and
+text, images and shadows are drawn where they are.
 
 ## Gradients and patterns
 

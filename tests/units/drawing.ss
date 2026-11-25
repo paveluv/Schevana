@@ -241,3 +241,30 @@
               [ui (of 'ui)])
          (printf "  ~a bytes, ~a in the ui font\n" bits ui)
          (= bits ui)))
+
+;;; with-transpose: x and y trade places, so that a box stays a box
+
+(check "a drawing transposed is the drawing with x and y traded, pixel for \
+        pixel: boxes, a rounded box's outline, a line and a circle"
+       (let* ([scene (lambda ()
+                       (fill-box 1 2 6 3 #xffffff)
+                       (stroke-box 9 1 5 9 #xffffff 1 2)
+                       (draw-line 2 9 7 9 #xffffff)
+                       (fill-circle 4 13 2 #xffffff))]
+              [key '((#xff000000 . #\.) (#xffffffff . #\#))]
+              [plain (pixel-rows (image 16 16 1
+                                        (lambda ()
+                                          (fill-box 0 0 16 16 #x000000)
+                                          (scene)))
+                                 key)]
+              [turned (pixel-rows (image 16 16 1
+                                         (lambda ()
+                                           (fill-box 0 0 16 16 #x000000)
+                                           (with-transpose (scene))))
+                                  key)]
+              [traded (map (lambda (x)
+                             (list->string
+                              (map (lambda (row) (string-ref row x)) plain)))
+                           (iota 16))])
+         (printf "  ~s\n" turned)
+         (equal? turned traded)))

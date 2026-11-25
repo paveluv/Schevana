@@ -32,7 +32,8 @@
     record-list! show-list fill-box stroke-box fill-circle stroke-circle
     draw-line draw-polyline fill-polygon invert-box add-box draw-shadow
     draw-text draw-image define-paint fill-shader with-clip with-translation
-    with-scale with-turn with-label draw-scale gfx-fragments rec-present!
+    with-scale with-turn with-transpose with-label draw-scale gfx-fragments
+    rec-present!
     rec-preview! rec-past! drawing->bytes-then drawing->bytes)
   (import (chezscheme)
           (only (schevana base) at-load clamp define-hook define-made
@@ -238,12 +239,14 @@
   ;; rec-write!, rec-extra! and rec-extra-u32!, and read through
   ;; rec-extra-ref, rec-extra-at and rec-count.
   ;; the transform: num/den device pixels per logical pixel, the origin in
-  ;; 1/256ths of a device pixel, and a turn, as cos and sin, or #f
+  ;; 1/256ths of a device pixel, a turn, as cos and sin, or #f, and whether
+  ;; x and y trade places (with-transpose)
   (define-state *rec-num* 1)
   (define-state *rec-den* 1)
   (define-state *rec-ox* 0)
   (define-state *rec-oy* 0)
   (define-state *rec-turn* #f)
+  (define-state *rec-swap* #f)
   (define-state *rec-labels* (make-vector 256 #f))   ; (record label) ...
   (define-state *rec-label-at* 0)
   (define-state *rec-label* #f)
@@ -299,6 +302,7 @@
     (set! *rec-ox* 0)
     (set! *rec-oy* 0)
     (set! *rec-turn* #f)
+    (set! *rec-swap* #f)
     (set! *rec-clip* 0)
     (set! *rec-label-at* 0)
     (set! *rec-label* #f)
@@ -408,6 +412,7 @@
          (set! *rec-ox* 0)
          (set! *rec-oy* 0)
          (set! *rec-turn* #f)
+         (set! *rec-swap* #f)
          (set! *rec-clip* 0))
        ;; its bytes, which are the recorder's, are written there; its runs
        ;; end while they are the ones being written
@@ -582,22 +587,27 @@
             (max 0 (rec-length (min r (/ (abs w) 2) (/ (abs h) 2)))))))
 
   (define (rec-box! x y w h color radius line)
-    (if *rec-turn*
-        (fill-polygon (list (cons x y) (cons (+ x w) y)
-                            (cons (+ x w) (+ y h)) (cons x (+ y h)))
-                      color)
-        (let* ([ax (rec-snap (rec-device x *rec-ox*))]
-               [ay (rec-snap (rec-device y *rec-oy*))]
-               [bx (rec-snap (rec-device (+ x w) *rec-ox*))]
-               [by (rec-snap (rec-device (+ y h) *rec-oy*))]
-               [x0 (fxmin ax bx)]
-               [y0 (fxmin ay by)]
-               [x1 (fxmax ax bx)]
-               [y1 (fxmax ay by)])
-          (unless (or (fx= x0 x1) (fx= y0 y1) (rec-clipped? x0 y0 x1 y1))
-            (let ([paint (rec-paint color)])
-              (rec-put! (rec-head rec-kind-box) paint x0 y0 x1 y1
-                        radius line))))))
+    (cond
+      [*rec-turn*   ; its corners trade places as points do
+       (fill-polygon (list (cons x y) (cons (+ x w) y)
+                           (cons (+ x w) (+ y h)) (cons x (+ y h)))
+                     color)]
+      [*rec-swap* (rec-box-at! y x h w color radius line)]
+      [else (rec-box-at! x y w h color radius line)]))
+
+  (define (rec-box-at! x y w h color radius line)
+    (let* ([ax (rec-snap (rec-device x *rec-ox*))]
+           [ay (rec-snap (rec-device y *rec-oy*))]
+           [bx (rec-snap (rec-device (+ x w) *rec-ox*))]
+           [by (rec-snap (rec-device (+ y h) *rec-oy*))]
+           [x0 (fxmin ax bx)]
+           [y0 (fxmin ay by)]
+           [x1 (fxmax ax bx)]
+           [y1 (fxmax ay by)])
+      (unless (or (fx= x0 x1) (fx= y0 y1) (rec-clipped? x0 y0 x1 y1))
+        (let ([paint (rec-paint color)])
+          (rec-put! (rec-head rec-kind-box) paint x0 y0 x1 y1
+                    radius line)))))
 
   ;; (fill-box x y w h color [r]): a box, or with r a rounded one, up to a
   ;; pill.
@@ -620,8 +630,8 @@
 
   ;; A circle isn't snapped: only straight edges want whole pixels.
   (define (rec-circle! cx cy r color line)
-    (let* ([x (rec-device cx *rec-ox*)]
-           [y (rec-device cy *rec-oy*)]
+    (let* ([x (rec-device (if *rec-swap* cy cx) *rec-ox*)]
+           [y (rec-device (if *rec-swap* cx cy) *rec-oy*)]
            [d (rec-length r)]
            [o (fx+ d (fxquotient line 2))])
       (unless (rec-clipped? (fx- x o) (fx- y o) (fx+ x o) (fx+ y o))
@@ -637,8 +647,12 @@
       [(cx cy r color lw) (rec-circle! cx cy r color (rec-length lw))]))
 
   (define (rec-point-x x y)
-    (if *rec-turn* (car (rec-turned x y)) (rec-device x *rec-ox*)))
+    (if *rec-swap* (rec-point-x* y x) (rec-point-x* x y)))
   (define (rec-point-y x y)
+    (if *rec-swap* (rec-point-y* y x) (rec-point-y* x y)))
+  (define (rec-point-x* x y)
+    (if *rec-turn* (car (rec-turned x y)) (rec-device x *rec-ox*)))
+  (define (rec-point-y* x y)
     (if *rec-turn* (cdr (rec-turned x y)) (rec-device y *rec-oy*)))
 
   (define draw-line
@@ -940,6 +954,9 @@
   ;; in, so that a window's content stays inside the window's corners. Of
   ;; two rounded ones, the innermost holds.
   (define (rec-clip-enter! x y w h r)
+    (if *rec-swap* (rec-clip-at! y x h w r) (rec-clip-at! x y w h r)))
+
+  (define (rec-clip-at! x y w h r)
     (let* ([clip *rec-clip*]
            [ax (rec-snap (rec-device x *rec-ox*))]
            [ay (rec-snap (rec-device y *rec-oy*))]
@@ -1030,6 +1047,20 @@
          (rec-turn! angle)
          (let ([value (let () body ...)])
            (set! *rec-turn* turn)
+           value))]))
+
+  ;; What body draws trades x for y about the origin, as in a mirror along
+  ;; the line x = y, so that a box stays a box: a style's vertical scroll
+  ;; bar drawn across, its light still from the top left. Boxes, lines,
+  ;; polygons, circles and clips trade; text, images and shadows are drawn
+  ;; where they are.
+  (define-syntax with-transpose
+    (syntax-rules ()
+      [(_ body ...)
+       (let ([swap *rec-swap*])
+         (set! *rec-swap* (not swap))
+         (let ([value (let () body ...)])
+           (set! *rec-swap* swap)
            value))]))
 
   (define (rec-turn! angle)

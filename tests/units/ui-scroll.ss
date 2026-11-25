@@ -136,3 +136,64 @@
                  (printf "  ~s\n" (list before pressed dragged want))
                  (and (> before 0) (= pressed before)
                       (<= (abs (- dragged want)) 1))))))))
+
+;; A window with a wide view, 300 by 200 over content 800 by 1,000.
+(define (ui-scroll-test-wide-window)
+  (test-kit-window "Wide"
+    (lambda (ui w h)
+      (ui-scroll-wide ui 'v 20 20 300 200
+        (lambda (left top)
+          (do ([i 0 (+ i 1)]) ((= i 50))
+            (fill-box (+ left 10) (+ top (* i 20)) 780 10 'accent))
+          (values (+ left 800) (+ top 1000)))))
+    '(400 . 300)))
+
+(define (ui-scroll-test-offx win)
+  (car (ui-memo (window-ref win 'ui) '(v across) '(0))))
+
+(check "a wide view scrolls sideways by the wheel turned sideways, a step a \
+        notch and no further than its ends, and down as a view does"
+       (let ([win (ui-scroll-test-wide-window)])
+         (steps 2)
+         (test-move! win 'v)
+         (let* ([at (lambda (dx dy) (inject! `(wheel ,dx ,dy)) (steps 2)
+                      (list (ui-scroll-test-offx win)
+                            (ui-scroll-test-off win)))]
+                [right (at 1 0)] [back (at -1 0)] [down (at 0 -1)]
+                [far (begin (do ([i 0 (+ i 1)]) ((= i 100))
+                              (inject! '(wheel 1 0)))
+                            (steps 2)
+                            (ui-scroll-test-offx win))])
+           (close-window! win)
+           (printf "  ~s\n" (list right back down far))
+           (and (equal? right (list (ui-scroll-step) 0))
+                (equal? back '(0 0))
+                (equal? down (list 0 (ui-scroll-step)))
+                (= far 500)))))
+
+(check "a wide view's bar across lies along its bottom, the bar at the side \
+        stopping short of it; a press near its right end scrolls as far \
+        right as the view goes"
+       (let ([win (ui-scroll-test-wide-window)])
+         (steps 2)
+         (test-move! win 'v)
+         (steps 1)
+         (let*-values ([(ui) (window-ref win 'ui)]
+                       [(across) (ui-region-frame
+                                  (test-region ui '(v across bar)))]
+                       [(side) (ui-region-frame (test-region ui '(v bar)))]
+                       [(cx cy cw ch) (content-rect win)]
+                       [(x) (exact (round (+ cx (car across) (caddr across)
+                                             -2)))]
+                       [(y) (exact (round (+ cy (cadr across)
+                                             (/ (cadddr across) 2))))])
+           (inject! `(mouse-move ,x ,y) `(mouse-down ,x ,y left 1)
+                    `(mouse-up ,x ,y left))
+           (steps 2)
+           (let ([far (ui-scroll-test-offx win)] [bw (ui-scrollbar-width)])
+             (close-window! win)
+             (printf "  ~s ~s ~a\n" across side far)
+             (and (= (cadr across) (- 220 bw)) (= (cadddr across) bw)
+                  (= (cadddr side) (- 200 bw))
+                  (= (+ (car across) (caddr across)) (car side))
+                  (= far 500))))))

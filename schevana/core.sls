@@ -52,7 +52,8 @@
     *rec-label-at* rec-variant record-list! fill-box stroke-box fill-circle
     stroke-circle draw-line draw-polyline fill-polygon invert-box add-box
     draw-shadow draw-text draw-image define-paint fill-shader with-clip
-    with-translation with-scale with-turn with-label draw-scale gfx-fragments
+    with-translation with-scale with-turn with-transpose with-label draw-scale
+    gfx-fragments
     rec-preview! rec-past! drawing->bytes rec-row-head rec-row-paint
     rec-row-words rec-row-x0 rec-row-x1 rec-row-y0 rec-row-y1 rec-box-line
     rec-box-radius rec-glyph-number rec-glyph-pen-x rec-glyph-pen-y
@@ -214,7 +215,8 @@
                 stroke-box fill-circle stroke-circle draw-line draw-polyline
                 fill-polygon invert-box add-box draw-shadow draw-image
                 define-paint fill-shader with-clip with-translation with-scale
-                with-turn with-label draw-scale gfx-fragments rec-preview!
+                with-turn with-transpose with-label draw-scale gfx-fragments
+                rec-preview!
                 rec-past! drawing->bytes rec-row-head rec-row-paint
                 rec-row-words rec-row-x0 rec-row-x1 rec-row-y0 rec-row-y1
                 rec-box-line rec-box-radius rec-glyph-number rec-glyph-pen-x
