@@ -133,6 +133,17 @@ drawn, and Escape takes the focus away:
 (window-ref prefs 'name)                   ; => "Ada"
 ```
 
+A part of a form that can't be used now is drawn inside `ui-disabled`:
+every widget in it shows disabled, keeps its place and its tooltip, and
+takes no input, Tab passes it by, and what it opens over the rest (a
+dialog, a calendar) is disabled too:
+
+```scheme no-run
+(ui-disabled ui
+  (lambda ()
+    (ui-text-field ui 'proxy 20 140 200 30 proxy-host set-proxy-host!)))
+```
+
 The kit has more widgets of this kind: `ui-radio` (one choice of
 several, each choice its own widget), `ui-segmented` and `ui-tabs`
 (choices side by side), `ui-text-area` (text of many lines), `ui-chips`

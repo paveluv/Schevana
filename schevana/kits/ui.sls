@@ -61,7 +61,7 @@
     ui-text-box-areas ui-text-box-areas* ui-text-box-inset ui-text-box-size
     ui-text-box-size* ui-text-area-size ui-text-area-size* ui-text-field
     ui-text-area ui-draw-text-box* ui-draw-suggestion ui-draw-suggestion*
-    ui-rank ui-suggestions ui-scroll ui-scroll-wide ui-scrollbar
+    ui-disabled ui-rank ui-suggestions ui-scroll ui-scroll-wide ui-scrollbar
     ui-scrollbar-across ui-reveal! ui-scrollbar-width
     ui-scrollbar-inset ui-frame-scrollbar ui-scrollbar-areas ui-scrollbar-areas*
     ui-draw-scrollbar ui-draw-scrollbar* ui-title-icon ui-icon-grid ui-icon-ink
@@ -169,7 +169,7 @@
                          ; pointer there; a move that changes that redraws
 
   (define-record-type ui-state
-    (nongenerative schevana-ui-state-4)
+    (nongenerative schevana-ui-state-5)
     (fields (mutable regions)  ; this draw's regions, newest (topmost) first
             (mutable active)   ; the region the left button holds, or #f
             (mutable hover-id) ; the topmost live region under the pointer
@@ -198,11 +198,13 @@
             (mutable scans)    ; text layouts a scroll bar waits on: the
                                ; window's frames compute their rows to the
                                ; end
+            (mutable disabled) ; whether what is drawn now is disabled
+                               ; (ui-disabled)
             memo))             ; per-id kit memory (scroll offsets, ...)
 
   (define (make-ui)
     (make-ui-state '() #f #f -1 -1 1 (list 0 -1 -1) #f #f #f 0 #f #f '() #f #f
-                   #t '() (make-hashtable equal-hash equal?)))
+                   #t '() #f (make-hashtable equal-hash equal?)))
 
   (define (ui-memo ui key default)
     (hashtable-ref (ui-state-memo ui) key default))
@@ -240,16 +242,25 @@
   ;; rect is cut to the viewport; a region cut away entirely is still
   ;; recorded, 0 × 0 at the edge, so that it stays a Tab stop (and can be
   ;; revealed) but cannot be hit.
+  ;; Under ui-disabled a region takes no input and no keyboard: it keeps
+  ;; its place and its tooltip, and a widget that had the keyboard or the
+  ;; mouse lets go of it.
   (define (ui-region! ui id x y w h . opts)
     (let-values ([(cx cy cw ch) (ui-cut x y w h (ui-state-clip ui))])
-      (let ([r (make-ui-region id cx cy cw ch (list x y w h)
-                               (plist-ref opts 'on #f)
-                               (plist-ref opts 'focus #f)
-                               (plist-ref opts 'tip #f)
-                               (plist-ref opts 'cursor #f)
-                               (plist-ref opts 'modal #f)
-                               (plist-ref opts 'doc '())
-                               (plist-ref opts 'follow #f))])
+      (let* ([off? (ui-state-disabled ui)]
+             [r (make-ui-region id cx cy cw ch (list x y w h)
+                                (and (not off?) (plist-ref opts 'on #f))
+                                (if off? 'keep (plist-ref opts 'focus #f))
+                                (plist-ref opts 'tip #f)
+                                (plist-ref opts 'cursor #f)
+                                (plist-ref opts 'modal #f)
+                                (if off? '() (plist-ref opts 'doc '()))
+                                (and (not off?) (plist-ref opts 'follow #f)))])
+        (when off?
+          (when (equal? (ui-state-focus ui) id)
+            (ui-state-focus-set! ui #f)
+            (ui-state-edit-set! ui #f))
+          (when (ui-active? ui id) (ui-state-active-set! ui #f)))
         (ui-state-regions-set! ui (cons r (ui-state-regions ui)))
         r)))
 
@@ -312,6 +323,11 @@
   ;; left button holds it; focused: it has the keyboard, in the focused
   ;; window.
   (define (ui-flags ui id . own)
+    (if (ui-state-disabled ui)
+        (cons 'disabled own)
+        (apply ui-live-flags ui id own)))
+
+  (define (ui-live-flags ui id . own)
     (let* ([win (current-window)]
            [r (ui-find ui id)]
            [pressed? (ui-active? ui id)]
@@ -582,7 +598,10 @@
               [(and f (ui-region-on f) ((ui-region-on f) (list 'key key mods)))]
               [(and (eq? key 'tab) (member mods '(() (shift)))
                     (ui-tab! ui (if (null? mods) 1 -1)))]
-              [modal ((ui-region-on modal) (list 'key key mods)) #t]
+              ;; a disabled one has no handler, and lets keys by
+              [(and modal (ui-region-on modal))
+               ((ui-region-on modal) (list 'key key mods))
+               #t]
               [(and (eq? key 'escape) (ui-state-focus ui)) (ui-focus! ui #f) #t]
               [app-key (app-key (current-window) key mods)]
               [else #f])])
@@ -666,12 +685,28 @@
     (ui-state-later-set! ui '())
     (ui-state-due-set! ui #f)
     (ui-state-scans-set! ui '())
+    (ui-state-disabled-set! ui #f)
     (ui-state-fresh?-set! ui #t))
 
   ;; Adds an overlay: proc, (lambda (w h) ...), which ui-end! draws above
   ;; everything.
   (define (ui-later! ui proc)
-    (ui-state-later-set! ui (cons proc (ui-state-later ui))))
+    (ui-state-later-set! ui (cons (if (ui-state-disabled ui)
+                                      (lambda (w h)
+                                        (ui-disabled ui (lambda () (proc w h))))
+                                      proc)
+                                  (ui-state-later ui))))
+
+  ;; Draws what thunk draws disabled: every control in it shows so and
+  ;; takes no input (Tab passes it by, a focused field lets go of the
+  ;; keyboard, a held slider of the mouse), and what it opens over the rest
+  ;; (a dialog, a calendar) is disabled too. Returns what thunk returns.
+  (define (ui-disabled ui thunk)
+    (let ([was (ui-state-disabled ui)])
+      (dynamic-wind
+        (lambda () (ui-state-disabled-set! ui #t))
+        thunk
+        (lambda () (ui-state-disabled-set! ui was)))))
 
   ;; Ends a draw of a window w × h. It draws the overlays; then a widget that
   ;; vanished loses the focus, a reveal that no scroll view took is dropped,
@@ -1517,7 +1552,8 @@
           (with-clip (x (- cy 4) w 8 4) (paint x (- cy 4) w 8))
           (begin
             (fill-box x (- cy 3) w 6 'bg-3 3)
-            (fill-box x (- cy 3) (max 6 (- kx x)) 6 'accent 3)))
+            (fill-box x (- cy 3) (max 6 (- kx x)) 6
+                      (if (memq 'disabled flags) 'text-faint 'accent) 3)))
       (fill-circle kx cy r #xf2f2f5)
       (stroke-circle kx cy r (alpha #x000000 0.35) 1)))
 
@@ -1647,7 +1683,8 @@
                   [(kx) (if on? (+ x tw (- (/ th 2))) (+ x (/ th 2)))]
                   [(lh) (font-line-height 'ui)])
       (fill-box x ty tw th
-                (cond [on? 'accent] [(memq 'hover flags) 'text-faint]
+                (cond [(and on? (memq 'disabled flags)) 'text-faint]
+                      [on? 'accent] [(memq 'hover flags) 'text-faint]
                       [else 'bg-3])
                 (/ th 2))
       (fill-circle kx (+ ty (/ th 2)) r #xf2f2f5)
@@ -1655,7 +1692,10 @@
       (when label
         (draw-text (+ x tw 8) (+ y (/ (- h lh) 2))
                    (text-fit label (- w tw 8) 'ui)
-                   (if (memq 'hover flags) 'text 'text-dim) 'ui))
+                   (cond [(memq 'disabled flags) 'text-faint]
+                         [(memq 'hover flags) 'text]
+                         [else 'text-dim])
+                   'ui))
       (when (memq 'focused flags) (ui-draw-focus x ty tw th flags (/ th 2)))))
 
   (define-part (ui-toggle-size label)
@@ -1756,8 +1796,9 @@
   (define-part (ui-draw-tab x y w h flags label)
     (let ([selected? (memq 'selected flags)] [lh (font-line-height 'ui-bold)])
       (text-draw-centered x y w h label
-                          (if (or selected? (memq 'hover flags)) 'text
-                              'text-dim)
+                          (cond [(memq 'disabled flags) 'text-faint]
+                                [(or selected? (memq 'hover flags)) 'text]
+                                [else 'text-dim])
                           'ui-bold)
       (when selected?
         (fill-box (+ x 10) (+ y (/ (+ h lh) 2) 3) (- w 20) 2 'accent 1))
@@ -4648,7 +4689,8 @@
       (stroke-box x y w h
                   (if (or set? (memq 'open flags)) 'accent 'window-border) 1 6)
       (draw-text (+ x 10) (+ y (/ (- h lh) 2)) (text-fit label (- w 22 s) 'ui)
-                 (cond [set? 'accent] [(memq 'placeholder flags) 'text-faint]
+                 (cond [(memq 'disabled flags) 'text-faint]
+                       [set? 'accent] [(memq 'placeholder flags) 'text-faint]
                        [hot? 'text] [else 'text-dim])
                  'ui)
       ;; The chevron, 6 from the text's room and 6 from the edge.
