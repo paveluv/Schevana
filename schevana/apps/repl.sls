@@ -1240,20 +1240,20 @@
       (invalidate! win)))
 
   ;; While the REPL has the keyboard, its caret blinks by a timer that
-  ;; flips it 530 ms after the last flip (a key holds it on); there is one
-  ;; timer at a time.
+  ;; flips it a phase (the style's text-blink-ms) after the last flip (a key
+  ;; holds it on); there is one timer at a time.
   (define (repl-blink-soon! r win)
     (unless (window-ref win 'repl-blinking #f)
       (window-set! win 'repl-blinking #t)
       (repl-blink-next! r win)))
 
   (define (repl-blink-next! r win)
-    (after (max 1 (- (+ (repl-blink-at r) 530) (now-ms)))
+    (after (max 1 (- (+ (repl-blink-at r) (theme 'text-blink-ms)) (now-ms)))
            (lambda ()
              (cond
                [(not (and (memq win (windows)) (eq? win (focused-window))))
                 (window-set! win 'repl-blinking #f)]
-               [(>= (- (now-ms) (repl-blink-at r)) 530)
+               [(>= (- (now-ms) (repl-blink-at r)) (theme 'text-blink-ms))
                 (repl-blink-set! r (not (repl-blink r)))
                 (repl-blink-at-set! r (now-ms))
                 (invalidate! win)

@@ -214,9 +214,12 @@
     (hashtable-delete! (ui-state-memo ui) (list id 'caret)))
 
   ;; How long (ms) the pointer rests before a tooltip shows, and how long a
-  ;; caret phase lasts.
+  ;; caret phase lasts (a style's setting: the CADR's blinkers flipped
+  ;; faster).
   (define ui-tip-ms 600)
-  (define ui-blink-ms 530)
+  (at-load
+   (theme-default! 'text-blink-ms 530))
+  (define (ui-blink-ms) (theme 'text-blink-ms))
 
   ;; Returns a rect cut to clip (x y w h), as (values x y w h): 0 wide or
   ;; high, at the clip's edge, when the rect lies outside the clip.
@@ -409,8 +412,9 @@
   ;; Whether a focused caret shows now. Asks for a draw at its next flip.
   (define (ui-caret-on? ui)
     (let* ([t0 (ui-state-blink-at ui)]
-           [k (quotient (max 0 (- (now-ms) t0)) ui-blink-ms)])
-      (ui-due! ui (+ t0 (* (+ k 1) ui-blink-ms)))
+           [ms (ui-blink-ms)]
+           [k (quotient (max 0 (- (now-ms) t0)) ms)])
+      (ui-due! ui (+ t0 (* (+ k 1) ms)))
       (even? k)))
 
   ;; Starts the tooltip's wait at ms (+inf.0: not until the pointer moves),
@@ -1011,6 +1015,11 @@
   ;; close, minimize, maximize, restore and shade, which fill a square box
   ;; in lines of 1 pixel. flags may hold (ink . color) and (width . w), the
   ;; width of those lines.
+  ;; How much of its ink a disabled glyph keeps (all of it on a screen one
+  ;; bit deep, Genera's).
+  (at-load
+   (theme-default! 'disabled-glyph-opacity 0.5))
+
   (define-part (ui-draw-glyph x y w h flags name)
     (let* ([s (min w h)] [ox (+ x (/ (- w s) 2))] [oy (+ y (/ (- h s) 2))]
            [p (lambda (fx fy) (cons (+ ox (* fx s)) (+ oy (* fy s))))]
@@ -1025,7 +1034,9 @@
                       [(memq 'hover flags) 'text]
                       [(memq 'quiet flags) 'text-faint]
                       [else 'text-dim])]
-           [ink (if (memq 'disabled flags) (alpha ink 0.5) ink)]
+           [ink (if (memq 'disabled flags)
+                    (alpha ink (theme 'disabled-glyph-opacity))
+                    ink)]
            [lw (max 1.5 (* s 0.13))]
            [t (or (given 'width) 1)])
       (define (line . ps) (draw-polyline ps ink lw))
@@ -1767,6 +1778,9 @@
   ;; rather than under them.
   (at-load
    (theme-default! 'label-section-font 'ui-small))
+  ;; the font of a label's hint (the CADR's small italic, TR10I)
+  (at-load
+   (theme-default! 'label-hint-font 'ui-small))
   (at-load
    (theme-default! 'label-section-upcase #t))
   (at-load
@@ -1776,7 +1790,7 @@
     (cond [(memq 'heading flags) 'heading]
           [(memq 'section flags) (theme 'label-section-font)]
           [(memq 'group flags) (theme 'label-group-font)]
-          [(memq 'hint flags) 'ui-small]
+          [(memq 'hint flags) (theme 'label-hint-font)]
           [(memq 'mono flags) 'mono-small]
           [else 'ui]))
 
@@ -4515,6 +4529,11 @@
   ;; the dropdown, with the current choice selected. opts: 'label (shown
   ;; instead of the current choice's label), 'set (the choice matters: a
   ;; filter in use), 'tip.
+  ;; The mark after the current choice in a dropdown's menu: one that the
+  ;; style's menu font has (Genera's *).
+  (at-load
+   (theme-default! 'dropdown-selected-mark "  ✓"))
+
   (define (ui-dropdown ui id x y w h choices current on-select . opts)
     (let ([i (list-index (lambda (c) (equal? (cdr c) current)) choices)]
           [open? (equal? (ui-menu-open-tag) (cons ui id))])
@@ -4523,7 +4542,8 @@
           (ui-open-menu! ui x (+ y h)
             (map (lambda (c)
                    (cons (if (equal? (cdr c) current)
-                             (string-append (car c) "  ✓")
+                             (string-append (car c)
+                                            (theme 'dropdown-selected-mark))
                              (car c))
                          (lambda () (on-select (cdr c)))))
                  choices)

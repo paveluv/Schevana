@@ -23,9 +23,9 @@
                 library-layer plist-ref set-hook!)
           (only (schevana core) *mouse-button* *mouse-x* *mouse-y* after
                 close-window! define-part define-surface desktop-rect
-                draw-text fill-box focus-window! font font-char-width
-                font-line-height frame-regions minimize-window! notify now-ms
-                point-in?
+                draw-text fill-box focus-window! font font-ascent
+                font-char-width font-line-height frame-regions
+                minimize-window! notify now-ms point-in?
                 report-error! request-frame! safe-call screen-h screen-w
                 shaded? text-width theme theme-default! theme-rule
                 toggle-maximize! toggle-shade! window-action! window-at
@@ -37,6 +37,7 @@
                 menu-entries menu-entry-action menu-entry-ready?
                 menu-entry-icon menu-icon-size)
           (only (schevana kits px) px-invert)
+          (only (schevana kits text) text-ink)
           (only (schevana kits ui) ui-menu-open-tag ui-menu-open!
                 ui-draw-highlight ui-draw-separator ui-draw-panel))
 
@@ -77,6 +78,35 @@
   ;; the Lisp machines)
   (at-load
    (theme-default! 'menu-align 'left))
+  ;; the room a menu adds to its widest entry
+  (at-load
+   (theme-default! 'menu-width-extra 8))
+  ;; what shows the chosen entry: its row, its text's cell (that and
+  ;; menu-highlight-extra wide), or its text's ink, each grown by
+  ;; menu-highlight-outset all round (Genera's: a clear pixel and the box,
+  ;; as in Peek's Reset menu)
+  (at-load
+   (theme-default! 'menu-highlight 'row))
+  (at-load
+   (theme-default! 'menu-highlight-extra 0))
+  (at-load
+   (theme-default! 'menu-highlight-outset 0))
+  ;; the text at the top of its row, not centered in it (the CADR's rows
+  ;; are a character cell and its VSP below)
+  (at-load
+   (theme-default! 'menu-text-top #f))
+  ;; the filter's hint, its font (#f for the menu's), and whether a menu
+  ;; that filters is at least as wide as the hint
+  (at-load
+   (theme-default! 'menu-filter-hint "Type to filter…"))
+  (at-load
+   (theme-default! 'menu-hint-font #f))
+  (at-load
+   (theme-default! 'menu-fit-filter #f))
+  ;; whether an entry's text starts on a whole pixel: #f, #t (the nearest)
+  ;; or floor (down, as the CADR's centering truncated)
+  (at-load
+   (theme-default! 'menu-snap-text #f))
 
   (define-state *menu-blink*
     #f)   ; (start-ms entry thunk) while a chosen entry blinks
@@ -123,11 +153,17 @@
            [icons (menu-icon-room m)]
            [w (fold-left (lambda (acc e)
                            (if (pair? e)
-                               (max acc (+ 8 (* 2 (theme 'menu-text-x)) icons
+                               (max acc (+ (theme 'menu-width-extra)
+                                           (* 2 (theme 'menu-text-x)) icons
                                            (menu-label-width
                                             (car e) (theme 'menu-font))))
                                acc))
-                         (theme 'menu-min-width) es)]
+                         (if (and (menu-filter? m) (theme 'menu-fit-filter))
+                             (max (theme 'menu-min-width)
+                                  (+ 32 (text-width (theme 'menu-filter-hint)
+                                                    (menu-hint-font))))
+                             (theme 'menu-min-width))
+                         es)]
            [h (fold-left (lambda (acc e) (+ acc (if (pair? e) ih sh)))
                          (+ pad pad head) es)]
            [x (clamp (menu-x m) 4 (- (screen-w) w 4))]
@@ -293,16 +329,31 @@
                                               (memq 'pressed flags))
                                          'menu-ink-pressed]
                                         [else 'menu-ink-selected]))])
-                 (when sel?
-                   (ui-draw-highlight (+ x 5) y (- w 10) h flags))
-                 (when (and icon (> is 0))
-                   (icon (+ x (theme 'menu-text-x)) (+ y (/ (- h is) 2)) is
-                         '()))
-                 (draw-text (if (eq? (theme 'menu-align) 'center)
-                                (+ x icons
-                                   (/ (- w icons (text-width text font)) 2))
-                                (+ x (theme 'menu-text-x) icons))
-                            (+ y (/ (- h lh) 2)) text ink font)
+                 (let* ([tw (text-width text font)]
+                        [tx (menu-snap (if (eq? (theme 'menu-align) 'center)
+                                           (+ x icons (/ (- w icons tw) 2))
+                                           (+ x (theme 'menu-text-x) icons)))]
+                        [ty (menu-snap (if (theme 'menu-text-top)
+                                           y
+                                           (+ y (/ (- h lh) 2))))]
+                        [p (theme 'menu-highlight-outset)])
+                   (when sel?
+                     (case (theme 'menu-highlight)
+                       [(ink)
+                        (let-values ([(l t iw ih) (text-ink text font)])
+                          (ui-draw-highlight (+ tx l (- p))
+                                             (+ ty (font-ascent font) t (- p))
+                                             (+ iw p p) (+ ih p p) flags))]
+                       [(text)
+                        (ui-draw-highlight (- tx p) (- ty p)
+                                           (+ tw (theme 'menu-highlight-extra)
+                                              p p)
+                                           (+ lh p p) flags)]
+                       [else (ui-draw-highlight (+ x 5) y (- w 10) h flags)]))
+                   (when (and icon (> is 0))
+                     (icon (+ x (theme 'menu-text-x)) (+ y (/ (- h is) 2)) is
+                           '()))
+                   (draw-text tx ty text ink font))
                  ;; the key that does the same, at the right
                  (when key
                    (draw-text (- (+ x w) (theme 'menu-text-x)
@@ -311,6 +362,16 @@
                               (if sel? ink 'text-faint) font)))]))
           a))
        areas)))
+
+  ;; Returns v on a whole pixel where the style's menu-snap-text says so.
+  (define (menu-snap v)
+    (case (theme 'menu-snap-text)
+      [(#f) v]
+      [(floor) (floor v)]
+      [else (floor (+ v 1/2))]))
+
+  ;; The filter's hint's font.
+  (define (menu-hint-font) (or (theme 'menu-hint-font) (theme 'menu-font)))
 
   ;; Returns the flags of entry i's highlight: outline when the style's
   ;; menu-hover says so, and pressed while a button is held on the entry.
@@ -328,7 +389,9 @@
            [f (menu-filter m)] [ty (+ y (/ (- h lh) 2))])
       (fill-box x y w h 'bg-0 6)
       (if (string=? f "")
-          (draw-text (+ x 10) ty "Type to filter…" 'text-faint font)
+          (let ([hint (menu-hint-font)])
+            (draw-text (+ x 10) (+ y (/ (- h (font-line-height hint)) 2))
+                       (theme 'menu-filter-hint) 'text-faint hint))
           (with-clip (x y w h)
             (let ([ex (draw-text (min (+ x 10)
                                       (- (+ x w) 13 (text-width f font)))

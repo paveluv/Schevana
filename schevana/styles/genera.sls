@@ -34,29 +34,31 @@
     genera-tooltip-size genera-dialog-size genera-dialog-areas genera-dialog
     genera-scrim genera-calendar-areas genera-calendar-size genera-calendar
     genera-day genera-5x5 genera-avatar-size genera-avatar genera-mark
-    genera-due genera-board-slot genera-italic-of)
+    genera-due genera-board-slot genera-italic-of genera-draw-wallpaper)
   (import (chezscheme)
-          (only (schevana base) at-load clamp library-layer string-join
-                string-suffix?)
+          (only (schevana base) at-load clamp define-made library-layer
+                string-join string-suffix?)
           (only (schevana core) *bitmap-fonts* *focus* *windows*
                 color-default! define-bitmap-font define-style draw-scale
-                draw-text fill-box font font-ascent font-char-width
+                draw-text fill-box fill-wallpaper font font-ascent
+                font-char-width
                 font-family font-line-height font-size
                 frame-insets get-font
                 screen-h screen-w stipple stroke-box stroke-circle text-width
-                theme theme-rule window-bg window-h window-ref
+                theme theme-default! theme-rule window-bg window-h window-ref
                 window-title window-w with-clip with-place)
           (only (schevana kits px) px-bitmap-text px-bits px-invert px-bevel)
           (schevana styles genera font-5x5)
           (schevana styles genera fonts)
-          (only (schevana kits text) text-widest text-draw-centered text-fit)
+          (only (schevana kits text) text-widest text-draw-centered text-fit
+                text-ink)
           (only (schevana kits ui) ui-draw-mark* ui-initials ui-calendar-areas
                 ui-dialog-areas ui-dialog-lines ui-tooltip-lines ui-draw-panel
                 ui-draw-dim ui-draw-table-row ui-tree-areas ui-table-cell-inset
                 ui-scrollbar-areas ui-chip-areas ui-small-glyph-size
                 ui-text-box-top ui-scrollbar-width ui-control-height
                 ui-draw-focus ui-draw-glyph ui-glyph-size ui-busy-frame-ms
-                ui-italic-of))
+                ui-italic-of ui-wrap-lines))
 
   (library-layer looks)
 
@@ -107,27 +109,57 @@
 
   ;;; the who line
 
-  ;; Each of its two lines is the code font's line and 2 pixels.
-  (define (genera-line) (exact (round (+ (font-line-height 'mono) 2))))
+  ;; Its status row is the code font's line and the who line's spacing
+  ;; (genera-who-line-spacing); above it, the mouse documentation's rows,
+  ;; each a line of its font and the spacing: Genera keeps two of them and
+  ;; a status row (UG p.2803), the CADR one row of each with no spacing,
+  ;; all in CPTFONT (WHO-LINE-SETUP's :VSP 0, wholin.lisp:52-106).
+  (define (genera-line)
+    (exact (round (+ (font-line-height 'mono)
+                     (theme 'genera-who-line-spacing)))))
+
+  (define (genera-doc-line)
+    (exact (round (+ (font-line-height (theme 'genera-mouse-doc-font))
+                     (theme 'genera-who-line-spacing)))))
+
+  (define (genera-doc-height)
+    (* (theme 'genera-mouse-doc-lines) (genera-doc-line)))
+
+  ;; The settings' defaults, so that Genera's parts draw in any look.
+  (at-load
+   (theme-default! 'genera-who-line-spacing 2))
+  (at-load
+   (theme-default! 'genera-mouse-doc-lines 2))
+  (at-load
+   (theme-default! 'genera-mouse-doc-font 'mono))
+  (at-load
+   (theme-default! 'genera-hover-ink-gap #f))
+  (at-load
+   (theme-default! 'genera-choice-padding 0))
+  (at-load
+   (theme-default! 'genera-choice-side (theme-rule (round (font-ascent 'ui)))))
 
   ;; Its fields, at character columns as on the CADR (lispm.md 2.1), in the
   ;; taskbar's strip, h high: what the mouse buttons do, across the top
-  ;; line; and below, the selected window, a field that counts the windows,
+  ;; rows; and below, the selected window, a field that counts the windows,
   ;; the run state (as on the CADR, after the package) and the status.
   (define (genera-who-line-areas h hint)
-    (let ([lh (genera-line)] [y (- (screen-h) h)]
-          [cw (font-char-width 'mono)])
-      (list (list 'mouse-doc 0 y (screen-w) lh)
-            (list 'title cw (+ y lh) (* 24 cw) lh)
-            (list 'windows (* 26 cw) (+ y lh) (* 11 cw) lh)
-            (list 'state (* 38 cw) (+ y lh) (* 12 cw) lh)
-            (list 'status (* 51 cw) (+ y lh) (max 0 (- (screen-w) (* 52 cw)))
+    (let* ([lh (genera-line)] [dh (genera-doc-height)]
+           [y (- (screen-h) h)] [sy (+ y dh)]
+           [cw (font-char-width 'mono)])
+      (list (list 'mouse-doc 0 y (screen-w) dh)
+            (list 'title cw sy (* 24 cw) lh)
+            (list 'windows (* 26 cw) sy (* 11 cw) lh)
+            (list 'state (* 38 cw) sy (* 12 cw) lh)
+            (list 'status (* 51 cw) sy (max 0 (- (screen-w) (* 52 cw)))
                   lh))))
 
   ;; The who line in its fields (genera-who-line-areas): the mouse
-  ;; documentation, doc, across its top, and the status's strings below.
+  ;; documentation, doc, wrapped across its top rows in reverse video, and
+  ;; the status's strings below.
   (define (genera-draw-who-line h as open? doc status hint)
-    (let* ([lh (genera-line)] [w (screen-w)]
+    (let* ([lh (genera-line)] [dh (genera-doc-height)] [w (screen-w)]
+           [dl (genera-doc-line)] [df (theme 'genera-mouse-doc-font)]
            [y (- (screen-h) h)] [cw (font-char-width 'mono)]
            [ty (lambda (y) (+ y (floor (/ (- lh (font-line-height 'mono)) 2))))]
            [field (lambda (what s)
@@ -135,10 +167,18 @@
                              (draw-text fx (ty fy) (text-fit s fw 'mono) 'text
                                         'mono))
                            (cdr (assq what as))))])
-      (fill-box 0 y w lh 'text)
+      (fill-box 0 y w dh 'text)
       (when doc
-        (draw-text cw (ty y) (text-fit doc (- w cw cw) 'mono) 'bg-1 'mono))
-      (fill-box 0 (+ y lh) w lh 'bg-1)
+        (let-values ([(lines cut?)
+                      (ui-wrap-lines doc (max 1 (- w cw cw)) df
+                                     (theme 'genera-mouse-doc-lines))])
+          (with-clip (0 y w dh)
+            (let loop ([lines lines]
+                       [ly (+ y (floor (/ (- dl (font-line-height df)) 2)))])
+              (unless (null? lines)
+                (draw-text cw ly (car lines) 'bg-1 df)
+                (loop (cdr lines) (+ ly dl)))))))
+      (fill-box 0 (+ y dh) w lh 'bg-1)
       (field 'title (if *focus* (window-title *focus*) "No selected window"))
       (field 'windows (let ([n (length *windows*)])
                         (format "~a window~a" n (if (= n 1) "" "s"))))
@@ -174,11 +214,21 @@
          ".")))
 
   ;; A window that is not selected is grayed over with this: a sparse
-  ;; stipple of ink on clear paper. It is a color, which you may change and
-  ;; save. Rows the search leaves out, and what lies under a dialog, are
-  ;; grayed with it too.
+  ;; stipple of ink on clear paper, Genera 8.3's 6 % in a 16 × 8 tile, one
+  ;; dot a row, each row's six columns on from the one above (a 2024
+  ;; capture of Genera 8.3). It is a color, which you may change and save.
+  ;; Rows the search leaves out are grayed with it too.
   (at-load
-   (color-default! 'genera-gray (stipple 'text #f "#..." "...." "...." "....")))
+   (color-default! 'genera-gray
+                   (stipple 'text #f
+                            "#..............."
+                            "......#........."
+                            "............#..."
+                            "..#............."
+                            "........#......."
+                            "..............#."
+                            "....#..........."
+                            "..........#.....")))
   ;; A scroll bar's elevator: 33 %, diagonal (lispm-apps.md 2.4).
   (at-load
    (color-default! 'genera-elevator (stipple 'text #f "#.." ".#." "..#")))
@@ -205,12 +255,33 @@
     (let ([n (theme 'genera-hover-nudge)])
       (stroke-box (- x n) (- y n) (+ w n) (+ h n) 'text)))
 
+  ;; What the mouse is over, where it is a word drawn from (tx, ty): the
+  ;; box, grown where the word's ink would touch it, so that a clear pixel
+  ;; always lies between the ink and the box, glyphs that overhang their
+  ;; advance too (genera-hover-ink-gap; the 2-pixel outset of Peek's
+  ;; menus). The CADR boxes the cell as it is. The word lies on whole
+  ;; pixels (genera-text-x, genera-text-y), so its ink is where it is
+  ;; measured.
+  (define (genera-hover-text x y w h tx ty label font)
+    (if (not (theme 'genera-hover-ink-gap))
+        (genera-hover x y w h)
+        (let-values ([(l t iw ih) (text-ink label font)])
+          (let* ([l (+ tx l)] [t (+ ty (font-ascent font) t)]
+                 [left (min x (- l 2))] [top (min y (- t 2))])
+            (genera-hover left top (- (max (+ x w) (+ l iw 2)) left)
+                          (- (max (+ y h) (+ t ih 2)) top))))))
+
   ;; A box n pixels thick.
   (define (genera-box x y w h n) (px-bevel x y w h 'text 'text n))
 
   ;; The top of a text in a box h high at y, so that its line is centered
-  ;; in the box.
-  (define (genera-text-y y h font) (+ y (/ (- h (font-line-height font)) 2)))
+  ;; in the box, on a whole pixel.
+  (define (genera-text-y y h font)
+    (floor (+ y (/ (- h (font-line-height font)) 2) 1/2)))
+
+  ;; The left of a text centered in a box w wide at x, on a whole pixel.
+  (define (genera-text-x x w text font)
+    (floor (+ x (/ (- w (text-width text font)) 2) 1/2)))
 
   ;; The keyboard's place: underlined (UG p.2762).
   (define (genera-focus x y w h flags r) (fill-box x (+ y h -1) w 1 'text))
@@ -230,10 +301,15 @@
                             'genera-command-font))]
            [ink (cond [rev? 'window-bg] [live? 'text] [else 'text-faint])]
            [box? (and label (theme 'genera-margin-choice))]
-           [s (genera-choice-side)] [sp (font-char-width font)])
+           [s (genera-choice-side)] [sp (font-char-width font)]
+           [text (and label (not box?) (text-fit label (- w 4) font))]
+           [tx (and text (genera-text-x x w text font))]
+           [ty (genera-text-y y h font)])
       (cond [rev? (fill-box x y w h 'text)]
             [(and live? (or (on? 'hover) (on? 'pressed)))
-             (genera-hover x y w h)])
+             (if text
+                 (genera-hover-text x y w h tx ty text font)
+                 (genera-hover x y w h))])
       (cond
         [box?
          (let* ([text (text-fit label (- w 4 sp s) font)]
@@ -241,8 +317,7 @@
                 [end (draw-text x0 (genera-text-y y h font) text ink font)])
            (genera-choice-box (+ end sp) (+ y (/ (- h s) 2)) s
                               (on? 'pressed)))]
-        [label
-         (text-draw-centered x y w h (text-fit label (- w 4) font) ink font)]
+        [label (draw-text tx ty text ink font)]
         [glyph
          (let ([g (ui-glyph-size)])
            (ui-draw-glyph (+ x (/ (- w g) 2)) (+ y (/ (- h g) 2)) g g
@@ -258,11 +333,12 @@
                   h)
               h)))
 
-  ;; The choice box: a square as tall as the body font's capitals, its
-  ;; frame a quarter of its side thick on the CADR (genera-choice-heavy) and
-  ;; a pixel in Genera, and, when on, an X in it, thick on the CADR
+  ;; The choice box: a square genera-choice-side wide (Genera's as tall as
+  ;; the body font's capitals, the CADR's its line), its frame a quarter of
+  ;; its side thick on the CADR (genera-choice-heavy) and a pixel in
+  ;; Genera, and, when on, an X in it, thick on the CADR
   ;; (choice.lisp:441-464).
-  (define (genera-choice-side) (round (font-ascent 'ui)))
+  (define (genera-choice-side) (theme 'genera-choice-side))
 
   (define (genera-choice-box x y s on?)
     (let* ([heavy? (theme 'genera-choice-heavy)]
@@ -278,22 +354,28 @@
                         (list i (- n 1 i))))))))
 
   ;; A checkbox: its label, a space and the box (choice.lisp:505-512), all
-  ;; boxed under the mouse.
+  ;; boxed under the mouse; in Genera with genera-choice-padding of room at
+  ;; either end, the box around the label's ink and the choice box with a
+  ;; clear pixel, the CADR's around the cells.
   (define (genera-checkbox x y w h flags label)
     (let* ([s (genera-choice-side)] [sp (font-char-width 'ui)]
-           [end (if label
-                    (draw-text x (genera-text-y y h 'ui)
-                               (text-fit label (- w sp s) 'ui) 'text 'ui)
-                    x)]
-           [bx (if label (+ end sp) x)])
-      (genera-choice-box bx (+ y (/ (- h s) 2)) s (memq 'checked flags))
-      (when (memq 'hover flags) (genera-hover x y (- (+ bx s 2) x) h))
+           [p (theme 'genera-choice-padding)] [tx (+ x p)]
+           [ty (genera-text-y y h 'ui)]
+           [text (and label (text-fit label (- w sp s p p) 'ui))]
+           [end (if label (draw-text tx ty text 'text 'ui) tx)]
+           [bx (if label (+ end sp) tx)] [by (+ y (/ (- h s) 2))])
+      (genera-choice-box bx by s (memq 'checked flags))
+      (when (memq 'hover flags)
+        (cond [(zero? p) (genera-hover x y (- (+ bx s 2) x) h)]
+              [text (genera-hover-text (- bx 2) (- by 2) (+ s 4) (+ s 4)
+                                       tx ty text 'ui)]
+              [else (genera-hover (- bx 2) (- by 2) (+ s 4) (+ s 4))]))
       (when (memq 'focused flags)
         (ui-draw-focus x y (- (+ bx s) x) h flags 0))))
 
   (define (genera-checkbox-size label)
     (values (+ (text-width label 'ui) (font-char-width 'ui)
-               (genera-choice-side))
+               (genera-choice-side) (* 2 (theme 'genera-choice-padding)))
             (ui-control-height)))
 
   ;; An on-off setting, as a boolean in the CADR's choose-variable-values:
@@ -312,7 +394,8 @@
                  [end (draw-text wx (genera-text-y y h font) (car words)
                                  'text font)])
             (when (and (not current?) (memq 'hover flags))
-              (genera-hover (- wx 2) y (+ (- end wx) 4) h))
+              (genera-hover-text (- wx 2) y (+ (- end wx) 4) h wx
+                                 (genera-text-y y h font) (car words) font))
             (loop (cdr words) (+ wx (text-width (car words) b) sp)
                   (not current?)))))
       (when (memq 'focused flags) (ui-draw-focus x y w h flags 0))))
@@ -328,10 +411,11 @@
   ;; in inverse video while it is the current one, and boxed under the
   ;; mouse.
   (define (genera-tab x y w h flags label)
-    (let ([font (theme 'genera-command-font)] [sel? (memq 'selected flags)])
+    (let* ([font (theme 'genera-command-font)] [sel? (memq 'selected flags)]
+           [tx (genera-text-x x w label font)] [ty (genera-text-y y h font)])
       (cond [sel? (fill-box x y w h 'text)]
-            [(memq 'hover flags) (genera-hover x y w h)])
-      (text-draw-centered x y w h label (if sel? 'window-bg 'text) font)
+            [(memq 'hover flags) (genera-hover-text x y w h tx ty label font)])
+      (draw-text tx ty label (if sel? 'window-bg 'text) font)
       (when (memq 'focused flags) (ui-draw-focus x y w h flags 0))))
 
   (define (genera-tabs-size labels)
@@ -379,12 +463,18 @@
   ;; boxed under the mouse; a click opens the menu. A label shown instead
   ;; of a value is plain, and the placeholder for no value is faint.
   (define (genera-dropdown x y w h flags label)
-    (let ([font (if (or (memq 'label flags) (memq 'placeholder flags))
-                    'ui
-                    'ui-bold)])
-      (when (or (memq 'hover flags) (memq 'open flags)) (genera-hover x y w h))
-      (draw-text (+ x 3) (genera-text-y y h font) (text-fit label (- w 6) font)
-                 (if (memq 'placeholder flags) 'text-faint 'text) font)
+    (let* ([font (if (or (memq 'label flags) (memq 'placeholder flags))
+                     'ui
+                     'ui-bold)]
+           [ink (if (memq 'placeholder flags) 'text-faint 'text)]
+           [text (text-fit label (- w 6) font)]
+           [ty (genera-text-y y h font)])
+      (when (or (memq 'hover flags) (memq 'open flags))
+        (genera-hover-text x y w h (+ x 3) ty text
+                           (if (memq 'placeholder flags)
+                               (genera-italic-of (get-font font))
+                               font)))
+      (draw-text (+ x 3) ty text ink font)
       (when (memq 'focused flags) (ui-draw-focus x y w h flags 0))))
 
   (define (genera-dropdown-size labels)
@@ -425,26 +515,37 @@
     (when (memq 'hover flags)
       (stroke-box (- x 2) (- y 2) (+ w 4) (+ h 4) 'text)))
 
-  ;; Genera's scroll bar, as measured (lispm-apps.md 2.4; report:35-41):
-  ;; 1-pixel sides, a box as wide as the bar at each end, and the elevator
-  ;; between them in a 33 % stipple.
+  ;; Genera's scroll bar, as measured (lispm-apps.md 2.4; report:35-41) and
+  ;; as the 1998 Peek and Listener captures show it pixel for pixel: dotted
+  ;; 1-pixel sides, a box as wide as the bar at each end (up and down), and
+  ;; between them the elevator, a 1-pixel outline on paper around a 33 %
+  ;; stipple.
   (define (genera-scrollbar-areas x y w h start size)
     (let* ([e (min w (floor (/ h 3)))] [l (- h e e)]
            [th (min l (max w (* size l)))])
       (list (list 'thumb x
                   (+ y e (if (< size 1) (* (- l th) (/ start (- 1 size))) 0))
                   w th)
-            (list 'track x (+ y e) w l))))
+            (list 'track x (+ y e) w l)
+            (list 'up x y w e)
+            (list 'down x (- (+ y h) e) w e))))
+
+  (define-made genera-dotted (stipple 'text #f "#" "."))
 
   (define (genera-scrollbar x y w h flags start size)
     (let ([e (min w (floor (/ h 3)))]
           [t (cdr (assq 'thumb (ui-scrollbar-areas x y w h start size)))])
       (fill-box x y w h 'window-bg)
-      (fill-box x y 1 h 'text)
-      (fill-box (+ x w -1) y 1 h 'text)
+      (fill-box x y 1 h genera-dotted)
+      (fill-box (+ x w -1) y 1 h genera-dotted)
       (stroke-box x y w e 'text)
       (stroke-box x (- (+ y h) e) w e 'text)
-      (fill-box (+ x 1) (cadr t) (- w 2) (cadddr t) 'genera-elevator)))
+      (apply (lambda (tx ty tw th)
+               (fill-box tx ty tw th 'window-bg)
+               (stroke-box tx ty tw th 'text)
+               (fill-box (+ tx 1) (+ ty 1) (max 0 (- tw 2)) (max 0 (- th 2))
+                         'genera-elevator))
+             t)))
 
   ;; Neither machine had a slider; typed numbers did its job (CLIM2
   ;; p.1151). Its authors would have turned the scroll bar sideways: a
@@ -529,10 +630,12 @@
   ;; with its white margin (lispm.md 2.8), as genera-panel-border sets.
   (define (genera-panel x y w h flags)
     ;; Genera's shadow: solid under what only the mouse uses, and a 50 %
-    ;; stipple under a dialog (report:51); the CADR had none.
+    ;; stipple under what takes the keyboard too (report:51), a dialog, and
+    ;; a menu, which takes arrows, Return and typing (UG p.2764); the CADR
+    ;; had none.
     (when (theme 'genera-shadow)
       (fill-box (+ x 7) (+ y 7) w h
-                (if (exists (lambda (f) (memq f flags)) '(menu toast tooltip))
+                (if (exists (lambda (f) (memq f flags)) '(toast tooltip))
                     'text
                     (stipple 'text #f "#." ".#"))))
     (fill-box x y w h 'window-bg)
@@ -621,9 +724,14 @@
       (fill-box (+ x b) (- (+ y h) b (genera-dialog-strip) 1) (- w b b) 1
                 'text)))
 
-  ;; Under a dialog, the gray that covers a window not in use
-  ;; (UG p.2804).
-  (define (genera-scrim x y w h flags) (fill-box x y w h 'genera-gray))
+  ;; Nothing under a dialog: a temporary window neither deexposes nor grays
+  ;; the window below it (PUI p.1929).
+  (define (genera-scrim x y w h flags) (void))
+
+  ;; The screen as Genera's: the chosen wallpaper and its colors, with
+  ;; none of Schevana's own lettering on it.
+  (define (genera-draw-wallpaper w h)
+    (fill-wallpaper 0 0 w h (theme 'wallpaper) 'desktop-top 'desktop-bottom))
 
   ;; Neither machine had a calendar; dates were typed (UG Fig. 144). Its
   ;; authors would have set a month as a text table (lispm-apps.md 4.16;
@@ -676,7 +784,12 @@
            [f (if (on? 'today) 'ui-bold 'ui)] [lh (font-line-height f)]
            [ty (genera-text-y y h f)] [sel? (on? 'selected)])
       (cond [sel? (fill-box x (- ty 1) w (+ lh 2) 'text)]
-            [(on? 'hover) (genera-hover x (- ty 1) w (+ lh 2))])
+            [(on? 'hover)
+             (genera-hover-text x (- ty 1) w (+ lh 2)
+                                (- (+ x w) 4 (text-width label f)) ty label
+                                (if (on? 'outside)
+                                    (genera-italic-of (get-font f))
+                                    f))])
       (draw-text (- (+ x w) 4 (text-width label f)) ty label
                  (cond [sel? 'window-bg] [(on? 'outside) 'text-faint]
                        [else 'text])
@@ -781,7 +894,10 @@
    (define-style genera "Genera"
      'palette 'genera
      'wallpaper 'flat
+     'draw-wallpaper 'genera-draw-wallpaper
      'corner-radius 0   ; square, and so is everything drawn in it
+     ;; a screen one bit deep: no half-ink glyph for what can't be used
+     'disabled-glyph-opacity 1
      'genera-border 2
      'genera-margin 4
      'genera-label-font 'ui-italic
@@ -793,7 +909,10 @@
      'frame-over 'genera-draw-over
      ;; the screen: no top bar; the who line at the bottom
      'topbar-height 0
-     'taskbar-height (theme-rule (* 2 (genera-line)))
+     'genera-who-line-spacing 2
+     'genera-mouse-doc-lines 2
+     'genera-mouse-doc-font (font "Genera SWISS12-CCAPS Bold" 14 'crisp)
+     'taskbar-height (theme-rule (+ (genera-doc-height) (genera-line)))
      'draw-taskbar 'genera-draw-who-line
      'taskbar-areas 'genera-who-line-areas
      'ui-busy-size 'genera-busy-size
@@ -841,10 +960,21 @@
      'menu-font (font "Genera JESS14" 14 'crisp)
      'menu-item-height
      (theme-rule (round (+ (font-line-height (theme 'menu-font)) 4)))
-     'menu-pad 3
-     'menu-text-x 14
-     'menu-min-width 120
+     'menu-separator-height (theme-rule (theme 'menu-item-height))
+     'menu-pad 4
+     'menu-text-x 6
+     'menu-width-extra 0
+     'menu-min-width 0
      'menu-align 'center
+     'menu-snap-text #t
+     ;; the chosen entry boxed around its ink, a clear pixel and the box
+     ;; out from it (Peek's Reset menu)
+     'menu-highlight 'ink
+     'menu-highlight-outset 2
+     ;; the filter's hint as the machine would type it, and the menu as
+     ;; wide
+     'menu-filter-hint "Type to filter..."
+     'menu-fit-filter #t
      'menu-ink 'text
      'menu-ink-selected 'text
      'menu-ink-pressed 'window-bg
@@ -855,6 +985,10 @@
      ;; the widgets
      'surface-well-ring 1
      'genera-hover-nudge 0
+     'genera-hover-ink-gap #t
+     'genera-choice-padding 2
+     'genera-choice-side (theme-rule (round (font-ascent 'ui)))
+     'dropdown-selected-mark "  *"
      'genera-panel-border 2
      'genera-shadow #t
      'genera-choice-heavy #f
@@ -924,6 +1058,9 @@
      'chart-ok (stipple 'text #f "#..." "...." "...." "....")
      ;; the feel
      'title-double-click 'none
+     ;; a window moves and reshapes by a rectangle, not its contents
+     ;; (MOUSE-SPECIFY-RECTANGLE, sysmen.lisp:200, :357)
+     'drag-feedback 'outline
      'bell 'screen
      'menu-hover 'outline
      'mouse-doc #t

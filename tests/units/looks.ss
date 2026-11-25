@@ -105,8 +105,8 @@
              (for-each picture-free! (list a b narrow plain))
              (and (> (car r) 0) (= (cadr r) 0))))))
 
-(check "Genera grays a window not selected with a sparse stipple, and not \
-        the selected one"
+(check "Genera grays a window not selected with a sparse stipple, Genera \
+        8.3's 16 by 8 tile, and not the selected one"
        (let* ([a (open-window "A" 'size '(200 . 120) 'pos '(100 . 100)
                               'window-style 'genera)]
               [b (open-window "B" 'size '(200 . 120) 'pos '(500 . 100)
@@ -114,8 +114,8 @@
          (steps 2)
          (let* ([dot (lambda (win)   ; the first stipple dot in its content
                        (let-values ([(cx cy cw ch) (content-rect win)])
-                         (canvas-pixel (* 4 (ceiling (/ cx 4)))
-                                       (* 4 (ceiling (/ cy 4))))))]
+                         (canvas-pixel (* 16 (ceiling (/ cx 16)))
+                                       (* 8 (ceiling (/ cy 8))))))]
                 [r (list (dot a) (dot b)
                          (with-style 'genera
                            (lambda () (list (color->pixel 'text)
@@ -664,23 +664,26 @@
                    (list (color->pixel 'accent) #xff000000 #xffffffff)))))
 
 (check "Genera's who line: no top bar; what the mouse does reversed across \
-        its top line, in Genera's words; its fields at character columns; \
-        its windows field lists them, and one chosen is selected"
+        its top, in two rows (UG p.2803), in Genera's words; its fields at \
+        character columns; its windows field lists them, and one chosen is \
+        selected"
        (let ([a (open-window "Alpha" 'size '(300 . 160) 'pos '(200 . 200))]
              [b (open-window "Beta" 'size '(300 . 160) 'pos '(600 . 200))])
          (set-style! 'genera)
          (inject! '(mouse-move 900 600))
          (steps 2)
-         (let* ([lh (genera-line)] [top (- (screen-h) (* 2 lh))]
+         (let* ([lh (genera-line)] [dh (genera-doc-height)]
+                [top (- (screen-h) dh lh)]
                 [areas (placed-taskbar-areas)]
                 [cw (font-char-width 'mono)]
                 [row (lambda () (map (lambda (x) (canvas-pixel x (+ top 8)))
                                      (iota 300)))]
                 [desk (row)]
-                [sizes (list (topbar-height) (taskbar-height) (* 2 lh))]
+                [sizes (list (topbar-height) (taskbar-height) (+ dh lh)
+                             (* 2 (genera-doc-line)) dh)]
                 [cols (map (lambda (a) (/ (cadr a) cw)) (cdr areas))]
                 [colors (list (canvas-pixel 2 (+ top 1))
-                              (canvas-pixel 2 (+ top lh 1))
+                              (canvas-pixel 2 (+ top dh 1))
                               (canvas-pixel 640 2))]
                 [ink+paper (list (color->pixel 'text) (color->pixel 'bg-1)
                                  (color->pixel 'desktop-top))])
@@ -704,6 +707,7 @@
                  (close-window! b)
                  (steps 2)
                  (and (= (car sizes) 0) (= (cadr sizes) (caddr sizes))
+                      (= (cadddr sizes) (list-ref sizes 4))
                       (for-all integer? cols)
                       (equal? colors ink+paper)
                       (not (equal? desk over))
@@ -1692,3 +1696,135 @@
                   (equal? r2 (list #t (c #x000000) (c #xffffff) (c #x000000)
                                    (c #x000000) (c #xffffff)
                                    (c #x000000) (c #xffffff))))))))
+
+;;; the CADR's and Genera's behaviors, as Schevana2 ported them from their
+;;; sources
+
+(check "the CADR's numbers from its sources: a blinker's phase 250 ms \
+        (HALF-PERIOD), a choice box CPTFONT's 12, a menu row MEDFNT's 13 \
+        and VSP 2 (a blank one between groups), a who line of two CPTFONT \
+        rows with no spacing, a hint in TR10I; its scroll bar keeps five \
+        pixels and scales both ends (SCROLL-BAR-DRAW), with no least length"
+       (with-style 'cadr
+         (lambda ()
+           (let ([thumb (lambda (start size)
+                          (cdr (assq 'thumb (cadr-scrollbar-areas
+                                             0 0 3 105 start size))))])
+             (and (= (theme 'text-blink-ms) 250)
+                  (= (genera-choice-side) 12)
+                  (= (theme 'menu-item-height) 15)
+                  (= (theme 'menu-separator-height) 15)
+                  (= (taskbar-height) 24)
+                  (equal? (font-family (get-font (theme 'label-hint-font)))
+                          "CADR TR10 Italic")
+                  (equal? (thumb 0 1/10) '(0 0 3 15))
+                  (equal? (thumb 1/2 1/100) '(0 50 3 6)))))))
+
+(check "Genera's settings: its dropdown marks the current choice with *, \
+        which its fonts have; a glyph that can't be used keeps all its ink; \
+        a window moves by its outline; a menu's chosen entry is boxed \
+        around its ink, its separators a blank row; nothing under a dialog"
+       (with-style 'genera
+         (lambda ()
+           (let ([scrim (image 10 10 1
+                               (lambda ()
+                                 (fill-box 0 0 10 10 'window-bg)
+                                 (ui-draw-scrim 0 0 10 10 '())))])
+             (and (equal? (theme 'dropdown-selected-mark) "  *")
+                  (= (theme 'disabled-glyph-opacity) 1)
+                  (eq? (theme 'drag-feedback) 'outline)
+                  (eq? (theme 'menu-highlight) 'ink)
+                  (= (theme 'menu-separator-height) (theme 'menu-item-height))
+                  (for-all (lambda (y)
+                             (for-all (lambda (x)
+                                        (= (pixel-at scrim x y)
+                                           (color->pixel 'window-bg)))
+                                      (iota 10)))
+                           (iota 10)))))))
+
+(check "Genera's scroll bar as the 1998 captures show it: dotted 1-pixel \
+        sides, a box at each end, and the elevator a 1-pixel outline on \
+        paper around its stipple"
+       (with-style 'genera
+         (lambda ()
+           (let* ([t (cdr (assq 'thumb (ui-scrollbar-areas 0 0 10 100 0
+                                                           3/10)))]
+                  [ty (cadr t)]
+                  [img (image 10 100 1
+                              (lambda ()
+                                (fill-box 0 0 10 100 'window-bg)
+                                (ui-draw-scrollbar 0 0 10 100 '() 0 3/10)))]
+                  [ink (color->pixel 'text)] [paper (color->pixel 'window-bg)]
+                  [at (lambda (x y) (pixel-at img x y))]
+                  [side (map (lambda (y) (at 0 (+ 40 y))) (iota 6))]
+                  [r (list side
+                           (map (lambda (x) (at (+ x 1) ty)) (iota 8))
+                           (at 1 (+ ty 1)))])
+             (printf "  ~s\n" r)
+             (and (equal? side (list ink paper ink paper ink paper))
+                  (for-all (lambda (p) (= p ink)) (cadr r))
+                  (member (caddr r) (list ink paper)))))))
+
+(check "Genera boxes the word under the mouse a clear pixel off its ink: \
+        no pixel of the box touches the word, though the word fills the \
+        button's height"
+       (with-style 'genera
+         (lambda ()
+           (let* ([w 60] [h (font-line-height 'genera-command-font)]
+                  [draw (lambda (flags)
+                          (pixel-rows
+                           (image (+ w 8) (+ h 8) 1
+                                  (lambda ()
+                                    (fill-box 0 0 (+ w 8) (+ h 8) #xffffff)
+                                    (ui-draw-button 4 4 w h flags "Wjgy"
+                                                    #f)))
+                           '((#xffffffff . #\.))))]
+                  [plain (draw '())] [boxed (draw '(hover))]
+                  [at (lambda (rows x y)
+                        (and (< -1 y (length rows))
+                             (< -1 x (string-length (car rows)))
+                             (char=? (string-ref (list-ref rows y) x) #\#)))]
+                  [box (filter (lambda (p) (and (apply at boxed p)
+                                                (not (apply at plain p))))
+                               (apply append
+                                      (map (lambda (y)
+                                             (map (lambda (x) (list x y))
+                                                  (iota (+ w 8))))
+                                           (iota (+ h 8)))))])
+             (and (pair? box)
+                  (not (exists (lambda (p)
+                                 (exists (lambda (d)
+                                           (at plain (+ (car p) (car d))
+                                               (+ (cadr p) (cadr d))))
+                                         '((-1 0) (1 0) (0 -1) (0 1)
+                                           (-1 -1) (1 1) (-1 1) (1 -1))))
+                               box)))))))
+
+(check "a Genera menu's chosen entry is boxed around its ink: the box, a \
+        clear pixel, then the word"
+       (begin
+         (set-style! 'genera)
+         (open-menu! 300 300 (list (cons "Alpha" void) (cons "Beta" void)))
+         (steps 1)
+         (let* ([a (map (lambda (v) (exact (floor v)))
+                        (cdr (assv 0 (placed-menu-areas *menu*))))]
+                [mx (+ (car a) (quotient (caddr a) 2))]
+                [my (+ (cadr a) (quotient (cadddr a) 2))])
+           (inject! `(mouse-move ,mx ,my))
+           (steps 2)
+           (let* ([ink (color->pixel 'text)]
+                  [row (map (lambda (x) (canvas-pixel (+ (car a) x) my))
+                            (iota (caddr a)))]
+                  ;; past the menu's own border, the box's left side
+                  [inside (list-index (lambda (p) (not (= p ink))) row)]
+                  [first (and inside
+                              (let ([i (list-index (lambda (p) (= p ink))
+                                                   (list-tail row inside))])
+                                (and i (+ inside i))))]
+                  [r (and first (list (list-ref row first)
+                                      (list-ref row (+ first 1))))])
+             (close-menu!)
+             (set-style! 'mac)
+             (steps 1)
+             (printf "  ~s\n" r)
+             (and r (= (car r) ink) (not (= (cadr r) ink)))))))
