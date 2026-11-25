@@ -1,5 +1,6 @@
 ;;; (schevana palettes interlisp) — the Interlisp palette, after Interlisp-D:
-;;; black ink on white paper.
+;;; black ink on white paper. Its accent is the ink, so a default button
+;;; under the pointer lightens to a gray of its own rather than darkening.
 
 (library (schevana palettes interlisp)
   (export)
@@ -20,6 +21,7 @@
        text-faint #x6a6a6a
        accent #x000000
        accent-2 #x555555
+       primary-hover #x333333
        red #x8b0000
        orange #x6b4400
        yellow #x5c5c00

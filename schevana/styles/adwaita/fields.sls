@@ -30,7 +30,9 @@
   ;; round, with no border; focused, it has the ring inside it however the
   ;; focus came (17). A text area is drawn as one too.
   (define (adwaita-field x y w h flags)
-    (adwaita-box x y w h (alpha 'text 0.1) 9 flags)
+    (adwaita-box x y w h
+                 (alpha 'text (if (memq 'disabled flags) 0.05 0.1))
+                 9 flags)
     (when (memq 'focused flags)
       (if (or (memq 'join-left flags) (memq 'join-right flags))
           (let-values ([(bx bw) (ui-joined-span x w 9 flags)])
@@ -52,21 +54,24 @@
   ;; choice, bold, 9 in, and the pan-down arrow, 16 square, 6 after the
   ;; text and 9 from the end; while open, it is pressed in.
   (define (adwaita-dropdown x y w h flags label)
-    (let* ([on? (lambda (f) (memq f flags))] [g (ui-glyph-size)]
-           [lh (font-line-height 'ui-bold)])
+    (let* ([off? (memq 'disabled flags)]
+           [on? (lambda (f) (and (not (and off? (memq f '(hover pressed))))
+                                 (memq f flags)))]
+           [ink (lambda (c) (if off? (alpha c 0.5) c))]
+           [g (ui-glyph-size)] [lh (font-line-height 'ui-bold)])
       (fill-box x y w h
-                (alpha 'text (cond [(or (on? 'open) (on? 'pressed)) 0.3]
-                                   [(on? 'hover) 0.15]
-                                   [else 0.1]))
+                (ink (alpha 'text (cond [(or (on? 'open) (on? 'pressed)) 0.3]
+                                        [(on? 'hover) 0.15]
+                                        [else 0.1])))
                 9)
       (adwaita-text-in (+ x 9) y h
                        (text-fit label (max 0 (- w 9 6 g 9)) 'ui-bold)
-                       (cond [(on? 'set) 'adwaita-link]
-                             [(on? 'placeholder) 'text-dim]
-                             [else 'text])
+                       (ink (cond [(on? 'set) 'adwaita-link]
+                                  [(on? 'placeholder) 'text-dim]
+                                  [else 'text]))
                        'ui-bold)
       (ui-draw-glyph (- (+ x w) 9 g) (adwaita-center y h g) g g
-                     '((ink . text)) 'chevron-down)
+                     (list (cons 'ink (ink 'text))) 'chevron-down)
       (when (on? 'focused) (adwaita-ring x y w h 9))))
 
   (define (adwaita-dropdown-size labels)
@@ -91,21 +96,23 @@
   ;; is a round flat button at its end.
   (define (adwaita-chip x y w h flags label)
     (let* ([sh (font-line-height 'ui-small)] [g (ui-small-glyph-size)]
-           [rem? (memq 'removable flags)])
-      (fill-box x y w h (alpha 'text 0.1) (/ h 2))
+           [rem? (memq 'removable flags)] [off? (memq 'disabled flags)]
+           [ink (lambda (c) (if off? (alpha c 0.5) c))])
+      (fill-box x y w h (ink (alpha 'text 0.1)) (/ h 2))
       (fill-circle (+ x 13) (+ y (/ h 2)) 3
-                   (app-color (string->symbol label)))
+                   (ink (app-color (string->symbol label))))
       (adwaita-text-in (+ x 22) y h
                        (text-fit label (max 0 (- w 32 (if rem? (+ g 4) 0)))
                                  'ui-small)
-                       'text 'ui-small)
+                       (ink 'text) 'ui-small)
       (when rem?
         (let* ([a (cdr (assq 'remove (ui-chip-areas x y w h)))]
                [cx (+ (car a) (/ (caddr a) 2))] [cy (+ y (/ h 2))])
-          (when (memq 'hover flags)
+          (when (and (memq 'hover flags) (not off?))
             (fill-circle cx cy (/ (- h 4) 2)
                          (alpha 'text (if (memq 'pressed flags) 0.16 0.07))))
-          (ui-draw-glyph (- cx (/ g 2)) (- cy (/ g 2)) g g '((ink . text))
+          (ui-draw-glyph (- cx (/ g 2)) (- cy (/ g 2)) g g
+                         (list (cons 'ink (ink 'text)))
                          'cross)))))
 
   (define (adwaita-chip-size label removable?)

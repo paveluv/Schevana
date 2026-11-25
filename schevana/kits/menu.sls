@@ -63,7 +63,7 @@
 
   ;; What an entry that can't be chosen now is drawn in.
   (at-load
-   (theme-default! 'menu-ink-unready 'text-faint))
+   (theme-default! 'menu-ink-unready 'text-disabled))
 
   ;; Returns the side of the icons that m's entries show in font: its line
   ;; height, or 0 when none of them has an icon or the style shows none

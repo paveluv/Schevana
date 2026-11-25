@@ -47,9 +47,10 @@
   (define (cons-slot) (cons-arrow))
 
   ;; A cell's fill by its state: its ink under the mouse, at 0.6 while
-  ;; pressed, and none otherwise.
+  ;; pressed, and none otherwise, nor while it is disabled.
   (define (cons-tint-of flags ink)
-    (cond [(memq 'pressed flags) (alpha ink 0.6)]
+    (cond [(memq 'disabled flags) #f]
+          [(memq 'pressed flags) (alpha ink 0.6)]
           [(memq 'hover flags) ink]
           [else #f]))
 
@@ -108,16 +109,20 @@
   (define (cons-bool! x y h flags on?)
     (let* ([bw (cons-bool-width)] [b (ui-checkbox-box)]
            [by (+ y (floor (/ (- h b) 2)))]
-           [focused? (memq 'focused flags)]
-           [ink (if focused? 'accent 'cons-ink)]
+           [focused? (memq 'focused flags)] [off? (memq 'disabled flags)]
+           [ink (cond [off? 'text-faint] [focused? 'accent] [else 'cons-ink])]
            [tint (cons-tint-of flags ink)])
       (when tint (fill-box x by bw b tint))
       (cons-ring! x by bw b ink (if focused? 2 1))
       (text-draw-centered x by bw b (if on? "#t" "#f")
-                          (cond [tint 'window-bg] [on? 'accent]
-                                [else 'text-dim])
+                          (cond [tint 'window-bg] [off? 'text-faint]
+                                [on? 'accent] [else 'text-dim])
                           'mono)
       bw))
+
+  ;; A boolean's label: faint while disabled, else the given ink.
+  (define (cons-bool-label-ink flags ink)
+    (if (memq 'disabled flags) 'text-faint ink))
 
   ;; A checkbox: the boolean, then its label, dim once it is #t (a
   ;; checklist's done items).
@@ -127,7 +132,11 @@
       (when label
         (draw-text (+ x bw (cons-space)) (+ y (/ (- h lh) 2))
                    (text-fit label (- w bw (cons-space)) 'ui)
-                   (if (memq 'checked flags) 'text-dim 'text) 'ui))))
+                   (cons-bool-label-ink flags
+                                        (if (memq 'checked flags)
+                                            'text-dim
+                                            'text))
+                   'ui))))
 
   (define (cons-checkbox-size label)
     (values (+ (cons-bool-width) (cons-space) (text-width label 'ui))
@@ -140,7 +149,8 @@
           [lh (font-line-height 'ui)])
       (when label
         (draw-text (+ x bw (cons-space)) (+ y (/ (- h lh) 2))
-                   (text-fit label (- w bw (cons-space)) 'ui) 'text 'ui))))
+                   (text-fit label (- w bw (cons-space)) 'ui)
+                   (cons-bool-label-ink flags 'text) 'ui))))
 
   ;; Tabs are a list of symbols, [Board|•]→[List|•]→[Tree|/]: each tab is a
   ;; pair whose car is the word and whose cdr points to the next; the last
@@ -152,12 +162,16 @@
   (define (cons-tab x y w h flags label)
     (let* ([c (cons-slot)] [cw (- w c (cons-arrow))]
            [on? (lambda (f) (memq f flags))]
-           [bold? (on? 'focused)]
-           [ink (if bold? 'accent 'cons-ink)] [lw (if bold? 2 1)]
-           [tint (if (on? 'selected) 'accent (cons-tint-of flags ink))])
+           [bold? (on? 'focused)] [off? (on? 'disabled)]
+           [ink (cond [off? 'text-faint] [bold? 'accent] [else 'cons-ink])]
+           [lw (if bold? 2 1)]
+           [tint (cond [(on? 'selected) (if off? 'text-faint 'accent)]
+                       [else (cons-tint-of flags ink)])])
       (cons-pair-h! x y cw h c ink lw tint #f)
       (text-draw-centered x y cw h (text-fit label (- cw 8) 'ui)
-                          (if tint 'window-bg 'text) 'ui)
+                          (cond [tint 'window-bg] [off? 'text-faint]
+                                [else 'text])
+                          'ui)
       (if (on? 'last)
           (cons-nil-h! (+ x cw) y c h ink lw #f)
           (cons-right! (cons-dot-x (+ x cw) c lw) (cons-dot-y y h lw) (+ x w)
@@ -189,7 +203,10 @@
            [open (if (on? 'chips) "(" "\"")] [close (if (on? 'chips) ")" "\"")]
            [g (cons-space)]
            [bw (if (on? 'lines) (+ (ui-scrollbar-width) g) 0)])
-      (cons-ring! x y w h (if focused? 'accent 'cons-ink) (if focused? 2 1))
+      (cons-ring! x y w h
+                  (cond [focused? 'accent] [(on? 'disabled) 'text-faint]
+                        [else 'cons-ink])
+                  (if focused? 2 1))
       (unless (on? 'search)
         (draw-text (+ x g) (+ ty dy) open 'text-faint 'mono)
         (draw-text (- (+ x w) g bw (text-width close 'mono))
@@ -224,16 +241,18 @@
   ;; faint placeholder.
   (define (cons-dropdown x y w h flags label)
     (let* ([c (cons-slot)] [cw (- w c)] [on? (lambda (f) (memq f flags))]
+           [off? (on? 'disabled)]
            [bold? (or (on? 'set) (on? 'open) (on? 'focused))]
-           [ink (if bold? 'accent 'cons-ink)] [lw (if bold? 2 1)]
+           [ink (cond [off? 'text-faint] [bold? 'accent] [else 'cons-ink])]
+           [lw (if bold? 2 1)]
            [tint (cons-tint-of flags ink)]
            [lh (font-line-height 'ui)])
       (cons-pair-h! x y cw h c ink lw tint (and (on? 'open) ink))
       (draw-text (+ x (cons-space)) (+ y (/ (- h lh) 2))
                  (text-fit label (- cw (* 2 (cons-space))) 'ui)
                  (cond [tint 'window-bg]
+                       [(or off? (on? 'placeholder)) 'text-faint]
                        [(on? 'set) 'accent]
-                       [(on? 'placeholder) 'text-faint]
                        [else 'text])
                  'ui)
       (cons-down! (cons-dot-x (+ x cw) c lw) (cons-dot-y y h lw)
@@ -292,33 +311,38 @@
                   [(cw cut?) (cons-chip-car-width w h removable?)]
                   [(g) (ui-small-glyph-size)]
                   [(sh) (font-line-height 'ui-small)]
-                  [(tint) (and (not removable?) (cons-tint-of flags 'cons-ink))]
+                  [(off?) (memq 'disabled flags)]
+                  [(ink) (if off? 'text-faint 'cons-ink)]
+                  [(tint) (and (not removable?) (cons-tint-of flags ink))]
                   [(close) (and removable? (cons-tint-of flags 'button-close))])
       (if cut?
           (begin (when tint (fill-box x y w h tint))
-                 (cons-ring! x y w h 'cons-ink 1))
-          (cons-pair-h! x y cw h h 'cons-ink 1 tint #f))
+                 (cons-ring! x y w h ink 1))
+          (cons-pair-h! x y cw h h ink 1 tint #f))
       (draw-text (+ x (cons-space)) (+ y (/ (- h sh) 2))
                  (text-fit label (- cw (* 2 (cons-space))
                                     (if removable? (cons-chip-x-side) 0))
                            'ui-small)
-                 (if tint 'window-bg 'text) 'ui-small)
+                 (cond [tint 'window-bg] [off? 'text-faint] [else 'text])
+                 'ui-small)
       (when removable?
         (let-values ([(bx by bs) (cons-chip-x-box x y cw h)])
           (when close (fill-box bx by bs bs close))
           (ui-draw-glyph (+ bx (/ (- bs g) 2)) (+ by (/ (- bs g) 2)) g g
-                         (list (cons 'ink (if close 'window-bg 'text-dim)))
+                         (list (cons 'ink (cond [close 'window-bg]
+                                                [off? 'text-faint]
+                                                [else 'text-dim])))
                          'cross)))
       (unless cut?
         (let ([next (cons-flag flags 'next)]
               [dx (cons-dot-x (+ x cw) h 1)] [my (cons-dot-y y h 1)])
           (cond
-            [(memq 'last flags) (cons-nil! (+ x cw) y h 'cons-ink 1 #f)]
+            [(memq 'last flags) (cons-nil! (+ x cw) y h ink 1 #f)]
             ;; the next one on another row: the pointer bends to it
             [(and next (> (abs (- (caddr next) y)) 1))
              (cons-bend! dx my (+ x w (- cons-chip-gap)) (+ y h)
-                         (cadr next) (caddr next) h 'cons-ink)]
-            [else (cons-right! dx my (+ x w cons-chip-gap) h 'cons-ink 1)])))))
+                         (cadr next) (caddr next) h ink)]
+            [else (cons-right! dx my (+ x w cons-chip-gap) h ink 1)])))))
 
   ;; The flag (key . value) in flags, which mix symbols and such pairs, or
   ;; #f.
@@ -415,14 +439,18 @@
   ;; is a band under the knob.
   (define (cons-slider x y w h flags frac paint)
     (let* ([cy (round (+ y (/ h 2)))] [kx (round (+ x (* frac w)))]
-           [hot? (or (memq 'hover flags) (memq 'pressed flags))])
+           [off? (memq 'disabled flags)]
+           [hot? (and (not off?)
+                      (or (memq 'hover flags) (memq 'pressed flags)))])
       (if paint
           (with-clip (x (- cy 3) w 6) (paint x (- cy 3) w 6))
           (begin (fill-box x cy w 1 'text-faint)
-                 (fill-box x (- cy 1) (max 0 (- kx x)) 2 'accent)))
+                 (fill-box x (- cy 1) (max 0 (- kx x)) 2
+                           (if off? 'text-faint 'accent))))
       (fill-box (- kx 4) (- cy 7) 8 14 'window-bg)
-      (cons-ring! (- kx 4) (- cy 7) 8 14 (if hot? 'accent 'cons-ink)
-                   (if hot? 2 1))))
+      (cons-ring! (- kx 4) (- cy 7) 8 14
+                  (cond [hot? 'accent] [off? 'text-faint] [else 'cons-ink])
+                  (if hot? 2 1))))
 
   ;; Progress is a cell that fills with accent ink by the fraction, and
   ;; green when done.

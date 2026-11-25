@@ -45,7 +45,8 @@
     ui-small-glyph-size ui-gap ui-pad ui-popup-place ui-flow ui-toolbar
     ui-date->day ui-day->date ui-days-in-month ui-today ui-month-names
     ui-date-label ui-next-midnight ui-italic-of ui-draw-focus ui-draw-focus*
-    ui-draw-field ui-draw-field* ui-draw-glyph ui-draw-glyph* ui-frame-glyph
+    ui-draw-field ui-draw-field* ui-draw-glyph ui-draw-glyph* ui-fade
+    ui-frame-glyph
     ui-button ui-draw-button ui-draw-button* ui-button-size ui-button-size*
     ui-segmented ui-stepper ui-breadcrumbs ui-nav ui-draw-nav-row
     ui-draw-nav-row* ui-slider ui-slider-height ui-draw-slider ui-draw-slider*
@@ -54,7 +55,8 @@
     ui-live-badge-mark ui-live-badge-size ui-live-badge-size* ui-draw-live-badge
     ui-draw-live-badge* ui-toggle-track ui-draw-toggle ui-draw-toggle*
     ui-toggle-size ui-toggle-size* ui-radio ui-radio-size ui-radio-size*
-    ui-draw-radio ui-draw-radio* ui-tabs ui-draw-tab ui-draw-tab* ui-tabs-size
+    ui-draw-radio ui-draw-radio* ui-radio-text-x ui-tabs ui-draw-tab
+    ui-draw-tab* ui-tabs-size
     ui-tabs-size* ui-label-font ui-label-text ui-draw-label ui-draw-label*
     ui-label-size ui-label-size* ui-label-lines ui-wrap-lines ui-draw-surface
     ui-draw-surface* ui-surface-well-ring ui-text-y ui-text-y* ui-text-box-top
@@ -1034,9 +1036,10 @@
     (stroke-box (- x 3) (- y 3) (+ w 6) (+ h 6) (alpha 'accent 0.7) 2 (+ r 3)))
 
   ;; The box of a widget that takes typing (a text box, a chip input), with
-  ;; an accent border while it has the keyboard.
+  ;; an accent border while it has the keyboard, and the window's own shade
+  ;; when disabled.
   (define-part (ui-draw-field x y w h flags)
-    (fill-box x y w h 'bg-0 6)
+    (fill-box x y w h (if (memq 'disabled flags) 'bg-1 'bg-0) 6)
     (if (memq 'focused flags)
         (stroke-box x y w h 'accent 1.5 6)
         (stroke-box x y w h (if (memq 'hover flags) 'text-faint 'window-border)
@@ -1056,10 +1059,22 @@
   ;; close, minimize, maximize, restore and shade, which fill a square box
   ;; in lines of 1 pixel. flags may hold (ink . color) and (width . w), the
   ;; width of those lines.
-  ;; How much of its ink a disabled glyph keeps (all of it on a screen one
-  ;; bit deep, Genera's).
+  ;; How a disabled mark (a glyph, a radio's ring) fades: a number, the
+  ;; share of its ink it keeps, or, on a screen one bit deep, the rows of
+  ;; a stipple it is drawn through (Genera's and the CADR's 50 % gray), so
+  ;; that no pixel is gray.
   (at-load
-   (theme-default! 'disabled-glyph-opacity 0.5))
+   (theme-default! 'disabled-fade 0.5))
+
+  ;; Text that can't be used now: faint, unless a style says otherwise (the
+  ;; CADR's gray, where its faint text is as black as the rest).
+  (at-load
+   (color-default! 'text-disabled 'text-faint))
+
+  ;; Returns color as a disabled mark draws it (disabled-fade).
+  (define (ui-fade color)
+    (let ([f (theme 'disabled-fade)])
+      (if (number? f) (alpha color f) (apply stipple color #f f))))
 
   (define-part (ui-draw-glyph x y w h flags name)
     (let* ([s (min w h)] [ox (+ x (/ (- w s) 2))] [oy (+ y (/ (- h s) 2))]
@@ -1075,9 +1090,7 @@
                       [(memq 'hover flags) 'text]
                       [(memq 'quiet flags) 'text-faint]
                       [else 'text-dim])]
-           [ink (if (memq 'disabled flags)
-                    (alpha ink (theme 'disabled-glyph-opacity))
-                    ink)]
+           [ink (if (memq 'disabled flags) (ui-fade ink) ink)]
            [lw (max 1.5 (* s 0.13))]
            [t (or (given 'width) 1)])
       (define (line . ps) (draw-polyline ps ink lw))
@@ -1511,15 +1524,20 @@
 
   (define (ui-nav-row-height) (max 32 (round (+ (font-line-height 'ui) 12))))
 
-  ;; flags: selected, hover, focused. The selected row is highlighted, with
-  ;; a mark at its left; the label comes after the icon, if any.
+  ;; flags: selected, hover, focused, disabled. The selected row is
+  ;; highlighted, with a mark at its left; the label comes after the icon,
+  ;; if any.
   (define-part (ui-draw-nav-row x y w h flags label icon)
     (let* ([selected? (memq 'selected flags)] [g (ui-glyph-size)]
            [lx (if icon (+ x 14 g 8) (+ x 14))])
       (cond [selected? (ui-draw-highlight x y w h '())]
             [(memq 'hover flags) (ui-draw-highlight x y w h '(hover))])
       (when icon (icon (+ x 14) (+ y (/ (- h g) 2)) g flags))
-      (ui-draw-label lx y (- (+ x w) lx 6) h (if selected? '() '(dim)) label)
+      (ui-draw-label lx y (- (+ x w) lx 6) h
+                     (cond [(memq 'disabled flags) '(disabled)]
+                           [selected? '()]
+                           [else '(dim)])
+                     label)
       (when selected?
         (ui-draw-highlight-over x y w h '())
         ;; The mark comes after that, so that a style that inverts the row
@@ -1558,7 +1576,7 @@
           (begin
             (fill-box x (- cy 3) w 6 'bg-3 3)
             (fill-box x (- cy 3) (max 6 (- kx x)) 6
-                      (if (memq 'disabled flags) 'text-faint 'accent) 3)))
+                      (if (memq 'disabled flags) 'text-disabled 'accent) 3)))
       (fill-circle kx cy r #xf2f2f5)
       (stroke-circle kx cy r (alpha #x000000 0.35) 1)))
 
@@ -1602,16 +1620,18 @@
                            (if off? (alpha 'accent 0.45) 'accent)
                            4)
                  (ui-draw-glyph x by b b '(primary) 'check))
-          (begin (fill-box x by b b 'bg-0 4)
+          (begin (fill-box x by b b (if off? 'bg-1 'bg-0) 4)
                  (stroke-box x by b b
-                             (if (memq 'hover flags)
-                                 'accent
-                                 'text-faint)
+                             (cond [(memq 'hover flags) 'accent]
+                                   [off? (alpha 'text-faint 0.5)]
+                                   [else 'text-faint])
                              1 4)))
       (when label
         (draw-text (+ x b 8) (+ y (/ (- h lh) 2))
                    (text-fit label (- w b 8) 'ui)
-                   (if checked? 'text-dim 'text) 'ui))
+                   (cond [off? 'text-disabled] [checked? 'text-dim]
+                         [else 'text])
+                   'ui))
       (when (memq 'focused flags) (ui-draw-focus x by b b flags 4))))
 
   (define-part (ui-checkbox-size label)
@@ -1643,12 +1663,13 @@
                10)
             (+ (font-line-height 'ui-small) 6)))
 
-  ;; flags: checked (live), hover, pressed, focused. A pill: when live, it
-  ;; is tinted with the accent and has a dot; when held, it is plain, with a
-  ;; pause mark and the way back in the accent.
+  ;; flags: checked (live), hover, pressed, focused, disabled. A pill: when
+  ;; live, it is tinted with the accent and has a dot; when held, it is
+  ;; plain, with a pause mark and the way back in the accent.
   (define-part (ui-draw-live-badge x y w h flags label)
-    (let* ([on? (lambda (f) (memq f flags))]
-           [live? (on? 'checked)] [hot? (or (on? 'hover) (on? 'pressed))]
+    (let* ([on? (lambda (f) (memq f flags))] [off? (on? 'disabled)]
+           [live? (on? 'checked)]
+           [hot? (and (not off?) (or (on? 'hover) (on? 'pressed)))]
            [lh (font-line-height 'ui-small)] [m (ui-live-badge-mark)]
            [ty (+ y (/ (- h lh) 2))] [my (+ y (/ (- h m) 2))]
            [r (exact (floor (/ h 2)))]
@@ -1666,14 +1687,18 @@
                         [else 'window-border])
                   1 r)
       (if live?
-          (fill-circle (+ x 8 (/ m 2)) (+ y (/ h 2)) (/ m 2) 'accent)
-          (let ([bw (max 1 (quotient m 3))])
-            (fill-box (+ x 8) my bw m 'text-dim)
-            (fill-box (+ x 8 (- m bw)) my bw m 'text-dim)))
-      (draw-text tx ty label (if live? 'text 'text-dim) 'ui-small)
+          (fill-circle (+ x 8 (/ m 2)) (+ y (/ h 2)) (/ m 2)
+                       (if off? 'text-disabled 'accent))
+          (let ([bw (max 1 (quotient m 3))]
+                [ink (if off? 'text-disabled 'text-dim)])
+            (fill-box (+ x 8) my bw m ink)
+            (fill-box (+ x 8 (- m bw)) my bw m ink)))
+      (draw-text tx ty label
+                 (cond [off? 'text-disabled] [live? 'text] [else 'text-dim])
+                 'ui-small)
       (unless live?
         (draw-text (+ tx (text-width label 'ui-small)) ty ui-live-badge-back
-                   'accent 'ui-small))
+                   (if off? 'text-disabled 'accent) 'ui-small))
       (when (on? 'focused) (ui-draw-focus x y w h flags r))))
 
   ;; Returns the size of a toggle's track, the pill its knob slides in, as
@@ -1688,7 +1713,7 @@
                   [(kx) (if on? (+ x tw (- (/ th 2))) (+ x (/ th 2)))]
                   [(lh) (font-line-height 'ui)])
       (fill-box x ty tw th
-                (cond [(and on? (memq 'disabled flags)) 'text-faint]
+                (cond [(and on? (memq 'disabled flags)) 'text-disabled]
                       [on? 'accent] [(memq 'hover flags) 'text-faint]
                       [else 'bg-3])
                 (/ th 2))
@@ -1697,7 +1722,7 @@
       (when label
         (draw-text (+ x tw 8) (+ y (/ (- h lh) 2))
                    (text-fit label (- w tw 8) 'ui)
-                   (cond [(memq 'disabled flags) 'text-faint]
+                   (cond [(memq 'disabled flags) 'text-disabled]
                          [(memq 'hover flags) 'text]
                          [else 'text-dim])
                    'ui))
@@ -1751,7 +1776,7 @@
            [by (+ ly (floor (/ (- lh b) 2)))]
            [cx (+ x (/ b 2))] [cy (+ by (/ b 2))]
            [off? (memq 'disabled flags)]
-           [ink (lambda (c) (if off? (alpha c 0.5) c))]
+           [ink (lambda (c) (if off? (ui-fade c) c))]
            [tx (+ x (ui-radio-text-x icon))])
       (if (memq 'checked flags)
           (begin (fill-circle cx cy (/ b 2) (ink 'accent))
@@ -1766,10 +1791,12 @@
         (let ([g (ui-glyph-size)])
           (icon (+ x b 8) (+ ly (/ (- lh g) 2)) g flags)))
       (draw-text tx ly (text-fit label (- (+ x w) tx) 'ui)
-                 (ink (if (memq 'hover flags) 'text 'text-dim)) 'ui)
+                 (cond [off? 'text-disabled] [(memq 'hover flags) 'text]
+                       [else 'text-dim])
+                 'ui)
       (when hint
         (fold-left (lambda (hy line)
-                     (draw-text tx hy line (ink 'text-faint) 'ui-small)
+                     (draw-text tx hy line 'text-faint 'ui-small)
                      (+ hy (font-line-height 'ui-small)))
                    (+ ly lh 2)
                    (ui-label-lines hint (- (+ x w) tx) 'ui-small)))
@@ -1801,7 +1828,7 @@
   (define-part (ui-draw-tab x y w h flags label)
     (let ([selected? (memq 'selected flags)] [lh (font-line-height 'ui-bold)])
       (text-draw-centered x y w h label
-                          (cond [(memq 'disabled flags) 'text-faint]
+                          (cond [(memq 'disabled flags) 'text-disabled]
                                 [(or selected? (memq 'hover flags)) 'text]
                                 [else 'text-dim])
                           'ui-bold)
@@ -1856,7 +1883,8 @@
   ;; text.
   (define-part (ui-draw-label x y w h flags text)
     (let* ([font (ui-label-font flags)]
-           [color (cond [(memq 'error flags) 'red]
+           [color (cond [(memq 'disabled flags) 'text-disabled]
+                        [(memq 'error flags) 'red]
                         [(memq 'dim flags) 'text-dim]
                         [(or (memq 'hint flags) (memq 'section flags)
                              (memq 'mono flags))
@@ -2347,7 +2375,10 @@
                                        "…")
                                       tw font)
                                      (substring text s e))
-                                 'text font)))
+                                 (if (memq 'disabled flags)
+                                     'text-disabled
+                                     'text)
+                                 font)))
                   (loop (+ r 1))))))
         (when (memq 'caret flags)
           (let ([cx (+ (- tx dx) (edit-caret-x lay caret))]
@@ -2401,14 +2432,19 @@
 
   (define (ui-suggestion-row-height) (round (+ (font-line-height 'ui) 8)))
 
-  ;; A suggestion's row. flags: selected (chosen by the keyboard), hover.
+  ;; A suggestion's row. flags: selected (chosen by the keyboard), hover,
+  ;; disabled.
   (define-part (ui-draw-suggestion x y w h flags label)
     (let ([on? (or (memq 'selected flags) (memq 'hover flags))])
       (when on? (ui-draw-highlight x y w h (if (memq 'selected flags)
                                                '()
                                                '(hover))))
       (draw-text (+ x 8) (+ y (/ (- h (font-line-height 'ui)) 2))
-                 (text-fit label (- w 16) 'ui) (if on? 'text 'text-dim) 'ui)
+                 (text-fit label (- w 16) 'ui)
+                 (cond [(memq 'disabled flags) 'text-disabled]
+                       [on? 'text]
+                       [else 'text-dim])
+                 'ui)
       (when (memq 'selected flags) (ui-draw-highlight-over x y w h '()))))
 
   ;; Returns the choices ((name . detail) ...) that typed matches, best
@@ -2908,7 +2944,8 @@
   ;; the line is dragged, and then where the line was left, kept so that the
   ;; left pane is at least lo wide and the right one at least hi. A double
   ;; click on the line goes back to at. The line's handle, from y and h
-  ;; high, goes over the panes: it is laid out at ui-end!, after them.
+  ;; high, goes over the panes: it is laid out at ui-end!, after them, cut
+  ;; to the scroll view the split lies in.
   (define (ui-split ui id x y w h at lo hi)
     (ui-split-of ui id x y w h at lo hi #f))
 
@@ -2922,38 +2959,46 @@
     (let* ([room (if stacked? h w)] [from (if stacked? y x)]
            [most (max lo (- room hi))]
            [first (clamp (ui-memo ui (list id 'at) at) lo most)]
-           [line (+ from first)])
+           [line (+ from first)]
+           ;; the view the split lies in, if any, which cuts its line too
+           [clip (ui-state-clip ui)])
+      (define (handle)
+        (ui-region! ui id
+          (if stacked? x (- line 3)) (if stacked? (- line 3) y)
+          (if stacked? w 6) (if stacked? 6 h)
+          'focus 'keep 'cursor (if stacked? 'resize-ns 'resize-ew)
+          'doc '((L . "Resize the panes") (L2 . "Back to their sizes"))
+          'on
+          (lambda (ev)
+            (let ([p (if stacked? (caddr ev) (cadr ev))])
+              (case (car ev)
+                [(press)
+                 (and (eq? (list-ref ev 3) 'left)
+                      (begin
+                        (if (>= (list-ref ev 4) 2)
+                            (hashtable-delete! (ui-state-memo ui)
+                                               (list id 'at))
+                            (ui-memo! ui (list id 'grab) (- p line)))
+                        #t))]
+                [(drag)
+                 (let ([new (clamp (exact (round (- p from
+                                                    (ui-memo ui
+                                                             (list id 'grab)
+                                                             0))))
+                                   lo most)])
+                   (and (< (cadddr ev) 2) (not (= new first))
+                        (begin (ui-memo! ui (list id 'at) new) #t)))]
+                [else #f]))))
+        (if stacked?
+            (with-transpose (ui-draw-split line x w (ui-flags ui id)))
+            (ui-draw-split line y h (ui-flags ui id))))
       (ui-later! ui
         (lambda (ww wh)
-          (ui-region! ui id
-            (if stacked? x (- line 3)) (if stacked? (- line 3) y)
-            (if stacked? w 6) (if stacked? 6 h)
-            'focus 'keep 'cursor (if stacked? 'resize-ns 'resize-ew)
-            'doc '((L . "Resize the panes") (L2 . "Back to their sizes"))
-            'on
-            (lambda (ev)
-              (let ([p (if stacked? (caddr ev) (cadr ev))])
-                (case (car ev)
-                  [(press)
-                   (and (eq? (list-ref ev 3) 'left)
-                        (begin
-                          (if (>= (list-ref ev 4) 2)
-                              (hashtable-delete! (ui-state-memo ui)
-                                                 (list id 'at))
-                              (ui-memo! ui (list id 'grab) (- p line)))
-                          #t))]
-                  [(drag)
-                   (let ([new (clamp (exact (round (- p from
-                                                      (ui-memo ui
-                                                               (list id 'grab)
-                                                               0))))
-                                     lo most)])
-                     (and (< (cadddr ev) 2) (not (= new first))
-                          (begin (ui-memo! ui (list id 'at) new) #t)))]
-                  [else #f]))))
-          (if stacked?
-              (with-transpose (ui-draw-split line x w (ui-flags ui id)))
-              (ui-draw-split line y h (ui-flags ui id)))))
+          (if clip
+              (apply (lambda (cx cy cw ch)
+                       (ui-call-with-clip ui cx cy cw ch handle))
+                     clip)
+              (handle))))
       first))
 
   ;; The line between two panes at x, which a drag moves: it shows under the
@@ -3410,7 +3455,7 @@
   ;; over its roots' cells.
   (define (ui-table-headings! ui id sx sw x y h columns sort on-sort title-x
                               resize)
-    (ui-table-call-with-clip ui sx y sw h
+    (ui-call-with-clip ui sx y sw h
       (lambda ()
         (let loop ([cs columns] [cx x])
           (unless (null? cs)
@@ -3439,8 +3484,8 @@
 
   ;; Calls thunk with its drawing and its regions cut to x y w h: for a
   ;; table's headings, which a column the user widened carries past the
-  ;; table's edge, as it does the rows.
-  (define (ui-table-call-with-clip ui x y w h thunk)
+  ;; table's edge, as it does the rows, and a split's line in a scroll view.
+  (define (ui-call-with-clip ui x y w h thunk)
     (let ([clip (ui-state-clip ui)])
       (ui-state-clip-set! ui (call-with-values
                                (lambda () (ui-cut x y w h clip))
@@ -3770,10 +3815,10 @@
     (let* ([sh (font-line-height 'ui-small)] [r (/ h 2)]
            [g (ui-small-glyph-size)] [removable? (memq 'removable flags)]
            [hue (app-color (string->symbol label))])
-      (fill-box x y w h (alpha hue 0.18) r)
+      (fill-box x y w h (alpha hue (if (memq 'disabled flags) 0.08 0.18)) r)
       (draw-text (+ x 8) (+ y (/ (- h sh) 2))
                  (text-fit label (- w 16 (if removable? (+ g 4) 0)) 'ui-small)
-                 'text 'ui-small)
+                 (if (memq 'disabled flags) 'text-disabled 'text) 'ui-small)
       (when removable?
         (let ([a (cdr (assq 'remove (ui-chip-areas x y w h)))])
           (ui-draw-glyph (+ (car a) (/ (- (caddr a) g) 2))
@@ -4848,7 +4893,7 @@
       (stroke-box x y w h
                   (if (or set? (memq 'open flags)) 'accent 'window-border) 1 6)
       (draw-text (+ x 10) (+ y (/ (- h lh) 2)) (text-fit label (- w 22 s) 'ui)
-                 (cond [(memq 'disabled flags) 'text-faint]
+                 (cond [(memq 'disabled flags) 'text-disabled]
                        [set? 'accent] [(memq 'placeholder flags) 'text-faint]
                        [hot? 'text] [else 'text-dim])
                  'ui)
@@ -5004,7 +5049,7 @@
                             'ui-small))))
 
   ;; flags: hover, today (a ring), selected (filled), cursor (the keyboard's
-  ;; day), outside (another month).
+  ;; day), outside (another month), disabled.
   (define-part (ui-draw-day x y w h flags label)
     (let* ([on? (lambda (f) (memq f flags))] [s (- (min w h) 4)]
            [cx (+ x (/ (- w s) 2))] [cy (+ y (/ (- h s) 2))])
@@ -5016,6 +5061,7 @@
         (stroke-box (- cx 1) (- cy 1) (+ s 2) (+ s 2) 'text 1 7))
       (text-draw-centered x y w h label
                           (cond [(on? 'selected) (color-readable-on 'accent)]
+                                [(on? 'disabled) 'text-disabled]
                                 [(on? 'outside) 'text-faint]
                                 [else 'text])
                           'ui)))

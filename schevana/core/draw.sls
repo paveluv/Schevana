@@ -174,12 +174,13 @@
            (fxior (fxsll (byte a) 24) (fxsll (byte r) 16)
                   (fxsll (byte g) 8) (byte b))))]))
 
-  ;; The font for faint text: the font itself (when the setting is #f), or
-  ;; what a style's part makes of it (Genera, which has no gray, sets its
-  ;; hints in italic).
+  ;; The font for faint text and for disabled text: the font itself (when
+  ;; the setting is #f), or what a style's part makes of it (Genera, which
+  ;; has no gray, sets its hints and what can't be used in italic).
   (at-load (theme-table-default! 'faint-text-font #f))
   (define (faint-font color f)
-    (let ([make (and (eq? color 'text-faint) (theme-part 'faint-text-font))])
+    (let ([make (and (memq color '(text-faint text-disabled))
+                     (theme-part 'faint-text-font))])
       (if make (make f) f)))
 
   ;;; ---------------------------------------------------------------- records

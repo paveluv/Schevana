@@ -36,13 +36,14 @@
     genera-day genera-5x5 genera-avatar-size genera-avatar genera-mark
     genera-due genera-board-slot genera-italic-of genera-draw-wallpaper
     genera-menu-grid-heading genera-menu-grid-item genera-inline-choice
-    genera-inline-choice-size genera-keycap genera-choice-grid-cell)
+    genera-inline-choice-size genera-keycap genera-choice-grid-cell
+    genera-radio genera-live-badge genera-banner)
   (import (chezscheme)
           (only (schevana base) at-load clamp define-made library-layer
                 string-join string-suffix?)
           (only (schevana core) *bitmap-fonts* *focus* *windows*
                 color-default! define-bitmap-font define-style draw-scale
-                draw-text fill-box fill-wallpaper font font-ascent
+                draw-text fill-box fill-circle fill-wallpaper font font-ascent
                 font-char-width
                 font-family font-line-height font-size
                 get-font
@@ -61,7 +62,9 @@
                 ui-scrollbar-areas ui-chip-areas ui-small-glyph-size
                 ui-text-box-top ui-scrollbar-width ui-control-height
                 ui-draw-focus ui-draw-glyph ui-glyph-size ui-busy-frame-ms
-                ui-italic-of ui-wrap-lines))
+                ui-italic-of ui-wrap-lines ui-fade ui-live-badge-mark
+                ui-live-badge-back ui-draw-radio* ui-radio-text-x
+                ui-banner-areas))
 
   (library-layer looks)
 
@@ -244,8 +247,25 @@
   ;;; (.work/style/research/lispm-apps.md part 4): ink on paper and no
   ;;; color; a 1-pixel box for what the mouse is over, inverse video for
   ;;; what is chosen, bold for the current value, italic for a hint
-  ;;; ('faint-text-font), and an underline for the keyboard's place. Where
-  ;;; the CADR differs, a setting says how ((schevana styles cadr)).
+  ;;; ('faint-text-font), and an underline for the keyboard's place. What
+  ;;; can't be used now is in italic too, its marks drawn through the 50 %
+  ;;; gray (disabled-fade), and the mouse boxes none of it. Where the CADR
+  ;;; differs, a setting says how ((schevana styles cadr)).
+
+  ;; Returns the ink of a mark (a box, a rule, a glyph) by the flags: the
+  ;; text's, or faded while disabled.
+  (define (genera-ink flags) (if (memq 'disabled flags) (ui-fade 'text) 'text))
+
+  ;; Returns the ink of a word by the flags: the text's, or disabled
+  ;; (italic, or the CADR's gray) while disabled.
+  (define (genera-word-ink flags)
+    (if (memq 'disabled flags) 'text-disabled 'text))
+
+  ;; Whether the mouse's box shows: under the mouse (or pressed), and not
+  ;; while disabled.
+  (define (genera-hot? flags)
+    (and (not (memq 'disabled flags))
+         (or (memq 'hover flags) (memq 'pressed flags))))
 
   ;; A color that is another's: whatever the palette gives that one, so
   ;; that every hue is the palette's ink and every ground its paper, as on a
@@ -276,7 +296,8 @@
                           (- (max (+ y h) (+ t ih 2)) top))))))
 
   ;; A box n pixels thick.
-  (define (genera-box x y w h n) (px-bevel x y w h 'text 'text n))
+  (define (genera-box x y w h n . ink)
+    (let ([c (if (null? ink) 'text (car ink))]) (px-bevel x y w h c c n)))
 
   ;; The top of a text in a box h high at y, so that its line is centered
   ;; in the box, on a whole pixel.
@@ -303,7 +324,7 @@
            [font (theme (if (on? 'primary)
                             'genera-standout-font
                             'genera-command-font))]
-           [ink (cond [rev? 'window-bg] [live? 'text] [else 'text-faint])]
+           [ink (cond [rev? 'window-bg] [live? 'text] [else 'text-disabled])]
            [box? (and label (theme 'genera-margin-choice))]
            [s (genera-choice-side)] [sp (font-char-width font)]
            [text (and label (not box?) (text-fit label (- w 4) font))]
@@ -325,7 +346,8 @@
         [glyph
          (let ([g (ui-glyph-size)])
            (ui-draw-glyph (+ x (/ (- w g) 2)) (+ y (/ (- h g) 2)) g g
-                          (list (cons 'ink ink)) glyph))])
+                          (list (cons 'ink (if live? ink (ui-fade 'text))))
+                          glyph))])
       (when (on? 'focused) (ui-draw-focus x y w h flags 0))))
 
   ;; The word and a little room, wide enough in either font.
@@ -344,15 +366,16 @@
   ;; (choice.lisp:441-464).
   (define (genera-choice-side) (theme 'genera-choice-side))
 
-  (define (genera-choice-box x y s on?)
+  (define (genera-choice-box x y s on? . ink)
     (let* ([heavy? (theme 'genera-choice-heavy)]
+           [ink (if (null? ink) 'text (car ink))]
            [f (if heavy? (max 1 (quotient s 4)) 1)] [n (- s f f)])
       (fill-box x y s s 'window-bg)
-      (genera-box x y s s f)
+      (genera-box x y s s f ink)
       (when on?
         (do ([i 0 (+ i 1)]) ((= i n))
           (for-each (lambda (c)
-                      (fill-box (+ x f c) (+ y f i) (if heavy? 2 1) 1 'text))
+                      (fill-box (+ x f c) (+ y f i) (if heavy? 2 1) 1 ink))
                     (if heavy?
                         (list (min i (- n 2)) (max 0 (- n 2 i)))
                         (list i (- n 1 i))))))))
@@ -366,10 +389,12 @@
            [p (theme 'genera-choice-padding)] [tx (+ x p)]
            [ty (genera-text-y y h 'ui)]
            [text (and label (text-fit label (- w sp s p p) 'ui))]
-           [end (if label (draw-text tx ty text 'text 'ui) tx)]
+           [end (if label
+                    (draw-text tx ty text (genera-word-ink flags) 'ui)
+                    tx)]
            [bx (if label (+ end sp) tx)] [by (+ y (/ (- h s) 2))])
-      (genera-choice-box bx by s (memq 'checked flags))
-      (when (memq 'hover flags)
+      (genera-choice-box bx by s (memq 'checked flags) (genera-ink flags))
+      (when (and (memq 'hover flags) (not (memq 'disabled flags)))
         (cond [(zero? p) (genera-hover x y (- (+ bx s 2) x) h)]
               [text (genera-hover-text (- bx 2) (- by 2) (+ s 4) (+ s 4)
                                        tx ty text 'ui)]
@@ -388,16 +413,17 @@
   (define (genera-toggle x y w h flags label)
     (let* ([on? (memq 'checked flags)] [f (theme 'genera-choice-font)]
            [b (theme 'genera-choice-bold)] [sp (font-char-width 'ui)]
+           [ink (genera-word-ink flags)]
            [x1 (if label
                    (draw-text x (genera-text-y y h 'ui)
-                              (string-append label ":") 'text 'ui)
+                              (string-append label ":") ink 'ui)
                    x)])
       (let loop ([words '("Yes" "No")] [wx (+ x1 sp)] [current? on?])
         (unless (null? words)
           (let* ([font (if current? b f)]
                  [end (draw-text wx (genera-text-y y h font) (car words)
-                                 'text font)])
-            (when (and (not current?) (memq 'hover flags))
+                                 ink font)])
+            (when (and (not current?) (genera-hot? flags))
               (genera-hover-text (- wx 2) y (+ (- end wx) 4) h wx
                                  (genera-text-y y h font) (car words) font))
             (loop (cdr words) (+ wx (text-width (car words) b) sp)
@@ -418,8 +444,8 @@
     (let* ([font (theme 'genera-command-font)] [sel? (memq 'selected flags)]
            [tx (genera-text-x x w label font)] [ty (genera-text-y y h font)])
       (cond [sel? (fill-box x y w h 'text)]
-            [(memq 'hover flags) (genera-hover-text x y w h tx ty label font)])
-      (draw-text tx ty label (if sel? 'window-bg 'text) font)
+            [(genera-hot? flags) (genera-hover-text x y w h tx ty label font)])
+      (draw-text tx ty label (if sel? 'window-bg (genera-word-ink flags)) font)
       (when (memq 'focused flags) (ui-draw-focus x y w h flags 0))))
 
   (define (genera-tabs-size labels)
@@ -436,8 +462,8 @@
     (let ([n (max (if (memq 'focused flags) 2 1)
                   (exact (ceiling (/ 1 (draw-scale)))))])
       (if (memq 'lines flags)
-          (genera-box x y w h n)
-          (fill-box x (- (+ y h) n) w n 'text))))
+          (genera-box x y w h n (genera-ink flags))
+          (fill-box x (- (+ y h) n) w n (genera-ink flags)))))
 
   ;; The text sits 2 pixels in, or after a search's magnifying glass; an
   ;; area of lines has its scroll bar at its left, as ZWEI's does.
@@ -470,10 +496,12 @@
     (let* ([font (if (or (memq 'label flags) (memq 'placeholder flags))
                      'ui
                      'ui-bold)]
-           [ink (if (memq 'placeholder flags) 'text-faint 'text)]
+           [ink (if (memq 'placeholder flags)
+                    'text-faint
+                    (genera-word-ink flags))]
            [text (text-fit label (- w 6) font)]
            [ty (genera-text-y y h font)])
-      (when (or (memq 'hover flags) (memq 'open flags))
+      (when (or (genera-hot? flags) (memq 'open flags))
         (genera-hover-text x y w h (+ x 3) ty text
                            (if (memq 'placeholder flags)
                                (genera-italic-of (get-font font))
@@ -493,13 +521,14 @@
     (let* ([removable? (memq 'removable flags)] [g (ui-small-glyph-size)]
            [room (- w (text-width "{}" 'ui) (if removable? (+ g 4) 0))])
       (draw-text x (genera-text-y y h 'ui)
-                 (string-append "{" (text-fit label room 'ui) "}") 'text 'ui)
+                 (string-append "{" (text-fit label room 'ui) "}")
+                 (genera-word-ink flags) 'ui)
       (when removable?
         (let ([a (cdr (assq 'remove (ui-chip-areas x y w h)))])
           (ui-draw-glyph (+ (car a) (/ (- (caddr a) g) 2))
                          (+ (cadr a) (/ (- (cadddr a) g) 2)) g g
-                         '((ink . text)) 'cross)
-          (when (memq 'hover flags) (apply genera-hover a))))))
+                         (list (cons 'ink (genera-ink flags))) 'cross)
+          (when (genera-hot? flags) (apply genera-hover a))))))
 
   (define (genera-chip-size label removable?)
     (values (+ (text-width (string-append "{" label "}") 'ui)
@@ -509,6 +538,15 @@
   (define (genera-chip-areas x y w h)
     (let ([g (ui-small-glyph-size)])
       (list (list 'remove (- (+ x w) g 4) y (+ g 4) h))))
+
+  ;; A banner across a view is output in a border too, as a card is, its
+  ;; words bold: no tint, which a screen one bit deep has none of.
+  (define (genera-banner x y w h flags title label)
+    (let ([t (cdr (assq 'title (ui-banner-areas x y w h title label)))])
+      (fill-box x y w h 'window-bg)
+      (genera-box x y w h 1)
+      (draw-text (car t) (genera-text-y y h 'ui-bold)
+                 (text-fit title (caddr t) 'ui-bold) 'text 'ui-bold)))
 
   ;; A card is a record, as Genera's output in a border (PUI p.1685,
   ;; p.1696): a 1-pixel box, 2 pixels while chosen (the CADR's box blinker,
@@ -555,14 +593,18 @@
   ;; p.1151). Its authors would have turned the scroll bar sideways: a
   ;; shaft of 1-pixel sides and a short stippled block at the value.
   (define (genera-slider x y w h flags frac paint)
-    (let* ([cy (round (+ y (/ h 2)))] [kx (+ x (* frac w))])
+    (let* ([cy (round (+ y (/ h 2)))] [kx (+ x (* frac w))]
+           [ink (genera-ink flags)])
       (if paint
           (with-clip (x (- cy 4) w 8) (paint x (- cy 4) w 8))
-          (begin (fill-box x (- cy 5) w 1 'text)
-                 (fill-box x (+ cy 4) w 1 'text)))
+          (begin (fill-box x (- cy 5) w 1 ink)
+                 (fill-box x (+ cy 4) w 1 ink)))
       (fill-box (- kx 6) (- cy 5) 12 10 'window-bg)
-      (stroke-box (- kx 6) (- cy 5) 12 10 'text)
-      (fill-box (- kx 5) (- cy 4) 10 8 'genera-elevator)))
+      (stroke-box (- kx 6) (- cy 5) 12 10 ink)
+      (unless (memq 'disabled flags)
+        (fill-box (- kx 5) (- cy 4) 10 8 'genera-elevator))
+      (when (genera-hot? flags)
+        (genera-hover (- kx 8) (- cy 7) 16 14))))
 
   ;; A progress note's bar: thin, solid, from the left, with no track
   ;; (UG p.2740; J-zmail).
@@ -748,7 +790,7 @@
                  (or (memq 'hover flags) (memq 'pressed flags)))
         (genera-hover-text x y w h tx ty text f))
       (draw-text tx ty text
-                 (cond [sel? 'window-bg] [(memq 'disabled flags) 'text-faint]
+                 (cond [sel? 'window-bg] [(memq 'disabled flags) 'text-disabled]
                        [else 'text])
                  f)
       (when (memq 'focused flags) (ui-draw-focus x y w h flags 0))))
@@ -758,9 +800,9 @@
                          'genera-choice-bold
                          'genera-choice-font))]
            [tx (genera-text-x x w label f)] [ty (genera-text-y y h f)])
-      (when (or (memq 'hover flags) (memq 'pressed flags))
+      (when (genera-hot? flags)
         (genera-hover-text x y w h tx ty label f))
-      (draw-text tx ty label 'text f)
+      (draw-text tx ty label (genera-word-ink flags) f)
       (when (memq 'focused flags) (ui-draw-focus x y w h flags 0))))
 
   (define (genera-inline-choice-size label)
@@ -768,11 +810,42 @@
             (ui-control-height)))
 
   (define (genera-keycap x y w h flags label)
-    (when (or (memq 'hover flags) (memq 'pressed flags))
+    (when (genera-hot? flags)
       (genera-hover x y w h))
     (genera-lozenge (+ x (floor (/ (- w (genera-lozenge-width label)) 2)))
-                    (+ y (floor (/ (- h 9) 2))) label 'text)
+                    (+ y (floor (/ (- h 9) 2))) label (genera-ink flags))
     (when (memq 'focused flags) (ui-draw-focus x y w h flags 0)))
+
+  ;; A choice of one among others listed: the kit's mark and label, which
+  ;; are ink and paper here, the mouse's box around the mark and the label.
+  (define (genera-radio x y w h flags label hint icon)
+    (ui-draw-radio* x y w h (remq 'hover flags) label hint icon)
+    (when (genera-hot? flags)
+      (let* ([lh (font-line-height 'ui)]
+             [ly (if hint (+ y 4) (+ y (/ (- h lh) 2)))]
+             [tx (+ x (ui-radio-text-x icon))]
+             [end (+ tx (text-width (text-fit label (- (+ x w) tx) 'ui) 'ui))])
+        (genera-hover (- x 2) (- (floor ly) 1) (- end x -4) (+ lh 2)))))
+
+  ;; Whether a view is live, as a command word: the mark (a dot, or the
+  ;; pause bars) and the word, with no pill, boxed under the mouse.
+  (define (genera-live-badge x y w h flags label)
+    (let* ([live? (memq 'checked flags)] [f 'ui-small]
+           [m (ui-live-badge-mark)] [ty (genera-text-y y h f)]
+           [my (+ y (floor (/ (- h m) 2)))] [tx (+ x 8 m 6)]
+           [ink (genera-ink flags)] [word (genera-word-ink flags)]
+           [back (if live? 0 (text-width ui-live-badge-back f))]
+           [label (text-fit label (max 0 (- (+ x w) tx back 10)) f)])
+      (when (genera-hot? flags) (genera-hover x y w h))
+      (if live?
+          (fill-circle (+ x 8 (/ m 2)) (+ y (/ h 2)) (/ m 2) ink)
+          (let ([bw (max 1 (quotient m 3))])
+            (fill-box (+ x 8) my bw m ink)
+            (fill-box (+ x 8 (- m bw)) my bw m ink)))
+      (draw-text tx ty label word f)
+      (unless live?
+        (draw-text (+ tx (text-width label f)) ty ui-live-badge-back word f))
+      (when (memq 'focused flags) (ui-draw-focus x y w h flags 0))))
 
   (define (genera-choice-grid-cell x y w h flags)
     (let ([s (genera-choice-side)] [p (theme 'genera-choice-padding)])
@@ -832,21 +905,21 @@
 
   ;; A day: today is bold (the current value's emphasis), the chosen day
   ;; inverse, the keyboard's underlined, the one under the mouse boxed, and
-  ;; another month's days faint.
+  ;; another month's days and a disabled one faint.
   (define (genera-day x y w h flags label)
     (let* ([on? (lambda (f) (memq f flags))]
            [f (if (on? 'today) 'ui-bold 'ui)] [lh (font-line-height f)]
            [ty (genera-text-y y h f)] [sel? (on? 'selected)])
       (cond [sel? (fill-box x (- ty 1) w (+ lh 2) 'text)]
-            [(on? 'hover)
+            [(genera-hot? flags)
              (genera-hover-text x (- ty 1) w (+ lh 2)
                                 (- (+ x w) 4 (text-width label f)) ty label
                                 (if (on? 'outside)
                                     (genera-italic-of (get-font f))
                                     f))])
       (draw-text (- (+ x w) 4 (text-width label f)) ty label
-                 (cond [sel? 'window-bg] [(on? 'outside) 'text-faint]
-                       [else 'text])
+                 (cond [sel? 'window-bg] [(on? 'disabled) 'text-disabled]
+                       [(on? 'outside) 'text-faint] [else 'text])
                  f)
       (when (on? 'cursor)
         (fill-box (+ x 2) (+ ty lh) (- w 4) 1 (if sel? 'window-bg 'text)))))
@@ -951,9 +1024,10 @@
      'draw-wallpaper 'genera-draw-wallpaper
      'corner-radius 0   ; square, and so is everything drawn in it
      ;; a screen one bit deep: shapes crisp, every pixel ink or paper, and
-     ;; no half-ink glyph for what can't be used
+     ;; what can't be used drawn through the 50 % gray, 50%-GRAY
+     ;; (scrman.lisp:438), not in half ink
      'drawing-antialias #f
-     'disabled-glyph-opacity 1
+     'disabled-fade '(".#" "#.")
      'fill-glow #f
      'surface-tint 0
      'transcript-line-spacing 2
@@ -1059,6 +1133,9 @@
      'ui-inline-choice-size 'genera-inline-choice-size
      'ui-draw-keycap 'genera-keycap
      'ui-draw-choice-grid-cell 'genera-choice-grid-cell
+     'ui-draw-radio 'genera-radio
+     'ui-draw-live-badge 'genera-live-badge
+     'ui-draw-banner 'genera-banner
      'ui-button-size 'genera-button-size
      'ui-draw-checkbox 'genera-checkbox
      'ui-checkbox-size 'genera-checkbox-size

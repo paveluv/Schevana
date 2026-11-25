@@ -124,21 +124,24 @@
   (define (cons-scrim x y w h flags) (fill-box x y w h (alpha 'bg-0 0.4)))
 
   ;; A day is a cell: the chosen one is filled, today is bold accent, the
-  ;; keyboard's day is bold in its ink, another month's days are faint, and
-  ;; the one under the mouse fills with its ink.
+  ;; keyboard's day is bold in its ink, another month's days and a disabled
+  ;; one are faint, and the one under the mouse fills with its ink.
   (define (cons-day x y w h flags label)
     (let* ([on? (lambda (f) (memq f flags))] [s (- (min w h) (cons-space))]
            [cx (+ x (/ (- w s) 2))] [cy (+ y (/ (- h s) 2))]
            [sel? (on? 'selected)]
+           [faint? (or (on? 'outside) (on? 'disabled))]
            [ink (cond [(or sel? (on? 'today)) 'accent]
-                      [(on? 'outside) 'text-faint]
+                      [faint? 'text-faint]
                       [else 'cons-ink])]
-           [tint (cond [sel? 'accent] [(on? 'hover) ink] [else #f])])
+           [tint (cond [sel? 'accent]
+                       [(and (on? 'hover) (not (on? 'disabled))) ink]
+                       [else #f])])
       (when tint (fill-box cx cy s s tint))
       (cons-ring! cx cy s s ink (if (or (on? 'today) (on? 'cursor)) 2 1))
       (text-draw-centered x y w h label
                           (cond [tint 'window-bg]
-                                [(on? 'outside) 'text-faint]
+                                [faint? 'text-faint]
                                 [else 'text])
                           'ui)))
 

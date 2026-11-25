@@ -1749,7 +1749,7 @@
 (check "Genera's settings: its dropdown marks the current choice with *, \
         which its fonts have; shapes crisp, no glow and no tint on a screen \
         one bit deep, a transcript's lines CPTFONT's 12 and 2; a glyph that \
-        can't be used keeps all its ink; \
+        can't be used is drawn through the 50 % gray, not in half ink; \
         a window moves by its outline; a menu's chosen entry is boxed \
         around its ink, its separators a blank row; nothing under a dialog"
        (with-style 'genera
@@ -1759,7 +1759,7 @@
                                  (fill-box 0 0 10 10 'window-bg)
                                  (ui-draw-scrim 0 0 10 10 '())))])
              (and (equal? (theme 'dropdown-selected-mark) "  *")
-                  (= (theme 'disabled-glyph-opacity) 1)
+                  (equal? (theme 'disabled-fade) '(".#" "#."))
                   (not (theme 'drawing-antialias))
                   (not (theme 'fill-glow))
                   (= (theme 'surface-tint) 0)
@@ -1860,3 +1860,98 @@
              (steps 1)
              (printf "  ~s\n" r)
              (and r (= (car r) ink) (not (= (cadr r) ink)))))))
+
+;; A centered menu's keys stand in a column of their own: an entry's key,
+;; at the right in the faint font (Genera's italic), never runs into its
+;; words, which are centered left of the keys, and the menu is wide enough
+;; to hold both.
+(check "a Genera menu with keys keeps them in a column of their own: a \
+        clear gap between an entry's words and its key, and the key whole \
+        inside the menu"
+       (begin
+         (set-style! 'genera)
+         (open-menu! 300 300 (list (cons "Bind to $w for the REPL" void)
+                                   (cons "Maximize\tCtrl+Shift+M" void)
+                                   (cons "Close\tCtrl+Shift+W" void)))
+         (inject! '(mouse-move 10 10))
+         (steps 2)
+         (let* ([a (map (lambda (v) (exact (floor v)))
+                        (cdr (assv 1 (placed-menu-areas *menu*))))]
+                [x (car a)] [y (cadr a)] [w (caddr a)] [h (cadddr a)]
+                [ink (color->pixel 'text)]
+                ;; the columns inside the border with ink in the row
+                [cols (filter (lambda (cx)
+                                (exists (lambda (dy)
+                                          (= (canvas-pixel cx (+ y dy)) ink))
+                                        (iota h)))
+                              (map (lambda (i) (+ x 2 i)) (iota (- w 4))))]
+                [gap (let loop ([cs cols] [best 0])
+                       (if (or (null? cs) (null? (cdr cs)))
+                           best
+                           (loop (cdr cs)
+                                 (max best (- (cadr cs) (car cs) 1)))))]
+                [r (list gap (and (pair? cols)
+                                  (- (+ x w) (car (last-pair cols)))))])
+           (close-menu!)
+           (set-style! 'mac)
+           (steps 1)
+           (printf "  ~s\n" r)
+           (and (>= gap 16) (cadr r) (> (cadr r) 2)))))
+
+;; What only the mouse shows on the Lisp machines is the box around what it
+;; is over; a part that had no box of its own there now has one, and
+;; Interlisp's default button, its accent its ink, still changes under the
+;; mouse.
+(check "Genera and the CADR box a radio, a slider and the live badge under \
+        the mouse; the CADR's faint text is as black as the rest; \
+        Interlisp's default button changes under the mouse"
+       (let* ([picture (lambda (draw flags)
+                         (picture-bytes
+                          (image 160 46 1
+                                 (lambda ()
+                                   (fill-box 0 0 160 46 'window-bg)
+                                   (draw 8 8 140 30 flags)))))]
+              [hot? (lambda (draw)
+                      (not (bytevector=? (picture draw '())
+                                         (picture draw '(hover)))))]
+              [parts
+               (list (lambda (x y w h f)
+                       (ui-draw-radio x y w h f "Radio" #f #f))
+                     (lambda (x y w h f)
+                       (ui-draw-slider (+ x 8) y (- w 16) (ui-slider-height)
+                                       f 3/5 #f))
+                     (lambda (x y w h f)
+                       (ui-draw-live-badge x y w 20 f "Live")))]
+              [lispm (map (lambda (style)
+                            (set-style! style)
+                            (map hot? parts))
+                          '(genera cadr))]
+              [black? (begin (set-style! 'cadr)
+                             (= (color->pixel 'text-faint)
+                                (color->pixel 'text)))]
+              [primary (begin (set-style! 'interlisp)
+                              (hot? (lambda (x y w h f)
+                                      (ui-draw-button x y w h
+                                                      (cons 'primary f)
+                                                      "Primary" #f))))])
+         (set-style! 'mac)
+         (printf "  ~s\n" (list lispm black? primary))
+         (and (equal? lispm '((#t #t #t) (#t #t #t))) black? primary)))
+
+(check "Genera's banner is output in a border, ink and paper alone, with \
+        no tint"
+       (begin
+         (set-style! 'genera)
+         (let* ([p (image 300 40 1
+                          (lambda ()
+                            (fill-box 0 0 300 40 'window-bg)
+                            (ui-draw-banner 4 4 292 32 '() "You are offline"
+                                            #f)))]
+                [b (picture-bytes p)]
+                [seen (make-eqv-hashtable)])
+           (do ([i 0 (+ i 4)]) ((= i (bytevector-length b)))
+             (hashtable-set! seen (bytevector-u32-native-ref b i) #t))
+           (let ([corner (pixel-at p 4 4)] [ink (pixel-at p 4 20)])
+             (set-style! 'mac)
+             (printf "  ~s\n" (hashtable-size seen))
+             (and (= (hashtable-size seen) 2) (= corner ink))))))

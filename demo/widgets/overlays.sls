@@ -1,6 +1,7 @@
 ;;; (demo widgets overlays) — the Widgets demo's page of what opens over
-;;; the rest: menus, the calendar, a dialog, a sheet, a window that waits
-;;; over this one, a tooltip and toasts; and what a view shows about
+;;; the rest: menus (a widget's, a right press's, a window's, one that
+;;; filters as you type), the calendar, a dialog, a sheet, a window that
+;;; waits over this one, a tooltip and toasts; and what a view shows about
 ;;; itself: a banner, and a status page for a view with nothing to show.
 
 (library (demo widgets overlays)
@@ -8,7 +9,29 @@
   (import (chezscheme)
           (schevana core)
           (schevana kits ui)
+          (schevana desktop menu)
           (demo widgets layout))
+
+  ;; An editor's menu: each entry with the key that does the same, one
+  ;; that can't be chosen now, and groups apart.
+  (define (widgets-edit-menu win)
+    (let ([say (lambda (text) (widgets-said win text))])
+      (list (cons "Undo\tCtrl+Z" (say "Undo"))
+            (cons "Redo\tCtrl+Shift+Z" (say "Redo"))
+            'separator
+            (cons "Cut\tCtrl+X" (say "Cut"))
+            (cons "Copy\tCtrl+C" (say "Copy"))
+            (cons "Paste\tCtrl+V" (say "Paste"))
+            (cons "Paste as plain text\tCtrl+Shift+V" #f)
+            'separator
+            (cons "Select all\tCtrl+A" (say "Select all")))))
+
+  ;; A menu of many entries that filters as you type, as a launcher's does.
+  (define (widgets-filter-menu win)
+    (map (lambda (name)
+           (cons name (widgets-said win (string-append "Chose " name))))
+         '("Boids" "Clock" "Environments" "Life" "Monitor" "REPL" "Settings"
+           "Sketch" "Springies" "Tasks" "Widgets")))
 
   ;; Opens a small window that waits over win, as a file dialog does, with
   ;; a button that closes it.
@@ -72,6 +95,43 @@
                                          (get 'calendar '(2026 9 30))
                                          (keep 'calendar)
                                          'tip "Opens the calendar")))))]
+           [y (widgets-heading x y w "Pop-up menus")]
+           [y (widgets-note x y w
+                "A right press opens a menu where it is; a window's own \
+                 menu is the one its title opens.")]
+           [y (widgets-flow x y w
+                (list 240 (* 2 ch)
+                      (lambda (x y w h)
+                        (widgets-frame x y w h)
+                        (ui-draw-label x y w h '(center hint)
+                                       "Right press here")
+                        (ui-region! ui 'right-press x y w h
+                          'on (lambda (ev)
+                                (when (and (eq? (car ev) 'press)
+                                           (eq? (list-ref ev 3) 'right))
+                                  (ui-open-menu! ui (cadr ev) (caddr ev)
+                                                 (widgets-edit-menu win)))
+                                #t)
+                          'doc '((R . "Menu")))))
+                (list (widgets-width "Edit menu…") ch
+                      (lambda (x y w h)
+                        (ui-button ui 'edit-menu x y w h "Edit menu…"
+                          (lambda ()
+                            (ui-open-menu! ui x (+ y h)
+                                           (widgets-edit-menu win))))))
+                (list (widgets-width "Window menu…") ch
+                      (lambda (x y w h)
+                        (ui-button ui 'window-menu x y w h "Window menu…"
+                          (lambda ()
+                            (let-values ([(cx cy cw ch) (content-rect win)])
+                              (open-window-menu win (+ cx x) (+ cy y h)))))))
+                (list (widgets-width "Filter menu…") ch
+                      (lambda (x y w h)
+                        (ui-button ui 'filter-menu x y w h "Filter menu…"
+                          (lambda ()
+                            (ui-open-menu! ui x (+ y h)
+                                           (widgets-filter-menu win)
+                                           'filter #t))))))]
            [y (widgets-heading x y w "Dialogs and windows")]
            [y (widgets-flow x y w
                 (list (widgets-width "Dialog…") ch

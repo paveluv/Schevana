@@ -262,24 +262,29 @@
   ;; outside it (11).
   (define (adwaita-toggle x y w h flags label)
     (let* ([on? (lambda (f) (memq f flags))] [checked? (on? 'checked)]
-           [pressed? (on? 'pressed)] [hover? (on? 'hover)]
+           [off? (on? 'disabled)]
+           [pressed? (and (not off?) (on? 'pressed))]
+           [hover? (and (not off?) (on? 'hover))]
+           [ink (lambda (c) (if off? (alpha c 0.5) c))]
            [tx (if label (- (+ x w) 46) x)] [ty (+ y (floor (/ (- h 26) 2)))]
            [kx (if checked? (+ tx 33) (+ tx 13))] [ky (+ ty 13)])
       (fill-box tx ty 46 26
-                (if checked?
-                    'accent
-                    (alpha 'text (cond [pressed? 0.25] [hover? 0.2]
-                                       [else 0.15])))
+                (ink (if checked?
+                         'accent
+                         (alpha 'text (cond [pressed? 0.25] [hover? 0.2]
+                                            [else 0.15]))))
                 13)
       (when checked?
         (cond [pressed? (fill-box tx ty 46 26 (alpha #x000006 0.2) 13)]
               [hover? (fill-box tx ty 46 26 (alpha #xffffff 0.1) 13)]))
-      (draw-shadow (- kx 10) (- ky 10) 20 20 10 4)
+      (unless off? (draw-shadow (- kx 10) (- ky 10) 20 20 10 4))
       (fill-circle kx ky 10
-                   (if (or checked? hover? pressed?) #xffffff 'adwaita-slider))
+                   (ink (if (or checked? hover? pressed?)
+                            #xffffff
+                            'adwaita-slider)))
       (when label
         (adwaita-text-in x y h (text-fit label (max 0 (- w 46 12)) 'ui)
-                         'text 'ui))
+                         (ink 'text) 'ui))
       (when (on? 'focused) (adwaita-ring-outside tx ty 46 26 13))))
 
   (define (adwaita-toggle-size label)
@@ -298,18 +303,22 @@
   ;; (Settings' colors) is 6 high under the knob.
   (define (adwaita-slider x y w h flags frac paint)
     (let* ([cy (+ y (/ h 2))] [kx (+ x (* frac w))]
-           [hot? (or (memq 'hover flags) (memq 'pressed flags))])
+           [off? (memq 'disabled flags)]
+           [ink (lambda (c) (if off? (alpha c 0.5) c))]
+           [hot? (and (not off?)
+                      (or (memq 'hover flags) (memq 'pressed flags)))])
       (if paint
           (with-clip (x (- cy 3) w 6 3) (paint x (- cy 3) w 6))
           (begin
-            (fill-box x (- cy 2) w 4 (alpha 'text (if hot? 0.2 0.15)) 2)
-            (fill-box x (- cy 2) (max 4 (- kx x)) 4 'accent 2)
+            (fill-box x (- cy 2) w 4 (ink (alpha 'text (if hot? 0.2 0.15)))
+                      2)
+            (fill-box x (- cy 2) (max 4 (- kx x)) 4 (ink 'accent) 2)
             (when hot?
               (fill-box x (- cy 2) (max 4 (- kx x)) 4 (alpha #xffffff 0.1)
                         2))))
-      (draw-shadow (- kx 10) (- cy 10) 20 20 10 4)
-      (fill-circle kx cy 10 (if hot? #xffffff 'adwaita-slider))
-      (stroke-circle kx cy 10.5 (alpha #x000006 0.1) 1)
+      (unless off? (draw-shadow (- kx 10) (- cy 10) 20 20 10 4))
+      (fill-circle kx cy 10 (ink (if hot? #xffffff 'adwaita-slider)))
+      (stroke-circle kx cy 10.5 (ink (alpha #x000006 0.1)) 1)
       (when (memq 'focused flags)
         (stroke-circle kx cy 11 (alpha 'adwaita-link 0.5) 2))))
 
@@ -350,6 +359,8 @@
                              (memq 'mono flags))
                          'text-dim]
                         [else 'text])]
+           ;; insensitive, at half its opacity, as the other parts are
+           [color (if (memq 'disabled flags) (alpha color 0.5) color)]
            [text (ui-label-text flags text)]
            [lh (font-line-height font)]
            [at (lambda (s)

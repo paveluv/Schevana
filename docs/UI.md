@@ -151,6 +151,25 @@ and `ui-chip-input` (tags), `ui-breadcrumbs` (a path), `ui-nav` (a list to
 choose a page from), and `ui-live-badge` (whether a view is live or holds
 still).
 
+The Lisp machines' choices are here too, drawn by every style in its own
+way. `ui-menu-grid` is a menu of columns, each a heading over its choices,
+where one choice in all, one in each column, or each on its own may be
+chosen (`'policy`: `single`, `columns` or `multiple`); a choice that can't
+be had now is drawn as such. `ui-choice-grid` is a matrix of boxes to
+tick, rows by columns, a cell that can't be had left blank. `ui-keycap`
+is a button labeled with a key, and `ui-inline-choices` shows a few values
+at once in a row, the current one marked:
+
+```scheme no-run
+(ui-menu-grid ui 'look 20 20 360
+              '(("Size" ("Small" . small) ("Large" . large))
+                ("Face" ("Serif" . serif) ("Mono" . mono)))
+              chosen set-chosen! 'policy 'columns)
+(ui-inline-choices ui 'answer 20 140 (ui-control-height)
+                   '(("Yes" . yes) ("No" . no) ("Ask" . ask))
+                   answer set-answer!)
+```
+
 ## Rows, empty views and banners
 
 Settings are often shown as a boxed list: a group of rows in one box,
@@ -226,9 +245,9 @@ right in every style and at every text size.
 `ui-flow` places items from left to right, wrapping them into rows, and
 returns their places and the height they take. `ui-toolbar` does the same
 for a bar of items, one of which may stretch. `ui-split` divides a width
-at a line that the person can drag. `(ui-side-panel ui id x y w h side
-width least rest panel)` lays a panel along one side and the rest of the
-view beside it; when the panel is hidden, or when the rest would be
+at a line that the person can drag, and `ui-split-stacked` a height.
+`(ui-side-panel ui id x y w h side width least rest panel)` lays a panel
+along one side and the rest of the view beside it; when the panel is hidden, or when the rest would be
 narrower than `least`, the rest gets all the room. With `'floating #t` the
 panel lies over the rest instead, so the rest never changes size (Life's
 grid works this way). `ui-side-panel-button` draws the panel's button,

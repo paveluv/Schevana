@@ -64,8 +64,7 @@
                              (draw (+ cx 6) (+ y 4) (- cw 12) (- h 8)
                                    (cdr state))))))
                    widgets-states (iota n))
-                  (fill-box x (+ y h -1) (- right x) 1
-                            (alpha 'window-border 0.5))
+                  (ui-draw-separator x (+ y h -1) (- right x) 1 '())
                   (+ y h))]
            ;; Draws a row of kinds: each named over its cell, which draw
            ;; draws, given the kind's index.
@@ -78,8 +77,7 @@
                          (with-clip (cx (+ y sh) cw (- h sh))
                            (draw (+ cx 6) (+ y sh 4) (- cw 12) (- h sh 8) i))))
                      names (iota (length names)))
-                    (fill-box x (+ y h -1) (- right x) 1
-                              (alpha 'window-border 0.5))
+                    (ui-draw-separator x (+ y h -1) (- right x) 1 '())
                     (+ y h))]
            ;; A size's or an areas' name takes the width of three cells.
            [nw (+ lw cw cw)]

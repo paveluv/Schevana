@@ -172,7 +172,8 @@
       (when (on? 'cursor) (adwaita-ring cx cy s s 9))
       (adwaita-text-centered x y w h label
                              (cond [(on? 'selected) #xffffff]
-                                [(on? 'outside) (alpha 'text 0.3)]
+                                [(or (on? 'outside) (on? 'disabled))
+                                 (alpha 'text 0.3)]
                                 [else 'text])
                           'ui)))
 
@@ -239,13 +240,14 @@
   (define (adwaita-nav-row x y w h flags label icon)
     (let* ([on? (lambda (f) (memq f flags))] [rx (+ x 6)] [rw (- w 12)]
            [g (ui-glyph-size)] [ix (+ rx 8)] [lx (if icon (+ ix g 12) ix)]
-           [lh (font-line-height 'ui)])
+           [lh (font-line-height 'ui)]
+           [ink (if (on? 'disabled) (alpha 'text 0.5) 'text)])
       (cond [(on? 'selected)
              (fill-box rx y rw h (alpha 'text (if (on? 'hover) 0.13 0.1)) 9)]
             [(on? 'hover) (fill-box rx y rw h (alpha 'text 0.07) 9)])
       (when icon (icon ix (adwaita-center y h g) g flags))
       (adwaita-text-in lx y h (text-fit label (max 0 (- (+ rx rw) lx 8)) 'ui)
-                       'text 'ui)
+                       ink 'ui)
       (when (on? 'focused) (adwaita-ring rx y rw h 9))))
 
   ;; Whether a view is live, as a pill like a toggle group's (widgets/
@@ -253,24 +255,30 @@
   ;; live, the accent's dot before Live; held, the pause mark, and the way
   ;; back in the accent.
   (define (adwaita-live-badge x y w h flags label)
-    (let* ([on? (lambda (f) (memq f flags))] [live? (on? 'checked)]
+    (let* ([off? (memq 'disabled flags)]
+           [on? (lambda (f) (and (not (and off? (memq f '(hover pressed))))
+                                 (memq f flags)))]
+           [ink (lambda (c) (if off? (alpha c 0.5) c))]
+           [live? (on? 'checked)]
            [lh (font-line-height 'ui-small)] [m (ui-live-badge-mark)]
            [ty (adwaita-text-top y h 'ui-small)] [my (adwaita-center y h m)]
            [tx (+ x 8 m 6)]
            [back (if live? 0 (text-width ui-live-badge-back 'ui-small))]
            [label (text-fit label (max 0 (- (+ x w) tx back 10)) 'ui-small)])
       (fill-box x y w h
-                (alpha 'text (if (or (on? 'hover) (on? 'pressed)) 0.15 0.1))
+                (ink (alpha 'text (if (or (on? 'hover) (on? 'pressed))
+                                      0.15
+                                      0.1)))
                 (/ h 2))
       (if live?
-          (fill-circle (+ x 8 (/ m 2)) (+ y (/ h 2)) (/ m 2) 'accent)
+          (fill-circle (+ x 8 (/ m 2)) (+ y (/ h 2)) (/ m 2) (ink 'accent))
           (let ([bw (max 1 (quotient m 3))])
-            (fill-box (+ x 8) my bw m 'text-dim)
-            (fill-box (+ x 8 (- m bw)) my bw m 'text-dim)))
-      (adwaita-text tx ty label 'text 'ui-small)
+            (fill-box (+ x 8) my bw m (ink 'text-dim))
+            (fill-box (+ x 8 (- m bw)) my bw m (ink 'text-dim))))
+      (adwaita-text tx ty label (ink 'text) 'ui-small)
       (unless live?
         (adwaita-text (+ tx (text-width label 'ui-small)) ty
-                      ui-live-badge-back 'adwaita-link 'ui-small))
+                      ui-live-badge-back (ink 'adwaita-link) 'ui-small))
       (when (on? 'focused) (adwaita-ring x y w h (/ h 2)))))
 
   ;; A suggestion is a menu item (widgets/_menus.scss:130-144).
@@ -278,7 +286,8 @@
     (let ([on? (or (memq 'selected flags) (memq 'hover flags))])
       (when on? (fill-box x y w h (alpha 'text 0.1) 9))
       (adwaita-text-in (+ x 12) y h (text-fit label (max 0 (- w 24)) 'ui)
-                       'text 'ui)))
+                       (if (memq 'disabled flags) (alpha 'text 0.5) 'text)
+                       'ui)))
 
   ;; The line between two panes, where a drag moves it: under the pointer,
   ;; a line of the text at 30 %, and while dragged the accent's (a paned's

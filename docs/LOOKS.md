@@ -173,9 +173,12 @@ included. Plain settings cover the rest: a text's caret (`text-caret`:
 `underline`), a section label's font and case, how a menu's entries are
 aligned (`menu-align`) and how the chosen one shows (`menu-highlight`:
 its row, its text's cell, or a box around its ink), whether shapes are
-smoothed (`drawing-antialias`; not on a screen one bit deep), whether
-glows are drawn (`fill-glow`) and how much a surface takes on a hue
-(`surface-tint`), and the like.
+smoothed (`drawing-antialias`; not on a screen one bit deep), how what
+can't be used fades (`disabled-fade`: the share of its ink a mark keeps,
+or, on a screen one bit deep, the stipple it is drawn through, and the
+color `text-disabled` for its words), whether glows are drawn
+(`fill-glow`) and how much a surface takes on a hue (`surface-tint`), and
+the like.
 
 Every place that shows an app draws its icon ([WINDOWS.md](WINDOWS.md#apps)):
 the launcher, the taskbar or the dash, the app grid, and the title bar

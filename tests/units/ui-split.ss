@@ -41,3 +41,29 @@
                  (and (= start 150) (= dragged 190)
                       (= right-least (- 360 100)) (= left-least 80)
                       (= (unbox left) 150))))))))
+
+;; A split in a scroll view 100 high, its panes 200 high, scrolled down by
+;; 60: the line's handle is cut to the view, so that no press above or
+;; below the view, where the line would run on, reaches it.
+(check "a split in a scroll view is cut to the view: its line takes no \
+        press outside it"
+       (let* ([win (test-kit-window "Split"
+                     (lambda (ui w h)
+                       (ui-scroll ui 'view 20 40 360 100
+                         (lambda (top)
+                           (ui-split ui 'sp 20 top 360 200 150 80 100)
+                           (+ top 200))))
+                     '(400 . 200))]
+              [ui (window-ref win 'ui)])
+         (steps 2)
+         (ui-memo! ui 'view (cons 60 100))
+         (invalidate! win)
+         (steps 2)
+         (let* ([r (test-region ui 'sp)]
+                [frame (and r (list (ui-region-x r) (ui-region-y r)
+                                    (ui-region-w r) (ui-region-h r)))])
+           (close-window! win)
+           (printf "  ~s\n" frame)
+           ;; the view is 40..140; the line's handle keeps within it
+           (and frame (>= (cadr frame) 40)
+                (<= (+ (cadr frame) (cadddr frame)) 140)))))

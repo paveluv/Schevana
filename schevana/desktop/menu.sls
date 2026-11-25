@@ -24,10 +24,10 @@
           (only (schevana core) *mouse-button* *mouse-x* *mouse-y* after
                 close-window! define-part define-surface desktop-rect
                 draw-text fill-box focus-window! font font-ascent
-                font-char-width font-line-height frame-regions
+                font-char-width font-line-height frame-regions get-font
                 minimize-window! notify now-ms point-in?
                 report-error! request-frame! safe-call screen-h screen-w
-                shaded? text-width theme theme-default! theme-rule
+                shaded? text-width theme theme-default! theme-part theme-rule
                 toggle-maximize! toggle-shade! window-action! window-at
                 window-ref window-region window-setting window-state with-clip
                 with-place world-value)
@@ -142,6 +142,28 @@
   (define (menu-icon-room m)
     (let ([s (menu-icon-size m (theme 'menu-font))]) (if (> s 0) (+ s 8) 0)))
 
+  ;; The font an entry's key is drawn in: the menu's, as faint text has it
+  ;; (Genera's italic, 'faint-text-font).
+  (define (menu-key-font)
+    (let ([font (get-font (theme 'menu-font))]
+          [make (theme-part 'faint-text-font)])
+      (if make (make font) font)))
+
+  ;; Returns the room the keys of m's entries take after their text, in a
+  ;; menu whose text is centered: the widest key and the gap before it, or
+  ;; none. (Text at the left needs no column: each entry's key goes at the
+  ;; right, past its own text.)
+  (define (menu-key-room m)
+    (if (eq? (theme 'menu-align) 'center)
+        (let ([w (fold-left (lambda (acc e)
+                              (let ([k (and (pair? e)
+                                            (menu-label-key (car e)))])
+                                (if k (max acc (text-width k (menu-key-font)))
+                                    acc)))
+                            0 (menu-entries m))])
+          (if (> w 0) (+ w 24) 0))
+        0))
+
   ;; Returns where menu m and its pieces are, which its drawing, its clicks
   ;; and the pointer all read: (menu x y w h), then (filter x y w h) when it
   ;; filters, then each entry's (i x y w h) or each separator's (separator x
@@ -150,13 +172,18 @@
     (let* ([es (menu-entries m)] [ih (theme 'menu-item-height)]
            [sh (theme 'menu-separator-height)] [pad (theme 'menu-pad)]
            [head (if (menu-filter? m) (+ ih 8) 0)]
-           [icons (menu-icon-room m)]
+           [icons (menu-icon-room m)] [keys (menu-key-room m)]
            [w (fold-left (lambda (acc e)
                            (if (pair? e)
                                (max acc (+ (theme 'menu-width-extra)
                                            (* 2 (theme 'menu-text-x)) icons
-                                           (menu-label-width
-                                            (car e) (theme 'menu-font))))
+                                           (if (> keys 0)
+                                               (+ keys
+                                                  (text-width
+                                                   (menu-label-text (car e))
+                                                   (theme 'menu-font)))
+                                               (menu-label-width
+                                                (car e) (theme 'menu-font)))))
                                acc))
                          (if (and (menu-filter? m) (theme 'menu-fit-filter))
                              (max (theme 'menu-min-width)
@@ -302,7 +329,8 @@
   (define-part (draw-menu m areas on flags)
     (let* ([es (list->vector (menu-entries m))] [font (theme 'menu-font)]
            [lh (font-line-height font)] [f (assq 'filter areas)]
-           [is (menu-icon-size m font)] [icons (menu-icon-room m)])
+           [is (menu-icon-size m font)] [icons (menu-icon-room m)]
+           [keys (menu-key-room m)] [kf (menu-key-font)])
       (apply ui-draw-panel (append (cdar areas) '((menu))))
       (when f
         (apply (lambda (fx fy fw fh) (draw-menu-filter m fx fy fw fh))
@@ -331,7 +359,8 @@
                                         [else 'menu-ink-selected]))])
                  (let* ([tw (text-width text font)]
                         [tx (menu-snap (if (eq? (theme 'menu-align) 'center)
-                                           (+ x icons (/ (- w icons tw) 2))
+                                           (+ x icons
+                                              (/ (- w icons keys tw) 2))
                                            (+ x (theme 'menu-text-x) icons)))]
                         [ty (menu-snap (if (theme 'menu-text-top)
                                            y
@@ -354,12 +383,16 @@
                      (icon (+ x (theme 'menu-text-x)) (+ y (/ (- h is) 2)) is
                            '()))
                    (draw-text tx ty text ink font))
-                 ;; the key that does the same, at the right
+                 ;; the key that does the same, at the right, in the font
+                 ;; of faint text whether or not the entry is chosen
                  (when key
-                   (draw-text (- (+ x w) (theme 'menu-text-x)
-                                 (text-width key font))
-                              (+ y (/ (- h lh) 2)) key
-                              (if sel? ink 'text-faint) font)))]))
+                   (draw-text (menu-snap (- (+ x w) (theme 'menu-text-x)
+                                            (text-width key kf)))
+                              (menu-snap
+                               (if (theme 'menu-text-top)
+                                   y
+                                   (+ y (/ (- h (font-line-height kf)) 2))))
+                              key (if sel? ink 'text-faint) kf)))]))
           a))
        areas)))
 

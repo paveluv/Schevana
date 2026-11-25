@@ -24,10 +24,11 @@
   (import (chezscheme)
           (only (schevana base) at-load clamp library-layer)
           (only (schevana core) define-bitmap-font define-style fill-box font
-                font-line-height stipple theme theme-rule with-clip)
+                font-line-height stipple stroke-box theme theme-rule
+                with-clip)
           (schevana styles cadr fonts)
           (only (schevana kits text) text-draw-centered)
-          (only (schevana kits ui) ui-scrollbar-areas))
+          (only (schevana kits ui) ui-fade ui-scrollbar-areas))
 
   (library-layer looks)
 
@@ -50,13 +51,17 @@
 
   ;; The CADR had no slider either: this one is a 1-pixel rule with a solid
   ;; block the cursor's size at the value, the scroll bar's segment turned
-  ;; sideways.
+  ;; sideways, boxed under the mouse and gray while disabled.
   (define (cadr-slider x y w h flags frac paint)
-    (let ([cy (round (+ y (/ h 2)))] [kx (+ x (* frac w))])
+    (let* ([cy (round (+ y (/ h 2)))] [kx (+ x (* frac w))]
+           [off? (memq 'disabled flags)]
+           [ink (if off? (ui-fade 'text) 'text)])
       (if paint
           (with-clip (x (- cy 4) w 8) (paint x (- cy 4) w 8))
-          (fill-box x cy w 1 'text))
-      (fill-box (- kx 4) (- cy 6) 8 12 'text)))
+          (fill-box x cy w 1 ink))
+      (fill-box (- kx 4) (- cy 6) 8 12 ink)
+      (when (and (not off?) (or (memq 'hover flags) (memq 'pressed flags)))
+        (stroke-box (- kx 7) (- cy 9) 14 18 'text))))
 
   ;; Progress as the who line counted a file's, "37%"
   ;; (wholin.lisp:405-450), where the line has room; otherwise nothing,
@@ -109,7 +114,11 @@
      'heading (font "CADR HL12 Italic" 14 'crisp)
      'big (font "CADR HL12 Bold" 28 'crisp)
      'huge (font "CADR CPTFONT" 360 'crisp)
+     ;; faint text as black as the rest, and, with no italic of CPTFONT,
+     ;; what can't be used drawn through the 50 % gray, 50%-GRAY
+     ;; (scrman.lisp:438), as its marks are
      'faint-text-font #f
+     'text-disabled (stipple 'text #f ".#" "#.")
      'genera-command-font 'mono
      'genera-standout-font 'ui-italic
      'genera-choice-font (font "CADR HL10" 12 'crisp)

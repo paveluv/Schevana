@@ -143,3 +143,95 @@
                                     '(genera cadr interlisp open-look
                                       curses)))))
                   drawn)))
+
+;; The kit's controls, each drawn by its part from flags alone: (name h
+;; draw), draw a (lambda (x y w h flags) ...) in a cell 140 wide.
+(define styles-test-controls
+  (list
+   (list 'button 30
+         (lambda (x y w h f) (ui-draw-button x y w h f "Button" #f)))
+   (list 'primary 30
+         (lambda (x y w h f)
+           (ui-draw-button x y w h (cons 'primary f) "Primary" #f)))
+   (list 'circular 30
+         (lambda (x y w h f)
+           (ui-draw-button x y h h (cons 'circular f) #f 'gear)))
+   (list 'checkbox 30
+         (lambda (x y w h f) (ui-draw-checkbox x y w h f "Check")))
+   (list 'toggle 30 (lambda (x y w h f) (ui-draw-toggle x y w h f "Toggle")))
+   (list 'radio 30
+         (lambda (x y w h f) (ui-draw-radio x y w h f "Radio" #f #f)))
+   (list 'tab 30
+         (lambda (x y w h f)
+           (ui-draw-tab x y w h (cons* 'first 'last f) "Tab")))
+   (list 'nav-row 30
+         (lambda (x y w h f) (ui-draw-nav-row x y w h f "Place" #f)))
+   (list 'slider 30
+         (lambda (x y w h f)
+           (ui-draw-slider (+ x 8) y (- w 16) (ui-slider-height) f 3/5 #f)))
+   (list 'live-badge 30
+         (lambda (x y w h f) (ui-draw-live-badge x y w 20 f "Live")))
+   (list 'dropdown 30
+         (lambda (x y w h f) (ui-draw-dropdown x y w h f "Choice")))
+   (list 'text-box 30
+         (lambda (x y w h f)
+           (with-place 'field
+             (lambda ()
+               (let ([lay (edit-layout-of #f "Text" #f #f
+                                          (lambda (s) (text-width s 'ui)) #f)])
+                 (edit-layout-extend! lay 1)
+                 (ui-draw-text-box x y w h (cons 'field f) lay 0 0 #f 0 0
+                                   #f))))))
+   (list 'chip 30 (lambda (x y w h f) (ui-draw-chip x y 70 20 f "tag")))
+   (list 'day 30 (lambda (x y w h f) (ui-draw-day x y h h f "14")))
+   (list 'suggestion 30
+         (lambda (x y w h f) (ui-draw-suggestion x y w h f "suggestion")))
+   (list 'label 30 (lambda (x y w h f) (ui-draw-label x y w h f "Label")))
+   (list 'keycap 30 (lambda (x y w h f) (ui-draw-keycap x y w h f "Help")))
+   (list 'inline-choice 30
+         (lambda (x y w h f) (ui-draw-inline-choice x y w h f "Yes")))
+   (list 'menu-grid-item 30
+         (lambda (x y w h f) (ui-draw-menu-grid-item x y w h f "Item")))
+   (list 'choice-grid-cell 30
+         (lambda (x y w h f) (ui-draw-choice-grid-cell x y w h f)))))
+
+;; Returns the picture of control c drawn with flags on the window's paper.
+(define (styles-test-control-picture c flags)
+  (image 156 (+ (cadr c) 16) 1
+         (lambda ()
+           (fill-box 0 0 156 (+ (cadr c) 16) 'window-bg)
+           ((caddr c) 8 8 140 (cadr c) flags))))
+
+;; Returns the number of distinct pixels in a picture.
+(define (styles-test-colors p)
+  (let ([seen (make-eqv-hashtable)] [b (picture-bytes p)])
+    (do ([i 0 (+ i 4)]) ((= i (bytevector-length b)))
+      (hashtable-set! seen (bytevector-u32-native-ref b i) #t))
+    (hashtable-size seen)))
+
+;; A control that can't be used must look so in every style; on a screen
+;; one bit deep (Genera's, the CADR's) it does so with ink and paper alone,
+;; its marks drawn through a stipple and its words in italic or the gray.
+(check "every style shows each of the kit's controls disabled, and Genera \
+        and the CADR do so with no gray pixel"
+       (let ([found
+              (fold-left
+               (lambda (acc style)
+                 (set-style! style)
+                 (fold-left
+                  (lambda (acc c)
+                    (let* ([normal (styles-test-control-picture c '())]
+                           [off (styles-test-control-picture c '(disabled))])
+                      (cond
+                        [(bytevector=? (picture-bytes normal)
+                                       (picture-bytes off))
+                         (cons (list style (car c) 'same) acc)]
+                        [(and (memq style '(genera cadr))
+                              (> (styles-test-colors off) 2))
+                         (cons (list style (car c) 'gray) acc)]
+                        [else acc])))
+                  acc styles-test-controls))
+               '() (styles))])
+         (set-style! 'mac)
+         (for-each (lambda (f) (printf "  ~s\n" f)) (reverse found))
+         (null? found)))
