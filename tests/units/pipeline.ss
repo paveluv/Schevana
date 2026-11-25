@@ -2190,3 +2190,31 @@
                  (iota present-words) words))
      numbers saved)
     (close-window! w)))
+
+(check "the Pipeline's source keeps its lines clear of a scroll bar at its \
+        left (Genera's)"
+       (let ([style (current-style)] [real draw-text] [xs '()])
+         (set-style! 'genera)
+         (let ([win (test-kit-window "Source"
+                      (lambda (ui w h)
+                        (pipeline-draw-source
+                         ui 20 10 300 100
+                         (map (lambda (i) (format "line ~a" i)) (iota 40)))))])
+           (steps 2)
+           (fluid-let ([draw-text
+                        (lambda (x y s . rest)
+                          (when (and (> (string-length s) 5)
+                                     (string=? (substring s 0 5) "line "))
+                            (set! xs (cons x xs)))
+                          (apply real x y s rest))])
+             (invalidate! win)
+             (steps 2))
+           (let ([f (ui-region-frame
+                     (test-region (window-ref win 'ui)
+                                  '((pipeline source-view) bar)))])
+             (close-window! win)
+             (set-style! style)
+             (steps 1)
+             (printf "  ~s ~s\n" f (and (pair? xs) (car xs)))
+             (and (pair? xs)
+                  (for-all (lambda (x) (>= x (+ (car f) (caddr f)))) xs))))))

@@ -46,7 +46,8 @@
           (only (schevana kits ui) ui-handlers make-ui ui-state-my ui-state-mx
                 ui-region-in? ui-wheel ui-end! ui-scrollbar-inset ui-begin!
                 ui-region-frame ui-state-reveal-set! ui-find ui-state-reveal
-                ui-scrollbar ui-scrollbar-width ui-nav ui-focused ui-hover?
+                ui-scrollbar ui-scrollbar-shows? ui-scrollbar-width ui-nav
+                ui-focused ui-hover?
                 ui-area ui-draw-surface ui-draw-highlight-over ui-draw-highlight
                 ui-text-field ui-dialog ui-memo! ui-memo ui-button-size ui-flags
                 ui-pressable! ui-focus! ui-active? ui-draw-field
@@ -132,6 +133,7 @@
       (mouse-doc "Show what the mouse buttons do" bool)
       (scrollbar-show "Scroll bars" (("Always" . always) ("On hover" . hover)
                                      ("In margin" . bar)))
+      (scrollbar-full "Scroll bars where all fits" bool)
       (scrollbar-input "Scroll bar controls"
        (("Thumb dragging" . drag) ("Lisp machine clicks" . lispm)))
       (scrollbar-side "Scroll bar side"
@@ -1384,7 +1386,7 @@
                          [else (settings-theme-tab ui x y cw)])))]
            [content-h (+ (- bottom y) 20 18)]
            [max-scroll (max 0 (- content-h h))])
-      (when (> max-scroll 0)
+      (when (ui-scrollbar-shows? max-scroll)
         (settings-pane-scrollbar ui st (+ sw 1) w h content-h max-scroll))
       ;; the wheel went past the end, which only drawing finds out, or the
       ;; pane scrolls to a widget: the pane is drawn again where it stops,

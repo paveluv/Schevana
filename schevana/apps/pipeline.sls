@@ -93,7 +93,8 @@
           (only (schevana kits ui) ui-frame ui-area ui-gap ui-tree
                 ui-checkbox-box ui-end! ui-begin! ui-handlers ui-pad make-ui
                 ui-dropdown ui-checkbox ui-checkbox-size ui-later! ui-state-my
-                ui-state-mx ui-scroll ui-table ui-draw-cell ui-table-room
+                ui-state-mx ui-scroll ui-scrollbar-inset ui-table ui-draw-cell
+                ui-table-room
                 ui-memo! ui-tree-expand! ui-tree-states ui-memo ui-button
                 ui-stepper ui-control-height ui-stream-release! ui-stream-rows
                 ui-stream-restart! ui-segmented ui-live-badge ui-draw-legend
@@ -2805,14 +2806,15 @@
 
   ;; A shader's source, one line of the mono font each, scrolling.
   (define (pipeline-draw-source ui x y w h lines)
-    (let ([lh (font-line-height 'mono-small)])
+    (let ([lh (font-line-height 'mono-small)]
+          [left (+ x (max 8 (ui-scrollbar-inset 'left)))])
       (fill-box x y w h 'bg-1 3)
       (ui-scroll ui '(pipeline source-view) x y w h
         (lambda (top)
           (for-each (lambda (line k)
                       (let ([ly (+ top 6 (* k lh))])
                         (when (and (> (+ ly lh) y) (< ly (+ y h)))
-                          (draw-text (+ x 8) ly line 'text 'mono-small))))
+                          (draw-text left ly line 'text 'mono-small))))
                     lines (iota (length lines)))
           (+ top 12 (* lh (length lines)))))))
 

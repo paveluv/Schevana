@@ -302,7 +302,8 @@ children only while the node is expanded.
             (ui-scroll ui 'v 0 0 w h
               (lambda (top)
                 (do ([i 0 (+ i 1)]) ((= i 40))
-                  (draw-text 10 (+ top (* i 20)) (format "Line ~a" i)
+                  (draw-text (max 10 (ui-scrollbar-inset 'left))
+                             (+ top (* i 20)) (format "Line ~a" i)
                              'text 'ui))
                 (+ top 800)))                   ; where the content ends
             (ui-end! ui w h))
@@ -311,7 +312,13 @@ children only while the node is expanded.
 
 A scroll view's body draws its content starting at `top`, and returns
 the y where the content ends. The wheel and the scroll bar move the
-content; the style decides where the bar is and when it shows.
+content; the style decides where the bar is and when it shows. The bar
+lies over the view's edge, and content keeps clear of it by
+`(ui-scrollbar-inset 'left)` and `(ui-scrollbar-inset 'right)`: the room
+the style's bar takes on that side, 0 where it shows only under the
+pointer (Genera's is at the left, most styles' at the right). A style
+whose bars are there whether they are needed or not (Genera's,
+`scrollbar-full`) shows one over content that fits, too.
 
 Content wider than its view scrolls sideways too in `ui-scroll-wide`,
 whose body takes `left` and `top` and returns where the content ends, as
@@ -319,7 +326,9 @@ whose body takes `left` and `top` and returns where the content ends, as
 sideways, as does the wheel turned sideways. That bar is the style's own
 bar at the side, transposed (`ui-scrollbar-across`), so every style has
 one in its own look; a style that wants to draw it differently finds
-`across` among the flags its `ui-draw-scrollbar` part is handed.
+`across` among the flags its `ui-draw-scrollbar` part is handed. Where it
+is always there it covers no content: the last of it scrolls up to the
+bar.
 
 ```scheme
 (let ([ui (make-ui)])
@@ -329,7 +338,8 @@ one in its own look; a style that wants to draw it differently finds
             (ui-scroll-wide ui 'v 0 0 w h
               (lambda (left top)
                 (do ([i 0 (+ i 1)]) ((= i 40))
-                  (draw-text left (+ top (* i 20))
+                  (draw-text (+ left (ui-scrollbar-inset 'left))
+                             (+ top (* i 20))
                              (format "Line ~a, which runs on and on" i)
                              'text 'ui))
                 (values (+ left 400) (+ top 800))))

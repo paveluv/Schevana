@@ -1813,28 +1813,108 @@
                                       (iota 10)))
                            (iota 10)))))))
 
-(check "Genera's scroll bar as the 1998 captures show it: dotted 1-pixel \
-        sides, a box at each end, and the elevator a 1-pixel outline on \
-        paper around its stipple"
+(check "Genera's scroll bar as the captures show it: 10 pixels of it, white \
+        around, a box at each end, the elevator a 1-pixel outline around its \
+        stipple and dots at each side of the shaft, every second pixel from \
+        the bar's end; the bar across is the same turned, and a border along \
+        the view's edges shows"
        (with-style 'genera
          (lambda ()
-           (let* ([t (cdr (assq 'thumb (ui-scrollbar-areas 0 0 10 100 0
-                                                           3/10)))]
-                  [ty (cadr t)]
-                  [img (image 10 100 1
-                              (lambda ()
-                                (fill-box 0 0 10 100 'window-bg)
-                                (ui-draw-scrollbar 0 0 10 100 '() 0 3/10)))]
-                  [ink (color->pixel 'text)] [paper (color->pixel 'window-bg)]
-                  [at (lambda (x y) (pixel-at img x y))]
-                  [side (map (lambda (y) (at 0 (+ 40 y))) (iota 6))]
-                  [r (list side
-                           (map (lambda (x) (at (+ x 1) ty)) (iota 8))
-                           (at 1 (+ ty 1)))])
-             (printf "  ~s\n" r)
-             (and (equal? side (list ink paper ink paper ink paper))
-                  (for-all (lambda (p) (= p ink)) (cadr r))
-                  (member (caddr r) (list ink paper)))))))
+           (let* ([key (list (cons (color->pixel 'window-bg) #\.))]
+                  [shown (lambda (w h thunk)
+                           (pixel-rows
+                            (image w h 1
+                                   (lambda ()
+                                     (fill-box 0 0 w h 'window-bg)
+                                     (thunk)))
+                            key))]
+                  [side (shown 18 64
+                               (lambda ()
+                                 (ui-draw-scrollbar 0 0 18 64 '() 0 1/4)))]
+                  [across (shown 64 18
+                                 (lambda ()
+                                   (with-transpose
+                                     (ui-draw-scrollbar 0 0 18 64 '(across)
+                                                        0 1/4))))]
+                  [bordered (shown 18 64
+                                   (lambda ()
+                                     (stroke-box 0 0 18 64 'text)
+                                     (ui-draw-scrollbar 0 0 18 64 '() 0 1/4)))]
+                  [cap "....##########...."]
+                  [hollow "....#........#...."]
+                  [box (append (list cap) (make-list 8 hollow) (list cap))]
+                  [none (make-string 18 #\.)]
+                  [row (lambda (y) (list-ref side y))]
+                  [turned (lambda (y)
+                            (list->string
+                             (map (lambda (r) (string-ref r y)) across)))]
+                  ;; the elevator's stipple is the screen's, not the bar's
+                  [stippled? (lambda (y)
+                               (let ([r (row y)])
+                                 (and (string=? (substring r 0 5) "....#")
+                                      (string=? (substring r 13 18) "#....")
+                                      (not (string=? r cap))
+                                      (not (string=? r hollow)))))])
+             (for-each (lambda (r) (printf "  ~a\n" r)) side)
+             (and (equal? (list-head side 12) (cons* none none box))
+                  (string=? (row 12) cap)
+                  (for-all stippled? (map (lambda (i) (+ 13 i)) (iota 8)))
+                  (string=? (row 21) cap)
+                  (for-all (lambda (i)
+                             (string=? (row (+ 22 i))
+                                       (if (odd? i) hollow none)))
+                           (iota 30))
+                  (equal? (list-tail side 52) (append box (list none none)))
+                  (for-all (lambda (y) (or (< 12 y 21)
+                                           (string=? (turned y) (row y))))
+                           (iota 64))
+                  (for-all (lambda (y)
+                             (let ([r (list-ref bordered y)])
+                               (and (char=? #\# (string-ref r 0))
+                                    (char=? #\# (string-ref r 17)))))
+                           (iota 64))
+                  (string=? (car bordered) (make-string 18 #\#))
+                  (string=? (list-ref bordered 63) (make-string 18 #\#)))))))
+
+(check "at 200 % Genera's scroll bar lies on whole pixels of its own, two of \
+        the screen's each way, wherever its elevator is"
+       (with-style 'genera
+         (lambda ()
+           (for-all
+            (lambda (start)
+              (let ([rows (pixel-rows
+                           (image 36 128 2
+                                  (lambda ()
+                                    (fill-box 0 0 18 64 'window-bg)
+                                    (ui-draw-scrollbar 0 0 18 64 '() start
+                                                       3/7)))
+                           (list (cons (color->pixel 'window-bg) #\.)))])
+                (for-all (lambda (i)
+                           (let ([r (list-ref rows (* 2 i))])
+                             (and (string=? r (list-ref rows (+ (* 2 i) 1)))
+                                  (for-all (lambda (j)
+                                             (char=? (string-ref r (* 2 j))
+                                                     (string-ref
+                                                      r (+ (* 2 j) 1))))
+                                           (iota 18)))))
+                         (iota 64))))
+            '(0 1/10 1/5 2/7 1/3)))))
+
+(check "a text area in Genera keeps its scroll bar 3 pixels from its border, \
+        1 at its ends and 2 from its text, as Zmacs's is"
+       (with-style 'genera
+         (lambda ()
+           (let* ([areas (ui-text-box-areas 0 0 200 80 '(lines))]
+                  [edit (cdr (assq 'edit areas))]
+                  [bar (cdr (assq 'bar areas))]
+                  [thumb (cdr (assq 'thumb (apply ui-scrollbar-areas
+                                                  (append bar '(0 1)))))])
+             (printf "  ~s ~s\n" bar edit)
+             ;; inside the border, 1 pixel wide
+             (and (= (- (car thumb) 1) 3)
+                  (= (- (cadr bar) 1) 1)
+                  (= (- 80 (+ (cadr bar) (cadddr bar)) 1) 1)
+                  (= (- (car edit) (+ (car thumb) (caddr thumb))) 2))))))
 
 (check "Genera boxes the word under the mouse a clear pixel off its ink: \
         no pixel of the box touches the word, though the word fills the \

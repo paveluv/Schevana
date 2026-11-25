@@ -174,6 +174,9 @@
      ;; three buttons, a double click going to the other end
      ;; (mouse.lisp:936-1010)
      'scrollbar-show 'bar
+     'scrollbar-width 10
+     'scrollbar-full #f
+     'scrollbar-repeat-delay #f
      'scrollbar-input 'lispm
      'scrollbar-double-click #t
      'ui-draw-slider 'cadr-slider

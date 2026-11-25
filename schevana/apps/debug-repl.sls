@@ -315,7 +315,8 @@
                       (when (transcript-drag! (debug-repl-transcript d) x y)
                         (invalidate! win)))
         'mouse-up (lambda (win x y button)
-                    (transcript-release! (debug-repl-transcript d)))
+                    (transcript-release! (debug-repl-transcript d) x y
+                                         button))
         'key (lambda (win key mods)
                (when (and (memq 'ctrl mods) (eqv? key #\c))
                  (let ([s (transcript-selection (debug-repl-transcript d))])

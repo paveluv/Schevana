@@ -250,3 +250,95 @@
                                            ("Paste\tCtrl+V" . #t)))
                             (equal? pasted "beta\ngamma")
                             (= point 2)))))))))))
+
+;; A REPL's scroll bar is the kit's own: returns what proc does with a REPL
+;; of 80 more lines in style, its transcript and the bar's frame on the
+;; screen, as a procedure (#f for none).
+(define (repl-test-bar style proc)
+  (set-style! style)
+  (let* ([win (repl 'private)] [r (window-ref win 'state)]
+         [t (repl-transcript r)])
+    (focus-window! win)
+    (do ([i 0 (+ i 1)]) ((= i 80)) (repl-add! r 'output (format "line ~a" i)))
+    (invalidate! win)
+    (steps 2)
+    (let ([v (proc win r t
+                   (lambda ()
+                     (let ([g (ui-find (transcript-ui t) 'bar)])
+                       (and g
+                            (let-values ([(cx cy cw ch) (content-rect win)])
+                              (let ([f (ui-region-frame g)])
+                                (list (+ cx (car f)) (+ cy (cadr f))
+                                      (caddr f) (cadddr f))))))))])
+      (close-window! win)
+      (set-style! 'mac)
+      (steps 1)
+      v)))
+
+(define (repl-test-press! x y button)
+  (let ([x (exact (round x))] [y (exact (round y))])
+    (inject! `(mouse-move ,x ,y) `(mouse-down ,x ,y ,button 1)
+             `(mouse-up ,x ,y ,button))
+    (steps 2)))
+
+(check "in Genera a REPL's scroll bar is always there, clear of its text, as \
+        the Listener's is: its boxes and its shaft scroll it, the mouse line \
+        calls what it holds its history, and neither the selection nor the \
+        input's cursor moves; the pointer is an I-beam again off it"
+       (repl-test-bar 'genera
+         (lambda (win r t bar)
+           (repl-insert! r "abc")
+           (repl-point-set! r 1)
+           (invalidate! win)
+           (steps 2)
+           (let*-values
+               ([(f) (bar)]
+                [(x) (+ (car f) (/ (caddr f) 2))]
+                [(y) (cadr f)] [(h) (cadddr f)]
+                [(cx cy cw ch) (content-rect win)]
+                [(scroll) (lambda (d button)
+                            (repl-test-press! x (+ y d) button)
+                            (transcript-scroll t))]
+                [(up) (scroll 5 'right)]
+                [(page) (scroll (- h 5) 'right)]
+                [(top) (scroll 5 'middle)]
+                [(end) (scroll (- h 5) 'middle)]
+                [(middle) (scroll (/ h 2) 'middle)]
+                [(over) (list (window-ref win 'cursor)
+                              (cdr (assq 'M (mouse-doc))))]
+                [(off) (begin
+                         (inject! `(mouse-move ,(+ cx 200) ,(+ cy 60)))
+                         (steps 1)
+                         (list (window-ref win 'cursor) (mouse-doc)))]
+                [(x0) (vector-ref (transcript-grid t) 0)])
+             (printf "  ~s\n" (list up page top end middle over off x0 f))
+             (and (= up 1) (> page 10) (> top 60) (= end 0)
+                  (< 20 middle 60)
+                  (equal? over '(resize-ns "Move to 50% of history"))
+                  (equal? off '(ibeam ()))
+                  (>= (+ cx x0) (+ (car f) (caddr f)))
+                  (= (repl-point r) 1)
+                  (string=? (transcript-selection t) ""))))))
+
+(check "elsewhere a REPL's scroll bar is there while it is scrolled back, and \
+        its thumb drags"
+       (repl-test-bar 'mac
+         (lambda (win r t bar)
+           (let ([before (bar)])
+             (repl-scroll-set! r 30)
+             (invalidate! win)
+             (steps 2)
+             (let* ([f (bar)]
+                    ;; inside of where the window's edge resizes it
+                    [x (exact (round (+ (car f) 2)))]
+                    [y (exact (round (+ (cadr f) (/ (cadddr f) 2))))]
+                    [bottom (exact (round (+ (cadr f) (cadddr f) -2)))])
+               (inject! `(mouse-move ,x ,y) `(mouse-down ,x ,y left 1)
+                        `(mouse-move ,x ,bottom))
+               (steps 2)
+               (let ([dragged (transcript-scroll t)] [held (and (bar) #t)])
+                 (inject! `(mouse-up ,x ,bottom left))
+                 (steps 2)
+                 (printf "  ~s\n" (list before f dragged held (bar)))
+                 (and (not before) f (= dragged 0) held (not (bar))
+                      (string=? (transcript-selection t) ""))))))))

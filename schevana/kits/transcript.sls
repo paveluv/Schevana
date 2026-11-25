@@ -25,24 +25,28 @@
 (library (schevana kits transcript)
   (export
     transcript-lines transcript-count transcript-scroll transcript-scroll-set!
-    transcript-new transcript-pad transcript-line-height transcript-clear!
+    transcript-new transcript-pad transcript-inset transcript-line-height
+    transcript-clear!
     transcript-append! transcript-add! transcript-rows transcript-fill-colors!
     transcript-draw-style-color transcript-draw-scheme transcript-draw-line
     transcript-draw-scrollbar transcript-draw-view transcript-end
     transcript-placing! transcript-place! transcript-point transcript-press!
-    transcript-drag! transcript-release! transcript-selection transcript-more)
+    transcript-drag! transcript-release! transcript-bar-pointer
+    transcript-selection transcript-more)
   (import (chezscheme)
           (only (schevana base) at-load clamp library-layer string-split)
           (only (schevana core) alpha color-default! draw-text fill-box
                 font-char-width font-line-height style theme theme-default!
                 theme-rule)
-          (only (schevana kits ui) ui-draw-scrollbar ui-open-text-menu!
+          (only (schevana kits ui) make-ui ui-active? ui-begin! ui-end!
+                ui-memo! ui-mouse-down ui-mouse-move ui-mouse-up
+                ui-open-text-menu! ui-pointer ui-scrollbar ui-scrollbar-inset
                 ui-scrollbar-width))
 
   (library-layer kits)
 
   (define-record-type transcript
-    (nongenerative schevana-transcript-2)
+    (nongenerative schevana-transcript-3)
     (fields (mutable lines)    ; newest first: ((style . text) ...)
             (mutable count)
             (mutable open?)    ; is the newest line unterminated output?
@@ -52,12 +56,25 @@
             (mutable held?)    ; does a left press select as it moves?
             (mutable placed)   ; the lines last drawn: ((line top rows len) ...)
             (mutable grid)     ; their grid, #(x cw lh cols), or #f
-            (mutable more)))   ; the texts of the lines drawn after t's
+            (mutable more)     ; the texts of the lines drawn after t's
+            ui))               ; the kit's, for the scroll bar
 
-  (define (transcript-new) (make-transcript '() 0 #f 0 0 #f #f '() #f '()))
+  (define (transcript-new)
+    (let ([ui (make-ui)])
+      (ui-memo! ui 'ui-cursor 'ibeam)   ; over the lines
+      (make-transcript '() 0 #f 0 0 #f #f '() #f '() ui)))
 
   (define transcript-max-lines 4000)
   (define transcript-pad 10)
+
+  ;; Returns how far in from a side (left or right) the lines are: their
+  ;; margin, or, where the style's bars are there whether they are needed or
+  ;; not (scrollbar-full), the room its bar keeps on that side if more.
+  (define (transcript-inset side)
+    (if (theme 'scrollbar-full)
+        (max transcript-pad (ui-scrollbar-inset side))
+        transcript-pad))
+
   ;; A line is the code font's and a little room, which a look sets (the
   ;; Lisp machines' 2).
   (at-load
@@ -226,19 +243,28 @@
          colors)]
       [else (transcript-draw-style-color (car e))]))
 
-  ;; Draws the kit's scroll bar while t is scrolled back, on the style's side
-  ;; and no wider than the text's inset (Interlisp's bars are 24), showing
-  ;; rows of total.
+  ;; Draws the kit's scroll bar on the style's side, no wider than the
+  ;; lines' inset there (Interlisp's bars are 24), showing rows of total:
+  ;; while t is scrolled back, or always, where the style's bars are there
+  ;; whether they are needed or not.
   (define (transcript-draw-scrollbar t w h rows total)
-    (when (> (transcript-scroll t) 0)
-      (let ([size (/ rows (max rows total))]
-            [bw (min (ui-scrollbar-width) transcript-pad)])
-        (ui-draw-scrollbar (if (eq? (theme 'scrollbar-side) 'left) 0 (- w bw))
-                           4 bw (- h 8) '()
-                           (* (- 1 size)
-                              (- 1 (/ (transcript-scroll t)
-                                      (max 1 (- total rows)))))
-                           size))))
+    (let* ([ui (transcript-ui t)] [lh (transcript-line-height)]
+           [full? (theme 'scrollbar-full)]
+           [side (if (eq? (theme 'scrollbar-side) 'left) 'left 'right)]
+           [bw (min (ui-scrollbar-width) (transcript-inset side))]
+           [y (if full? 0 4)]
+           [most (max 0 (- total rows))])
+      (ui-begin! ui)
+      (when (or full? (> (transcript-scroll t) 0) (ui-active? ui 'bar))
+        (ui-scrollbar ui 'bar (if (eq? side 'left) 0 (- w bw)) y bw (- h y y)
+                      (* lh (- most (transcript-scroll t))) (* lh total)
+                      (* lh rows)
+                      (lambda (off)
+                        (transcript-scroll-set!
+                         t (clamp (- most (exact (round (/ off lh))))
+                                  0 most)))
+                      'line lh 'noun "history"))
+      (ui-end! ui w h)))
 
   ;;; ------------------------------------------------------------ selection
 
@@ -365,45 +391,61 @@
   ;; (transcript-drag!, transcript-release!), two clicks select a word and
   ;; three the line; the right one opens the text menu: Copy, and Paste
   ;; where paste is given (a procedure that takes the clipboard's text).
-  ;; opts: ui-open-text-menu!'s. Returns whether it took the press.
+  ;; opts: ui-open-text-menu!'s. A press on the scroll bar is the bar's.
+  ;; Returns whether it took the press: bar, where the bar did.
   (define (transcript-press! t x y button clicks paste . opts)
     (let ([p (transcript-point t x y)])
-      (and p
-           (case button
-             [(left)
-              (transcript-held?-set! t (= clicks 1))
-              (transcript-sel-set!
-               t
-               (case clicks
-                 [(1) (cons p p)]
-                 [(2) (transcript-word (or (transcript-line-text t (car p)) "")
-                                       p)]
-                 [else (let ([text (or (transcript-line-text t (car p)) "")])
-                         (cons (cons (car p) 0)
-                               (cons (car p) (string-length text))))]))
-              #t]
-             [(right)
-              (apply ui-open-text-menu! #f x y (transcript-selection t) paste
-                     opts)
-              #t]
-             [else #f]))))
+      (cond
+        [(transcript-bar-pointer t x y)
+         (ui-mouse-down (transcript-ui t) x y button clicks)
+         'bar]
+        [(not p) #f]
+        [else
+         (case button
+           [(left)
+            (transcript-held?-set! t (= clicks 1))
+            (transcript-sel-set!
+             t
+             (case clicks
+               [(1) (cons p p)]
+               [(2) (transcript-word (or (transcript-line-text t (car p)) "")
+                                     p)]
+               [else (let ([text (or (transcript-line-text t (car p)) "")])
+                       (cons (cons (car p) 0)
+                             (cons (car p) (string-length text))))]))
+            #t]
+           [(right)
+            (apply ui-open-text-menu! #f x y (transcript-selection t) paste
+                   opts)
+            #t]
+           [else #f])])))
 
-  ;; Moves the selection's end to (x, y) while a left press holds it.
-  ;; Returns whether it moved.
+  ;; Moves the selection's end to (x, y) while a left press holds it, or
+  ;; the scroll bar's thumb while one holds that. Returns whether the
+  ;; selection moved.
   (define (transcript-drag! t x y)
+    (ui-mouse-move (transcript-ui t) x y)
     (let ([s (transcript-sel t)] [p (transcript-point t x y)])
       (and (transcript-held? t) s p (not (equal? p (cdr s)))
            (begin (transcript-sel-set! t (cons (car s) p)) #t))))
 
-  (define (transcript-release! t) (transcript-held?-set! t #f))
+  ;; The button that pressed at (x, y) was released.
+  (define (transcript-release! t x y button)
+    (ui-mouse-up (transcript-ui t) x y button)
+    (transcript-held?-set! t #f))
+
+  ;; Returns the pointer's shape at (x, y) and what the mouse buttons do
+  ;; there, as (cursor . doc), where that is over the scroll bar, else #f.
+  (define (transcript-bar-pointer t x y) (ui-pointer (transcript-ui t) x y))
 
   ;; Draws all of t in the box w × h, laid out from the bottom up, but hung
   ;; from the top while everything fits.
   (define (transcript-draw-view t w h)
     (let* ([cw (font-char-width 'mono)]
            [lh (transcript-line-height)]
-           [pad transcript-pad]
-           [cols (max 8 (exact (floor (/ (- w pad pad) cw))))]
+           [pad transcript-pad] [left (transcript-inset 'left)]
+           [cols (max 8 (exact (floor (/ (- w left (transcript-inset 'right))
+                                         cw))))]
            [rows (max 1 (exact (floor (/ (- h pad pad) lh))))]
            [total (fold-left (lambda (acc l)
                                (+ acc (transcript-rows (string-length (cdr l))
@@ -411,7 +453,7 @@
                              0 (transcript-lines t))])
       (transcript-scroll-set! t (clamp (transcript-scroll t) 0
                                        (max 0 (- total rows))))
-      (transcript-placing! t pad cw lh cols)
+      (transcript-placing! t left cw lh cols)
       (let loop ([entries (transcript-lines t)]
                  [n (- (transcript-end t) 1)]
                  [bottom (if (< total rows) (+ pad (* total lh)) (- h pad))]
@@ -424,7 +466,7 @@
                 (loop (cdr entries) (- n 1) bottom (- skip k))
                 (let ([top (- bottom (* shown lh))])
                   (transcript-place! t n top shown (string-length (cdr e)))
-                  (transcript-draw-line pad top (cdr e)
+                  (transcript-draw-line left top (cdr e)
                                         (transcript-draw-entry-colors e)
                                         cols 0 shown cw lh)
                   (loop (cdr entries) (- n 1) top 0))))))

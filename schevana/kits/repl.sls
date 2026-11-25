@@ -9,8 +9,8 @@
   (import (chezscheme)
           (only (schevana base) library-layer)
           (only (schevana core) font-char-width keep-source-text!)
-          (only (schevana kits transcript) transcript-line-height
-                transcript-pad))
+          (only (schevana kits transcript) transcript-inset
+                transcript-line-height transcript-pad))
 
   (library-layer kits)
 
@@ -50,7 +50,8 @@
 
   ;; Returns the size a REPL's window opens at, as (w . h).
   (define (repl-window-size)
-    (cons (exact (ceiling (+ transcript-pad transcript-pad
+    (cons (exact (ceiling (+ (transcript-inset 'left)
+                             (transcript-inset 'right)
                              (* repl-initial-cols (font-char-width 'mono)))))
           (exact (ceiling (+ transcript-pad transcript-pad
                              (* repl-initial-rows

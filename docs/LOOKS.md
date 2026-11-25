@@ -211,11 +211,15 @@ has none, the widget its designers would have made:
   the who line shows what the mouse buttons do over the selected window.
   There is no color, and gray is drawn as stipples, over a window that
   another covers; words are boxed under the mouse a clear pixel off their
-  ink, and what is chosen is in inverse video. Its scroll bars work as
-  the Lisp machines' did, by the three buttons. Its text is in
-  Genera's own bitmap fonts: CPTFONT for code and what an app shows, JESS
-  for command words and menus, HL14 bold for titles. Its numbers are
-  settings (`genera-border`, `genera-margin`, ...).
+  ink, and what is chosen is in inverse video. Its scroll bars are drawn
+  as captures show them, a box at each end and a stippled elevator between
+  dotted sides, set off by white, and are there whether they are needed or
+  not. They work as the Lisp machines' did, by the three buttons, which
+  the who line explains wherever the mouse is on the bar, and which repeat
+  while held; a text area's shows its elevator once the mouse has been to
+  it. Its text is in Genera's own bitmap fonts: CPTFONT for code and what
+  an app shows, JESS for command words and menus, HL14 bold for titles.
+  Its numbers are settings (`genera-border`, `genera-margin`, ...).
 - **The CADR**, from MIT's System 99 sources (BSD), is Genera with a few
   settings changed: a 1-pixel border and margin, the label upright in the
   code font, and a 3-pixel scroll bar in the margin, shown while the mouse
@@ -366,11 +370,13 @@ Among them are `title-double-click` (`maximize`, `shade`, `none`),
 `frame-corner` (the resize edges), `raise-on-click`, `menu-choose`
 (`click`, `release`), `launcher-form` (`menu`, `grid`), `scrollbar-side`,
 `scrollbar-show` (`always`, `hover`, or `bar`, in the margin while the
-mouse is there) and `scrollbar-input` (`drag` the thumb, or `lispm`: the
-Lisp machines' three buttons, the left bringing the line pointed at to
-the top, the right the top line to the pointer, the middle that part of
-the content, and Shift or a double click the other way round),
-`minimize-to` (`taskbar`, `icons`) and `desk-icon-expand`
-(`double-click`, `middle`), and the bell
-(`bell`: `none`, `screen` or `window`), which `(bell)` rings. A style
-chooses each of them; the built-in styles show what they can do.
+mouse is there), `scrollbar-full` (whether a bar is there where all of
+the content fits, too) and `scrollbar-input` (`drag` the thumb, or
+`lispm`: the Lisp machines' three buttons, the left bringing the line
+pointed at to the top, the right the top line to the pointer, the middle
+that part of the content, and Shift or a double click the other way
+round; a button held over the bar repeats from `scrollbar-repeat-delay`
+milliseconds on, unless that is `#f`), `minimize-to` (`taskbar`, `icons`)
+and `desk-icon-expand` (`double-click`, `middle`), and the bell (`bell`:
+`none`, `screen` or `window`), which `(bell)` rings. A style chooses each
+of them; the built-in styles show what they can do.

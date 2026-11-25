@@ -48,3 +48,43 @@
          (set-style! style)
          (for-each (lambda (c) (printf "  ~s\n" c)) crashes)
          (null? crashes)))
+
+(check "on the Scrolling page no row lies under its view's scroll bar, with \
+        the bar at the left (Genera's)"
+       (let ([style (current-style)] [real draw-text] [rows '()])
+         (set-style! 'genera)
+         (let ([win (widgets)])
+           (window-set! win 'page 'scrolling)
+           (steps 2)
+           (fluid-let ([draw-text
+                        (lambda (x y s . rest)
+                          (when (and (> (string-length s) 4)
+                                     (string=? (substring s 0 4) "Row "))
+                            (set! rows (cons (cons x y) rows)))
+                          (apply real x y s rest))])
+             (invalidate! win)
+             (steps 2))
+           (let* ([ui (window-ref win 'ui)]
+                  [bars (filter values
+                                (map (lambda (id)
+                                       (let ([r (ui-find ui (list id 'bar))])
+                                         (and r (ui-region-frame r))))
+                                     '(fill-40 outer inner wide)))]
+                  ;; the rows drawn over a bar or ending under it
+                  [under (filter
+                          (lambda (row)
+                            (exists (lambda (f)
+                                      (and (<= (car f) (car row))
+                                           (< (car row)
+                                              (+ (car f) (caddr f)))
+                                           (<= (cadr f) (cdr row))
+                                           (< (cdr row)
+                                              (+ (cadr f) (cadddr f)))))
+                                    bars))
+                          rows)])
+             (close-window! win)
+             (set-style! style)
+             (steps 1)
+             (printf "  ~a rows, ~a bars, ~s under\n" (length rows)
+                     (length bars) under)
+             (and (pair? rows) (>= (length bars) 2) (null? under))))))

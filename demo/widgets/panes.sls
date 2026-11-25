@@ -123,12 +123,17 @@
       (values (+ x w) y)))
 
   ;; Draws rows of a list, from top, each rh high, in a view vx..vx+vw,
-  ;; and returns where they end.
+  ;; clear of its scroll bar, and returns where they end.
   (define (widgets-lines vx vw top n rh)
-    (do ([i 0 (+ i 1)]) ((= i n))
-      (ui-draw-label (+ vx 8) (+ top (* i rh)) (- vw 16) rh '()
-                     (format "Row ~a of ~a" (+ i 1) n)))
-    (+ top (* n rh)))
+    (let ([l (widgets-row-inset 'left)] [r (widgets-row-inset 'right)])
+      (do ([i 0 (+ i 1)]) ((= i n))
+        (ui-draw-label (+ vx l) (+ top (* i rh)) (- vw l r) rh '()
+                       (format "Row ~a of ~a" (+ i 1) n)))
+      (+ top (* n rh))))
+
+  ;; Returns how far in from a view's side (left or right) its rows start:
+  ;; their margin, or the room the style's scroll bar keeps if more.
+  (define (widgets-row-inset side) (max 8 (ui-scrollbar-inset side)))
 
   ;; Returns (values right bottom) of the page drawn from (x, y), w wide.
   (define (widgets-scrolling-page ui win x y w)
@@ -184,7 +189,8 @@
                 (ui-scroll-wide ui 'wide x y ww wh
                   (lambda (left top)
                     (do ([i 0 (+ i 1)]) ((= i 24))
-                      (ui-draw-label (+ left 8) (+ top (* i rh)) 900 rh '()
+                      (ui-draw-label (+ left (widgets-row-inset 'left))
+                                     (+ top (* i rh)) 900 rh '()
                                      (format "Row ~a, a line that runs on \
                                               past the view's right edge, \
                                               and on" (+ i 1))))

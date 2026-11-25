@@ -57,7 +57,8 @@
                 transcript-draw-scrollbar transcript-draw-style-color
                 transcript-draw-line transcript-fill-colors!
                 transcript-draw-scheme transcript-rows transcript-line-height
-                transcript-pad transcript-clear! transcript-add!
+                transcript-pad transcript-inset transcript-clear!
+                transcript-add! transcript-bar-pointer
                 transcript-append! transcript-scroll-set! transcript-scroll
                 transcript-lines transcript-end transcript-placing!
                 transcript-place! transcript-point transcript-press!
@@ -1182,11 +1183,18 @@
             (refresh-completion! r)))))
 
   ;; Sets the pointer over the REPL: the completion list's over the list,
-  ;; an arrow over the busy mark, else an I-beam with nothing to say (the
-  ;; REPL has no use for the buttons). Returns #t when the list's row under
-  ;; the pointer changed.
+  ;; an arrow over the busy mark, the scroll bar's over that, else an I-beam
+  ;; with nothing to say (the REPL has no use for the buttons). Returns #t
+  ;; when the list's row under the pointer changed.
   (define (repl-pointer! r win)
-    (complete-pointer! r win (if (repl-over-busy? r win) 'arrow 'ibeam) '()))
+    (let* ([at (complete-pointer-at win)]
+           [bar (and at (transcript-bar-pointer (repl-transcript r)
+                                                (car at) (cdr at)))])
+      (complete-pointer! r win
+                         (cond [(repl-over-busy? r win) 'arrow]
+                               [bar (car bar)]
+                               [else 'ibeam])
+                         (if bar (cdr bar) '()))))
 
   ;; Is the pointer over the busy mark, as last drawn?
   (define (repl-over-busy? r win)
@@ -1202,13 +1210,14 @@
     (lambda (win x y button clicks)
       (or (complete-mouse-down! r x y button
                                 (lambda (item) (repl-accept! r item)))
-          (let ([t (repl-transcript r)])
-            (when (transcript-press! t x y button clicks
-                                     (lambda (s)
-                                       (repl-paste! r s)
-                                       (invalidate! win))
-                                     'copy-key "Ctrl+Shift+C")
-              (when (and (eq? button 'left) (= clicks 1))
+          (let* ([t (repl-transcript r)]
+                 [took (transcript-press! t x y button clicks
+                                          (lambda (s)
+                                            (repl-paste! r s)
+                                            (invalidate! win))
+                                          'copy-key "Ctrl+Shift+C")])
+            (when took
+              (when (and (not (eq? took 'bar)) (eq? button 'left) (= clicks 1))
                 (repl-point-at! r (transcript-point t x y)))
               (invalidate! win))))))
 
@@ -1357,8 +1366,9 @@
            ;; height of what marks a character
            [th (font-line-height 'mono)]
            [mark-top (repl-mark-top th)]
-           [pad repl-pad]
-           [cols (max 8 (exact (floor (/ (- w pad pad) cw))))]
+           [pad repl-pad] [left (transcript-inset 'left)]
+           [cols (max 8 (exact (floor (/ (- w left (transcript-inset 'right))
+                                         cw))))]
            [rows (max 1 (exact (floor (/ (- h pad pad) lh))))]
            [focused? (eq? win (focused-window))]
            [busy? (repl-busy? r)]
@@ -1423,7 +1433,7 @@
       ;; The lines after the transcript's, the waiting inputs and the input,
       ;; are numbered on from its (transcript-end), their texts handed in
       ;; order for what is selected of them.
-      (transcript-placing! (repl-transcript r) pad cw lh cols
+      (transcript-placing! (repl-transcript r) left cw lh cols
                            (reverse (map (lambda (e)
                                            (if (eq? (car e) 'edit)
                                                (cadr e)
@@ -1460,13 +1470,13 @@
                                 (let ([row (quotient j cols)]
                                       [col (remainder j cols)])
                                   (when (< row shown)
-                                    (fill-box (+ pad (* col cw))
+                                    (fill-box (+ left (* col cw))
                                               (+ top (* row lh) mark-top) cw th
                                               'repl-paren-mark 3)))
                                 (vector-set! colors j 'yellow))))
                           paren))
-                       (transcript-draw-line pad top text colors cols 0 shown cw
-                                             lh)
+                       (transcript-draw-line left top text colors cols 0 shown
+                                             cw lh)
                        ;; the cursor
                        (let ([p (repl-point r)]
                              [end (+ start (- (string-length text) 3))])
@@ -1475,15 +1485,15 @@
                                   [row (quotient j cols)]
                                   [col (remainder j cols)])
                              (when (< row shown)
-                               (set! caret (cons (+ pad (* col cw))
+                               (set! caret (cons (+ left (* col cw))
                                                  (+ top (* row lh))))
                                (cond
                                  [(not focused?)
-                                  (stroke-box (+ pad (* col cw))
+                                  (stroke-box (+ left (* col cw))
                                               (+ top (* row lh) mark-top)
                                               cw th 'text-faint)]
                                  [(repl-blink r)
-                                  (repl-draw-cursor (+ pad (* col cw))
+                                  (repl-draw-cursor (+ left (* col cw))
                                                     (+ top (* row lh) mark-top)
                                                     cw th)]))))))]
                     [(eq? (car e) 'input)
@@ -1492,14 +1502,14 @@
                        (when (eq? e marked)
                          (transcript-fill-colors! colors 0 3
                                                   (repl-background r))
-                         (set! mark (cons pad top)))
-                       (transcript-draw-line pad top text colors cols 0 shown cw
-                                             lh))]
+                         (set! mark (cons left top)))
+                       (transcript-draw-line left top text colors cols 0 shown
+                                             cw lh))]
                     [(eq? (car e) 'wait)
-                     (transcript-draw-line pad top text 'text-faint cols 0 shown
-                                           cw lh)]
+                     (transcript-draw-line left top text 'text-faint cols 0
+                                           shown cw lh)]
                     [else
-                     (transcript-draw-line pad top text
+                     (transcript-draw-line left top text
                                            (transcript-draw-style-color (car e))
                                            cols 0 shown cw lh)])
                   (loop (cdr entries) (- n 1) top 0))))))
@@ -1691,7 +1701,7 @@
                            [moved (repl-pointer! r win)])
                       (when (or dragged moved) (invalidate! win))))
       'mouse-up (lambda (win x y button)
-                  (transcript-release! (repl-transcript r)))
+                  (transcript-release! (repl-transcript r) x y button))
       'blur (repl-blur r)
       'focus (lambda (win) (repl-blink-soon! r win))
       ;; drains what its evaluation printed, while it runs or has output

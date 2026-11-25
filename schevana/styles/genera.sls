@@ -40,7 +40,7 @@
     genera-inline-choice-size genera-keycap genera-choice-grid-cell
     genera-radio genera-live-badge genera-banner)
   (import (chezscheme)
-          (only (schevana base) at-load clamp define-made library-layer
+          (only (schevana base) at-load clamp library-layer
                 string-join string-suffix?)
           (only (schevana core) *bitmap-fonts* *focus* *windows*
                 color-default! define-bitmap-font define-style draw-scale
@@ -61,7 +61,7 @@
                 ui-dialog-areas ui-dialog-lines ui-tooltip-lines ui-draw-panel
                 ui-draw-dim ui-draw-table-row ui-tree-areas ui-table-cell-inset
                 ui-scrollbar-areas ui-chip-areas ui-small-glyph-size
-                ui-text-box-top ui-scrollbar-width ui-control-height
+                ui-text-box-top ui-control-height
                 ui-draw-focus ui-draw-glyph ui-glyph-size ui-busy-frame-ms
                 ui-italic-of ui-wrap-lines ui-fade ui-live-badge-mark
                 ui-live-badge-back ui-draw-radio* ui-draw-row*
@@ -467,17 +467,19 @@
           (fill-box x (- (+ y h) n) w n (genera-ink flags)))))
 
   ;; The text sits 2 pixels in, or after a search's magnifying glass; an
-  ;; area of lines has its scroll bar at its left, as ZWEI's does.
+  ;; area of lines has its scroll bar at its left, as ZWEI's does, with
+  ;; Zmacs's white around it: 3 pixels from the border, 1 at its ends and 2
+  ;; before the text. The CADR's bar, in the margin, stands 2 nearer.
   (define (genera-text-box-areas x y w h flags)
-    (let* ([bw (ui-scrollbar-width)]
-           [left (cond [(memq 'lines flags) (+ bw 4)]
+    (let* ([m (if (eq? (theme 'scrollbar-show) 'bar) 2 4)]
+           [left (cond [(memq 'lines flags) (+ m 12)]
                        [(memq 'search flags) (+ (ui-glyph-size) 14)]
                        [else 2])]
            [font (if (memq 'large flags) 'heading 'ui)]
            [top (ui-text-box-top h flags font 3)])
       (list (list 'edit (+ x left) (+ y top) (max 0 (- w left 3))
                   (max 0 (- h top top)) font)
-            (list 'bar (+ x 2) (+ y 2) bw (max 0 (- h 4))))))
+            (list 'bar (+ x m) (+ y 2) 10 (max 0 (- h 4))))))
 
   (define (genera-text-box-size flags w rows)
     (with-place 'field
@@ -558,37 +560,59 @@
     (when (memq 'hover flags)
       (stroke-box (- x 2) (- y 2) (+ w 4) (+ h 4) 'text)))
 
-  ;; Genera's scroll bar, as measured (lispm-apps.md 2.4; report:35-41) and
-  ;; as the 1998 Peek and Listener captures show it pixel for pixel: dotted
-  ;; 1-pixel sides, a box as wide as the bar at each end (up and down), and
-  ;; between them the elevator, a 1-pixel outline on paper around a 33 %
-  ;; stipple.
-  (define (genera-scrollbar-areas x y w h start size)
-    (let* ([e (min w (floor (/ h 3)))] [l (- h e e)]
-           [th (min l (max w (* size l)))])
-      (list (list 'thumb x
-                  (+ y e (if (< size 1) (* (- l th) (/ start (- 1 size))) 0))
-                  w th)
-            (list 'track x (+ y e) w l)
-            (list 'up x y w e)
-            (list 'down x (- (+ y h) e) w e))))
+  ;; Genera's scroll bar, as the captures show it pixel for pixel (Peek, the
+  ;; Listener and Zmacs of 1998, Zmail, the Namespace Editor, Restore
+  ;; Distribution, Peek of 2004), but that its stipple starts at the screen's
+  ;; corner, as every stipple does: 10 pixels wide (UID p.1296), a box as
+  ;; wide at each end (up and down), and between them the shaft, whose sides
+  ;; are dots, every second pixel from the bar's end, and the elevator, a
+  ;; 1-pixel outline on paper around a 33 % stipple, no shorter than Zmail's
+  ;; 8. White sets the bar off: 4 pixels from its view's edge and 2 at its
+  ;; ends, so that 3 and 1 show beside a border there, as Zmacs's do, and
+  ;; before the text Peek's 4 (a bar given less room stands as it can). A
+  ;; text area's is a shaft alone until the pointer has been to it, as
+  ;; ZWEI's is (flag unasked; "Mouse Over Scroll Bar", Editing and Mail).
 
-  (define-made genera-dotted (stipple 'text #f "#" "."))
+  ;; Returns (values x y w h end) of the bar in x y w h, on whole pixels: its
+  ;; box, and how long the box at each end is.
+  (define (genera-scrollbar-box x y w h)
+    (let* ([bw (min 10 w)] [off (min 4 (- w bw))]
+           [by (round (+ y (/ off 2)))]
+           [bh (max 0 (- (round (- (+ y h) (/ off 2))) by))])
+      (values (round (+ x off)) by bw bh (min bw (floor (/ bh 3))))))
+
+  (define (genera-scrollbar-areas x y w h start size)
+    (let*-values ([(bx by bw bh end) (genera-scrollbar-box x y w h)]
+                  [(l) (- bh end end)]
+                  [(th) (min l (max 8 (* size l)))])
+      (list (list 'thumb bx
+                  (+ by end
+                     (if (< size 1) (* (- l th) (/ start (- 1 size))) 0))
+                  bw th)
+            (list 'track bx (+ by end) bw l)
+            (list 'up x y w (- (+ by end) y))
+            (list 'down x (- (+ by bh) end) w (- (+ y h) (- (+ by bh) end))))))
 
   (define (genera-scrollbar x y w h flags start size)
-    (let ([e (min w (floor (/ h 3)))]
-          [t (cdr (assq 'thumb (ui-scrollbar-areas x y w h start size)))])
-      (fill-box x y w h 'window-bg)
-      (fill-box x y 1 h genera-dotted)
-      (fill-box (+ x w -1) y 1 h genera-dotted)
-      (stroke-box x y w e 'text)
-      (stroke-box x (- (+ y h) e) w e 'text)
-      (apply (lambda (tx ty tw th)
-               (fill-box tx ty tw th 'window-bg)
-               (stroke-box tx ty tw th 'text)
-               (fill-box (+ tx 1) (+ ty 1) (max 0 (- tw 2)) (max 0 (- th 2))
-                         'genera-elevator))
-             t)))
+    (let*-values ([(bx by bw bh end) (genera-scrollbar-box x y w h)]
+                  [(thumb) (cdr (assq 'thumb (ui-scrollbar-areas x y w h start
+                                                                 size)))]
+                  [(elevator?) (not (memq 'unasked flags))]
+                  [(ty) (round (cadr thumb))]
+                  [(th) (- (round (+ (cadr thumb) (cadddr thumb))) ty)]
+                  ;; a border along the view's edges shows
+                  [(e) (min 1 (- bx x))])
+      (fill-box (+ x e) (+ y e) (- w e e) (max 0 (- h e e)) 'window-bg)
+      (stroke-box bx by bw end 'text)
+      (stroke-box bx (- (+ by bh) end) bw end 'text)
+      (do ([dot (+ by end 1) (+ dot 2)]) ((>= dot (- (+ by bh) end)))
+        (unless (and elevator? (<= ty dot) (< dot (+ ty th)))
+          (fill-box bx dot 1 1 'text)
+          (fill-box (+ bx bw -1) dot 1 1 'text)))
+      (when elevator?
+        (stroke-box bx ty bw th 'text)
+        (fill-box (+ bx 1) (+ ty 1) (max 0 (- bw 2)) (max 0 (- th 2))
+                  'genera-elevator))))
 
   ;; Neither machine had a slider; typed numbers did its job (CLIM2
   ;; p.1151). Its authors would have turned the scroll bar sideways: a
@@ -1234,11 +1258,19 @@
      'menu-hover 'outline
      'mouse-doc #t
      'scrollbar-side 'left
+     ;; the bar and the white beside it, which sets it off from the text too
+     'scrollbar-width 18
+     'scrollbar-margin 0
+     ;; a dynamic window's is there whether it is needed or not (:normal,
+     ;; UID p.1297), and a button held over it repeats (UG p.2804)
+     'scrollbar-full #t
+     'scrollbar-repeat-delay 500
+     'scrollbar-repeat-slowest 2
+     'scrollbar-repeat-fastest 50
+     'scrollbar-repeat-screens 2
      ;; the bar worked as the Lisp machines' was, by three buttons
      'scrollbar-input 'lispm
      'scrollbar-line-height (theme-rule (+ (font-line-height 'ui) 2))
-     ;; the content kept clear of the scroll bar, as beside a pane's margin
-     'scrollbar-margin 4
      'options '(palette
                 accent
                 wallpaper
