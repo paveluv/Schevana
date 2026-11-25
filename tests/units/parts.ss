@@ -264,7 +264,7 @@
          (close-window! w)
          (let ([accent (theme 'accent)])
            (reset-style! 'accent)
-           (and (eq? seen 'genera) (= accent #x123456)))))
+           (and (eq? seen 'p4) (= accent #x123456)))))
 
 (check "a menu whose place makes its entries taller takes a click where \
         it draws the entry"

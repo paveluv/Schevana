@@ -1085,7 +1085,7 @@
                                    flags)])
                       (and f (cdr f))))]
            [ink (cond [(given 'ink)]
-                      [(memq 'primary flags) (color-readable-on 'accent)]
+                      [(memq 'primary flags) 'accent-ink]
                       [(and (memq 'danger flags) (memq 'hover flags)) 'red]
                       [(memq 'hover flags) 'text]
                       [(memq 'quiet flags) 'text-faint]
@@ -1270,6 +1270,12 @@
   (at-load
    (color-default! 'swatch-ring (theme-rule (alpha 'text 0.25))))
 
+  ;; The ink of what lies on the accent (a primary button's words, a radio's
+  ;; dot, a chosen day's number): near black or near white, unless a palette
+  ;; or a style says otherwise (one with an ink and a paper only).
+  (at-load
+   (color-default! 'accent-ink (theme-rule (color-readable-on 'accent))))
+
   ;; A primary button's fill while pressed, and under the pointer.
   (at-load
    (color-default! 'primary-pressed (theme-rule (mix 'accent 'bg-0 0.15))))
@@ -1305,7 +1311,7 @@
                          [(on? 'selected) 'accent]
                          [(on? 'danger) 'red]
                          [else 'window-border])]
-           [color (cond [(on? 'primary) (color-readable-on 'accent)]
+           [color (cond [(on? 'primary) 'accent-ink]
                         [(on? 'danger) 'red]
                         [(or (on? 'hover) (on? 'selected)) 'text]
                         [else 'text-dim])]
@@ -1780,7 +1786,7 @@
            [tx (+ x (ui-radio-text-x icon))])
       (if (memq 'checked flags)
           (begin (fill-circle cx cy (/ b 2) (ink 'accent))
-                 (fill-circle cx cy (/ b 5) (color-readable-on 'accent)))
+                 (fill-circle cx cy (/ b 5) 'accent-ink))
           (begin (fill-circle cx cy (/ b 2) 'bg-0)
                  (stroke-circle cx cy (- (/ b 2) 0.5)
                                 (ink (if (and (memq 'hover flags) (not off?))
@@ -5060,7 +5066,7 @@
       (when (on? 'cursor)
         (stroke-box (- cx 1) (- cy 1) (+ s 2) (+ s 2) 'text 1 7))
       (text-draw-centered x y w h label
-                          (cond [(on? 'selected) (color-readable-on 'accent)]
+                          (cond [(on? 'selected) 'accent-ink]
                                 [(on? 'disabled) 'text-disabled]
                                 [(on? 'outside) 'text-faint]
                                 [else 'text])

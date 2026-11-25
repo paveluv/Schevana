@@ -91,7 +91,7 @@
                [hit (window-region w 400 (+ 200 (window-h w) -10))])
            (close-window! w)
            (printf "  ~s\n" (list seen insets hit))
-           (and (equal? seen '(genera flat)) (eq? (theme 'palette) 'tokyo-night)
+           (and (equal? seen '(p4 flat)) (eq? (theme 'palette) 'tokyo-night)
                 (equal? insets (test-genera-insets)) (eq? hit 'title)))))
 
 (check "choosing Genera brings its palette and wallpaper; a palette chosen \
@@ -107,7 +107,7 @@
                (reset-theme!)
                (set-style! 'mac)
                (equal? (list own mac back)
-                       '((genera flat) (tokyo-night gradient) nord)))))))
+                       '((p4 flat) (tokyo-night gradient) nord)))))))
 
 (check "with-style: another style's theme, or this one's with a setting"
        (equal? (list (with-style 'interlisp
@@ -115,7 +115,7 @@
                      (with-style 'mac (lambda () (theme 'palette))
                                  'palette 'nord)
                      (theme 'palette))
-               '((interlisp shade) nord tokyo-night)))
+               '((p4 shade) nord tokyo-night)))
 
 ;; Each style draws a menu entry's icon in its menu, its own or the
 ;; built-in, unless it shows none (menu-icons): the Lisp machines', OPEN

@@ -57,7 +57,7 @@ and behaviors, with your changes for that style.
 ```scheme
 (styles)
 (set-style! 'genera)
-(theme 'palette)                           ; => genera
+(theme 'palette)                           ; => p4
 (set-style! 'mac)
 (theme 'palette)                           ; => tokyo-night
 (open-window "Odd one out" 'window-style 'windows)  ; this one alone
@@ -180,9 +180,9 @@ pointer may leave it before it closes (`menu-leave-distance`), whether
 shapes are smoothed (`drawing-antialias`; not on a screen one bit deep),
 how what can't be used fades (`disabled-fade`: the share of its ink a
 mark keeps, or, on a screen one bit deep, the stipple it is drawn
-through, and the color `text-disabled` for its words), whether glows are
-drawn (`fill-glow`) and how much a surface takes on a hue
-(`surface-tint`), and the like.
+through, and the color `text-disabled` for its words), the color of what
+lies on the accent (`accent-ink`), whether glows are drawn (`fill-glow`)
+and how much a surface takes on a hue (`surface-tint`), and the like.
 
 Every place that shows an app draws its icon ([WINDOWS.md](WINDOWS.md#apps)):
 the launcher, the taskbar or the dash, the app grid, and the title bar
@@ -277,17 +277,21 @@ has none, the widget its designers would have made:
   overview shows them.
 - **Mac** and **Windows**, as their names say.
 
-Interlisp, Genera, OPEN LOOK and Adwaita each bring the palette of the
-same name and choose a wallpaper; the CADR and GNOME take their parents',
-and Mac and Windows keep the built-in Tokyo Night palette and gradient
-wallpaper. Our own styles (Cons, Curses, Draft, Fold, Halo, Lambda,
-Reticle, Slab and Spine) choose their feel where it suits them: Fold
-folds a window up to its title on a double click, Lambda rolls a window
-up into its tab when the wheel turns over the title, Halo and Reticle
-show scroll bars only under the pointer, Draft drags an outline drawn as
-a technical drawing with the live size on it, Reticle drags only its
-brackets, and Curses flashes the whole screen for the bell and boxes menu
-entries.
+Interlisp, Genera, OPEN LOOK and Adwaita each bring a palette and choose
+a wallpaper; the CADR and GNOME take their parents', and Mac and Windows
+keep the built-in Tokyo Night palette and gradient wallpaper. Interlisp's
+and Genera's palette is P4 (`p4`): the white and the black of a
+black-and-white console as they looked on its tube, from its phosphor's
+published numbers, which its file gives. The palettes `interlisp` and
+`genera` are the same screens in pure white and black. OPEN LOOK's and
+Adwaita's palettes have their names. Our own styles (Cons, Curses, Draft,
+Fold, Halo, Lambda, Reticle, Slab and Spine) choose their feel where it
+suits them: Fold folds a window up to its title on a double click, Lambda
+rolls a window up into its tab when the wheel turns over the title, Halo
+and Reticle show scroll bars only under the pointer, Draft drags an
+outline drawn as a technical drawing with the live size on it, Reticle
+drags only its brackets, and Curses flashes the whole screen for the bell
+and boxes menu entries.
 
 ## Palettes and wallpapers
 

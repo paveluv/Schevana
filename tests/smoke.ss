@@ -235,7 +235,8 @@
   (steps 1)
   (check "after (theme ' it offers theme keys only"
          (equal? (offered)
-                 '("accent" "accent-2" "accent-choices" "panel-accent")))
+                 '("accent" "accent-2" "accent-ink" "accent-choices"
+                   "panel-accent")))
   (press! 'escape)
   (steps 1)
   (call-with-output-file (string-append out-dir "/zz-complete-me.txt")

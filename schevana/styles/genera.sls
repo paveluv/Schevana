@@ -1019,7 +1019,8 @@
 
   (at-load
    (define-style genera "Genera"
-     'palette 'genera
+     ;; the white and the black of a console's tube, as they looked
+     'palette 'p4
      'wallpaper 'flat
      'draw-wallpaper 'genera-draw-wallpaper
      'corner-radius 0   ; square, and so is everything drawn in it
@@ -1228,6 +1229,7 @@
      'text-faint (genera-same 'text)
      'accent (genera-same 'text)
      'accent-2 (genera-same 'text)
+     'accent-ink (genera-same 'window-bg)
      'red (genera-same 'text)
      'orange (genera-same 'text)
      'yellow (genera-same 'text)

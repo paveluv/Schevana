@@ -283,7 +283,8 @@
      'mono (font "Medley Gacha 10" 10 'crisp)
      'mono-small (font "Medley Gacha 10" 10 'crisp)
      'mono-bold (font "Medley Gacha 10" 10 'crisp)
-     'palette 'interlisp
+     ;; the white and the black of a console's tube, as they looked
+     'palette 'p4
      'wallpaper 'shade
      'frame-insets 'interlisp-insets
      'frame-regions 'interlisp-regions

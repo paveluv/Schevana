@@ -1,6 +1,7 @@
 ;;; (schevana palettes genera) — the Genera palette, after Symbolics Genera:
-;;; black ink on white paper, with the panels in reverse video like Genera's
-;;; mouse documentation line.
+;;; black ink on white paper, as bits rather than as the console's tube shows
+;;; them ((schevana palettes p4)), with the panels in reverse video like
+;;; Genera's mouse documentation line.
 
 (library (schevana palettes genera)
   (export)

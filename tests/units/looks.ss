@@ -292,18 +292,24 @@
                      (lambda ()
                        (let* ([img (image 100 24 1
                                           (lambda ()
-                                            (fill-box 0 0 100 24 #xffffff)
+                                            (fill-box 0 0 100 24 'window-bg)
                                             (ui-draw-table-row 0 0 100 24
                                                                '(selected))
-                                            (fill-box 10 8 6 6 #x000000)
+                                            (fill-box 10 8 6 6 'text)
                                             (ui-draw-highlight-over
                                              0 0 100 24 '())))]
-                              [ps (map (lambda (p) (apply pixel-at img p))
+                              [ps (map (lambda (p)
+                                         (let ([p (apply pixel-at img p)])
+                                           (cond
+                                             [(= p (color->pixel 'text)) 'ink]
+                                             [(= p (color->pixel 'window-bg))
+                                              'paper]
+                                             [else p])))
                                        '((0 0) (50 12) (12 10)))])
                          (picture-free! img)
                          ps))))])
-         (and (equal? (at 'genera) '(#xff000000 #xff000000 #xffffffff))
-              (= (caddr (at 'mac)) #xff000000))))
+         (and (equal? (at 'genera) '(ink ink paper))
+              (eq? (caddr (at 'mac)) 'ink))))
 
 (check "a table calls ui-draw-highlight-over on its chosen row after the \
         row's cells, and on no other"
@@ -489,6 +495,12 @@
              ps))
          extra))
 
+;; A style's ink and its paper, each as a pixel.
+(define (looks-test-ink style)
+  (with-style style (lambda () (color->pixel 'text))))
+(define (looks-test-paper style)
+  (with-style style (lambda () (color->pixel 'window-bg))))
+
 (check "px-invert swaps ink and paper in any palette (Genera in Nord, \
         Paper), and black on white as XOR did"
        (for-all
@@ -559,8 +571,9 @@
        (begin
          (test-backlog!)
          (let ([crisp? (lambda (ps)
-                         (for-all (lambda (p) (memv p '(#xff000000
-                                                        #xffffffff)))
+                         (for-all (lambda (p)
+                                    (memv p (list (looks-test-ink 'genera)
+                                                  (looks-test-paper 'genera))))
                                   ps))]
                [row (map (lambda (x) (list x 30)) (iota 8))])
            (and (crisp? (genera-pixels 60 60 1.5 row
@@ -577,29 +590,29 @@
 
 (check "Genera inverts Settings' chosen tab, its mark inside it in ink, and \
         its chosen color row"
-       (let ([ink #xff000000])
+       (let ([ink (looks-test-ink 'genera)])
          (and (equal? (genera-pixels 100 24 1 '((2 12) (90 3))
                                      (lambda ()
-                                       (fill-box 0 0 100 24 #xffffff)
+                                       (fill-box 0 0 100 24 'window-bg)
                                        (ui-draw-nav-row 0 0 100 24
                                                         '(selected)
                                                         "Theme" #f)))
                       (list ink ink))
               (equal? (genera-pixels 200 28 1 '((150 4))
                                      (lambda ()
-                                       (fill-box 0 0 200 28 #xffffff)
+                                       (fill-box 0 0 200 28 'window-bg)
                                        (settings-draw-color-row
                                         0 0 200 28 'red '(selected))))
                       (list ink)))))
 
 (check "Genera's field underline shows in a half-size miniature, and a \
         menu filter's caret is its block"
-       (let ([ink #xff000000])
+       (let ([ink (looks-test-ink 'genera)])
          (and (exists (lambda (p) (= p ink))
                       (genera-pixels 20 10 1/2
                                      (map (lambda (x) (list x 9)) (iota 20))
                                      (lambda ()
-                                       (fill-box 0 0 40 20 #xffffff)
+                                       (fill-box 0 0 40 20 'window-bg)
                                        (ui-draw-field 0 0 40 20 '()))))
               (with-style 'genera
                 (lambda ()
@@ -684,10 +697,11 @@
          (lambda ()
            (equal? (genera-pixels 200 28 1 '((20 14) (12 6) (13 6))
                                   (lambda ()
-                                    (fill-box 0 0 200 28 #xffffff)
+                                    (fill-box 0 0 200 28 'window-bg)
                                     (settings-draw-color-row
                                      0 0 200 28 'accent '(selected))))
-                   (list (color->pixel 'accent) #xff000000 #xffffffff)))))
+                   (list (color->pixel 'accent) (color->pixel 'text)
+                         (color->pixel 'window-bg))))))
 
 (check "Genera's who line: no top bar; what the mouse does reversed across \
         its top, in two rows (UG p.2803), in Genera's words; its fields at \
@@ -760,7 +774,7 @@
              (override! 'interlisp-title-shade)
              (close-window! w)
              (steps 1)
-             (let ([i #xff000000] [p #xffffffff])
+             (let ([i (looks-test-ink 'interlisp)] [p #xffffffff])
                (and (equal? ink (list i i i))
                     (equal? shaded (list i p i))))))))
 
@@ -816,7 +830,8 @@
                (close-window! b)
                (steps 2)
                (printf "  ~s\n" (list sized corners ink expanded))
-               (and sized corners (eqv? ink #xff000000) expanded))))))
+               (and sized corners (eqv? ink (looks-test-ink 'interlisp))
+                    expanded))))))
 
 (check "Interlisp's text is in Medley's fonts, at their pixel sizes: Gacha \
         10 for code, 7 wide and 14 high, Helvetica 10 for the rest, 13 \
@@ -2126,3 +2141,128 @@
                                   (<= (abs (- (cadr c) 400)) 1))])
                      (printf "  ~s\n" r)
                      (equal? r '(#t 1 #t #t))))))))))
+
+;;; the P4 palette
+
+;; sRGB's curve: a channel, 0 to 255, as a share of the light, and back.
+(define (looks-test-light c)
+  (let ([s (/ c 255.0)])
+    (if (<= s 0.04045) (/ s 12.92) (expt (/ (+ s 0.055) 1.055) 2.4))))
+(define (looks-test-channel v)
+  (* 255 (if (<= v 0.0031308)
+             (* 12.92 v)
+             (- (* 1.055 (expt v (/ 1 2.4))) 0.055))))
+
+;; A color's channels, each 0 to 255, and its luminance as a share of white.
+(define (looks-test-channels c)
+  (map (lambda (s) (fxand (fxsrl c s) 255)) '(16 8 0)))
+(define (looks-test-luminance c)
+  (apply + (map * '(0.2126 0.7152 0.0722)
+                (map looks-test-light (looks-test-channels c)))))
+
+(check "P4's paper is 106.8 cd/m² of a white of 166 and its ink 5.0, as its \
+        numbers come to; every other color is one of the two, or has the \
+        light of a gray of the CADR's, within a step, and a chart's series \
+        are patterns of the ink, no two the same"
+       (let* ([of (lambda (k) (plist-ref (palette-colors 'p4) k #f))]
+              [paper (of 'bg-1)] [ink (of 'text)]
+              [cd (lambda (c) (* 166 (looks-test-luminance c)))]
+              [gray (lambda (share)   ; of ink
+                      (map (lambda (p i)
+                             (looks-test-channel
+                              (+ (* (- 1 share) (looks-test-light p))
+                                 (* share (looks-test-light i)))))
+                           (looks-test-channels paper)
+                           (looks-test-channels ink)))]
+              [grays '((bg-2 . 1/8) (bg-3 . 1/4) (text-faint . 3/4)
+                       (primary-hover . 7/8))]
+              [series (map (lambda (n) (string->symbol (format "chart-~a" n)))
+                           '(1 2 3 4 5 6 7 8))]
+              [others (filter (lambda (k) (not (or (assq k grays)
+                                                   (memq k series))))
+                              (plist-keys (palette-colors 'p4)))])
+         (printf "  ~s ~s\n" (cd paper) (cd ink))
+         (and (< (abs (- (cd paper) 106.8)) 1)
+              (< (abs (- (cd ink) 5.0)) 0.2)
+              (for-all (lambda (k) (memv (of k) (list paper ink))) others)
+              (for-all (lambda (k)
+                         (let ([c (of k)])
+                           (or (eq? c 'text)
+                               (and (stipple? c)
+                                    (equal? (list (cadr c) (caddr c))
+                                            '(text #f))))))
+                       series)
+              (= 8 (length (fold-left (lambda (acc c)
+                                        (if (member c acc) acc (cons c acc)))
+                                      '() (map of series))))
+              (for-all (lambda (g)
+                         (for-all (lambda (a b) (<= (abs (- a b)) 1))
+                                  (looks-test-channels (of (car g)))
+                                  (gray (cdr g))))
+                       grays))))
+
+(check "in P4, Genera and the CADR draw their widgets in its ink and its \
+        paper alone, whatever their state"
+       (let* ([w 120] [h 24]
+              [states '(() (hover) (pressed) (disabled) (focused) (selected)
+                        (checked) (primary) (primary hover)
+                        (primary disabled) (checked disabled))]
+              [parts (list
+                      (lambda (y fl) (ui-draw-button 4 y w h fl "Word" 'plus))
+                      (lambda (y fl) (ui-draw-checkbox 4 y w h fl "Word"))
+                      (lambda (y fl) (ui-draw-radio 4 y w h fl "Word" #f #f))
+                      (lambda (y fl) (ui-draw-toggle 4 y w h fl "Word"))
+                      (lambda (y fl) (ui-draw-tab 4 y w h fl "Word"))
+                      (lambda (y fl) (ui-draw-day 4 y w h fl "24"))
+                      (lambda (y fl) (ui-draw-dropdown 4 y w h fl "Word"))
+                      (lambda (y fl) (ui-draw-chip 4 y w h fl "Word"))
+                      (lambda (y fl) (ui-draw-slider 4 y w h fl 1/3 #f))
+                      (lambda (y fl) (ui-draw-progress 4 y w h fl 1/3)))]
+              [pw (+ w 8)] [ph (* (length states) (+ h 8))])
+         (define (two-colors? draw)
+           (let* ([img (image pw ph 1
+                              (lambda ()
+                                (fill-box 0 0 pw ph 'window-bg)
+                                (fold-left (lambda (y fl) (draw y fl) (+ y h 8))
+                                           4 states)))]
+                  [two (list (color->pixel 'text) (color->pixel 'window-bg))]
+                  [bytes (picture-bytes img)]
+                  [ok (let loop ([i 0])
+                        (or (= i (bytevector-length bytes))
+                            (and (memv (bytevector-u32-native-ref bytes i) two)
+                                 (loop (+ i 4)))))])
+             (picture-free! img)
+             ok))
+         (for-all (lambda (style)
+                    (with-style style
+                      (lambda ()
+                        (let ([r (map two-colors? parts)])
+                          (printf "  ~a ~s\n" style r)
+                          (and (= (theme 'text) #x372f27)
+                               (= (theme 'window-bg) #xc6d4d9)
+                               (for-all values r))))
+                      'palette 'p4))
+                  '(genera cadr))))
+
+(check "what lies on the accent is in accent-ink: what reads on the accent, \
+        or a palette's or a style's own (P4's paper)"
+       (let ([dot (lambda (style palette)
+                    (with-style style
+                      (lambda ()
+                        (let* ([b (ui-radio-mark)]
+                               [img (image 60 30 1
+                                           (lambda ()
+                                             (fill-box 0 0 60 30 'window-bg)
+                                             (ui-draw-radio 0 0 60 30
+                                                            '(checked) "x" #f
+                                                            #f)))]
+                               [c (quotient b 2)]
+                               [p (pixel-at img c 15)])
+                          (picture-free! img)
+                          (list (= p (color->pixel 'accent-ink))
+                                (color->fixnum 'accent-ink))))
+                      'palette palette))])
+         (let ([r (list (dot 'mac 'paper) (dot 'mac 'p4)
+                        (dot 'genera 'genera))])
+           (printf "  ~x\n" r)
+           (equal? r '((#t #xf4f4f4) (#t #xc6d4d9) (#t #xffffff))))))

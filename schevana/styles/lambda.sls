@@ -99,7 +99,7 @@
                   [(end) (+ x bx (* 3 bw))]
                   [(tab) (if focused? 'accent 'window-border)]
                   [(ink) (if focused?
-                             (color-readable-on 'accent)
+                             'accent-ink
                              (mix 'title-text-dim 'title-text 0.3))])
       (window-shadow win x (+ y th) w (- h th) 0 focused?)
       ;; when maximized, the tab stands on a strip, not on the windows
