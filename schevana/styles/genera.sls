@@ -34,24 +34,29 @@
     genera-tooltip-size genera-dialog-size genera-dialog-areas genera-dialog
     genera-scrim genera-calendar-areas genera-calendar-size genera-calendar
     genera-day genera-5x5 genera-avatar-size genera-avatar genera-mark
-    genera-due genera-board-slot)
+    genera-due genera-board-slot genera-italic-of)
   (import (chezscheme)
-          (only (schevana base) at-load clamp library-layer string-join)
-          (only (schevana core) *focus* *windows* color-default! define-style
-                draw-scale draw-text fill-box font font-ascent font-char-width
-                font-family font-line-height font-size frame-insets get-font
+          (only (schevana base) at-load clamp library-layer string-join
+                string-suffix?)
+          (only (schevana core) *bitmap-fonts* *focus* *windows*
+                color-default! define-bitmap-font define-style draw-scale
+                draw-text fill-box font font-ascent font-char-width
+                font-family font-line-height font-size
+                frame-insets get-font
                 screen-h screen-w stipple stroke-box stroke-circle text-width
-                theme theme-font-rule theme-rule window-bg window-h window-ref
+                theme theme-rule window-bg window-h window-ref
                 window-title window-w with-clip with-place)
           (only (schevana kits px) px-bitmap-text px-bits px-invert px-bevel)
           (schevana styles genera font-5x5)
+          (schevana styles genera fonts)
           (only (schevana kits text) text-widest text-draw-centered text-fit)
           (only (schevana kits ui) ui-draw-mark* ui-initials ui-calendar-areas
                 ui-dialog-areas ui-dialog-lines ui-tooltip-lines ui-draw-panel
                 ui-draw-dim ui-draw-table-row ui-tree-areas ui-table-cell-inset
                 ui-scrollbar-areas ui-chip-areas ui-small-glyph-size
                 ui-text-box-top ui-scrollbar-width ui-control-height
-                ui-draw-focus ui-draw-glyph ui-glyph-size ui-busy-frame-ms))
+                ui-draw-focus ui-draw-glyph ui-glyph-size ui-busy-frame-ms
+                ui-italic-of))
 
   (library-layer looks)
 
@@ -749,6 +754,29 @@
     (stroke-box x y w h 'text))
 
   ;; On a plain white screen, ink on paper whatever the palette.
+  ;; Genera's fonts, registered as the style loads.
+  (at-load
+   (for-each (lambda (f) (define-bitmap-font (car f) (cdr f)))
+             genera-fonts))
+
+  ;; Returns f's italic (faint-text-font): a bitmap font's own italic
+  ;; strike, keeping its bold where the family has a bold italic (JESS has
+  ;; none, so its bold's italic is its italic), else the kit's.
+  (define (genera-italic-of f)
+    (let* ([name (font-family f)]
+           [bold? (string-suffix? " Bold" name)]
+           [base (if bold?
+                     (substring name 0 (- (string-length name) 5))
+                     name)]
+           [both (string-append base " Bold Italic")]
+           [italic (string-append base " Italic")])
+      (cond
+        [(and bold? (hashtable-contains? *bitmap-fonts* both))
+         (font both (font-size f) 'crisp)]
+        [(hashtable-contains? *bitmap-fonts* italic)
+         (font italic (font-size f) 'crisp)]
+        [else (ui-italic-of f)])))
+
   (at-load
    (define-style genera "Genera"
      'palette 'genera
@@ -771,18 +799,30 @@
      'ui-busy-size 'genera-busy-size
      'ui-draw-busy 'genera-busy
      'mouse-doc-text 'genera-mouse-doc-text
-     ;; the fonts: what an app shows is in the code font (FIX, cptfont),
-     ;; its command words in the sans (JESS), titles in sans bold (SWISS),
-     ;; menus a size up, and a pane's heading in bold italic
-     ;; (lispm-apps.md part 6); the code font has the sans's size, so that
-     ;; an app's text and the command words beside it stand as tall (one
-     ;; family: one x-height)
-     'mono-font-size 13
+     ;; the fonts, Genera's own, each at its cell's height ((schevana styles
+     ;; genera fonts)): what an app shows is in the code font (FIX,
+     ;; CPTFONT), its command words in the sans (JESS13, JESS14 in menus),
+     ;; titles in SWISS's large bold (HL14B), and a pane's heading in the
+     ;; code font's italic (lispm-apps.md part 6)
+     'mono-font "Genera CPTFONT"
+     'mono-font-size 12
+     'ui-font "Genera HL12"
+     'ui-font-size 14
+     'mono (font "Genera CPTFONT" 12 'crisp)
+     'mono-small (font "Genera CPTFONT" 12 'crisp)
+     'mono-bold (font "Genera CPTFONT Bold" 12 'crisp)
+     'mono-italic (font "Genera CPTFONT Italic" 12 'crisp)
      'ui (theme-rule (theme 'mono))
-     'ui-small (theme-rule (theme 'mono-small))
+     'ui-small (theme-rule (theme 'mono))
      'ui-bold (theme-rule (theme 'mono-bold))
-     'genera-command-font (theme-font-rule 'ui 0)
-     'genera-standout-font 'title
+     'ui-small-bold (theme-rule (theme 'mono-bold))
+     'ui-italic (font "Genera HL12 Italic" 14 'crisp)
+     'ui-bold-italic (font "Genera HL12 Bold Italic" 14 'crisp)
+     'title (font "Genera HL14 Bold" 15 'crisp)
+     'heading (font "Genera HL14 Bold" 15 'crisp)
+     'big (font "Genera HL14 Bold" 30 'crisp)
+     'genera-command-font (font "Genera JESS13" 13 'crisp)
+     'genera-standout-font (font "Genera JESS13 Bold" 13 'crisp)
      'genera-choice-font 'mono
      'genera-choice-bold 'mono-bold
      'genera-heading-font 'mono-italic
@@ -790,7 +830,7 @@
      'label-section-font 'ui-bold-italic
      'label-section-upcase #f
      'label-group-font 'ui-bold-italic
-     'faint-text-font 'ui-italic-of
+     'faint-text-font 'genera-italic-of
      'text-caret 'block
      'text-selection 'underline
      ;; the sizes: a line of the font and a little more
@@ -798,7 +838,7 @@
      'table-header-height (theme-rule (round (+ (font-line-height 'ui) 6)))
      'table-row-height (theme-rule (round (+ (font-line-height 'ui) 6)))
      ;; the menus: centered words, a blank cell between groups
-     'menu-font (theme-font-rule 'ui 2)
+     'menu-font (font "Genera JESS14" 14 'crisp)
      'menu-item-height
      (theme-rule (round (+ (font-line-height (theme 'menu-font)) 4)))
      'menu-pad 3
@@ -893,10 +933,6 @@
      'options '(palette
                 accent
                 wallpaper
-                ui-font
-                ui-font-size
-                mono-font
-                mono-font-size
                 (genera-border "Border" 1 4)
                 (genera-margin "White margin" 0 8)
                 (genera-label-font "Label font"

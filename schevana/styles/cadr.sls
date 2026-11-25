@@ -23,8 +23,9 @@
     cadr-scrollbar cadr-slider cadr-progress cadr-scrim)
   (import (chezscheme)
           (only (schevana base) at-load library-layer)
-          (only (schevana core) define-style fill-box font-line-height stipple
-                theme-font-rule theme-rule with-clip)
+          (only (schevana core) define-bitmap-font define-style fill-box font
+                font-line-height stipple theme-rule with-clip)
+          (schevana styles cadr fonts)
           (only (schevana kits text) text-draw-centered)
           (only (schevana kits ui) ui-scrollbar-areas))
 
@@ -60,6 +61,11 @@
   ;; Nothing is drawn under a dialog: the CADR grayed only covered windows.
   (define (cadr-scrim x y w h flags) (void))
 
+  ;; The CADR's fonts, registered as the style loads.
+  (at-load
+   (for-each (lambda (f) (define-bitmap-font (car f) (cdr f)))
+             cadr-fonts))
+
   (at-load
    (define-style cadr "MIT CADR"
      'parent 'genera
@@ -69,18 +75,33 @@
      'genera-label-align 'top
      'genera-label-under 'content
      'frame-over 'frame-over*
-     ;; the fonts (tvdefs.lisp:211-216, choice.lisp:911-914): the CADR set
-     ;; nearly everything in the code font, so the code font has a size of
-     ;; its own here, not Genera's
-     'mono-font-size 14
+     ;; the fonts, the CADR's own, each at its cell's height ((schevana
+     ;; styles cadr fonts); tvdefs.lisp:211-216, choice.lisp:911-914): the
+     ;; CADR set nearly everything in the code font, CPTFONT; headings and
+     ;; the standout in HL12I; choices in HL10 and HL10B; menus in MEDFNT;
+     ;; the small italic of a hint TR10I
+     'mono-font "CADR CPTFONT"
+     'mono-font-size 12
+     'ui-font "CADR HL12"
+     'ui-font-size 14
+     'mono (font "CADR CPTFONT" 12 'crisp)
+     'mono-small (font "CADR CPTFONT" 12 'crisp)
+     'mono-bold (font "CADR CPTFONT Bold" 12 'crisp)
+     'mono-italic (font "CADR TR10 Italic" 12 'crisp)
+     'ui-italic (font "CADR HL12 Italic" 14 'crisp)
+     'ui-bold-italic (font "CADR HL12 Bold Italic" 14 'crisp)
+     'title (font "CADR HL12 Bold" 14 'crisp)
+     'heading (font "CADR HL12 Italic" 14 'crisp)
+     'big (font "CADR HL12 Bold" 28 'crisp)
+     'huge (font "CADR CPTFONT" 360 'crisp)
+     'faint-text-font #f
      'genera-command-font 'mono
      'genera-standout-font 'ui-italic
-     'heading (theme-font-rule 'ui 1 'italic)
-     'genera-choice-font (theme-font-rule 'ui -2)
-     'genera-choice-bold 'ui-small-bold
+     'genera-choice-font (font "CADR HL10" 12 'crisp)
+     'genera-choice-bold (font "CADR HL10 Bold" 12 'crisp)
      'genera-heading-font 'ui
      'genera-heading-underline #f
-     'menu-font (theme-font-rule 'mono 1)
+     'menu-font (font "CADR MEDFNT" 13 'crisp)
      ;; the widgets
      'genera-hover-nudge 1
      'genera-panel-border 1

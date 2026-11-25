@@ -11,12 +11,17 @@
 
 (check "the insets are Genera's 6 6 6 and its label strip, the CADR's 2 2 \
         2 and its label strip, the code font's line and 2, Interlisp's 4 \
-        and its title strip, each by the font"
-       (and (equal? (style-insets 'genera) (test-genera-insets))
-            (equal? (style-insets 'cadr)
-                    (list 2 2 2 (+ 2 (exact (round (+ 2 (font-line-height
-                                                         'mono)))))))
-            (equal? (style-insets 'interlisp) (test-interlisp-insets))))
+        and its title strip, each by the font: in the machines' own fonts \
+        Genera's 22 at the bottom (HL12I's 14 and 2) and the CADR's 16 \
+        (CPTFONT's 12 and 2)"
+       (let ([cadr-line (with-style 'cadr
+                          (lambda () (font-line-height 'mono)))])
+         (and (equal? (style-insets 'genera) (test-genera-insets))
+              (equal? (style-insets 'genera) '(6 6 6 22))
+              (equal? (style-insets 'cadr)
+                      (list 2 2 2 (+ 2 (exact (round (+ 2 cadr-line))))))
+              (equal? (style-insets 'cadr) '(2 2 2 16))
+              (equal? (style-insets 'interlisp) (test-interlisp-insets)))))
 
 (check "our styles' own behaviors, and the CADR's Genera's but its frame \
         and its gray"
@@ -141,17 +146,104 @@
                   (equal? (at '(selected)) (list ink ink)))))))
 
 (check "faint text is in its font's italic, bold kept, where a style says \
-        so ('faint-text-font, Genera's); other text and styles keep theirs"
+        so ('faint-text-font, Genera's: its fonts' own italic strikes, and \
+        JESS's italic for its bold, as JESS has no bold italic); other text \
+        and styles keep theirs"
        (and (with-style 'mac
               (lambda () (eq? (faint-font 'text-faint (get-font 'ui))
                               (get-font 'ui))))
             (with-style 'genera
               (lambda ()
-                (let ([f (faint-font 'text-faint (get-font 'mono-bold))])
-                  (and (eq? (font-slant f) 'italic)
-                       (eq? (font-weight f) 'bold)
+                (let ([of (lambda (f)
+                            (font-family (faint-font 'text-faint f)))])
+                  (and (equal? (of (get-font 'mono-bold))
+                               "Genera CPTFONT Bold Italic")
+                       (equal? (of (get-font 'genera-standout-font))
+                               "Genera JESS13 Italic")
+                       (equal? (of (get-font 'genera-command-font))
+                               "Genera JESS13 Italic")
                        (eq? (faint-font 'text (get-font 'mono))
                             (get-font 'mono))))))))
+
+(check "the CADR and Genera write in their own fonts, each at its cell's \
+        height: CPTFONT for code and an app's text, the CADR's HL12 italic \
+        and MEDFNT, Genera's HL14 bold for titles and JESS for commands and \
+        menus"
+       (let ([of (lambda (st . roles)
+                   (with-style st
+                     (lambda ()
+                       (map (lambda (r)
+                              (let ([f (get-font r)])
+                                (list (font-family f) (font-size f))))
+                            roles))))])
+         (and (equal? (of 'cadr 'ui 'mono 'heading 'menu-font
+                          'genera-choice-font)
+                      '(("CADR CPTFONT" 12) ("CADR CPTFONT" 12)
+                        ("CADR HL12 Italic" 14) ("CADR MEDFNT" 13)
+                        ("CADR HL10" 12)))
+              (equal? (of 'genera 'ui 'title 'genera-command-font
+                          'menu-font 'ui-italic)
+                      '(("Genera CPTFONT" 12) ("Genera HL14 Bold" 15)
+                        ("Genera JESS13" 13) ("Genera JESS14" 14)
+                        ("Genera HL12 Italic" 14))))))
+
+;; Returns the rows of a bitmap glyph (char advance left top width row
+;; ...) as text in a strip ascent high and descent below, o for a set bit,
+;; with a column of . after it.
+(define (looks-test-bitmap-rows g ascent height)
+  (let ([w (list-ref g 4)] [top (list-ref g 3)] [rows (list-tail g 5)])
+    (map (lambda (y)
+           (let ([r (- y (- ascent top))])
+             (list->string
+              (map (lambda (x)
+                     (if (and (< x w) (< -1 r (length rows))
+                              (logbit? (- w 1 x) (list-ref rows r)))
+                         #\o
+                         #\.))
+                   (iota (+ w 1))))))
+         (iota height))))
+
+(check "the CADR's and Genera's fonts draw every glyph as its data has \
+        it, pixel for pixel, the glyphs drawn for them too: each face's, \
+        side by side, light their bits and nothing else"
+       (let ([bad
+              (filter
+               (lambda (face)
+                 (let* ([name (car face)] [size (cadr face)]
+                        [ascent (caddr face)]
+                        [height (+ ascent (cadddr face))]
+                        [gs (filter (lambda (g)
+                                      (and (car g) (pair? (cddr g))
+                                           (pair? (list-tail g 5))))
+                                    (list-tail face 4))]
+                        [ws (map (lambda (g) (+ 1 (list-ref g 4))) gs)]
+                        [w (apply + ws)]
+                        [f (font name size 'crisp)]
+                        [want (apply map string-append
+                                     (map (lambda (g)
+                                            (looks-test-bitmap-rows
+                                             g ascent height))
+                                          gs))]
+                        [got
+                         (pixel-rows
+                          (image w height 1
+                                 (lambda ()
+                                   (fill-box 0 0 w height #x000000)
+                                   (let loop ([gs gs] [ws ws] [x 0])
+                                     (unless (null? gs)
+                                       (draw-text (- x (list-ref (car gs) 2))
+                                                  0
+                                                  (string (integer->char
+                                                           (caar gs)))
+                                                  #xffffff f)
+                                       (loop (cdr gs) (cdr ws)
+                                             (+ x (car ws)))))))
+                          '((#xff000000 . #\.) (#xffffffff . #\o)))])
+                   (not (equal? got want))))
+               (append cadr-fonts genera-fonts))])
+         (printf "  ~a faces, wrong: ~s\n"
+                 (+ (length cadr-fonts) (length genera-fonts)) (map car bad))
+         (null? bad)))
 
 (check "the CADR's lozenge: 9 pixels high, 9 + 6 a character wide, pointed \
         ends, the name in capitals of MIT's 5X5"

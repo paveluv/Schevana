@@ -20,12 +20,15 @@ which followed Douglas DeCarlo's XSpringies. Its physics is written from
 how XSpringies behaves, not from its (GPL) source, and its models are made
 in code, not read from XSpringies' example files.
 
-## The CADR's 5X5 font
+## The CADR's fonts
 
 The CADR's 5X5 font in `schevana/styles/genera/font-5x5.sls` (the glyphs
-of `genera-5x5`, which Genera and the CADR style draw names with) is
-MIT's, decoded from System 99's `fonts/5x5.qfasl`, and is used under this
-license, which the file carries too:
+of `genera-5x5`, which Genera and the CADR style draw names with) and the
+fonts the CADR style draws its text in, in
+`schevana/styles/cadr/fonts.sls` (CPTFONT, MEDFNT, HL10, HL12 and TR10I,
+with their bold and italic strikes), are MIT's, decoded from System 99's
+`fonts/*.qfasl`, and are used under this license, which the files carry
+too:
 
 Copyright (c) 1980, Massachusetts Institute of Technology. All rights
 reserved. Redistribution and use in source and binary forms, with or
@@ -50,6 +53,27 @@ PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF
 LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING
 NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+What those fonts lack and Schevana's own text uses (the ellipsis, the
+dashes, ✓, the accented Latin-1 letters, ...) was drawn for Schevana from
+each font's own glyphs and stem, in its manner.
+
+## Genera's fonts
+
+The fonts the Genera style draws its text in, in
+`schevana/styles/genera/fonts.sls` (CPTFONT, JESS13, JESS14, HL12, HL14
+and SWISS12-CCAPS, with their bold and italic strikes), are Genera's
+glyphs and their metrics, as the genera-fonts project recovered them from
+the resident FONT arrays of Genera 8.5's world
+(<https://github.com/htayj/genera-fonts>, revision
+809694a73ece7f840b6541b4781cd47152d1ea35). That project publishes them in
+the United States as typeface, which is not subject to copyright there
+("typeface as typeface", 37 C.F.R. 202.1(e)); its BSD license covers its
+own code, not these designs, and no license from Symbolics comes with
+them. Schevana takes the glyph shapes and their metrics alone: no Genera
+code, no other part of its world, no manual. What the fonts lack and
+Schevana's text uses was drawn for Schevana from each font's own glyphs,
+as for the CADR's.
 
 ## Medley Interlisp
 

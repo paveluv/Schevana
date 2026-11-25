@@ -199,12 +199,16 @@ has none, the widget its designers would have made:
   style covers the whole screen: there is no top bar, and at the bottom
   the who line shows what the mouse buttons do over the selected window.
   There is no color, and gray is drawn as stipples; words are boxed under
-  the mouse, and what is chosen is in inverse video. Its numbers are
+  the mouse, and what is chosen is in inverse video. Its text is in
+  Genera's own bitmap fonts: CPTFONT for code and what an app shows, JESS
+  for command words and menus, HL14 bold for titles. Its numbers are
   settings (`genera-border`, `genera-margin`, ...).
 - **The CADR**, from MIT's System 99 sources (BSD), is Genera with a few
   settings changed: a 1-pixel border and margin, the label upright in the
-  code font, and a 3-pixel scroll bar. (The 5X5 font in which both styles
-  draw people's initials in lozenges is the CADR's.)
+  code font, and a 3-pixel scroll bar. Its text is in the CADR's own
+  bitmap fonts: CPTFONT nearly everywhere, MEDFNT in menus, HL12 italic
+  for headings, HL10 for choices. (The 5X5 font in which both styles draw
+  people's initials in lozenges is the CADR's too.)
 - **OPEN LOOK** (Sun, 1988) as OpenWindows drew it: olwm's frames drawn
   through OLGX, from XView 3.2's sources on the X11R6 contrib tape, with
   Sun's Functional Specification of 1989 where the code is silent. A

@@ -197,9 +197,10 @@
 
   ;; Draws bitmap face ff's glyph for c (or its slug) into the atlas, at k
   ;; device pixels to a font pixel: each device pixel takes the bit nearest
-  ;; it, so that at a whole k a font pixel is a k × k square. Its phase is
-  ;; always 0, its pixels being whole. Returns its number, or -1 if it has
-  ;; no ink.
+  ;; it, so that at a whole k a font pixel is a k × k square; smaller than
+  ;; its size (a style's preview), the share of 4 × 4 points in it that
+  ;; fall on set bits, so that no stroke is dropped. Its phase is always 0,
+  ;; its pixels being whole. Returns its number, or -1 if it has no ink.
   (define (bitmap-glyph-make f ff num den c)
     (let* ([g (or (hashtable-ref (font-file-handle ff) c #f)
                   (hashtable-ref (font-file-handle ff) #f #f))]
@@ -209,14 +210,27 @@
           (let* ([k (/ (* (font-size f) num) (* (font-file-upem ff) den))]
                  [bw (caddr ink)] [rows (list->vector (cdddr ink))]
                  [bh (vector-length rows)]
-                 [w (max 1 (exact (round (* bw k))))]
-                 [h (max 1 (exact (round (* bh k))))]
+                 [grid (if (< k 1) 4 1)]   ; points a side, a pixel
+                 ;; smaller, every bit is counted: the size rounds up
+                 [w (max 1 (exact ((if (< k 1) ceiling round) (* bw k))))]
+                 [h (max 1 (exact ((if (< k 1) ceiling round) (* bh k))))]
+                 ;; is the font pixel under device point (dx, dy) set?
+                 [on? (lambda (dx dy)
+                        (let ([fx (floor (/ dx k))] [fy (floor (/ dy k))])
+                          (and (< fx bw) (< fy bh)
+                               (logbit? (- bw 1 fx) (vector-ref rows fy)))))]
                  [bytes (make-bytevector (* w h) 0)])
             (do ([y 0 (+ y 1)]) ((= y h))
-              (let ([row (vector-ref rows (min (- bh 1) (floor (/ y k))))])
-                (do ([x 0 (+ x 1)]) ((= x w))
-                  (when (logbit? (- bw 1 (min (- bw 1) (floor (/ x k)))) row)
-                    (bytevector-u8-set! bytes (+ (* y w) x) 255)))))
+              (do ([x 0 (+ x 1)]) ((= x w))
+                (do ([i 0 (+ i 1)]
+                     [on 0 (if (on? (+ x (/ (mod i grid) grid))
+                                    (+ y (/ (quotient i grid) grid)))
+                               (+ on 1)
+                               on)])
+                    ((= i (* grid grid))
+                     (bytevector-u8-set! bytes (+ (* y w) x)
+                                         (quotient (* on 255)
+                                                   (* grid grid)))))))
             (let ([place (atlas-place! w h bytes)] [n *glyph-count*])
               (set! *glyph-count* (+ n 1))
               (glyph-row-set! n (car place) (cdr place) w h

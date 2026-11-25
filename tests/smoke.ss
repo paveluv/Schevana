@@ -1058,8 +1058,9 @@
 (let ([w (open-window "Epsilon" 'size '(300 . 150) 'pos '(200 . 140))])
   (let-values ([(l t r b) (frame-insets w)])
     (check "the CADR is Genera's frame with a 1-pixel border and margin, \
-            its who line at the bottom and no top bar"
-           (and (= l 2) (= t 2) (= r 2) (> b 16) (= (topbar-height) 0)
+            its label strip below the content (CPTFONT's 12 and 2), its who \
+            line at the bottom and no top bar"
+           (and (= l 2) (= t 2) (= r 2) (= b 16) (= (topbar-height) 0)
                 (> (taskbar-height) 0))))
   (close-window! w))
 (reset-theme!)

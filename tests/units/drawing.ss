@@ -228,6 +228,22 @@
           (let ([b (- (+ (bytes-allocated) (bytes-deallocated)) b0)])
             (loop (+ i 1) (if least (min least b) b)))))))
 
+(check "a bitmap font smaller than its size shows the share of each \
+        device pixel that its set bits cover, so that no stroke is lost: \
+        at half its size, A's apex a quarter of a pixel, its foot three \
+        quarters, the rest halves, its last column too"
+       (let* ([f (font "Test Bits" 5/2 'crisp)]
+              [p (image 6 4 1 (lambda ()
+                                (fill-box 0 0 6 4 #x000000)
+                                (draw-text 0 0 "A" #xffffff f)))]
+              [level (lambda (x y) (fxand (pixel-at p x y) #xff))])
+         (printf "  ~s\n" (map (lambda (y) (map (lambda (x) (level x y))
+                                                 (iota 3)))
+                               (iota 2)))
+         (equal? (map (lambda (y) (map (lambda (x) (level x y)) (iota 3)))
+                      (iota 2))
+                 '((63 127 0) (191 127 127)))))
+
 (check "drawing a line in a bitmap font, once its glyphs are made, \
         allocates no more than in a FreeType font: only the flonum that \
         draw-text returns"
