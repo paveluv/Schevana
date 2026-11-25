@@ -130,7 +130,10 @@
       (menu-hover "Entry under the pointer"
        (("Fill" . fill) ("Outline" . outline)))
       (mouse-doc "Show what the mouse buttons do" bool)
-      (scrollbar-show "Scroll bars" (("Always" . always) ("On hover" . hover)))
+      (scrollbar-show "Scroll bars" (("Always" . always) ("On hover" . hover)
+                                     ("In margin" . bar)))
+      (scrollbar-input "Scroll bar controls"
+       (("Thumb dragging" . drag) ("Lisp machine clicks" . lispm)))
       (scrollbar-side "Scroll bar side"
        (("Right" . right) ("Left" . left) ("Outside" . outside)))
       (minimize-to "Minimized windows"
@@ -493,7 +496,18 @@
                       (lambda (nv) (set (exact (round nv)))))
            (ui-draw-label (+ x (- w rw) 18) y (- rw 18) (ui-slider-height)
                           '(dim) (format "~a px" shown)))]
-        [(list? (car kind)) (settings-choice ui id x y w (car kind) v set)]
+        ;; the bar in the margin goes with the Lisp machines' clicks
+        [(list? (car kind))
+         (settings-choice ui id x y w
+                          (if (and (eq? key 'scrollbar-show)
+                                   (not (eq? (theme 'scrollbar-input) 'lispm))
+                                   (not (eq? v 'bar)))
+                              (filter (lambda (c)
+                                        (not (eq? (settings-choice-value c)
+                                                  'bar)))
+                                      (car kind))
+                              (car kind))
+                          v set)]
         [else
          (case (car kind)
            [(bool) (ui-toggle ui id x y (min w 60) h #f v set)]
@@ -1321,8 +1335,8 @@
   ;; (left or right) of the pane from x0 to x1, and shown as the style says
   ;; (always, or while the pointer is over the pane).
   (define (settings-pane-scrollbar ui st x0 x1 h content-h max-scroll)
-    (let ([bw (ui-scrollbar-width)])
-      (when (or (eq? (theme 'scrollbar-show) 'always)
+    (let ([bw (ui-scrollbar-width)] [show (theme 'scrollbar-show)])
+      (when (or (memq show '(always bar))
                 (ui-active? ui 'pane-scrollbar)
                 (and (memq (window-hover (current-window)) '(content scrollbar))
                      (ui-hover? ui x0 0 (- x1 x0) h)))

@@ -34,7 +34,8 @@
   (import (chezscheme)
           (only (schevana base) at-load clamp library-layer string-split)
           (only (schevana core) alpha color-default! draw-text fill-box
-                font-char-width font-line-height style theme theme-rule)
+                font-char-width font-line-height style theme theme-default!
+                theme-rule)
           (only (schevana kits ui) ui-draw-scrollbar ui-open-text-menu!
                 ui-scrollbar-width))
 
@@ -57,7 +58,12 @@
 
   (define transcript-max-lines 4000)
   (define transcript-pad 10)
-  (define (transcript-line-height) (+ 3 (font-line-height 'mono)))
+  ;; A line is the code font's and a little room, which a look sets (the
+  ;; Lisp machines' 2).
+  (at-load
+   (theme-default! 'transcript-line-spacing 3))
+  (define (transcript-line-height)
+    (+ (theme 'transcript-line-spacing) (font-line-height 'mono)))
 
   (define (transcript-clear! t)
     (transcript-dropped-set! t (transcript-end t))

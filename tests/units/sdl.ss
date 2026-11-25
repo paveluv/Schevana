@@ -80,6 +80,7 @@
 (define fake-ratio 1)
 (define fake-desktop 1)
 (define fake-flags 0)
+(define fake-mods 0)           ; the modifier keys held (SDL_Keymod)
 (define fake-system-theme 0)   ; SDL's: 0 unknown, 1 light, 2 dark
 (define fake-hints '())        ; the hints set, newest first
 (define fake-queue '())        ; the event types SDL_PollEvent hands out next
@@ -129,6 +130,7 @@
     [(sdl-set-window-minimum-size)
      (lambda (win w h) (fake-log! 'minimum w h) #t)]
     [(sdl-get-window-flags) (lambda (win) fake-flags)]
+    [(sdl-get-mod-state) (lambda () fake-mods)]
     [(sdl-get-window-properties) (lambda (win) 0)]
     [(sdl-get-pointer-property) (lambda (props name default) default)]
     [(sdl-get-number-property) (lambda (props name default) default)]
@@ -193,6 +195,16 @@
         (fake-resize! '(1280 . 800) 1)
         (check "the fake SDL had a stand-in for every call"
                (null? fake-unfaked))
+        ;; a press carries the modifier keys held with it
+        (set! fake-mods #x1)
+        (let ([shifted (decode-event SDL_EVENT_MOUSE_BUTTON_DOWN
+                                     '(unsigned-8 24 1) '(unsigned-8 26 2))])
+          (set! fake-mods 0)
+          (check "a mouse press decodes with the modifier keys held with it \
+                  (Shift: the Lisp machines' bars scroll as for a double \
+                  click)"
+                 (and shifted (eq? (car shifted) 'mouse-down)
+                      (equal? (list-ref shifted 5) '(shift)))))
         ;; text is measured by the fonts' tables, so a scale changes none of
         ;; it
         (let ([before (font-metrics 'mono)])

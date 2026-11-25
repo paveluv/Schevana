@@ -7,9 +7,9 @@
   (export
     fill-gradient fill-glow)
   (import (chezscheme)
-          (only (schevana base) library-layer)
+          (only (schevana base) at-load library-layer)
           (only (schevana core) alpha fill-box fill-circle linear-gradient
-                radial-gradient))
+                radial-gradient theme theme-default!))
 
   (library-layer kits)
 
@@ -26,6 +26,11 @@
                      (linear-gradient 0 y 0 (+ y h) c1 c2))
                  radius)]))
 
-  ;; A radial glow: color at the center, fading to transparent at radius r.
+  ;; A radial glow: color at the center, fading to transparent at radius r;
+  ;; a look may go without it (fill-glow #f: a screen one bit deep has no
+  ;; soft light).
+  (at-load
+   (theme-default! 'fill-glow #t))
   (define (fill-glow cx cy r color)
-    (fill-circle cx cy r (radial-gradient cx cy r color (alpha color 0)))))
+    (when (theme 'fill-glow)
+      (fill-circle cx cy r (radial-gradient cx cy r color (alpha color 0))))))

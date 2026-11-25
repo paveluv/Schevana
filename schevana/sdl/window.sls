@@ -22,7 +22,8 @@
     sdl-wait-event-timeout sdl-push-event sdl-register-events
     sdl-start-text-input sdl-get-clipboard-text sdl-set-clipboard-text sdl-free
     sdl-create-system-cursor sdl-set-cursor sdl-set-window-fullscreen
-    sdl-get-window-flags sdl-create-surface-from sdl-destroy-surface
+    sdl-get-window-flags sdl-get-mod-state sdl-create-surface-from
+    sdl-destroy-surface
     sdl-set-window-icon sdl-memset sdl-get-window-properties
     sdl-get-pointer-property sdl-get-number-property sdl-get-string-property
     sdl-get-version sdl-get-current-video-driver sdl-set-window-title
@@ -106,6 +107,8 @@
   (define-foreign/collect-safe sdl-set-window-fullscreen
     "SDL_SetWindowFullscreen" (uptr bool) bool)
   (define-foreign sdl-get-window-flags "SDL_GetWindowFlags" (uptr) unsigned-64)
+  ;; the modifier keys held now (SDL_Keymod)
+  (define-foreign sdl-get-mod-state "SDL_GetModState" () unsigned-16)
   (define-foreign sdl-create-surface-from "SDL_CreateSurfaceFrom"
     (int int unsigned-32 uptr int) uptr)
   (define-foreign sdl-destroy-surface "SDL_DestroySurface" (uptr) void)

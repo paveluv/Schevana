@@ -49,7 +49,7 @@
                 rec-bytes-copies rec-count rec-drawing->bytes rec-earlier-add!
                 rec-extra! rec-extra-at rec-extra-ref rec-extra-u32! rec-freeze!
                 rec-into-list! rec-lend! rec-write!)
-          (only (schevana core theme-table) theme theme-part
+          (only (schevana core theme-table) *theme* theme theme-part
                 theme-table-default!)
           (only (schevana core platform) now-ns)
           (only (schevana core processes) *profile-span* report-error!
@@ -186,7 +186,8 @@
   ;;; A record is eight 32-bit words, all whole numbers, since floats are
   ;;; what would allocate. The format is private to this file and its
   ;;; shaders.
-  ;;;   0  kind (low 4 bits), paint kind (next 4), clip (the rest)
+  ;;;   0  kind (low 3 bits), crisp (rec-crisp-bit), paint kind (next 4),
+  ;;;      clip (the rest)
   ;;;   1  paint: a color's word, or where its row is in the extras
   ;;;   2 to 5  x0 y0 x1 y1, in 1/256ths of a device pixel
   ;;;   6, 7  two more, by kind
@@ -214,6 +215,7 @@
   (define-shader-constant rec-paint-image 3)
   (define-shader-constant rec-paint-shader 4)
   (define-shader-constant rec-glyph-turned 3)     ; a glyph's word 6
+  (define-shader-constant rec-crisp-bit 8)        ; in a record's head
   (define-shader-constant rec-gradient-radial 1)  ; a gradient row's first word
 
   (define-shader-layout rec-row word (head paint x0 y0 x1 y1 a b))
@@ -280,7 +282,7 @@
   ;; shadow in such a paint needs the full one. The vectors give the kinds
   ;; and the paints in their order.
   (define (rec-variant head)
-    (let ([k (vector-ref '#(0 1 1 0 2) (fxand head 15))]
+    (let ([k (vector-ref '#(0 1 1 0 2) (fxand head 7))]
           [p (vector-ref '#(0 3 4 5 0) (fxand (fxsrl head 4) 15))])
       (cond [(fx= k 0) p] [(fx= p 0) k] [else 6])))
 
@@ -502,7 +504,21 @@
        (color-word color)]))
 
   (define (rec-head kind)
-    (fxior kind (fxsll *rec-paint-kind* 4) (fxsll *rec-clip* 8)))
+    (fxior kind (if (fx= kind rec-kind-glyph) 0 (rec-crisp))
+           (fxsll *rec-paint-kind* 4) (fxsll *rec-clip* 8)))
+
+  ;; A look drawn on a screen one bit deep (drawing-antialias #f, Genera's)
+  ;; has its shapes crisp: each of its records says so (rec-crisp-bit), and
+  ;; the shader then takes a pixel whole or not at all. The setting is read
+  ;; again only when the theme in effect is another table.
+  (at-load (theme-table-default! 'drawing-antialias #t))
+  (define-state *rec-crisp-theme* #f)
+  (define-state *rec-crisp* 0)
+  (define (rec-crisp)
+    (unless (eq? *theme* *rec-crisp-theme*)
+      (set! *rec-crisp-theme* *theme*)
+      (set! *rec-crisp* (if (theme 'drawing-antialias) 0 rec-crisp-bit)))
+    *rec-crisp*)
 
   (define (rec-gradient c)
     (let* ([radial? (eq? (car c) 'radial-gradient)]
@@ -1113,7 +1129,7 @@
     (let ([id (fx+ i first)])
       (use-shader-helpers gfx-helpers)
       (let* ([head (rec-row-head)]
-             [kind (fxand head 15)]
+             [kind (fxand head 7)]
              [clip (fxsrl head 8)]
              [glyph? (fx= kind rec-kind-glyph)]
              [row (fx* (rec-glyph-number) glyph-row-words)]
@@ -1199,7 +1215,7 @@
           (fl* (channel w shift) (channel w 24))))
     (define (pixel-color lines? shadows? gradients? stipples? images?)
       (let* ([head (rec-row-head)]
-             [kind (fxand head 15)]
+             [kind (fxand head 7)]
              [paint-kind (fxand (fxsrl head 4) 15)]
              [clip (fxsrl head 8)]
              [w1 (rec-row-paint)]
@@ -1310,7 +1326,11 @@
                         [d (box-distance x0 y0 x1 y1 radius)])
                    (clamp01 (fl- 1.0 (fl/ d (flmax size 1.0)))))]
                 [else 0.0])]
-             [m (fl* cover (clip-coverage clip))]
+             ;; a crisp shape covers a pixel wholly or not at all
+             [m (fl* (if (fx= (fxand head rec-crisp-bit) 0)
+                         cover
+                         (if (fl>= cover 0.5) 1.0 0.0))
+                     (clip-coverage clip))]
              ;; a gradient: where the pixel falls between two of its colors
              [gradient? (and gradients? (fx= paint-kind rec-paint-gradient))]
              [t (if gradient?

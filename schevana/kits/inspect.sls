@@ -655,7 +655,7 @@
         (do ([i count (fx+ i 1)]) ((fx= i (fx+ count n)))
           (let* ([o (fx* i rec-row-words)]
                  [head (fxand (word to o) #xffffffff)]
-                 [kind (fxand head 15)]
+                 [kind (fxand head 7)]
                  [paint (fxand (fxsrl head 4) 15)]
                  [clip (fxsrl head 8)])
             (define (move! k d) (word! to (+ o k) (+ d (word to (+ o k)))))
@@ -1642,7 +1642,7 @@
                  (and (or (and (fx= k rec-row-paint)
                                (fx= (fxand (fxsrl head 4) 15) 1))
                           (and (fx= k rec-polygon-points)
-                               (fx= (fxand head 15) 2))
+                               (fx= (fxand head 7) 2))
                           (fx= (inspect-word l i k) (inspect-word b j k)))
                       (loop (fx+ k 1))))))))
 

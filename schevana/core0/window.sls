@@ -38,8 +38,9 @@
                 sdl-create-window sdl-destroy-surface sdl-destroy-window
                 sdl-free sdl-get-clipboard-text sdl-get-current-display-mode
                 sdl-get-display-for-window sdl-get-error sdl-get-system-theme
-                sdl-get-window-display-scale sdl-get-window-flags
-                sdl-get-window-size sdl-get-window-size-in-pixels sdl-init
+                sdl-get-mod-state sdl-get-window-display-scale
+                sdl-get-window-flags sdl-get-window-size
+                sdl-get-window-size-in-pixels sdl-init
                 sdl-maximize-window sdl-minimize-window sdl-poll-event sdl-quit
                 sdl-release-window sdl-restore-window sdl-set-clipboard-text
                 sdl-set-cursor sdl-set-hint sdl-set-window-fullscreen
@@ -501,10 +502,13 @@
         [(= type SDL_EVENT_TEXT_INPUT)
          (list 'text (c-string->string (ftype-ref sdl-event (text text) e)))]
         [(= type SDL_EVENT_MOUSE_MOTION) (list 'mouse-move (x) (y))]
+        ;; a press carries the modifier keys held with it (Shift and the
+        ;; left button scroll as a double click on the Lisp machines' bars)
         [(= type SDL_EVENT_MOUSE_BUTTON_DOWN)
          (list 'mouse-down (x) (y)
                (sdl-button->symbol (ftype-ref sdl-event (mouse button) e))
-               (ftype-ref sdl-event (mouse clicks) e))]
+               (ftype-ref sdl-event (mouse clicks) e)
+               (sdl-mods->list (sdl-get-mod-state)))]
         [(= type SDL_EVENT_MOUSE_BUTTON_UP)
          (list 'mouse-up (x) (y)
                (sdl-button->symbol (ftype-ref sdl-event (mouse button) e)))]

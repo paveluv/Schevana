@@ -108,7 +108,8 @@
     window-h-set! window-state window-state-set! window-restore-set!
     window-min-w window-min-h window-handlers window-props window-error
     *windows* *focus* *drag-outline*
-    *hover* *mouse-x* *mouse-y* *mouse-button* drag current-window invalidate!
+    *hover* *mouse-x* *mouse-y* *mouse-button* *mouse-mods* drag
+    current-window invalidate!
     window-shadow window-extent screen-w screen-h screen-scale point-in?
     surface surface-doc define-surface find-surface surface-call surfaces
     define-strip
@@ -311,8 +312,9 @@
                         *styles* theme-save!) core:)
           (prefix (only (schevana core windows) *windows* *focus* *drag-outline*
                         *hover* *mouse-x* *mouse-y* *mouse-button*
-                        current-window invalidate! *apps* new-window-position
-                        *global-keys* window-gone!) core:)
+                        *mouse-mods* current-window invalidate! *apps*
+                        new-window-position *global-keys* window-gone!)
+                  core:)
           (prefix (only (schevana core sources) *world-env* *schevana-options*
                         *world-later* *world-loading* *auto-loads*
                         *source-texts*)
@@ -403,6 +405,7 @@
   (define-view *mouse-x* core:*mouse-x*)
   (define-view *mouse-y* core:*mouse-y*)
   (define-view *mouse-button* core:*mouse-button*)
+  (define-view *mouse-mods* core:*mouse-mods*)
   (define-view current-window core:current-window)
   (define-view invalidate! core:invalidate!)
   (define-view *apps* core:*apps*)

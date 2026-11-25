@@ -1721,7 +1721,9 @@
                   (equal? (thumb 1/2 1/100) '(0 50 3 6)))))))
 
 (check "Genera's settings: its dropdown marks the current choice with *, \
-        which its fonts have; a glyph that can't be used keeps all its ink; \
+        which its fonts have; shapes crisp, no glow and no tint on a screen \
+        one bit deep, a transcript's lines CPTFONT's 12 and 2; a glyph that \
+        can't be used keeps all its ink; \
         a window moves by its outline; a menu's chosen entry is boxed \
         around its ink, its separators a blank row; nothing under a dialog"
        (with-style 'genera
@@ -1732,6 +1734,10 @@
                                  (ui-draw-scrim 0 0 10 10 '())))])
              (and (equal? (theme 'dropdown-selected-mark) "  *")
                   (= (theme 'disabled-glyph-opacity) 1)
+                  (not (theme 'drawing-antialias))
+                  (not (theme 'fill-glow))
+                  (= (theme 'surface-tint) 0)
+                  (= (transcript-line-height) 14)
                   (eq? (theme 'drag-feedback) 'outline)
                   (eq? (theme 'menu-highlight) 'ink)
                   (= (theme 'menu-separator-height) (theme 'menu-item-height))

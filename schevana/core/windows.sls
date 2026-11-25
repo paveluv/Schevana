@@ -30,6 +30,7 @@
     window-h-set! window-state window-state-set! window-restore-set!
     window-min-w window-min-h window-handlers window-props window-error
     *windows* *focus* *drag-outline* *hover* *mouse-x* *mouse-y* *mouse-button*
+    *mouse-mods*
     drag current-window window-gone! invalidate! window-shadow window-extent
     screen-w screen-h screen-scale point-in? surface surface-doc define-surface
     find-surface surface-call define-strip desktop-rect app app-name app-title
@@ -103,6 +104,7 @@
   (define-state *mouse-x* 0)
   (define-state *mouse-y* 0)
   (define-state *mouse-button* #f)    ; the button held down, or #f
+  (define-state *mouse-mods* '())     ; the modifier keys held at its press
   (define-state *cascade* 0)
 
   (define-record-type drag
@@ -935,10 +937,11 @@
                 (if (side? #\t) (- (+ (drag-y d) (drag-h d)) nh) (drag-y d))
                 nw nh)))
 
-  (define (wm-mouse-down x y button clicks)
+  (define (wm-mouse-down x y button clicks . mods)
     (set! *mouse-x* x)
     (set! *mouse-y* y)
     (set! *mouse-button* button)
+    (set! *mouse-mods* (if (pair? mods) (car mods) '()))
     (let ([h (screen-at x y)])
       (case (and h (car h))
         [(surface) (surface-mouse! h 'down x y button clicks)]

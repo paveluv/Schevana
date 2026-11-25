@@ -116,8 +116,9 @@
   (import (chezscheme)
           (only (schevana base) at-load clamp define-hook filter-map
                 library-layer list-index plist-ref string-prefix? string-split)
-          (only (schevana core) *input-step?* *scale* after alpha app
-                app-icon app-title clipboard-get clipboard-set! close-window!
+          (only (schevana core) *input-step?* *mouse-mods* *scale* after alpha
+                app app-icon app-title clipboard-get clipboard-set!
+                close-window!
                 color-default! color-word content-rect core0-set-cursor!
                 current-window define-paint define-part define-shader-layout
                 draw-line draw-polyline draw-scale draw-shadow draw-text
@@ -1778,6 +1779,10 @@
   ;; rather than under them.
   (at-load
    (theme-default! 'label-section-font 'ui-small))
+  ;; how much a surface takes on a hue it stands for (a REPL's, by its
+  ;; kind): none on a screen one bit deep
+  (at-load
+   (theme-default! 'surface-tint 0.06))
   ;; the font of a label's hint (the CADR's small italic, TR10I)
   (at-load
    (theme-default! 'label-hint-font 'ui-small))
@@ -2481,7 +2486,10 @@
                  [out? (and r #t)]   ; the whole region its frame leaves
                  [bw (if out? (list-ref r 3) (ui-scrollbar-width))]
                  [hover (and win (window-hover win))]
-                 [always? (eq? (theme 'scrollbar-show) 'always)]
+                 [show (theme 'scrollbar-show)]
+                 ;; in the margin (the CADR's), the bar is there to press
+                 ;; whenever its view scrolls, and shows under the pointer
+                 [always? (memq show '(always bar))]
                  [over? (and (eq? hover 'content) (ui-hover? ui x y w h))]
                  [xbid (and wide? (list id 'across 'bar))]
                  [across? (and wide? (> wide w)
@@ -2537,7 +2545,8 @@
          (ui-scrollbar-areas y x h w start size)))
 
   (define (ui-scrollbar-of ui id x y w h off content view set-off! across?)
-    (let* ([most (max 0 (- content view))]
+    (let* ([lispm? (eq? (theme 'scrollbar-input) 'lispm)]
+           [most (max 0 (- content view))]
            [start (/ off content)] [size (/ view content)]
            [areas (if across?
                       (ui-scrollbar-areas-across x y w h start size)
@@ -2557,17 +2566,42 @@
       (define (thumb-to! p)
         (set-off! (clamp (* most (/ (- p k0) (max 1 (- kl tl)))) 0 most))
         #t)
-      (ui-region! ui id x y w h 'focus 'keep 'doc '((L . "Scroll")) 'on
+      (ui-region! ui id x y w h 'focus 'keep
+        'doc (if lispm?
+                 '((L . "Scroll down") (M . "Scroll to position")
+                   (R . "Scroll up"))
+                 '((L . "Scroll")))
+        'on
         (lambda (ev)
           (case (car ev)
             [(press)
-             (and (eq? (list-ref ev 3) 'left)
-                  (let* ([p (if across? (cadr ev) (caddr ev))]
-                         [grab (if (<= t0 p (+ t0 tl)) (- p t0) (/ tl 2))])
-                    (ui-memo! ui (list id 'grab) grab)
-                    (thumb-to! (- p grab))))]
-            [(drag) (thumb-to! (- (if across? (cadr ev) (caddr ev))
-                                  (ui-memo ui (list id 'grab) 0)))]
+             (if lispm?
+                 (let* ([button (list-ref ev 3)] [clicks (list-ref ev 4)]
+                        [key (list id 'click)] [last (ui-memo ui key #f)]
+                        [double? (and (theme 'scrollbar-double-click)
+                                      (> clicks 1))]
+                        ;; SDL sends a double click's single press first;
+                        ;; the double starts again from before it
+                        [base (if (and double? last (eq? button (car last)))
+                                  (cdr last)
+                                  off)])
+                   (when (= clicks 1) (ui-memo! ui key (cons button off)))
+                   (set-off! (ui-lispm-scroll-offset
+                              areas across? (if across? x y) (if across? w h)
+                              (if across? (cadr ev) (caddr ev)) base content
+                              view button
+                              (or double?
+                                  (and (eq? button 'left)
+                                       (memq 'shift *mouse-mods*) #t))))
+                   #t)
+                 (and (eq? (list-ref ev 3) 'left)
+                      (let* ([p (if across? (cadr ev) (caddr ev))]
+                             [grab (if (<= t0 p (+ t0 tl)) (- p t0) (/ tl 2))])
+                        (ui-memo! ui (list id 'grab) grab)
+                        (thumb-to! (- p grab)))))]
+            [(drag) (and (not lispm?)
+                         (thumb-to! (- (if across? (cadr ev) (caddr ev))
+                                       (ui-memo ui (list id 'grab) 0))))]
             ;; The wheel scrolls as over the view, since an outside bar lies
             ;; over no view; over a bar across, turned either way.
             [(wheel)
@@ -2577,11 +2611,50 @@
                     [new (clamp (- off (* d (ui-scroll-step))) 0 most)])
                (and (not (= new off)) (begin (set-off! new) #t)))]
             [else #f])))
-      (if across?
-          (with-transpose
-            (ui-draw-scrollbar y x h w (cons 'across (ui-flags ui id))
-                               start size))
-          (ui-draw-scrollbar x y w h (ui-flags ui id) start size))))
+      ;; in the margin, drawn only while the pointer is over it or it is
+      ;; held, its region kept so that the first press there takes
+      (when (or (not (eq? (theme 'scrollbar-show) 'bar))
+                (ui-active? ui id) (memq 'hover (ui-flags ui id)))
+        (if across?
+            (with-transpose
+              (ui-draw-scrollbar y x h w (cons 'across (ui-flags ui id))
+                                 start size))
+            (ui-draw-scrollbar x y w h (ui-flags ui id) start size)))))
+
+  ;; The Lisp machines' scrolling by the bar (TV's three buttons; Genera's
+  ;; end boxes): returns the offset after a press of button at p along a
+  ;; bar from b, l long, over a view showing content from off. The left
+  ;; button brings the line pointed at to the top, the right the top line
+  ;; to the pointer, and the middle that part of the content into view;
+  ;; twice (the CADR's double click, or Shift and the left button) the
+  ;; pointed line goes to the other end. In an end box (Genera's up and
+  ;; down) the left and right buttons scroll a line (up) or a page (down),
+  ;; and the middle goes to the start or the end.
+  (define (ui-lispm-scroll-offset areas across? b l p off content view button
+                                  twice?)
+    (let* ([lh (theme 'scrollbar-line-height)]
+           [d (clamp (- p b) 0 l)]
+           [line (* lh (floor (/ d lh)))]
+           [page (* lh (max 1 (floor (/ (- view (- lh 1)) lh))))]
+           [most (max 0 (- content view))]
+           [end (find (lambda (a)
+                        (and (memq (car a) '(up down))
+                             (let ([a0 (if across? (cadr a) (caddr a))]
+                                   [al (if across? (cadddr a) (list-ref a 4))])
+                               (and (<= a0 p) (< p (+ a0 al))))))
+                      areas)])
+      (clamp (if end
+                 (case button
+                   [(middle) (if (eq? (car end) 'up) 0 most)]
+                   [(left) (+ off (if (eq? (car end) 'up) lh page))]
+                   [(right) (- off (if (eq? (car end) 'up) lh page))]
+                   [else off])
+                 (case button
+                   [(middle) (* lh (round (/ (* content d) (* (max 1 l) lh))))]
+                   [(left) (+ off line (if twice? (- page) 0))]
+                   [(right) (+ off (- line) (if twice? page 0))]
+                   [else off]))
+             0 most)))
 
   ;; Scrolls view id so that [top, bottom) of its content is in view (its
   ;; top first), and invalidates the window when the offset moved. The
@@ -2601,6 +2674,16 @@
    (theme-default! 'scrollbar-side 'right))
   (at-load
    (theme-default! 'scrollbar-show 'always))
+  ;; how the bar is worked: drag its thumb, or the Lisp machines' three
+  ;; buttons (lispm: ui-lispm-scroll-offset), a double click going to the
+  ;; other end (the CADR's), a line being so many pixels
+  (at-load
+   (theme-default! 'scrollbar-input 'drag))
+  (at-load
+   (theme-default! 'scrollbar-double-click #f))
+  (at-load
+   (theme-default! 'scrollbar-line-height
+                   (theme-rule (font-line-height 'ui))))
   ;; The room content keeps clear for a bar always shown at its left or
   ;; right: a margin beyond the bar's width, so that the bar never covers
   ;; what it scrolls; #f for none (the bar lies over the content). A bar

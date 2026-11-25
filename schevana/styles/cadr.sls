@@ -149,7 +149,12 @@
      'genera-gray (stipple 'text #f "#..." "...." "..#." "....")
      'ui-draw-scrollbar 'cadr-scrollbar
      'ui-scrollbar-areas 'cadr-scrollbar-areas
-     'scrollbar-show 'hover
+     ;; the bar in the margin, shown while the mouse is there, worked by
+     ;; three buttons, a double click going to the other end
+     ;; (mouse.lisp:936-1010)
+     'scrollbar-show 'bar
+     'scrollbar-input 'lispm
+     'scrollbar-double-click #t
      'ui-draw-slider 'cadr-slider
      'ui-draw-progress 'cadr-progress
      ;; a bar a line of the small font high, so that its percentage shows

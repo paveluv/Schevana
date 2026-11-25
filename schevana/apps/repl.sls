@@ -125,12 +125,14 @@
       (sandbox teal repl-bg-sandbox)
       (thread orange repl-bg-thread)))
 
-  ;; The backgrounds, tinted by the prompt's color. They are rules, so that
-  ;; they follow the style and palette as they change, as an open REPL
-  ;; must.
+  ;; The backgrounds, tinted by the prompt's color as much as the look
+  ;; tints a surface (surface-tint). They are rules, so that they follow
+  ;; the style and palette as they change, as an open REPL must.
   (at-load
    (for-each (lambda (key tint)
-               (color-default! key (theme-rule (mix 'bg-0 tint 0.06))))
+               (color-default! key
+                               (theme-rule
+                                (mix 'bg-0 tint (theme 'surface-tint)))))
              '(repl-bg-private repl-bg-world repl-bg-pure repl-bg-sandbox
                repl-bg-thread)
              '(accent-2 accent green teal orange)))

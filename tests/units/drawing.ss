@@ -284,3 +284,29 @@
                            (iota 16))])
          (printf "  ~s\n" turned)
          (equal? turned traded)))
+
+(check "a look on a screen one bit deep (drawing-antialias #f) draws its \
+        shapes crisp: a circle's and a slanted line's pixels are all ink or \
+        paper, where they are otherwise smoothed with gray"
+       (let* ([scene (lambda ()
+                       (fill-box 0 0 24 24 #x000000)
+                       (fill-circle 8 8 5.5 #xffffff)
+                       (draw-line 2 22 22 14 #xffffff 1.5))]
+              [grays (lambda ()
+                       (let ([p (image 24 24 1 scene)])
+                         (length
+                          (filter (lambda (c)
+                                    (not (memv c '(#xff000000 #xffffffff))))
+                                  (apply append
+                                         (map (lambda (y)
+                                                (map (lambda (x)
+                                                       (pixel-at p x y))
+                                                     (iota 24)))
+                                              (iota 24)))))))]
+              [smooth (grays)]
+              [crisp (begin (set-theme! 'drawing-antialias #f)
+                            (let ([n (grays)])
+                              (reset-style! 'drawing-antialias)
+                              n))])
+         (printf "  ~a gray pixels smoothed, ~a crisp\n" smooth crisp)
+         (and (> smooth 0) (= crisp 0))))

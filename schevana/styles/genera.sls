@@ -896,8 +896,13 @@
      'wallpaper 'flat
      'draw-wallpaper 'genera-draw-wallpaper
      'corner-radius 0   ; square, and so is everything drawn in it
-     ;; a screen one bit deep: no half-ink glyph for what can't be used
+     ;; a screen one bit deep: shapes crisp, every pixel ink or paper, and
+     ;; no half-ink glyph for what can't be used
+     'drawing-antialias #f
      'disabled-glyph-opacity 1
+     'fill-glow #f
+     'surface-tint 0
+     'transcript-line-spacing 2
      'genera-border 2
      'genera-margin 4
      'genera-label-font 'ui-italic
@@ -1065,6 +1070,9 @@
      'menu-hover 'outline
      'mouse-doc #t
      'scrollbar-side 'left
+     ;; the bar worked as the Lisp machines' was, by three buttons
+     'scrollbar-input 'lispm
+     'scrollbar-line-height (theme-rule (+ (font-line-height 'ui) 2))
      ;; the content kept clear of the scroll bar, as beside a pane's margin
      'scrollbar-margin 4
      'options '(palette

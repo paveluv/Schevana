@@ -102,10 +102,12 @@
                       (= homed 0))))))))
 
 (check "where the style's thumb travels along a track shorter than the bar \
-        (Genera's, between its end boxes), a press on the thumb leaves the \
-        view where it is, and a drag moves it as far as the track says"
+        (Genera's, between its end boxes, its thumb dragged as Settings \
+        offers), a press on the thumb leaves the view where it is, and a \
+        drag moves it as far as the track says"
        (begin
          (set-style! 'genera)
+         (set-theme! 'scrollbar-input 'drag)
          (let ([win (ui-scroll-test-window)])
            (steps 2)
            (ui-scroll-test-wheel! win -2)
@@ -132,6 +134,7 @@
                      [want (+ before (* 20 (/ 800 (- (cadddr track)
                                                      (cadddr thumb)))))])
                  (close-window! win)
+                 (reset-style! 'scrollbar-input)
                  (set-style! 'mac)
                  (printf "  ~s\n" (list before pressed dragged want))
                  (and (> before 0) (= pressed before)
@@ -197,3 +200,92 @@
                   (= (cadddr side) (- 200 bw))
                   (= (+ (car across) (caddr across)) (car side))
                   (= far 500))))))
+
+;; Presses button on the view's bar, d down it, with mods held, clicks
+;; times; returns the view's offset after.
+(define (ui-scroll-test-click! win d button clicks . mods)
+  (let*-values ([(ui) (window-ref win 'ui)]
+                [(f) (ui-region-frame (test-region ui '(v bar)))]
+                [(cx cy cw ch) (content-rect win)])
+    (let ([x (exact (round (+ cx (car f) (/ (caddr f) 2))))]
+          [y (exact (round (+ cy (cadr f) d)))])
+      (inject! `(mouse-move ,x ,y) `(mouse-down ,x ,y ,button ,clicks ,mods)
+               `(mouse-up ,x ,y ,button))
+      (steps 2)
+      (ui-scroll-test-off win))))
+
+(check "the Lisp machines' clicks on the bar (scrollbar-input lispm): the \
+        left button brings the line pointed at to the top, the right the \
+        top line to the pointer, the middle that part of the content; \
+        Shift and the left button the pointed line to the bottom"
+       (begin
+         (set-theme! 'scrollbar-input 'lispm)
+         (let* ([win (ui-scroll-test-window)]
+                [lh (theme 'scrollbar-line-height)]
+                [line (* lh (floor (/ 90 lh)))]
+                [page (* lh (max 1 (floor (/ (- 200 (- lh 1)) lh))))])
+           (steps 2)
+           (test-move! win 'v)
+           (steps 1)
+           (let* ([left (ui-scroll-test-click! win 90 'left 1)]
+                  [right (ui-scroll-test-click! win 90 'right 1)]
+                  [middle (ui-scroll-test-click! win 100 'middle 1)]
+                  [shifted (begin (ui-scroll-test-click! win 0 'middle 1)
+                                  (ui-scroll-test-click! win 90 'left 1
+                                                         'shift))])
+             (close-window! win)
+             (reset-style! 'scrollbar-input)
+             (printf "  ~s\n" (list left right middle shifted))
+             (and (= left line) (= right 0)
+                  (= middle (* lh (round (/ 500 lh))))
+                  (= shifted (max 0 (- line page))))))))
+
+(check "Genera's end boxes: the left button scrolls a line from the top \
+        box and a page from the bottom one, the middle goes to the start \
+        or the end; the CADR's double click sends the pointed line to the \
+        bottom, from where the view was before its first press"
+       (begin
+         (set-style! 'genera)
+         (let* ([win (ui-scroll-test-window)]
+                [lh (theme 'scrollbar-line-height)]
+                [page (* lh (max 1 (floor (/ (- 200 (- lh 1)) lh))))])
+           (steps 2)
+           (test-move! win 'v)
+           (steps 1)
+           (let* ([up (ui-scroll-test-click! win 2 'left 1)]
+                  [down (ui-scroll-test-click! win 198 'left 1)]
+                  [end (ui-scroll-test-click! win 198 'middle 1)]
+                  [start (ui-scroll-test-click! win 2 'middle 1)])
+             (close-window! win)
+             (set-style! 'cadr)
+             (let ([win (ui-scroll-test-window)]
+                   [lh (theme 'scrollbar-line-height)])
+               (steps 2)
+               (test-move! win 'v)
+               (steps 1)
+               (let* ([line (* lh (floor (/ 150 lh)))]
+                      [page (* lh (max 1 (floor (/ (- 200 (- lh 1)) lh))))]
+                      [single (ui-scroll-test-click! win 150 'left 1)]
+                      [double (ui-scroll-test-click! win 150 'left 2)])
+                 (close-window! win)
+                 (set-style! 'mac)
+                 (printf "  ~s\n" (list up down end start single double))
+                 (and (= up lh) (= down (+ lh page)) (= end 800) (= start 0)
+                      (= single line)
+                      (= double (max 0 (- line page))))))))))
+
+(check "the CADR's bar lies in the margin (scrollbar-show bar): its region \
+        is there before the pointer is, so that the first press in the \
+        margin scrolls, though the bar shows only under the pointer"
+       (begin
+         (set-style! 'cadr)
+         (let ([win (ui-scroll-test-window)])
+           (steps 2)
+           (test-move! win 'v)
+           (steps 1)
+           (let* ([there (and (test-region (window-ref win 'ui) '(v bar)) #t)]
+                  [scrolled (ui-scroll-test-click! win 150 'left 1)])
+             (close-window! win)
+             (set-style! 'mac)
+             (printf "  ~s\n" (list there scrolled))
+             (and there (> scrolled 0))))))
