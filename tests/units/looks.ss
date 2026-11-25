@@ -1865,11 +1865,13 @@
 ;; at the right in the faint font (Genera's italic), never runs into its
 ;; words, which are centered left of the keys, and the menu is wide enough
 ;; to hold both.
-(check "a Genera menu with keys keeps them in a column of their own: a \
-        clear gap between an entry's words and its key, and the key whole \
-        inside the menu"
+(check "a centered menu that shows keys (menu-keys, which Genera's and the \
+        CADR's don't) keeps them in a column of their own: a clear gap \
+        between an entry's words and its key, and the key whole inside the \
+        menu"
        (begin
          (set-style! 'genera)
+         (set-theme! 'menu-keys #t)
          (open-menu! 300 300 (list (cons "Bind to $w for the REPL" void)
                                    (cons "Maximize\tCtrl+Shift+M" void)
                                    (cons "Close\tCtrl+Shift+W" void)))
@@ -1893,10 +1895,81 @@
                 [r (list gap (and (pair? cols)
                                   (- (+ x w) (car (last-pair cols)))))])
            (close-menu!)
+           (reset-style! 'menu-keys)
            (set-style! 'mac)
            (steps 1)
            (printf "  ~s\n" r)
            (and (>= gap 16) (cadr r) (> (cadr r) 2)))))
+
+;; The widest blank run of columns in an entry's row (area a, in (x y w h)
+;; of the menu), in the ink it is drawn in: a word alone has only its own
+;; letters' gaps; an entry with a key has a gap before the key.
+(define (menu-row-gap a)
+  (let* ([x (exact (floor (car a)))] [y (exact (floor (cadr a)))]
+         [w (exact (floor (caddr a)))] [h (exact (floor (cadddr a)))]
+         [ink (color->pixel 'text)]
+         [cols (filter (lambda (cx)
+                         (exists (lambda (dy)
+                                   (= (canvas-pixel cx (+ y dy)) ink))
+                                 (iota h)))
+                       (map (lambda (i) (+ x 2 i)) (iota (- w 4))))])
+    (let loop ([cs cols] [best 0])
+      (if (or (null? cs) (null? (cdr cs)))
+          best
+          (loop (cdr cs) (max best (- (cadr cs) (car cs) 1)))))))
+
+(check "a Genera menu is its entries' names alone (the captures of Peek's \
+        and the Debugger's menus, and PUI's two item options), and its \
+        filter row shows only once something is typed"
+       (begin
+         (set-style! 'genera)
+         (inject! '(mouse-move 10 10))
+         (open-menu! 300 300 (list (cons "Alpha\tCtrl+A" void)
+                                   (cons "Beta\tCtrl+Shift+B" void))
+                     'filter #t)
+         (steps 2)
+         (let* ([areas (placed-menu-areas *menu*)]
+                [no-row? (not (assq 'filter areas))]
+                [gap (menu-row-gap (cdr (assv 1 areas)))])
+           (inject! '(text "b"))
+           (steps 1)
+           (let* ([areas (placed-menu-areas *menu*)]
+                  [row? (and (assq 'filter areas) #t)]
+                  [shown (map car (menu-entries *menu*))])
+             (close-menu!)
+             (set-style! 'mac)
+             (steps 1)
+             (let ([r (list no-row? (< gap 16) row? (length shown))])
+               (printf "  ~s\n" r)
+               (equal? r '(#t #t #t 1)))))))
+
+(check "a Genera menu is wide enough for an entry that can't be chosen now, \
+        which is in italic, so that its words stay inside the menu"
+       (begin
+         (set-style! 'genera)
+         (inject! '(mouse-move 10 10))
+         (open-menu! 300 300 (list (cons "Cut" void)
+                                   (cons "Paste as plain text" #f)))
+         (steps 2)
+         (let* ([a (map (lambda (v) (exact (floor v)))
+                        (cdr (assv 1 (placed-menu-areas *menu*))))]
+                [x (car a)] [y (cadr a)] [w (caddr a)] [h (cadddr a)]
+                [ink (color->pixel 'text)]
+                [cols (filter (lambda (cx)
+                                (exists (lambda (dy)
+                                          (= (canvas-pixel cx (+ y dy)) ink))
+                                        (iota h)))
+                              (map (lambda (i) (+ x 2 i)) (iota (- w 4))))]
+                [r (and (pair? cols)
+                        (list (- (car cols) x)
+                              (- (+ x w) (car (last-pair cols)))))])
+           (close-menu!)
+           (set-style! 'mac)
+           (steps 1)
+           (printf "  ~s\n" r)
+           ;; clear of both borders, which are 2 pixels
+           (and r (> (car r) 3) (> (cadr r) 3)))))
+
 
 ;; What only the mouse shows on the Lisp machines is the box around what it
 ;; is over; a part that had no box of its own there now has one, and

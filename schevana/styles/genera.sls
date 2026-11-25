@@ -1104,10 +1104,12 @@
      ;; out from it (Peek's Reset menu)
      'menu-highlight 'ink
      'menu-highlight-outset 2
-     ;; the filter's hint as the machine would type it, and the menu as
-     ;; wide
-     'menu-filter-hint "Type to filter..."
-     'menu-fit-filter #t
+     ;; a menu is its items' names alone: no keys (the captures of Peek's
+     ;; and the Debugger's menus; a menu item takes a character style and a
+     ;; documentation string, PUI p.2011), and no filter row until
+     ;; something is typed (menus of a gray shadow take typing, UG p.2764)
+     'menu-keys #f
+     'menu-filter-hint #f
      'menu-ink 'text
      'menu-ink-selected 'text
      'menu-ink-pressed 'window-bg

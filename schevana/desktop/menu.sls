@@ -33,9 +33,9 @@
                 with-place world-value)
           (only (schevana kits menu) make-menu menu-x menu-y menu-sel
                 menu-sel-set! menu-filter menu-filter-set! menu-filter?
-                menu-tag menu-label-text menu-label-key menu-label-width
-                menu-entries menu-entry-action menu-entry-ready?
-                menu-entry-icon menu-icon-size)
+                menu-tag menu-label-text menu-label-key menu-entries
+                menu-entry-action menu-entry-ready? menu-entry-icon
+                menu-icon-size)
           (only (schevana kits px) px-invert)
           (only (schevana kits text) text-ink)
           (only (schevana kits ui) ui-menu-open-tag ui-menu-open!
@@ -193,11 +193,9 @@
           (apply (lambda (ex ey ew eh)
                    (let ([tx (with-place 'menu
                                (lambda ()
-                                 (menu-text-left m ex ew
-                                                 (text-width
-                                                  (menu-label-text
-                                                   (car (list-ref es i)))
-                                                  (theme 'menu-font)))))])
+                                 (menu-text-left
+                                  m ex ew
+                                  (menu-entry-text-width (list-ref es i)))))])
                      (values (- x (- tx 1 (car box)))
                              (- y (- ey (cadr box)) 1))))
                  (cdr a))
@@ -237,6 +235,20 @@
           [make (theme-part 'faint-text-font)])
       (if make (make font) font)))
 
+  ;; Returns how wide an entry's words are as they are drawn: in the menu's
+  ;; font, or, for an entry that can't be chosen now, as faint text has it
+  ;; (Genera's italic).
+  (define (menu-entry-text-width e)
+    (text-width (menu-label-text (car e))
+                (if (menu-entry-ready? e)
+                    (theme 'menu-font)
+                    (menu-key-font))))
+
+  ;; Returns the room an entry's own key takes after its words, or 0.
+  (define (menu-own-key-room e)
+    (let ([k (menu-label-key (car e))])
+      (if k (+ 24 (text-width k (menu-key-font))) 0)))
+
   ;; Returns the room the keys of m's entries take after their text, in a
   ;; menu whose text is centered: the widest key and the gap before it, or
   ;; none. (Text at the left needs no column: each entry's key goes at the
@@ -269,14 +281,11 @@
                            (if (pair? e)
                                (max acc (+ (theme 'menu-width-extra)
                                            (* 2 (theme 'menu-text-x)) icons
+                                           (menu-entry-text-width e)
                                            (if (or (> keys 0)
                                                    (not (theme 'menu-keys)))
-                                               (+ keys
-                                                  (text-width
-                                                   (menu-label-text (car e))
-                                                   (theme 'menu-font)))
-                                               (menu-label-width
-                                                (car e) (theme 'menu-font)))))
+                                               keys
+                                               (menu-own-key-room e))))
                                acc))
                          (if (and (menu-filter? m) (theme 'menu-fit-filter)
                                   (theme 'menu-filter-hint))
@@ -473,7 +482,7 @@
                                               (memq 'pressed flags))
                                          'menu-ink-pressed]
                                         [else 'menu-ink-selected]))])
-                 (let* ([tw (text-width text font)]
+                 (let* ([tw (menu-entry-text-width e)]
                         [tx (menu-snap (menu-text-left m x w tw))]
                         [ty (menu-snap (if (theme 'menu-text-top)
                                            y
