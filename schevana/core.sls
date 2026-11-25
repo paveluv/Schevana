@@ -116,8 +116,8 @@
     desktop-rect app app-name app-title app-launch app-icon *apps*
     define-app apps open-window detached-window new-window-position
     cascade-reset! place-window! windows focused-window visible? maximized?
-    find-window window-ref window-set! window-on! window-bg in-window-theme
-    window-setting
+    window-covered? find-window window-ref window-set! window-on! window-bg
+    in-window-theme window-setting
     frame-insets frame-regions frame-radius frame-bleed content-rect
     window-content-size window-local window-call window-crash!
     window-modal-child focus-window! close-window! minimize-window!
@@ -264,8 +264,8 @@
                 define-strip desktop-rect app app-name app-title app-launch
                 app-icon define-app apps open-window detached-window
                 cascade-reset! place-window! windows focused-window visible?
-                maximized? find-window window-ref window-set! window-on!
-                window-bg
+                maximized? window-covered? find-window window-ref window-set!
+                window-on! window-bg
                 in-window-theme window-setting frame-insets frame-regions
                 frame-radius frame-bleed content-rect window-content-size
                 window-local window-call window-crash! window-modal-child

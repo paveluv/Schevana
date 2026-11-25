@@ -302,3 +302,32 @@
 (set! *apps* (remp (lambda (a) (memq (app-name a)
                                      '(windows-iconed windows-plain)))
                    *apps*))
+
+(check "a window is covered while one above it, shown and with a frame, \
+        overlaps it (window-covered?): not by one below, nor one apart, nor \
+        a frameless one; and its frame is drawn again when that changes"
+       (let* ([a (open-window "A" 'size '(200 . 120) 'pos '(100 . 100))]
+              [b (open-window "B" 'size '(200 . 120) 'pos '(500 . 100))]
+              [drawn 0]
+              [c (open-window "C" 'size '(60 . 40) 'pos '(150 . 150)
+                              'frameless #t)])
+         (steps 2)
+         (let* ([apart (window-covered? a)]
+                [count (lambda () (fluid-let ([draw-window
+                                               (let ([d draw-window])
+                                                 (lambda (w)
+                                                   (when (eq? w a)
+                                                     (set! drawn (+ drawn 1)))
+                                                   (d w)))])
+                                    (move-window! b 200 140)
+                                    (steps 2)
+                                    drawn))]
+                [redrawn (count)]
+                [over (window-covered? a)]
+                [under (window-covered? b)])
+           (close-window! a)
+           (close-window! b)
+           (close-window! c)
+           (steps 1)
+           (printf "  ~s\n" (list apart redrawn over under))
+           (and (not apart) (> redrawn 0) over (not under)))))

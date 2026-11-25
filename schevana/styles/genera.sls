@@ -43,9 +43,10 @@
                 draw-text fill-box fill-wallpaper font font-ascent
                 font-char-width
                 font-family font-line-height font-size
-                frame-insets get-font
+                get-font
                 screen-h screen-w stipple stroke-box stroke-circle text-width
-                theme theme-default! theme-rule window-bg window-h window-ref
+                theme theme-default! theme-rule window-bg window-covered?
+                window-h window-ref
                 window-title window-w with-clip with-place)
           (only (schevana kits px) px-bitmap-text px-bits px-invert px-bevel)
           (schevana styles genera font-5x5)
@@ -99,13 +100,14 @@
                    (text-fit (window-title win) (- w (* 2 (+ b m))) f)
                    'text f))))
 
-  ;; A window that is not selected is grayed over, as Genera grays a window
-  ;; it is not using: a sparse stipple of ink on clear paper (about 6 %,
-  ;; report:47).
+  ;; A window partly covered by another is grayed over, frame and all, as
+  ;; Genera grays a window it has deexposed: a sparse stipple of ink on
+  ;; clear paper (about 6 %, report:47). Exposure is not selection: a
+  ;; window wholly in view stays clear, selected or not, and only a window
+  ;; covers one, not a menu or what a dialog lies over (PUI p.1929).
   (define (genera-draw-over win x y w h focused? hover pressed)
-    (unless focused?
-      (let-values ([(l t r b) (frame-insets win)])
-        (fill-box (+ x l) (+ y t) (- w l r) (- h t b) 'genera-gray))))
+    (when (window-covered? win)
+      (fill-box x y w h 'genera-gray)))
 
   ;;; the who line
 

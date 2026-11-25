@@ -105,25 +105,51 @@
              (for-each picture-free! (list a b narrow plain))
              (and (> (car r) 0) (= (cadr r) 0))))))
 
-(check "Genera grays a window not selected with a sparse stipple, Genera \
-        8.3's 16 by 8 tile, and not the selected one"
+(check "Genera grays a window that another covers, selected or not, with \
+        a sparse stipple, Genera 8.3's 16 by 8 tile, frame and all; one \
+        wholly in view stays clear, selected or not (PUI p.1929); the CADR \
+        grays none"
        (let* ([a (open-window "A" 'size '(200 . 120) 'pos '(100 . 100)
                               'window-style 'genera)]
               [b (open-window "B" 'size '(200 . 120) 'pos '(500 . 100)
-                              'window-style 'genera)])
+                              'window-style 'genera)]
+              ;; the first stipple dot in a's top-left corner, which b never
+              ;; covers
+              [dot (lambda ()
+                     (canvas-pixel (* 16 (ceiling (/ (window-x a) 16)))
+                                   (* 8 (ceiling (/ (window-y a) 8)))))]
+              [colors (with-style 'genera
+                        (lambda () (list (color->pixel 'text)
+                                         (color->pixel 'window-bg))))])
+         (focus-window! b)
          (steps 2)
-         (let* ([dot (lambda (win)   ; the first stipple dot in its content
-                       (let-values ([(cx cy cw ch) (content-rect win)])
-                         (canvas-pixel (* 16 (ceiling (/ cx 16)))
-                                       (* 8 (ceiling (/ cy 8))))))]
-                [r (list (dot a) (dot b)
-                         (with-style 'genera
-                           (lambda () (list (color->pixel 'text)
-                                            (color->pixel 'window-bg)))))])
-           (close-window! a)
-           (close-window! b)
-           (steps 1)
-           (equal? (list (car r) (cadr r)) (caddr r)))))
+         (let ([apart (dot)])
+           (move-window! b 200 140)
+           (focus-window! b)
+           (steps 2)
+           (let ([covered (dot)])
+             (focus-window! a)
+             (move-window! b 500 100)
+             (focus-window! b)
+             (steps 2)
+             (let ([clear-again (dot)])
+               (close-window! a)
+               (close-window! b)
+               ;; the CADR's, covered, stay clear
+               (set! a (open-window "A" 'size '(200 . 120) 'pos '(100 . 100)
+                                    'window-style 'cadr))
+               (set! b (open-window "B" 'size '(200 . 120) 'pos '(200 . 140)
+                                    'window-style 'cadr))
+               (focus-window! b)
+               (steps 2)
+               (let ([cadr-dot (dot)])
+                 (close-window! a)
+                 (close-window! b)
+                 (steps 1)
+                 (printf "  ~s\n" (list apart covered clear-again cadr-dot))
+                 (and (= apart (cadr colors)) (= covered (car colors))
+                      (= clear-again (cadr colors))
+                      (= cadr-dot (cadr colors)))))))))
 
 (check "Genera's buttons are command words: plain, boxed under the \
         pointer and while pressed, reversed while chosen"

@@ -171,7 +171,11 @@ its own, under `'places`, to color what sits there, an app's own cells
 included. Plain settings cover the rest: a text's caret (`text-caret`:
 `bar` or `block`) and its selection (`text-selection`: `fill` or
 `underline`), a section label's font and case, how a menu's entries are
-aligned (`menu-align`), and the like.
+aligned (`menu-align`) and how the chosen one shows (`menu-highlight`:
+its row, its text's cell, or a box around its ink), whether shapes are
+smoothed (`drawing-antialias`; not on a screen one bit deep), whether
+glows are drawn (`fill-glow`) and how much a surface takes on a hue
+(`surface-tint`), and the like.
 
 Every place that shows an app draws its icon ([WINDOWS.md](WINDOWS.md#apps)):
 the launcher, the taskbar or the dash, the app grid, and the title bar
@@ -198,17 +202,21 @@ has none, the widget its designers would have made:
   label sits in its bottom-left corner, and you drag the window by it. The
   style covers the whole screen: there is no top bar, and at the bottom
   the who line shows what the mouse buttons do over the selected window.
-  There is no color, and gray is drawn as stipples; words are boxed under
-  the mouse, and what is chosen is in inverse video. Its text is in
+  There is no color, and gray is drawn as stipples, over a window that
+  another covers; words are boxed under the mouse a clear pixel off their
+  ink, and what is chosen is in inverse video. Its scroll bars work as
+  the Lisp machines' did, by the three buttons. Its text is in
   Genera's own bitmap fonts: CPTFONT for code and what an app shows, JESS
   for command words and menus, HL14 bold for titles. Its numbers are
   settings (`genera-border`, `genera-margin`, ...).
 - **The CADR**, from MIT's System 99 sources (BSD), is Genera with a few
   settings changed: a 1-pixel border and margin, the label upright in the
-  code font, and a 3-pixel scroll bar. Its text is in the CADR's own
-  bitmap fonts: CPTFONT nearly everywhere, MEDFNT in menus, HL12 italic
-  for headings, HL10 for choices. (The 5X5 font in which both styles draw
-  people's initials in lozenges is the CADR's too.)
+  code font, and a 3-pixel scroll bar in the margin, shown while the mouse
+  is there, where a double click scrolls to the other end. Its text is in
+  the CADR's own bitmap fonts: CPTFONT nearly everywhere, MEDFNT in
+  menus, HL12 italic for headings, HL10 for choices. (The 5X5 font in
+  which both styles draw people's initials in lozenges is the CADR's
+  too.)
 - **OPEN LOOK** (Sun, 1988) as OpenWindows drew it: olwm's frames drawn
   through OLGX, from XView 3.2's sources on the X11R6 contrib tape, with
   Sun's Functional Specification of 1989 where the code is silent. A
@@ -345,8 +353,13 @@ How a desktop behaves, beyond how it draws, is settings too:
 Among them are `title-double-click` (`maximize`, `shade`, `none`),
 `title-wheel`, `drag-feedback` (`live`, `outline`), `frame-edge` and
 `frame-corner` (the resize edges), `raise-on-click`, `menu-choose`
-(`click`, `release`), `launcher-form` (`menu`, `grid`), `scrollbar-side`
-and `scrollbar-show`, `minimize-to` (`taskbar`, `icons`) and
-`desk-icon-expand` (`double-click`, `middle`), and the bell
+(`click`, `release`), `launcher-form` (`menu`, `grid`), `scrollbar-side`,
+`scrollbar-show` (`always`, `hover`, or `bar`, in the margin while the
+mouse is there) and `scrollbar-input` (`drag` the thumb, or `lispm`: the
+Lisp machines' three buttons, the left bringing the line pointed at to
+the top, the right the top line to the pointer, the middle that part of
+the content, and Shift or a double click the other way round),
+`minimize-to` (`taskbar`, `icons`) and `desk-icon-expand`
+(`double-click`, `middle`), and the bell
 (`bell`: `none`, `screen` or `window`), which `(bell)` rings. A style
 chooses each of them; the built-in styles show what they can do.

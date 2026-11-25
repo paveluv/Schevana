@@ -148,8 +148,13 @@ handler is not called until the window is shown again.
 (maximize-window! hello)
 (focus-window! counter)
 (focused-window)
+(window-covered? hello)                  ; is any of it under another?
 (close-window! hello)
 ```
+
+A window is covered while another above it, shown and with a frame,
+overlaps it; a style may draw a covered window differently (Genera grays
+it over), and its frame is drawn again when that changes.
 
 The option `'above owner` makes a window belong to the window `owner`: it
 stays above its owner, and the two are raised, minimized and closed

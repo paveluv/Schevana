@@ -36,7 +36,8 @@
     find-surface surface-call define-strip desktop-rect app app-name app-title
     app-launch app-icon *apps* define-app apps open-window detached-window
     new-window-position cascade-reset! place-window! windows focused-window
-    visible? maximized? find-window window-ref window-set! window-on! window-bg
+    visible? maximized? window-covered? find-window window-ref window-set!
+    window-on! window-bg
     in-window-theme window-setting frame-insets frame-regions frame-radius
     frame-bleed content-rect window-content-size window-local window-call
     window-crash! window-modal-child focus-window! close-window!
@@ -1211,16 +1212,32 @@
   ;; at each call that those are defined.
   (define-hook (draw-window win) (draw-window* win (eq? win *focus*)))
 
+  ;; Returns #t when a window above win, shown and with a frame, covers any
+  ;; of it: a style may gray a window that is partly hidden (Genera's
+  ;; deexposed ones), and win's frame is drawn again when that changes.
+  (define (window-covered? win)
+    (let loop ([ws *windows*])
+      (and (pair? ws)
+           (not (eq? (car ws) win))
+           (or (let ([a (car ws)])
+                 (and (visible? a) (not (frameless? a))
+                      (< (window-x a) (+ (window-x win) (window-w win)))
+                      (< (window-x win) (+ (window-x a) (window-w a)))
+                      (< (window-y a) (+ (window-y win) (window-h win)))
+                      (< (window-y win) (+ (window-y a) (window-h a)))))
+               (loop (cdr ws))))))
+
   ;; Returns win as a list, drawn from its corner by draw-window. It is drawn
   ;; again when win is asked to draw, or when what its frame is drawn with
-  ;; changes, but not when it moves.
+  ;; changes (whether it is covered too), but not when it moves.
   (define (window-whole-list win)
     (let ([l (window-own win 'wm-list gpu-list-new)])
       (when (window-key-changed! win 'wm-list-key
               *frame-generation* (hashtable-ref (window-props win) 'wm-asked 0)
               *rec-num* *rec-den* (eq? win *focus*) (window-hover win)
               (window-pressed win) (window-w win) (window-h win)
-              (window-title win) (window-state win) (window-error win))
+              (window-title win) (window-state win) (window-error win)
+              (window-covered? win))
         (record-list! l
           (lambda ()
             (with-translation ((- (window-x win)) (- (window-y win)))
