@@ -82,7 +82,7 @@
           world's, and the core's own calls reach a redefinition"
          (eval '(and (for-all top-level-bound?
                               '(compute-rule! sdl-get-ticks-ns rec-take!
-                                gpu-frame! *sdl-window* theme-busy
+                                gpu-frame! *sdl-window* *theme-computing*
                                 desktop-options))
                      (let ([real theme])
                        (dynamic-wind

@@ -30,7 +30,12 @@
     (syntax-rules () [(_ e) (make-theme-rule (lambda () e))]))
 
   (define-made theme-unset (list 'unset))
-  (define-state theme-busy (list 'busy))   ; a key's value while its rule runs
+
+  ;; The rules that this computation is in the middle of, innermost first,
+  ;; each (table . key). A fluid-let binds it, so a process switched out
+  ;; inside a rule takes its own list along, and whoever reads the rule
+  ;; meanwhile has a list of its own, without that rule.
+  (define-state *theme-computing* '())
 
   ;; Returns thunk's values with t (a resolved theme) in effect while it
   ;; runs, so that a look that isn't on is read as if it were (for a preview
@@ -42,17 +47,22 @@
   (define (theme key)
     (let ([v (hashtable-ref *theme* key theme-unset)])
       (cond [(eq? v theme-unset) (errorf 'theme "unknown theme key ~s" key)]
-            [(theme-rule? v) (compute-rule! key v)]
-            [(eq? v theme-busy)
-             (errorf 'theme "~s is computed from itself" key)]
+            [(theme-rule? v) (compute-rule! *theme* key v)]
             [else v])))
 
-  (define (compute-rule! key r)
-    (hashtable-set! *theme* key theme-busy)
-    (let ([v (guard (c [#t (hashtable-set! *theme* key r) (raise c)])
-               ((theme-rule-box-thunk r)))])
-      (hashtable-set! *theme* key v)
-      v))
+  ;; The rule stays in table t until its value replaces it. So a reader
+  ;; while a process is switched out inside the rule computes it too, and
+  ;; one left unfinished (its process killed, its handler out of time) is
+  ;; computed by the next reader. Only a rule that reads itself, in the
+  ;; same computation, finds itself in the list.
+  (define (compute-rule! t key r)
+    (let ([this (cons t key)])
+      (when (member this *theme-computing*)
+        (errorf 'theme "~s is computed from itself" key))
+      (let ([v (fluid-let ([*theme-computing* (cons this *theme-computing*)])
+                 ((theme-rule-box-thunk r)))])
+        (hashtable-set! t key v)
+        v)))
 
   (define (theme-keys)
     (vector->list

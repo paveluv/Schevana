@@ -76,6 +76,62 @@
                       (string-contains-ci? msg "loop-b"))
                   (eq? *theme* before))))))
 
+;; Returns a theme of one key, units-slow, whose rule gives 42, and a box.
+;; In a process the rule first waits (proc-wait) until the procedure that
+;; the box then holds is called: the process is switched out inside the
+;; rule, as a preemption leaves it, for as long as a check likes. With
+;; self? the rule then reads itself.
+(define (waiting-rule-theme self?)
+  (let ([go (box #f)] [t (make-eq-hashtable)])
+    (hashtable-set! t 'units-slow
+                    (theme-rule
+                     (begin
+                       (when (current-proc)
+                         (proc-wait 'units (lambda (k) (set-box! go k))))
+                       (if self? (theme 'units-slow) 42))))
+    (values t go)))
+
+;; Returns units-slow of theme t, read where this runs, or the message of
+;; what the read raised.
+(define (read-units-slow t)
+  (guard (c [#t (condition->string c)])
+    (call-with-theme t (lambda () (theme 'units-slow)))))
+
+(check "a rule that a process is switched out of is computed again where \
+        it is read meanwhile, not taken for one computed from itself, and \
+        the process then gives the same value"
+       (let-values ([(t go) (waiting-rule-theme #f)])
+         (let* ([done #f]
+                [p (spawn "units" (lambda () (read-units-slow t))
+                          (lambda (status value) (set! done value)))]
+                [waiting (test-wait 1000 (lambda () (unbox go)))]
+                [here (read-units-slow t)])
+           (when waiting (waiting))
+           (test-wait 1000 (lambda () done))
+           (kill! p)
+           (and waiting (eqv? here 42) (equal? done '(42))))))
+
+(check "a rule that a killed process was computing is computed by the \
+        next reader"
+       (let-values ([(t go) (waiting-rule-theme #f)])
+         (let* ([p (spawn "units" (lambda () (read-units-slow t)))]
+                [waiting (test-wait 1000 (lambda () (unbox go)))])
+           (kill! p)
+           (and waiting (eqv? (read-units-slow t) 42)))))
+
+(check "a rule that reads itself is named as computed from itself, though \
+        its process was switched out inside it"
+       (let-values ([(t go) (waiting-rule-theme #t)])
+         (let* ([done #f]
+                [p (spawn "units" (lambda () (read-units-slow t))
+                          (lambda (status value) (set! done value)))]
+                [waiting (test-wait 1000 (lambda () (unbox go)))])
+           (when waiting (waiting))
+           (test-wait 1000 (lambda () done))
+           (kill! p)
+           (and waiting (pair? done) (string? (car done))
+                (string-contains-ci? (car done) "computed from itself")))))
+
 (check "a base color changed re-derives what its rules derive from it"
        (with-mac-settings '()
          (lambda ()
