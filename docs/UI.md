@@ -417,6 +417,17 @@ one comes out as a flat gray). `chart-level-1` to `chart-level-8` say how
 much of something a mark stands for, from faint to strong: a hue that
 fills in, and in Genera a stipple.
 
+`ui-flame` draws where a total goes, level by level: a tree as boxes in
+rows, the root across the top and each node's children under it, a box
+as wide as its share. The app gives the tree and three procedures that
+read a node (its label, its value, its children); a press on a box makes
+it the whole width, and a press on the top box goes back out. A box is an
+outline and a name, so it reads in one bit too. `ui-source` shows lines
+of a program in the mono font, scrolling, with their numbers when the
+first one's is given (`'first`), and one line marked (`'marked`).
+Allocations' Where uses both, and the Pipeline shows a shader's source
+with the second.
+
 ## Boards, cards and marks
 
 A board is columns of cards side by side, as Tasks shows its tasks. The

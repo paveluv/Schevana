@@ -109,6 +109,31 @@
                 (= next (allocations-place! marks next newest))
                 (= (vector-length ticks) (hashtable-size marks))))))
 
+(test-click! allocations-test-win '(tab where))
+(allocations-test-run 40)
+
+(check "Where shows the tap's paths as a flame, under the span that was \
+        open, and the procedures by what their samples come down to: the \
+        hog's draw first, with its file and line"
+       (let ([root (allocations-test-tip '(flame box ()))]
+             [span (allocations-test-tip '(flame box ("Hog, draw")))]
+             [first (allocations-test-tip '(places row 0))])
+         (printf "  ~a\n  ~a\n  ~a\n" root span first)
+         (and (string-contains-ci? root "all:")
+              (string-contains-ci? span "Hog, draw:")
+              (string-contains-ci? first "of the bytes sampled")
+              (not (ui-find allocations-test-ui 'source)))))
+
+(check "a press on a procedure's row shows its source, and a second press \
+        puts it away"
+       (begin
+         (test-click! allocations-test-win '(places row 0))
+         (allocations-test-run 1)
+         (let ([shown (ui-find allocations-test-ui 'source)])
+           (test-click! allocations-test-win '(places row 0))
+           (allocations-test-run 1)
+           (and shown (not (ui-find allocations-test-ui 'source))))))
+
 (test-click! allocations-test-win '(tab collections))
 (allocations-test-run 3)
 

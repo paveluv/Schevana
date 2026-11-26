@@ -4,7 +4,9 @@
 ;;; that are kept sink a generation at a time to where the world rests. The
 ;;; Flow, along the bottom, has a bar for each tick, as tall as what the
 ;;; tick allocated and banded by who, with the collections over it. Who
-;;; lists who allocates, and Collections the log of collections.
+;;; lists who allocates, Where shows which procedures do (the tap's call
+;;; paths as a flame, a table, and the source), and Collections has the
+;;; log of collections.
 ;;;
 ;;; All of it is the profiler's and the allocation service's data
 ;;; ((schevana services profile), (schevana services allocation)), which a
@@ -21,14 +23,16 @@
           (only (schevana kits ui) make-ui ui-bar-chart-bar ui-begin!
                 ui-button ui-button-size ui-checkbox ui-checkbox-size
                 ui-draw-cell ui-draw-label ui-draw-legend ui-draw-surface
-                ui-end! ui-frame ui-handlers ui-icon-grid ui-icon-ink
-                ui-legend-size ui-pad ui-stream ui-stream-new
-                ui-stream-release! ui-stream-send! ui-table ui-table-room
+                ui-end! ui-flame ui-frame ui-handlers ui-icon-grid
+                ui-icon-ink ui-legend-size ui-pad ui-source ui-stream
+                ui-stream-new ui-stream-release! ui-stream-send! ui-table
+                ui-table-room
                 ui-table-row-height ui-tabs ui-tabs-size ui-text-y
                 ui-toolbar)
           (only (schevana services allocation) allocation-collection
-                allocation-collection-count allocation-record!
-                allocation-recording? allocation-young)
+                allocation-collection-count allocation-paths
+                allocation-places allocation-record! allocation-recording?
+                allocation-young)
           (only (schevana services profile) profile-newest-tick profile-ns-label
                 profile-oldest-tick profile-on? profile-subject-label
                 profile-subject? profile-tick-kept? profile-tick-late?
@@ -44,6 +48,62 @@
           [(< n 1048576) (format "~,1f KB" (/ n 1024.0))]
           [(< n 1073741824) (format "~,1f MB" (/ n 1048576.0))]
           [else (format "~,2f GB" (/ n 1073741824.0))]))
+
+  ;; Returns a span as a person reads it, key and part as the tap has
+  ;; them: a window's title or a process's name, a surface's name, and
+  ;; the part where it is a name.
+  (define (allocations-span-label key part)
+    (string-append
+     (cond [(not key) "outside a span"]
+           [(fixnum? key)
+            (profile-subject-label
+             (cons (if (eq? part #t) 'process 'window) key))]
+           [(profile-subject? key) (profile-subject-label key)]
+           [else (format "~a" key)])
+     (if (and part (symbol? part)) (format ", ~a" part) "")))
+
+  ;; Returns the label of a node of the tap's tree (allocation-paths).
+  (define (allocations-node-label node)
+    (let ([what (car node)])
+      (cond [(not what) "all"]
+            [(symbol? what) "…"]
+            [(eq? (car what) 'span)
+             (allocations-span-label (cadr what) (cddr what))]
+            [else (or (car what) "(no name)")])))
+
+  ;; Returns the tap's tree with each span's ways in cut short: under a
+  ;; span, the callers that only lead on (one callee each, and no sample
+  ;; of their own: the loop, the guards, a handler's call) are left out,
+  ;; down to the first procedure that allocates or calls two. A flame's
+  ;; few rows then begin where the paths part.
+  (define (allocations-trim tree)
+    (define (lead node)
+      (if (and (= (cadr node) 0) (pair? (cddddr node))
+               (null? (cdr (cddddr node))))
+          (lead (car (cddddr node)))
+          node))
+    (cons* (car tree) (cadr tree) (caddr tree) (cadddr tree)
+           (map (lambda (span)
+                  (cons* (car span) (cadr span) (caddr span) (cadddr span)
+                         (map lead (cddddr span))))
+                (cddddr tree))))
+
+  ;; Returns a file's name and a line as "draw.sls:670", or "" for none.
+  (define (allocations-place-text file line)
+    (cond [(not file) ""]
+          [line (format "~a:~a" (path-last file) line)]
+          [else (path-last file)]))
+
+  ;; Returns the lines of file as a vector, or #f when it can't be read.
+  (define (allocations-file-lines file)
+    (guard (c [#t #f])
+      (call-with-input-file file
+        (lambda (port)
+          (let loop ([acc '()])
+            (let ([line (get-line port)])
+              (if (eof-object? line)
+                  (list->vector (reverse acc))
+                  (loop (cons line acc)))))))))
 
   ;; The Flow's bands, from the bottom up: who allocated a tick's bytes.
   (define allocations-draw-bands
@@ -210,7 +270,11 @@
 
   (define-app (allocations) "Allocations" 'icon allocations-draw-icon
     (let ([ui (make-ui)]
-          [tab 'who]          ; the view shown: who, collections
+          [tab 'who]          ; the view shown: who, where, collections
+          [paths '(#f 0 0 0)] ; Where's tree, as allocation-paths gives it
+          [places '()]        ; Where's rows, as allocation-places does
+          [place #f]          ; the procedure chosen: (name file line)
+          [files (make-hashtable string-hash string=?)]   ; a file's lines
           [held #f]           ; the tick the app is held at (seq), or #f
           [selected #f]       ; Who's row chosen: a subject
           [opened #f]         ; Collections' row chosen: a seq
@@ -289,6 +353,11 @@
             (max 1 (apply + (map (lambda (seq)
                                    (profile-tick-ref seq 'allocated))
                                  ticks))))
+          (when (eq? tab 'where)
+            (set! paths (allocations-trim (allocation-paths)))
+            (set! places
+              (let ([all (allocation-places)])
+                (list-head all (min 200 (length all))))))
           (set! last-tick newest)
           (set! last (now-ms))))
       ;; Whether Who's numbers are due again: twice a second, or after 30
@@ -302,7 +371,7 @@
                         (or (> (- (now-ms) last) 500)
                             (>= (abs (- newest last-tick)) 30)))))))
       (define (toolbar w)
-        (let-values ([(tw th) (ui-tabs-size '("Who" "Collections"))]
+        (let-values ([(tw th) (ui-tabs-size '("Who" "Where" "Collections"))]
                      [(kw kh) (ui-checkbox-size "Record")]
                      [(bw bh) (ui-button-size "Resume" #f)])
           (ui-toolbar
@@ -311,9 +380,10 @@
             (list tw th
                   (lambda (x y w h)
                     (ui-tabs ui 'tab x y h
-                             '(("Who" . who) ("Collections" . collections))
+                             '(("Who" . who) ("Where" . where)
+                               ("Collections" . collections))
                              tab
-                             (lambda (t) (set! tab t)))))
+                             (lambda (t) (set! tab t) (set! last 0)))))
             (list kw kh
                   (lambda (x y w h)
                     (ui-checkbox ui 'record x y w h "Record"
@@ -381,6 +451,96 @@
                         (if (equal? (car row) selected)
                             "; its share is drawn over the Flow's bars"
                             "")))))
+      ;; Where the bytes are allocated: the tap's call paths as a flame
+      ;; (a span, then the procedures from the outermost caller in); the
+      ;; procedures by what their samples come down to; and the source of
+      ;; the one chosen, its first line marked.
+      (define (draw-where x y w h)
+        (let* ([all (max 1 (caddr paths))]
+               [row-h (ui-table-row-height)]
+               [chosen (and place
+                            (find (lambda (row)
+                                    (equal? place
+                                            (list (cdr (assq 'name row))
+                                                  (cdr (assq 'file row))
+                                                  (cdr (assq 'line row)))))
+                                  places))]
+               [lines (and place (cadr place) (caddr place)
+                           (or (hashtable-ref files (cadr place) #f)
+                               (let ([v (allocations-file-lines
+                                         (cadr place))])
+                                 (hashtable-set! files (cadr place) v)
+                                 v)))]
+               [source-h (if lines (* 10 (font-line-height 'mono-small)) 0)]
+               [flame-h (quotient (- h source-h) 2)]
+               [table-h (- h flame-h source-h 16)])
+          (if (= (caddr paths) 0)
+              (ui-draw-label x y w 0 '(hint wrap)
+                             "No samples yet: the tap records while Record \
+                              is checked, a sample every 64 KB or so.")
+              (ui-flame
+               ui 'flame x y w flame-h paths
+               allocations-node-label caddr cddddr
+               'tip (lambda (node)
+                      (let ([what (car node)])
+                        (format "~a: ~a, ~,1f%~a"
+                                (allocations-node-label node)
+                                (allocations-bytes-text (caddr node))
+                                (/ (* 100.0 (caddr node)) all)
+                                (if (and (pair? what)
+                                         (not (eq? (car what) 'span))
+                                         (cadr what))
+                                    (format " (~a)"
+                                            (allocations-place-text
+                                             (cadr what) (caddr what)))
+                                    ""))))
+               'on-pick (lambda (node)
+                          (let ([what (car node)])
+                            (when (and (pair? what)
+                                       (not (eq? (car what) 'span)))
+                              (set! place what))))))
+          (ui-table
+           ui 'places x (+ y flame-h 8) w table-h
+           (let ([w (ui-table-room w)])
+             `((name "Procedure" ,(* w 0.32))
+               (place "Source" ,(* w 0.26))
+               (own "Own" ,(* w 0.14) right
+                    "The bytes of the samples where it is the innermost \
+                     procedure that has a source: the place in a \
+                     program's own code that they come down to")
+               (self "Self" ,(* w 0.14) right
+                     "The bytes of the samples whose innermost procedure \
+                      it is")
+               (total "Total" ,(* w 0.14) right
+                      "The bytes of the samples it is anywhere in")))
+           places chosen
+           (lambda (row)
+             (let ([it (list (cdr (assq 'name row)) (cdr (assq 'file row))
+                             (cdr (assq 'line row)))])
+               (set! place (and (not (equal? it place)) it))))
+           (lambda (row key cx cy cw ch flags)
+             (let ([ref (lambda (name) (cdr (assq name row)))])
+               (ui-draw-cell
+                cx cy cw ch flags
+                (case key
+                  [(name) (or (ref 'name) "(no name)")]
+                  [(place) (allocations-place-text (ref 'file) (ref 'line))]
+                  [else (allocations-bytes-text (ref key))]))))
+           'tip (lambda (row)
+                  (format "~a: ~a, ~,1f% of the bytes sampled"
+                          (or (cdr (assq 'name row)) "(no name)")
+                          (allocations-bytes-text (cdr (assq 'own row)))
+                          (/ (* 100.0 (cdr (assq 'own row))) all))))
+          (when lines
+            ;; from two lines above the procedure's first on
+            (let* ([line (caddr place)]
+                   [from (max 1 (- line 2))]
+                   [to (min (vector-length lines) (+ from 40))])
+              (ui-source ui 'source x (+ y flame-h 8 table-h 8) w source-h
+                         (map (lambda (i) (vector-ref lines (- i 1)))
+                              (map (lambda (k) (+ from k))
+                                   (iota (max 0 (- to from -1)))))
+                         'first from 'marked (- line from))))))
       ;; What the log has of collection seq, read once.
       (define (collection seq)
         (or (hashtable-ref rows seq #f)
@@ -552,9 +712,10 @@
                              what allocates.")]
             [else
              (when (who-due?) (who-renew!))
-             (if (eq? tab 'who)
-                 (draw-who pad y view-w view-h)
-                 (draw-collections pad y view-w view-h))
+             (case tab
+               [(who) (draw-who pad y view-w view-h)]
+               [(where) (draw-where pad y view-w view-h)]
+               [else (draw-collections pad y view-w view-h)])
              (allocations-draw-column (+ pad view-w pad) y column-w view-h)
              (draw-flow pad (+ y view-h pad) (- w pad pad) flow-h)]))
         (ui-end! ui w h))

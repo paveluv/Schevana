@@ -50,6 +50,13 @@ press on the River goes back to that frame, and Esc lets it go again
 - **Who**: the windows, surfaces and processes by what they allocated,
   a second and a tick, over the last two seconds. A row pressed shows as
   its share of each bar of the Flow.
+- **Where**: which procedures allocate, from the tap's samples. At the
+  top a flame: a span (a window and its part, a surface), and under it the
+  procedures from the callers in, each box as wide as its bytes; a press
+  on a box makes it the whole width, and a press on the top box goes back
+  out. Under it the procedures by what their samples come down to (Own,
+  Self, Total, as `(allocation-places)` has them). A row pressed shows
+  its source, the procedure's first line marked.
 - **Collections**: the log, the newest first: the pass, the pause, what
   was allocated since the collection before and what of it was kept, how
   long its request was held off, which thread performed it, and who asked.

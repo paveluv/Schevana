@@ -94,7 +94,7 @@
           (only (schevana kits ui) ui-frame ui-area ui-gap ui-tree
                 ui-checkbox-box ui-end! ui-begin! ui-handlers ui-pad make-ui
                 ui-dropdown ui-checkbox ui-checkbox-size ui-later! ui-state-my
-                ui-state-mx ui-scroll ui-scrollbar-inset ui-table ui-draw-cell
+                ui-state-mx ui-table ui-draw-cell
                 ui-table-room
                 ui-memo! ui-tree-expand! ui-tree-states ui-memo ui-button
                 ui-stepper ui-control-height ui-stream-release! ui-stream-rows
@@ -103,7 +103,7 @@
                 ui-region! ui-draw-label ui-stream-layout ui-draw-surface
                 ui-button-size ui-live-badge-size ui-label-size ui-stream-room
                 ui-legend-size ui-bar-chart-bar ui-stream-new ui-icon-grid
-                ui-icon-ink)
+                ui-icon-ink ui-source)
           (only (schevana services profile) profile-use-subject profile-use-ms
                 profile-use-phase profile-tick-uses profile-tick-late?
                 profile-tick-phase-ns profile-tick-ns profile-subject-of
@@ -2610,9 +2610,9 @@
                 (ui-draw-label x sy w lh '(dim)
                                (format "Shader ~a, ~a lines of its source"
                                        (shader-name shader) (length lines)))
-                (pipeline-draw-source ui x (+ sy lh 6) w
-                                      (max 0 (- (+ y h) sy lh 6))
-                                      lines)))))))
+                (ui-source ui '(pipeline source-view) x (+ sy lh 6) w
+                           (max 0 (- (+ y h) sy lh 6))
+                           lines)))))))
 
   ;; A shader's lines, kept for the shader last shown, since pretty-printing
   ;; is dear.
@@ -2831,20 +2831,6 @@
                        (if (eq? (caddr it) 'idle) 'text-dim 'bg-0)
                        'ui-small))
           (loop (cdr items) (+ at sw))))))
-
-  ;; A shader's source, one line of the mono font each, scrolling.
-  (define (pipeline-draw-source ui x y w h lines)
-    (let ([lh (font-line-height 'mono-small)]
-          [left (+ x (max 8 (ui-scrollbar-inset 'left)))])
-      (fill-box x y w h 'bg-1 3)
-      (ui-scroll ui '(pipeline source-view) x y w h
-        (lambda (top)
-          (for-each (lambda (line k)
-                      (let ([ly (+ top 6 (* k lh))])
-                        (when (and (> (+ ly lh) y) (< ly (+ y h)))
-                          (draw-text left ly line 'text 'mono-small))))
-                    lines (iota (length lines)))
-          (+ top 12 (* lh (length lines)))))))
 
   ;; A share of the most held, as a bar.
   (define (pipeline-draw-memory-bar x y w h share)

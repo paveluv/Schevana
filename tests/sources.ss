@@ -1231,6 +1231,36 @@
                              (tree-exports (tree-name e)))))
                 tree-forms))))
 
+;; A part finds its built-in body by name at "/" (define-part), so the
+;; library that defines a part exports the body, name*. The tests' own
+;; build gives every name a library defines, so only this check sees one
+;; left out; the launcher's world would raise at the part's first call.
+(define (part-export-problems)
+  (apply append
+         (map (lambda (e)
+                (let ([exports (tree-exports (tree-name e))])
+                  (if (world-visible? e)
+                      (map (lambda (name)
+                             (format "~s does not export ~a" (tree-name e)
+                                     name))
+                           (remp (lambda (name) (memq name exports))
+                                 (map (lambda (form)
+                                        (string->symbol
+                                         (format "~a*" (caadr form))))
+                                      (filter (lambda (form)
+                                                (and (pair? form)
+                                                     (eq? (car form)
+                                                          'define-part)
+                                                     (pair? (cdr form))
+                                                     (pair? (cadr form))))
+                                              (tree-body e)))))
+                      '())))
+              tree-forms)))
+
+(check "a library that defines a part exports the part's built-in body, \
+        which the part finds by its name"
+       (none? (part-export-problems)))
+
 (check "every name a library exports is used: by a library that imports \
         it, by a program at the tree's root or in src/, or, where \"/\" has \
         it, by the docs or by a lookup by name"

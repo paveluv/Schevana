@@ -93,6 +93,8 @@
     ui-stream-rows ui-stream-sent ui-stream-new ui-stream-restart!
     ui-stream-resend! ui-stream-release! ui-stream-send! ui-stream-lane*
     ui-stream-room ui-stream-areas* ui-stream-count ui-stream-layout
+    ui-flame ui-draw-flame-box* ui-source ui-draw-source-surface*
+    ui-draw-source-line*
     ui-draw-stream* ui-stream ui-draw-sparkline ui-draw-sparkline*
     ui-draw-line-chart ui-draw-line-chart* ui-draw-legend ui-draw-legend*
     ui-legend-size ui-legend-size* ui-draw-panel ui-draw-panel*
@@ -4460,6 +4462,134 @@
                                           'ui-small)
                                (cdr r) 'text-faint 'ui-small)))
                 (filter car rules))))
+
+  ;;; ------------------------------------------------------------------
+  ;;; flames: where a total goes, level by level. A tree is drawn as boxes
+  ;;; in rows, the root across the top and each node's children under it,
+  ;;; a box as wide as its value's share of the root shown. A press on a
+  ;;; box makes it the root shown, and a press on the root shown goes back
+  ;;; out one level.
+  ;;;
+  ;;;   (ui-flame ui 'id x y w h tree label value children 'tip tip)
+  ;;;
+  ;;; tree is the app's own value, and label, value and children read a
+  ;;; node of it: a string, a number no less than its children's together,
+  ;;; and a list.
+
+  ;; A flame's box: an outline and a name, so that it reads in one bit too,
+  ;; and filled while the pointer is over it or it is selected. flags may
+  ;; have hover and selected; depth counts from the root shown. The label
+  ;; is drawn where it fits.
+  (define-part (ui-draw-flame-box x y w h flags label depth)
+    (when (or (memq 'selected flags) (memq 'hover flags))
+      (fill-box x y (max 1 (- w 1)) (- h 1)
+                (if (memq 'selected flags) 'chart-level-4 'chart-level-2)
+                2))
+    (when (>= w 3)
+      (stroke-box (+ x 0.5) (+ y 0.5) (- w 2) (- h 2) 'chart-rule 1 2))
+    (when (>= w (+ 10 (text-width label 'ui-small)))
+      (draw-text (+ x 5) (+ y (/ (- h 1 (font-line-height 'ui-small)) 2))
+                 label 'text 'ui-small)))
+
+  (define (ui-flame-row-height) (+ (font-line-height 'ui-small) 7))
+
+  ;; opts: 'tip (node), a box's tooltip or #f; 'on-pick (node), called on a
+  ;; left press on a box; 'selected, the node drawn as selected (eq?);
+  ;; 'key (node), what tells a node from its siblings, its label by
+  ;; default. The root shown is kept as the keys on the way to it, so it
+  ;; stays the same node while the tree is made anew around it. Rows past
+  ;; the height and boxes under two pixels are left out. Returns the node
+  ;; under the pointer, or #f.
+  (define (ui-flame ui id x y w h tree label value children . opts)
+    (define (opt name) (let ([o (memq name opts)]) (and o (cadr o))))
+    (let* ([tip (opt 'tip)] [on-pick (opt 'on-pick)]
+           [selected (opt 'selected)] [key (or (opt 'key) label)]
+           [rh (ui-flame-row-height)] [under #f]
+           ;; the root shown, and the keys that still lead somewhere
+           [way (let walk ([node tree] [keys (ui-memo ui (list id 'way) '())]
+                           [taken '()])
+                  (let ([next (and (pair? keys)
+                                   (find (lambda (c)
+                                           (equal? (key c) (car keys)))
+                                         (children node)))])
+                    (if next
+                        (walk next (cdr keys) (cons (car keys) taken))
+                        (cons node (reverse taken)))))]
+           [root (car way)] [keys (cdr way)])
+      (ui-memo! ui (list id 'way) keys)
+      (let draw ([node root] [depth 0] [bx x] [bw w] [path keys])
+        (when (and (>= bw 2) (<= (* (+ depth 1) rh) h))
+          (let* ([by (+ y (* depth rh))]
+                 [hover? (ui-hover? ui bx by bw rh)]
+                 [text (and tip (tip node))])
+            (when hover? (set! under node))
+            (ui-draw-flame-box bx by bw rh
+                               (append (if hover? '(hover) '())
+                                       (if (eq? node selected)
+                                           '(selected)
+                                           '()))
+                               (label node) depth)
+            (ui-pressable! ui (list id 'box path) bx by bw rh
+                           (lambda ()
+                             (when on-pick (on-pick node))
+                             (ui-memo! ui (list id 'way)
+                                       (if (and (= depth 0) (pair? path))
+                                           (reverse (cdr (reverse path)))
+                                           path)))
+                           '()
+                           (append '(focus keep)
+                                   (if text (list 'tip text) '())))
+            (let ([total (value node)])
+              (when (> total 0)
+                (let each ([cs (children node)] [cx bx])
+                  (unless (null? cs)
+                    (let ([cw (inexact (/ (* bw (value (car cs))) total))])
+                      (draw (car cs) (+ depth 1) cx cw
+                            (append path (list (key (car cs)))))
+                      (each (cdr cs) (+ cx cw))))))))))
+      under))
+
+  ;;; ------------------------------------------------------------------
+  ;;; source: lines of a program's text in the mono font, scrolling, with
+  ;;; their numbers at the left when the first one's is given, and one line
+  ;;; marked.
+
+  ;; What the lines lie on.
+  (define-part (ui-draw-source-surface x y w h flags)
+    (fill-box x y w h 'bg-1 3))
+
+  ;; A line of source at x, y, w wide: its number, or #f for none, in a
+  ;; column gutter wide, and its text. flags may have marked.
+  (define-part (ui-draw-source-line x y w h flags number gutter text)
+    (when (memq 'marked flags) (fill-box x y w h (alpha 'accent 0.25) 2))
+    (when number
+      (draw-text x y (number->string number) 'text-faint 'mono-small))
+    (draw-text (+ x gutter) y text 'text 'mono-small))
+
+  ;; opts: 'first, the number of the first line, which gives the lines
+  ;; their numbers; 'marked, the index of the line marked, from 0.
+  (define (ui-source ui id x y w h lines . opts)
+    (define (opt name) (let ([o (memq name opts)]) (and o (cadr o))))
+    (let* ([lh (font-line-height 'mono-small)]
+           [left (+ x (max 8 (ui-scrollbar-inset 'left)))]
+           [first (opt 'first)] [marked (opt 'marked)]
+           [gutter (if first
+                       (+ 12 (text-width (number->string
+                                          (+ first (length lines)))
+                                         'mono-small))
+                       0)])
+      (ui-draw-source-surface x y w h '())
+      (ui-scroll ui id x y w h
+        (lambda (top)
+          (for-each (lambda (line k)
+                      (let ([ly (+ top 6 (* k lh))])
+                        (when (and (> (+ ly lh) y) (< ly (+ y h)))
+                          (ui-draw-source-line
+                           left ly (- (+ x w) left 8) lh
+                           (if (eqv? k marked) '(marked) '())
+                           (and first (+ first k)) gutter line))))
+                    lines (iota (length lines)))
+          (+ top 12 (* lh (length lines)))))))
 
   ;;; ------------------------------------------------------------------
   ;;; streams: a chart of what keeps coming, one bar per moment, the newest
