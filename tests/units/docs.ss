@@ -191,6 +191,12 @@
                           (unless (file-directory? d) (mkdir d))
                           d))
                       pages)])
+      ;; The libraries are compiled once first, as the units' runner does
+      ;; before its runs side by side. Each page's world loads the demos,
+      ;; and compiles one whose object file is stale; Chez writes that
+      ;; file in place, so a page that loads it meanwhile finds half a
+      ;; library ("run-time information ... has not been loaded").
+      (test-warm!)
       (test-system-all
        (test-jobs units-topic-mb) 600
        (map (lambda (page dir)

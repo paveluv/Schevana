@@ -33,6 +33,12 @@ scheme --script tests/sources.ss
   of its own, `out/topic`, and keeps its output there; the suite prints
   the outputs in the topics' order. `scheme --script tests/units.ss out
   life boids` runs those two topics alone.
+- Before runs go side by side, the libraries are compiled once
+  (`tests/warm.ss`, `test-warm!`): the units' and frame's runners do it,
+  and so does the docs topic run alone, before its pages. A run compiles
+  any library whose object file is stale, and Chez writes that file in
+  place, so another run that loads it meanwhile finds half a library
+  ("run-time information ... has not been loaded").
 - **frame** draws frames on lavapipe (or on Metal on a Mac), with no
   window but an offscreen one. It compares the screen bit for bit with the
   world drawn into an image, in every style and at several scales. It
