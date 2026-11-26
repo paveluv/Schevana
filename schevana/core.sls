@@ -83,8 +83,8 @@
     ;; (schevana core loop) and (schevana core sources): the step, boot,
     ;; sources and reload
     *input-step?* post-core1! schevana-run! quit! schevana-end! uptime-ms
-    load-user-init! user-directory schevana-boot! collector-declining?
-    collector-generation-bytes inject!
+    load-user-init! user-directory schevana-boot! collector-asking?
+    collector-declining? collector-generation-bytes inject!
     source-files *source-texts* keep-source-text! load-file!
     load-user-folders! reload! core1-run core1-boot! look-load!
     world-load-now! *world-later* *world-loading* auto-load! auto-load-forget!
@@ -242,8 +242,8 @@
           (prefix (only (schevana core screen) *screen-least*) core:)
           (only (schevana core loop) post-core1! schevana-run! quit!
                 schevana-end! uptime-ms user-directory schevana-boot!
-                collector-declining? collector-generation-bytes core1-run
-                loop-main path-full
+                collector-asking? collector-declining?
+                collector-generation-bytes core1-run loop-main path-full
                 add-library-directory! inject!)
           (only (schevana core theme) common-options theme-default
                 define-palette palettes palette-title palette-colors

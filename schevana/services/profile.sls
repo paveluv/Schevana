@@ -71,7 +71,7 @@
                 thread-cpu-ns window-id window-title window? windows)
           (only (schevana kits inspect) inspect-device inspect-frames)
           (only (schevana services allocation) allocation-clock
-                allocation-collect! allocation-held!))
+                allocation-collect! allocation-held! allocation-request!))
 
   (library-layer services)
 
@@ -448,21 +448,30 @@
   ;; When the collector asked for the collection, the span open is its own
   ;; (gc), and stands for the handler's; else the log has the collection
   ;; as loose.
+  ;;
+  ;; Each request goes by the allocation service's tap first, which takes
+  ;; its samples at requests and passes on those that are to reach the
+  ;; collector (allocation-request!).
   (define (profile-collect)
+    (let ([d (fx- *profile-depth* 1)])
+      (allocation-request!
+       profile-collect-on
+       (and (fx>= d 0) (vector-ref *profile-keys* d))
+       (and (fx>= d 0) (vector-ref *profile-parts* d))
+       (eqv? (profile-thread-id) *profile-thread*))))
+
+  ;; Passes a request on to the collector: key and part are the span that
+  ;; was open when it came, and here? says that this thread is the
+  ;; profiler's.
+  (define (profile-collect-on key part here?)
     (if (collector-declining?)
         (begin
           (allocation-held!)
           (*profile-plain-collect*))
-        (let* ([d (fx- *profile-depth* 1)]
-               [key (and (fx>= d 0) (vector-ref *profile-keys* d))]
-               [part (and (fx>= d 0) (vector-ref *profile-parts* d))]
-               [own? (eq? key 'gc)]
-               [t0 (now-ns)])
+        (let ([own? (eq? key 'gc)] [t0 (now-ns)])
           (unless own? (profile-begin! 'gc #f))
-          (allocation-collect!
-           *profile-plain-collect* key part
-           (and key (not own?)
-                (not (eqv? (profile-thread-id) *profile-thread*))))
+          (allocation-collect! *profile-plain-collect* key part
+                               (and key (not own?) (not here?)))
           (set! *profile-gc-ns* (fx+ *profile-gc-ns* (fx- (now-ns) t0)))
           (unless own? (profile-end! #f)))))
 

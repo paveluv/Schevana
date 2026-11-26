@@ -6,8 +6,8 @@
     *input-step?* post-core1! wm-event! loop-stepped! reload-ended!
     schevana-run! quit! schevana-end! uptime-ms user-directory
     user-library-directory path-full add-library-directory! schevana-boot!
-    collector-declining? collector-generation-bytes collector-settle!
-    collector-tick! core1-run loop-main inject!)
+    collector-asking? collector-declining? collector-generation-bytes
+    collector-settle! collector-tick! core1-run loop-main inject!)
   (import (chezscheme)
           (only (schevana base) define-hook define-made define-state
                 library-layer set-hook! string-prefix? string-split)
@@ -301,8 +301,9 @@
   (define-made collector-old-quiet (* 64 1024 1024))
   (define-made collector-old-limit (* 512 1024 1024))
 
-  ;; What the next rendezvous collects, (generation . target), or #f for the
-  ;; young generation.
+  ;; What the collection that the collector has asked for collects,
+  ;; (generation . target), or #f while it asks for none: a request then is
+  ;; Chez's own, for the young generation.
   (define-state *collector-pass* #f)
   ;; A frame turn, from its tick until core0 has sent its frame, holds off
   ;; the young generation's collections: one asked for then waits until
@@ -351,6 +352,12 @@
   (define (collector-declining?)
     (and *collector-holding?* (not *collector-pass*)))
 
+  ;; Whether the collector itself asked for the collection now requested.
+  ;; Any other request is Chez's, at the trip: with the trip set short,
+  ;; a request can serve as an alarm that need not collect ((schevana
+  ;; services allocation)).
+  (define (collector-asking?) (and *collector-pass* #t))
+
   (define (collector-hold!) (set! *collector-holding?* #t))
 
   ;; Returns whether the frame a turn publishes should ask core0 to wake
@@ -393,7 +400,7 @@
     (set! *collector-holding?* #f)
     (when *collector-held?*
       (set! *collector-held?* #f)
-      (collector-rendezvous!))
+      (collector-pass! 0 1))
     (collector-tick!))
 
   (define-state *collector-handler*

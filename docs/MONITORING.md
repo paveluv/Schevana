@@ -119,6 +119,64 @@ collector asks for is never loose: the step goes to `gc`.
 
 The log goes with the profiler: off, nothing is logged.
 
+## Which procedure allocates
+
+The profiler's bytes say who allocates: a window, a surface, a process.
+The tap says where: it samples core1's stack every 64 KB allocated or
+so, and adds each sample's bytes to the path of calls it found, under the
+span that was open.
+
+```scheme
+(allocation-record! #t)                    ; a sample every 64 KB or so
+(length (allocation-collections))          ; anything that allocates
+(allocation-record! #f)
+(allocation-recording?)                    ; #f again
+(allocation-report)                        ; the 20 that allocate most
+(allocation-sampled)                       ; samples, their bytes, unseen
+(length (allocation-places))               ; every procedure sampled
+(car (allocation-paths))                   ; the tree's root: #f
+(allocation-clear!)                        ; forget the samples
+```
+
+`(allocation-record! #t (* 16 1024))` samples every 16 KB or so, which
+is the least: Chez counts what was allocated only as a thread takes a
+16 KB segment. Samples add up over recordings until
+`(allocation-clear!)`.
+
+A row of `(allocation-places)` is a procedure: its `name`, `file` and
+`line`, and three counts of bytes. `self` is for the samples whose
+innermost frame it is. `own` is for those where it is the innermost
+frame that has a source: when the innermost frames are Chez's (a
+`format`, a hash table), `own` names the place in a program's code that
+the sample comes down to, and the report sorts by it. `total` is for
+every sample that has it anywhere in its path.
+
+`(allocation-paths)` gives the tree: a node is its name (a span, as
+`(span key . part)`, or a procedure, as `(name file line)`), its own
+bytes, its bytes with its children's, its samples, and its children, the
+heaviest first.
+
+What to know when reading it:
+
+- A sample's bytes are measured, not assumed: what the allocation clock
+  moved since the sample before. So the shares are right whatever the
+  stride did, and the samples add up to what was allocated, less the
+  bytes that no sample saw (`unseen`: those just before a collection that
+  the collector asked for).
+- The stack is read when the thread next looks for requests, shortly
+  after the allocation that a stride ended in. The callers are right; the
+  innermost frame can be a neighbor of the one that allocated. Under
+  Chez 10.0.0 a thread looks only every 1,000 calls or loop turns, so
+  samples are fewer and each stands for more.
+- Chez has core0 take a request whenever core0 is running Scheme at that
+  moment. core1's stack is out of sight then, and the sample's bytes stay
+  with the span, with no path.
+- Past 500 samples a second the stride doubles, and it comes back once
+  they come slower.
+- The tap rides the profiler's handler, so it records only while the
+  profiler is on. A sample costs a few hundred bytes (the stack's
+  continuation), which no sample's weight includes.
+
 ## Inside the frame
 
 `schevana/kits/inspect.sls` reads what the core keeps about frames, the

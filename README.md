@@ -109,6 +109,7 @@ A programmer's guide, with examples to try at the REPL, in reading order:
   [tests/GUIDE.md](tests/GUIDE.md)
 - [Platforms](docs/PLATFORMS.md): what has run where;
   [NVIDIA on Linux](docs/LINUX_NVIDIA_TUNING.md)
+- [Chez](docs/CHEZ.md): what the tree leans on that Chez doesn't promise
 
 ## Tests
 
@@ -148,9 +149,10 @@ What Schevana takes from others, and under which terms, is in
   goes to the line's start in a REPL.
 
 After v2, I plan to make the profiler profile memory properly. It now
-sees what each window, surface and process allocates, and what each
-collection cost and kept, but not which procedure allocates, what the
-live heap is made of, or what holds it.
+sees what each window, surface and process allocates, what each
+collection cost and kept, and which procedures allocate (by samples of
+the stack, at a REPL), but not what the live heap is made of, or what
+holds it.
 
 I also plan keymaps. Everything a key does will be an action with a name
 and a short description, at every level (a widget, an app, a window, the
