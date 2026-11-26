@@ -113,12 +113,11 @@
                   (loop (cons line acc)))))))))
 
   ;; Returns a change of bytes as a person reads it, signed: "+2.0 MB",
-  ;; "-812 B", or "–" for none. (The ui faces of some looks have no U+2212,
-  ;; the minus sign.)
+  ;; "−812 B", or "–" for none.
   (define (allocations-change-text n)
     (cond [(or (not n) (= n 0)) "–"]
           [(> n 0) (string-append "+" (allocations-bytes-text n))]
-          [else (string-append "-" (allocations-bytes-text (- n)))]))
+          [else (string-append "−" (allocations-bytes-text (- n)))]))
 
   ;; Returns how long ago ns, on now-ns's clock, was: "12 s ago".
   (define (allocations-ago ns)

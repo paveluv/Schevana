@@ -5,7 +5,8 @@
 (library (schevana freetype)
   (export
     ft-init-freetype ft-library-version ft-new-face ft-set-char-size
-    ft-set-transform ft-load-char ft-get-first-char ft-get-next-char)
+    ft-set-transform ft-load-char ft-load-glyph ft-get-first-char
+    ft-get-next-char)
   (import (chezscheme) (only (schevana base) library-layer)
           (only (schevana ffi) define-foreign load-first-library))
 
@@ -24,6 +25,7 @@
     (uptr long long unsigned unsigned) int)
   (define-foreign ft-set-transform "FT_Set_Transform" (uptr uptr uptr) void)
   (define-foreign ft-load-char "FT_Load_Char" (uptr unsigned-long int) int)
+  (define-foreign ft-load-glyph "FT_Load_Glyph" (uptr unsigned int) int)
   (define-foreign ft-get-first-char "FT_Get_First_Char"
     (uptr uptr) unsigned-long)
   (define-foreign ft-get-next-char "FT_Get_Next_Char"

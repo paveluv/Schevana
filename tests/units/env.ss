@@ -441,9 +441,9 @@
                           (not ((env-eval e 'env?) (env-root)))
                           (eq? (record-type-uid
                                 (env-eval e '(make-record-type-descriptor
-                                              'q #f 'schevana-font-file-1 #f
+                                              'q #f 'schevana-font-file-2 #f
                                               #f '#())))
-                               '/units-records:schevana-font-file-1))])
+                               '/units-records:schevana-font-file-2))])
              (env-drop! e)
              ok))))
 

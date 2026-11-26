@@ -20,6 +20,7 @@
     font-file-upem font-file-ascender font-file-descender font-file-pages
     font-library-versions font-family font-weight font-size font-crisp?
     font-sized make-font* *font-specs* font get-font font-advance font-ascent
+    font-face-for
     font-line-height font-char-width font-ready text-width glyph-row-words
     glyph-row-u glyph-row-v glyph-row-w glyph-row-h glyph-row-left glyph-row-top
     glyph-row-character *glyph-table* *glyph-count* *glyph-table-dirty?*
@@ -32,8 +33,8 @@
           (only (schevana ffi) c-string->string)
           (only (schevana shader) define-shader-layout)
           (only (schevana freetype) ft-get-first-char ft-get-next-char
-                ft-init-freetype ft-library-version ft-load-char ft-new-face
-                ft-set-char-size ft-set-transform)
+                ft-init-freetype ft-library-version ft-load-char
+                ft-load-glyph ft-new-face ft-set-char-size ft-set-transform)
           (only (schevana fontconfig) fc-config-get-current fc-config-substitute
                 fc-default-substitute fc-font-match fc-get-version fc-name-parse
                 fc-pattern-destroy fc-pattern-get-integer fc-pattern-get-string)
@@ -82,11 +83,13 @@
 
   ;;; A face's table: for each character, in font units, its advance and its
   ;;; ink's left, top (above the baseline), width and height. A page holds
-  ;;; 256 characters; -1 marks a character the face doesn't have.
+  ;;; 256 characters; -1 marks a character the face doesn't have, which
+  ;;; another face draws (fallbacks: those found, by character).
 
   (define-record-type font-file
-    (nongenerative schevana-font-file-1)
+    (nongenerative schevana-font-file-2)
     (fields path handle upem ascender descender height fixed? pages notdef
+            fallbacks
             (mutable size)))     ; the size FreeType is set to, in 1/64 pixels
 
   ;; At a REPL, a face prints as its file, not its tables.
@@ -193,7 +196,7 @@
                         (and (assv 77 ascii)
                              (for-all (lambda (g) (= (cadr g) (cadar ascii)))
                                       ascii))
-                        pages notdef -1))))
+                        pages notdef (make-eqv-hashtable) -1))))
 
   ;; Draws bitmap face ff's glyph for c (or its slug) into the atlas, at k
   ;; device pixels to a font pixel: each device pixel takes the bit nearest
@@ -245,11 +248,14 @@
         (cons family 'bitmap)
         (font-file-find family slant weight)))
 
-  (define (font-file-find family slant weight)
+  ;; Returns where fontconfig finds this family, or, given a character c,
+  ;; the face it finds for the family with c in it.
+  (define (font-file-find family slant weight . c)
     (let* ([own (assoc family font-generic-families)]
-           [name (format "~a:slant=~a:weight=~a" (if own (cdr own) family)
+           [name (format "~a:slant=~a:weight=~a~a" (if own (cdr own) family)
                          (if (eq? slant 'italic) 100 0)
-                         (if (eq? weight 'bold) 200 80))]
+                         (if (eq? weight 'bold) 200 80)
+                         (if (pair? c) (format ":charset=~x" (car c)) ""))]
            [pattern (fc-name-parse name)]
            [config (fc-config-get-current)])
       (fc-config-substitute config pattern 0)
@@ -300,9 +306,10 @@
           (when (zero? (ft-load-char h c ft-load-no-scale))
             (metrics! (font-page pages c) (fxand c 255)))
           (loop (ft-get-next-char h c *ft-scratch*))))
-      ;; what a character the face doesn't have draws: its .notdef
+      ;; what a character the face doesn't have draws: its .notdef, which
+      ;; is glyph 0 (character 0 may be a glyph of no width)
       (let ([notdef (make-fxvector 5 0)])
-        (when (zero? (ft-load-char h 0 ft-load-no-scale))
+        (when (zero? (ft-load-glyph h 0 ft-load-no-scale))
           (fxvector-set! notdef 0
                          (ftype-ref ft-slot (metrics advance)
                                     (ft-face-slot h))))
@@ -314,7 +321,7 @@
          (ftype-ref ft-face (height) face)
          (logtest (ftype-ref ft-face (flags) face)
                   ft-face-flag-fixed-width)
-         pages notdef -1))))
+         pages notdef (make-eqv-hashtable) -1))))
 
   ;;; ---------------------------------------------------------------- fonts
   ;;; A font is a setting: the theme's roles ('ui, 'mono, 'title, ...) are
@@ -383,17 +390,38 @@
                                               (font-file-upem ff))))))))
           ff)))
 
-  ;; A character's advance in font units.
-  (define (font-units ff c)
+  ;; A character's advance in font units, or -1 when the face lacks it.
+  (define (font-own-units ff c)
     (let ([page (vector-ref (font-file-pages ff) (fxsrl c 8))])
-      (let ([u (if page (fxvector-ref page (fx* 5 (fxand c 255))) -1)])
-        (if (fx< u 0) (fxvector-ref (font-file-notdef ff) 0) u))))
+      (if page (fxvector-ref page (fx* 5 (fxand c 255))) -1)))
+
+  ;; A character's advance in font units: its .notdef's when the face
+  ;; lacks it.
+  (define (font-units ff c)
+    (let ([u (font-own-units ff c)])
+      (if (fx< u 0) (fxvector-ref (font-file-notdef ff) 0) u)))
+
+  ;; Returns the face that draws character c in font f, whose face is ff:
+  ;; ff when it has c; else the face that fontconfig finds for f's family
+  ;; with c in it, as other desktops draw it (its .notdef, when no face has
+  ;; c). A bitmap face draws its own slug.
+  (define (font-face-for f ff c)
+    (if (or (fx>= (font-own-units ff c) 0) (hashtable? (font-file-handle ff)))
+        ff
+        (let ([faces (font-file-fallbacks ff)])
+          (or (hashtable-ref faces c #f)
+              (let ([face (font-file-open
+                           (font-file-find (font-family f) (font-slant f)
+                                           (font-weight f) c))])
+                (hashtable-set! faces c face)
+                face)))))
 
   ;; A character's advance in 1/256ths of a logical pixel.
   (define (font-advance f ff c)
     (or (font-pitch f)
-        (let ([a (fxquotient (fx* (font-units ff c) (font-size256 f))
-                             (font-file-upem ff))])
+        (let* ([ff (font-face-for f ff c)]
+               [a (fxquotient (fx* (font-units ff c) (font-size256 f))
+                              (font-file-upem ff))])
           (if (font-crisp? f) (fx* 256 (fxsra (fx+ a 128) 8)) a))))
 
   ;; Returns #(ascent descent height char-width): the first three in exact
@@ -545,7 +573,7 @@
   ;; Draws the glyph at its phase into the atlas: FreeType's, or a bitmap
   ;; face's. Returns its number, or -1 if it has no ink.
   (define (font-glyph-make f num den c phase)
-    (let ([ff (font-ready f)])
+    (let ([ff (font-face-for f (font-ready f) c)])
       (if (hashtable? (font-file-handle ff))
           (bitmap-glyph-make f ff num den c)
           (freetype-glyph-make f ff num den c phase))))

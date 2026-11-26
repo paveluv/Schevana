@@ -40,7 +40,7 @@
     font-file-upem font-file-ascender font-file-descender font-file-pages
     font-library-versions make-font*
     *font-specs* *bitmap-fonts* define-bitmap-font font get-font
-    font-advance font-ascent
+    font-advance font-ascent font-face-for
     font-line-height font-char-width font-ready text-width *glyph-count*
     *atlas-y* *atlas-row* glyph-row-ref font-family font-size font-sized
     font-weight glyph-row-character glyph-row-h glyph-row-left glyph-row-top
@@ -208,7 +208,7 @@
           (only (schevana core fonts) font-file-upem font-file-ascender
                 font-file-descender font-file-pages
                 font-library-versions make-font* font get-font font-advance
-                font-ascent font-line-height font-char-width
+                font-ascent font-face-for font-line-height font-char-width
                 font-ready glyph-row-ref font-family font-size font-sized
                 font-weight glyph-row-character glyph-row-h glyph-row-left
                 glyph-row-top glyph-row-w define-bitmap-font)

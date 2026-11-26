@@ -9,20 +9,21 @@
     text-within text-fit text-wrap)
   (import (chezscheme)
           (only (schevana base) library-layer string-split)
-          (only (schevana core) draw-text font font-advance font-file-ascender
-                font-file-descender font-file-pages font-file-upem
-                font-line-height font-ready font-size get-font text-width))
+          (only (schevana core) draw-text font font-advance font-face-for
+                font-file-ascender font-file-descender font-file-pages
+                font-file-upem font-line-height font-ready font-size get-font
+                text-width))
 
   (library-layer kits)
 
   ;; Returns the ink of str in font as (values left top width height),
   ;; measured from the pen on the baseline (a top < 0 is above it), in
-  ;; logical pixels, from the core's font tables. Unhinted.
+  ;; logical pixels, from the core's font tables: each character's from the
+  ;; face that draws it (font-face-for). Unhinted.
   (define (text-ink str font)
     (let* ([f (get-font font)]
            [ff (font-ready f)]
-           [n (string-length str)]
-           [scale (/ (font-size f) (font-file-upem ff))])
+           [n (string-length str)])
       (let loop ([i 0] [pen 0] [x0 #f] [x1 0] [y0 #f] [y1 0])
         (if (fx= i n)
             (if x0
@@ -30,7 +31,9 @@
                         (inexact (- x1 x0)) (inexact (- y1 y0)))
                 (values 0.0 0.0 0.0 0.0))
             (let* ([c (char->integer (string-ref str i))]
-                   [page (vector-ref (font-file-pages ff) (fxsrl c 8))]
+                   [face (font-face-for f ff c)]
+                   [scale (/ (font-size f) (font-file-upem face))]
+                   [page (vector-ref (font-file-pages face) (fxsrl c 8))]
                    [at (fx* 5 (fxand c 255))]
                    [w (if page (fxvector-ref page (fx+ at 3)) 0)]
                    [h (if page (fxvector-ref page (fx+ at 4)) 0)]

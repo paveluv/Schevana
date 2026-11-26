@@ -117,3 +117,62 @@
        (let-values ([(l top w h) (text-ink "H" 'ui)]
                     [(l2 top2 w2 h2) (text-ink "Hi there" 'ui)])
          (and (< top 0) (< (abs (+ top h)) 1) (> w 0) (> w2 w))))
+
+;;; characters a face lacks
+
+;; Returns the characters past ASCII in the strings of the tree's libraries
+;; (schevana/, demo/, games/), each once, as read.
+(define (text-test-tree-chars)
+  (let ([seen (make-eqv-hashtable)])
+    (define (datum! x)
+      (cond [(pair? x) (datum! (car x)) (datum! (cdr x))]
+            [(vector? x) (vector-for-each datum! x)]
+            [(string? x)
+             (string-for-each (lambda (c)
+                                (when (> (char->integer c) 127)
+                                  (hashtable-set! seen c #t)))
+                              x)]))
+    (let walk ([dir "schevana"] [more '("demo" "games")])
+      (for-each
+       (lambda (f)
+         (let ([path (string-append *schevana-root* "/" dir "/" f)])
+           (cond [(file-directory? path) (walk (string-append dir "/" f) '())]
+                 [(string=? (path-extension f) "sls")
+                  (call-with-input-file path
+                    (lambda (p)
+                      (let loop ()
+                        (let ([x (read p)])
+                          (unless (eof-object? x) (datum! x) (loop))))))])))
+       (directory-list (string-append *schevana-root* "/" dir)))
+      (unless (null? more) (walk (car more) (cdr more))))
+    (vector->list (hashtable-keys seen))))
+
+;; A control character draws nothing (the C1 ones that the OPEN LOOK fonts'
+;; tables name).
+(let* ([chars (remp (lambda (c) (eq? (char-general-category c) 'Cc))
+                    (text-test-tree-chars))]
+       [f (get-font 'ui)]
+       [ff (font-ready f)]
+       [lacked (filter (lambda (c) (< (font-own-units ff (char->integer c)) 0))
+                       chars)])
+  (check (format "every character but a control one that the tree's \
+                  strings write has a width and ink in the ui font: one \
+                  its face lacks is drawn from the face that fontconfig \
+                  finds with it (here ~s of ~a, ~a)"
+                 (list->string lacked) (length chars)
+                 (map (lambda (c)
+                        (path-last
+                         (font-file-path
+                          (font-face-for f ff (char->integer c)))))
+                      lacked))
+         (for-all (lambda (c)
+                    (let-values ([(l top w h) (text-ink (string c) 'ui)])
+                      (and (> (text-width (string c) 'ui) 0) (> w 0))))
+                  chars)))
+
+(check "a character that no face has advances by its face's .notdef, so the \
+        next one doesn't fall on it"
+       (let ([none (string (integer->char #x10FFFD))])
+         (and (> (text-width none 'ui) 0)
+              (= (text-width (string-append none none) 'ui)
+                 (* 2 (text-width none 'ui))))))

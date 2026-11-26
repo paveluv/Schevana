@@ -70,6 +70,18 @@ same at any scale. `text-ink` returns the box that a string's ink covers,
 measured from the pen on the baseline, and `text-widest` the width of the
 widest of some strings.
 
+A character that the font's face lacks is drawn from a face that has it,
+which fontconfig finds for the font's family, as other desktops draw it:
+a sans face that lacks ✓ or the minus sign (−) draws them from DejaVu
+Sans or Noto Sans Symbols, say. A character that no face has draws the
+face's own box for it, with its width. A bitmap font draws its slug.
+
+```scheme
+(define ui-font (get-font 'ui))
+(font-face-for ui-font (font-ready ui-font) (char->integer #\✓))
+(text-width "✓ done" 'ui)
+```
+
 A font may be a bitmap font, its pixels drawn by hand at one size, as the
 mimicked styles' originals had (the Interlisp style draws all of its text
 in Medley's own, and OPEN LOOK its fixed parts in OLGX's glyph fonts, as
