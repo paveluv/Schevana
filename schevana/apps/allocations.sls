@@ -18,21 +18,25 @@
           (only (schevana base) library-layer)
           (only (schevana core) alpha collector-generation-bytes define-app
                 draw-line draw-text fill-box font-char-width font-line-height
-                invalidate! now-ms open-window pacer-period
+                invalidate! now-ms now-ns open-window pacer-period
                 window-frame-soon!)
           (only (schevana kits ui) make-ui ui-bar-chart-bar ui-begin!
                 ui-button ui-button-size ui-checkbox ui-checkbox-size
-                ui-draw-cell ui-draw-label ui-draw-legend ui-draw-surface
-                ui-end! ui-flame ui-frame ui-handlers ui-icon-grid
+                ui-draw-cell ui-draw-label ui-draw-legend ui-draw-sparkline
+                ui-draw-surface ui-end! ui-flame ui-frame ui-handlers
+                ui-icon-grid
                 ui-icon-ink ui-legend-size ui-pad ui-source ui-stream
                 ui-stream-new ui-stream-release! ui-stream-send! ui-table
                 ui-table-room
                 ui-table-row-height ui-tabs ui-tabs-size ui-text-y
-                ui-toolbar)
-          (only (schevana services allocation) allocation-collection
-                allocation-collection-count allocation-paths
-                allocation-places allocation-record! allocation-recording?
-                allocation-young)
+                ui-toolbar ui-treemap)
+          (only (schevana services allocation) allocation-census
+                allocation-census! allocation-census-grown
+                allocation-census-mark! allocation-collection
+                allocation-collection-count allocation-hours
+                allocation-hours-count allocation-hours-slope
+                allocation-paths allocation-places allocation-record!
+                allocation-recording? allocation-young)
           (only (schevana services profile) profile-newest-tick profile-ns-label
                 profile-oldest-tick profile-on? profile-subject-label
                 profile-subject? profile-tick-kept? profile-tick-late?
@@ -104,6 +108,61 @@
               (if (eof-object? line)
                   (list->vector (reverse acc))
                   (loop (cons line acc)))))))))
+
+  ;; Returns a change of bytes as a person reads it, signed: "+2.0 MB",
+  ;; "−812 B", or "–" for none.
+  (define (allocations-change-text n)
+    (cond [(or (not n) (= n 0)) "–"]
+          [(> n 0) (string-append "+" (allocations-bytes-text n))]
+          [else (string-append "−" (allocations-bytes-text (- n)))]))
+
+  ;; Returns how long ago ns, on now-ns's clock, was: "12 s ago".
+  (define (allocations-ago ns)
+    (let ([s (quotient (max 0 (- (now-ns) ns)) 1000000000)])
+      (cond [(< s 60) (format "~a s ago" s)]
+            [(< s 3600) (format "~a min ago" (quotient s 60))]
+            [else (format "~a h ago" (quotient s 3600))])))
+
+  ;; Returns the leaves of a census's tree of owners as ((path . node) ...),
+  ;; the heaviest first, a path being the labels from the heap down.
+  (define (allocations-owner-leaves tree)
+    (sort (lambda (a b) (> (cadr (cdr a)) (cadr (cdr b))))
+          (let walk ([node tree] [path '()])
+            (let ([path (append path (list (car node)))])
+              (if (null? (cddr node))
+                  (list (cons path node))
+                  (apply append
+                         (map (lambda (c) (walk c path)) (cddr node))))))))
+
+  ;; Returns a census's kinds as a tree, for the treemap: the heap, and
+  ;; under it a node (name bytes) for each kind.
+  (define (allocations-kind-tree census)
+    (let ([kinds (cdr (assq 'kinds census))])
+      (cons* "heap" (apply + (map caddr kinds))
+             (map (lambda (k) (list (format "~a" (car k)) (caddr k)))
+                  kinds))))
+
+  ;; Returns at most n of values, evenly picked, the first and the last
+  ;; among them.
+  (define (allocations-thin values n)
+    (let ([len (length values)])
+      (if (<= len n)
+          values
+          (let ([v (list->vector values)])
+            (map (lambda (i) (vector-ref v (quotient (* i (- len 1)) (- n 1))))
+                 (iota n))))))
+
+  ;; The rows of Hours: a field of the hours, its name, and what it counts.
+  (define allocations-hours-rows
+    '((0 "young" bytes)
+      (1 "generation 1" bytes)
+      (2 "generation 2" bytes)
+      (3 "generation 3" bytes)
+      (4 "generation 4" bytes)
+      (memory "what Chez holds" bytes)
+      (process "the process" bytes)
+      (gpu "GPU bytes made" bytes)
+      (pause "the longest pause" ns)))
 
   ;; The Flow's bands, from the bottom up: who allocated a tick's bytes.
   (define allocations-draw-bands
@@ -292,6 +351,13 @@
           [band-row (make-vector 4 0)] [band-seq #f]
           [flow (ui-stream-new allocations-flow-rows 4
                                allocations-draw-strips)]
+          [by 'owner]         ; Heap's view: by owner or by kind
+          [heap-row #f]       ; Heap's row chosen: a node, or a kind
+          [census #f]         ; the census shown, as allocation-census was
+          [grown #f]          ; what grew from the mark to that census
+          [leaves '()]        ; Heap's rows by owner: ((path . node) ...)
+          [hours-seen -1]     ; the hours' count when Hours' rows were made
+          [hours '()]         ; Hours' rows: (row now hour day values)
           [ours? #f])         ; whether this window turned the tap on
       ;; the newest tick shown
       (define (newest-tick) (or held (profile-newest-tick)))
@@ -371,7 +437,8 @@
                         (or (> (- (now-ms) last) 500)
                             (>= (abs (- newest last-tick)) 30)))))))
       (define (toolbar w)
-        (let-values ([(tw th) (ui-tabs-size '("Who" "Where" "Collections"))]
+        (let-values ([(tw th) (ui-tabs-size '("Who" "Where" "Collections"
+                                              "Heap" "Hours"))]
                      [(kw kh) (ui-checkbox-size "Record")]
                      [(bw bh) (ui-button-size "Resume" #f)])
           (ui-toolbar
@@ -381,7 +448,8 @@
                   (lambda (x y w h)
                     (ui-tabs ui 'tab x y h
                              '(("Who" . who) ("Where" . where)
-                               ("Collections" . collections))
+                               ("Collections" . collections) ("Heap" . heap)
+                               ("Hours" . hours))
                              tab
                              (lambda (t) (set! tab t) (set! last 0)))))
             (list kw kh
@@ -636,6 +704,237 @@
                                      (allocations-bytes-text a)
                                      (if (= g 4) "" "; ")))
                            '(0 1 2 3 4) before after)))))))
+      ;; The heap as the last census found it: by owner (the code and
+      ;; names, each layer's libraries and their states, the windows, the
+      ;; processes) or by kind, as a treemap and as a table, with what
+      ;; grew since the mark.
+      (define (draw-heap x y w h)
+        (unless (eq? census (allocation-census))
+          (set! census (allocation-census))
+          (set! grown (allocation-census-grown))
+          (set! heap-row #f)
+          (set! leaves (if census
+                           (allocations-owner-leaves
+                            (cdr (assq 'owners census)))
+                           '())))
+        (let*-values
+            ([(cw ch) (ui-button-size "Take a census" #f)]
+             [(mw mh) (ui-button-size "Mark" #f)]
+             [(tw th) (ui-tabs-size '("By owner" "By kind"))]
+             [(bar)
+              (ui-toolbar
+               x y w
+               (list
+                (list cw ch
+                      (lambda (x y w h)
+                        (ui-button ui 'census x y w h "Take a census"
+                                   (lambda () (allocation-census!))
+                                   'tip "A full collection that counts the \
+                                         live heap by kind and by owner: \
+                                         the world stops for it, some \
+                                         100 ms. (allocation-census!) at a \
+                                         REPL")))
+                (list mw mh
+                      (lambda (x y w h)
+                        (ui-button ui 'mark x y w h "Mark"
+                                   (lambda ()
+                                     (allocation-census-mark!)
+                                     (set! grown #f))
+                                   'disabled (not census)
+                                   'tip "Keep this census, so that the next \
+                                         one shows what grew since")))
+                (list tw th
+                      (lambda (x y w h)
+                        (ui-tabs ui 'by x y h
+                                 '(("By owner" . owner) ("By kind" . kind))
+                                 by
+                                 (lambda (b)
+                                   (set! by b)
+                                   (set! heap-row #f)))))))]
+             [(line) (font-line-height 'ui)]
+             [(top) (+ y bar 4)])
+          (if (not census)
+              (ui-draw-label x top w 0 '(hint wrap)
+                             "No census yet: Take a census counts the live \
+                              heap by owner (the code, each library's \
+                              states, each window and process) and by \
+                              kind.")
+              (let* ([all (max 1 (cdr (assq 'bytes census)))]
+                     [map-h (quotient (* 11 (- h bar line 12)) 20)]
+                     [table-y (+ top line 4 map-h 8)]
+                     [table-h (- (+ y h) table-y)]
+                     [what-kind (if (eq? by 'owner) 'owners 'kinds)]
+                     [since (lambda (what)
+                              (and grown
+                                   (let ([x (assoc what
+                                                   (cdr (assq what-kind
+                                                              grown)))])
+                                     (and x (cdr x)))))]
+                     [since-text (lambda (what)
+                                   (let ([n (since what)])
+                                     (if n
+                                         (format ", ~a since the mark"
+                                                 (allocations-change-text n))
+                                         "")))])
+                (ui-draw-label
+                 x top w line '(dim)
+                 (format "A census ~a: ~a live; a pause of ~a, and ~a to \
+                          charge the owners~a"
+                         (allocations-ago (cdr (assq 'at census)))
+                         (allocations-bytes-text (cdr (assq 'bytes census)))
+                         (profile-ns-label (cdr (assq 'pause census)))
+                         (profile-ns-label (cdr (assq 'charge census)))
+                         (if grown
+                             (format "; ~a since the mark, ~a"
+                                     (allocations-change-text
+                                      (- (cdr (assq 'bytes census))
+                                         (cdr (assq 'bytes grown))))
+                                     (allocations-ago (cdr (assq 'at grown))))
+                             "")))
+                (ui-treemap
+                 ui (list 'heap by) x (+ top line 4) w map-h
+                 (if (eq? by 'owner)
+                     (cdr (assq 'owners census))
+                     (allocations-kind-tree census))
+                 (lambda (node)
+                   (format "~a  ~a" (car node)
+                           (allocations-bytes-text (cadr node))))
+                 cadr cddr
+                 'key car
+                 'selected (and (pair? heap-row) heap-row)
+                 'tip (lambda (node)
+                        (format "~a: ~a, ~,1f% of the heap" (car node)
+                                (allocations-bytes-text (cadr node))
+                                (/ (* 100.0 (cadr node)) all))))
+                (if (eq? by 'owner)
+                    (ui-table
+                     ui 'owners x table-y w table-h
+                     (let ([w (ui-table-room w)])
+                       `((owner "Owner" ,(* w 0.34))
+                         (in "In" ,(* w 0.26)
+                             "The library whose state it is, or windows, \
+                              or processes")
+                         (bytes "Bytes" ,(* w 0.14) right
+                                "What it alone reaches")
+                         (share "Share" ,(* w 0.12) right)
+                         (since "Since mark" ,(* w 0.14) right)))
+                     leaves
+                     (find (lambda (l) (eq? (cdr l) heap-row)) leaves)
+                     (lambda (l)
+                       (set! heap-row (and (not (eq? (cdr l) heap-row))
+                                           (cdr l))))
+                     (lambda (l key cx cy cw ch flags)
+                       (let ([path (car l)] [node (cdr l)])
+                         (ui-draw-cell
+                          cx cy cw ch flags
+                          (case key
+                            [(owner) (car node)]
+                            [(in) (let ([p (cdr (reverse path))])
+                                    (if (or (null? p) (null? (cdr p)))
+                                        ""
+                                        (car p)))]
+                            [(bytes) (allocations-bytes-text (cadr node))]
+                            [(share) (format "~,1f%" (/ (* 100.0 (cadr node))
+                                                        all))]
+                            [else (allocations-change-text (since path))]))))
+                     'tip (lambda (l)
+                            (format "~a: ~a~a" (car (cdr l))
+                                    (allocations-bytes-text (cadr (cdr l)))
+                                    (since-text (car l)))))
+                    (let ([kinds (cdr (assq 'kinds census))])
+                      (ui-table
+                       ui 'kinds x table-y w table-h
+                       (let ([w (ui-table-room w)])
+                         `((kind "Kind" ,(* w 0.36))
+                           (count "Count" ,(* w 0.16) right)
+                           (bytes "Bytes" ,(* w 0.16) right)
+                           (share "Share" ,(* w 0.14) right)
+                           (since "Since mark" ,(* w 0.18) right)))
+                       kinds
+                       (find (lambda (k) (eq? (car k) heap-row)) kinds)
+                       (lambda (k)
+                         (set! heap-row (and (not (eq? (car k) heap-row))
+                                             (car k))))
+                       (lambda (k key cx cy cw ch flags)
+                         (ui-draw-cell
+                          cx cy cw ch flags
+                          (case key
+                            [(kind) (format "~a" (car k))]
+                            [(count) (number->string (cadr k))]
+                            [(bytes) (allocations-bytes-text (caddr k))]
+                            [(share) (format "~,1f%" (/ (* 100.0 (caddr k))
+                                                        all))]
+                            [else (allocations-change-text
+                                   (since (car k)))])))
+                       'tip (lambda (k)
+                              (format "~a: ~a objects, ~a~a" (car k) (cadr k)
+                                      (allocations-bytes-text (caddr k))
+                                      (since-text (car k)))))))))))
+      ;; Makes Hours' rows anew: each field's value now, its slope over
+      ;; the last hour and over all the rows kept, and its line.
+      (define (hours-renew!)
+        (set! hours-seen (allocation-hours-count))
+        (set! hours
+          (map (lambda (row)
+                 (let ([values (allocation-hours (car row))])
+                   (list row
+                         (if (null? values) 0 (car (reverse values)))
+                         (allocation-hours-slope (car row) 60)
+                         (allocation-hours-slope (car row))
+                         (allocations-thin values 240))))
+               allocations-hours-rows)))
+      ;; What the heap held a minute at a time over the last two days: each
+      ;; generation, what Chez and the process hold, the GPU's bytes and
+      ;; the longest pause, with how fast each grew.
+      (define (draw-hours x y w h)
+        (unless (= hours-seen (allocation-hours-count)) (hours-renew!))
+        (let* ([count (allocation-hours-count)]
+               [line (font-line-height 'ui)]
+               [per-day (lambda (n)
+                          (if n
+                              (string-append
+                               (allocations-change-text (exact (round n)))
+                               " a day")
+                              "–"))])
+          (ui-draw-label
+           x y w line '(dim)
+           (if (< count 2)
+               "A row a minute; how fast each grows shows from the second \
+                row on."
+               (format "~a rows, a minute apart, the newest ~a"
+                       (min count 2880)
+                       (allocations-ago
+                        (car (reverse (allocation-hours 'at)))))))
+          (ui-table
+           ui 'hours x (+ y line 8) w (- h line 8)
+           (let ([w (ui-table-room w)])
+             `((what "What" ,(* w 0.20))
+               (now "Now" ,(* w 0.13) right)
+               (hour "Last hour" ,(* w 0.17) right
+                     "How fast it grew over the last hour, a day")
+               (day "Two days" ,(* w 0.17) right
+                    "How fast it grew over the rows kept, a day")
+               (line "Over the rows kept" ,(* w 0.33))))
+           hours #f (lambda (row) (void))
+           (lambda (row key cx cy cw ch flags)
+             (let ([bytes? (eq? (caddr (car row)) 'bytes)])
+               (if (eq? key 'line)
+                   (ui-draw-sparkline (+ cx 4) (+ cy 3) (- cw 8) (- ch 6)
+                                      flags (list-ref row 4))
+                   (ui-draw-cell
+                    cx cy cw ch flags
+                    (case key
+                      [(what) (cadr (car row))]
+                      [(now) (if bytes?
+                                 (allocations-bytes-text (cadr row))
+                                 (profile-ns-label (cadr row)))]
+                      [(hour) (if bytes? (per-day (caddr row)) "–")]
+                      [else (if bytes? (per-day (cadddr row)) "–")])))))
+           'tip (lambda (row)
+                  (format "~a: ~a" (cadr (car row))
+                          (if (eq? (caddr (car row)) 'bytes)
+                              (allocations-bytes-text (cadr row))
+                              (profile-ns-label (cadr row))))))))
       ;; The Flow: a bar a tick, its bytes banded by who, the collections,
       ;; the requests held and the late ticks over it, and the chosen
       ;; row's share over its bars. A press holds the app at that tick.
@@ -705,8 +1004,11 @@
                [view-w (- w pad pad column-w pad)]
                [view-h (- h y flow-h pad pad)])
           (cond
+            ;; the census and the hours need no profiler
+            [(eq? tab 'heap) (draw-heap pad y view-w view-h)]
+            [(eq? tab 'hours) (draw-hours pad y view-w view-h)]
             [(not (profile-on?))
-             (ui-draw-label pad y (- w pad pad) 0 '(hint wrap)
+             (ui-draw-label pad y view-w 0 '(hint wrap)
                             "Profiling is off: type (profile-on! #t) in a \
                              REPL, or check Profiling in Monitor, to see \
                              what allocates.")]
@@ -715,9 +1017,10 @@
              (case tab
                [(who) (draw-who pad y view-w view-h)]
                [(where) (draw-where pad y view-w view-h)]
-               [else (draw-collections pad y view-w view-h)])
-             (allocations-draw-column (+ pad view-w pad) y column-w view-h)
-             (draw-flow pad (+ y view-h pad) (- w pad pad) flow-h)]))
+               [else (draw-collections pad y view-w view-h)])])
+          (allocations-draw-column (+ pad view-w pad) y column-w view-h)
+          (when (profile-on?)
+            (draw-flow pad (+ y view-h pad) (- w pad pad) flow-h)))
         (ui-end! ui w h))
       (apply open-window "Allocations"
              'size (cons (max 720 (* 96 (font-char-width 'ui)))

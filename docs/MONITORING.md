@@ -61,6 +61,14 @@ press on the River goes back to that frame, and Esc lets it go again
   was allocated since the collection before and what of it was kept, how
   long its request was held off, which thread performed it, and who asked.
   A row pressed shows what each generation held before and after.
+- **Heap**: the live heap as the last census found it, by owner or by
+  kind, as a treemap and as a table. Take a census runs one; Mark keeps
+  it, and the next one shows what grew since, in the table and the
+  tooltips.
+- **Hours**: a row a minute for two days of each generation, what Chez
+  and the process hold, the GPU's bytes and the longest pause: each one
+  now, how fast it grew over the last hour and over the rows kept, and
+  its line.
 
 While the window is open the tap records (the Record box), so that
 `(allocation-report)` has something to say.
@@ -208,6 +216,61 @@ What to know when reading it:
 - The tap rides the profiler's handler, so it records only while the
   profiler is on. A sample costs a few hundred bytes (the stack's
   continuation), which no sample's weight includes.
+
+## What the heap holds
+
+A census counts the live heap, by kind and by owner. It is a full
+collection, so the world stops for it: some 40 ms for 100 MB here, and as
+long again to charge the owners.
+
+```scheme
+(define census (allocation-census!))
+(cdr (assq 'bytes census))                 ; the live heap, bytes
+(list-head (cdr (assq 'kinds census)) 3)   ; (name count bytes), the largest
+(define owners (cdr (assq 'owners census)))
+(map (lambda (node) (list (car node) (cadr node))) (cddr owners))
+(allocation-census-mark!)
+(define kept (make-bytevector 1000000))
+(allocation-census!)
+(assq 'bytevector (cdr (assq 'kinds (allocation-census-grown))))
+```
+
+The kinds are Chez's own counts, gathered by that collection: pairs,
+strings, closures, and each record type by its name. The owners are a
+tree, `(label bytes child ...)`, the heaviest first. Each owner is charged
+what it reaches that no owner before it reaches, in this order:
+
+- **the code and names**: everything that the symbols reach, which is the
+  code, what libraries define, and the values of top-level names, except
+  what is reached only through one of the owners below;
+- **each layer**, from the bottom up, with its libraries and their states
+  (`define-state`): a state is charged what is reached only through it;
+- **the windows**, each charged what its record alone reaches (its
+  handlers' closures, what an app keeps in it);
+- **the processes**, the same;
+- **the rest**: what no owner reaches, which is Chez's own and the
+  census's lists.
+
+`(allocation-census-grown)` compares the last census with the one the mark
+kept: each kind and each owner (its labels from the heap down) by what it
+grew or shrank. In the hacker edition a state is a name at "/", and the
+code and names take it.
+
+The hours are a row a minute for two days, the first ten seconds after
+boot, kept whether or not anything looks: each generation, what Chez
+holds from the system (`memory`), what the process holds in memory
+(`process`), the GPU's bytes (`gpu`), the collections so far and the
+longest pause of each minute.
+
+```scheme
+(allocation-hours-count)                   ; rows so far, one a minute
+(allocation-hours 4)                       ; generation 4, the oldest row first
+(allocation-hours-slope 4)                 ; how fast it grew, bytes a day
+(allocation-hours-slope 'memory 60)        ; over the last hour
+```
+
+A generation that grows while no pass collects it shows as a slope, which
+is how a slow leak shows within minutes.
 
 ## Inside the frame
 

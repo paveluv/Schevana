@@ -125,9 +125,12 @@ keeping their values. A comment where it is used says so.
   the handler whenever it is running Scheme then; otherwise the thread
   that asked. Every other thread running Scheme waits while it runs.
 - **Where:** the profiler's handler, `profile-collect` in
-  `schevana/services/profile.sls`, and what it calls: they write the
-  profiler's and the allocation service's state from whichever thread
-  that is, and the tap walks the stack only on core1.
+  `schevana/services/profile.sls`, and what it calls, and the census's,
+  `allocation-census-collect!` in `schevana/services/allocation.sls`:
+  they write the profiler's and the allocation service's state from
+  whichever thread that is, and the tap walks the stack only on core1.
+  The census counts the heap there because Chez counts only while one
+  thread is active.
 - **If it changes:** if threads did not wait, that state would be written
   by two threads at once.
 - **Held by:** no check of its own. `tests/units/profile.ss`, "when
@@ -155,6 +158,26 @@ keeping their values. A comment where it is used says so.
   under 0 is 0 to the collector", which runs a second thread and prints
   what Chez read; `tests/units/profile.ss`, "when another thread
   performs a collection that the collector asked for ...".
+
+### A state's value, by its symbol
+
+- **Expected:** `$top-level-value`, `$set-top-level-value!` and
+  `$top-level-bound?` read, set and ask for the value that a symbol holds
+  as a global of Chez's own, outside any environment. A symbol made by
+  `gensym` with a name of its own is in `(oblist)` once a fasl file or
+  `gensym->unique-string` has named it.
+- **Where:** `define-global` in `schevana/base.sls`, which keeps every
+  state and made value of a library under such a symbol, its states
+  under the name "schevana-state", their file and their own name; and
+  `allocation-census-states` in `schevana/services/allocation.sls`, which
+  finds a census's states by those names in `(oblist)` and reads their
+  values.
+- **If it changes:** a library's states don't keep their values across a
+  reload, or the census finds no state, and the code and names take them.
+- **Held by:** `tests/units/reload.ss`, "a library whose file changed is
+  evaluated again ...", which asks for the state as it was;
+  `tests/units/census.ss`, "a library's state is charged to its library,
+  under its layer".
 
 ### In the tests only
 

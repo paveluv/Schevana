@@ -3,7 +3,8 @@
 ;;; every collection: when it ran and how long, what each generation held
 ;;; before and after, how long it had been held off, and what was running
 ;;; when it was asked for; and the tap, which samples the stack to tell
-;;; which procedures allocate.
+;;; which procedures allocate; the census, which counts the live heap by
+;;; kind and by owner; and the hours, a row a minute of what it holds.
 ;;;
 ;;;   (allocation-clock)               bytes allocated so far
 ;;;   (allocation-collections)         the collections kept, the newest first
@@ -15,6 +16,11 @@
 ;;;   (allocation-paths)               the tree of call paths
 ;;;   (allocation-sampled)             the recording's numbers
 ;;;   (allocation-clear!)              forgets the samples
+;;;   (allocation-census!)             counts the live heap now
+;;;   (allocation-census-mark!)        keeps it, to compare the next with
+;;;   (allocation-census-grown)        what grew since the mark
+;;;   (allocation-hours 4)             generation 4 over two days
+;;;   (allocation-hours-slope 4)       how fast it grows, bytes a day
 ;;;
 ;;; A collection is logged from the collect-request handler, the
 ;;; profiler's ((schevana services profile)), so the log goes with the
@@ -48,11 +54,16 @@
           allocation-collection-count allocation-young
           allocation-request! allocation-record! allocation-recording?
           allocation-clear! allocation-paths allocation-places
-          allocation-sampled allocation-report)
+          allocation-sampled allocation-report allocation-census!
+          allocation-census allocation-census-mark! allocation-census-grown
+          allocation-hours allocation-hours-count allocation-hours-slope)
   (import (chezscheme)
-          (only (schevana base) define-made define-state library-layer)
-          (only (schevana core) collector-asking? collector-generation-bytes
-                now-ns))
+          (only (schevana base) at-load-once define-made define-state
+                library-layer)
+          (only (schevana core) *gpu-bytes-made* *procs* *windows* after
+                collector-asking? collector-generation-bytes now-ns proc-id
+                platform-process-bytes proc-name proc? window-id
+                window-title window?))
 
   (library-layer services)
 
@@ -700,4 +711,419 @@
                              (format "~a:~a" (path-last (ref 'file))
                                      (ref 'line))]
                             [else (path-last (ref 'file))]))))
-          (list-head rows (min most (length rows)))))])))
+          (list-head rows (min most (length rows)))))]))
+
+  ;;; ---------------------------------------------------------------- the
+  ;;; census: the live heap on demand, by kind and by owner. It takes one
+  ;;; full collection with Chez's counts of objects by type on, and then
+  ;;; charges each owner what it alone reaches (compute-size-increments,
+  ;;; in Chez's guide): first the symbols, which hold the code and the
+  ;;; names; then each library's states, from the layers below to the
+  ;;; apps; then each window and each process. Nothing reached through a
+  ;;; later owner is charged to an earlier one, so a window is charged what
+  ;;; it reaches through its own record, and a state what is reached only
+  ;;; through it. Chez counts only while every other thread waits, so both
+  ;;; run in the collect-request handler, at a rendezvous that the census
+  ;;; asks for.
+
+  ;; The tree's folders and their layers, a state's file says whose it is;
+  ;; the layers in the order their states are charged, the shared first.
+  (define allocation-census-folders
+    '(("schevana/core0/" . "core0")
+      ("schevana/recorder/" . "recorder")
+      ("schevana/core/" . "core")
+      ("schevana/kits/" . "kits")
+      ("schevana/services/" . "services")
+      ("schevana/styles/" . "looks")
+      ("schevana/palettes/" . "looks")
+      ("schevana/wallpapers/" . "looks")
+      ("schevana/desktop/" . "desktop")
+      ("schevana/apps/" . "apps")
+      ("demo/" . "demos")
+      ("games/" . "games")
+      ("schevana/" . "foundation")))
+  (define allocation-census-layers
+    '("foundation" "core0" "recorder" "core" "kits" "services" "looks"
+      "desktop" "apps" "demos" "games" "files"))
+
+  ;; Returns where the last copy of part is in text, or #f.
+  (define (allocation-census-last text part)
+    (let ([n (string-length part)])
+      (let loop ([at (- (string-length text) n)])
+        (cond [(< at 0) #f]
+              [(string=? (substring text at (+ at n)) part) at]
+              [else (loop (- at 1))]))))
+
+  ;; Returns a state's file as (place . layer): its place in the tree,
+  ;; "schevana/core/windows.sls", and its layer. A file outside the tree is
+  ;; its own place, in the layer "files".
+  (define (allocation-census-place path)
+    (let loop ([folders allocation-census-folders])
+      (if (null? folders)
+          (cons path "files")
+          (let* ([folder (caar folders)]
+                 [at (allocation-census-last path
+                                             (string-append "/" folder))]
+                 [place (and at (substring path (+ at 1)
+                                           (string-length path)))])
+            (if (and place
+                     ;; a foundation's file sits in the folder itself
+                     (or (not (string=? (cdar folders) "foundation"))
+                         (not (allocation-census-last
+                               (substring place (string-length folder)
+                                          (string-length place))
+                               "/"))))
+                (cons place (cdar folders))
+                (loop (cdr folders)))))))
+
+  ;; Returns the states of the tree's libraries as ((place layer name
+  ;; value) ...), the shared layers first. A state is kept under a symbol
+  ;; whose name is "schevana-state", its file and its own name ((schevana
+  ;; base)); its value is read there (docs/CHEZ.md). One whose value is a
+  ;; window or a process, or that holds nothing, is left out: a window is
+  ;; charged as itself.
+  (define (allocation-census-states)
+    (let ([prefix "schevana-state "])
+      (define (state symbol)
+        (let* ([name (gensym->unique-string symbol)]
+               [space (allocation-census-last name " ")]
+               [file (allocation-census-place
+                      (substring name (string-length prefix) space))]
+               [value (allocation-chez $top-level-value symbol)])
+          (and (not (or (window? value) (proc? value) (fixnum? value)
+                        (boolean? value) (null? value) (char? value)))
+               (list (car file) (cdr file)
+                     (substring name (+ space 1) (string-length name))
+                     value))))
+      (let ([states
+             (filter (lambda (x) x)
+                     (map state
+                          (filter
+                           (lambda (s)
+                             (and (gensym? s)
+                                  (let ([name (gensym->unique-string s)])
+                                    (and (> (string-length name)
+                                            (string-length prefix))
+                                         (string=? (substring
+                                                    name 0
+                                                    (string-length prefix))
+                                                   prefix)))
+                                  (allocation-chez $top-level-bound? s)))
+                           (oblist))))]
+            [rank (lambda (layer)
+                    (length (member layer
+                                    (reverse allocation-census-layers))))])
+        (sort (lambda (a b)
+                (or (< (rank (cadr a)) (rank (cadr b)))
+                    (and (= (rank (cadr a)) (rank (cadr b)))
+                         (string<? (car a) (car b)))))
+              states))))
+
+  ;; The census asked for: its roots until the handler takes it, then what
+  ;; the handler found; the last census; and the mark.
+  (define-state *allocation-census-roots* #f)
+  (define-state *allocation-census-found* #f)
+  (define-state *allocation-census* #f)
+  (define-state *allocation-census-mark* #f)
+
+  ;; The collect-request handler while a census is asked for: the first
+  ;; request takes it, as a collection of the log's, and the others go to
+  ;; plain, the handler below. What it finds is (kinds sizes live pause
+  ;; charge), on the thread that collected, which reads the generations
+  ;; right.
+  (define (allocation-census-collect! plain)
+    (let ([roots *allocation-census-roots*] [g (collect-maximum-generation)])
+      (if (not roots)
+          (plain)
+          (let ([kinds '()] [pause 0])
+            (set! *allocation-census-roots* #f)
+            (allocation-collect!
+             (lambda ()
+               (let ([t0 (now-ns)])
+                 (enable-object-counts #t)
+                 (collect g g g)
+                 (enable-object-counts #f)
+                 (set! pause (fx- (now-ns) t0))
+                 (set! kinds (object-counts))))
+             'census #f #f)
+            (let* ([live (apply + (map collector-generation-bytes
+                                       (iota (+ g 1))))]
+                   [t0 (now-ns)]
+                   [sizes (compute-size-increments roots)])
+              (set! *allocation-census-found*
+                (list kinds sizes live pause (fx- (now-ns) t0))))))))
+
+  ;; Returns a node of the census's tree of owners, (label bytes child
+  ;; ...), its children the heaviest first.
+  (define (allocation-census-node label bytes children)
+    (cons* label bytes (sort (lambda (a b) (> (cadr a) (cadr b))) children)))
+
+  ;; Returns the nodes for the states, a layer each, each file under its
+  ;; layer and each state under its file.
+  (define (allocation-census-layer-nodes states sizes)
+    (define (group key items)
+      (let loop ([items items] [groups '()])
+        (if (null? items)
+            (reverse groups)
+            (let* ([k (key (car items))]
+                   [same (assoc k groups)])
+              (if same
+                  (begin (set-cdr! same (append (cdr same) (list (car items))))
+                         (loop (cdr items) groups))
+                  (loop (cdr items) (cons (list k (car items)) groups)))))))
+    (define (sum nodes) (apply + (map cadr nodes)))
+    (map (lambda (layer)
+           (let ([files
+                  (map (lambda (file)
+                         (let ([leaves (map (lambda (s)
+                                              (list (caddr (car s)) (cdr s)))
+                                            (cdr file))])
+                           (allocation-census-node
+                            (let ([place (car file)])
+                              (if (and (> (string-length place) 9)
+                                       (string=? (substring place 0 9)
+                                                 "schevana/"))
+                                  (substring place 9 (string-length place))
+                                  place))
+                            (sum leaves) leaves)))
+                       (group caar (cdr layer)))])
+             (allocation-census-node (car layer) (sum files) files)))
+         (group cadar (map cons states sizes))))
+
+  ;; Returns the census that the handler found, as (allocation-census)
+  ;; gives it.
+  (define (allocation-census-make states windows procs found)
+    (let* ([kinds (car found)] [sizes (cadr found)] [live (caddr found)]
+           [names (car sizes)]
+           [state-sizes (list-head (cdr sizes) (length states))]
+           [others (list-tail (cdr sizes) (length states))]
+           [owned (lambda (label things sizes name-of)
+                    (let ([leaves (map (lambda (x n) (list (name-of x) n))
+                                       things sizes)])
+                      (allocation-census-node label (apply + sizes) leaves)))]
+           [children
+            (append
+             (list (list "code and names" names))
+             (allocation-census-layer-nodes states state-sizes)
+             (list (owned "windows" windows
+                          (list-head others (length windows))
+                          (lambda (w)
+                            (format "~a (~a)" (window-title w)
+                                    (window-id w))))
+                   (owned "processes" procs
+                          (list-tail others (length windows))
+                          (lambda (p)
+                            (format "~a (~a)" (proc-name p) (proc-id p))))))]
+           [charged (apply + (map cadr children))])
+      `((at . ,(now-ns))
+        (pause . ,(cadddr found))
+        (charge . ,(car (cddddr found)))
+        (bytes . ,live)
+        (kinds . ,(allocation-census-kinds kinds))
+        (owners . ,(allocation-census-node
+                    "heap" (max live charged)
+                    (cons (list "the rest" (max 0 (- live charged)))
+                          children))))))
+
+  ;; Returns Chez's counts as ((name count bytes) ...), the heaviest first:
+  ;; a type's name, or a record type's, over the generations that are
+  ;; collected (the static one, Chez's own, left out).
+  (define (allocation-census-kinds counts)
+    (let ([table (make-eq-hashtable)])
+      (for-each
+       (lambda (entry)
+         (let ([name (let ([t (car entry)])
+                       (if (record-type-descriptor? t)
+                           (record-type-name t)
+                           t))])
+           (for-each
+            (lambda (g)
+              (unless (eq? (car g) 'static)
+                (hashtable-update! table name
+                                   (lambda (old)
+                                     (cons (+ (car old) (cadr g))
+                                           (+ (cdr old) (cddr g))))
+                                   '(0 . 0))))
+            (cdr entry))))
+       counts)
+      (let-values ([(names sums) (hashtable-entries table)])
+        (sort (lambda (a b) (> (caddr a) (caddr b)))
+              (map (lambda (name sum) (list name (car sum) (cdr sum)))
+                   (vector->list names) (vector->list sums))))))
+
+  ;; (allocation-census!) takes a census now and returns it. It is a full
+  ;; collection, so the world stops for it (some 40 ms for 100 MB here, and
+  ;; as long again to charge the owners); the log has it, asked by census.
+  (define (allocation-census!)
+    (let* ([states (allocation-census-states)]
+           [windows *windows*] [procs *procs*]
+           [plain (collect-request-handler)])
+      (set! *allocation-census-found* #f)
+      (set! *allocation-census-roots*
+        (append (list (oblist)) (map cadddr states) windows procs))
+      (dynamic-wind
+        (lambda ()
+          (collect-request-handler
+           (lambda () (allocation-census-collect! plain))))
+        (lambda () (collect-rendezvous))
+        (lambda ()
+          (set! *allocation-census-roots* #f)
+          (collect-request-handler plain)))
+      (let ([found *allocation-census-found*])
+        (set! *allocation-census-found* #f)
+        (when found
+          (set! *allocation-census*
+            (allocation-census-make states windows procs found)))
+        *allocation-census*)))
+
+  ;; Returns the last census, or #f: an association list of at, when it
+  ;; was taken (ns); pause, its collection's; charge, the ns it took to
+  ;; charge the owners; bytes, the heap it found; kinds, ((name count
+  ;; bytes) ...); and owners, a tree whose nodes are (label bytes child
+  ;; ...): the heap, then the code and names, each layer with its files and
+  ;; their states, the windows, the processes, and the rest, which no owner
+  ;; reaches (Chez's own, and the census's lists).
+  (define (allocation-census) *allocation-census*)
+
+  ;; Keeps the last census as the mark, which (allocation-census-grown)
+  ;; compares the next one with.
+  (define (allocation-census-mark!)
+    (set! *allocation-census-mark* *allocation-census*))
+
+  ;; Returns what changed from the mark to the last census, or #f with
+  ;; none: an association list of at and bytes, the mark's; kinds, ((name .
+  ;; bytes) ...); and owners, ((path . bytes) ...), a path being the labels
+  ;; from the heap down, ("services" "services/allocation.sls"
+  ;; "*allocation-census*"). Each lists what grew or shrank, the most grown
+  ;; first.
+  (define (allocation-census-grown)
+    (let ([mark *allocation-census-mark*] [now *allocation-census*])
+      (define (ref c name) (cdr (assq name c)))
+      (define (paths node)
+        (let walk ([node node] [path '()])
+          (let ([path (append path (list (car node)))])
+            (cons (cons path (cadr node))
+                  (apply append
+                         (map (lambda (c) (walk c path)) (cddr node)))))))
+      (define (changes old new)
+        (sort (lambda (a b) (> (cdr a) (cdr b)))
+              (filter (lambda (x) (not (= (cdr x) 0)))
+                      (append
+                       (map (lambda (x)
+                              (let ([was (assoc (car x) old)])
+                                (cons (car x)
+                                      (- (cdr x) (if was (cdr was) 0)))))
+                            new)
+                       (map (lambda (x) (cons (car x) (- (cdr x))))
+                            (filter (lambda (x) (not (assoc (car x) new)))
+                                    old))))))
+      (and mark now (not (eq? mark now))
+           `((at . ,(ref mark 'at))
+             (bytes . ,(ref mark 'bytes))
+             (kinds . ,(changes
+                        (map (lambda (k) (cons (car k) (caddr k)))
+                             (ref mark 'kinds))
+                        (map (lambda (k) (cons (car k) (caddr k)))
+                             (ref now 'kinds))))
+             (owners . ,(changes (paths (ref mark 'owners))
+                                 (paths (ref now 'owners))))))))
+
+  ;;; ---------------------------------------------------------------- the
+  ;;; hours: a row a minute for two days of what the heap holds, so that a
+  ;;; generation that grows while no pass collects it shows as a slope.
+
+  (define allocation-hours-kept 2880)
+  (define allocation-hours-fields
+    '(at 0 1 2 3 4 memory process gpu collections pause))
+  (define allocation-hours-width 11)
+  (define-state *allocation-hours*
+    (make-fxvector (* allocation-hours-kept allocation-hours-width) 0))
+  (define-state *allocation-hours-count* 0)
+
+  ;; Returns the longest pause of the collections logged since ns.
+  (define (allocation-longest-since ns)
+    (let loop ([seq (fx- *allocation-count* 1)] [most 0])
+      (if (or (fx< seq 0) (fx<= seq (fx- *allocation-count* allocation-kept)))
+          most
+          (let ([i (fxmodulo seq allocation-kept)])
+            (if (fx<= (fxvector-ref allocation-at i) ns)
+                most
+                (loop (fx- seq 1)
+                      (fxmax most (fxvector-ref allocation-pause i))))))))
+
+  ;; Writes the row for now: each generation's bytes, what Chez holds
+  ;; from the system, what the process holds in memory (0 where the system
+  ;; doesn't say), the GPU bytes made, the collections so far, and the
+  ;; longest pause since the row before.
+  (define (allocation-hours-row!)
+    (let* ([v *allocation-hours*] [n *allocation-hours-count*]
+           [row (lambda (n)
+                  (fx* allocation-hours-width
+                       (fxmodulo n allocation-hours-kept)))]
+           [at (row n)]
+           [since (if (fx> n 0) (fxvector-ref v (row (fx- n 1))) 0)])
+      (fxvector-set! v at (now-ns))
+      (do ([g 0 (fx+ g 1)]) ((fx= g allocation-generations))
+        (fxvector-set! v (fx+ at 1 g) (collector-generation-bytes g)))
+      (fxvector-set! v (fx+ at 6) (current-memory-bytes))
+      (fxvector-set! v (fx+ at 7) (or (platform-process-bytes) 0))
+      (fxvector-set! v (fx+ at 8) *gpu-bytes-made*)
+      (fxvector-set! v (fx+ at 9) (collections))
+      (fxvector-set! v (fx+ at 10) (allocation-longest-since since))
+      (set! *allocation-hours-count* (fx+ n 1))))
+
+  ;; A row now, and one a minute from then on.
+  (define (allocation-hours-tick!)
+    (allocation-hours-row!)
+    (after 60000 (lambda () (allocation-hours-tick!))))
+
+  ;; The first row comes ten seconds after the world loads, once its boot
+  ;; has settled into the oldest generation.
+  (at-load-once (after 10000 (lambda () (allocation-hours-tick!))))
+
+  ;; Returns how many rows the hours have had in all.
+  (define (allocation-hours-count) *allocation-hours-count*)
+
+  ;; Returns a field's values over the rows kept, the oldest first: at,
+  ;; when the row was written (ns); 0 to 4, a generation's bytes; memory,
+  ;; what Chez holds from the system; process, what the process holds in
+  ;; memory; gpu, the GPU bytes made; collections, how many so far; pause,
+  ;; the longest that minute (ns).
+  (define (allocation-hours field)
+    (let* ([k (let loop ([fs allocation-hours-fields] [k 0])
+                (cond [(null? fs) (errorf 'allocation-hours
+                                          "~s is no field of the hours"
+                                          field)]
+                      [(eqv? (car fs) field) k]
+                      [else (loop (cdr fs) (+ k 1))]))]
+           [n *allocation-hours-count*]
+           [kept (min n allocation-hours-kept)])
+      (map (lambda (j)
+             (fxvector-ref *allocation-hours*
+                           (+ k (* allocation-hours-width
+                                   (modulo (+ (- n kept) j)
+                                           allocation-hours-kept)))))
+           (iota kept))))
+
+  ;; Returns how fast a field grew, in bytes a day, over the rows of the
+  ;; last minutes (all that are kept, by default): the slope of the line
+  ;; that fits them best, or #f for fewer than two rows.
+  (define allocation-hours-slope
+    (case-lambda
+      [(field) (allocation-hours-slope field allocation-hours-kept)]
+      [(field minutes)
+       (let* ([ats (allocation-hours 'at)] [ys (allocation-hours field)]
+              [skip (max 0 (- (length ats) minutes))]
+              [ats (list-tail ats skip)] [ys (list-tail ys skip)]
+              [n (length ats)])
+         (and (> n 1)
+              (let* ([days (map (lambda (at) (/ (- at (car ats)) 864e11))
+                                ats)]
+                     [mx (/ (apply + days) n)]
+                     [my (/ (apply + ys) n 1.0)]
+                     [sxx (apply + (map (lambda (x) (expt (- x mx) 2))
+                                        days))])
+                (and (> sxx 0)
+                     (/ (apply + (map (lambda (x y) (* (- x mx) (- y my)))
+                                      days ys))
+                        sxx)))))])))

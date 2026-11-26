@@ -428,6 +428,13 @@ first one's is given (`'first`), and one line marked (`'marked`).
 Allocations' Where uses both, and the Pipeline shows a shader's source
 with the second.
 
+`ui-treemap` draws the same kind of tree as areas: each box as big as its
+share of its parent, laid out squarified (rows along the shorter side,
+so that boxes come out near squares), and each box's children inside it,
+under its name. The root shown is a strip across the top; a press on a
+box makes it the root shown, and a press on the strip goes back out.
+Allocations' Heap draws the census with it.
+
 ## Boards, cards and marks
 
 A board is columns of cards side by side, as Tasks shows its tasks. The

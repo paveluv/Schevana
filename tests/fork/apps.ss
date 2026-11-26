@@ -3,9 +3,9 @@
 ;;; tree's libraries to "/", which hides a name that the launcher's own
 ;;; world lacks: there "/" has only what the core's facade and the world's
 ;;; libraries give. So here, in that world, the Pipeline shows a selected
-;;; record's shader, Allocations shows its Where, and then each app opens
-;;; and draws. It writes what it saw, as a datum, to the file that
-;;; *fork-out* names, then quits.
+;;; record's shader, Allocations shows its Where, a census on Heap and its
+;;; Hours, and then each app opens and draws. It writes what it saw, as a
+;;; datum, to the file that *fork-out* names, then quits.
 
 (define fork-seen '())
 (define (fork-saw! key value)
@@ -102,4 +102,11 @@
   (lambda ()
     (fork-app-press 'allocations '((tab where)) '(places header own)
                     'allocations
-      (lambda () (fork-every-app fork-done!)))))
+      (lambda ()
+        ;; a census, whose owners are found by their symbols' names
+        (fork-app-press 'allocations '((tab heap) census)
+                        '((heap owner) box ("code and names")) 'heap
+          (lambda ()
+            (fork-app-press 'allocations '((tab hours)) '(hours row 0)
+                            'hours
+              (lambda () (fork-every-app fork-done!)))))))))

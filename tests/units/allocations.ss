@@ -167,6 +167,89 @@
                   (not (string-contains-ci? (allocations-test-tip 'hold)
                                             "Held at tick")))))))
 
+(test-click! allocations-test-win '(tab heap))
+(allocations-test-run 1)
+
+;; Returns the tooltip of row i of table, scrolled into view.
+(define (allocations-test-row-tip table i)
+  (test-show! allocations-test-win (list table 'body) (list table 'row i))
+  (allocations-test-tip (list table 'row i)))
+
+;; Returns the index of the first of rows that pred holds of.
+(define (allocations-test-index pred rows)
+  (let loop ([rows rows] [i 0])
+    (cond [(null? rows) #f]
+          [(pred (car rows)) i]
+          [else (loop (cdr rows) (+ i 1))])))
+
+;; Returns the index of the first of the census's owners whose label
+;; begins with text.
+(define (allocations-test-owner text)
+  (allocations-test-index
+   (lambda (leaf)
+     (let ([label (car (cdr leaf))])
+       (and (>= (string-length label) (string-length text))
+            (string=? (substring label 0 (string-length text)) text))))
+   (allocations-owner-leaves (cdr (assq 'owners (allocation-census))))))
+
+(check "Heap asks for a census first; Take a census shows the heap by \
+        owner, as a treemap and as a table, the heaviest first"
+       (let ([before (ui-find allocations-test-ui '((heap owner) box ()))])
+         (test-click! allocations-test-win 'census)
+         (allocations-test-run 1)
+         (let* ([first (allocations-test-tip '(owners row 0))]
+                [shown (length (allocations-test-rows 'owners))]
+                ;; down the table, as test-show! scrolls
+                [hours (allocations-test-row-tip
+                        'owners
+                        (allocations-test-owner "*allocation-hours*"))]
+                [hog (allocations-test-row-tip
+                      'owners (allocations-test-owner "Hog ("))])
+           (printf "  ~a\n  ~a\n  ~a\n" first hog hours)
+           (and (not before)
+                (ui-find allocations-test-ui '((heap owner) box ()))
+                (ui-find allocations-test-ui
+                         '((heap owner) box ("code and names")))
+                (> shown 3)
+                (string-contains-ci? hog "Hog (")
+                (string-contains-ci? hours "*allocation-hours*")))))
+
+(define allocations-test-keep #f)
+
+(check "By kind shows the census's kinds and their counts; after Mark, \
+        the next census tells what grew since"
+       (begin
+         (test-click! allocations-test-win '(by kind))
+         (allocations-test-run 1)
+         (let* ([kind (lambda (name)
+                        (allocations-test-index
+                         (lambda (k) (eq? (car k) name))
+                         (cdr (assq 'kinds (allocation-census)))))]
+                [pairs (allocations-test-row-tip 'kinds (kind 'pair))])
+           (test-click! allocations-test-win 'mark)
+           (set! allocations-test-keep (make-bytevector (* 3 1024 1024) 1))
+           (test-click! allocations-test-win 'census)
+           (allocations-test-run 1)
+           (let ([grew (allocations-test-row-tip 'kinds
+                                                 (kind 'bytevector))])
+             (printf "  ~a\n  ~a\n" pairs grew)
+             (and pairs (string-contains-ci? pairs "objects")
+                  (ui-find allocations-test-ui '((heap kind) box ("pair")))
+                  grew (string-contains-ci? grew "since the mark"))))))
+
+(check "Hours lists each generation, what Chez and the process hold, the \
+        GPU's bytes and the longest pause, each with its line"
+       (begin
+         (test-click! allocations-test-win '(tab hours))
+         (allocation-hours-row!)
+         (allocation-hours-row!)
+         (allocations-test-run 1)
+         (let ([rows (allocations-test-rows 'hours)])
+           (printf "  ~a\n" (allocations-test-tip '(hours row 4)))
+           (and (= (length rows) 9)
+                (string-contains-ci? (allocations-test-tip '(hours row 4))
+                                     "generation 4:")))))
+
 (check "the app draws in one-bit styles and in color ones"
        (let ([errors 0] [report report-error!])
          (fluid-let ([report-error! (lambda args
@@ -174,12 +257,13 @@
                                       (apply report args))])
            (for-each (lambda (style)
                        (set-style! style)
-                       (test-click! allocations-test-win '(tab who))
-                       (allocations-test-run 2)
-                       (test-click! allocations-test-win '(tab collections))
-                       (allocations-test-run 2))
+                       (for-each (lambda (tab)
+                                   (test-click! allocations-test-win
+                                                (list 'tab tab))
+                                   (allocations-test-run 2))
+                                 '(who collections heap hours)))
                      '(genera cadr interlisp mac cons)))
-         (= errors 0)))
+         (and (= errors 0) (not (window-error allocations-test-win)))))
 
 (check "closing the window stops the tap it started"
        (begin

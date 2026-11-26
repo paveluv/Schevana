@@ -93,7 +93,8 @@
     ui-stream-rows ui-stream-sent ui-stream-new ui-stream-restart!
     ui-stream-resend! ui-stream-release! ui-stream-send! ui-stream-lane*
     ui-stream-room ui-stream-areas* ui-stream-count ui-stream-layout
-    ui-flame ui-draw-flame-box* ui-source ui-draw-source-surface*
+    ui-flame ui-draw-flame-box* ui-treemap ui-draw-treemap-box*
+    ui-source ui-draw-source-surface*
     ui-draw-source-line*
     ui-draw-stream* ui-stream ui-draw-sparkline ui-draw-sparkline*
     ui-draw-line-chart ui-draw-line-chart* ui-draw-legend ui-draw-legend*
@@ -4547,6 +4548,170 @@
                       (draw (car cs) (+ depth 1) cx cw
                             (append path (list (key (car cs)))))
                       (each (cdr cs) (+ cx cw))))))))))
+      under))
+
+  ;;; ------------------------------------------------------------------
+  ;;; treemaps: where a total goes, as areas. A tree is drawn as boxes,
+  ;;; each as big as its value's share of its parent's, laid out
+  ;;; squarified (Bruls, Huizing and van Wijk, 2000: rows along the
+  ;;; shorter side, each as long as keeps its boxes nearest to squares),
+  ;;; and each box's children inside it, under its name. The root shown is
+  ;;; a strip across the top, its children below it, and theirs inside
+  ;;; them. A press on a box makes it the root shown, and a press on the
+  ;;; strip goes back out one level.
+  ;;;
+  ;;;   (ui-treemap ui 'id x y w h tree label value children 'tip tip)
+  ;;;
+  ;;; tree, label, value and children are as a flame has them.
+
+  ;; A treemap's box: an outline and a name, as a flame's box, filled while
+  ;; the pointer is over it and none of its children, or it is selected.
+  ;; flags may have hover and selected; depth is 0 for the root shown's
+  ;; strip, 1 for its children and 2 for theirs. The name goes at the top
+  ;; left, cut to fit.
+  (define-part (ui-draw-treemap-box x y w h flags label depth)
+    (when (or (memq 'selected flags) (memq 'hover flags))
+      (fill-box x y (max 1 (- w 1)) (max 1 (- h 1))
+                (if (memq 'selected flags) 'chart-level-4 'chart-level-2)
+                2))
+    (when (and (>= w 3) (>= h 3))
+      (stroke-box (+ x 0.5) (+ y 0.5) (- w 2) (- h 2) 'chart-rule 1 2))
+    (when (and (>= w 24) (>= h (+ (font-line-height 'ui-small) 2)))
+      (draw-text (+ x 5) (+ y 2) (text-fit label (- w 10) 'ui-small)
+                 'text 'ui-small)))
+
+  ;; The height of a box's name, which its children lie under.
+  (define (ui-treemap-header-height) (+ (font-line-height 'ui-small) 4))
+
+  ;; Returns boxes for areas, the largest first, laid in x y w h in rows
+  ;; along its shorter side: (x y w h) each, in the areas' order. Areas
+  ;; that add up to less than the room leave the rest of it empty.
+  (define (ui-treemap-layout areas x y w h)
+    (define (worst row side)
+      (let ([s (apply + row)] [hi (apply max row)] [lo (apply min row)])
+        (max (/ (* side side hi) (* s s)) (/ (* s s) (* side side lo)))))
+    (let loop ([areas areas] [x x] [y y] [w w] [h h] [acc '()])
+      (if (or (null? areas) (<= w 0) (<= h 0))
+          (append (reverse acc) (map (lambda (a) (list x y 0 0)) areas))
+          (let* ([side (min w h)]
+                 [row (let grow ([row (list (car areas))] [rest (cdr areas)])
+                        (if (and (pair? rest)
+                                 (<= (worst (cons (car rest) row) side)
+                                     (worst row side)))
+                            (grow (cons (car rest) row) (cdr rest))
+                            (reverse row)))]
+                 [thick (/ (apply + row) side)]
+                 [rest (list-tail areas (length row))])
+            (if (>= w h)
+                ;; a column at the left, its boxes down it
+                (let place ([r row] [at y] [acc acc])
+                  (if (null? r)
+                      (loop rest (+ x thick) y (- w thick) h acc)
+                      (let ([len (/ (car r) thick)])
+                        (place (cdr r) (+ at len)
+                               (cons (list x at thick len) acc)))))
+                ;; a row at the top, its boxes along it
+                (let place ([r row] [at x] [acc acc])
+                  (if (null? r)
+                      (loop rest x (+ y thick) w (- h thick) acc)
+                      (let ([len (/ (car r) thick)])
+                        (place (cdr r) (+ at len)
+                               (cons (list at y len thick) acc))))))))))
+
+  ;; opts: 'tip (node), a box's tooltip or #f; 'on-pick (node), called on a
+  ;; left press on a box; 'selected, the node drawn as selected (eq?);
+  ;; 'key (node), what tells a node from its siblings, its label by
+  ;; default. The root shown is kept as a flame keeps it. Boxes under two
+  ;; pixels are left out. Returns the node under the pointer, or #f.
+  (define (ui-treemap ui id x y w h tree label value children . opts)
+    (define (opt name) (let ([o (memq name opts)]) (and o (cadr o))))
+    (let* ([tip (opt 'tip)] [on-pick (opt 'on-pick)]
+           [selected (opt 'selected)] [key (or (opt 'key) label)]
+           [hh (ui-treemap-header-height)] [under #f]
+           [way (let walk ([node tree] [keys (ui-memo ui (list id 'way) '())]
+                           [taken '()])
+                  (let ([next (and (pair? keys)
+                                   (find (lambda (c)
+                                           (equal? (key c) (car keys)))
+                                         (children node)))])
+                    (if next
+                        (walk next (cdr keys) (cons (car keys) taken))
+                        (cons node (reverse taken)))))]
+           [root (car way)] [keys (cdr way)])
+      ;; the boxes of node's children in bx by bw bh, the largest first,
+      ;; as ((child x y w h) ...) in whole pixels, those under two left out
+      (define (lay node bx by bw bh)
+        (let* ([kids (sort (lambda (a b) (> (value a) (value b)))
+                           (filter (lambda (c) (> (value c) 0))
+                                   (children node)))]
+               [total (max (value node) (apply + (map value kids)))])
+          (if (or (null? kids) (<= total 0) (< bw 4) (< bh 4))
+              '()
+              (filter
+               (lambda (b) (and (>= (caddr (cdr b)) 2) (>= (cadddr (cdr b)) 2)))
+               (map (lambda (c box)
+                      (let ([x0 (round (car box))] [y0 (round (cadr box))])
+                        (list c (exact x0) (exact y0)
+                              (exact (- (round (+ (car box) (caddr box))) x0))
+                              (exact (- (round (+ (cadr box) (cadddr box)))
+                                        y0)))))
+                    kids
+                    (ui-treemap-layout
+                     (map (lambda (c) (inexact (/ (* bw bh (value c)) total)))
+                          kids)
+                     bx by bw bh))))))
+      ;; draws node's box at bx by bw bh, and its children inside it until
+      ;; depth 2
+      (define (draw node depth bx by bw bh path)
+        (let* ([inside (if (< depth 2)
+                           (lay node (+ bx 2) (+ by hh) (- bw 4) (- bh hh 2))
+                           '())]
+               [over? (and (ui-hover? ui bx by bw bh)
+                           (not (exists (lambda (b)
+                                          (apply ui-hover? ui (cdr b)))
+                                        inside)))]
+               [text (and tip (tip node))])
+          (when over? (set! under node))
+          (ui-draw-treemap-box bx by bw bh
+                               (append (if over? '(hover) '())
+                                       (if (eq? node selected)
+                                           '(selected)
+                                           '()))
+                               (label node) depth)
+          (ui-pressable! ui (list id 'box path) bx by bw bh
+                         (lambda ()
+                           (when on-pick (on-pick node))
+                           (ui-memo! ui (list id 'way) path))
+                         '()
+                         (append '(focus keep) (if text (list 'tip text) '())))
+          (for-each (lambda (b)
+                      (apply draw (car b) (+ depth 1)
+                             (append (cdr b)
+                                     (list (append path
+                                                   (list (key (car b))))))))
+                    inside)))
+      (ui-memo! ui (list id 'way) keys)
+      ;; the root shown: a strip whose press goes back out
+      (let ([over? (ui-hover? ui x y w hh)] [text (and tip (tip root))])
+        (when over? (set! under root))
+        (ui-draw-treemap-box x y w hh
+                             (append (if over? '(hover) '())
+                                     (if (eq? root selected) '(selected) '()))
+                             (label root) 0)
+        (ui-pressable! ui (list id 'box keys) x y w hh
+                       (lambda ()
+                         (when on-pick (on-pick root))
+                         (ui-memo! ui (list id 'way)
+                                   (if (pair? keys)
+                                       (reverse (cdr (reverse keys)))
+                                       keys)))
+                       '()
+                       (append '(focus keep) (if text (list 'tip text) '()))))
+      (for-each (lambda (b)
+                  (apply draw (car b) 1
+                         (append (cdr b)
+                                 (list (append keys (list (key (car b))))))))
+                (lay root x (+ y hh 2) w (- h hh 2)))
       under))
 
   ;;; ------------------------------------------------------------------
