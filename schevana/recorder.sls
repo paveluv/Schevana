@@ -6,7 +6,8 @@
 (library (schevana recorder)
   (export
     rec-write! rec-extra! rec-extra-u32! rec-extra-ref rec-extra-at
-    rec-count rec-bytes-begin! rec-into-list! rec-freeze! rec-lend!
+    rec-count rec-bytes-begin! rec-list-begin! rec-list-end! rec-freeze!
+    rec-lend!
     rec-last-sizes rec-last-copy! rec-last-runs rec-drawing->bytes
     rec-bytes-copies
     rec-list-new rec-list-copy gpu-list-recs-n gpu-list-extras-n
@@ -18,7 +19,8 @@
           (only (schevana base) library-layer)
           (only (schevana recorder bytes) rec-write! rec-extra! rec-extra-u32!
                 rec-extra-ref rec-extra-at rec-count rec-bytes-begin!
-                rec-into-list! rec-freeze! rec-lend! rec-last-sizes
+                rec-list-begin! rec-list-end! rec-freeze! rec-lend!
+                rec-last-sizes
                 rec-last-copy! rec-last-runs rec-drawing->bytes rec-bytes-copies
                 rec-list-new rec-list-copy gpu-list-recs-n gpu-list-extras-n
                 gpu-list-runs gpu-list-version gpu-list-recs gpu-list-extras

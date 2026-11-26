@@ -48,12 +48,12 @@
           (only (schevana recorder) gpu-list-runs rec-bytes-begin!
                 rec-bytes-copies rec-count rec-drawing->bytes rec-earlier-add!
                 rec-extra! rec-extra-at rec-extra-ref rec-extra-u32! rec-freeze!
-                rec-into-list! rec-lend! rec-write!)
+                rec-lend! rec-list-begin! rec-list-end! rec-write!)
           (only (schevana core theme-table) *theme* theme theme-part
                 theme-table-default!)
           (only (schevana core platform) now-ns)
-          (only (schevana core processes) *profile-span* report-error!
-                request-frame!)
+          (only (schevana core processes) *profile-span* current-proc
+                report-error! request-frame!)
           (only (schevana core gpu) gpu-ask! gpu-make-call gpu-publish
                 gpu-take-asks!)
           (only (schevana core fonts) *atlas-pieces* *glyph-count* *glyph-table*
@@ -168,6 +168,15 @@
     (cond
       [(fixnum? c) (fxior #xff000000 (fxand c #xffffff))]
       [(symbol? c) (color-word (theme c))]
+      ;; a color under a flonum alpha: its word's alpha scaled, in flonums
+      ;; that stay unboxed
+      [(and (pair? c) (flonum? (cdr c)))
+       (let ([w (color-word (car c))])
+         (fxior (fxand w #xffffff)
+                (fxsll (flonum->fixnum
+                        (flround (fl* (fixnum->flonum (fxsrl w 24))
+                                      (flmax 0.0 (flmin 1.0 (cdr c))))))
+                       24)))]
       [else
        (let-values ([(r g b a) (color-rgba c)])
          (let ([byte (lambda (v) (exact (round (* 255 (clamp v 0.0 1.0)))))])
@@ -391,56 +400,92 @@
   ;; recorded; a show-list of lst then draws it. The list being recorded
   ;; goes on afterwards as it was. While the profiler is on, lst keeps when
   ;; it was recorded and how long that took; with the profiler off, only
-  ;; the pacer reads the clock.
+  ;; the pacer reads the clock. What the list nests in is kept aside in a
+  ;; vector of its level's, made once (*rec-saves*: lists nest 64 deep at
+  ;; most), and put back by a procedure of no closure, so a recording
+  ;; allocates nothing of its own.
+  (define-state *rec-saves* (make-vector 64 #f))
+  (define-state *rec-depth* 0)
+
+  ;; The state a list's recording keeps aside, from slot 4 of its level's
+  ;; vector: (rec-kept rec-keep! s) keeps it, (rec-kept rec-put-back! s)
+  ;; puts it back. Slots 0 to 3 hold lst, the recording it nests in, when
+  ;; it began, and the level's own labels.
+  (define-syntax rec-kept
+    (syntax-rules ()
+      [(_ op s)
+       (op s 4 *rec-labels* *rec-label-at* *rec-label* *rec-runs* *rec-mode*
+           *rec-image* *rec-variant* *rec-run-first* *rec-area* *rec-runs-was*
+           *rec-runs-same* *rec-num* *rec-den* *rec-ox* *rec-oy* *rec-turn*
+           *rec-clip* *rec-cx0* *rec-cy0* *rec-cx1* *rec-cy1*)]))
+  (define-syntax rec-keep!
+    (syntax-rules ()
+      [(_ s i) (void)]
+      [(_ s i v more ...)
+       (begin (vector-set! s i v) (rec-keep! s (fx+ i 1) more ...))]))
+  (define-syntax rec-put-back!
+    (syntax-rules ()
+      [(_ s i) (void)]
+      [(_ s i v more ...)
+       (begin (set! v (vector-ref s i)) (rec-put-back! s (fx+ i 1) more ...))]))
+
+  ;; In a process, no slice of its engine ends inside a list's recording,
+  ;; whose state is kept here, not in the continuation that a slice's end
+  ;; leaves and its next slice enters again.
   (define (record-list! lst thunk)
-    (let ([t0 (and *profile-span* (now-ns))]
-          [outer (vector *rec-labels* *rec-label-at* *rec-label* *rec-runs*
-                         *rec-mode* *rec-image* *rec-variant* *rec-run-first*
-                         *rec-area* *rec-runs-was* *rec-runs-same* *rec-num*
-                         *rec-den* *rec-ox* *rec-oy* *rec-turn* *rec-clip*
-                         *rec-cx0* *rec-cy0* *rec-cx1* *rec-cy1*)])
-      (dynamic-wind
-       (lambda ()
-         (set! *rec-labels* (make-vector 16 #f))
-         (set! *rec-label-at* 0)
-         (set! *rec-label* #f)
-         (set! *rec-runs* '())
-         (set! *rec-runs-was* (gpu-list-runs lst))
-         (set! *rec-runs-same* *rec-runs-was*)
-         (set! *rec-mode* 0)
-         (set! *rec-image* #f)
-         (set! *rec-variant* 0)
-         (set! *rec-run-first* 0)
-         (set! *rec-area* 0)
-         (set! *rec-ox* 0)
-         (set! *rec-oy* 0)
-         (set! *rec-turn* #f)
-         (set! *rec-swap* #f)
-         (set! *rec-clip* 0))
-       ;; its bytes, which are the recorder's, are written there; its runs
-       ;; end while they are the ones being written
-       (lambda ()
-         (rec-into-list! lst thunk (lambda () (rec-runs))))
-       (lambda ()
-         (gpu-list-labels-set! lst (list->vector
-                                    (list-head (vector->list *rec-labels*)
-                                               *rec-label-at*)))
-         (when t0
-           (let ([now (now-ns)])
-             (gpu-list-recorded-set! lst now)
-             (gpu-list-took-set! lst (- now t0))))
-         (set! *rec-labels* (vector-ref outer 0))
-         (set! *rec-label-at* (vector-ref outer 1))
-         (set! *rec-label* (vector-ref outer 2))
-         (set! *rec-runs* (vector-ref outer 3))
-         (set! *rec-mode* (vector-ref outer 4))
-         (set! *rec-image* (vector-ref outer 5))
-         (set! *rec-variant* (vector-ref outer 6))
-         (set! *rec-run-first* (vector-ref outer 7))
-         (set! *rec-area* (vector-ref outer 8))
-         (set! *rec-runs-was* (vector-ref outer 9))
-         (set! *rec-runs-same* (vector-ref outer 10))
-         (apply rec-state-restore! (list-tail (vector->list outer) 11))))))
+    (if (current-proc)
+        (with-interrupts-disabled (record-list-in! lst thunk))
+        (record-list-in! lst thunk)))
+
+  (define (record-list-in! lst thunk)
+    (let ([d *rec-depth*])
+      (let ([s (or (vector-ref *rec-saves* d)
+                   (let ([s (make-vector 25 #f)])
+                     (vector-set! *rec-saves* d s)
+                     s))])
+        (vector-set! s 0 lst)
+        (vector-set! s 2 (and *profile-span* (now-ns)))
+        (rec-kept rec-keep! s)
+        (set! *rec-labels* (or (vector-ref s 3) (make-vector 16 #f)))
+        (set! *rec-label-at* 0)
+        (set! *rec-label* #f)
+        (set! *rec-runs* '())
+        (set! *rec-runs-was* (gpu-list-runs lst))
+        (set! *rec-runs-same* *rec-runs-was*)
+        (set! *rec-mode* 0)
+        (set! *rec-image* #f)
+        (set! *rec-variant* 0)
+        (set! *rec-run-first* 0)
+        (set! *rec-area* 0)
+        (set! *rec-ox* 0)
+        (set! *rec-oy* 0)
+        (set! *rec-turn* #f)
+        (set! *rec-swap* #f)
+        (set! *rec-clip* 0)
+        ;; its bytes, which are the recorder's, are written there
+        (vector-set! s 1 (rec-list-begin! lst))
+        (set! *rec-depth* (fx+ d 1))
+        (dynamic-wind void thunk record-list-end!))))
+
+  ;; Ends the innermost list being recorded: its runs end while they are
+  ;; the ones being written, it keeps its labels (one shared vector when it
+  ;; has none) and its times, and what it nests in goes on.
+  (define (record-list-end!)
+    (let* ([d (fx- *rec-depth* 1)] [s (vector-ref *rec-saves* d)]
+           [lst (vector-ref s 0)] [t0 (vector-ref s 2)])
+      (rec-list-end! lst (vector-ref s 1) (rec-runs))
+      (gpu-list-labels-set! lst (if (fx= *rec-label-at* 0)
+                                    '#()
+                                    (vector-copy *rec-labels* 0
+                                                 *rec-label-at*)))
+      (when t0
+        (let ([now (now-ns)])
+          (gpu-list-recorded-set! lst now)
+          (gpu-list-took-set! lst (- now t0))))
+      (vector-set! s 3 *rec-labels*)
+      (vector-set! s 0 #f)
+      (rec-kept rec-put-back! s)
+      (set! *rec-depth* d)))
 
   ;; Draws lst with its origin at (x, y), inside the clip. It adds no
   ;; record, only a run that shows lst, with how many labels came before it
@@ -464,10 +509,15 @@
 
   ;; Returns v, on an axis whose origin is o, in 1/256ths of a device pixel.
   (define (rec-device v o)
-    (if (fixnum? v)
-        (fx+ o (fxdiv (fx* (fx* v *rec-num*) 256) *rec-den*))
-        (fx+ o (exact (floor (+ 1/2 (/ (* (exact v) *rec-num* 256)
-                                       *rec-den*)))))))
+    (cond
+      [(fixnum? v) (fx+ o (fxdiv (fx* (fx* v *rec-num*) 256) *rec-den*))]
+      [(flonum? v)
+       (fx+ o (flonum->fixnum
+               (flfloor (fl+ 0.5 (fl/ (fl* v (fixnum->flonum
+                                               (fx* *rec-num* 256)))
+                                      (fixnum->flonum *rec-den*))))))]
+      [else (fx+ o (exact (floor (+ 1/2 (/ (* (exact v) *rec-num* 256)
+                                           *rec-den*)))))]))
 
   ;; A length in 1/256ths of a device pixel.
   (define (rec-length v) (rec-device v 0))
@@ -597,11 +647,16 @@
   ;; app's drawing too
   (at-load (theme-table-default! 'corner-radius 9))
   (define (rec-radius r w h)
-    (if (eqv? r 0)
-        0
-        (if (<= (theme 'corner-radius) 0)
-            0
-            (max 0 (rec-length (min r (/ (abs w) 2) (/ (abs h) 2)))))))
+    (cond
+      [(or (eqv? r 0) (<= (theme 'corner-radius) 0)) 0]
+      ;; whole numbers stay whole in halves: half an odd side is no
+      ;; fraction to allocate
+      [(and (fixnum? r) (fixnum? w) (fixnum? h))
+       (fxmax 0 (fxdiv (fx* (fx* (fxmin (fx* 2 r) (fxabs w) (fxabs h))
+                                 *rec-num*)
+                            128)
+                       *rec-den*))]
+      [else (max 0 (rec-length (min r (/ (abs w) 2) (/ (abs h) 2))))]))
 
   (define (rec-box! x y w h color radius line)
     (cond
@@ -757,12 +812,12 @@
 
   ;; Returns x in 1/256ths of a logical pixel: a pen's start.
   (define (rec-text-x x)
-    (if (fixnum? x)
-        (fxsll x 8)
-        (exact (floor (* (exact x) 256)))))
+    (cond [(fixnum? x) (fxsll x 8)]
+          [(flonum? x) (flonum->fixnum (flfloor (fl* x 256.0)))]
+          [else (exact (floor (* (exact x) 256)))]))
 
   ;; Draws str with its top-left at (x, y). Returns the x where the text
-  ;; ends.
+  ;; ends, rounded up to a whole logical pixel as text-width is.
   (define draw-text
     (case-lambda
       [(x y str) (draw-text x y str 'text 'ui)]
@@ -789,7 +844,7 @@
               [oy *rec-oy*])
          (let loop ([i 0] [pen start])
            (if (fx= i n)
-               (fl/ (fixnum->flonum pen) 256.0)
+               (fxsra (fx+ pen 255) 8)
                (let* ([c (char->integer (string-ref str i))]
                       [along (fxdiv (fx* pen num) den)]
                       [d (if turned?

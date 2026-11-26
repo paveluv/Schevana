@@ -325,3 +325,62 @@
                       test-core-libraries))])
            (for-each (lambda (f) (printf "  ~a\n" f)) found)
            (null? found))))
+
+;;; What the core's drawing allocates of its own, beneath every app: a
+;;; list's recording, a window's handler call and the drawing primitives.
+;;; Each budget is what it is made of, measured here: a winder, a guard, a
+;;; parameterize, a flonum.
+(let* ([l (gpu-list-new)]
+       [win (open-window "Floor" 'size '(100 . 60) 'pos '(40 . 40)
+                         'draw (lambda (win w h) (void)))]
+       [winder (allocation-least 20 (lambda () (dynamic-wind void void void)))]
+       [guard (allocation-least 20 (lambda () (safely 'test void)))]
+       [bound (allocation-least 20 (lambda ()
+                                     (parameterize ([current-window win]) #f)))]
+       [flonum 16]
+       [draw (lambda () (window-call win 'draw 100 60))]
+       [empty (allocation-least 20 (lambda () (record-list! l void)))]
+       [called (allocation-least 20 (lambda () (record-list! l draw)))]
+       [whole (allocation-least
+               20 (lambda ()
+                    (record-list!
+                     l (lambda ()
+                         (fill-box 10 10 100 20 'accent 4)
+                         (draw-line 0 0 100 50 'text)
+                         (draw-text 10 10 "Whole" 'text 'ui)))))]
+       [half (allocation-least
+              20 (lambda ()
+                   (record-list!
+                    l (lambda ()
+                        (fill-box 10.5 10.25 100 21 'accent 3)
+                        (draw-text 10.5 10.25 "Half" 'text 'ui)))))]
+       [faint (allocation-least
+               20 (lambda ()
+                    (record-list!
+                     l (lambda ()
+                         (fill-box 10 10 100 20 (alpha 'accent 0.25))))))]
+       [engine (allocation-least
+                20 (lambda ()
+                     ((make-engine void) 1000 (lambda (left . v) #f)
+                                         (lambda (e) #f))))]
+       [width (allocation-least 20 (lambda () (text-width "Whole" 'ui)))])
+  (close-window! win)
+  (steps 1)
+  (check (format "recording a list allocates only the winder that puts back \
+                  what it nests in (~a bytes; a winder ~a)" empty winder)
+         (<= empty winder))
+  (check (format "a box, a line and text at whole coordinates allocate \
+                  nothing past the recording (~a bytes past it); at \
+                  fractional ones, only the flonums of their sums (~a); a \
+                  color under alpha, its pair (~a); text-width nothing (~a)"
+                 (- whole empty) (- half empty) (- faint empty) width)
+         (and (= whole empty)
+              (<= (- half empty) (* 4 flonum))
+              (<= (- faint empty) flonum)
+              (= width 0)))
+  (check (format "a window's handler call is timed by core1's timer, with \
+                  no engine (~a bytes): it allocates a guard, the binding of \
+                  its window, the profiler's span and its closures (~a bytes \
+                  past the recording; a guard ~a, a binding ~a)"
+                 engine (- called empty) guard bound)
+         (<= (- called empty) (+ guard bound 512))))

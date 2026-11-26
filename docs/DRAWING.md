@@ -105,7 +105,7 @@ at any whole scale; it is measured and drawn as any font is:
   (fill-box 0 0 w h 'bg-1)
   (draw-text 20 20 "<> <>?" 'accent chevrons))     ; ? is the slug
 (open-window "Chevrons" 'size '(240 . 70) 'draw draw-chevrons)
-(text-width "<>" chevrons)                         ; => 36.0
+(text-width "<>" chevrons)                         ; => 36
 (inspect-bitmap-fonts)
 ```
 

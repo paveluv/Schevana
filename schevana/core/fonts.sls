@@ -460,8 +460,8 @@
                      (fx+ w (font-advance f ff (char->integer
                                                 (string-ref str i)))))
                ;; rounded up to whole logical pixels, layout's unit, so that
-               ;; boxes stay crisp
-               (flceiling (fl/ (fixnum->flonum w) 256.0)))))]))
+               ;; boxes stay crisp: a whole number, which allocates nothing
+               (fxsra (fx+ w 255) 8))))]))
 
   ;;; ---------------------------------------------------------------- atlas
   ;;; One texture of coverage, filled shelf by shelf. Its table of rows

@@ -23,7 +23,8 @@
 (library (schevana recorder bytes)
   (export
     rec-count rec-extra-at rec-write! rec-extra! rec-extra-u32! rec-extra-ref
-    rec-bytes-begin! rec-into-list! rec-freeze! rec-earlier-add! rec-lend!
+    rec-bytes-begin! rec-list-begin! rec-list-end! rec-freeze!
+    rec-earlier-add! rec-lend!
     rec-writes-pending? rec-buffer-set! rec-pixel-set! rec-image-rows!
     rec-compute-now! rec-buffer-read! rec-buffer-read-then! rec-submit-computes!
     rec-list-new gpu-list-recs-n gpu-list-extras-n gpu-list-runs
@@ -194,24 +195,24 @@
     (gpu-recording-extras-n-set! *rec-root-next* 4)
     (set! *rec-now* *rec-root-next*))
 
-  ;; What thunk records goes into a recording of lst's own (lst is a
-  ;; gpu-list). Afterwards that recording is frozen with the runs that
-  ;; runs-of returns while it is still the one being written (the runs end
-  ;; there), and swapped into lst. The recording that was being written
-  ;; before goes on as it was.
-  (define (rec-into-list! lst thunk runs-of)
-    (let ([outer *rec-now*] [r #f])
-      (dynamic-wind
-       (lambda ()
-         (set! r (rec-take! (gpu-list-recording lst)))
-         (set! *rec-now* r))
-       thunk
-       (lambda ()
-         (let ([head (gpu-list-recording lst)])
-           (rec-frozen! r (runs-of) head)
-           (gpu-list-recording-set! lst r)
-           (rec-retired! head))
-         (set! *rec-now* outer)))))
+  ;; What is recorded from here on goes into a recording of lst's own (lst
+  ;; is a gpu-list), until rec-list-end!. Returns the recording that was
+  ;; being written, which rec-list-end! takes up again.
+  (define (rec-list-begin! lst)
+    (let ([outer *rec-now*])
+      (set! *rec-now* (rec-take! (gpu-list-recording lst)))
+      outer))
+
+  ;; Freezes lst's recording with runs, which the caller ends while it is
+  ;; still the one being written, and swaps it into lst; outer goes on as
+  ;; it was. Nothing here allocates, so a list recorded each frame costs
+  ;; only what is drawn into it.
+  (define (rec-list-end! lst outer runs)
+    (let ([r *rec-now*] [head (gpu-list-recording lst)])
+      (rec-frozen! r runs head)
+      (gpu-list-recording-set! lst r)
+      (rec-retired! head)
+      (set! *rec-now* outer)))
 
   ;; Freezes the root's recording with runs. It becomes the last frame, the
   ;; next one to lend, and nothing is recorded until the next frame begins.

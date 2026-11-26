@@ -24,7 +24,7 @@
     worklet-spread define-worklet)
   (import (chezscheme)
           (only (schevana base) at-load condition->string define-hook
-                define-state forwarder-to library-layer)
+                define-made define-state forwarder-to library-layer)
           (only (schevana core platform) now-ms now-ns))
 
   (library-layer core)
@@ -39,7 +39,9 @@
 
   ;; States, not plain definitions: a reload must not swap out parameters
   ;; that running engines are still parameterizing. They are thread
-  ;; parameters, so another thread's binding is never core1's.
+  ;; parameters, so another thread's binding is never core1's. in-engine?
+  ;; is true while untrusted code runs under a watchdog: a process, in its
+  ;; engine, or a handler that safe-call times.
   (define-state in-engine? (make-thread-parameter #f))
   (define-state current-proc (make-thread-parameter #f))
 
@@ -87,23 +89,38 @@
                (make-message-condition
                 "exceeded its time budget (infinite loop?)")))
 
+  ;; What the thread's timer raises when a call's fuel is spent.
+  (define-made safe-call-timeout (make-timeout-condition 'safe-call))
+
+  ;; The thread's timer, when a call's fuel is spent: raises the timeout,
+  ;; and again soon after, until the call's own guard has it (a guard
+  ;; within the call may take it first).
+  (define (safe-call-timeout!)
+    (set-timer 10000)
+    (raise safe-call-timeout))
+
   ;; Calls thunk. If it raises or runs out of fuel, returns (on-error
-  ;; condition).
+  ;; condition). In a process, the engine's slices time thunk. Elsewhere
+  ;; the thread's timer does, armed here with the fuel, as an engine
+  ;; would, at no cost: nothing switches the call out, so in-engine? is
+  ;; set and put back, not bound. A call within one under a watchdog is
+  ;; timed by that one, and lets its timeout through.
   (define (safe-call who thunk on-error)
     (if (in-engine?)
-        (guard (c [#t (on-error c)]) (thunk))
-        (let ([r ((make-engine
-                   (lambda ()
-                     (parameterize ([in-engine? #t])
-                       (guard (c [#t (cons 'error c)])
-                         (call-with-values thunk
-                           (lambda vals (cons 'ok vals)))))))
-                  handler-fuel
-                  (lambda (left r) r)
-                  (lambda (eng) (cons 'error (make-timeout-condition who))))])
-          (if (eq? (car r) 'ok)
-              (apply values (cdr r))
-              (on-error (cdr r))))))
+        (guard (c [(not (eq? c safe-call-timeout)) (on-error c)]) (thunk))
+        (begin
+          (in-engine? #t)
+          (timer-interrupt-handler safe-call-timeout!)
+          (set-timer handler-fuel)
+          (guard (c [#t (set-timer 0)
+                        (in-engine? #f)
+                        (on-error (if (eq? c safe-call-timeout)
+                                      (make-timeout-condition who)
+                                      c))])
+            (call-with-values thunk
+              (case-lambda
+                [(v) (set-timer 0) (in-engine? #f) v]
+                [vs (set-timer 0) (in-engine? #f) (apply values vs)]))))))
 
   ;; For trusted system code: errors are reported, but there is no fuel limit.
   (define (safely who thunk)

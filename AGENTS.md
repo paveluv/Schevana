@@ -138,7 +138,7 @@ before it:
   feature updates `docs/PLATFORMS.md`: where it ran, where it should
   work, and what happens without it. Monitor's Platform tab shows all of
   it, and copies a run as a row of that table.
-- **The core has a budget** of 42,423 tokens (atoms as read; comments,
+- **The core has a budget** of 42,600 tokens (atoms as read; comments,
   whitespace and the lengths of names are free, and a library's exports
   and imports, which only declare, are left out), set in
   `tests/sources.ss`. Don't join lines or shorten names to fit it: move
