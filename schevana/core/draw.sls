@@ -1479,23 +1479,22 @@
   (define-gfx-fragment gfx-image-fragment #f #f #f #f #t)
   (define-gfx-fragment gfx-full-fragment #t #t #t #t #f)
 
-  ;; Their names, by rec-variant's numbers.
-  (define gfx-fragments
-    '#(gfx-fragment
-       gfx-line-fragment
-       gfx-shadow-fragment
-       gfx-gradient-fragment
-       gfx-stipple-fragment
-       gfx-image-fragment
-       gfx-full-fragment))
+  ;; The variants by rec-variant's numbers: the shaders themselves, since
+  ;; "/" has only the names the core's facade gives.
+  (define-made gfx-fragments
+    (vector gfx-fragment
+            gfx-line-fragment
+            gfx-shadow-fragment
+            gfx-gradient-fragment
+            gfx-stipple-fragment
+            gfx-image-fragment
+            gfx-full-fragment))
 
   ;; Core0 draws records with these, handed to it as they are (a reload may
-  ;; bring new ones), never looked up by name.
+  ;; bring new ones), never looked up by name. It gets a copy of its own,
+  ;; which nothing in the world can change.
   (at-load
-   (gpu-ask! (list 'shaders gfx-vertex
-                   (vector gfx-fragment gfx-line-fragment gfx-shadow-fragment
-                           gfx-gradient-fragment gfx-stipple-fragment
-                           gfx-image-fragment gfx-full-fragment))))
+   (gpu-ask! (list 'shaders gfx-vertex (vector-copy gfx-fragments))))
 
   ;;; ---------------------------------------------------------------- frames
 

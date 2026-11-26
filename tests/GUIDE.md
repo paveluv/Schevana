@@ -173,6 +173,12 @@ of a library, the test framework finds by itself:
   library has it. A test that stands in for another definition adds it to
   the list. In the hacker edition every name is at the top level already,
   to be set like any other.
+- So the suites' world has names that the launcher's own world lacks,
+  where "/" has only what the core's facade and the world's libraries
+  give, and a lookup by name (a part's body, `world-value`) that works in
+  the suites can fail there. `tests/units/fork.ss` runs `./desktop` itself
+  (`tests/fork/apps.ss`): each app opens and draws in that world, and the
+  views that look names up are shown there.
 - A demo, which the suites' world doesn't load: `(test-demos! 'life)`
   loads it into the world, as the desktop does when it is given the demos'
   folder, for a test that opens the demo's window. `(test-backlog!)` gives

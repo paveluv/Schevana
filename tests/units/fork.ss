@@ -3,13 +3,14 @@
 ;;; of ./desktop in a process of its own, with HOME set to a scratch folder,
 ;;; which reports what it saw (tests/fork/run.ss).
 
-;; Runs ./desktop forked, with HOME the scratch folder named, evaluating
-;; first (a string) before it loads tests/fork/run.ss. Returns (status .
-;; seen): how the process ended, and what the run saw, or #f.
-(define (fork-run name first)
+;; Runs ./desktop forked on a screen of size (a string, "400x300"), with
+;; HOME the scratch folder named, evaluating first (a string) before it
+;; loads script, a file in tests/fork/. Returns (status . seen): how the
+;; process ended, and what the run saw, or #f.
+(define (fork-run name first script size)
   (let ([home (string-append out-dir "/" name "-home")]
         [out (string-append out-dir "/" name "-seen.ss")]
-        [run (string-append *schevana-root* "/tests/fork/run.ss")])
+        [run (string-append *schevana-root* "/tests/fork/" script)])
     (unless (file-directory? home) (mkdir home))
     (when (file-exists? out) (delete-file out))
     (let ([status
@@ -17,7 +18,7 @@
              (string-append
                (test-chez (list (cons "HOME" home))
                           (string-append *schevana-root* "/desktop")
-                          "--headless" "--fork" "--size" "400x300"
+                          "--headless" "--fork" "--size" size
                           "--eval" (format "(define *fork-out* ~s)" out)
                           "--eval" first
                           "--eval" (format "(load ~s)" run))
@@ -25,7 +26,7 @@
       (cons status
             (and (file-exists? out) (call-with-input-file out read))))))
 
-(let* ([ran (fork-run "fork" "(void)")]
+(let* ([ran (fork-run "fork" "(void)" "run.ss" "400x300")]
        [status (car ran)]
        [seen (cdr ran)])
   (define (saw key) (and (pair? seen) (cdr (assq key seen))))
@@ -60,7 +61,8 @@
 ;; for the last frame's GPU work: each frame's, done as core0 gives it back,
 ;; wakes the world, so frames don't wait out the pacer's gate, eight
 ;; refreshes each.
-(let* ([ran (fork-run "fork-pacer2" "(override! 'pacer 2)")]
+(let* ([ran (fork-run "fork-pacer2" "(override! 'pacer 2)" "run.ss"
+                      "400x300")]
        [seen (cdr ran)])
   (define (saw key) (and (pair? seen) (cdr (assq key seen))))
   (check (format "with the second pacer, a forked world's frames come at \
@@ -71,6 +73,24 @@
          (and (eqv? (car ran) 0) (saw 'animated) (> (saw 'animated) 30)
               (= (saw 'uneven) 0)
               (< (saw 'refreshes) (* 4 (saw 'animated))))))
+
+;; The desktop's apps in the launcher's own world, where "/" has only the
+;; names that the core's facade and the world's libraries give: the suites'
+;; build gives every name, so a part's body or a shader that the world
+;; looks up by name and lacks shows only here (tests/fork/apps.ss).
+(let* ([ran (fork-run "fork-apps" "(void)" "apps.ss" "1280x800")]
+       [seen (cdr ran)])
+  (define (saw key) (and (pair? seen) (cdr (assq key seen))))
+  (check (format "in the launcher's own world, the Pipeline shows the \
+                  shader of a record pressed on its small screen (~s), and \
+                  Allocations shows Where (~s)"
+                 (saw 'pipeline) (saw 'allocations))
+         (and (eq? (saw 'pipeline) #t) (eq? (saw 'allocations) #t)))
+  (check (format "in the launcher's own world, each of the desktop's apps \
+                  opens and draws with no error (~s)"
+                 (saw 'apps))
+         (and (eqv? (car ran) 0) (saw 'frames) (pair? (saw 'apps))
+              (for-all (lambda (app) (not (cdr app))) (saw 'apps)))))
 
 ;; The guards on that run: a run that hangs is killed once its time is up,
 ;; and a word reaches sh whole, whatever it holds.

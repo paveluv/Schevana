@@ -77,8 +77,7 @@
                 rec-preview! rec-recordings rec-row-head rec-row-paint
                 rec-row-words rec-row-x0 rec-row-x1 rec-row-y0 rec-row-y1
                 rec-segment-width rec-shadow-size rec-variant reload-facts
-                shader shader-name shader-source window-ref window-title
-                world-value))
+                shader shader-name shader-source window-ref window-title))
 
   (library-layer kits)
 
@@ -821,7 +820,8 @@
   (define (inspect-list-runs l) (vector-ref l 6))
   ;; Returns the name of the fragment shader a run draws with: the variant
   ;; its records need.
-  (define (inspect-run-shader run) (vector-ref gfx-fragments (list-ref run 4)))
+  (define (inspect-run-shader run)
+    (shader-name (vector-ref gfx-fragments (list-ref run 4))))
 
   ;; Returns the compute runs waiting for the next frame, in the order they
   ;; will run, each as (shader-name w h), with w × h its cells.
@@ -1673,7 +1673,7 @@
     (let ([x (cadr run)])
       (if (gpu-call? x)
           (gpu-call-shader x)
-          (world-value (inspect-run-shader run)))))
+          (vector-ref gfx-fragments (list-ref run 4)))))
 
   ;; Returns the helper groups a shader's source uses, wherever it uses
   ;; them, in order.

@@ -155,9 +155,10 @@
         solid color; one for a line, a shadow or a paint; the full one for a \
         line or shadow in a gradient or stipple"
        (let ([shader (lambda (kind paint)
-                       (vector-ref gfx-fragments
-                                   (rec-variant
-                                    (fxior kind (fxsll paint 4)))))])
+                       (shader-name
+                        (vector-ref gfx-fragments
+                                    (rec-variant
+                                     (fxior kind (fxsll paint 4))))))])
          (equal? (list (shader rec-kind-box rec-paint-solid)
                        (shader rec-kind-glyph rec-paint-solid)
                        (shader rec-kind-segment rec-paint-solid)

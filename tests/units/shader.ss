@@ -838,8 +838,7 @@
 (check "each variant of the fragment shader has the code of what it draws and \
         none of the rest's: lines, gradients, stipples and images by a node \
         only theirs has, shadows by the size they add"
-       (let* ([variant (lambda (i)
-                         (world-value (vector-ref gfx-fragments i)))]
+       (let* ([variant (lambda (i) (vector-ref gfx-fragments i))]
               [has? (lambda (i head test)
                       (exists test (shader-test-nodes
                                     (shader-tree (variant i)) head)))]
