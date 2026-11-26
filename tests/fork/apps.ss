@@ -30,7 +30,7 @@
     (and e (format "~a: ~a" (car e) (condition->string (cdr e))))))
 
 ;; Presses the middle of the region named id in win, as a person would:
-;; win is the newest window, so nothing covers it.
+;; win is the only window open, so nothing covers it.
 (define (fork-press! win id)
   (let ([r (fork-region win id)])
     (let-values ([(cx cy cw ch) (content-rect win)])
@@ -44,8 +44,7 @@
 ;; Opens the app named name, presses the regions named in presses one
 ;; after another, each once it is there, and waits for the region named
 ;; shown. Records under key the window's error, or else whether shown
-;; came, and goes on with next. The window stays open: a Pipeline closed
-;; in a headless world takes the process down (a flaw of its own).
+;; came, closes the window and goes on with next.
 (define (fork-app-press name presses shown key next)
   (let ([win (app-launch! name)])
     (let press ([ids presses])
@@ -54,6 +53,7 @@
                      30000
                      (lambda (came?)
                        (fork-saw! key (or (fork-error win) came?))
+                       (close-window! win)
                        (next)))
           (fork-when (lambda () (or (window-error win)
                                     (fork-region win (car ids))))

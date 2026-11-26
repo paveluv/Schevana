@@ -103,6 +103,18 @@
            (null? (gpu-frame-earlier recordings-last-frame))))
   (gpu-image-release! target))
 
+;; A Pipeline closed between its draw and the frame: the frame carries a
+;; list to draw on an image and the job that releases the image, which
+;; core0 runs first.
+(let ([target (gpu-image-make-target 8 8)] [before *frames-drawn*])
+  (rec-past! target (make-bytevector 64 7) 64 (make-bytevector 8 9) 8 '())
+  (gpu-image-release! target)
+  (request-frame!)
+  (check "a list on an image released before its frame goes is skipped, \
+          and the frame goes"
+         (and (not (raises? (lambda () (steps 1))))
+              (> *frames-drawn* before))))
+
 ;; (recordings-poisoned poison? body ...) runs body. While poison? is true,
 ;; every recording the recorder takes to write, and every loan it takes to
 ;; paint, is filled with garbage first, as a recording used before still

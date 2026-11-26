@@ -1517,7 +1517,11 @@
     (let loop ([earlier (gpu-frame-earlier f)])
       (if (pair? earlier)
           (begin
-            (gpu-list-on-image! (caar earlier) (cdar earlier))
+            ;; core1 may ask for a list on an image and release the image
+            ;; before the frame goes (a Pipeline closed): the release ran
+            ;; with the jobs above, so the list is skipped
+            (when (gpu-object-made? (gpu-image-id (caar earlier)))
+              (gpu-list-on-image! (caar earlier) (cdar earlier)))
             (loop (cdr earlier)))
           (let ([shown? (gpu-frame! f)])
             ;; read and gone up: what it read is given back
