@@ -102,10 +102,22 @@ what each generation held before and after, and what survived.
 typing, or `settle` (all into 4, at boot and after a reload). `allocated`
 is what was allocated since the collection before, and `survived` what
 this one kept of it: almost none of a frame's bytes should outlive the
-frame. `held` counts the requests that were held off before it (a frame
-turn holds collections till its frame is out), and `span` is what was
-running when it was asked for. The log goes with the profiler: off,
-nothing is logged.
+frame. `held` counts the requests that were held off before it: a frame
+turn holds collections till its frame is out, and Chez asks once in such
+a turn, since a request held off moves the trip out of reach until the
+collection that the turn owes. `span` is what was running when it was
+asked for, `(gc . #f)` when the collector asked for it itself (after a
+frame turn, or for an older pass). `thread` is the thread that performed
+it, which Chez picks: core0, whenever core0 is running Scheme then.
+
+`loose` says that another thread performed it while a span other than the
+collector's was open. Each thread reads the allocation clock a little
+apart (by what it holds in the segments it is filling), and a collection
+keeps the clock level only for the thread that performs it. So the bytes
+of that span are off by some KB, either way. A collection that the
+collector asks for is never loose: the step goes to `gc`.
+
+The log goes with the profiler: off, nothing is logged.
 
 ## Inside the frame
 

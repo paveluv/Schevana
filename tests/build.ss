@@ -87,6 +87,7 @@
     ((schevana sdl gpu) sdl-set-swapchain-parameters)
     ((schevana sdl window)
      ,@(test-foreign-names "schevana/sdl/window.sls"))
+    ((schevana services allocation) allocation-clock)
     ((schevana services crew) crew-remove!)
     ((schevana services profile) profile-thread-cpu profile-tick-done!)
     ((schevana styles mac) draw-resize-grip)

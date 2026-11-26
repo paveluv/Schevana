@@ -320,6 +320,104 @@
               (> (test-tick-phase-ms requested 'gc) 0)
               (> (profile-tick-ref requested 'gc-ms) 0))))
 
+;; Returns what the log has of the first collection after seq, or #f.
+(define (profile-test-collection-after seq)
+  (allocation-collection (+ seq 1)))
+
+;; Returns the newest collection's seq, or -1 for none.
+(define (profile-test-newest-collection)
+  (let ([seqs (allocation-collections)]) (if (pair? seqs) (car seqs) -1)))
+
+;; Returns what a tick's uses of key allocated and how many calls they
+;; were, (bytes . calls).
+(define (profile-test-bytes-of tick key)
+  (let ([uses (profile-test-uses tick key)])
+    (cons (apply + (map profile-use-bytes uses))
+          (apply + (map profile-use-calls uses)))))
+
+(check "a collection that the collector asks for runs in a span of the \
+        collector's own: one call of gc, and the log has that span as the \
+        one that asked"
+       (let* ([before (profile-test-newest-collection)]
+              [s (car (profile-test-ticks
+                       (lambda ()
+                         (with-profile-span 'step #f
+                           (with-profile-span 'render #f
+                             (collector-pass! 1 2))))))]
+              [c (profile-test-collection-after before)])
+         (and c
+              (equal? (cdr (assq 'span c)) '(gc . #f))
+              (not (cdr (assq 'loose c)))
+              (= (cdr (profile-test-bytes-of s 'gc)) 1))))
+
+;; Chez has core0 perform a collection whenever core0 runs Scheme then.
+;; Here one thread plays both, so the handler is made to see another
+;; thread than the profiler's, which is all it knows of the matter.
+(check "when another thread performs a collection that the collector \
+        asked for, the collector's span stands for the handler's: what the \
+        clock moved across it is gc's, and the span around it keeps its \
+        own bytes"
+       (let* ([keep #f]
+              [before (profile-test-newest-collection)]
+              [s (car (profile-test-ticks
+                       (lambda ()
+                         (fluid-let ([*collector-holding?* #f])
+                           (with-profile-span 'step #f
+                             (with-profile-span 'render #f
+                               ;; a vector of 1,000: 8,016 bytes
+                               (set! keep (make-vector 1000 0))
+                               (with-profile-span 'gc #f
+                                 (fluid-let ([*profile-thread* -1])
+                                   (collect-rendezvous)))))))))]
+              [c (profile-test-collection-after before)]
+              [render (profile-test-bytes-of s 'render)]
+              [gc (profile-test-bytes-of s 'gc)])
+         (printf "  render ~a bytes, gc ~a in ~a call(s)\n"
+                 (car render) (car gc) (cdr gc))
+         (and c (vector? keep)
+              (equal? (cdr (assq 'span c)) '(gc . #f))
+              (not (cdr (assq 'loose c)))
+              (= (cdr gc) 1)
+              (> (car gc) 0)
+              (<= 8016 (car render) (+ 8016 256)))))
+
+;; The allocation clock, held by the test: it moves only as told, so a
+;; step back is a step back whatever else allocates.
+(check "what the clock moved while a span was open, back or on, is taken \
+        out of the span around it whole: a step back inside a span leaves \
+        that span at 0 and the one around it with its own bytes"
+       (let* ([clock 1000000]
+              [s (fluid-let ([allocation-clock (lambda () clock)])
+                   (car (profile-test-ticks
+                         (lambda ()
+                           (with-profile-span 'step #f
+                             (with-profile-span 'render #f
+                               (set! clock (+ clock 2000))
+                               (with-profile-span 'profile-test-inner #f
+                                 (set! clock (- clock 500)))
+                               (with-profile-span 'profile-test-other #f
+                                 (set! clock (+ clock 300)))))))))])
+         (and (= (car (profile-test-bytes-of s 'render)) 2000)
+              (= (car (profile-test-bytes-of s 'profile-test-inner)) 0)
+              (= (car (profile-test-bytes-of s 'profile-test-other)) 300))))
+
+(check "a collection that another thread performs while a span other than \
+        the collector's is open is loose in the log: that span's bytes \
+        take the clock's step"
+       (let* ([before (profile-test-newest-collection)]
+              [s (car (profile-test-ticks
+                       (lambda ()
+                         (fluid-let ([*collector-holding?* #f])
+                           (with-profile-span 'step #f
+                             (with-profile-span 'render #f
+                               (fluid-let ([*profile-thread* -1])
+                                 (collect-rendezvous))))))))]
+              [c (profile-test-collection-after before)])
+         (and c
+              (equal? (cdr (assq 'span c)) '(render . #f))
+              (cdr (assq 'loose c))
+              (null? (profile-test-uses s 'gc)))))
+
 (let* ([w (open-window "Inner"
             'size '(200 . 100)
             'open window-frame-soon!

@@ -401,9 +401,11 @@
   ;; for the screen to vsync-wait) and to its use, and so do its self
   ;; bytes: never under 0, though the clock may step back a little when
   ;; another thread has run a collection (what that collection moved is
-  ;; out of this thread's sight until its segments fill). Closing the
-  ;; step's span ends the step, and the tick with it unless the step came
-  ;; between ticks.
+  ;; out of this thread's sight until its segments fill). What the clock
+  ;; moved while a span was open, back or on, is taken out of the span
+  ;; around it whole, so a step inside the collector's span changes no
+  ;; other span's bytes. Closing the step's span ends the step, and the
+  ;; tick with it unless the step came between ticks.
   (define (profile-close! d) (profile-close-at! d (now-ns)))
 
   (define (profile-close-at! d now)
@@ -424,7 +426,7 @@
             (profile-end-step! now ns self)
             (begin
               (profile-fx+! inner (fx- d 1) ns)
-              (profile-fx+! inner-bytes (fx- d 1) (fxmax 0 bytes))
+              (profile-fx+! inner-bytes (fx- d 1) bytes)
               (profile-fx+! *profile-phase-ns*
                             (case key [(gc) 6] [(vsync-wait) 8] [else phase])
                             self)
@@ -438,6 +440,14 @@
   ;; services allocation)) with the span that was open when it was asked
   ;; for. A request the collector holds off for later (collector-declining?)
   ;; is neither: the log only counts it.
+  ;;
+  ;; Chez runs the handler on core0 whenever core0 is running Scheme then,
+  ;; and there the handler's span goes untimed: core1 waited in the span it
+  ;; had open, which so gets the pause, and the step of the clock that a
+  ;; collection on another thread leaves ((schevana services allocation)).
+  ;; When the collector asked for the collection, the span open is its own
+  ;; (gc), and stands for the handler's; else the log has the collection
+  ;; as loose.
   (define (profile-collect)
     (if (collector-declining?)
         (begin
@@ -445,12 +455,16 @@
           (*profile-plain-collect*))
         (let* ([d (fx- *profile-depth* 1)]
                [key (and (fx>= d 0) (vector-ref *profile-keys* d))]
-               [part (and (fx>= d 0) (vector-ref *profile-parts* d))])
-          (profile-begin! 'gc #f)
-          (let ([t0 (now-ns)])
-            (allocation-collect! *profile-plain-collect* key part)
-            (set! *profile-gc-ns* (fx+ *profile-gc-ns* (fx- (now-ns) t0))))
-          (profile-end! #f))))
+               [part (and (fx>= d 0) (vector-ref *profile-parts* d))]
+               [own? (eq? key 'gc)]
+               [t0 (now-ns)])
+          (unless own? (profile-begin! 'gc #f))
+          (allocation-collect!
+           *profile-plain-collect* key part
+           (and key (not own?)
+                (not (eqv? (profile-thread-id) *profile-thread*))))
+          (set! *profile-gc-ns* (fx+ *profile-gc-ns* (fx- (now-ns) t0)))
+          (unless own? (profile-end! #f)))))
 
   ;;; ---------------------------------------------------------------- ticks
 

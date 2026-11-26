@@ -25,13 +25,22 @@
 ;;; fill. So a "before" can be low by that much, some KB; what a
 ;;; generation grew or fell by is still right, unless this collection
 ;;; collects that very generation.
+;;;
+;;; The clock is a thread's reading too, and Chez keeps it level across a
+;;; collection only for the thread that performs it: on another thread it
+;;; steps by what the two hold in the segments they are filling, some KB
+;;; either way. The profiler reads the clock on core1. A collection that
+;;; core1 asks for runs in a span of the collector's own, which takes the
+;;; step; one that another thread performs while a span of a window's is
+;;; open leaves the step in that span's bytes, and its row says so
+;;; (loose).
 
 (library (schevana services allocation)
   (export allocation-clock allocation-held! allocation-collect!
           allocation-collections allocation-collection)
   (import (chezscheme)
           (only (schevana base) define-made define-state library-layer)
-          (only (schevana core) now-ns))
+          (only (schevana core) collector-generation-bytes now-ns))
 
   (library-layer services)
 
@@ -48,9 +57,9 @@
 
   ;; A collection's numbers, by name: when it ended and how long it took
   ;; (ns, by now-ns's clock), the allocation clock then, the requests held
-  ;; off before it and the ns since the first of them, and the thread that
-  ;; ran it.
-  (define allocation-fields '(at pause clock held held-ns thread))
+  ;; off before it and the ns since the first of them, the thread that ran
+  ;; it, and whether it left its step in a span's bytes (1) or not (0).
+  (define allocation-fields '(at pause clock held held-ns thread loose))
 
   ;; The log, made once: a ring of rows by seq (a collection's count since
   ;; boot, modulo the ring's size). Each field is an fxvector; before and
@@ -80,29 +89,26 @@
   (define-made allocation-helds (allocation-field 'held))
   (define-made allocation-held-ns (allocation-field 'held-ns))
   (define-made allocation-threads (allocation-field 'thread))
+  (define-made allocation-looses (allocation-field 'loose))
 
   ;; Notes a request that the collector held off.
   (define (allocation-held!)
     (when (fx= *allocation-held* 0) (set! *allocation-held-at* (now-ns)))
     (set! *allocation-held* (fx+ *allocation-held* 1)))
 
-  ;; Returns the bytes generation g holds, as this thread reads them. A
-  ;; reading that would be under 0 (the bytes out of this thread's sight
-  ;; are more than the generation holds) comes back from Chez as a number
-  ;; near 2^64: it is 0 here.
-  (define (allocation-generation-bytes g)
-    (let ([b (bytes-allocated g)]) (if (fixnum? b) b 0)))
-
-  ;; Writes each generation's bytes into v, at row i.
+  ;; Writes each generation's bytes into v, at row i, as the collector
+  ;; reads them: a reading that would be under 0 (the bytes out of this
+  ;; thread's sight are more than the generation holds) is 0.
   (define (allocation-read! v i)
     (do ([g 0 (fx+ g 1)]) ((fx= g allocation-generations))
       (fxvector-set! v (fx+ (fx* i allocation-generations) g)
-                     (allocation-generation-bytes g))))
+                     (collector-generation-bytes g))))
 
   ;; Calls handler, the collect-request handler below this one, and logs
   ;; the collection it runs, with key and part, the span that was open
-  ;; when it was asked for. A call that collected nothing leaves no row.
-  (define (allocation-collect! handler key part)
+  ;; when it was asked for, and loose?, whether that span's bytes take the
+  ;; clock's step. A call that collected nothing leaves no row.
+  (define (allocation-collect! handler key part loose?)
     (let ([i (fxmodulo *allocation-count* allocation-kept)]
           [ran (collections)] [t0 (now-ns)])
       (allocation-read! *allocation-before* i)
@@ -120,6 +126,7 @@
                              0))
           (fxvector-set! allocation-threads i
                          (if (threaded?) (get-thread-id) 0))
+          (fxvector-set! allocation-looses i (if loose? 1 0))
           (vector-set! *allocation-keys* i key)
           (vector-set! *allocation-parts* i part)
           (set! *allocation-held* 0)
@@ -164,8 +171,11 @@
   ;; collection before it (#f for the oldest kept), and the bytes that
   ;; survived it, which are what the generations above 0 grew by; each
   ;; generation's bytes before and after; the requests held off before it,
-  ;; and for how long (ns); the thread that ran it; and the span that was
-  ;; open when it was asked for, (key . part), as the profiler has it.
+  ;; and for how long (ns); the thread that ran it; the span that was open
+  ;; when it was asked for, (key . part), as the profiler has it ((gc . #f)
+  ;; when the collector itself asked); and whether it is loose: another
+  ;; thread ran it while that span, not the collector's, was open, so the
+  ;; span's bytes are off by some KB either way.
   (define allocation-collection
     (case-lambda
       [() (allocation-collection (- *allocation-count* 1))]
@@ -195,4 +205,5 @@
              (held-ns . ,(ref 'held-ns))
              (thread . ,(ref 'thread))
              (span . ,(cons (vector-ref *allocation-keys* i)
-                            (vector-ref *allocation-parts* i))))))))
+                            (vector-ref *allocation-parts* i)))
+             (loose . ,(= (ref 'loose) 1)))))))

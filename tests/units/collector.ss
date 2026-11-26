@@ -249,9 +249,46 @@
           [held-ns (collector-logged-since before 'held-ns)])
       (close-window! win)
       (printf "  requests held off before each collection: ~a\n" held)
-      (check "the collection that follows a frame turn says how many \
-              requests the turn held off, and for how long"
+      (check "a frame turn that allocates many times the trip holds one \
+              request off, not one at each segment after: the collection \
+              that follows says so, and for how long"
              (and (pair? held)
-                  (> (car held) 0)
-                  (> (car held-ns) 0)
-                  (for-all zero? (cdr held)))))))
+                  (= (apply + held) 1)
+                  (exists positive? held-ns))))))
+
+(check "a request held off moves the trip out of Chez's reach, and the \
+        collection that the turn owes sets it back"
+       (fluid-let ([*collector-holding?* #t]
+                   [*collector-held?* #f]
+                   [*collector-pass* #f])
+         (collector-collect!)
+         (let ([held? *collector-held?*] [moved (collect-trip-bytes)])
+           (set! *collector-holding?* #f)
+           (collector-collect!)
+           (and held?
+                (> moved (* 1024 collector-trip))
+                (= (collect-trip-bytes) collector-trip)))))
+
+;; Chez reads a generation low on a thread that did not do all of the last
+;; collection's work, and under 0 as a number near 2^64. A second thread
+;; running Scheme brings that about for this one: it waits at the
+;; rendezvous, and the collector works in its name too. The second thread
+;; stops when told, or by itself after some seconds' turns.
+(check "a generation that Chez reads under 0 is 0 to the collector"
+       (let* ([started (box #f)] [stop (box #f)]
+              [t (fork-thread
+                  (lambda ()
+                    (set-box! started #t)
+                    (let loop ([i 0])
+                      (unless (or (unbox stop) (fx= i 2000000000))
+                        (loop (fx+ i 1))))))])
+         (let wait ([i 0])
+           (unless (or (unbox started) (fx= i 2000000000)) (wait (fx+ i 1))))
+         (fluid-let ([*collector-holding?* #f]) (collect-rendezvous))
+         (let ([chez (bytes-allocated 0)]
+               [here (collector-generation-bytes 0)])
+           (set-box! stop #t)
+           (thread-join t)
+           (printf "  generation 0 after a collection beside a second \
+                    thread: Chez reads ~a, the collector ~a\n" chez here)
+           (and (unbox started) (fixnum? here) (<= 0 here (* 1024 1024))))))

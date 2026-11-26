@@ -6,8 +6,8 @@
     *input-step?* post-core1! wm-event! loop-stepped! reload-ended!
     schevana-run! quit! schevana-end! uptime-ms user-directory
     user-library-directory path-full add-library-directory! schevana-boot!
-    collector-declining? collector-settle! collector-tick! core1-run loop-main
-    inject!)
+    collector-declining? collector-generation-bytes collector-settle!
+    collector-tick! core1-run loop-main inject!)
   (import (chezscheme)
           (only (schevana base) define-hook define-made define-state
                 library-layer set-hook! string-prefix? string-split)
@@ -294,6 +294,8 @@
   ;;; decides: while nobody is typing, or anyway once their growth passes a
   ;;; limit.
 
+  ;; How much the young generation grows before Chez asks for a collection.
+  (define-made collector-trip (* 2 1024 1024))
   (define-made collector-young-quiet (* 8 1024 1024))
   (define-made collector-young-limit (* 64 1024 1024))
   (define-made collector-old-quiet (* 64 1024 1024))
@@ -318,16 +320,31 @@
   ;; were last collected
   (define-state *collector-old-kept* 0)
 
+  ;; The collect-request handler. A request held off moves the trip out of
+  ;; reach: past the trip, Chez asks again at each segment a thread takes,
+  ;; a thousand times in a turn that allocates 16 MB. The collection that
+  ;; the turn owes sets the trip back.
   (define (collector-collect!)
     (if (collector-declining?)
-        (set! *collector-held?* #t)
+        (begin
+          (set! *collector-held?* #t)
+          (collect-trip-bytes (most-positive-fixnum)))
         (let ([pass *collector-pass*])
           (set! *collector-pass* #f)
           ;; every thread waits for it, so it is traced, with the generation
           ;; collected
           (core0-trace! 28 (if pass (car pass) 0))
           (if pass (collect (car pass) (cdr pass)) (collect 0 1))
+          (collect-trip-bytes collector-trip)
           (core0-trace! 29 0))))
+
+  ;; Asks for a collection and waits for it, in a span of the collector's
+  ;; own. Chez may have another thread perform it (core0, whenever it runs
+  ;; Scheme then): the time core1 waited, and what its count of the bytes
+  ;; allocated stepped by (each thread reads that count a little apart),
+  ;; are then the collector's and no window's.
+  (define (collector-rendezvous!)
+    (with-profile-span 'gc #f (collect-rendezvous)))
 
   ;; Whether a request now is held off: during a frame turn, when core1
   ;; asked for no pass.
@@ -376,20 +393,29 @@
     (set! *collector-holding?* #f)
     (when *collector-held?*
       (set! *collector-held?* #f)
-      (collect-rendezvous))
+      (collector-rendezvous!))
     (collector-tick!))
 
   (define-state *collector-handler*
     (let ([handler (lambda () (collector-collect!))])
-      (collect-trip-bytes (* 2 1024 1024))
+      (collect-trip-bytes collector-trip)
       (collect-request-handler handler)
       handler))
 
   (define (collector-pass! generation target)
     (set! *collector-pass* (cons generation target))
-    (collect-rendezvous))
+    (collector-rendezvous!))
 
-  (define (collector-old) (+ (bytes-allocated 2) (bytes-allocated 3)))
+  ;; Returns the bytes generation g holds, as this thread reads them. Chez
+  ;; reads a generation low on a thread that did not do all of the last
+  ;; collection's work, and a count that would be under 0 comes back as a
+  ;; number near 2^64: it is 0 here, so that no limit below is passed, or
+  ;; left out of reach, by a count that never was.
+  (define (collector-generation-bytes g)
+    (let ([b (bytes-allocated g)]) (if (fixnum? b) b 0)))
+
+  (define (collector-old)
+    (+ (collector-generation-bytes 2) (collector-generation-bytes 3)))
 
   ;; The old generations' size plus the GPU bytes made. A dropped buffer or
   ;; image is let go of only once its handle's generation is collected, and
@@ -420,7 +446,7 @@
                  (if quiet? collector-old-quiet collector-old-limit))
              (collector-pass! 3 3)
              (set! *collector-old-kept* (collector-grown))]
-            [(>= (bytes-allocated 1)
+            [(>= (collector-generation-bytes 1)
                  (if quiet? collector-young-quiet collector-young-limit))
              (collector-pass! 1 2)])))))
 
