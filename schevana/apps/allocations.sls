@@ -1,0 +1,582 @@
+;;; (schevana apps allocations) — Allocations: what the heap is doing, as a
+;;; picture that moves. Bytes are born at the top of the Column, in the
+;;; young generation; most are gone at the next collection, and the few
+;;; that are kept sink a generation at a time to where the world rests. The
+;;; Flow, along the bottom, has a bar for each tick, as tall as what the
+;;; tick allocated and banded by who, with the collections over it. Who
+;;; lists who allocates, and Collections the log of collections.
+;;;
+;;; All of it is the profiler's and the allocation service's data
+;;; ((schevana services profile), (schevana services allocation)), which a
+;;; REPL reads too. While the window is open, the allocation tap records.
+
+(library (schevana apps allocations)
+  (export allocations)
+  (import (chezscheme)
+          (only (schevana base) library-layer)
+          (only (schevana core) alpha collector-generation-bytes define-app
+                draw-line draw-text fill-box font-char-width font-line-height
+                invalidate! now-ms open-window pacer-period
+                window-frame-soon!)
+          (only (schevana kits ui) make-ui ui-bar-chart-bar ui-begin!
+                ui-button ui-button-size ui-checkbox ui-checkbox-size
+                ui-draw-cell ui-draw-label ui-draw-legend ui-draw-surface
+                ui-end! ui-frame ui-handlers ui-icon-grid ui-icon-ink
+                ui-legend-size ui-pad ui-stream ui-stream-new
+                ui-stream-release! ui-stream-send! ui-table ui-table-room
+                ui-table-row-height ui-tabs ui-tabs-size ui-text-y
+                ui-toolbar)
+          (only (schevana services allocation) allocation-collection
+                allocation-collection-count allocation-record!
+                allocation-recording? allocation-young)
+          (only (schevana services profile) profile-newest-tick profile-ns-label
+                profile-oldest-tick profile-on? profile-subject-label
+                profile-subject? profile-tick-kept? profile-tick-late?
+                profile-tick-ns profile-tick-ref profile-tick-uses
+                profile-total-bytes profile-total-calls profile-total-what
+                profile-totals profile-use-bytes profile-use-subject))
+
+  (library-layer apps)
+
+  ;; Returns a count of bytes as a person reads it: "812 B", "12.4 KB".
+  (define (allocations-bytes-text n)
+    (cond [(< n 1024) (format "~a B" n)]
+          [(< n 1048576) (format "~,1f KB" (/ n 1024.0))]
+          [(< n 1073741824) (format "~,1f MB" (/ n 1048576.0))]
+          [else (format "~,2f GB" (/ n 1073741824.0))]))
+
+  ;; The Flow's bands, from the bottom up: who allocated a tick's bytes.
+  (define allocations-draw-bands
+    '((chart-1 . "windows")
+      (chart-3 . "processes")
+      (chart-5 . "surfaces")
+      (chart-8 . "the loop and the rest")))
+
+  ;; The Flow's strips: a collection, the stronger the longer its pause; a
+  ;; request for one held off till the frame was out; a tick that came
+  ;; late.
+  (define allocations-draw-strips
+    '(("collected" chart-level-1 chart-level-2 chart-level-3 chart-level-4
+                   chart-level-5 chart-level-6 chart-level-7 chart-level-8)
+      ("held" chart-mark)
+      ("late" chart-flag)))
+
+  ;; A collection's level on its strip, 1 to 8: faint however short, and
+  ;; the strongest from 2 ms on.
+  (define (allocations-pause-level ns)
+    (+ 1 (quotient (* 7 (min (max ns 0) 2000000)) 2000000)))
+
+  ;; How many ticks the Flow keeps, and the most a bar can stand for.
+  (define allocations-flow-rows 4096)
+  (define allocations-bar-most 100000000)
+
+  ;; Returns which band a use's subject is in: a window 0, a process 1, a
+  ;; surface 2, and #f for the loop's own spans and the collector, whose
+  ;; bytes go with the rest.
+  (define (allocations-band subject)
+    (cond [(and (pair? subject) (eq? (car subject) 'window)) 0]
+          [(and (pair? subject) (eq? (car subject) 'process)) 1]
+          [(and (profile-subject? subject) (not (eq? subject 'gc))) 2]
+          [else #f]))
+
+  ;; Fills row, a vector of four, with the bytes of tick seq by band; the
+  ;; last has what no window, process or surface was charged.
+  (define (allocations-tick-bands! row seq)
+    (vector-fill! row 0)
+    (for-each (lambda (use)
+                (let ([band (allocations-band (profile-use-subject use))])
+                  (when band
+                    (vector-set! row band (+ (vector-ref row band)
+                                             (profile-use-bytes use))))))
+              (profile-tick-uses seq))
+    (vector-set! row 3
+                 (max 0 (- (profile-tick-ref seq 'allocated)
+                           (vector-ref row 0) (vector-ref row 1)
+                           (vector-ref row 2)))))
+
+  ;; Returns the ticks from seq back, at most n of them, the newest first.
+  (define (allocations-ticks seq n)
+    (let loop ([seq seq] [n n] [acc '()])
+      (if (and (> n 0) seq (profile-tick-kept? seq))
+          (loop (- seq 1) (- n 1) (cons seq acc))
+          (reverse acc))))
+
+  ;; Returns the top of a chart of the numbers ns: the least power of two,
+  ;; 64 KB at least, that all but the largest twentieth of them fit under
+  ;; with a quarter to spare. So it stays put while bars come and go, and
+  ;; one huge bar among them is cut off and doesn't flatten the rest.
+  (define (allocations-top ns)
+    (let* ([sorted (sort < ns)]
+           [n (if (null? sorted)
+                  0
+                  (list-ref sorted (quotient (* 19 (- (length sorted) 1))
+                                             20)))])
+      (let loop ([top 65536])
+        (if (>= top (quotient (* 5 n) 4)) top (loop (* 2 top))))))
+
+  ;; Places the collections logged from seq cursor on on the ticks they
+  ;; ended in, up to tick newest: marks gets, by tick, the longest pause
+  ;; (ns) of its collections and how many requests they had held off,
+  ;; (pause . held). A collection goes to the first tick whose end is not
+  ;; before its own. Returns the next collection to place: one that ended
+  ;; after newest waits for its tick.
+  (define (allocations-place! marks cursor newest)
+    (let ([count (allocation-collection-count)])
+      (let next ([cursor cursor])
+        (let ([c (and (< cursor count) (allocation-collection cursor))])
+          (cond
+            [(>= cursor count) cursor]
+            [(not c) (next (+ cursor 1))]
+            [(> (cdr (assq 'at c)) (profile-tick-ns newest 'end)) cursor]
+            [else
+             (let find ([seq newest])
+               (if (and (profile-tick-kept? (- seq 1))
+                        (>= (profile-tick-ns (- seq 1) 'end)
+                            (cdr (assq 'at c))))
+                   (find (- seq 1))
+                   (let ([m (hashtable-ref marks seq '(0 . 0))])
+                     (hashtable-set!
+                      marks seq
+                      (cons (max (car m) (cdr (assq 'pause c)))
+                            (+ (cdr m) (cdr (assq 'held c))))))))
+             (next (+ cursor 1))])))))
+
+  ;; The heap's layers, from the top down: its name, and its color, the
+  ;; older the stronger.
+  (define allocations-draw-layers
+    '(("young" . chart-level-2)
+      ("1" . chart-level-3)
+      ("2" . chart-level-4)
+      ("3" . chart-level-5)
+      ("4" . chart-level-7)
+      ("static" . chart-level-8)))
+
+  ;; Draws the heap as strata: the young generation at the top, a tank
+  ;; that fills to the line at which the collector is asked (held, while
+  ;; a frame turn holds its collection off), then generations 1 to 4 and
+  ;; the static one, each as thick as the root of its bytes, so that 2 MB
+  ;; and 200 MB both show.
+  (define (allocations-draw-column x y w h)
+    (let* ([young (allocation-young)]
+           [bytes (cdr (assq 'bytes young))]
+           [limit (cdr (assq 'limit young))]
+           [static (let ([b (bytes-allocated 'static)])
+                     (if (fixnum? b) b 0))]
+           [sizes (append (list bytes)
+                          (map collector-generation-bytes '(1 2 3 4))
+                          (list static))]
+           ;; the tank is as tall as its limit, or as what it holds past it
+           [rooms (cons (max bytes (or limit 0)) (cdr sizes))]
+           [line (font-line-height 'ui-small)]
+           [least (+ (* 2 line) 6)]
+           [free (max 0 (- h (* 6 least)))]
+           [roots (map (lambda (n) (sqrt (max n 1))) rooms)]
+           [all (apply + roots)]
+           [lw (quotient w 2)] [sx (+ x lw)] [sw (- w lw)])
+      (let each ([layers allocations-draw-layers] [sizes sizes]
+                 [rooms rooms] [roots roots] [ly y])
+        (unless (null? layers)
+          (let* ([lh (+ least (exact (floor (/ (* free (car roots)) all))))]
+                 [color (cdar layers)])
+            (draw-text x (ui-text-y (+ ly 2) 'ui-small)
+                       (if (and (eq? layers allocations-draw-layers)
+                                (not limit))
+                           "young, held"
+                           (caar layers))
+                       'text-dim 'ui-small)
+            (draw-text x (ui-text-y (+ ly 2 line) 'ui-small)
+                       (allocations-bytes-text (car sizes)) 'text 'ui-small)
+            (if (eq? layers allocations-draw-layers)
+                ;; the tank: its level, and its limit as its top edge
+                (let ([level (if (> (car rooms) 0)
+                                 (quotient (* (- lh 2) (car sizes))
+                                           (car rooms))
+                                 0)])
+                  (fill-box sx (- (+ ly lh) 1 level) sw level color)
+                  (draw-line sx (+ ly 0.5) (+ sx sw) (+ ly 0.5)
+                             (if limit 'chart-rule 'chart-flag)))
+                (fill-box sx (+ ly 1) sw (- lh 1) color))
+            (each (cdr layers) (cdr sizes) (cdr rooms) (cdr roots)
+                  (+ ly lh)))))))
+
+  ;; The app's icon: strata, the deeper the denser.
+  (define (allocations-draw-icon x y s flags)
+    (define (ink c) (ui-icon-ink flags c))
+    (ui-icon-grid (x y s)
+      (fill-box 4 4 16 4 (ink (alpha 'cyan 0.25)))
+      (fill-box 4 9 16 4 (ink (alpha 'cyan 0.5)))
+      (fill-box 4 14 16 6 (ink 'cyan))
+      (draw-line 4 3.5 20 3.5 (ink 'text) 1.25)))
+
+  (define-app (allocations) "Allocations" 'icon allocations-draw-icon
+    (let ([ui (make-ui)]
+          [tab 'who]          ; the view shown: who, collections
+          [held #f]           ; the tick the app is held at (seq), or #f
+          [selected #f]       ; Who's row chosen: a subject
+          [opened #f]         ; Collections' row chosen: a seq
+          [last 0]            ; when Who's numbers were last made (ms),
+          [last-tick #f]      ; and the newest tick then
+          [who '()]           ; Who's rows: (subject bytes calls)
+          [who-span 1]        ; the ms those bytes were allocated in
+          [who-all 1]         ; all that was allocated then, bytes
+          [who-ticks 1]       ; how many ticks that was
+          [cursor 0]          ; the next collection to place on the Flow
+          [marks (make-eqv-hashtable)]    ; tick -> (pause ns . held)
+          [shares (make-hashtable equal-hash equal?)]   ; (tick . subject)
+          [rows (make-eqv-hashtable)]     ; a collection's alist, by seq
+          [rows-count -1]
+          [band-row (make-vector 4 0)] [band-seq #f]
+          [flow (ui-stream-new allocations-flow-rows 4
+                               allocations-draw-strips)]
+          [ours? #f])         ; whether this window turned the tap on
+      ;; the newest tick shown
+      (define (newest-tick) (or held (profile-newest-tick)))
+      ;; A number of tick seq's row in the Flow: a band's bytes, then its
+      ;; strips' words.
+      (define (flow-word period)
+        (lambda (seq j)
+          (cond
+            [(< j 4)
+             (unless (eqv? band-seq seq)
+               (allocations-tick-bands! band-row seq)
+               (set! band-seq seq))
+             (min allocations-bar-most (vector-ref band-row j))]
+            [(= j 4)
+             (let ([m (hashtable-ref marks seq #f)])
+               (if m (allocations-pause-level (car m)) 0))]
+            [(= j 5)
+             (let ([m (hashtable-ref marks seq #f)])
+               (if (and m (> (cdr m) 0)) 1 0))]
+            [else (if (profile-tick-late? seq period) 1 0)])))
+      ;; What subject allocated in tick seq, bytes, computed once.
+      (define (share-of seq subject)
+        (let ([key (cons seq subject)])
+          (or (hashtable-ref shares key #f)
+              (let ([n (fold-left
+                        (lambda (sum use)
+                          (if (equal? (profile-use-subject use) subject)
+                              (+ sum (profile-use-bytes use))
+                              sum))
+                        0
+                        (if (profile-tick-kept? seq)
+                            (profile-tick-uses seq)
+                            '()))])
+                (when (> (hashtable-size shares) 20000)
+                  (hashtable-clear! shares))
+                (hashtable-set! shares key n)
+                n))))
+      ;; Makes Who's rows anew: the subjects of the last two seconds'
+      ;; ticks, or of the tick held, the heaviest first.
+      (define (who-renew!)
+        (let* ([newest (newest-tick)]
+               [ticks (if held
+                          (allocations-ticks held 1)
+                          (allocations-ticks newest 120))])
+          (set! who
+            (map (lambda (t)
+                   (list (profile-total-what t) (profile-total-bytes t)
+                         (profile-total-calls t)))
+                 (sort (lambda (a b)
+                         (> (profile-total-bytes a) (profile-total-bytes b)))
+                       (filter (lambda (t)
+                                 (profile-subject? (profile-total-what t)))
+                               (profile-totals ticks #t)))))
+          (set! who-ticks (max 1 (length ticks)))
+          (set! who-span
+            (max 1 (apply + (map (lambda (seq) (profile-tick-ref seq 'ms))
+                                 ticks))))
+          (set! who-all
+            (max 1 (apply + (map (lambda (seq)
+                                   (profile-tick-ref seq 'allocated))
+                                 ticks))))
+          (set! last-tick newest)
+          (set! last (now-ms))))
+      ;; Whether Who's numbers are due again: twice a second, or after 30
+      ;; ticks, whichever comes first, and at once when a hold changes.
+      (define (who-due?)
+        (let ([newest (newest-tick)])
+          (and newest
+               (or (not last-tick)
+                   (= last 0)
+                   (and (not (eqv? newest last-tick))
+                        (or (> (- (now-ms) last) 500)
+                            (>= (abs (- newest last-tick)) 30)))))))
+      (define (toolbar w)
+        (let-values ([(tw th) (ui-tabs-size '("Who" "Collections"))]
+                     [(kw kh) (ui-checkbox-size "Record")]
+                     [(bw bh) (ui-button-size "Resume" #f)])
+          (ui-toolbar
+           0 0 w
+           (list
+            (list tw th
+                  (lambda (x y w h)
+                    (ui-tabs ui 'tab x y h
+                             '(("Who" . who) ("Collections" . collections))
+                             tab
+                             (lambda (t) (set! tab t)))))
+            (list kw kh
+                  (lambda (x y w h)
+                    (ui-checkbox ui 'record x y w h "Record"
+                                 (allocation-recording?)
+                                 (lambda (on?)
+                                   (set! ours? on?)
+                                   (allocation-record! on?))
+                                 'tip "Sample the stack as the world \
+                                       allocates, to tell which procedures \
+                                       do: (allocation-record! #t), then \
+                                       (allocation-report)")))
+            (list bw bh
+                  (lambda (x y w h)
+                    (ui-button ui 'hold x y w h (if held "Resume" "Hold")
+                               (lambda ()
+                                 (set! held (and (not held)
+                                                 (profile-newest-tick)))
+                                 (set! last 0))
+                               'disabled (not (profile-newest-tick))
+                               'tip (if held
+                                        (format "Held at tick ~a; the \
+                                                 profiler goes on" held)
+                                        "Hold the picture where it is; \
+                                         the profiler goes on"))))))))
+      ;; Who allocates: a row a subject, with what it allocated a second
+      ;; and a tick, its share of all that was allocated, and its calls.
+      (define (draw-who x y w h)
+        (ui-table
+         ui 'who x y w h
+         (let ([w (ui-table-room w)])
+           `((who "Who" ,(* w 0.40))
+             (rate "KB/s" ,(* w 0.15) right
+                   "What it allocated a second, over the last two seconds")
+             (tick "KB/tick" ,(* w 0.15) right "What it allocated a tick")
+             (share "Share" ,(* w 0.15) right
+                    "Its part of all that was allocated then")
+             (calls "Calls" ,(* w 0.15) right)))
+         who
+         (find (lambda (row) (equal? (car row) selected)) who)
+         (lambda (row)
+           (set! selected (and (not (equal? (car row) selected)) (car row))))
+         (lambda (row key cx cy cw ch flags)
+           (let ([bytes (cadr row)])
+             (case key
+               [(who)
+                (ui-draw-cell cx cy cw ch flags
+                              (profile-subject-label (car row)))]
+               [(rate)
+                (ui-draw-cell cx cy cw ch flags
+                              (format "~,1f" (/ (* bytes 1000.0) 1024
+                                                who-span)))]
+               [(tick)
+                (ui-draw-cell cx cy cw ch flags
+                              (format "~,1f" (/ bytes 1024.0 who-ticks)))]
+               [(share)
+                (ui-draw-cell cx cy cw ch flags
+                              (format "~,1f%" (/ (* 100.0 bytes) who-all)))]
+               [else
+                (ui-draw-cell cx cy cw ch flags
+                              (number->string (caddr row)))])))
+         'tip (lambda (row)
+                (format "~a: ~a in ~a ms~a" (profile-subject-label (car row))
+                        (allocations-bytes-text (cadr row))
+                        (exact (round who-span))
+                        (if (equal? (car row) selected)
+                            "; its share is drawn over the Flow's bars"
+                            "")))))
+      ;; What the log has of collection seq, read once.
+      (define (collection seq)
+        (or (hashtable-ref rows seq #f)
+            (let ([c (allocation-collection seq)])
+              (hashtable-set! rows seq c)
+              c)))
+      ;; The log of collections, the newest first, and under it the one
+      ;; chosen, generation by generation.
+      (define (draw-collections x y w h)
+        (let* ([count (allocation-collection-count)]
+               [line (font-line-height 'ui)]
+               [th (- h line line 8)]
+               [me (if (threaded?) (get-thread-id) 0)]
+               [seqs (filter collection
+                             (map (lambda (i) (- count 1 i))
+                                  (iota (min count 500))))]
+               [ref (lambda (seq name)
+                      (let ([c (collection seq)])
+                        (and c (cdr (assq name c)))))])
+          (unless (= count rows-count)
+            (hashtable-clear! rows)
+            (set! rows-count count))
+          (ui-table
+           ui 'collections x y w th
+           (let ([w (ui-table-room w)])
+             `((seq "#" ,(* w 0.08) right)
+               (pass "Pass" ,(* w 0.10)
+                     "young: generation 0 into 1; middle: 1 into 2; old: 3 \
+                      into itself; settle: all into 4")
+               (pause "Pause" ,(* w 0.11) right)
+               (allocated "Allocated" ,(* w 0.13) right
+                          "Since the collection before")
+               (survived "Kept" ,(* w 0.12) right
+                         "What the generations above the young one grew by")
+               (rate "Kept %" ,(* w 0.09) right)
+               (held "Held" ,(* w 0.12) right
+                     "How long its request was held off, till a frame \
+                      was out")
+               (by "By" ,(* w 0.10)
+                   "The thread that performed it; loose: another thread, \
+                    while a span other than the collector's was open, \
+                    whose bytes are then off by some KB")
+               (span "Asked from" ,(* w 0.15))))
+           seqs opened
+           (lambda (seq) (set! opened (and (not (eqv? seq opened)) seq)))
+           (lambda (seq key cx cy cw ch flags)
+             (ui-draw-cell
+              cx cy cw ch flags
+              (case key
+                [(seq) (number->string seq)]
+                [(pass) (symbol->string (ref seq 'pass))]
+                [(pause) (profile-ns-label (ref seq 'pause))]
+                [(allocated)
+                 (let ([n (ref seq 'allocated)])
+                   (if n (allocations-bytes-text n) "–"))]
+                [(survived) (allocations-bytes-text (ref seq 'survived))]
+                [(rate)
+                 (let ([n (ref seq 'allocated)])
+                   (if (and n (> n 0))
+                       (format "~,1f%" (/ (* 100.0 (ref seq 'survived)) n))
+                       "–"))]
+                [(held)
+                 (if (> (ref seq 'held) 0)
+                     (profile-ns-label (ref seq 'held-ns))
+                     "–")]
+                [(by)
+                 (string-append (if (eqv? (ref seq 'thread) me)
+                                    "core1"
+                                    "core0")
+                                (if (ref seq 'loose) ", loose" ""))]
+                [else
+                 (let ([span (ref seq 'span)])
+                   (cond [(not (car span)) "–"]
+                         [(eq? (car span) 'gc) "the collector"]
+                         [else (format "~a~a" (car span)
+                                       (if (symbol? (cdr span))
+                                           (format " ~a" (cdr span))
+                                           ""))]))])))
+           'tip (lambda (seq)
+                  (format "#~a: ~a, ~a kept of ~a" seq (ref seq 'pass)
+                          (allocations-bytes-text (ref seq 'survived))
+                          (let ([n (ref seq 'allocated)])
+                            (if n (allocations-bytes-text n) "–")))))
+          (when (and opened (collection opened))
+            (let ([before (ref opened 'before)] [after (ref opened 'after)])
+              (ui-draw-label
+               x (+ y th 8) w line '(dim)
+               (apply string-append
+                      (format "#~a, by generation: " opened)
+                      (map (lambda (g b a)
+                             (format "~a: ~a to ~a~a" g
+                                     (allocations-bytes-text b)
+                                     (allocations-bytes-text a)
+                                     (if (= g 4) "" "; ")))
+                           '(0 1 2 3 4) before after)))))))
+      ;; The Flow: a bar a tick, its bytes banded by who, the collections,
+      ;; the requests held and the late ticks over it, and the chosen
+      ;; row's share over its bars. A press holds the app at that tick.
+      (define (draw-flow x y w h)
+        (let*-values
+            ([(newest) (newest-tick)]
+             [(oldest) (profile-oldest-tick)]
+             [(period) (pacer-period)]
+             [(keys) (append allocations-draw-bands
+                             (if selected
+                                 (list (cons 'chart-share
+                                             (profile-subject-label
+                                              selected)))
+                                 '()))]
+             [(kw kh) (ui-legend-size keys)]
+             [(gh) (- h kh 4)]
+             [(top) (allocations-top
+                     (map (lambda (seq)
+                            (min allocations-bar-most
+                                 (profile-tick-ref seq 'allocated)))
+                          (allocations-ticks newest 240)))])
+          (when newest
+            (set! cursor (allocations-place! marks cursor newest))
+            (ui-stream-send! flow oldest newest (flow-word period))
+            (ui-stream
+             ui 'flow flow x y w gh newest oldest top
+             (list (cons (quotient top 2)
+                         (allocations-bytes-text (quotient top 2))))
+             (map (lambda (j band) (cons j (car band)))
+                  '(0 1 2 3) allocations-draw-bands)
+             3
+             'tip (lambda (seq)
+                    (and (profile-tick-kept? seq)
+                         (let ([m (hashtable-ref marks seq #f)])
+                           (format "tick ~a: ~a allocated~a" seq
+                                   (allocations-bytes-text
+                                    (profile-tick-ref seq 'allocated))
+                                   (if m
+                                       (format "; a collection of ~a"
+                                               (profile-ns-label (car m)))
+                                       "")))))
+             'on-pick (lambda (seq) (set! held seq) (set! last 0))
+             'doc '((L . "Hold here"))
+             'marked (if held (list held) '())
+             'over
+             (lambda (areas count)
+               (when selected
+                 (let-values ([(px py pw ph)
+                               (apply values (cdr (assq 'bars areas)))])
+                   (do ([i 0 (+ i 1)]) ((= i count))
+                     (let-values ([(bx bw) (ui-bar-chart-bar areas count i)])
+                       (let* ([n (share-of (+ newest (- i count -1))
+                                           selected)]
+                              [high (div (* ph (min n top)) top)])
+                         (when (and (>= bx px) (> high 0))
+                           (fill-box bx (- (+ py ph) high)
+                                     (- bw (if (>= bw 3) 1 0)) high
+                                     'chart-share))))))))))
+          (ui-draw-legend x (+ y gh 4) w kh '() keys)))
+      (define (draw win w h)
+        (ui-begin! ui)
+        (ui-draw-surface 0 0 w h '(page))
+        (let* ([pad (ui-pad)]
+               [y (+ (toolbar w) pad)]
+               [column-w (* 22 (font-char-width 'ui-small))]
+               [flow-h (max 96 (quotient (- h y) 3))]
+               [view-w (- w pad pad column-w pad)]
+               [view-h (- h y flow-h pad pad)])
+          (cond
+            [(not (profile-on?))
+             (ui-draw-label pad y (- w pad pad) 0 '(hint wrap)
+                            "Profiling is off: type (profile-on! #t) in a \
+                             REPL, or check Profiling in Monitor, to see \
+                             what allocates.")]
+            [else
+             (when (who-due?) (who-renew!))
+             (if (eq? tab 'who)
+                 (draw-who pad y view-w view-h)
+                 (draw-collections pad y view-w view-h))
+             (allocations-draw-column (+ pad view-w pad) y column-w view-h)
+             (draw-flow pad (+ y view-h pad) (- w pad pad) flow-h)]))
+        (ui-end! ui w h))
+      (apply open-window "Allocations"
+             'size (cons (max 720 (* 96 (font-char-width 'ui)))
+                         (max 560 (* 22 (ui-table-row-height))))
+             'min-size '(480 . 400)
+             'draw (lambda (win w h) (draw win w h))
+             'close (lambda (win)
+                      (ui-stream-release! flow)
+                      (when ours? (allocation-record! #f)))
+             (append
+              (ui-handlers ui)
+              ;; while the window is seen, it is drawn again at each tick;
+              ;; and the tap records from its opening, unless one records
+              ;; already
+              (list 'open (lambda (win)
+                            (unless (allocation-recording?)
+                              (set! ours? #t)
+                              (allocation-record! #t))
+                            (window-frame-soon! win))
+                    'frame (lambda (win t)
+                             (window-frame-soon! win)
+                             (ui-frame ui win)
+                             (unless held (invalidate! win)))))))))

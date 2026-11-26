@@ -102,8 +102,8 @@ A programmer's guide, with examples to try at the REPL, in reading order:
 - [Shaders](docs/SHADERS.md): Scheme on the GPU
 - [Environments](docs/ENVIRONMENTS.md): the tree of namespaces, sandboxes
 - [Threads](docs/THREADS.md): worklets, the crew, vats
-- [Monitoring](docs/MONITORING.md): Monitor, the Pipeline, the profiler,
-  the Debug REPL
+- [Monitoring](docs/MONITORING.md): Monitor, the Pipeline, Allocations,
+  the profiler, the Debug REPL
 - [Internals](docs/INTERNALS.md): the boot chain, frames, the pacer
 - [Testing](docs/TESTING.md): running the suites; writing tests is in
   [tests/GUIDE.md](tests/GUIDE.md)

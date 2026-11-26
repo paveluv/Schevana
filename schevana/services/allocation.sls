@@ -45,6 +45,7 @@
 (library (schevana services allocation)
   (export allocation-clock allocation-held! allocation-collect!
           allocation-collections allocation-collection
+          allocation-collection-count allocation-young
           allocation-request! allocation-record! allocation-recording?
           allocation-clear! allocation-paths allocation-places
           allocation-sampled allocation-report)
@@ -146,6 +147,27 @@
   ;;; ---------------------------------------------------------------- readers
   ;;; What the log tells, as plain data. A collection is named by its seq,
   ;;; a fixnum that only grows; a seq is good while the ring keeps it.
+
+  ;; Returns how many collections were logged in all: the seq that the
+  ;; next one gets.
+  (define (allocation-collection-count) *allocation-count*)
+
+  ;; Returns the young generation as the collector has it: bytes, what was
+  ;; allocated since the last collection logged, and limit, the growth at
+  ;; which Chez asks the collector for the next one, or #f while a request
+  ;; is held off.
+  (define (allocation-young)
+    (let* ([n *allocation-count*]
+           [since (if (> n 0)
+                      (fxvector-ref allocation-clocks
+                                    (modulo (- n 1) allocation-kept))
+                      0)]
+           [trip (if (and *allocation-recording?*
+                          (fx>= *allocation-collected-at* 0))
+                     *allocation-trip*
+                     (collect-trip-bytes))])
+      `((bytes . ,(max 0 (- (allocation-clock) since)))
+        (limit . ,(and (< trip (expt 2 40)) trip)))))
 
   ;; Returns the seqs of the collections kept, the newest first.
   (define (allocation-collections)

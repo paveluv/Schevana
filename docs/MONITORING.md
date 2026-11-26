@@ -1,8 +1,8 @@
 # Monitoring
 
-Where the world's time and memory go is kept as data from boot on. Two
-apps draw it, Monitor and the Pipeline, and a REPL or a test can read the
-same data. The apps explain themselves: hover over anything in them to
+Where the world's time and memory go is kept as data from boot on. Three
+apps draw it, Monitor, the Pipeline and Allocations, and a REPL or a test
+can read the same data. The apps explain themselves: hover over anything in them to
 see what it means.
 
 ## Monitor
@@ -32,6 +32,31 @@ step or play through; and the River, a column for each refresh of the
 screen, which shows each frame's way from its input to its showing. A
 press on the River goes back to that frame, and Esc lets it go again
 (after clearing the selection, if there is one).
+
+## Allocations
+
+`(allocations)` shows what the heap is doing:
+
+- **The Column**, at the right: the generations as strata, the young one
+  at the top and the oldest at the bottom, each as thick as the root of
+  its bytes. The young generation is a tank that fills to the line at
+  which the collector is asked; it says "held" while a frame turn holds
+  its collection off.
+- **The Flow**, along the bottom: a bar for each tick, as tall as what the
+  tick allocated, banded by who (windows, processes, surfaces, and the
+  loop and the rest). Over it, three strips: each collection, the stronger
+  the longer its pause; each request that was held off; each tick that
+  came late. A press holds the app at that tick.
+- **Who**: the windows, surfaces and processes by what they allocated,
+  a second and a tick, over the last two seconds. A row pressed shows as
+  its share of each bar of the Flow.
+- **Collections**: the log, the newest first: the pass, the pause, what
+  was allocated since the collection before and what of it was kept, how
+  long its request was held off, which thread performed it, and who asked.
+  A row pressed shows what each generation held before and after.
+
+While the window is open the tap records (the Record box), so that
+`(allocation-report)` has something to say.
 
 ## The profiler
 
