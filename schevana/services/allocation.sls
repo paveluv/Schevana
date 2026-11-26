@@ -4,7 +4,9 @@
 ;;; before and after, how long it had been held off, and what was running
 ;;; when it was asked for; and the tap, which samples the stack to tell
 ;;; which procedures allocate; the census, which counts the live heap by
-;;; kind and by owner; and the hours, a row a minute of what it holds.
+;;; kind and by owner; the hours, a row a minute of what it holds; the
+;;; counts of how often each line of a library runs; and the probe, which
+;;; runs one piece of code for exactly what it allocates.
 ;;;
 ;;;   (allocation-clock)               bytes allocated so far
 ;;;   (allocation-collections)         the collections kept, the newest first
@@ -21,6 +23,12 @@
 ;;;   (allocation-census-grown)        what grew since the mark
 ;;;   (allocation-hours 4)             generation 4 over two days
 ;;;   (allocation-hours-slope 4)       how fast it grows, bytes a day
+;;;   (allocation-count-library! '(schevana desktop taskbar) #t)
+;;;                                    counts how often its lines run
+;;;   (allocation-line-counts '(schevana desktop taskbar))
+;;;                                    how often each line ran
+;;;   (allocation-probe-draw 'taskbar 20)
+;;;                                    what one draw allocates, at least
 ;;;
 ;;; A collection is logged from the collect-request handler, the
 ;;; profiler's ((schevana services profile)), so the log goes with the
@@ -56,14 +64,21 @@
           allocation-clear! allocation-paths allocation-places
           allocation-sampled allocation-report allocation-census!
           allocation-census allocation-census-mark! allocation-census-grown
-          allocation-hours allocation-hours-count allocation-hours-slope)
+          allocation-hours allocation-hours-count allocation-hours-slope
+          allocation-count-library! allocation-counted-libraries
+          allocation-libraries allocation-line-counts allocation-probe
+          allocation-probe-draw)
   (import (chezscheme)
-          (only (schevana base) at-load-once define-made define-state
-                library-layer)
+          (only (schevana base) at-load-once condition->string define-made
+                define-state library-layer)
           (only (schevana core) *gpu-bytes-made* *procs* *windows* after
-                collector-asking? collector-generation-bytes now-ns proc-id
-                platform-process-bytes proc-name proc? window-id
-                window-title window?))
+                collector-asking? collector-generation-bytes find-surface
+                gpu-list-new notify now-ns pacer-ticks proc-id
+                platform-process-bytes proc-name proc? record-list! reload!
+                spawn surface-call surface-draw window-call
+                window-content-size window-id window-title window?)
+          (only (schevana reload) reload-count! reload-counted
+                reload-source))
 
   (library-layer services)
 
@@ -1126,4 +1141,257 @@
                 (and (> sxx 0)
                      (/ (apply + (map (lambda (x y) (* (- x mx) (- y my)))
                                       days ys))
-                        sxx)))))])))
+                        sxx)))))]))
+
+  ;;; ---------------------------------------------------------------- the
+  ;;; counts: how often each line of a counted library runs. A library
+  ;;; switched on is evaluated again by a reload, its code compiled to
+  ;;; count how often each of its expressions runs ((schevana reload),
+  ;;; with Chez's compile-profile). The counters are read here and cleared,
+  ;;; at most once a second, into the runs of each expression since its
+  ;;; library's counting began. A line's runs are those of the expression
+  ;;; on it that ran most. The counters of the code that a reload replaced
+  ;;; stay at 0 once cleared, and go with that code.
+
+  ;; The libraries asked to be counted.
+  (define-state *allocation-count-asked* '())
+  ;; For each counted library's file, by its path: each expression's line
+  ;; and runs, by where it begins (a character's position in the file).
+  (define-state *allocation-counts* (make-hashtable string-hash string=?))
+  ;; ((name . ticks) ...): when each library's counting began, in ticks
+  (define-state *allocation-counted-since* '())
+  ;; when the counters were last read (now-ns), and the ticks then
+  (define-state *allocation-counts-read-at* 0)
+  (define-state *allocation-counts-tick* 0)
+  ;; Where each line of a file begins, by the descriptor of the file as
+  ;; it was loaded: #f when the file has changed since.
+  (define-state *allocation-line-starts* (make-weak-eq-hashtable))
+
+  ;; Returns where each line of sfd's file begins, as an fxvector of
+  ;; positions, or #f when the file is not as it was loaded.
+  (define (allocation-line-starts sfd)
+    (if (eq-hashtable-contains? *allocation-line-starts* sfd)
+        (eq-hashtable-ref *allocation-line-starts* sfd #f)
+        (let ([starts (let ([p (open-source-file sfd)])
+                        (and p
+                             (let loop ([i 0] [acc '(0)])
+                               (let ([c (read-char p)])
+                                 (cond [(eof-object? c)
+                                        (close-port p)
+                                        (list->fxvector (reverse acc))]
+                                       [(char=? c #\newline)
+                                        (loop (+ i 1) (cons (+ i 1) acc))]
+                                       [else (loop (+ i 1) acc)])))))])
+          (eq-hashtable-set! *allocation-line-starts* sfd starts)
+          starts)))
+
+  ;; Returns the line, from 1, that position bfp of sfd's file is on, or
+  ;; #f when the file is not as it was loaded.
+  (define (allocation-line sfd bfp)
+    (let ([starts (allocation-line-starts sfd)])
+      (and starts
+           (let search ([lo 0] [hi (fxvector-length starts)])
+             (if (fx= (fx- hi lo) 1)
+                 (fx+ lo 1)
+                 (let ([mid (fxquotient (fx+ lo hi) 2)])
+                   (if (fx<= (fxvector-ref starts mid) bfp)
+                       (search mid hi)
+                       (search lo mid))))))))
+
+  ;; Returns the counted libraries' files, ((path . name) ...).
+  (define (allocation-counted-files)
+    (map (lambda (name) (cons (reload-source name) name)) (reload-counted)))
+
+  ;; Returns the counters' runs since they were last cleared, for the
+  ;; counted libraries' files: ((path (bfp line . runs) ...) ...), with
+  ;; only the expressions that ran; and clears them.
+  (define (allocation-counters-take!)
+    (let ([files (allocation-counted-files)] [found '()])
+      (for-each
+       (lambda (e)
+         (when (> (cdr e) 0)
+           (let* ([so (car e)] [sfd (source-object-sfd so)]
+                  [path (and sfd (source-file-descriptor-path sfd))]
+                  [file (and path (assoc path files))])
+             (when file
+               (let ([at (assoc path found)]
+                     [entry (cons* (source-object-bfp so)
+                                   (allocation-line sfd
+                                                    (source-object-bfp so))
+                                   (cdr e))])
+                 (if at
+                     (set-cdr! at (cons entry (cdr at)))
+                     (set! found (cons (list path entry) found))))))))
+       (profile-dump))
+      (profile-clear)
+      (profile-release-counters)
+      found))
+
+  ;; Reads the counters into each counted library's runs, and clears them.
+  (define (allocation-counts-read!)
+    (for-each (lambda (file)
+                (let ([table (or (hashtable-ref *allocation-counts* (car file)
+                                                #f)
+                                 (let ([t (make-eqv-hashtable)])
+                                   (hashtable-set! *allocation-counts*
+                                                   (car file) t)
+                                   t))])
+                  (for-each (lambda (entry)
+                              (let ([old (hashtable-ref table (car entry)
+                                                        #f)])
+                                (if old
+                                    (set-cdr! old (+ (cdr old) (cddr entry)))
+                                    (hashtable-set! table (car entry)
+                                                    (cdr entry)))))
+                            (cdr file))))
+              (allocation-counters-take!))
+    (set! *allocation-counts-tick* (pacer-ticks))
+    (set! *allocation-counts-read-at* (now-ns)))
+
+  ;; Returns each line's runs, of expressions' ((line . runs) ...): the
+  ;; most of the expressions on it, as ((line . runs) ...) in order.
+  (define (allocation-by-line expressions)
+    (let ([lines (make-eqv-hashtable)])
+      (for-each (lambda (e)
+                  (when (car e)
+                    (hashtable-update! lines (car e)
+                                       (lambda (n) (max n (cdr e)))
+                                       0)))
+                expressions)
+      (let-values ([(ks vs) (hashtable-entries lines)])
+        (sort (lambda (a b) (< (car a) (car b)))
+              (map cons (vector->list ks) (vector->list vs))))))
+
+  ;; (allocation-count-library! '(schevana desktop taskbar) #t) has the
+  ;; taskbar's code count how often each of its lines runs, from now on;
+  ;; #f stops it. Either way a reload evaluates the library again (and
+  ;; every library that imports it, plain), as a process, which holds the
+  ;; world still while it runs: some 80 ms for the taskbar, 2 s for the ui
+  ;; kit, which most of the world imports. A closure made before keeps the
+  ;; code it was made with, so a window opened before counts nothing until
+  ;; it is opened again. Only the library edition counts; and core0's
+  ;; libraries change only with a restart.
+  (define (allocation-count-library! name on?)
+    (unless (and (list? name) (reload-source name))
+      (errorf 'allocation-count-library! "~s is no library from a file"
+              name))
+    (set! *allocation-count-asked*
+      (let ([others (remove name *allocation-count-asked*)])
+        (if on? (cons name others) others)))
+    (reload-count! *allocation-count-asked*)
+    (spawn "count lines" (lambda () (reload!))
+           (lambda (status value)
+             (allocation-counts-read!)
+             (hashtable-delete! *allocation-counts* (reload-source name))
+             (set! *allocation-counted-since*
+               (let ([rest (remp (lambda (e) (equal? (car e) name))
+                                 *allocation-counted-since*)])
+                 (if (member name (reload-counted))
+                     (cons (cons name (pacer-ticks)) rest)
+                     rest)))
+             (when (and on? (eq? status 'ok)
+                        (not (member name (reload-counted))))
+               (notify (format "~s isn't counted: only the library edition \
+                                counts a library's lines, and core0's \
+                                change only with a restart"
+                               name))))))
+
+  ;; Returns the libraries whose lines are counted now.
+  (define (allocation-counted-libraries) (reload-counted))
+
+  ;; Returns the libraries loaded from a file, those whose lines may be
+  ;; counted, as ((name . file) ...) in the order of their names.
+  (define (allocation-libraries)
+    (let ([all (filter cdr
+                       (map (lambda (ref)
+                              (let ([name (filter symbol? ref)])
+                                (cons name (reload-source name))))
+                            (library-list)))])
+      (map cdr
+           (sort (lambda (a b) (string<? (car a) (car b)))
+                 (map (lambda (l) (cons (format "~s" (car l)) l)) all)))))
+
+  ;; Returns how often each line of library name ran since its counting
+  ;; began, and in how many ticks: ((ticks . n) (lines (line . runs) ...)),
+  ;; the lines that ran, in order; or #f when name isn't counted. The
+  ;; counters are read at most once a second.
+  (define (allocation-line-counts name)
+    (and (member name (reload-counted))
+         (begin
+           (when (> (- (now-ns) *allocation-counts-read-at*) 1000000000)
+             (allocation-counts-read!))
+           (let ([table (hashtable-ref *allocation-counts* (reload-source name)
+                                       #f)]
+                 [since (let ([e (assoc name *allocation-counted-since*)])
+                          (if e (cdr e) *allocation-counts-tick*))])
+             `((ticks . ,(max 0 (- *allocation-counts-tick* since)))
+               (lines . ,(if table
+                             (allocation-by-line
+                              (vector->list (hashtable-values table)))
+                             '())))))))
+
+  ;;; ---------------------------------------------------------------- the
+  ;;; probe: one piece of code run again and again, for exactly what it
+  ;;; allocates, the least of n runs after two that warm it up, and how
+  ;;; often each line of a counted library ran in those n.
+
+  ;; The list that a draw probed records into, made at the first probe; it
+  ;; is never shown.
+  (define-state *allocation-probe-list* #f)
+
+  ;; Returns what thunk allocates and takes, called n times after two
+  ;; calls not counted: ((runs . n) (least . bytes) (median . bytes) (most
+  ;; . bytes) (fastest . ns) (lines (name (line . runs) ...) ...)), the
+  ;; lines being those of the counted libraries that ran in the n calls,
+  ;; with their runs in all; or ((error . text)) when thunk raised. The
+  ;; bytes are every thread's, so the least is the one to go by.
+  (define (allocation-probe thunk n)
+    (guard (c [#t `((error . ,(if (condition? c)
+                                  (condition->string c)
+                                  (format "~s" c))))])
+      (allocation-counts-read!)
+      (thunk)
+      (thunk)
+      (allocation-counters-take!)
+      (let loop ([i 0] [bytes '()] [fastest #f])
+        (if (< i n)
+            (let* ([t (now-ns)] [a (allocation-clock)])
+              (thunk)
+              (let ([d (- (allocation-clock) a)] [ns (- (now-ns) t)])
+                (loop (+ i 1) (cons d bytes)
+                      (if fastest (min fastest ns) ns))))
+            (let ([counted (allocation-counted-files)]
+                  [sorted (sort < bytes)])
+              `((runs . ,n)
+                (least . ,(if (null? sorted) 0 (car sorted)))
+                (median . ,(if (null? sorted)
+                               0
+                               (list-ref sorted (quotient n 2))))
+                (most . ,(if (null? sorted) 0 (car (reverse sorted))))
+                (fastest . ,(or fastest 0))
+                (lines . ,(map (lambda (file)
+                                 (cons (cdr (assoc (car file) counted))
+                                       (allocation-by-line
+                                        (map cdr (cdr file)))))
+                               (allocation-counters-take!)))))))))
+
+  ;; Returns what one draw of what allocates, as allocation-probe does: a
+  ;; window's (its draw handler, at its size) or a surface's, by name
+  ;; ('taskbar), each recorded into a list that nothing shows.
+  (define (allocation-probe-draw what n)
+    (unless *allocation-probe-list*
+      (set! *allocation-probe-list* (gpu-list-new)))
+    (let ([l *allocation-probe-list*])
+      (allocation-probe
+       (cond
+         [(window? what)
+          (let-values ([(w h) (window-content-size what)])
+            (lambda ()
+              (record-list! l (lambda () (window-call what 'draw w h)))))]
+         [(and (symbol? what) (find-surface what))
+          => (lambda (s)
+               (lambda ()
+                 (record-list! l (lambda () (surface-call s surface-draw)))))]
+         [else (errorf 'allocation-probe-draw
+                       "~s is neither a window nor a surface's name" what)])
+       n))))

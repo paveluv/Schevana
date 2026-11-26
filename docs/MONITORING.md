@@ -69,6 +69,17 @@ press on the River goes back to that frame, and Esc lets it go again
   and the process hold, the GPU's bytes and the longest pause: each one
   now, how fast it grew over the last hour and over the rows kept, and
   its line.
+- **Probe**: a window's or a surface's draw, run 20 times for exactly the
+  least it allocates, against the probe before; the lines of the counted
+  libraries that ran in it, each with its runs a draw; and the text of a
+  check that holds the draw to what it allocates now, with a quarter to
+  spare, which Copy the check puts on the clipboard for a test.
+- **Lines**: the libraries that come from files, the counted ones first.
+  Count its lines evaluates the one chosen again, as a reload does, with
+  code that counts how often each of its lines runs; its lines then show,
+  the most run first, each with its runs a tick, and the source around
+  the one chosen. Where's source has the same switch, and while the
+  library is counted each line's runs a tick stand beside it.
 
 While the window is open the tap records (the Record box), so that
 `(allocation-report)` has something to say.
@@ -271,6 +282,52 @@ longest pause of each minute.
 
 A generation that grows while no pass collects it shows as a slope, which
 is how a slow leak shows within minutes.
+
+## One piece of code, exactly
+
+The tap tells which procedures allocate, by samples; the probe tells
+exactly what one piece of code allocates. It runs a thunk n times after
+two that warm it up, and gives the least, which is what one run
+allocates, since the bytes are every thread's and anything else only adds
+to them:
+
+```scheme
+(allocation-probe (lambda () (make-bytevector 1000)) 10)
+(allocation-probe-draw 'taskbar 20)        ; a surface's draw, by its name
+(allocation-probe-draw (car (windows)) 20) ; a window's
+```
+
+Each gives `((runs . n) (least . bytes) (median . bytes) (most . bytes)
+(fastest . ns) (lines ...))`, or `((error . text))` when the thunk raised.
+A draw is recorded into a list that nothing shows.
+
+How often each line of a library runs is counted by the library's own
+code, compiled to count (Chez's `compile-profile`). A library is switched
+to such code, and back, while the world runs: a reload evaluates it again
+(and the libraries that import it, plain), as a process, which holds the
+world still meanwhile. That takes some 80 ms for the taskbar, which
+nothing imports, and 2 s for the ui kit, which most of the world does.
+
+```scheme
+(allocation-count-library! '(schevana desktop taskbar) #t)
+(allocation-counted-libraries)             ; those counted now
+(allocation-line-counts '(schevana desktop taskbar))
+(allocation-count-library! '(schevana desktop taskbar) #f)
+```
+
+`(allocation-line-counts name)` gives `((ticks . n) (lines (line . runs)
+...))`: each line's runs since the library's counting began, the most of
+the expressions on it, and the ticks they ran in; the counters are read
+at most once a second. A probe gives, under `lines`, the runs in its n
+calls of each line of a counted library. "15.5 KB a draw, 372 runs" is a
+different finding from "15.5 KB a draw, 1 run". Counting changes nothing
+of what the code allocates.
+
+A closure made before the switch keeps the code it was made with, so a
+window opened before counts nothing until it is opened again (a surface
+whose draw is found by its name counts at once). Only the library
+edition counts: the hacker edition's reload splices a library again with
+no counting, and says so. Core0's libraries change only with a restart.
 
 ## Inside the frame
 

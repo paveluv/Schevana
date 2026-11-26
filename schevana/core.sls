@@ -112,7 +112,8 @@
     *hover* *mouse-x* *mouse-y* *mouse-button* *mouse-mods* drag
     current-window invalidate!
     window-shadow window-extent screen-w screen-h screen-scale point-in?
-    surface surface-doc define-surface find-surface surface-call surfaces
+    surface surface-doc surface-draw define-surface find-surface surface-call
+    surfaces
     define-strip
     desktop-rect app app-name app-title app-launch app-icon *apps*
     define-app apps open-window detached-window new-window-position
@@ -262,7 +263,8 @@
                 window-min-w window-min-h window-handlers window-props
                 window-error drag window-shadow
                 window-extent screen-w screen-h screen-scale point-in? surface
-                surface-doc define-surface find-surface surface-call surfaces
+                surface-doc surface-draw define-surface find-surface
+                surface-call surfaces
                 define-strip desktop-rect app app-name app-title app-launch
                 app-icon define-app apps open-window detached-window
                 cascade-reset! place-window! windows focused-window visible?

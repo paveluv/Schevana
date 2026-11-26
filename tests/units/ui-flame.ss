@@ -88,3 +88,27 @@
              (printf "  ~s ~s\n" f (and (pair? xs) (car xs)))
              (and (pair? xs)
                   (for-all (lambda (x) (>= x (+ (car f) (caddr f)))) xs))))))
+
+(check "the source view's notes stand in a column of their own between the \
+        numbers and the lines, each ending where the widest one does"
+       (let ([real draw-text] [drawn '()])
+         (let ([win (test-kit-window "Notes"
+                      (lambda (ui w h)
+                        (ui-source ui 'noted 0 0 400 100
+                                   '("(define (f x)" "  (+ x 1))")
+                                   'first 7 'notes '("12" #f))))])
+           (steps 2)
+           (fluid-let ([draw-text
+                        (lambda (x y s . rest)
+                          (set! drawn (cons (cons s x) drawn))
+                          (apply real x y s rest))])
+             (invalidate! win)
+             (steps 2))
+           (close-window! win)
+           (steps 1)
+           (let ([x (lambda (s) (let ([d (assoc s drawn)]) (and d (cdr d))))])
+             (printf "  ~s\n" (reverse drawn))
+             (and (x "7") (x "12") (x "(define (f x)") (x "  (+ x 1))")
+                  (< (x "7") (x "12") (x "(define (f x)"))
+                  (= (x "(define (f x)") (x "  (+ x 1))"))
+                  (not (assoc "#f" drawn)))))))

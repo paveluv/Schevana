@@ -12,17 +12,25 @@
 ;;; The libraries that run on a thread of their own (core0's) stay as they
 ;;; were booted, with everything they import: they are what
 ;;; reload-libraries! is given as held.
+;;;
+;;; A library may be counted: its code is compiled to count how often each
+;;; of its expressions runs (Chez's compile-profile). A library whose
+;;; counting was switched since it was evaluated has changed as much as
+;;; one whose file has, so the next reload evaluates it again; the
+;;; libraries that import it are evaluated plain, unless they are counted
+;;; too.
 
 (library (schevana reload)
   (export reload-import! reload-mark! reload-libraries! reload-facts
-          reload-source)
+          reload-source reload-count! reload-counted)
   (import (chezscheme)
           (only (schevana base) define-made define-state library-layer))
 
   (library-layer foundation)
 
-  ;; Each library's file text as it was when first seen or last evaluated,
-  ;; by name: a library whose file now differs has changed.
+  ;; What each library was evaluated from, by name, as reload-text gives
+  ;; it, when first seen or last evaluated: a library whose file or
+  ;; counting now differs has changed.
   (define-state *reload-texts* (make-hashtable equal-hash equal?))
 
   ;; What reload-import! imported, each as an ephemeron pair of the
@@ -32,6 +40,21 @@
 
   ;; What the last reload evaluated again, in order.
   (define-state *reload-last* '())
+
+  ;; The libraries whose code is to count how often each of its
+  ;; expressions runs, by name: those that (schevana services allocation)
+  ;; counts.
+  (define-state *reload-count* '())
+
+  ;; Sets the libraries whose code is to count, from the next reload on.
+  (define (reload-count! names) (set! *reload-count* names))
+
+  ;; Returns those of them whose code counts now: a reload evaluated them
+  ;; so.
+  (define (reload-counted)
+    (filter (lambda (name)
+              (cdr (hashtable-ref *reload-texts* name '(#f . #f))))
+            *reload-count*))
 
   ;; Where a library's file is evaluated again: an environment with Chez's
   ;; names. A library form defines a library from any environment that can
@@ -55,8 +78,11 @@
                          (library-extensions))
                  (loop (cdr dirs)))))))
 
-  (define (reload-text file)
-    (call-with-input-file file get-string-all))
+  ;; Returns what library name is evaluated from, as a reload compares it:
+  ;; its file's text, and whether its code is to count.
+  (define (reload-text name)
+    (cons (call-with-input-file (reload-source name) get-string-all)
+          (and (member name *reload-count*) #t)))
 
   ;; Returns the library name in a reference, in Chez's form (without its
   ;; version).
@@ -94,7 +120,7 @@
                   (let ([file (reload-source name)])
                     (when file
                       (hashtable-set! *reload-texts* name
-                                      (reload-text file))))))
+                                      (reload-text name))))))
               (if (null? names)
                   (map reload-name (library-list))
                   names)))
@@ -145,32 +171,33 @@
 
   ;; Evaluates again and runs, in order, the libraries whose files changed
   ;; since they were evaluated (and those in forced, as if their files had
-  ;; changed) and the libraries that import them; then imports them again
-  ;; into the environments that had them. held names libraries that stay as
-  ;; they are, with everything they import. The new texts are kept only
-  ;; once every library has gone in, so a reload stopped by an error tries
-  ;; the whole set again. Returns the libraries evaluated again.
+  ;; changed, and those whose counting was switched) and the libraries that
+  ;; import them; then imports them again into the environments that had
+  ;; them. held names libraries that stay as they are, with everything
+  ;; they import. The new texts are kept only once every library has gone
+  ;; in, so a reload stopped by an error tries the whole set again.
+  ;; Returns the libraries evaluated again.
   (define (reload-libraries! held . forced)
     (let* ([candidates (reload-candidates held)]
            [changed (begin
                       (apply reload-mark! candidates)
                       (filter (lambda (name)
                                 (or (member name forced)
-                                    (not (string=? (reload-text
-                                                    (reload-source name))
-                                                   (hashtable-ref
-                                                    *reload-texts* name
-                                                    "")))))
+                                    (not (equal? (reload-text name)
+                                                 (hashtable-ref
+                                                  *reload-texts* name
+                                                  #f)))))
                               candidates))]
            [order (reload-order changed candidates)])
       (for-each (lambda (name)
-                  (load (reload-source name)
-                        (lambda (x) (eval x reload-environment)))
+                  (parameterize ([compile-profile
+                                  (and (member name *reload-count*) 'source)])
+                    (load (reload-source name)
+                          (lambda (x) (eval x reload-environment))))
                   (invoke-library name))
                 order)
       (for-each (lambda (name)
-                  (hashtable-set! *reload-texts* name
-                                  (reload-text (reload-source name))))
+                  (hashtable-set! *reload-texts* name (reload-text name)))
                 order)
       (for-each (lambda (e)
                   (unless (or (bwp-object? (car e))

@@ -4723,37 +4723,51 @@
   (define-part (ui-draw-source-surface x y w h flags)
     (fill-box x y w h 'bg-1 3))
 
-  ;; A line of source at x, y, w wide: its number, or #f for none, in a
-  ;; column gutter wide, and its text. flags may have marked.
-  (define-part (ui-draw-source-line x y w h flags number gutter text)
+  ;; A line of source at x, y, w wide: its number, or #f for none; its
+  ;; note, or #f, ending at x + note-end; and its text, from x + gutter.
+  ;; flags may have marked.
+  (define-part (ui-draw-source-line x y w h flags number note note-end gutter
+                                    text)
     (when (memq 'marked flags) (fill-box x y w h (alpha 'accent 0.25) 2))
     (when number
       (draw-text x y (number->string number) 'text-faint 'mono-small))
+    (when note
+      (draw-text (- (+ x note-end) (text-width note 'mono-small)) y note
+                 'text-dim 'mono-small))
     (draw-text (+ x gutter) y text 'text 'mono-small))
 
   ;; opts: 'first, the number of the first line, which gives the lines
-  ;; their numbers; 'marked, the index of the line marked, from 0.
+  ;; their numbers; 'marked, the index of the line marked, from 0; 'notes,
+  ;; a note for each line (a string, or #f for none), in a column of its
+  ;; own after the numbers: how often the line ran, say.
   (define (ui-source ui id x y w h lines . opts)
     (define (opt name) (let ([o (memq name opts)]) (and o (cadr o))))
     (let* ([lh (font-line-height 'mono-small)]
            [left (+ x (max 8 (ui-scrollbar-inset 'left)))]
            [first (opt 'first)] [marked (opt 'marked)]
-           [gutter (if first
-                       (+ 12 (text-width (number->string
-                                          (+ first (length lines)))
-                                         'mono-small))
-                       0)])
+           [notes (or (opt 'notes) (map (lambda (l) #f) lines))]
+           [numbers (if first
+                        (+ 12 (text-width (number->string
+                                           (+ first (length lines)))
+                                          'mono-small))
+                        0)]
+           [note-w (fold-left (lambda (most n)
+                                (if n (max most (text-width n 'mono-small))
+                                    most))
+                              0 notes)]
+           [gutter (+ numbers (if (> note-w 0) (+ note-w 12) 0))])
       (ui-draw-source-surface x y w h '())
       (ui-scroll ui id x y w h
         (lambda (top)
-          (for-each (lambda (line k)
+          (for-each (lambda (line note k)
                       (let ([ly (+ top 6 (* k lh))])
                         (when (and (> (+ ly lh) y) (< ly (+ y h)))
                           (ui-draw-source-line
                            left ly (- (+ x w) left 8) lh
                            (if (eqv? k marked) '(marked) '())
-                           (and first (+ first k)) gutter line))))
-                    lines (iota (length lines)))
+                           (and first (+ first k)) note (+ numbers note-w)
+                           gutter line))))
+                    lines notes (iota (length lines)))
           (+ top 12 (* lh (length lines)))))))
 
   ;;; ------------------------------------------------------------------

@@ -32,8 +32,9 @@
     *windows* *focus* *drag-outline* *hover* *mouse-x* *mouse-y* *mouse-button*
     *mouse-mods*
     drag current-window window-gone! invalidate! window-shadow window-extent
-    screen-w screen-h screen-scale point-in? surface surface-doc define-surface
-    find-surface surface-call define-strip desktop-rect app app-name app-title
+    screen-w screen-h screen-scale point-in? surface surface-doc surface-draw
+    define-surface find-surface surface-call define-strip desktop-rect app
+    app-name app-title
     app-launch app-icon *apps* define-app apps open-window detached-window
     new-window-position cascade-reset! place-window! windows focused-window
     visible? maximized? window-covered? find-window window-ref window-set!

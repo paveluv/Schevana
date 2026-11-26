@@ -199,10 +199,13 @@
          (allocations-test-run 1)
          (let* ([first (allocations-test-tip '(owners row 0))]
                 [shown (length (allocations-test-rows 'owners))]
-                ;; down the table, as test-show! scrolls
-                [hours (allocations-test-row-tip
-                        'owners
-                        (allocations-test-owner "*allocation-hours*"))]
+                ;; down the table, as test-show! scrolls; in the hacker
+                ;; edition a state is a name at "/", which the code and
+                ;; names take
+                [hours (and (not test-hacker?)
+                            (allocations-test-row-tip
+                             'owners
+                             (allocations-test-owner "*allocation-hours*")))]
                 [hog (allocations-test-row-tip
                       'owners (allocations-test-owner "Hog ("))])
            (printf "  ~a\n  ~a\n  ~a\n" first hog hours)
@@ -212,7 +215,8 @@
                          '((heap owner) box ("code and names")))
                 (> shown 3)
                 (string-contains-ci? hog "Hog (")
-                (string-contains-ci? hours "*allocation-hours*")))))
+                (or test-hacker?
+                    (string-contains-ci? hours "*allocation-hours*"))))))
 
 (define allocations-test-keep #f)
 
@@ -250,6 +254,113 @@
                 (string-contains-ci? (allocations-test-tip '(hours row 4))
                                      "generation 4:")))))
 
+(check "a check's budget is a quarter more than the least probed, rounded \
+        up to two figures, and nothing stays nothing"
+       (and (= (allocations-budget 29664) 38000)
+            (= (allocations-budget 53360) 67000)
+            (= (allocations-budget 7) 9)
+            (= (allocations-budget 0) 0)
+            (string=? (allocations-figure 38000) "38,000")
+            (string=? (allocations-figure 1234567) "1,234,567")
+            (string=? (allocations-figure 512) "512")))
+
+;; Returns whether the check that the Probe writes for what, after a
+;; probe of it, holds when it runs: it reads as (check text expression).
+(define (allocations-test-check-holds? what)
+  (let* ([least (cdr (assq 'least (allocation-probe-draw what 5)))]
+         [form (read (open-string-input-port
+                      (allocations-check-text what least)))])
+    (printf "  ~s\n" form)
+    (and (eq? (car form) 'check)
+         (string? (cadr form))
+         (eval (caddr form)))))
+
+(check "the Probe runs a window's draw 20 times and keeps the least it \
+        allocates, against the probe before"
+       (let ([row (allocations-test-index
+                   (lambda (what) (eq? what allocations-test-hog))
+                   (append *windows* (surfaces)))])
+         (test-click! allocations-test-win '(tab probe))
+         (allocations-test-run 1)
+         (test-click! allocations-test-win (list 'probe-targets 'row row))
+         (let ([before (allocations-test-tip (list 'probe-targets 'row row))])
+           (test-click! allocations-test-win 'probe)
+           (allocations-test-run 1)
+           (let ([after (allocations-test-tip
+                         (list 'probe-targets 'row row))])
+             (printf "  ~a\n  ~a\n" before after)
+             (and (string-contains-ci? before "choose it")
+                  (string-contains-ci? after "Hog's draw:")
+                  (string-contains-ci? after "MB at least")
+                  (ui-find allocations-test-ui 'check)
+                  (not (window-error allocations-test-win)))))))
+
+(check "the check the Probe writes holds when it runs: for a surface, for \
+        an app's window, which it opens and closes, and for a window it \
+        finds by its title"
+       (let ([clock (app-launch! 'clock)])
+         (steps 2)
+         (let ([ok? (and (allocations-test-check-holds? 'taskbar)
+                         (allocations-test-check-holds? clock)
+                         (allocations-test-check-holds? allocations-test-hog))])
+           (close-window! clock)
+           (steps 1)
+           ok?)))
+
+(unless test-hacker?
+  (let ([taskbar '(schevana desktop taskbar)])
+    (check "Lines counts the lines of the library chosen: it comes first, \
+            with its lines, the most run first, and the source around the \
+            one chosen; Stop counting evaluates it plain again"
+           (let ([row (allocations-test-index
+                       (lambda (l) (equal? (car l) taskbar))
+                       (allocation-libraries))])
+             (test-click! allocations-test-win '(tab lines))
+             (allocations-test-run 1)
+             (test-show! allocations-test-win '(libraries body)
+                         (list 'libraries 'row row))
+             (test-click! allocations-test-win (list 'libraries 'row row))
+             (test-click! allocations-test-win 'count)
+             (and (test-wait 20000
+                             (lambda ()
+                               (member taskbar
+                                       (allocation-counted-libraries))))
+                  (test-wait 5000
+                             (lambda ()
+                               (allocations-test-run 1)
+                               (ui-find allocations-test-ui '(lines row 0))))
+                  ;; the table was scrolled down to the library's row,
+                  ;; which is the first now
+                  (let ([first (let up ([n 0])
+                                 (if (or (= n 40)
+                                         (ui-find allocations-test-ui
+                                                  '(libraries row 0)))
+                                     (allocations-test-tip
+                                      '(libraries row 0))
+                                     (let-values ([(x y)
+                                                   (test-point
+                                                    allocations-test-win
+                                                    '(libraries body))])
+                                       (inject! `(mouse-move ,x ,y)
+                                                '(wheel 0 1))
+                                       (steps 1)
+                                       (up (+ n 1)))))]
+                        [line (allocations-test-tip '(lines row 0))])
+                    (printf "  ~a\n  ~a\n" first line)
+                    (test-click! allocations-test-win '(lines row 0))
+                    (allocations-test-run 1)
+                    (and (string-contains-ci? first "lines are counted")
+                         (string-contains-ci? line "runs in")
+                         (ui-find allocations-test-ui 'lines-source)
+                         (begin
+                           (test-click! allocations-test-win 'count)
+                           (test-wait 20000
+                                      (lambda ()
+                                        (not (member
+                                              taskbar
+                                              (allocation-counted-libraries)))
+                                        ))))))))))
+
 (check "the app draws in one-bit styles and in color ones"
        (let ([errors 0] [report report-error!])
          (fluid-let ([report-error! (lambda args
@@ -261,7 +372,7 @@
                                    (test-click! allocations-test-win
                                                 (list 'tab tab))
                                    (allocations-test-run 2))
-                                 '(who collections heap hours)))
+                                 '(who collections heap hours probe lines)))
                      '(genera cadr interlisp mac cons)))
          (and (= errors 0) (not (window-error allocations-test-win)))))
 

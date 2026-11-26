@@ -83,11 +83,14 @@
   (define (saw key) (and (pair? seen) (cdr (assq key seen))))
   (check (format "in the launcher's own world, the Pipeline shows the \
                   shader of a record pressed on its small screen (~s), and \
-                  Allocations shows Where (~s), a census on Heap (~s) and \
-                  Hours (~s)"
-                 (saw 'pipeline) (saw 'allocations) (saw 'heap) (saw 'hours))
+                  Allocations shows Where (~s), a census on Heap (~s), \
+                  Hours (~s), a Probe of its own draw and its check (~s), \
+                  and the lines of the taskbar, counted (~s)"
+                 (saw 'pipeline) (saw 'allocations) (saw 'heap) (saw 'hours)
+                 (saw 'probe) (saw 'lines))
          (and (eq? (saw 'pipeline) #t) (eq? (saw 'allocations) #t)
-              (eq? (saw 'heap) #t) (eq? (saw 'hours) #t)))
+              (eq? (saw 'heap) #t) (eq? (saw 'hours) #t)
+              (eq? (saw 'probe) #t) (eq? (saw 'lines) #t)))
   (check (format "in the launcher's own world, each of the desktop's apps \
                   opens and draws with no error (~s)"
                  (saw 'apps))

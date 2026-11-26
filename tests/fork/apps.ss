@@ -3,9 +3,10 @@
 ;;; tree's libraries to "/", which hides a name that the launcher's own
 ;;; world lacks: there "/" has only what the core's facade and the world's
 ;;; libraries give. So here, in that world, the Pipeline shows a selected
-;;; record's shader, Allocations shows its Where, a census on Heap and its
-;;; Hours, and then each app opens and draws. It writes what it saw, as a
-;;; datum, to the file that *fork-out* names, then quits.
+;;; record's shader, Allocations shows its Where, a census on Heap, its
+;;; Hours, a Probe and the lines of a library it counts, and then each app
+;;; opens and draws. It writes what it saw, as a datum, to the file that
+;;; *fork-out* names, then quits.
 
 (define fork-seen '())
 (define (fork-saw! key value)
@@ -109,4 +110,24 @@
           (lambda ()
             (fork-app-press 'allocations '((tab hours)) '(hours row 0)
                             'hours
-              (lambda () (fork-every-app fork-done!)))))))))
+              (lambda ()
+                ;; the Probe of the first window, Allocations' own draw,
+                ;; from its own press, and the check it writes
+                (fork-app-press 'allocations
+                                '((tab probe) (probe-targets row 0) probe)
+                                'check 'probe
+                  (lambda ()
+                    ;; the taskbar's lines counted, a reload in this world,
+                    ;; and shown in Lines, where a counted library is first
+                    (allocation-count-library! '(schevana desktop taskbar)
+                                               #t)
+                    (fork-when
+                     (lambda ()
+                       (member '(schevana desktop taskbar)
+                               (allocation-counted-libraries)))
+                     30000
+                     (lambda (counted?)
+                       (fork-app-press 'allocations
+                                       '((tab lines) (libraries row 0))
+                                       '(lines row 0) 'lines
+                         (lambda () (fork-every-app fork-done!)))))))))))))))

@@ -16,10 +16,11 @@
   (export allocations)
   (import (chezscheme)
           (only (schevana base) library-layer)
-          (only (schevana core) alpha collector-generation-bytes define-app
-                draw-line draw-text fill-box font-char-width font-line-height
-                invalidate! now-ms now-ns open-window pacer-period
-                window-frame-soon!)
+          (only (schevana core) *windows* alpha clipboard-set!
+                collector-generation-bytes define-app draw-line draw-text
+                fill-box font-char-width font-line-height invalidate! now-ms
+                now-ns open-window pacer-period surfaces window-app
+                window-frame-soon! window-id window-title window?)
           (only (schevana kits ui) make-ui ui-bar-chart-bar ui-begin!
                 ui-button ui-button-size ui-checkbox ui-checkbox-size
                 ui-draw-cell ui-draw-label ui-draw-legend ui-draw-sparkline
@@ -33,10 +34,12 @@
           (only (schevana services allocation) allocation-census
                 allocation-census! allocation-census-grown
                 allocation-census-mark! allocation-collection
-                allocation-collection-count allocation-hours
+                allocation-collection-count allocation-count-library!
+                allocation-counted-libraries allocation-hours
                 allocation-hours-count allocation-hours-slope
-                allocation-paths allocation-places allocation-record!
-                allocation-recording? allocation-young)
+                allocation-libraries allocation-line-counts
+                allocation-paths allocation-places allocation-probe-draw
+                allocation-record! allocation-recording? allocation-young)
           (only (schevana services profile) profile-newest-tick profile-ns-label
                 profile-oldest-tick profile-on? profile-subject-label
                 profile-subject? profile-tick-kept? profile-tick-late?
@@ -110,11 +113,12 @@
                   (loop (cons line acc)))))))))
 
   ;; Returns a change of bytes as a person reads it, signed: "+2.0 MB",
-  ;; "−812 B", or "–" for none.
+  ;; "-812 B", or "–" for none. (The ui faces of some looks have no U+2212,
+  ;; the minus sign.)
   (define (allocations-change-text n)
     (cond [(or (not n) (= n 0)) "–"]
           [(> n 0) (string-append "+" (allocations-bytes-text n))]
-          [else (string-append "−" (allocations-bytes-text (- n)))]))
+          [else (string-append "-" (allocations-bytes-text (- n)))]))
 
   ;; Returns how long ago ns, on now-ns's clock, was: "12 s ago".
   (define (allocations-ago ns)
@@ -151,6 +155,94 @@
           (let ([v (list->vector values)])
             (map (lambda (i) (vector-ref v (quotient (* i (- len 1)) (- n 1))))
                  (iota n))))))
+
+  ;; Returns a whole number with its thousands set apart: "38,000".
+  (define (allocations-figure n)
+    (let loop ([s (number->string n)] [acc ""])
+      (if (<= (string-length s) 3)
+          (string-append s acc)
+          (loop (substring s 0 (- (string-length s) 3))
+                (string-append "," (substring s (- (string-length s) 3)
+                                              (string-length s))
+                               acc)))))
+
+  ;; Returns what a check allows a draw that allocated least at a probe: a
+  ;; quarter more, rounded up to two figures, so that it holds on another
+  ;; machine and under the other Chez; nothing stays nothing.
+  (define (allocations-budget least)
+    (if (<= least 0)
+        0
+        (let* ([more (ceiling (* least 5/4))]
+               [unit (expt 10 (max 0 (- (string-length (number->string more))
+                                        2)))])
+          (* unit (ceiling (/ more unit))))))
+
+  ;; Returns what a probe draws, as a person reads it: a window's title, or
+  ;; a surface's name.
+  (define (allocations-what-label what)
+    (if (window? what) (window-title what) (symbol->string what)))
+
+  ;; Returns the draw of what a probe draws, as a sentence names it: "Clock's
+  ;; draw", "the taskbar's draw".
+  (define (allocations-draw-name what)
+    (if (window? what)
+        (format "~a's draw" (window-title what))
+        (format "the ~a's draw" what)))
+
+  ;; Returns text with its first letter a capital.
+  (define (allocations-capital text)
+    (if (= (string-length text) 0)
+        text
+        (string-append (string (char-upcase (string-ref text 0)))
+                       (substring text 1 (string-length text)))))
+
+  ;; Returns text without the blanks it begins with.
+  (define (allocations-trim-left text)
+    (let loop ([i 0])
+      (if (and (< i (string-length text))
+               (char-whitespace? (string-ref text i)))
+          (loop (+ i 1))
+          (substring text i (string-length text)))))
+
+  ;; Returns a short time as a person reads it: "27 µs", "1.4 ms".
+  (define (allocations-ns-text ns)
+    (cond [(< ns 1000) (format "~a ns" ns)]
+          [(< ns 1000000) (format "~a µs" (round (/ ns 1000)))]
+          [else (format "~,1f ms" (/ ns 1e6))]))
+
+  ;; Returns the text of a check that what's draw allocates no more than a
+  ;; little over least, its least at a probe, for a test to keep: an app's
+  ;; window is opened for it by its app's name, and closed again; another
+  ;; window is found by its title.
+  (define (allocations-check-text what least)
+    (let* ([budget (allocations-budget least)]
+           [head (format "(check \"~a allocates at most ~a bytes \\\n        \
+                          (~a when probed)\"\n"
+                         (allocations-draw-name what)
+                         (allocations-figure budget)
+                         (allocations-figure least))])
+      (cond
+        [(not (window? what))
+         (format "~a       (<= (cdr (assq 'least (allocation-probe-draw '~a \
+                  20)))\n           ~a))"
+                 head what budget)]
+        [(window-app what)
+         (format "~a       (let* ([win (app-launch! '~a)]\n              \
+                  [least (cdr (assq 'least (allocation-probe-draw win \
+                  20)))])\n         (close-window! win)\n         (<= least \
+                  ~a)))"
+                 head (window-app what) budget)]
+        [else
+         (format "~a       (let ([win (find (lambda (w)\n                     \
+                  (string=? (window-title w) ~s))\n                   \
+                  (windows))])\n         (<= (cdr (assq 'least \
+                  (allocation-probe-draw win 20)))\n             ~a)))"
+                 head (window-title what) budget)])))
+
+  ;; Returns runs over ticks as a person reads it: "7.4", or "372".
+  (define (allocations-runs-text runs ticks)
+    (let ([r (if (> ticks 0) (/ runs ticks) runs)])
+      (if (< r 100) (format "~,1f" (inexact r)) (format "~a" (round r)))))
 
   ;; The rows of Hours: a field of the hours, its name, and what it counts.
   (define allocations-hours-rows
@@ -358,6 +450,14 @@
           [leaves '()]        ; Heap's rows by owner: ((path . node) ...)
           [hours-seen -1]     ; the hours' count when Hours' rows were made
           [hours '()]         ; Hours' rows: (row now hour day values)
+          [probe-what #f]     ; the Probe's choice: a window, or a surface
+          [probes (make-hashtable equal-hash equal?)] ; its results, newest
+          [library #f]        ; Lines' library chosen: a name
+          [line-chosen #f]    ; and its line chosen
+          [libraries '()]     ; the libraries from files: ((name . file) ...)
+          [libraries-at -1e9] ; when they were found (ms)
+          [counts (make-hashtable equal-hash equal?)] ; name -> (ms . counts)
+          [switching #f]      ; a library being switched: (name . on?)
           [ours? #f])         ; whether this window turned the tap on
       ;; the newest tick shown
       (define (newest-tick) (or held (profile-newest-tick)))
@@ -436,9 +536,62 @@
                    (and (not (eqv? newest last-tick))
                         (or (> (- (now-ms) last) 500)
                             (>= (abs (- newest last-tick)) 30)))))))
+      ;; The libraries that come from files, found again every 5 s.
+      (define (libraries-now)
+        (when (> (- (now-ms) libraries-at) 5000)
+          (set! libraries (allocation-libraries))
+          (set! libraries-at (now-ms)))
+        libraries)
+      ;; The file of library name, or #f.
+      (define (library-file name)
+        (let ([l (assoc name (libraries-now))]) (and l (cdr l))))
+      ;; The library whose file is file, or #f.
+      (define (file-library file)
+        (let ([l (find (lambda (l) (string=? (cdr l) file)) (libraries-now))])
+          (and l (car l))))
+      ;; The lines of file, read once.
+      (define (file-lines file)
+        (or (hashtable-ref files file #f)
+            (let ([v (allocations-file-lines file)])
+              (hashtable-set! files file v)
+              v)))
+      ;; How often each line of a counted library ran, a tick
+      ;; (allocation-line-counts), made again at most once a second; or #f.
+      (define (line-counts name)
+        (let ([c (hashtable-ref counts name #f)])
+          (if (and c (< (- (now-ms) (car c)) 1000))
+              (cdr c)
+              (let ([new (allocation-line-counts name)])
+                (hashtable-set! counts name (cons (now-ms) new))
+                new))))
+      ;; Whether library name is counted, and whether a switch of it is
+      ;; under way, which ends once the service has made it so.
+      (define (counted? name) (and (member name (allocation-counted-libraries))
+                                   #t))
+      (define (switching? name)
+        (when (and switching
+                   (eq? (counted? (car switching)) (cdr switching)))
+          (set! switching #f))
+        (and switching (equal? (car switching) name)))
+      ;; A button that switches library name's counting on or off.
+      (define (count-button id name x y w h)
+        (let ([on? (and name (counted? name))])
+          (ui-button ui id x y w h (if on? "Stop counting" "Count its lines")
+                     (lambda ()
+                       (set! switching (cons name (not on?)))
+                       (allocation-count-library! name (not on?)))
+                     'disabled (or (not name) (switching? name))
+                     'tip (if on?
+                              "Evaluate it again plain, as a reload does"
+                              "Evaluate it again, as a reload does, with \
+                               code that counts how often each of its \
+                               lines runs: some 80 ms for the taskbar, 2 s \
+                               for the ui kit, which most of the world \
+                               imports"))))
       (define (toolbar w)
         (let-values ([(tw th) (ui-tabs-size '("Who" "Where" "Collections"
-                                              "Heap" "Hours"))]
+                                              "Heap" "Hours" "Probe"
+                                              "Lines"))]
                      [(kw kh) (ui-checkbox-size "Record")]
                      [(bw bh) (ui-button-size "Resume" #f)])
           (ui-toolbar
@@ -449,7 +602,8 @@
                     (ui-tabs ui 'tab x y h
                              '(("Who" . who) ("Where" . where)
                                ("Collections" . collections) ("Heap" . heap)
-                               ("Hours" . hours))
+                               ("Hours" . hours) ("Probe" . probe)
+                               ("Lines" . lines))
                              tab
                              (lambda (t) (set! tab t) (set! last 0)))))
             (list kw kh
@@ -534,12 +688,17 @@
                                                   (cdr (assq 'line row)))))
                                   places))]
                [lines (and place (cadr place) (caddr place)
-                           (or (hashtable-ref files (cadr place) #f)
-                               (let ([v (allocations-file-lines
-                                         (cadr place))])
-                                 (hashtable-set! files (cadr place) v)
-                                 v)))]
-               [source-h (if lines (* 10 (font-line-height 'mono-small)) 0)]
+                           (file-lines (cadr place)))]
+               [owner (and lines (file-library (cadr place)))]
+               [head-h (if owner
+                           (let-values ([(bw bh)
+                                         (ui-button-size "Count its lines"
+                                                         #f)])
+                             (+ bh 4))
+                           0)]
+               [source-h (if lines
+                             (+ head-h (* 10 (font-line-height 'mono-small)))
+                             0)]
                [flame-h (quotient (- h source-h) 2)]
                [table-h (- h flame-h source-h 16)])
           (if (= (caddr paths) 0)
@@ -600,15 +759,40 @@
                           (allocations-bytes-text (cdr (assq 'own row)))
                           (/ (* 100.0 (cdr (assq 'own row))) all))))
           (when lines
-            ;; from two lines above the procedure's first on
+            ;; from two lines above the procedure's first on; with its
+            ;; library's switch over it, and each line's runs a tick
+            ;; beside it while the library is counted
             (let* ([line (caddr place)]
                    [from (max 1 (- line 2))]
-                   [to (min (vector-length lines) (+ from 40))])
-              (ui-source ui 'source x (+ y flame-h 8 table-h 8) w source-h
-                         (map (lambda (i) (vector-ref lines (- i 1)))
-                              (map (lambda (k) (+ from k))
-                                   (iota (max 0 (- to from -1)))))
-                         'first from 'marked (- line from))))))
+                   [to (min (vector-length lines) (+ from 40))]
+                   [numbers (map (lambda (k) (+ from k))
+                                 (iota (max 0 (- to from -1))))]
+                   [sy (+ y flame-h 8 table-h 8)]
+                   [counts (and owner (line-counts owner))])
+              (when owner
+                (let-values ([(bw bh) (ui-button-size (if counts
+                                                          "Stop counting"
+                                                          "Count its lines")
+                                                      #f)])
+                  (count-button 'where-count owner x sy bw bh)
+                  (ui-draw-label (+ x bw 8) sy (- w bw 8) bh '(dim)
+                                 (format "~s~a" owner
+                                         (if counts
+                                             ": beside each line, how often \
+                                              it ran a tick"
+                                             "")))))
+              (ui-source ui 'source x (+ sy head-h) w (- source-h head-h)
+                         (map (lambda (i) (vector-ref lines (- i 1))) numbers)
+                         'first from 'marked (- line from)
+                         'notes
+                         (map (lambda (i)
+                                (let ([n (and counts
+                                              (assv i (cdr (assq 'lines
+                                                                 counts))))])
+                                  (and n (allocations-runs-text
+                                          (cdr n)
+                                          (cdr (assq 'ticks counts))))))
+                              numbers))))))
       ;; What the log has of collection seq, read once.
       (define (collection seq)
         (or (hashtable-ref rows seq #f)
@@ -935,6 +1119,311 @@
                           (if (eq? (caddr (car row)) 'bytes)
                               (allocations-bytes-text (cadr row))
                               (profile-ns-label (cadr row))))))))
+      ;; What a probe's results are kept by: a window's id, or a surface's
+      ;; name.
+      (define (probe-key what)
+        (if (window? what)
+            (cons 'window (window-id what))
+            (cons 'surface what)))
+      ;; The Probe: a window's or a surface's draw run 20 times for the
+      ;; least it allocates, against the probe before; the lines of the
+      ;; counted libraries that ran in it; and the text of a check that
+      ;; holds the draw to what it allocates now.
+      (define (draw-probe x y w h)
+        (let* ([targets (append *windows* (surfaces))]
+               [_ (unless (member probe-what targets) (set! probe-what #f))]
+               [results (lambda (what) (hashtable-ref probes (probe-key what)
+                                                      '()))]
+               [least (lambda (r) (let ([l (assq 'least r)]) (and l (cdr l))))]
+               [left-w (quotient (* 2 w) 5)]
+               [rx (+ x left-w 8)] [rw (- w left-w 8)]
+               [now (and probe-what (pair? (results probe-what))
+                         (car (results probe-what)))]
+               [before (and now (pair? (cdr (results probe-what)))
+                            (least (cadr (results probe-what))))])
+          (ui-table
+           ui 'probe-targets x y left-w h
+           (let ([w (ui-table-room left-w)])
+             `((what "What" ,(* w 0.40))
+               (kind "Kind" ,(* w 0.20))
+               (least "Least" ,(* w 0.20) right
+                      "What its draw allocated at least, at the last probe")
+               (change "Change" ,(* w 0.20) right
+                       "Since the probe before")))
+           targets probe-what
+           (lambda (what) (set! probe-what (and (not (eq? what probe-what))
+                                                what)))
+           (lambda (what key cx cy cw ch flags)
+             (let* ([rs (results what)]
+                    [a (and (pair? rs) (least (car rs)))]
+                    [b (and a (pair? (cdr rs)) (least (cadr rs)))])
+               (ui-draw-cell cx cy cw ch flags
+                             (case key
+                               [(what) (allocations-what-label what)]
+                               [(kind) (if (window? what) "window" "surface")]
+                               [(least) (if a (allocations-bytes-text a) "")]
+                               [else (if b (allocations-change-text (- a b))
+                                         "")]))))
+           'tip (lambda (what)
+                  (let* ([rs (results what)]
+                         [a (and (pair? rs) (least (car rs)))])
+                    (format "~a: ~a"
+                            (allocations-capital (allocations-draw-name what))
+                            (if a
+                                (format "~a at least, at the last probe"
+                                        (allocations-bytes-text a))
+                                "choose it, then Probe 20 times")))))
+          (let*-values
+              ([(pw ph) (ui-button-size "Probe 20 times" #f)]
+               [(cw ch) (ui-button-size "Copy the check" #f)]
+               [(bar)
+                (ui-toolbar
+                 rx y rw
+                 (list
+                  (list pw ph
+                        (lambda (x y w h)
+                          (ui-button
+                           ui 'probe x y w h "Probe 20 times"
+                           (lambda ()
+                             (let ([r (allocation-probe-draw probe-what 20)])
+                               (hashtable-update!
+                                probes (probe-key probe-what)
+                                (lambda (rs)
+                                  (cons r (list-head rs (min 9 (length rs)))))
+                                '())))
+                           'disabled (not probe-what)
+                           'tip "Run its draw 20 times, after two that warm \
+                                 it up, into a list that nothing shows, and \
+                                 keep the least it allocates: \
+                                 (allocation-probe-draw what 20) at a REPL")))
+                  (list cw ch
+                        (lambda (x y w h)
+                          (ui-button
+                           ui 'copy x y w h "Copy the check"
+                           (lambda ()
+                             (clipboard-set!
+                              (allocations-check-text probe-what
+                                                      (least now))))
+                           'disabled (not (and now (least now)))
+                           'tip "Copy a check that its draw allocates no \
+                                 more than now, with a quarter to spare, \
+                                 for a test to keep")))))]
+               [(lh) (font-line-height 'mono-small)]
+               [(ty) (+ y bar 4)])
+            (let* ([label (if probe-what
+                              (allocations-capital
+                               (allocations-draw-name probe-what))
+                              "")]
+                   [ty (cond
+                         [(not now)
+                          (ui-draw-label
+                           rx ty rw 0 '(hint wrap)
+                           "Choose a window or a surface, then Probe 20 \
+                            times: its draw runs 20 times, recorded into a \
+                            list that nothing shows, for exactly what it \
+                            allocates, the least of the 20.")]
+                         [(assq 'error now)
+                          (ui-draw-label rx ty rw 0 '(error wrap)
+                                         (format "~a raised: ~a" label
+                                                 (cdr (assq 'error now))))]
+                         [else
+                          (ui-draw-label
+                           rx ty rw 0 '(wrap)
+                           (format "~a, ~a runs: ~a at least (~a the \
+                                    median, ~a at most); ~a at fastest~a"
+                                   label (cdr (assq 'runs now))
+                                   (allocations-bytes-text (least now))
+                                   (allocations-bytes-text
+                                    (cdr (assq 'median now)))
+                                   (allocations-bytes-text
+                                    (cdr (assq 'most now)))
+                                   (allocations-ns-text
+                                    (cdr (assq 'fastest now)))
+                                   (if before
+                                       (format "; at the probe before, ~a, \
+                                                ~a since"
+                                               (allocations-bytes-text before)
+                                               (allocations-change-text
+                                                (- (least now) before)))
+                                       "")))])]
+                   [check (and now (least now)
+                               (allocations-check-text probe-what
+                                                       (least now)))]
+                   [check-lines (if check
+                                    (let split ([s check] [acc '()])
+                                      (let ([i (let find ([i 0])
+                                                 (cond [(= i (string-length s))
+                                                        #f]
+                                                       [(char=? (string-ref s i)
+                                                                #\newline)
+                                                        i]
+                                                       [else (find (+ i 1))]))])
+                                        (if i
+                                            (split (substring s (+ i 1)
+                                                              (string-length s))
+                                                   (cons (substring s 0 i) acc))
+                                            (reverse (cons s acc)))))
+                                    '())]
+                   [check-h (if check (+ 12 (* lh (length check-lines))) 0)]
+                   ;; the lines that ran most in it, (name line . runs)
+                   [ran (let* ([libs (if (and now (assq 'lines now))
+                                         (cdr (assq 'lines now))
+                                         '())]
+                               [all (sort (lambda (a b) (> (cddr a) (cddr b)))
+                                          (apply append
+                                                 (map (lambda (lib)
+                                                        (map (lambda (l)
+                                                               (cons (car lib)
+                                                                     l))
+                                                             (cdr lib)))
+                                                      libs)))])
+                          (list-head all (min 12 (length all))))])
+              (when check
+                (ui-source ui 'check rx (+ ty 4) rw check-h check-lines))
+              (let ([ly (+ ty 4 check-h 8)])
+                (cond
+                  [(pair? ran)
+                   (ui-source
+                    ui 'probe-lines rx ly rw (- (+ y h) ly)
+                    (map (lambda (r)
+                           (let* ([file (library-file (car r))]
+                                  [lines (and file (file-lines file))])
+                             (format "~a:~a  ~a"
+                                     (if file (path-last file) (car r))
+                                     (cadr r)
+                                     (if (and lines
+                                              (<= (cadr r)
+                                                  (vector-length lines)))
+                                         (vector-ref lines (- (cadr r) 1))
+                                         ""))))
+                         ran)
+                    'notes (map (lambda (r)
+                                  (allocations-runs-text
+                                   (cddr r) (cdr (assq 'runs now))))
+                                ran))]
+                  [now
+                   (ui-draw-label
+                    rx ly rw 0 '(hint wrap)
+                    "Count a library's lines (in Lines) to see here which \
+                     of them ran in a draw, and how often.")]))))))
+      ;; Lines: the libraries that come from files, the counted ones first;
+      ;; the lines of the one chosen, the most run first, each with its runs
+      ;; a tick; and the source around the line chosen.
+      (define (draw-lines x y w h)
+        (let* ([all (libraries-now)]
+               [rows (append (filter (lambda (l) (counted? (car l))) all)
+                             (remp (lambda (l) (counted? (car l))) all))]
+               [left-w (quotient (* 2 w) 5)]
+               [rx (+ x left-w 8)] [rw (- w left-w 8)]
+               [counts (and library (line-counts library))]
+               [ticks (if counts (cdr (assq 'ticks counts)) 0)]
+               [most (lambda (counts)
+                       (fold-left (lambda (m l) (max m (cdr l))) 0
+                                  (cdr (assq 'lines counts))))])
+          (ui-table
+           ui 'libraries x y left-w h
+           (let ([w (ui-table-room left-w)])
+             `((library "Library" ,(* w 0.58))
+               (counted "Counted" ,(* w 0.21))
+               (runs "Most" ,(* w 0.21) right
+                     "The runs a tick of its line that ran most")))
+           rows (find (lambda (l) (equal? (car l) library)) rows)
+           (lambda (l)
+             (set! library (and (not (equal? (car l) library)) (car l)))
+             (set! line-chosen #f))
+           (lambda (l key cx cy cw ch flags)
+             (let ([c (and (counted? (car l)) (line-counts (car l)))])
+               (ui-draw-cell cx cy cw ch flags
+                             (case key
+                               [(library) (format "~s" (car l))]
+                               [(counted) (if c "yes" "")]
+                               [else (if c
+                                         (allocations-runs-text
+                                          (most c) (cdr (assq 'ticks c)))
+                                         "")]))))
+           'tip (lambda (l)
+                  (format "~s, from ~a~a" (car l) (cdr l)
+                          (if (counted? (car l))
+                              "; its lines are counted"
+                              ""))))
+          (let*-values
+              ([(bw bh) (let-values ([(aw ah) (ui-button-size "Count its lines"
+                                                              #f)]
+                                     [(sw sh) (ui-button-size "Stop counting"
+                                                              #f)])
+                          (values (max aw sw) (max ah sh)))]
+               [(bar) (ui-toolbar
+                       rx y rw
+                       (list (list bw bh
+                                   (lambda (x y w h)
+                                     (count-button 'count library x y w h)))))]
+               [(ty) (ui-draw-label
+                      rx (+ y bar 4) rw 0 '(hint wrap)
+                      (cond
+                        [(not library)
+                         "Choose a library, then Count its lines: it is \
+                          evaluated again, as a reload does, with code that \
+                          counts how often each of its lines runs."]
+                        [(switching? library) "Evaluating it again…"]
+                        [counts
+                         (format "Counted for ~a ticks: each line's runs a \
+                                  tick, the most of the expressions on it. A \
+                                  window opened before runs its old code \
+                                  until it is opened again."
+                                 ticks)]
+                        [else "Not counted."]))])
+            (when counts
+              (let* ([file (library-file library)]
+                     [lines (and file (file-lines file))]
+                     [ran (sort (lambda (a b) (> (cdr a) (cdr b)))
+                                (cdr (assq 'lines counts)))]
+                     [ran (list-head ran (min 200 (length ran)))]
+                     [source-h (if (and lines line-chosen)
+                                   (* 12 (font-line-height 'mono-small))
+                                   0)]
+                     [table-h (- (+ y h) ty 8 (if (> source-h 0)
+                                                  (+ source-h 8)
+                                                  0))])
+                (ui-table
+                 ui 'lines rx (+ ty 8) rw table-h
+                 (let ([w (ui-table-room rw)])
+                   `((line "Line" ,(* w 0.14) right)
+                     (runs "A tick" ,(* w 0.16) right
+                           "How often it ran a tick")
+                     (text "Source" ,(* w 0.70))))
+                 ran (assv line-chosen ran)
+                 (lambda (l) (set! line-chosen (and (not (eqv? (car l)
+                                                               line-chosen))
+                                                    (car l))))
+                 (lambda (l key cx cy cw ch flags)
+                   (ui-draw-cell
+                    cx cy cw ch flags
+                    (case key
+                      [(line) (number->string (car l))]
+                      [(runs) (allocations-runs-text (cdr l) ticks)]
+                      [else (if (and lines (<= (car l) (vector-length lines)))
+                                (allocations-trim-left
+                                 (vector-ref lines (- (car l) 1)))
+                                "")])))
+                 'tip (lambda (l)
+                        (format "line ~a: ~a runs in ~a ticks" (car l) (cdr l)
+                                ticks)))
+                (when (> source-h 0)
+                  (let* ([from (max 1 (- line-chosen 5))]
+                         [to (min (vector-length lines) (+ from 40))]
+                         [numbers (map (lambda (k) (+ from k))
+                                       (iota (max 0 (- to from -1))))])
+                    (ui-source ui 'lines-source rx (- (+ y h) source-h) rw
+                               source-h
+                               (map (lambda (i) (vector-ref lines (- i 1)))
+                                    numbers)
+                               'first from 'marked (- line-chosen from)
+                               'notes
+                               (map (lambda (i)
+                                      (let ([n (assv i ran)])
+                                        (and n (allocations-runs-text
+                                                (cdr n) ticks))))
+                                    numbers)))))))))
       ;; The Flow: a bar a tick, its bytes banded by who, the collections,
       ;; the requests held and the late ticks over it, and the chosen
       ;; row's share over its bars. A press holds the app at that tick.
@@ -1004,9 +1493,12 @@
                [view-w (- w pad pad column-w pad)]
                [view-h (- h y flow-h pad pad)])
           (cond
-            ;; the census and the hours need no profiler
+            ;; the census, the hours, the probe and the lines need no
+            ;; profiler
             [(eq? tab 'heap) (draw-heap pad y view-w view-h)]
             [(eq? tab 'hours) (draw-hours pad y view-w view-h)]
+            [(eq? tab 'probe) (draw-probe pad y view-w view-h)]
+            [(eq? tab 'lines) (draw-lines pad y view-w view-h)]
             [(not (profile-on?))
              (ui-draw-label pad y view-w 0 '(hint wrap)
                             "Profiling is off: type (profile-on! #t) in a \

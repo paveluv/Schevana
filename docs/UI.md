@@ -424,9 +424,10 @@ read a node (its label, its value, its children); a press on a box makes
 it the whole width, and a press on the top box goes back out. A box is an
 outline and a name, so it reads in one bit too. `ui-source` shows lines
 of a program in the mono font, scrolling, with their numbers when the
-first one's is given (`'first`), and one line marked (`'marked`).
-Allocations' Where uses both, and the Pipeline shows a shader's source
-with the second.
+first one's is given (`'first`), one line marked (`'marked`), and a note
+for each line in a column of its own (`'notes`, a string or `#f` each:
+how often the line ran, say). Allocations' Where uses both, and the
+Pipeline shows a shader's source with the second.
 
 `ui-treemap` draws the same kind of tree as areas: each box as big as its
 share of its parent, laid out squarified (rows along the shorter side,
