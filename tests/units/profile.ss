@@ -148,6 +148,45 @@
               (profile-test-near? (apply + (profile-test-phases s))
                                   (profile-tick-ms s)))))
 
+(check "a span keeps its self bytes as it keeps its self time: it is \
+        charged what it allocates, less what the spans inside it do, and a \
+        tick's uses hold no more than the tick allocated"
+       (let* ([keep #f]
+              [once (lambda ()
+                      (car (profile-test-ticks
+                            (lambda ()
+                              (with-profile-span 'step #f
+                                (with-profile-span 'render #f
+                                  ;; a vector of 1,000: 8,016 bytes
+                                  (set! keep (make-vector 1000 0))
+                                  (with-profile-span 'profile-test-inner #f
+                                    ;; one of 3,000, and a pair: 24,032
+                                    (set! keep
+                                      (cons keep
+                                            (make-vector 3000 0))))))))))]
+              ;; a tick with no collection in it: one moves the clock by
+              ;; its own work, which is not these spans'
+              [s (let again ([s (once)] [tries 10])
+                   (if (or (= (profile-tick-ref s 'gcs) 0) (= tries 0))
+                       s
+                       (again (once) (- tries 1))))]
+              [bytes (lambda (k)
+                       (profile-use-bytes (car (profile-test-uses s k))))]
+              [total (find (lambda (t) (eq? (profile-total-what t) 'render))
+                           (profile-totals (list s) #t))])
+         (printf "  render ~a bytes, the span inside it ~a; the tick ~a\n"
+                 (bytes 'render) (bytes 'profile-test-inner)
+                 (profile-tick-ref s 'allocated))
+         (and (pair? keep)
+              (= (profile-tick-ref s 'gcs) 0)
+              ;; exact here; some room for what a compiler may add
+              (<= 8016 (bytes 'render) (+ 8016 256))
+              (<= 24032 (bytes 'profile-test-inner) (+ 24032 256))
+              (= (profile-tick-node-bytes s 'render) (bytes 'render))
+              (= (profile-total-bytes total) (bytes 'render))
+              (<= (apply + (map profile-use-bytes (profile-tick-uses s)))
+                  (profile-tick-ref s 'allocated)))))
+
 (check "a wait for the screen at a step's top (core1's wait for core0) is \
         a phase of its own in its use too, not other's"
        (let* ([s (car (profile-test-on-clock

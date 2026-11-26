@@ -1119,6 +1119,11 @@
                    (caddr (assoc "Pipeline" (pipeline-view-groups v))))
                 (> (vector-ref mine 4) 0)
                 (>= (vector-ref mine 5) 1)))
+    (check "Who says what core1 allocated drawing each, a frame: the \
+            Pipeline's own draw allocates"
+           (and (fixnum? (vector-ref mine 10))
+                (> (vector-ref mine 10) 0)
+                (ui-find (window-ref w 'ui) '((pipeline who) header bytes))))
     (check "the cards ask only what each drawer cost, the rest left #f, \
             and Who makes the rows again whole, which the cards then use"
            (begin

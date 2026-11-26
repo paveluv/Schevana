@@ -6,9 +6,10 @@
 ;;;            decoded in draw order (a run of glyphs as its text); turning
 ;;;            a drawer's checkbox off leaves it out of the small screen and
 ;;;            the Tape
-;;;   Who      what each drawer cost: core1's time drawing it, its records,
-;;;            the pixels they may touch, the runs they start, what changed,
-;;;            and how often it was recorded again
+;;;   Who      what each drawer cost: core1's time drawing it and the bytes
+;;;            it allocated doing so, its records, the pixels they may
+;;;            touch, the runs they start, what changed, and how often it
+;;;            was recorded again
 ;;;   Course   a tick's stages in order, each as wide as its time, with
 ;;;            render split into each drawer's draw and the rest
 ;;;   Inside   the selected record, decoded, and the shader it's drawn with:
@@ -106,7 +107,8 @@
           (only (schevana services profile) profile-use-subject profile-use-ms
                 profile-use-phase profile-tick-uses profile-tick-late?
                 profile-tick-phase-ns profile-tick-ns profile-subject-of
-                profile-newest-tick profile-tick-node-ms profile-tick-kept?
+                profile-newest-tick profile-tick-node-ms profile-tick-node-ns
+                profile-tick-node-bytes profile-tick-kept?
                 profile-tick-band-ns profile-draw-phases profile-ns-label
                 profile-clock-zero profile-tick-tip))
 
@@ -2026,16 +2028,34 @@
                 (loop (fx- seq 1) (fx+ n 1) (+ ms t))
                 (loop (fx- seq 1) n ms))))))
 
+  ;; What core1 allocated drawing subject, in bytes per frame, over the
+  ;; ticks that pipeline-drawing-ms counts; #f when none drew it.
+  (define (pipeline-drawing-bytes subject newest)
+    (let ([frame (list subject #f 'render)]
+          [draw (and (pair? subject) (list subject 'draw 'render))])
+      (let loop ([seq newest] [n 0] [bytes 0])
+        (cond
+          [(or (fx= n 30) (not (profile-tick-kept? seq)))
+           (and (fx> n 0) (quotient bytes n))]
+          [(> (+ (profile-tick-node-ns seq frame)
+                 (if draw (profile-tick-node-ns seq draw) 0))
+              0)
+           (loop (fx- seq 1) (fx+ n 1)
+                 (+ bytes (profile-tick-node-bytes seq frame)
+                    (if draw (profile-tick-node-bytes seq draw) 0)))]
+          [else (loop (fx- seq 1) n bytes)]))))
+
   ;; What each span of the list on view cost, in draw order, a row each:
-  ;; #(node i ms records pixels runs changed redrawn same marks). Here i is
-  ;; its color's index; ms what core1 took to draw it, per frame, up to the
-  ;; frame's tick, or #f; changed how many of its records differ from the
-  ;; frame before's, #f when that one isn't kept; and redrawn, same and
-  ;; marks are as pipeline-redraws says. The rows are made again for each
-  ;; list. (pipeline-who-rows v 'costs), which the cards call at each look,
-  ;; in a frame's draw, leaves changed, redrawn, same and marks #f: going
-  ;; over the frames kept makes them dear (a few ms), so Who makes them
-  ;; when it shows.
+  ;; #(node i ms records pixels runs changed redrawn same marks bytes).
+  ;; Here i is its color's index; ms what core1 took to draw it, and bytes
+  ;; what it allocated doing so, per frame, up to the frame's tick, or #f;
+  ;; changed how many of its records differ from the frame before's, #f
+  ;; when that one isn't kept; and redrawn, same and marks are as
+  ;; pipeline-redraws says. The rows are made again for each list.
+  ;; (pipeline-who-rows v 'costs), which the cards call at each look, in a
+  ;; frame's draw, leaves changed, redrawn, same and marks #f: going over
+  ;; the frames kept makes them dear (a few ms), so Who makes them when it
+  ;; shows.
   (define (pipeline-who-rows v . costs)
     (let ([l (pipeline-view-shown v)] [who (pipeline-view-who v)]
           [whole? (null? costs)])
@@ -2078,7 +2098,10 @@
                               (and b (inspect-span-changed
                                       l (cadr span) (caddr span)
                                       before (cadr b) (caddr b)))
-                              redrawn same marks))))]
+                              redrawn same marks
+                              (and subject newest
+                                   (pipeline-drawing-bytes subject
+                                                           newest))))))]
                [(nodes) (pipeline-span-nodes spans)]
                [(rows) (map row spans nodes
                             (map (lambda (n) (pipeline-color-index v n))
@@ -2134,6 +2157,7 @@
       [(runs) 5]
       [(changed) 6]
       [(redrawn) 7]
+      [(bytes) 10]
       [else 8]))
 
   ;; A cell's text, and the row's share of its column's most, for its bar:
@@ -2145,6 +2169,7 @@
            [share (and n (> (most k) 0) (/ n (most k)))])
       (case key
         [(ms) (values (if n (format "~,2f" n) "—") share)]
+        [(bytes) (values (if n (format "~,1f" (/ n 1024.0)) "—") share)]
         [(redrawn same) (values (if n (number->string n) "—") #f)]
         [(pixels) (values (pipeline-pixels-text n) share)]
         [(changed)
@@ -2190,10 +2215,13 @@
                               0 rows))]
            [span (pipeline-selected-span v)]
            [columns
-            `((name "Who" ,(max 140 (- (ui-table-room w) 72 76 84 60 84 84 64
-                                       32)))
+            `((name "Who" ,(max 140 (- (ui-table-room w) 72 64 76 84 60 84 84
+                                       64 32)))
               (ms "Core1" 72 right
                   "What core1 took to draw it, ms a frame over its last 30")
+              (bytes "KB" 64 right
+                     "What core1 allocated drawing it, KB a frame over its \
+                      last 30")
               (records "Records" 76 right)
               (pixels "Pixels" 84 right
                       "What its records may touch: the pixels the GPU shades, \

@@ -56,8 +56,8 @@ schevana/      the libraries below the world, each declaring its layer:
                  reload!
   kits/        libraries that are pure, or almost: ui, edit, text, color,
                px, menu, ...
-  services/    long-lived state behind procedures: crew, env, profile,
-               theme-file, vat
+  services/    long-lived state behind procedures: allocation, crew, env,
+               profile, theme-file, vat
   styles/  palettes/  wallpapers/    the looks, one definition per library;
                a look's parts, in the folder of its name (styles/adwaita/,
                styles/cons/, styles/genera/, styles/open-look/)

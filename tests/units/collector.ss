@@ -178,3 +178,80 @@
                      [*collector-pass* #f])
            (collector-collect!))
          (equal? (reverse traced) '((28 . 0) (29 . 0)))))
+
+;;; The log of collections ((schevana services allocation)), which the
+;;; profiler's handler writes as each one runs.
+
+;; Returns the newest collection's seq, or -1 for none.
+(define (collector-newest)
+  (let ([seqs (allocation-collections)]) (if (pair? seqs) (car seqs) -1)))
+
+;; Returns a field of each collection logged after seq, the oldest first.
+(define (collector-logged-since seq field)
+  (map (lambda (s) (cdr (assq field (allocation-collection s))))
+       (reverse (filter (lambda (s) (> s seq)) (allocation-collections)))))
+
+(check "a collection is logged: its pass, its pause, what each generation \
+        held, and what survived it"
+       ;; the newest is read first: allocating this much may bring a
+       ;; collection by itself, which then moves it
+       (let* ([before (collector-newest)]
+              [kept (make-bytevector (* 4 1024 1024) 1)])
+         (collect-rendezvous)
+         (let ([c (allocation-collection (+ before 1))])
+           (and c
+                (for-all (lambda (pass) (eq? pass 'young))
+                         (collector-logged-since before 'pass))
+                (for-all (lambda (ns) (> ns 0))
+                         (collector-logged-since before 'pause))
+                (>= (apply + (collector-logged-since before 'survived))
+                    (* 4 1024 1024))
+                (= (length (cdr (assq 'before c))) 5)
+                (< (car (cdr (assq 'after c))) (car (cdr (assq 'before c))))
+                (= (cdr (assq 'held c)) 0)
+                (not (allocation-collection (+ (collector-newest) 1)))
+                (= 1 (bytevector-u8-ref kept 0))))))
+
+(check "the log tells the collector's passes apart, by what the \
+        generations held before and after"
+       (let ([kept (make-bytevector (* 4 1024 1024) 1)]
+             [pass-of (lambda (thunk)
+                        (let ([before (collector-newest)])
+                          (thunk)
+                          (cdr (assq 'pass
+                                     (allocation-collection (+ before 1))))))])
+         ;; into generation 1, then on by each pass: 1 into 2, 2 into 3,
+         ;; and all into 4
+         (collect-rendezvous)
+         (let* ([middle (pass-of (lambda () (collector-pass! 1 2)))]
+                [old (pass-of (lambda () (collector-pass! 3 3)))]
+                [settle (pass-of collector-settle!)])
+           (printf "  passes read: ~a ~a ~a\n" middle old settle)
+           (and (eq? middle 'middle) (eq? old 'old) (eq? settle 'settle)
+                (= 1 (bytevector-u8-ref kept 0))))))
+
+;; a draw that allocates some 17 MB in one frame turn, many times past the
+;; collect trip: the turn holds every request off till its frame is out
+(let ([win (open-window "Hog" 'size '(80 . 60)
+                        'draw (lambda (win w h)
+                                (let loop ([i 0] [keep '()])
+                                  (when (< i 200000)
+                                    (loop (+ i 1)
+                                          (cons (make-vector 8)
+                                                (if (> (length keep) 10)
+                                                    '()
+                                                    keep)))))))])
+  (steps 1)
+  (let ([before (collector-newest)])
+    (invalidate! win)
+    (steps 1)
+    (let ([held (collector-logged-since before 'held)]
+          [held-ns (collector-logged-since before 'held-ns)])
+      (close-window! win)
+      (printf "  requests held off before each collection: ~a\n" held)
+      (check "the collection that follows a frame turn says how many \
+              requests the turn held off, and for how long"
+             (and (pair? held)
+                  (> (car held) 0)
+                  (> (car held-ns) 0)
+                  (for-all zero? (cdr held)))))))

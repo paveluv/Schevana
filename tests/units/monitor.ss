@@ -354,6 +354,11 @@
          (let ([r (ui-find ui '(consumers header avg))])
            (and r (string? (ui-region-tip r))
                 (string-contains-ci? (ui-region-tip r) "average"))))
+  (check "Consumers has what each allocated a second, and its heading says \
+          so"
+         (let ([r (ui-find ui '(consumers header bytes))])
+           (and r (string? (ui-region-tip r))
+                (string-contains-ci? (ui-region-tip r) "allocated"))))
   ;; the pointer rests on the newest bar, whose tooltip says what it spent
   (let ([r (car (bars))])
     (let-values ([(cx cy cw ch) (content-rect m)])

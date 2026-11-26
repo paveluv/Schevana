@@ -148,9 +148,9 @@ What Schevana takes from others, and under which terms, is in
   goes to the line's start in a REPL.
 
 After v2, I plan to make the profiler profile memory properly. It now
-sees how long the collector ran and how much was allocated in all, but
-not what allocates, by window, process and procedure, or what each
-collection costs.
+sees what each window, surface and process allocates, and what each
+collection cost and kept, but not which procedure allocates, what the
+live heap is made of, or what holds it.
 
 I also plan keymaps. Everything a key does will be an action with a name
 and a short description, at every level (a widget, an app, a window, the

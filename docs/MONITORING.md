@@ -13,8 +13,8 @@ see what it means.
   frame, memory, the style, the last error), the windows, and the
   processes, each with a Kill button.
 - **Ticks**: a bar for each tick, its time stacked by phase, with late
-  ticks flagged; who spent the time, by window, surface and process; and
-  the memory.
+  ticks flagged; who spent the time and who allocated, by window, surface
+  and process; and the memory.
 - **Flags**: every late tick the profiler kept, what made it late, and
   everything known about that moment.
 - **Platform**: this machine's stack, and a button that copies the run as
@@ -49,6 +49,8 @@ handle input between frames are summed into the tick they lead up to.
 (profile-tick-phases tick)                 ; where it went: ((render . ns) ...)
 (profile-tick-uses tick)                   ; who spent it
 (profile-totals (profile-ticks) #t)        ; who spent the ticks kept, the most first
+(map profile-use-bytes (profile-tick-uses tick))   ; what each allocated
+(map profile-total-bytes (profile-totals (profile-ticks) #t))
 ```
 
 A tick's phases are events, timers, processes, ticks, render, the
@@ -56,7 +58,10 @@ collector, other, and the two waits, for input and for the screen; a wait
 delays the next tick as much as work does, so both count. A use is what
 one key spent: a window's handler, a surface's draw, or a process's turn.
 `(profile-seconds)` gives each second's sums, as `(profile-ticks)` gives
-the ticks, and `profile-totals` sums either list.
+the ticks, and `profile-totals` sums either list. A use's bytes are its
+own, as its time is: what was allocated while it ran, less what the uses
+inside it allocated. They are exact while core1 is the only thread that
+allocates; another thread's bytes come in 16 KB at a time.
 
 ```scheme
 (pacer-period)                             ; a refresh, in ns
@@ -78,6 +83,29 @@ that the flags outlive the run.
 (profile-on! #f)                           ; off: a step costs what it did
 (profile-on! #t)
 ```
+
+## Collections
+
+Every collection is logged as it runs, into a ring of the last 4,096:
+which of the collector's passes it was, how long it paused the world,
+what each generation held before and after, and what survived.
+
+```scheme
+(allocation-clock)                         ; bytes allocated so far
+(length (allocation-collections))          ; the collections kept, by seq
+(allocation-collection)                    ; all that is known of the last
+(cdr (assq 'pause (allocation-collection)))   ; its pause, ns
+```
+
+`pass` is `young` (generation 0 into 1, when 2 MB has been allocated),
+`middle` (1 into 2) or `old` (3 into itself), both run while nobody is
+typing, or `settle` (all into 4, at boot and after a reload). `allocated`
+is what was allocated since the collection before, and `survived` what
+this one kept of it: almost none of a frame's bytes should outlive the
+frame. `held` counts the requests that were held off before it (a frame
+turn holds collections till its frame is out), and `span` is what was
+running when it was asked for. The log goes with the profiler: off,
+nothing is logged.
 
 ## Inside the frame
 

@@ -17,7 +17,8 @@
 ;;; same to a reader that can't see the screen (profile-slow-ticks,
 ;;; profile-tick-phases). Consumers lists each window, surface and process, and
 ;;; the collector, by ms per second over the last 5 seconds, with the average
-;;; and longest time in a tick, the calls per second and the last minute. A
+;;; and longest time in a tick, the calls and the kilobytes allocated per
+;;; second, and the last minute. A
 ;;; window's row opens to its handlers and its frame. A selected row shows its
 ;;; share of every bar, until a second press deselects it. A window's name
 ;;; focuses it, and a process's Kill kills it. Memory charts the heap, and the
@@ -68,7 +69,8 @@
                 profile-flag-summary *profile-flag-log* profile-flag-lines
                 profile-flag-ticks-text profile-flag-before-text
                 profile-flag-why profile-flag-ns profile-ns-text
-                profile-flag-clock profile-second-ref profile-total-calls
+                profile-flag-clock profile-second-ref profile-total-bytes
+                profile-total-calls
                 profile-total-longest profile-total-ticks profile-second-node-ms
                 profile-tick-node-ns profile-tick-kept? profile-oldest-tick
                 profile-total-parts profile-subject-of profile-history!
@@ -195,6 +197,10 @@
   ;;; ---------------------------------------------------------------- the app
 
   ;;; ---------------------------------------------------------------- overview
+
+  ;; A rate as a table shows it: a decimal under 100, whole from there on.
+  (define (monitor-rate-text r)
+    (if (< r 99.95) (format "~,1f" r) (number->string (exact (round r)))))
 
   ;; A count with commas between its thousands: "30,312".
   (define (monitor-count n)
@@ -766,7 +772,7 @@
                ;; each heading's tooltip says what its column means
                [columns
                 `((name "Consumer"
-                        ,(max 120 (- (ui-table-room w) kind (* 4 num) spark))
+                        ,(max 120 (- (ui-table-room w) kind (* 5 num) spark))
                         ,(format "What ran: a row of several parts opens to \
                                   them, and each stays listed ~a s since it \
                                   last ran"
@@ -790,6 +796,11 @@
                   (calls "calls/s" ,num right
                          "How many times a second it ran: a handler called, \
                           a frame drawn, a process's turn")
+                  (bytes "KB/s" ,num right
+                         ,(format "Kilobytes it allocated a second, on \
+                                   average over the last ~a s, the spans \
+                                   inside it left out"
+                                  monitor-consumer-seconds))
                   (spark "last minute" ,spark
                          "Its milliseconds each second of the last minute, \
                           the newest at the right"))])
@@ -825,6 +836,7 @@
                            0)]
                 [(max) (if t (profile-total-longest t) 0)]
                 [(calls) (if t (/ (profile-total-calls t) span) 0)]
+                [(bytes) (if t (/ (profile-total-bytes t) span) 0)]
                 [else (apply + (minute-of node))])))
           ;; siblings in the order that order names, ties as they come
           (define (sorted nodes)
@@ -896,10 +908,12 @@
                                    (profile-ms-label (profile-total-longest t))
                                    "–"))]
                 [(calls) (number (if t
-                                     (let ([c (/ (profile-total-calls t) span)])
-                                       (if (< c 99.95)
-                                           (format "~,1f" c)
-                                           (number->string (exact (round c)))))
+                                     (monitor-rate-text
+                                      (/ (profile-total-calls t) span))
+                                     "–"))]
+                [(bytes) (number (if t
+                                     (monitor-rate-text
+                                      (/ (profile-total-bytes t) span 1024.0))
                                      "–"))]
                 [(spark)
                  (ui-draw-sparkline (+ cx 4) (+ cy 4) (- cw 12) (- ch 8) flags
@@ -1051,7 +1065,7 @@
                              world's time and memory go.")]))
         (ui-end! ui w h))
       (apply open-window "Monitor"
-             'size (cons (max 640 (+ 160 (* 58 (font-char-width 'ui))))
+             'size (cons (max 640 (+ 160 (* 67 (font-char-width 'ui))))
                          (max 600 (* 21 (ui-table-row-height))))
              'min-size '(420 . 360)
              'draw (lambda (win w h) (draw win w h))
