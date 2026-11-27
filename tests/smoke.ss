@@ -2772,8 +2772,8 @@
   (steps 1))
 
 ;; A window opened under an older kit holds a ui that this kit cannot
-;; read: when the kit's library is evaluated again and run (as a reload
-;; does), the window's app opens again in its place.
+;; read: when the kit's base, which makes a ui, is evaluated again and run
+;; (as a reload does), the window's app opens again in its place.
 (for-each (lambda (w) (when (eq? (window-app w) 'clock) (close-window! w)))
           (windows))
 (let ([old (clock)])
@@ -2781,7 +2781,7 @@
   (hashtable-set! (window-props old) 'ui 'an-older-kits-ui)
   (let ([x (window-x old)] [y (window-y old)]
         [w (window-w old)] [h (window-h old)])
-    (test-reload-library! '(schevana kits ui))
+    (test-reload-library! '(schevana kits ui base))
     (steps 2)
     (let ([new (find-window 'clock)])
       (check "reloading the kit reopens a window of an older kit's ui in its \

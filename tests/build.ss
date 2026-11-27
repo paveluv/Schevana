@@ -81,7 +81,7 @@
     ((schevana desktop status) refresh-status!)
     ((schevana kits edit) edit-difference edit-layout-scan!)
     ((schevana kits inspect) inspect-list-flat! inspect-preview!)
-    ((schevana kits ui) ui-tree-rows)
+    ((schevana kits ui lists) ui-tree-rows)
     ((schevana recorder bytes) rec-take! rec-loan-take!)
     ((schevana reload) reload-libraries!)
     ((schevana sdl gpu) sdl-set-swapchain-parameters)

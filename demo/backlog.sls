@@ -38,7 +38,7 @@
   ;; space as long as a description holds.
   (define (backlog-blob)
     (let ([bv (string->utf8
-               (substring (backlog-file "schevana/kits/ui.sls")
+               (substring (backlog-file "schevana/kits/ui/base.sls")
                           0 (* 3/4 tasks-description-max)))]
           [abc "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz\
                 0123456789+/"]
@@ -247,7 +247,7 @@
               'kind 'chore
               'priority 'low
               'tags '("kit" "docs")
-              'description (backlog-file "schevana/kits/ui.sls"))
+              'description (backlog-file "schevana/kits/ui/base.sls"))
    (add-task! "Changelog: the backlog as one long paragraph"
               'kind 'chore
               'priority 'low

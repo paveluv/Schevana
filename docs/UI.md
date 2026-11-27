@@ -1,8 +1,11 @@
 # Widgets
 
-`schevana/kits/ui.sls` is the widget kit that every app here is built
+`(schevana kits ui)` is the widget kit that every app here is built
 with: buttons, text, choices, tables, trees, scroll views, menus, dialogs
-and charts. It is immediate-mode, so there is no tree of widget objects.
+and charts. It gives the names of its parts, in `schevana/kits/ui/`: the
+base (the state, events, focus, scrolling, popups and the shared drawing),
+the controls, text, lists, charts and pages, each built on those before
+it. It is immediate-mode, so there is no tree of widget objects.
 Each time a window draws, its draw procedure calls one procedure for each
 widget, at the place where the widget goes. The widget draws itself and
 records where it can be pressed, and the window's handlers ask the kit
