@@ -11,7 +11,8 @@
     ui-state-edit ui-state-edit-set! ui-state-blink-at-set! ui-state-reveal
     ui-state-reveal-set! ui-state-popup ui-state-popup-set! ui-state-scans
     ui-state-scans-set! ui-state-memo make-ui ui-memo ui-memo! ui-forget!
-    ui-tip-ms ui-cut ui-region! ui-region!* ui-region-item-set! ui-id
+    ui-tip-ms ui-cut ui-region! ui-region!* ui-region-item ui-region-item-set!
+    ui-id ui-number-text
     ui-flags* ui-whole ui-area
     ui-region-in? ui-region-at ui-find
     ui-hover? ui-active? ui-opt-flags ui-flags ui-focus! ui-focused ui-edit
@@ -159,6 +160,18 @@
   (define (ui-memo ui key default)
     (hashtable-ref (ui-state-memo ui) key default))
   (define (ui-memo! ui key value) (hashtable-set! (ui-state-memo ui) key value))
+
+  ;; Returns whole number n as text: for 0 to 9,999 the one string made the
+  ;; first time and kept, since tables and sources draw the same numbers
+  ;; at every draw.
+  (define ui-numbers (make-vector 10000 #f))
+  (define (ui-number-text n)
+    (if (and (fixnum? n) (fx<= 0 n 9999))
+        (or (vector-ref ui-numbers n)
+            (let ([s (number->string n)])
+              (vector-set! ui-numbers n s)
+              s))
+        (number->string n)))
 
   ;; Returns v, a length, in whole pixels: the nearest, with no flonum made.
   (define (ui-whole v)

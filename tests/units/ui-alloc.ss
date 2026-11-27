@@ -40,3 +40,64 @@
                     regions allocate nothing past a draw with none (~a \
                     bytes, ~a)" b a)
            (<= b a))))
+
+;; A tree of 3 levels below its root, 4 children each, as a flame and a
+;; treemap draw them: (label value child ...).
+(define ui-alloc-test-tree
+  (let make ([depth 0] [label "all"])
+    (cons* label (expt 4 (- 3 depth))
+           (if (= depth 3)
+               '()
+               (map (lambda (i) (make (+ depth 1) (format "~a.~a" label i)))
+                    (iota 4))))))
+
+;; The lines a source view shows.
+(define ui-alloc-test-lines
+  (map (lambda (i) (format "(define (f~a x) (+ x ~a))" i i)) (iota 30)))
+
+(let* ([flame (ui-alloc-test-window
+               "Flame"
+               (lambda (ui w h)
+                 (ui-flame ui 'f 0 0 w h ui-alloc-test-tree car cadr cddr
+                           'tip (lambda (node) (car node)))))]
+       [treemap (ui-alloc-test-window
+                 "Treemap"
+                 (lambda (ui w h)
+                   (ui-treemap ui 't 0 0 w h ui-alloc-test-tree car cadr cddr
+                               'tip (lambda (node) (car node)))))]
+       [source (ui-alloc-test-window
+                "Source"
+                (lambda (ui w h)
+                  (ui-source ui 's 0 0 w h ui-alloc-test-lines 'first 1
+                             'marked 3)))]
+       ;; a scroll view as tall, with its bar, and nothing in it
+       [scroll (ui-alloc-test-window
+                "Scroll"
+                (lambda (ui w h)
+                  (ui-scroll ui 's 0 0 w h (lambda (top) (+ top 600)))))]
+       [none (ui-alloc-test-window "None" (lambda (ui w h) #f))]
+       [other (ui-alloc-test-window "Other" (lambda (ui w h) #f))])
+  (steps 2)
+  (let ([base (ui-alloc-test-least none)]
+        [f (ui-alloc-test-least flame)]
+        [t (ui-alloc-test-least treemap)]
+        [s (ui-alloc-test-least source)]
+        [view (ui-alloc-test-least scroll)])
+    (for-each close-window! (list flame treemap source scroll none other))
+    (steps 1)
+    ;; what is left past a draw with none: a flame's and a treemap's
+    ;; handler and the walk to the root shown; a source's scroll view. In
+    ;; the hacker edition, where the kit's procedures are names at "/", the
+    ;; flame's and the treemap's walks over their boxes, and the source's
+    ;; over its lines, allocate up to some KB more; why is not known yet.
+    (check (format "a flame and a treemap drawn again find their boxes' \
+                    ids, layouts and cut labels kept, and make their \
+                    tooltips only when shown; a source view finds its \
+                    numbers kept: past a draw with none, the flame and the \
+                    treemap allocate a few hundred bytes whatever their \
+                    size, and the source what its scroll view does (~a, ~a \
+                    and ~a bytes past ~a; the scroll view ~a)"
+                   (- f base) (- t base) (- s base) base (- view base))
+           (let ([most (if test-hacker? 4096 512)])
+             (and (<= (- f base) most) (<= (- t base) most)
+                  (<= (- s base) (+ (- view base) most)))))))

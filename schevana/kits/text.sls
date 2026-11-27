@@ -85,9 +85,27 @@
   ;; of str within max-w that does, found by halving (log n measures, not n).
   ;; measure, if given, is (lambda (s) width) instead of text-width in font.
   (define (text-fit str max-w font . measure)
-    (let* ([width (if (pair? measure) (car measure)
-                      (lambda (s) (text-width s font)))]
-           [s (text-within str max-w)]
+    (if (pair? measure)
+        (text-fit-cut str max-w (car measure))
+        (let ([f (get-font font)]
+              [kept (eq-hashtable-ref text-fit-cuts str #f)])
+          (if (and kept (eqv? (vector-ref kept 0) max-w)
+                   (eq? (vector-ref kept 1) f))
+              (vector-ref kept 2)
+              (let ([s (text-fit-cut str max-w
+                                     (lambda (s) (text-width s font)))])
+                (unless (eq? s str)
+                  (eq-hashtable-set! text-fit-cuts str (vector max-w f s)))
+                s)))))
+
+  ;; What text-fit cut, by the string it was given: the width and the font
+  ;; it was cut for, and the cut, so that a label drawn again as wide is
+  ;; not cut again. A cache: its loss changes only speed.
+  (define text-fit-cuts (make-weak-eq-hashtable))
+
+  ;; text-fit's own work, with width measuring a string.
+  (define (text-fit-cut str max-w width)
+    (let* ([s (text-within str max-w)]
            [cut (lambda (n) (string-append (substring s 0 n) "…"))])
       (if (or (string=? s "") (and (eq? s str) (<= (width str) max-w)))
           s
