@@ -646,17 +646,14 @@
   ;; a corner radius of 0 makes a style square: everything it draws, an
   ;; app's drawing too
   (at-load (theme-table-default! 'corner-radius 9))
+  ;; Returns a box's corner radius in 1/256ths of a device pixel: r, at
+  ;; most half its shorter side. The sides are halved in those units, where
+  ;; half an odd one is no fraction to allocate.
   (define (rec-radius r w h)
-    (cond
-      [(or (eqv? r 0) (<= (theme 'corner-radius) 0)) 0]
-      ;; whole numbers stay whole in halves: half an odd side is no
-      ;; fraction to allocate
-      [(and (fixnum? r) (fixnum? w) (fixnum? h))
-       (fxmax 0 (fxdiv (fx* (fx* (fxmin (fx* 2 r) (fxabs w) (fxabs h))
-                                 *rec-num*)
-                            128)
-                       *rec-den*))]
-      [else (max 0 (rec-length (min r (/ (abs w) 2) (/ (abs h) 2))))]))
+    (if (or (eqv? r 0) (<= (theme 'corner-radius) 0))
+        0
+        (fxmax 0 (fxmin (rec-length r) (fxsra (rec-length (abs w)) 1)
+                        (fxsra (rec-length (abs h)) 1)))))
 
   (define (rec-box! x y w h color radius line)
     (cond

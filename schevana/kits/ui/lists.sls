@@ -59,10 +59,11 @@
   (define (ui-split-of ui id x y w h at lo hi stacked?)
     (let* ([room (if stacked? h w)] [from (if stacked? y x)]
            [most (max lo (- room hi))]
-           [first (clamp (ui-memo ui (list id 'at) at) lo most)]
+           [first (clamp (ui-memo ui (ui-id ui id 'at) at) lo most)]
            [line (+ from first)]
            ;; the view the split lies in, if any, which cuts its line too
-           [clip (ui-state-clip ui)])
+           [cx (ui-state-clip-x ui)] [cy (ui-state-clip-y ui)]
+           [cw (ui-state-clip-w ui)] [ch (ui-state-clip-h ui)])
       (define (handle)
         (ui-region! ui id
           (if stacked? x (- line 3)) (if stacked? (- line 3) y)
@@ -95,11 +96,7 @@
             (ui-draw-split line y h (ui-flags ui id))))
       (ui-later! ui
         (lambda (ww wh)
-          (if clip
-              (apply (lambda (cx cy cw ch)
-                       (ui-call-with-clip ui cx cy cw ch handle))
-                     clip)
-              (handle))))
+          (if cw (ui-with-clip ui (cx cy cw ch) (handle)) (handle))))
       first))
 
   ;; The line between two panes at x, which a drag moves: it shows under the
@@ -592,45 +589,33 @@
   ;; over its roots' cells.
   (define (ui-table-headings! ui id sx sw x y h columns left sort on-sort
                               title-x resize)
-    (ui-call-with-clip ui sx y sw h
-      (lambda ()
-        (let loop ([cs columns] [cx x])
-          (unless (null? cs)
-            (let* ([key (caar cs)]
-                   [cw (ui-table-width (car cs) (null? (cdr cs)) left)]
-                   [hid (ui-id ui id 'header key)]
-                   [tx (if (eq? cs columns) title-x cx)]
-                   [flags (ui-column-flags (car cs))]
-                   [tip (ui-column-tip (car cs))])
-              (cond
-                [on-sort
-                 (ui-region!* ui hid cx y cw h
-                              (lambda (ev)
-                                (and (eq? (car ev) 'press)
-                                     (eq? (list-ref ev 3) 'left)
-                                     (begin (on-sort key) #t)))
-                              'keep tip #f #f '((L . "Sort")) #f)]
-                [tip (ui-region!* ui hid cx y cw h #f #f tip #f #f '() #f)])
-              (unless (= tx cx)
-                (ui-draw-table-header cx y (- tx cx) h '() "" #f))
-              (ui-draw-table-header tx y (- (+ cx cw) tx) h
-                                    (if on-sort (ui-flags* ui hid flags) flags)
-                                    (cadar cs)
-                                    (and sort (eq? (car sort) key) (cdr sort)))
-              (loop (cdr cs) (+ cx cw)))))
-        (ui-table-handles! ui id x y h columns left sx sw
-                           (or resize (theme 'table-resize))))))
-
-  ;; Calls thunk with its drawing and its regions cut to x y w h: for a
-  ;; table's headings, which a column the user widened carries past the
-  ;; table's edge, as it does the rows, and a split's line in a scroll view.
-  (define (ui-call-with-clip ui x y w h thunk)
-    (let ([clip (ui-state-clip ui)])
-      (ui-state-clip-set! ui (call-with-values
-                               (lambda () (ui-cut x y w h clip))
-                               list))
-      (with-clip (x y w h) (thunk))
-      (ui-state-clip-set! ui clip)))
+    (ui-with-clip ui (sx y sw h)
+      (let loop ([cs columns] [cx x])
+        (unless (null? cs)
+          (let* ([key (caar cs)]
+                 [cw (ui-table-width (car cs) (null? (cdr cs)) left)]
+                 [hid (ui-id ui id 'header key)]
+                 [tx (if (eq? cs columns) title-x cx)]
+                 [flags (ui-column-flags (car cs))]
+                 [tip (ui-column-tip (car cs))])
+            (cond
+              [on-sort
+               (ui-region!* ui hid cx y cw h
+                            (lambda (ev)
+                              (and (eq? (car ev) 'press)
+                                   (eq? (list-ref ev 3) 'left)
+                                   (begin (on-sort key) #t)))
+                            'keep tip #f #f '((L . "Sort")) #f)]
+              [tip (ui-region!* ui hid cx y cw h #f #f tip #f #f '() #f)])
+            (unless (= tx cx)
+              (ui-draw-table-header cx y (- tx cx) h '() "" #f))
+            (ui-draw-table-header tx y (- (+ cx cw) tx) h
+                                  (if on-sort (ui-flags* ui hid flags) flags)
+                                  (cadar cs)
+                                  (and sort (eq? (car sort) key) (cdr sort)))
+            (loop (cdr cs) (+ cx cw)))))
+      (ui-table-handles! ui id x y h columns left sx sw
+                         (or resize (theme 'table-resize)))))
 
   (at-load
    (theme-default! 'table-header-height

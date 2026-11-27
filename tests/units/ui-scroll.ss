@@ -212,7 +212,11 @@
                                    (lambda (ui w h)
                                      (ui-scroll-wide ui 'v 20 20 300 200
                                        (lambda (left top)
-                                         (set! shown (ui-state-clip ui))
+                                         (set! shown
+                                               (list (ui-state-clip-x ui)
+                                                     (ui-state-clip-y ui)
+                                                     (ui-state-clip-w ui)
+                                                     (ui-state-clip-h ui)))
                                          (values (+ left 800) (+ top 1000)))))
                                    '(400 . 300))]
                             [ui (window-ref win 'ui)])

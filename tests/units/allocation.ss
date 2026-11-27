@@ -346,6 +346,8 @@
                     (record-list!
                      l (lambda ()
                          (fill-box 10 10 100 20 'accent 4)
+                         ;; a fractional radius, as wide as half the box
+                         (fill-box 10 40 5 96 'accent 2.5)
                          (draw-line 0 0 100 50 'text)
                          (draw-text 10 10 "Whole" 'text 'ui)))))]
        [half (allocation-least
@@ -369,8 +371,9 @@
   (check (format "recording a list allocates only the winder that puts back \
                   what it nests in (~a bytes; a winder ~a)" empty winder)
          (<= empty winder))
-  (check (format "a box, a line and text at whole coordinates allocate \
-                  nothing past the recording (~a bytes past it); at \
+  (check (format "a box (its corners' radius whole or not), a line and text \
+                  at whole coordinates allocate nothing past the recording \
+                  (~a bytes past it); at \
                   fractional ones, only the flonums of their sums (~a); a \
                   color under alpha, its pair (~a); text-width nothing (~a)"
                  (- whole empty) (- half empty) (- faint empty) width)

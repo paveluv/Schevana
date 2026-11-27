@@ -41,6 +41,40 @@
                     bytes, ~a)" b a)
            (<= b a))))
 
+;; A scroll view whose content fits, one whose content goes on past it,
+;; with its bar, and the same bar drawn alone.
+(let* ([fits (ui-alloc-test-window
+              "Fits"
+              (lambda (ui w h) (ui-scroll ui 'v 0 0 w h (lambda (top) top))))]
+       [tall (ui-alloc-test-window
+              "Tall"
+              (lambda (ui w h)
+                (ui-scroll ui 'v 0 0 w h (lambda (top) (+ top 600)))))]
+       [bar (ui-alloc-test-window
+             "Bar"
+             (lambda (ui w h)
+               (let ([bw (ui-scrollbar-width)])
+                 (ui-scrollbar ui 'b (- w bw) 0 bw h 0 600 h void))))]
+       [none (ui-alloc-test-window "None" (lambda (ui w h) #f))]
+       [other (ui-alloc-test-window "Other" (lambda (ui w h) #f))])
+  (steps 2)
+  (let ([base (ui-alloc-test-least none)]
+        [f (ui-alloc-test-least fits)]
+        [t (ui-alloc-test-least tall)]
+        [b (ui-alloc-test-least bar)])
+    (for-each close-window! (list fits tall bar none other))
+    (steps 1)
+    ;; the wheel's handler and the one the bar is given are closures of
+    ;; three names each
+    (check (format "a scroll view makes no list as it draws and cuts its \
+                    regions: whose content fits, it allocates only its \
+                    wheel's handler (~a bytes past a draw with none, ~a); \
+                    with its bar, past that only what the bar drawn alone \
+                    does and the handler it gives the bar (~a; the bar \
+                    alone ~a)"
+                   (- f base) base (- t f) (- b base))
+           (and (<= (- f base) 32) (<= (- t f) (+ (- b base) 32))))))
+
 ;; A tree of 3 levels below its root, 4 children each, as a flame and a
 ;; treemap draw them: (label value child ...).
 (define ui-alloc-test-tree
