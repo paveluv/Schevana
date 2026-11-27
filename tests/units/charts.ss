@@ -129,8 +129,8 @@
                  (close-window! win)
                  (and (null? before)
                       (for-all (lambda (i) (= i 1)) asked)
-                      (equal? (ui-region-tip r) "bar 1")
-                      (not (ui-region-tip o)))))))))
+                      (equal? (ui-region-tip-text r) "bar 1")
+                      (not (ui-region-tip-text o)))))))))
 
 (check "the sparkline: values as a line, in chart-share when its row is \
         selected; its look is the ui-draw-sparkline part's"

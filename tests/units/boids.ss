@@ -275,6 +275,6 @@
          (steps 2)
          (let* ([rw (find-window "Boids — Rules")]
                 [r (ui-find (window-ref rw 'ui) 'threads)]
-                [ok (string-contains-ci? (ui-region-tip r) "every app")])
+                [ok (string-contains-ci? (ui-region-tip-text r) "every app")])
            (close-window! win)
            ok)))

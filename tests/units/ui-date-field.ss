@@ -23,7 +23,7 @@
             (let ([id (ui-region-id r)])
               (and (pair? id) (eq? (car id) 'd) (pair? (cdr id))
                    (eq? (cadr id) 'day))))
-          (ui-state-regions (window-ref win 'ui))))
+          (ui-regions (window-ref win 'ui))))
 
 (define (ui-date-field-test-press! key . mods)
   (inject! (list 'key-down key mods))

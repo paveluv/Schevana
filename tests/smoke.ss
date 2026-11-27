@@ -1590,7 +1590,7 @@
                            (let ([id (ui-region-id r)])
                              (and (pair? id) (pair? (cdr id))
                                   (eq? (cadr id) 'suggestion) id)))
-                         (ui-state-regions tui))])
+                         (ui-regions tui))])
   (press! 'down)
   (press! 'return)
   (steps 2)
@@ -1957,7 +1957,7 @@
            (and (not (focus-id)) (equal? (row 1) (row 2))
                 (not (equal? (row 2) (row 3))))))
   (check "a checklist item cut short has its text as a tooltip"
-         (equal? (ui-region-tip (ui-find tui '(item 0)))
+         (equal? (ui-region-tip-text (ui-find tui '(item 0)))
                  (caar (task-checklist long))))
   (delete-task! long)
   (steps 2))
@@ -2007,7 +2007,7 @@
               (string-contains-ci? tip ", TASK-10 Threads spec")
               (not (tasks-tip (find-task 12) #f))
               ;; on the card it comes after the title, which the card cuts
-              (or (not card) (string-suffix? tip (ui-region-tip card))))))
+              (or (not card) (string-suffix? tip (ui-region-tip-text card))))))
 (click-ui! tw '(blocked-by add))   ; its choices: tasks-blocker-choices
 (type! "fractal")
 (press! 'return)
@@ -2087,7 +2087,7 @@
                                   (and (list? id) (= 3 (length id))
                                        (equal? (list-head id 2) '(tree row))
                                        (caddr id))))
-                              (ui-state-regions tui))])
+                              (ui-regions tui))])
       (unless (or (= n 40)
                   (and r (= (ui-region-h r) (cadddr (ui-region-frame r)))))
         (let-values ([(x y) (region-center '(tree body))]

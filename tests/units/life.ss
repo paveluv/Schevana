@@ -432,7 +432,7 @@
 (check "Life's sliders say what they mean, and its grid that a press draws \
         or erases cells"
        (let* ([win (life-paused!)] [ui (window-ref win 'ui)]
-              [tip (lambda (id) (ui-region-tip (ui-find ui id)))]
+              [tip (lambda (id) (ui-region-tip-text (ui-find ui id)))]
               [ok (and (string-contains-ci? (tip 'cell) "screen's own pixels")
                        (string-contains-ci? (tip 'speed) "10 ms")
                        (string-contains-ci? (tip 'threads) "every app")

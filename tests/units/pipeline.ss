@@ -2101,7 +2101,8 @@
        (let ([w (pipeline)])
          (steps 2)
          (let ([ok (string-contains-ci?
-                    (ui-region-tip (ui-find (window-ref w 'ui) '(pipeline pop)))
+                    (ui-region-tip-text
+                     (ui-find (window-ref w 'ui) '(pipeline pop)))
                     "brings it back")])
            (close-window! w)
            ok)))

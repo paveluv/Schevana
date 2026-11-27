@@ -77,7 +77,7 @@
               (for-all (lambda (r) (ui-treemap-test-within? r 0 top 400 300))
                        (list a b c))
               (ui-treemap-test-apart? (list a b c))
-              (equal? (ui-region-tip a) "a: 60"))))
+              (equal? (ui-region-tip-text a) "a: 60"))))
 
 (check "a child's children lie inside it, under its name, as their shares \
         of its room; a third level is left out"

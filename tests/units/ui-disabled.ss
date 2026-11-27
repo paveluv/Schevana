@@ -48,7 +48,7 @@
              (test-click! win 'b)
              (let* ([r (test-region ui 'b)]
                     [r (list ui-disabled-test-presses (ui-region-frame r)
-                             (ui-region-tip r) (ui-region-on r)
+                             (ui-region-tip-text r) (ui-region-on r)
                              (ui-region-on (test-region ui 'over))
                              ui-disabled-test-later-flags)])
                (close-window! win)

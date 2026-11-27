@@ -378,7 +378,7 @@
                          (ui-end! ui w h)))]
               [tip-of (lambda (key)
                         (let ([r (ui-find ui (list 't 'header key))])
-                          (and r (ui-region-tip r))))]
+                          (and r (ui-region-tip-text r))))]
               [win (apply open-window "T" 'size '(300 . 200) 'pos '(100 . 100)
                           'ui ui 'draw (table #f) (ui-handlers ui))])
          (steps 2)

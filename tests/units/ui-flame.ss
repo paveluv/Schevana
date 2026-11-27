@@ -38,7 +38,7 @@
               (= (ui-region-x b) 240)
               (> (ui-region-y a) (ui-region-y root))
               (= (ui-region-w a1) 160)
-              (equal? (ui-region-tip a) "a: 60")
+              (equal? (ui-region-tip-text a) "a: 60")
               (not (ui-flame-test-box "a" "a1" "a1x")))))
 
 (check "a press on a box makes it the root shown and tells the app; a \
@@ -46,14 +46,16 @@
        (begin
          (test-click! ui-flame-test-win '(f box ("a")))
          (steps 1)
-         (let ([in (ui-flame-test-box "a")]
-               [child (ui-flame-test-box "a" "a1")]
+         ;; widths, read before the next draw fills the regions again
+         (let ([in (let ([r (ui-flame-test-box "a")]) (and r (ui-region-w r)))]
+               [child (let ([r (ui-flame-test-box "a" "a1")])
+                        (and r (ui-region-w r)))]
                [gone (ui-flame-test-box "b")])
            (test-click! ui-flame-test-win '(f box ("a")))
            (steps 1)
            (and (equal? ui-flame-test-picked "a")
-                in (= (ui-region-w in) 400)
-                child (> (ui-region-w child) 260)
+                in (= in 400)
+                child (> child 260)
                 (not gone)
                 (ui-flame-test-box "b")
                 (= (ui-region-w (ui-flame-test-box)) 400)))))

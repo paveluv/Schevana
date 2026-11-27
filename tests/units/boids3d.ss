@@ -376,7 +376,7 @@
        (let ([win (b3:boids3d)])
          (steps 2)
          (let* ([ui (window-ref (find-window "Boids 3D — Rules") 'ui)]
-                [tip (lambda (id) (ui-region-tip (ui-find ui id)))]
+                [tip (lambda (id) (ui-region-tip-text (ui-find ui id)))]
                 [ok (and (string-contains-ci? (tip 'home) "back to the middle")
                          (string-contains-ci? (tip 'defaults) "murmuration")
                          (not (tip 'scatter)))])

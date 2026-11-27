@@ -200,7 +200,7 @@
                      (inject! `(mouse-down ,x ,y left 1)
                               `(mouse-up ,x ,y left))))
                  (steps 3))]
-              [tip (lambda (id) (ui-region-tip (ui-find ui id)))]
+              [tip (lambda (id) (ui-region-tip-text (ui-find ui id)))]
               [has? (lambda (s part) (and s (string-contains-ci? s part)))])
          (steps 3)
          (press-tab! '(tab ticks))
@@ -262,7 +262,7 @@
                            (and (pair? id) (eq? (car id) 'monitor-ticks)
                                 (not (and (pair? (cdr id))
                                           (eq? (cadr id) 'strip))))))
-                       (ui-state-regions ui)))]
+                       (ui-regions ui)))]
        [row (lambda (table x xs)   ; x's row in the table of xs, by id
               (list table 'row (list-index (lambda (y) (eq? y x)) xs)))]
        [window-row (lambda ()
@@ -352,13 +352,13 @@
                (and (= (length chosen) 1) k (null? let-go))))))
   (check "a Consumers heading says what its column means"
          (let ([r (ui-find ui '(consumers header avg))])
-           (and r (string? (ui-region-tip r))
-                (string-contains-ci? (ui-region-tip r) "average"))))
+           (and r (string? (ui-region-tip-text r))
+                (string-contains-ci? (ui-region-tip-text r) "average"))))
   (check "Consumers has what each allocated a second, and its heading says \
           so"
          (let ([r (ui-find ui '(consumers header bytes))])
-           (and r (string? (ui-region-tip r))
-                (string-contains-ci? (ui-region-tip r) "allocated"))))
+           (and r (string? (ui-region-tip-text r))
+                (string-contains-ci? (ui-region-tip-text r) "allocated"))))
   ;; the pointer rests on the newest bar, whose tooltip says what it spent
   (let ([r (car (bars))])
     (let-values ([(cx cy cw ch) (content-rect m)])
@@ -370,7 +370,8 @@
                       (< (+ (car (ui-state-rest ui)) ui-tip-ms 100)
                          (now-ms))))
     (test-png-write-screen (string-append out-dir "/monitor-tip.png"))
-    (let ([tip (let ([rs (bars)]) (and (pair? rs) (ui-region-tip (car rs))))])
+    (let ([tip (let ([rs (bars)])
+                 (and (pair? rs) (ui-region-tip-text (car rs))))])
       (printf "  ~s\n" tip)
       (check "hovering a bar of Monitor's Ticks shows its tooltip: its \
               tick, whether it came late, and its phases"

@@ -37,7 +37,7 @@
 
 ;; Returns the tooltip of region id.
 (define (allocations-test-tip id)
-  (let ([tip (ui-region-tip (test-region allocations-test-ui id))])
+  (let ([tip (ui-region-tip-text (test-region allocations-test-ui id))])
     (if (procedure? tip) (tip) tip)))
 
 (check "the app opens on Who, with the Column and the Flow, and starts \

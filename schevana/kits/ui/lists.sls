@@ -357,75 +357,94 @@
                [sx x] [sw w]
                [x (+ sx (ui-scrollbar-inset 'left))]
                [w (ui-table-room sw)]
-               [columns (ui-table-filled (ui-table-columns ui id columns) w)]
+               [columns (ui-table-columns ui id columns)]
+               [left (ui-table-left columns w)]
                [hh (ui-table-header-height)] [rh (ui-table-row-height)]
                [sort (plist-ref opts 'sort #f)]
-               [tip (plist-ref opts 'tip (lambda (r) #f))]
                [on-sort (plist-ref opts 'on-sort (lambda (k) #f))]
                [on-open (plist-ref opts 'on-open (lambda (r) #f))]
                [on-menu (plist-ref opts 'on-menu (lambda (r x y) #f))]
                [checked (plist-ref opts 'checked #f)]
                [on-check (plist-ref opts 'on-check (lambda (r) #f))]
+               [doc (if (plist-ref opts 'on-menu #f)
+                        '((L . "Select") (R . "Menu"))
+                        '((L . "Select")))]
+               ;; each column's flags, found once a draw
+               [col-flags (map ui-column-flags columns)]
                ;; the checkboxes' lane, before the first cell
                [box (ui-checkbox-box)]
                [lane (if checked (+ (ui-table-cell-inset) box) 0)]
-               [body (list id 'body)] [view-h (max 0 (- h hh))]
+               [body (ui-id ui id 'body)] [view-h (max 0 (- h hh))]
                [i (and (plist-ref opts 'reveal #f)
                        (list-index (lambda (r) (eq? r selected)) rows))]
-               [rows (list->vector rows)] [n (vector-length rows)])
-          (ui-table-headings! ui id sx sw x y hh columns sort on-sort
+               [n (length rows)])
+          (ui-table-headings! ui id sx sw x y hh columns left sort on-sort
                               (+ x lane) (plist-ref opts 'resize #f))
           (when i (ui-reveal! ui body (* i rh) (* (+ i 1) rh) view-h))
-          (ui-memo! ui (list id 'page) (max 1 (exact (floor (/ view-h rh)))))
+          (ui-memo! ui (ui-id ui id 'page)
+                    (max 1 (exact (floor (/ view-h rh)))))
           (ui-scroll ui body sx (+ y hh) sw view-h
             (lambda (top)
-              (let ([vy (+ y hh)])
-                (do ([i (max 0 (exact (floor (/ (- vy top) rh)))) (+ i 1)])
-                    ((or (>= i n) (>= (+ top (* i rh)) (+ vy view-h))))
-                  (let* ([row (vector-ref rows i)] [ry (+ top (* i rh))]
-                         [rid (list id 'row i)])
-                    (ui-region! ui rid x ry w rh 'tip (tip row)
-                      'doc (if (plist-ref opts 'on-menu #f)
-                               '((L . "Select") (R . "Menu"))
-                               '((L . "Select")))
-                      'on
-                      (lambda (ev)
-                        (and (eq? (car ev) 'press)
-                             (case (list-ref ev 3)
-                               [(left) (on-select row)
-                                       (when (>= (list-ref ev 4) 2)
-                                         (on-open row))
-                                       #t]
-                               [(right) (on-menu row (cadr ev) (caddr ev)) #t]
-                               [else #f]))))
-                    (let ([flags (apply ui-flags ui rid
-                                        (if (eq? row selected) '(selected)
-                                            '()))])
+              (let* ([vy (+ y hh)]
+                     [first (max 0 (exact (floor (/ (- vy top) rh))))]
+                     ;; one handler for every row, which a press finds by
+                     ;; its place
+                     [on (lambda (ev)
+                           (and (eq? (car ev) 'press)
+                                (let ([k (exact (floor (/ (- (caddr ev) top)
+                                                          rh)))])
+                                  (and (< -1 k n)
+                                       (let ([row (list-ref rows k)])
+                                         (case (list-ref ev 3)
+                                           [(left)
+                                            (on-select row)
+                                            (when (>= (list-ref ev 4) 2)
+                                              (on-open row))
+                                            #t]
+                                           [(right)
+                                            (on-menu row (cadr ev) (caddr ev))
+                                            #t]
+                                           [else #f]))))))])
+                (let loop ([i first]
+                           [rs (if (< first n) (list-tail rows first) '())])
+                  (unless (or (null? rs) (>= (+ top (* i rh)) (+ vy view-h)))
+                    (let* ([row (car rs)] [ry (+ top (* i rh))]
+                           [rid (ui-id ui id 'row i)]
+                           [r (ui-region!* ui rid x ry w rh on #f
+                                           (plist-ref opts 'tip #f) #f #f doc
+                                           #f)]
+                           [flags (ui-flags* ui rid (if (eq? row selected)
+                                                        '(selected)
+                                                        '()))])
+                      (ui-region-item-set! r row)
                       (ui-draw-table-row x ry w rh flags)
                       (when checked
-                        (let ([state (checked row)] [cid (list id 'check i)]
+                        (let ([state (checked row)] [cid (ui-id ui id 'check i)]
                               [bx (+ x (ui-table-cell-inset))])
                           (unless (eq? state 'fixed)
                             (ui-pressable! ui cid (- bx 4) ry (+ box 8) rh
                                            (lambda () (on-check row)) '()
                                            '(focus keep) '((L . "Check"))))
                           (ui-draw-checkbox bx ry box rh
-                                            (apply ui-flags ui cid
-                                                   (append
-                                                    (if state '(checked) '())
-                                                    (if (eq? state 'fixed)
-                                                        '(disabled)
-                                                        '())))
+                                            (ui-flags* ui cid
+                                                       (case state
+                                                         [(fixed)
+                                                          '(checked disabled)]
+                                                         [(#f) '()]
+                                                         [else '(checked)]))
                                             #f)))
-                      (let cells ([cs columns] [cx x] [first? #t])
+                      (let cells ([cs columns] [fs col-flags] [cx x] [in lane])
                         (unless (null? cs)
-                          (let ([in (if first? lane 0)])
-                            (cell row (caar cs) (+ cx in) ry
-                                  (- (caddr (car cs)) in) rh
-                                  (append flags (ui-column-flags (car cs)))))
-                          (cells (cdr cs) (+ cx (caddr (car cs))) #f)))
+                          (let ([cw (ui-table-width (car cs) (null? (cdr cs))
+                                                    left)])
+                            (cell row (caar cs) (+ cx in) ry (- cw in) rh
+                                  (if (null? flags)
+                                      (car fs)
+                                      (append flags (car fs))))
+                            (cells (cdr cs) (cdr fs) (+ cx cw) 0))))
                       (when (eq? row selected)
-                        (ui-draw-highlight-over x ry w rh '()))))))
+                        (ui-draw-highlight-over x ry w rh '())))
+                    (loop (+ i 1) (cdr rs)))))
               (+ top (* n rh))))))))
 
   ;; Returns the new row index for a key, or #f for any other key: Up and
@@ -450,10 +469,26 @@
   ;; columns, with the width the user dragged in place of a column's
   ;; default. The kit keeps those widths while the window is open.
   (define (ui-table-columns ui id columns)
-    (map (lambda (c)
-           (let ([w (ui-memo ui (list id 'width (car c)) #f)])
-             (if w (cons* (car c) (cadr c) w (cdddr c)) c)))
-         columns))
+    (define (dragged c) (ui-memo ui (ui-id ui id 'width (car c)) #f))
+    (if (exists dragged columns)
+        (map (lambda (c)
+               (let ([w (dragged c)])
+                 (if w (cons* (car c) (cadr c) w (cdddr c)) c)))
+             columns)
+        columns))
+
+  ;; Returns what the last of columns gets past its own width, so that the
+  ;; headings and rows reach w: what the columns, in whole pixels, leave of
+  ;; it, or 0.
+  (define (ui-table-left columns w)
+    (max 0 (- w (fold-left (lambda (sum c) (+ sum (ui-whole (caddr c)))) 0
+                           columns))))
+
+  ;; Returns column c's width as drawn, in whole pixels, so that what lies
+  ;; in it is placed with no fractions to allocate; the last one (last?)
+  ;; takes left too.
+  (define (ui-table-width c last? left)
+    (+ (ui-whole (caddr c)) (if last? left 0)))
 
   ;; Returns columns as drawn in w: when the widths the user dragged leave
   ;; room at the right, the last column takes it, so that the headings reach
@@ -496,7 +531,7 @@
           [(hover) row-hover?]
           [else #f])))
 
-  (define (ui-table-handles! ui id x y h columns sx sw resize)
+  (define (ui-table-handles! ui id x y h columns left sx sw resize)
     (define row-hover?
       (let ([win (current-window)])
         (and win
@@ -504,15 +539,14 @@
              (ui-hover? ui sx y sw h))))
     (let loop ([cs columns] [cx x])
       (unless (or (null? cs) (null? (cdr cs)))
-        (let* ([key (caar cs)] [cw (caddr (car cs))] [line (+ cx cw)]
-               [width (list id 'width key)] [grab (list id 'width-grab)]
+        (let* ([key (caar cs)] [cw (ui-table-width (car cs) #f left)]
+               [line (+ cx cw)]
+               [width (ui-id ui id 'width key)] [grab (ui-id ui id 'width-grab)]
                [pair? (eq? resize 'pair)]
-               [next (list id 'width (caadr cs))]
-               [both (+ cw (caddr (cadr cs)))])
-          (ui-region! ui (list id 'handle key) (- line 3) y 6 h
-            'focus 'keep 'cursor 'resize-ew
-            'doc '((L . "Resize column") (L2 . "Default width"))
-            'on
+               [next (ui-id ui id 'width (caadr cs))]
+               [both (+ cw (ui-table-width (cadr cs) (null? (cddr cs)) left))]
+               [hid (ui-id ui id 'handle key)])
+          (ui-region!* ui hid (- line 3) y 6 h
             (lambda (ev)
               (case (car ev)
                 [(press)
@@ -536,8 +570,10 @@
                           (ui-memo! ui width new)
                           (when pair? (ui-memo! ui next (- both new)))
                           #t)))]
-                [else #f])))
-          (let* ([flags (ui-flags ui (list id 'handle key))]
+                [else #f]))
+            'keep #f 'resize-ew #f
+            '((L . "Resize column") (L2 . "Default width")) #f)
+          (let* ([flags (ui-flags* ui hid '())]
                  [hot? (or (memq 'hover flags) (memq 'pressed flags))])
             (when (ui-table-divider-shown? row-hover? hot?)
               (ui-draw-table-divider line y h flags)))
@@ -554,33 +590,35 @@
   ;; (on-sort key), and the heading that sort names ((key . up|down), or #f)
   ;; shows its direction. The first title starts at title-x: a tree's starts
   ;; over its roots' cells.
-  (define (ui-table-headings! ui id sx sw x y h columns sort on-sort title-x
-                              resize)
+  (define (ui-table-headings! ui id sx sw x y h columns left sort on-sort
+                              title-x resize)
     (ui-call-with-clip ui sx y sw h
       (lambda ()
         (let loop ([cs columns] [cx x])
           (unless (null? cs)
-            (let* ([key (caar cs)] [cw (caddr (car cs))]
-                   [hid (list id 'header key)]
+            (let* ([key (caar cs)]
+                   [cw (ui-table-width (car cs) (null? (cdr cs)) left)]
+                   [hid (ui-id ui id 'header key)]
                    [tx (if (eq? cs columns) title-x cx)]
                    [flags (ui-column-flags (car cs))]
                    [tip (ui-column-tip (car cs))])
               (cond
                 [on-sort
-                 (ui-pressable! ui hid cx y cw h (lambda () (on-sort key))
-                                '() (list 'focus 'keep 'tip tip)
-                                '((L . "Sort")))]
-                [tip (ui-region! ui hid cx y cw h 'tip tip)])
+                 (ui-region!* ui hid cx y cw h
+                              (lambda (ev)
+                                (and (eq? (car ev) 'press)
+                                     (eq? (list-ref ev 3) 'left)
+                                     (begin (on-sort key) #t)))
+                              'keep tip #f #f '((L . "Sort")) #f)]
+                [tip (ui-region!* ui hid cx y cw h #f #f tip #f #f '() #f)])
               (unless (= tx cx)
                 (ui-draw-table-header cx y (- tx cx) h '() "" #f))
               (ui-draw-table-header tx y (- (+ cx cw) tx) h
-                                    (if on-sort
-                                        (apply ui-flags ui hid flags)
-                                        flags)
+                                    (if on-sort (ui-flags* ui hid flags) flags)
                                     (cadar cs)
                                     (and sort (eq? (car sort) key) (cdr sort)))
               (loop (cdr cs) (+ cx cw)))))
-        (ui-table-handles! ui id x y h columns sx sw
+        (ui-table-handles! ui id x y h columns left sx sw
                            (or resize (theme 'table-resize))))))
 
   ;; Calls thunk with its drawing and its regions cut to x y w h: for a
@@ -805,7 +843,7 @@
           (ui-memo! ui (list id 'rows) rows)
           (ui-memo! ui (list id 'generation) generation)
           ;; The first title starts over a root's cell.
-          (ui-table-headings! ui id sx sw x y hh columns sort on-sort (car c0)
+          (ui-table-headings! ui id sx sw x y hh columns 0 sort on-sort (car c0)
                               (plist-ref opts 'resize #f))
           (when (plist-ref opts 'reveal #f)
             (let ([i (ui-tree-index rows selected)])

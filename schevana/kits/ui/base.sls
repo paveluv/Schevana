@@ -11,7 +11,9 @@
     ui-state-edit ui-state-edit-set! ui-state-blink-at-set! ui-state-reveal
     ui-state-reveal-set! ui-state-popup ui-state-popup-set! ui-state-scans
     ui-state-scans-set! ui-state-memo make-ui ui-memo ui-memo! ui-forget!
-    ui-tip-ms ui-cut ui-region! ui-area ui-region-in? ui-region-at ui-find
+    ui-tip-ms ui-cut ui-region! ui-region!* ui-region-item-set! ui-id
+    ui-flags* ui-whole ui-area
+    ui-region-in? ui-region-at ui-find
     ui-hover? ui-active? ui-opt-flags ui-flags ui-focus! ui-focused ui-edit
     ui-caret ui-due! ui-frame ui-caret-on? ui-stale! ui-pointer ui-mouse-down
     ui-mouse-move ui-mouse-up ui-wheel ui-handlers ui-modal-on ui-pressable!
@@ -62,25 +64,60 @@
 
   ;;; ---------------------------------------------------------------- state
 
+  ;; A region is a record of its ui's pool, filled again at each draw
+  ;; (ui-region!), so that a draw makes none: one read after its draw is
+  ;; another region then. The one the left button holds is a copy.
   (define-record-type ui-region
-    (nongenerative schevana-ui-region-4)
-    (fields id x y w h   ; the area that can be hit, cut to the clip (may be
-                         ; 0 × 0)
-            frame        ; (x y w h) before the cut, for scrolling into view
-            on           ; #f, or (lambda (event) ...): true when it handled
-                         ; the event
-            focus        ; click, tab, keep or #f: see ui-mouse-down
-            tip          ; tooltip text, or #f
-            cursor       ; the pointer's shape over it ('ibeam), or #f
-            modal?       ; covers the window, so what lies under it is not live
-            doc          ; what the mouse buttons do on it: ((L . "Set") ...),
-                         ; or (lambda (x y) ...), for where the pointer is
-            follow))     ; #f, or (lambda (x y) ...): what it shows for the
-                         ; pointer there; a move that changes that redraws
+    (nongenerative schevana-ui-region-5)
+    (fields (mutable id)
+            ;; the area that can be hit, cut to the clip (may be 0 × 0)
+            (mutable x) (mutable y) (mutable w) (mutable h)
+            ;; the area before the cut, for scrolling into view
+            (mutable fx) (mutable fy) (mutable fw) (mutable fh)
+            ;; #f, or (lambda (event) ...): true when it handled the event
+            (mutable on)
+            ;; click, tab, keep or #f: see ui-mouse-down
+            (mutable focus)
+            ;; tooltip text, or #f; or a procedure of item that returns it,
+            ;; called only when the tooltip shows
+            (mutable tip)
+            ;; the widget's datum for the region (a table's row), or #f
+            (mutable item)
+            ;; the pointer's shape over it ('ibeam), or #f
+            (mutable cursor)
+            ;; covers the window, so what lies under it is not live
+            (mutable modal?)
+            ;; what the mouse buttons do on it: ((L . "Set") ...), or (lambda
+            ;; (x y) ...), for where the pointer is
+            (mutable doc)
+            ;; #f, or (lambda (x y) ...): what it shows for the pointer there;
+            ;; a move that changes that redraws
+            (mutable follow)))
+
+  ;; Returns a region's tooltip text, or #f.
+  (define (ui-region-tip-text r)
+    (let ([t (ui-region-tip r)])
+      (if (procedure? t) (t (ui-region-item r)) t)))
+
+  ;; Returns a region's area before the cut, (x y w h).
+  (define (ui-region-frame r)
+    (list (ui-region-fx r) (ui-region-fy r) (ui-region-fw r) (ui-region-fh r)))
+
+  ;; Returns a copy of region r, which no draw fills again.
+  (define (ui-region-copy r)
+    (make-ui-region (ui-region-id r) (ui-region-x r) (ui-region-y r)
+                    (ui-region-w r) (ui-region-h r) (ui-region-fx r)
+                    (ui-region-fy r) (ui-region-fw r) (ui-region-fh r)
+                    (ui-region-on r) (ui-region-focus r) (ui-region-tip r)
+                    (ui-region-item r) (ui-region-cursor r)
+                    (ui-region-modal? r) (ui-region-doc r)
+                    (ui-region-follow r)))
 
   (define-record-type ui-state
-    (nongenerative schevana-ui-state-5)
-    (fields (mutable regions)  ; this draw's regions, newest (topmost) first
+    (nongenerative schevana-ui-state-6)
+    (fields (mutable pool)     ; the regions, made once and filled each draw
+            (mutable count)    ; how many of them this draw has filled, the
+                               ; newest (topmost) last
             (mutable active)   ; the region the left button holds, or #f
             (mutable hover-id) ; the topmost live region under the pointer
             (mutable mx) (mutable my)
@@ -110,15 +147,51 @@
                                ; end
             (mutable disabled) ; whether what is drawn now is disabled
                                ; (ui-disabled)
+            ids                ; the pieces' ids that ui-id made
             memo))             ; per-id kit memory (scroll offsets, ...)
 
   (define (make-ui)
-    (make-ui-state '() #f #f -1 -1 1 (list 0 -1 -1) #f #f #f 0 #f #f '() #f #f
-                   #t '() #f (make-hashtable equal-hash equal?)))
+    (make-ui-state (make-vector 64 #f) 0 #f #f -1 -1 1 (list 0 -1 -1) #f #f #f
+                   0 #f #f '() #f #f #t '() #f
+                   (make-hashtable equal-hash equal?)
+                   (make-hashtable equal-hash equal?)))
 
   (define (ui-memo ui key default)
     (hashtable-ref (ui-state-memo ui) key default))
   (define (ui-memo! ui key value) (hashtable-set! (ui-state-memo ui) key value))
+
+  ;; Returns v, a length, in whole pixels: the nearest, with no flonum made.
+  (define (ui-whole v)
+    (cond [(fixnum? v) v]
+          [(flonum? v) (flonum->fixnum (flround v))]
+          [else (exact (round v))]))
+
+  ;; Returns the id (base part), or (base part i), of a widget's piece: the
+  ;; one list made the first time for this ui, so that a draw makes none.
+  ;; base is compared with equal?, part with eq? and i with equal?. The
+  ;; ids are kept until they number 4,096, then made again.
+  (define ui-id
+    (case-lambda
+      [(ui base part) (ui-id ui base part ui-id-none)]
+      [(ui base part i)
+       (let* ([ids (ui-state-ids ui)]
+              [parts (or (hashtable-ref ids base #f)
+                         (let ([t (make-eq-hashtable)])
+                           (hashtable-set! ids base t)
+                           t))]
+              [is (or (eq-hashtable-ref parts part #f)
+                      (let ([t (make-hashtable equal-hash equal?)])
+                        (eq-hashtable-set! parts part t)
+                        t))])
+         (or (hashtable-ref is i #f)
+             (let ([id (if (eq? i ui-id-none)
+                           (list base part)
+                           (list base part i))])
+               (when (fx> (hashtable-size ids) 4096) (hashtable-clear! ids))
+               (hashtable-set! is i id)
+               id)))]))
+  ;; What ui-id is given for no index.
+  (define ui-id-none '(ui-id-none))
 
   ;; Forgets what the kit keeps for widget id (a scroll offset and a caret),
   ;; so that, given other data to show, the widget starts at its top again.
@@ -156,23 +229,61 @@
   ;; its place and its tooltip, and a widget that had the keyboard or the
   ;; mouse lets go of it.
   (define (ui-region! ui id x y w h . opts)
+    (ui-region!* ui id x y w h (plist-ref opts 'on #f)
+                 (plist-ref opts 'focus #f) (plist-ref opts 'tip #f)
+                 (plist-ref opts 'cursor #f) (plist-ref opts 'modal #f)
+                 (plist-ref opts 'doc '()) (plist-ref opts 'follow #f)))
+
+  ;; ui-region! with its options as arguments, which allocates nothing.
+  (define (ui-region!* ui id x y w h on focus tip cursor modal doc follow)
     (let-values ([(cx cy cw ch) (ui-cut x y w h (ui-state-clip ui))])
-      (let* ([off? (ui-state-disabled ui)]
-             [r (make-ui-region id cx cy cw ch (list x y w h)
-                                (and (not off?) (plist-ref opts 'on #f))
-                                (if off? 'keep (plist-ref opts 'focus #f))
-                                (plist-ref opts 'tip #f)
-                                (plist-ref opts 'cursor #f)
-                                (plist-ref opts 'modal #f)
-                                (if off? '() (plist-ref opts 'doc '()))
-                                (and (not off?) (plist-ref opts 'follow #f)))])
+      (let ([off? (ui-state-disabled ui)] [r (ui-region-next! ui)])
+        (ui-region-id-set! r id)
+        (ui-region-x-set! r cx)
+        (ui-region-y-set! r cy)
+        (ui-region-w-set! r cw)
+        (ui-region-h-set! r ch)
+        (ui-region-fx-set! r x)
+        (ui-region-fy-set! r y)
+        (ui-region-fw-set! r w)
+        (ui-region-fh-set! r h)
+        (ui-region-on-set! r (and (not off?) on))
+        (ui-region-focus-set! r (if off? 'keep focus))
+        (ui-region-tip-set! r tip)
+        (ui-region-item-set! r #f)
+        (ui-region-cursor-set! r cursor)
+        (ui-region-modal?-set! r modal)
+        (ui-region-doc-set! r (if off? '() doc))
+        (ui-region-follow-set! r (and (not off?) follow))
         (when off?
           (when (equal? (ui-state-focus ui) id)
             (ui-state-focus-set! ui #f)
             (ui-state-edit-set! ui #f))
           (when (ui-active? ui id) (ui-state-active-set! ui #f)))
-        (ui-state-regions-set! ui (cons r (ui-state-regions ui)))
         r)))
+
+  ;; Returns the next region of ui's pool for this draw to fill, made the
+  ;; first time; the pool doubles when it is full.
+  (define (ui-region-next! ui)
+    (let ([n (ui-state-count ui)])
+      (when (fx= n (vector-length (ui-state-pool ui)))
+        (let ([more (make-vector (fx* 2 n) #f)])
+          (do ([i 0 (fx+ i 1)]) ((fx= i n))
+            (vector-set! more i (vector-ref (ui-state-pool ui) i)))
+          (ui-state-pool-set! ui more)))
+      (ui-state-count-set! ui (fx+ n 1))
+      (or (vector-ref (ui-state-pool ui) n)
+          (let ([r (make-ui-region #f 0 0 0 0 0 0 0 0 #f #f #f #f #f #f '()
+                                   #f)])
+            (vector-set! (ui-state-pool ui) n r)
+            r))))
+
+  ;; Returns the regions this draw made, newest first, as a list.
+  (define (ui-regions ui)
+    (let loop ([i 0] [acc '()])
+      (if (fx= i (ui-state-count ui))
+          acc
+          (loop (fx+ i 1) (cons (vector-ref (ui-state-pool ui) i) acc)))))
 
   ;; A clickable area, as Settings uses it: on-press is a thunk or #f;
   ;; on-drag, if given, receives the pointer's position on the press and on
@@ -199,7 +310,7 @@
   ;; Returns the live regions, newest first: those drawn above the newest
   ;; modal region, which is the last of them.
   (define (ui-live ui)
-    (let loop ([rs (ui-state-regions ui)] [acc '()])
+    (let loop ([rs (ui-regions ui)] [acc '()])
       (cond [(null? rs) (reverse acc)]
             [(ui-region-modal? (car rs)) (reverse (cons (car rs) acc))]
             [else (loop (cdr rs) (cons (car rs) acc))])))
@@ -208,14 +319,23 @@
     (point-in? x y (ui-region-x r) (ui-region-y r) (ui-region-w r)
                (ui-region-h r)))
 
-  (define (ui-region-at ui x y)
-    (find (lambda (r) (ui-region-in? r x y)) (ui-live ui)))
+  ;; The newest region at (x, y), of id (with id? true), or #f: of all the
+  ;; regions (all? true), or the live ones. Each walks the pool, making
+  ;; nothing.
+  (define (ui-region-seek ui x y id id? all?)
+    (let loop ([i (fx- (ui-state-count ui) 1)])
+      (and (fx>= i 0)
+           (let ([r (vector-ref (ui-state-pool ui) i)])
+             (cond [(if id?
+                        (equal? (ui-region-id r) id)
+                        (ui-region-in? r x y))
+                    r]
+                   [(and (not all?) (ui-region-modal? r)) #f]
+                   [else (loop (fx- i 1))])))))
 
-  (define (ui-find ui id)
-    (find (lambda (r) (equal? (ui-region-id r) id)) (ui-state-regions ui)))
-
-  (define (ui-live-region ui id)
-    (and id (find (lambda (r) (equal? (ui-region-id r) id)) (ui-live ui))))
+  (define (ui-region-at ui x y) (ui-region-seek ui x y #f #f #f))
+  (define (ui-find ui id) (ui-region-seek ui 0 0 id #t #t))
+  (define (ui-live-region ui id) (and id (ui-region-seek ui 0 0 id #t #f)))
 
   (define (ui-hover? ui x y w h)
     (point-in? (ui-state-mx ui) (ui-state-my ui) x y w h))
@@ -232,12 +352,18 @@
   ;; hover: the pointer is on it and no other region is held; pressed: the
   ;; left button holds it; focused: it has the keyboard, in the focused
   ;; window.
-  (define (ui-flags ui id . own)
+  (define (ui-flags ui id . own) (ui-flags* ui id own))
+
+  ;; ui-flags with own as a list: with none of the kit's own flags, it
+  ;; returns own itself, so that a widget at rest allocates nothing.
+  (define (ui-flags* ui id own)
     (if (ui-state-disabled ui)
         (cons 'disabled own)
-        (apply ui-live-flags ui id own)))
+        (ui-live-flags* ui id own)))
 
-  (define (ui-live-flags ui id . own)
+  (define (ui-live-flags ui id . own) (ui-live-flags* ui id own))
+
+  (define (ui-live-flags* ui id own)
     (let* ([win (current-window)]
            [r (ui-find ui id)]
            [pressed? (ui-active? ui id)]
@@ -249,8 +375,11 @@
                                            (ui-state-my ui))))]
            [focused? (and win (equal? (ui-state-focus ui) id)
                           (eq? win (focused-window)))])
-      (append (if hover? '(hover) '()) (if pressed? '(pressed) '())
-              (if focused? '(focused) '()) own)))
+      ;; consed on in place of an append, so that with none of them the
+      ;; flags are own itself
+      (let* ([own (if focused? (cons 'focused own) own)]
+             [own (if pressed? (cons 'pressed own) own)])
+        (if hover? (cons 'hover own) own))))
 
   ;;; ---------------------------------------------------------------- focus
 
@@ -446,7 +575,8 @@
             [(tab keep) (void)]
             [else (ui-focus! ui #f)])
           (ui-state-clicks-set! ui clicks)
-          (ui-state-active-set! ui (and r (ui-region-on r) r)))
+          (ui-state-active-set! ui (and r (ui-region-on r)
+                                        (ui-region-copy r))))
         ;; a right press gives the keyboard only to what a click would (a
         ;; text box, whose text menu it opens), and leaves it elsewhere
         (when (and (eq? button 'right) r (eq? (ui-region-focus r) 'click))
@@ -594,26 +724,27 @@
   ;; when it is given).
   (define (ui-pressable! ui id x y w h thunk keys opts . doc)
     (let ([disabled? (plist-ref opts 'disabled #f)])
-      (ui-region! ui id x y w h
-        'focus (if disabled? 'keep (plist-ref opts 'focus 'tab))
-        'tip (plist-ref opts 'tip #f)
-        'doc (plist-ref opts 'doc (if (pair? doc) (car doc) '()))
-        'on (and (not disabled?)
-                 (lambda (ev)
-                   (case (car ev)
-                     [(press)
-                      (and (eq? (list-ref ev 3) 'left) (begin (thunk) #t))]
-                     [(key)
-                      (and (null? (caddr ev)) (memv (cadr ev) keys)
-                           (begin (thunk) #t))]
-                     [else #f]))))))
+      (ui-region!* ui id x y w h
+                   (and (not disabled?)
+                        (lambda (ev)
+                          (case (car ev)
+                            [(press)
+                             (and (eq? (list-ref ev 3) 'left)
+                                  (begin (thunk) #t))]
+                            [(key)
+                             (and (null? (caddr ev)) (memv (cadr ev) keys)
+                                  (begin (thunk) #t))]
+                            [else #f])))
+                   (if disabled? 'keep (plist-ref opts 'focus 'tab))
+                   (plist-ref opts 'tip #f) #f #f
+                   (plist-ref opts 'doc (if (pair? doc) (car doc) '())) #f)))
 
   ;;; ---------------------------------------------------------------- a draw
 
   (define (ui-begin! ui)
     (let ([win (current-window)])   ; an outside bar shows only if drawn again
       (when win (hashtable-delete! (window-props win) 'scrollbar)))
-    (ui-state-regions-set! ui '())
+    (ui-state-count-set! ui 0)
     (ui-state-clip-set! ui #f)
     (ui-state-later-set! ui '())
     (ui-state-due-set! ui #f)
@@ -677,14 +808,16 @@
           (cond
             [(not tip) (void)]
             [(< (now-ms) at) (ui-due! ui at)]
-            [else
-             (with-place 'tooltip
-               (lambda ()
-                 (let*-values ([(px py) (values (cadr rest) (caddr rest))]
-                               [(tw th) (ui-tooltip-size tip)]
-                               [(tx ty) (ui-popup-place (+ px 12) (+ py 20)
-                                                        (- py 8) tw th w h)])
-                   (ui-draw-tooltip tx ty tw th '() tip))))]))))
+            [(ui-region-tip-text r)
+             => (lambda (tip)
+                  (with-place 'tooltip
+                    (lambda ()
+                      (let*-values ([(px py) (values (cadr rest) (caddr rest))]
+                                    [(tw th) (ui-tooltip-size tip)]
+                                    [(tx ty) (ui-popup-place (+ px 12) (+ py 20)
+                                                             (- py 8) tw th w
+                                                             h)])
+                        (ui-draw-tooltip tx ty tw th '() tip)))))]))))
     (ui-wake! ui))
 
   ;;; ---------------------------------------------------------------- menus
@@ -1282,7 +1415,7 @@
                       (and (not (= new (car m)))
                            (begin (ui-memo! ui xid (cons new (cdr m))) #t)))]
                    [else #f])))))
-      (let ([before (ui-state-regions ui)])
+      (let ([before (ui-state-count ui)])
         (ui-state-clip-set! ui (call-with-values
                                  (lambda ()
                                    (ui-cut (+ x left) y (- w left) (- h below)
@@ -1316,22 +1449,22 @@
           ;; whole.
           (let ([rv (ui-state-reveal ui)])
             (when rv
-              (let loop ([rs (ui-state-regions ui)])
-                (unless (eq? rs before)
-                  (if (equal? (ui-region-id (car rs)) (car rv))
-                      ;; All of it when it fits, else the span it asks for
-                      ;; (a text box's caret row).
-                      (let* ([f (ui-region-frame (car rs))]
-                             [top (- (cadr f) (- y off))]
-                             [span (if (and (cdr rv)
-                                            (> (+ (cadddr f) (* 2 (ui-gap)))
-                                               vh))
-                                       (cdr rv)
-                                       (cons 0 (cadddr f)))])
-                        (ui-state-reveal-set! ui #f)
-                        (ui-reveal! ui id (- (+ top (car span)) (ui-gap))
-                                    (+ top (cdr span) (ui-gap)) vh))
-                      (loop (cdr rs)))))))
+              (let loop ([i (fx- (ui-state-count ui) 1)])
+                (unless (fx< i before)
+                  (let ([r (vector-ref (ui-state-pool ui) i)])
+                    (if (equal? (ui-region-id r) (car rv))
+                        ;; All of it when it fits, else the span it asks
+                        ;; for (a text box's caret row).
+                        (let* ([top (- (ui-region-fy r) (- y off))]
+                               [fh (ui-region-fh r)]
+                               [span (if (and (cdr rv)
+                                              (> (+ fh (* 2 (ui-gap))) vh))
+                                         (cdr rv)
+                                         (cons 0 fh))])
+                          (ui-state-reveal-set! ui #f)
+                          (ui-reveal! ui id (- (+ top (car span)) (ui-gap))
+                                      (+ top (cdr span) (ui-gap)) vh))
+                        (loop (fx- i 1))))))))
           (let* ([win (current-window)] [bid (list id 'bar)]
                  [side (theme 'scrollbar-side)]
                  [r (and win (eq? side 'outside) (zero? x)
@@ -1801,7 +1934,7 @@
    (for-each (lambda (win)
                (let ([ui (window-ref win 'ui #f)])
                  (when (ui-state? ui)
-                   (ui-state-regions-set! ui '())
+                   (ui-state-count-set! ui 0)
                    (ui-state-active-set! ui #f)
                    (ui-stale! ui))))
              (windows)))
